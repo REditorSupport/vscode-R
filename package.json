@@ -14,11 +14,37 @@
         "onCommand:extension.sayHello"
     ],
     "main": "./out/src/extension",
-    "contributes": {
+    "contributes":{
         "commands": [{
-            "command": "extension.sayHello",
-            "title": "Hello World"
-        }]
+            "commands": "rtvsc.create.rterm",
+            "title": "RTVSC: Create R term"
+        }],
+        "languages": [
+            {
+                "id": "r",
+                "extentions": [
+                    ".r", 
+                    ".rhistory", 
+                    ".rprofile", 
+                    ".rt" 
+                ],
+                "ariases": [
+                    "R",
+                    "r"
+                ]
+            }
+        ],
+        "configration": {
+            "type": "object",
+            "title": "RTVSC configration",
+            "properties": {
+                "rtvsc.rterm.windows": {
+                    "type": "string",
+                    "default": "C:\\Program Files\\Microsoft\\MRO\\R-3.2.5",
+                    "description": "R terms path."
+                }
+            }
+        }
     },
     "scripts": {
         "vscode:prepublish": "tsc -p ./",
