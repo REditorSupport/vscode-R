@@ -3,21 +3,29 @@
     "displayName": "RTVSC",
     "description": "R Tool For Visual Studio Code",
     "version": "0.0.1",
-    "publisher": "a",
+    "publisher": "Ikuyadeu",
+    "categories": [
+        "Other",
+        "Languages"
+    ],
     "engines": {
         "vscode": "^1.5.0"
     },
-    "categories": [
-        "Other"
-    ],
     "activationEvents": [
-        "onCommand:extension.sayHello"
+        "onCommand:rtvsc.createRterm",
+        "onCommand:rtvsc.runR"
     ],
     "main": "./out/src/extension",
     "contributes":{
         "commands": [{
-            "commands": "rtvsc.create.rterm",
-            "title": "RTVSC: Create R term"
+            "title": "Create R term",
+            "category": "RTVSC",
+            "command": "rtvsc.createRterm"
+        },
+        {
+            "title": "Run .R",
+            "category": "RTVSC",
+            "command": "rtvsc.runR"
         }],
         "languages": [
             {
@@ -36,11 +44,11 @@
         ],
         "configration": {
             "type": "object",
-            "title": "RTVSC configration",
+            "title": "RTVSC",
             "properties": {
                 "rtvsc.rterm.windows": {
                     "type": "string",
-                    "default": "C:\\Program Files\\Microsoft\\MRO\\R-3.2.5",
+                    "default": "C:\\Program Files\\Microsoft\\MRO\\R-3.2.5\\bin\\x64\\Rterm.exe",
                     "description": "R terms path."
                 }
             }
