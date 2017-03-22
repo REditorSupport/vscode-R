@@ -1,11 +1,10 @@
 'use strict';
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { workspace, window, commands, ExtensionContext, StatusBarAlignment, TextEditor, Disposable } from 'vscode';
+import { workspace, window, commands, ExtensionContext} from 'vscode';
 import cp = require('child_process');
 
-let willSaveTextDocument: Disposable;
-let configurationChangedListener: Disposable;
+let outputChennel = window.createOutputChannel("RTVSC")
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -19,7 +18,8 @@ export function activate(context: ExtensionContext) {
     // Now provide the implementation of the command with  registerCommand
     // The commandId parameter must match the command field in package.json
     function createRterm() {
-        window.showInformationMessage('createRterm');
+        let termName = workspace.getConfiguration('rtvsc').get('rtvsc.rterm.windows', "C:\\Program Files\\Microsoft\\MRO\\R-3.2.5\\bin\\x64\\Rterm.exe");
+        window.showInformationMessage(termName);
     }
 
     function runR()  {
@@ -35,14 +35,12 @@ export function activate(context: ExtensionContext) {
                     console.log(err);
                 }
                 let lines = stdout.toString().split('\n');
-                window.showInformationMessage(stdout)
+                outputChennel.show(true);
+                outputChennel.append(stdout);
             } catch (e) {
-                window.showInformationMessage(e.msg);
+                window.showErrorMessage(e.message);
             }
         });
-
-        
-        // window.showInformationMessage('runR');
     }
 
     context.subscriptions.push(
