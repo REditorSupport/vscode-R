@@ -4,7 +4,8 @@
 import { workspace, window, commands, ExtensionContext} from 'vscode';
 import cp = require('child_process');
 
-let outputChennel = window.createOutputChannel("RTVSC")
+let outputChennel = window.createOutputChannel("rtvsc");
+let config = workspace.getConfiguration('rtvsc');
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -25,7 +26,19 @@ export function activate(context: ExtensionContext) {
 
     function runR()  {
         let path = window.activeTextEditor.document.fileName;
-        let cmd = workspace.getConfiguration('rtvsc').get('rtvsc.rterm.windows', "C:\\Program Files\\Microsoft\\MRO\\R-3.2.5\\bin\\x64\\Rterm.exe");
+        let cmd;
+
+        if (process.platform == 'win32') {
+            cmd = config.get('rtvsc.rterm.windows', "C:\\Program Files\\Microsoft\\MRO\\R-3.2.5\\bin\\x64\\Rterm.exe");
+        } else if (process.platform == 'darwin') {
+            cmd = config.get('rtvsc.rterm.windows', "/usr/local/bin/R");
+        } else if (process.platform == 'linux') {
+            cmd = config.get('rtvsc.rterm.windows', "/usr/bin/R");
+        } else {
+            window.showErrorMessage(process.platform + "can't use RTVSC");
+            return;
+        }
+
         let args = ["--no-restore",
 		"--no-save",
 		"--quiet",

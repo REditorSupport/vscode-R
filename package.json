@@ -50,6 +50,16 @@
                     "type": "string",
                     "default": "C:\\Program Files\\Microsoft\\MRO\\R-3.2.5\\bin\\x64\\Rterm.exe",
                     "description": "R terms path."
+                },
+                "rtvsc.rterm.mac": {
+                    "type": "string",
+                    "default": "/usr/local/bin/R",
+                    "description": "R terms path."
+                },
+                "rtvsc.rterm.linux": {
+                    "type": "string",
+                    "default": "/usr/bin/R",
+                    "description": "R terms path."
                 }
             }
         }

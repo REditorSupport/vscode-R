@@ -20,13 +20,16 @@ For example if there is an image subfolder under your extension project workspac
 
 ## Requirements
 
-* R
+* If Windows(https://mran.microsoft.com/open/)
+* If Mac or Linux(https://cran.r-project.org/)
 
 ## Extension Settings
 
 This extension contributes the following settings:
 
-* `rtvsc.rterm.windows`: set to R term's path
+* `rtvsc.rterm.windows`: set to R term's path for Windows
+* `rtvsc.rterm.mac`: set to R term's path for Mac OS X
+* `rtvsc.rterm.linux`: set to R term's path for Linux
 
 ## Known Issues
 
