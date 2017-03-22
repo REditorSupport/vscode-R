@@ -19,7 +19,8 @@ export function activate(context: ExtensionContext) {
     // The commandId parameter must match the command field in package.json
     function createRterm() {
         let termName = workspace.getConfiguration('rtvsc').get('rtvsc.rterm.windows', "C:\\Program Files\\Microsoft\\MRO\\R-3.2.5\\bin\\x64\\Rterm.exe");
-        window.showInformationMessage(termName);
+        let term = window.createTerminal(termName);
+        term.show();
     }
 
     function runR()  {
