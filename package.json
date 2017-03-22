@@ -42,24 +42,24 @@
                 ]
             }
         ],
-        "configration": {
+        "configuration": {
             "type": "object",
             "title": "RTVSC",
             "properties": {
                 "rtvsc.rterm.windows": {
                     "type": "string",
                     "default": "C:\\Program Files\\Microsoft\\MRO\\R-3.2.5\\bin\\x64\\Rterm.exe",
-                    "description": "R terms path."
+                    "description": "R terms path for windows."
                 },
                 "rtvsc.rterm.mac": {
                     "type": "string",
                     "default": "/usr/local/bin/R",
-                    "description": "R terms path."
+                    "description": "R terms path for Mac OS X."
                 },
                 "rtvsc.rterm.linux": {
                     "type": "string",
                     "default": "/usr/bin/R",
-                    "description": "R terms path."
+                    "description": "R terms path for Linux."
                 }
             }
         }

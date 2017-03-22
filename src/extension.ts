@@ -19,7 +19,7 @@ export function activate(context: ExtensionContext) {
     // Now provide the implementation of the command with  registerCommand
     // The commandId parameter must match the command field in package.json
     function createRterm() {
-        let termName = workspace.getConfiguration('rtvsc').get('rtvsc.rterm.windows', "C:\\Program Files\\Microsoft\\MRO\\R-3.2.5\\bin\\x64\\Rterm.exe");
+        let termName = workspace.getConfiguration('rtvsc').get<string>('rterm.windows');
         let term = window.createTerminal(termName);
         term.show();
     }
@@ -27,13 +27,13 @@ export function activate(context: ExtensionContext) {
     function runR()  {
         let path = window.activeTextEditor.document.fileName;
         let cmd;
-
+        
         if (process.platform == 'win32') {
-            cmd = config.get('rtvsc.rterm.windows', "C:\\Program Files\\Microsoft\\MRO\\R-3.2.5\\bin\\x64\\Rterm.exe");
+            cmd = config.get('rterm.windows');
         } else if (process.platform == 'darwin') {
-            cmd = config.get('rtvsc.rterm.windows', "/usr/local/bin/R");
+            cmd = config.get('rterm.mac');
         } else if (process.platform == 'linux') {
-            cmd = config.get('rtvsc.rterm.windows', "/usr/bin/R");
+            cmd = config.get('rterm.linux');
         } else {
             window.showErrorMessage(process.platform + "can't use RTVSC");
             return;
