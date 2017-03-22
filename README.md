@@ -1,4 +1,4 @@
-# R Tool for Visual Studio Code
+# R Tools for Visual Studio Code
 
 R support for VS Code.
 Please Install R.

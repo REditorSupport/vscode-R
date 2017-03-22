@@ -1,7 +1,7 @@
 {
     "name": "rtvsc",
     "displayName": "RTVSC",
-    "description": "R Tool For Visual Studio Code",
+    "description": "R Tools For Visual Studio Code",
     "version": "0.0.1",
     "publisher": "Ikuyadeu",
     "categories": [

@@ -48,7 +48,6 @@ export function activate(context: ExtensionContext) {
                 if (err) {
                     console.log(err);
                 }
-                let lines = stdout.toString().split('\n');
                 outputChennel.show(true);
                 outputChennel.append(stdout);
             } catch (e) {
