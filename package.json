@@ -1,9 +1,9 @@
 {
     "name": "r",
     "displayName": "R",
-    "description": "R",
+    "description": "Run .R program on VS Code",
     "version": "0.0.1",
-    "publisher": "Ikuyadeu",
+    "publisher": "Yuki Ueda",
     "categories": [
         "Other",
         "Languages"

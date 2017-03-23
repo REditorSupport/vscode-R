@@ -19,9 +19,10 @@ export function activate(context: ExtensionContext) {
     // Now provide the implementation of the command with  registerCommand
     // The commandId parameter must match the command field in package.json
     function createRterm() {
-        let termName = workspace.getConfiguration('r').get<string>('rterm.windows');
-        let term = window.createTerminal(termName);
-        term.show();
+        // let termName = workspace.getConfiguration('r').get<string>('rterm.windows');
+        // let term = window.createTerminal(termName);
+        // term.show();
+        window.showErrorMessage("R: Sorry, this function is not implemented yet");
     }
 
     function runR()  {
