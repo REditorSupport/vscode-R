@@ -1,4 +1,4 @@
-# R Tools for Visual Studio Code
+# R
 
 R support for VS Code.
 Please Install R.
@@ -27,9 +27,9 @@ For example if there is an image subfolder under your extension project workspac
 
 This extension contributes the following settings:
 
-* `rtvsc.rterm.windows`: set to R term's path for Windows
-* `rtvsc.rterm.mac`: set to R term's path for Mac OS X
-* `rtvsc.rterm.linux`: set to R term's path for Linux
+* `r.rterm.windows`: set to R term's path for Windows
+* `r.rterm.mac`: set to R term's path for Mac OS X
+* `r.rterm.linux`: set to R term's path for Linux
 
 ## Known Issues
 

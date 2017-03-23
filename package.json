@@ -1,7 +1,7 @@
 {
-    "name": "rtvsc",
-    "displayName": "RTVSC",
-    "description": "R Tools For Visual Studio Code",
+    "name": "r",
+    "displayName": "R",
+    "description": "R",
     "version": "0.0.1",
     "publisher": "Ikuyadeu",
     "categories": [
@@ -12,20 +12,20 @@
         "vscode": "^1.5.0"
     },
     "activationEvents": [
-        "onCommand:rtvsc.createRterm",
-        "onCommand:rtvsc.runR"
+        "onCommand:r.createRterm",
+        "onCommand:r.runR"
     ],
     "main": "./out/src/extension",
     "contributes":{
         "commands": [{
             "title": "Create R term",
-            "category": "RTVSC",
-            "command": "rtvsc.createRterm"
+            "category": "R",
+            "command": "r.createRterm"
         },
         {
             "title": "Run .R",
-            "category": "RTVSC",
-            "command": "rtvsc.runR"
+            "category": "R",
+            "command": "r.runR"
         }],
         "languages": [
             {
@@ -44,19 +44,19 @@
         ],
         "configuration": {
             "type": "object",
-            "title": "RTVSC",
+            "title": "r",
             "properties": {
-                "rtvsc.rterm.windows": {
+                "r.rterm.windows": {
                     "type": "string",
                     "default": "C:\\Program Files\\Microsoft\\MRO\\R-3.2.5\\bin\\x64\\Rterm.exe",
                     "description": "R terms path for windows."
                 },
-                "rtvsc.rterm.mac": {
+                "r.rterm.mac": {
                     "type": "string",
                     "default": "/usr/local/bin/R",
                     "description": "R terms path for Mac OS X."
                 },
-                "rtvsc.rterm.linux": {
+                "r.rterm.linux": {
                     "type": "string",
                     "default": "/usr/bin/R",
                     "description": "R terms path for Linux."
