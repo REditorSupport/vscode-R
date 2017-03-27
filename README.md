@@ -12,7 +12,7 @@ Please Install R.
 * [ ] R Integrated Terminal
 * [ ] Debug
 
-\!\[use Run .R \](images/feature.png\)
+![use Run .R](images/feature.png)
 
 ## Requirements
 
