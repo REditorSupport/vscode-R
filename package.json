@@ -1,7 +1,7 @@
 {
     "name": "r",
     "displayName": "R",
-    "description": "Run .R program on VS Code",
+    "description": "Support for R on VS Code",
     "version": "0.0.2",
     "publisher": "Ikuyadeu",
     "icon": "images/icon.png",
@@ -42,6 +42,22 @@
                     "R",
                     "r"
                 ]
+            },{
+                "id": "rd",
+                "extensions": [
+                    ".rd"
+                ],
+                "aliases": [
+                    "R documantation",
+                    "r documantation"
+                ],
+                "configuration": "./rd-configuration.json"
+            }
+        ],
+        "grammars": [{
+                "language":"rd",
+                "scopeName": "text.tex.latex.rd",
+                "path":"./syntax/Rd (R Documentation).tmLanguage"                
             }
         ],
         "configuration": {
