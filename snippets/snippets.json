@@ -1,0 +1,116 @@
+{
+    "rug":{
+        "prefix": "rug",
+        "body": "rug(${1:jitter(${2:x})})",
+        "descriptison": "Add Tick Marks",
+        "scope": "source.r"
+    },
+    "att":{
+        "prefix": "att",
+        "body": "attach(${1:frame})",
+        "description": "Attach",
+        "scope": "source.r"
+    },
+    "cum":{
+        "prefix": "cum",
+        "body": "cum${1:max}(${2:x})",
+        "description": "Cummulative",
+        "scope": "source.r"
+    },
+    "den":{
+        "prefix": "den",
+        "body": "density(${1:x}${2:, bw = ${3:bandwidth}})",
+        "description": "Density",
+        "scope": "source.r"
+    },
+    "det":{
+        "prefix": "det",
+        "body": "detach(${0:})",
+        "description": "Detach",
+        "scope": "source.r"
+    },
+    "cut":{
+        "prefix": "cut",
+        "body": "cut(${1:x}, breaks = c(${2:${3:}, ${4:max(${1:x})}}))",
+        "description": "Divide Into Intervals",
+        "scope": "source.r"
+    },
+    "fac":{
+        "prefix": "fac",
+        "body": "factor(${1:x})",
+        "description": "Factor",
+        "scope": "source.r"
+    },
+    "for":{
+        "prefix": "for",
+        "body": "for (${1:i} in ${2:seq}) ${3:{$0\\}}",
+        "description": "For Loop",
+        "scope": "source.r"
+    },
+    "fun":{
+        "prefix": "fun",
+        "body": "function(${1:x}) ${3:{$0\\}}",
+        "description": "Function",
+        "scope": "source.r"
+    },
+    "ife":{
+        "prefix": "ife",
+        "body": "ifelse(${1:test}, ${2:yes}, ${3:no})",
+        "description": "Ifelse",
+        "scope": "source.r"
+    },
+    "len":{
+        "prefix": "len",
+        "body": "length(${1:x})",
+        "description": "Length",
+        "scope": "source.r"
+    },
+    "dat":{
+        "prefix": "dat",
+        "body": "data(${1:name})",
+        "description": "Load Dataset",
+        "scope": "source.r"
+    },
+    "lin":{
+        "prefix": "lin",
+        "body": "lines(${1:x}${2:, color=${3:red}})",
+        "description": "Polygonal Line",
+        "scope": "source.r"
+    },
+    "rea":{
+        "prefix": "rea",
+        "body": "read.table('${1:filename}'${2:, header = ${3:TRUE},  sep = '${4:\t}',  stringsAsFactors = ${5:FALSE}})",
+        "description": "Read From File",
+        "scope": "source.r"
+    },
+    "seq":{
+        "prefix": "seq",
+        "body": "seq(${1:from}, ${2:to}, ${3:by})",
+        "description": "Sequence (from,to,by)",
+        "scope": "source.r"
+    },
+    "sor":{
+        "prefix": "sor",
+        "body": "sort(${1:x})",
+        "description": "Sort",
+        "scope": "source.r"
+    },
+    "sou":{
+        "prefix": "sou",
+        "body": "source(${1:'${2:}'}${3:, chdir = ${4:TRUE}})",
+        "description": "Source",
+        "scope": "source.r"
+    },
+    "fch":{
+        "prefix": "fch",
+        "body": "${1:file = }file.choose()${0:}",
+        "description": "file.choose",
+        "scope": "source.r"
+    },
+    "nao":{
+        "prefix": "nao",
+        "body": "na.omit(${0:})",
+        "description": "na.omit",
+        "scope": "source.r"
+    }
+}
