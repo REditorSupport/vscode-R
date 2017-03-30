@@ -9,10 +9,13 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 * Debug
 
 ## [Initial release]
-* [x] Run .R program
+* Run .R program
 
 ## [0.0.2]
 * add icon and figure
 
 ## [0.0.3]
-* [x] Support R Documentation
+* Support R Documentation
+
+## [0.0.4]
+* Snippets

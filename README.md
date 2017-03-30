@@ -11,6 +11,7 @@ This extension based on the [r.tmbundle](https://github.com/textmate/r.tmbundle)
 
 * [x] Run .R program
 * [x] Support R Documentation
+* [x] Snippets
 * [ ] Output Plot
 * [ ] R Integrated Terminal
 * [ ] Debug
@@ -45,5 +46,9 @@ Initial release
 ### 0.0.3
 
 Support R documantation
+
+### 0.0.4
+
+Snippets
 
 -----------------------------------------------------------------------------------------------------------
