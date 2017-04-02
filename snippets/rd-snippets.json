@@ -1,0 +1,116 @@
+{
+    "rug":{
+        "prefix": "rug",
+        "body": "rug(${1:jitter(${2:x})})",
+        "descriptison": "Add Tick Marks",
+        "scope": "text.tex.latex.rd"
+    },
+    "att":{
+        "prefix": "att",
+        "body": "attach(${1:frame})",
+        "description": "Attach",
+        "scope": "text.tex.latex.rd"
+    },
+    "cum":{
+        "prefix": "cum",
+        "body": "cum${1:max}(${2:x})",
+        "description": "Cummulative",
+        "scope": "text.tex.latex.rd"
+    },
+    "den":{
+        "prefix": "den",
+        "body": "density(${1:x}${2:, bw = ${3:bandwidth}})",
+        "description": "Density",
+        "scope": "text.tex.latex.rd"
+    },
+    "det":{
+        "prefix": "det",
+        "body": "detach(${0:})",
+        "description": "Detach",
+        "scope": "text.tex.latex.rd"
+    },
+    "cut":{
+        "prefix": "cut",
+        "body": "cut(${1:x}, breaks = c(${2:${3:}, ${4:max(${1:x})}}))",
+        "description": "Divide Into Intervals",
+        "scope": "text.tex.latex.rd"
+    },
+    "fac":{
+        "prefix": "fac",
+        "body": "factor(${1:x})",
+        "description": "Factor",
+        "scope": "text.tex.latex.rd"
+    },
+    "for":{
+        "prefix": "for",
+        "body": "for (${1:i} in ${2:seq}) ${3:{$0\\}}",
+        "description": "For Loop",
+        "scope": "text.tex.latex.rd"
+    },
+    "fun":{
+        "prefix": "fun",
+        "body": "function(${1:x}) ${3:{$0\\}}",
+        "description": "Function",
+        "scope": "text.tex.latex.rd"
+    },
+    "ife":{
+        "prefix": "ife",
+        "body": "ifelse(${1:test}, ${2:yes}, ${3:no})",
+        "description": "Ifelse",
+        "scope": "text.tex.latex.rd"
+    },
+    "len":{
+        "prefix": "len",
+        "body": "length(${1:x})",
+        "description": "Length",
+        "scope": "text.tex.latex.rd"
+    },
+    "dat":{
+        "prefix": "dat",
+        "body": "data(${1:name})",
+        "description": "Load Dataset",
+        "scope": "text.tex.latex.rd"
+    },
+    "lin":{
+        "prefix": "lin",
+        "body": "lines(${1:x}${2:, color=${3:red}})",
+        "description": "Polygonal Line",
+        "scope": "text.tex.latex.rd"
+    },
+    "rea":{
+        "prefix": "rea",
+        "body": "read.table('${1:filename}'${2:, header = ${3:TRUE},  sep = '${4:\t}',  stringsAsFactors = ${5:FALSE}})",
+        "description": "Read From File",
+        "scope": "text.tex.latex.rd"
+    },
+    "seq":{
+        "prefix": "seq",
+        "body": "seq(${1:from}, ${2:to}, ${3:by})",
+        "description": "Sequence (from,to,by)",
+        "scope": "text.tex.latex.rd"
+    },
+    "sor":{
+        "prefix": "sor",
+        "body": "sort(${1:x})",
+        "description": "Sort",
+        "scope": "text.tex.latex.rd"
+    },
+    "sou":{
+        "prefix": "sou",
+        "body": "source(${1:'${2:}'}${3:, chdir = ${4:TRUE}})",
+        "description": "Source",
+        "scope": "text.tex.latex.rd"
+    },
+    "fch":{
+        "prefix": "fch",
+        "body": "${1:file = }file.choose()${0:}",
+        "description": "file.choose",
+        "scope": "text.tex.latex.rd"
+    },
+    "nao":{
+        "prefix": "nao",
+        "body": "na.omit(${0:})",
+        "description": "na.omit",
+        "scope": "text.tex.latex.rd"
+    }
+}
