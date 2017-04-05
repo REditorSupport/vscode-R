@@ -6,11 +6,11 @@ import cp = require('child_process');
 
 let outputChennel = window.createOutputChannel("r");
 let config = workspace.getConfiguration('r');
+let Rterm;
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
 export function activate(context: ExtensionContext) {
-
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
     console.log('Congratulations, your extension "r" is now active!');
@@ -20,9 +20,20 @@ export function activate(context: ExtensionContext) {
     // The commandId parameter must match the command field in package.json
     function createRterm() {
         // let termName = workspace.getConfiguration('r').get<string>('rterm.windows');
-        // let term = window.createTerminal(termName);
-        // term.show();
-        window.showErrorMessage("R: Sorry, this function is not implemented yet");
+        let path = window.activeTextEditor.document.fileName;
+        let termName;
+        
+        if (process.platform == 'win32') {
+            window.showErrorMessage("R: Sorry, this function is not implemented yet");
+            return;
+        } else if (process.platform == 'darwin' || process.platform == 'linux') {
+            termName = "R"
+            Rterm = window.createTerminal(termName);
+            Rterm.show();
+        } else{
+            window.showErrorMessage(process.platform + "can't use R");
+            return;
+        }
     }
 
     function runR()  {
@@ -31,30 +42,32 @@ export function activate(context: ExtensionContext) {
         
         if (process.platform == 'win32') {
             cmd = config.get('rterm.windows');
-        } else if (process.platform == 'darwin') {
-            cmd = config.get('rterm.mac');
-        } else if (process.platform == 'linux') {
-            cmd = config.get('rterm.linux');
+            
+            let args = ["--no-restore",
+            "--no-save",
+            "--quiet",
+            "--file=" + path];
+            cp.execFile(cmd, args, {}, (err, stdout, stderr) => {
+                try {
+                    if (err) {
+                        console.log(err);
+                    }
+                    outputChennel.show(true);
+                    outputChennel.append(stdout);
+                } catch (e) {
+                    window.showErrorMessage(e.message);
+                }
+            });
+        } else if (process.platform == 'darwin' || process.platform == 'linux') {
+            if (!Rterm){
+                createRterm();
+            }
+            Rterm.show();
+            Rterm.sendText("source("+ path + ")");
         } else {
             window.showErrorMessage(process.platform + "can't use R");
             return;
         }
-
-        let args = ["--no-restore",
-		"--no-save",
-		"--quiet",
-        "--file=" + path];
-        cp.execFile(cmd, args, {}, (err, stdout, stderr) => {
-            try {
-                if (err) {
-                    console.log(err);
-                }
-                outputChennel.show(true);
-                outputChennel.append(stdout);
-            } catch (e) {
-                window.showErrorMessage(e.message);
-            }
-        });
     }
 
     context.subscriptions.push(
