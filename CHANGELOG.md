@@ -18,4 +18,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 * Support R Documentation
 
 ## [0.0.4]
-* Snippets
+* R Snippets
+
+## [0.0.5]
+* Rdocumentation Snippets

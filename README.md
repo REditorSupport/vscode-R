@@ -48,7 +48,9 @@ Initial release
 Support R documantation
 
 ### 0.0.4
+* R Snippets
 
-Snippets
+### 0.0.5
+* Rdocumentation Snippets
 
 -----------------------------------------------------------------------------------------------------------
