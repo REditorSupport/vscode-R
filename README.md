@@ -1,11 +1,9 @@
-![Marketplace Version](http://vsmarketplacebadge.apphb.com/version/ikuyadeu.r.svg "Current Version")
+![Marketplace Version](http://vsmarketplacebadge.apphb.com/version/ikuyadeu.r.svg "Current Version") ![Market Place Installs](http://vsmarketplacebadge.apphb.com/installs/eg2.tslint.svg "Number of Installs")
 
 # R
 
 R support for VS Code.
 Please Install R.
-Solve for https://github.com/Microsoft/vscode/issues/14393 and https://github.com/Microsoft/RTVS/issues/1295
-
 
 This extension based on the [r.tmbundle](https://github.com/textmate/r.tmbundle)
 
