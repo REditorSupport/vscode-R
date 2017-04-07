@@ -4,6 +4,8 @@
 
 R support for VS Code.
 Please Install R.
+Solve for https://github.com/Microsoft/vscode/issues/14393 and https://github.com/Microsoft/RTVS/issues/1295
+
 
 This extension based on the [r.tmbundle](https://github.com/textmate/r.tmbundle)
 
@@ -51,5 +53,8 @@ Support R documantation
 
 ### 0.0.5
 * Rdocumentation Snippets
+
+### 0.0.6
+* R Integrated Terminal
 
 -----------------------------------------------------------------------------------------------------------

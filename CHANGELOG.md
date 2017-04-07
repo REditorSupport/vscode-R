@@ -21,4 +21,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 * R Snippets
 
 ## [0.0.5]
-* Rdocumentation Snippets
+* R documentation Snippets
+
+## [0.0.6]
+* R Integrated Terminal
