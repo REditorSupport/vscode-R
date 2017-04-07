@@ -19,54 +19,30 @@ export function activate(context: ExtensionContext) {
     // Now provide the implementation of the command with  registerCommand
     // The commandId parameter must match the command field in package.json
     function createRterm() {
-        // let termName = workspace.getConfiguration('r').get<string>('rterm.windows');
-        let path = window.activeTextEditor.document.fileName;
-        let termName;
-        
+        const termName = "R";
         if (process.platform == 'win32') {
-            window.showErrorMessage("R: Sorry, this function is not implemented yet");
-            return;
-        } else if (process.platform == 'darwin' || process.platform == 'linux') {
-            termName = "R"
             Rterm = window.createTerminal(termName);
             Rterm.show();
+            let termPath = config.get('rterm.windows');
+            Rterm.sendText("& " + "'" + termPath + "'");
+        } else if (process.platform == 'darwin' || process.platform == 'linux') {
+            Rterm = window.createTerminal(termName);
+            Rterm.show();
+            Rterm.sendText("R");
         } else{
             window.showErrorMessage(process.platform + "can't use R");
-            return;
         }
+        return;
     }
 
     function runR()  {
-        let path = window.activeTextEditor.document.fileName;
-        let cmd;
+        const path = window.activeTextEditor.document.fileName;
         
-        if (process.platform == 'win32') {
-            cmd = config.get('rterm.windows');
-            
-            let args = ["--no-restore",
-            "--no-save",
-            "--quiet",
-            "--file=" + path];
-            cp.execFile(cmd, args, {}, (err, stdout, stderr) => {
-                try {
-                    if (err) {
-                        console.log(err);
-                    }
-                    outputChennel.show(true);
-                    outputChennel.append(stdout);
-                } catch (e) {
-                    window.showErrorMessage(e.message);
-                }
-            });
-        } else if (process.platform == 'darwin' || process.platform == 'linux') {
-            if (!Rterm){
-                createRterm();
-            }
-            Rterm.show();
-            Rterm.sendText("source("+ path + ")");
-        } else {
-            window.showErrorMessage(process.platform + "can't use R");
-            return;
+        if (Rterm){
+            Rterm.sendText("source(" + ToRStringLiteral(path) + ")");            
+        }else{
+            createRterm();
+            window.showInformationMessage("Opening R terminal... Please wait and run this command again");
         }
     }
 
@@ -74,6 +50,24 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.createRterm', createRterm),
         commands.registerCommand('r.runR', runR)
     );
+
+    function ToRStringLiteral(s) {
+        let quote = '"';
+        if (s == null){
+            return "NULL";
+        }
+         return (quote +
+                s.replace(/\\/g, "\\\\")
+                .replace(/"""/g, "\\" + quote)
+                .replace(/\\n/g, "\\n")
+                .replace(/\\r/g, "\\r")
+                .replace(/\\t/g, "\\t")
+                .replace(/\\b/g, "\\b")
+                .replace(/\\a/g, "\\a")
+                .replace(/\\f/g, "\\f")
+                .replace(/\\v/g, "\\v") +
+                quote);
+    }
 }
 
 // this method is called when your extension is deactivated

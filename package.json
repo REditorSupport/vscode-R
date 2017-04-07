@@ -77,7 +77,7 @@
             "properties": {
                 "r.rterm.windows": {
                     "type": "string",
-                    "default": "C:\\Program Files\\Microsoft\\R Open\\R-3.3.3\\bin\\x64\\Rterm.exe",
+                    "default": "C:\\Program Files\\R\\R-3.3.3\\bin\\R",
                     "description": "R terms path for windows."
                 },
                 "r.rterm.mac": {

@@ -13,15 +13,14 @@ This extension based on the [r.tmbundle](https://github.com/textmate/r.tmbundle)
 * [x] Support R Documentation
 * [x] Snippets
 * [ ] Output Plot
-* [ ] R Integrated Terminal
+* [x] R Integrated Terminal
 * [ ] Debug
 
 ![use Run .R](images/feature.png)
 
 ## Requirements
 
-* If Windows(https://mran.microsoft.com/open/)
-* If Mac or Linux(https://cran.r-project.org/)
+* R base in https://www.r-project.org/
 
 ## Extension Settings
 
