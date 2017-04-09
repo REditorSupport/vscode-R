@@ -21,12 +21,12 @@
     "main": "./out/src/extension",
     "contributes":{
         "commands": [{
-            "title": "Create R term",
+            "title": "Create R terminal",
             "category": "R",
             "command": "r.createRterm"
         },
         {
-            "title": "Run .R",
+            "title": "Run R",
             "category": "R",
             "command": "r.runR"
         }],
