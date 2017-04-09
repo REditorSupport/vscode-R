@@ -2,6 +2,8 @@
 ## [Unreleased]
 * Output Plot
 * Debug
+* Language Server
+* Intellisense
 
 ## [0.0.6]
 * R Integrated Terminal

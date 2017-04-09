@@ -1,7 +1,7 @@
+# R
 ![Marketplace Version](http://vsmarketplacebadge.apphb.com/version/ikuyadeu.r.svg "Current Version")
 ![Market Place Installs](http://vsmarketplacebadge.apphb.com/installs/ikuyadeu.r.svg "Number of Installs")
 
-# R
 R support for VS Code.
 Please Install R.
 
@@ -28,3 +28,5 @@ This extension contributes the following settings:
 ## Known Issues
 * Output Plot
 * Debug
+* Language Server
+* Intellisense
