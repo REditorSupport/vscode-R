@@ -5,13 +5,13 @@
 R support for VS Code.
 Please Install R.
 
-This extension based on the [r.tmbundle](https://github.com/textmate/r.tmbundle)
+This extension based on the [r.tmbundle](https://github.com/textmate/r.tmbundle) and [markdown-redcarpet.tmbandle](https://github.com/streeter/markdown-redcarpet.tmbundle)
 
 ## Features
 * Run R program
 ![use Run .R](images/feature.png)
 
-* Support R Documentation
+* Support R Documentation and R Markdown
 * Snippets
 * R Integrated Terminal
 

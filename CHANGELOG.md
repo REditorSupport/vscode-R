@@ -5,6 +5,9 @@
 * Language Server
 * Intellisense
 
+## [0.0.7]
+* Support R Markdown
+
 ## [0.0.6]
 * R Integrated Terminal
 
