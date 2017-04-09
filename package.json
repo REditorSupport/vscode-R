@@ -53,6 +53,15 @@
                     "r documantation"
                 ],
                 "configuration": "./rd-configuration.json"
+            },{
+                "id": "rmd",
+                "extensions": [
+                    ".rmd"
+                ],
+                "aliases": [
+                    "R Markdown",
+                    "r markdown"
+                ]
             }
         ],
         "snippets": [
@@ -69,6 +78,10 @@
                 "language":"rd",
                 "scopeName": "text.tex.latex.rd",
                 "path":"./syntax/Rd (R Documentation).tmLanguage"                
+            },{
+                "language": "rmd",
+                "scopeName": "text.html.markdown.redcarpet",
+                "path": "./syntax/Markdown Redcarpet.tmLanguage"
             }
         ],
         "configuration": {
