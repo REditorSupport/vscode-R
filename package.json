@@ -2,7 +2,7 @@
     "name": "r",
     "displayName": "R",
     "description": "Support for R on VS Code",
-    "version": "0.0.7",
+    "version": "0.0.8",
     "publisher": "Ikuyadeu",
     "icon": "images/icon.png",
     "repository": "https://github.com/Ikuyadeu/vscode-R",
