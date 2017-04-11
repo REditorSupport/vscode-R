@@ -71,7 +71,10 @@
 			},
             {
                 "language": "rd",
-                "path": "./snippets.r-snippets.json"
+                "path": "./snippets/r-snippets.json"
+            },{
+                "language": "rmd",
+                "path": "./snippets/markdown.json"
             }
         ],
         "grammars": [{
