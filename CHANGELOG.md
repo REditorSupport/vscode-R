@@ -1,10 +1,4 @@
 # Change Log
-## [Unreleased]
-* Output Plot
-* Debug
-* Language Server
-* Intellisense
-
 ## v0.0.8
 * R Markdown Snippets as Markdown
 ## v0.0.7
@@ -24,3 +18,9 @@
 
 ## v0.0.1
 * Initial release
+
+## [Unreleased]
+* Output Plot
+* Debug
+* Language Server
+* Intellisense
