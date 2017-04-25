@@ -1,4 +1,7 @@
 # Change Log
+## v0.0.9
+* Fix Run R peform
+
 ## v0.0.8
 * R Markdown Snippets as Markdown
 ## v0.0.7
