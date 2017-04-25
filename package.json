@@ -93,17 +93,17 @@
             "properties": {
                 "r.rterm.windows": {
                     "type": "string",
-                    "default": "C:\\Program Files\\R\\R-3.3.3\\bin\\R",
+                    "default": "C:\\Program Files\\R\\R-3.3.3\\bin\\",
                     "description": "R terms path for windows."
                 },
                 "r.rterm.mac": {
                     "type": "string",
-                    "default": "/usr/local/bin/R",
+                    "default": "/usr/local/bin/",
                     "description": "R terms path for Mac OS X."
                 },
                 "r.rterm.linux": {
                     "type": "string",
-                    "default": "/usr/bin/R",
+                    "default": "/usr/bin/",
                     "description": "R terms path for Linux."
                 }
             }

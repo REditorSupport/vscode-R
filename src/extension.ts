@@ -24,25 +24,41 @@ export function activate(context: ExtensionContext) {
             Rterm = window.createTerminal(termName);
             Rterm.show();
             let termPath = config.get('rterm.windows');
-            Rterm.sendText("& " + "'" + termPath + "'");
+            Rterm.sendText("& " + "'" + termPath + "R'");
         } else if (process.platform == 'darwin' || process.platform == 'linux') {
             Rterm = window.createTerminal(termName);
             Rterm.show();
             Rterm.sendText("R");
         } else{
             window.showErrorMessage(process.platform + "can't use R");
+            return;
         }
         return;
     }
 
     function runR()  {
-        const path = window.activeTextEditor.document.fileName;
+        const path = ToRStringLiteral(window.activeTextEditor.document.fileName);
         
         if (Rterm){
-            Rterm.sendText("source(" + ToRStringLiteral(path) + ")");            
+            Rterm.show();
+            Rterm.sendText("source(" + path + ")");     
         }else{
-            createRterm();
-            window.showInformationMessage("Opening R terminal... Please wait and run this command again");
+            let RscriptPath = "Rscript";
+            if (process.platform == 'win32') {
+                RscriptPath = config.get('rterm.windows') + "Rscript";
+            }
+            cp.execFile(RscriptPath, [path], {}, (err, stdout, stderr) => {
+                try {
+                    if (err) {
+                        console.log(err);
+                    }
+                    outputChennel.show(true);
+                    outputChennel.append(stdout);
+                } catch (e) {
+                    window.showErrorMessage(e.message);
+                }
+            });
+            commands.executeCommand('r.createRterm');
         }
     }
 
