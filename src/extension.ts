@@ -45,7 +45,13 @@ export function activate(context: ExtensionContext) {
         }else{
             let RscriptPath = "Rscript";
             if (process.platform == 'win32') {
-                RscriptPath = config.get('rterm.windows') + "Rscript";
+                RscriptPath = config.get('rterm.windows') + RscriptPath;
+            }
+            else if (process.platform == 'darwin'){
+                RscriptPath = config.get('rterm.mac') + RscriptPath;
+            }
+            else if (process.platform == 'linux'){
+                RscriptPath = config.get('rterm.linux') + RscriptPath;
             }
             cp.execFile(RscriptPath, [path], {}, (err, stdout, stderr) => {
                 try {
