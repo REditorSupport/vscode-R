@@ -14,10 +14,11 @@ This extension based on the
 * Run R program
 ![use Run .R](images/feature.png)
 
+* R Integrated Terminal
+![Create R terminal](images/terminal.png)
+
 * Support R Documentation and R Markdown
 * Snippets
-* R Integrated Terminal
-
 ## Requirements
 * R base in https://www.r-project.org/
 
