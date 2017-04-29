@@ -1,4 +1,7 @@
 # Change Log
+## v1.0.1
+* Create .gitignore
+
 ## v0.0.9
 * Fix Run R peform
 
