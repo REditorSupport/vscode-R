@@ -9,6 +9,7 @@ This extension based on the
 * [r.tmbundle](https://github.com/textmate/r.tmbundle)
 * [markdown-redcarpet.tmbandle](https://github.com/streeter/markdown-redcarpet.tmbundle)
 * [Markdown extension in VS Code](https://github.com/Microsoft/vscode/blob/master/extensions/markdown/snippets/markdown.json)
+* [R.gitignore](ttps://github.com/github/gitignore/raw/master/R.gitignore)
 
 ## Features
 * Run R program
@@ -17,8 +18,10 @@ This extension based on the
 * R Integrated Terminal
 ![Create R terminal](images/terminal.png)
 
+* Create .gitignore based [R.gitignore](ttps://github.com/github/gitignore/raw/master/R.gitignore)
 * Support R Documentation and R Markdown
 * Snippets
+
 ## Requirements
 * R base in https://www.r-project.org/
 

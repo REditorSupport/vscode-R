@@ -3,10 +3,28 @@
 // Import the module and reference it with the alias vscode in your code below
 import { workspace, window, commands, ExtensionContext} from 'vscode';
 import cp = require('child_process');
+import fs = require('fs');
+import path = require('path');
 
 let outputChennel = window.createOutputChannel("r");
 let config = workspace.getConfiguration('r');
 let Rterm;
+let ignorePath =  path.join(workspace.rootPath, '.gitignore');
+// from 'https://github.com/github/gitignore/raw/master/R.gitignore'
+let ignoreFiles = [".Rhistory", 
+                   ".Rapp.history",
+                   ".RData",
+                   "*-Ex.R",
+                   "/*.tar.gz",
+                   "/*.Rcheck/",
+                   ".Rproj.user/",
+                   "vignettes/*.html",
+                   "vignettes/*.pdf",
+                   ".httr-oauth",
+                   "/*_cache/",
+                   "/cache/",
+                   "*.utf8.md",
+                   "*.knit.md"].join('\n');
 
 // this method is called when your extension is activated
 // your extension is activated the very first time the command is executed
@@ -68,9 +86,26 @@ export function activate(context: ExtensionContext) {
         }
     }
 
+    function createGitignore() {
+        if (!workspace.rootPath) {
+            window.showWarningMessage('Please open workspace to create .gitignore');
+            return;
+        }
+        fs.writeFile(ignorePath, ignoreFiles, (err) => {
+            try {
+                if (err) {
+                    console.log(err);
+                }
+            } catch (e) {
+                window.showErrorMessage(e.message);
+            }
+        });
+    }
+
     context.subscriptions.push(
         commands.registerCommand('r.createRterm', createRterm),
-        commands.registerCommand('r.runR', runR)
+        commands.registerCommand('r.runR', runR),
+        commands.registerCommand('r.createGitignore', createGitignore)
     );
 
     function ToRStringLiteral(s) {
