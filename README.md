@@ -2,7 +2,7 @@
 ![Marketplace Version](http://vsmarketplacebadge.apphb.com/version/ikuyadeu.r.svg "Current Version")
 ![Market Place Installs](http://vsmarketplacebadge.apphb.com/installs/ikuyadeu.r.svg "Number of Installs")
 
-R support for VS Code.
+R languagesupport for VS Code.
 Please Install R.
 
 This extension based on the 

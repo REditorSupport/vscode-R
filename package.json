@@ -1,7 +1,7 @@
 {
     "name": "r",
     "displayName": "R",
-    "description": "Support for R on VS Code",
+    "description": "Support for R language(R doc, R md, exec, snippets)",
     "version": "0.1.1",
     "publisher": "Ikuyadeu",
     "icon": "images/icon.png",
