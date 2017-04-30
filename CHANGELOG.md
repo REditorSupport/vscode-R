@@ -1,5 +1,8 @@
 # Change Log
-## v1.0.1
+## v0.1.2
+* fix packages
+
+## v0.1.1
 * Create .gitignore
 
 ## v0.0.9
