@@ -2,11 +2,18 @@
   "name": "r",
   "displayName": "R",
   "description": "Support for R language(run,snippet,R documantation,R Markdown)",
-  "version": "0.1.5",
-  "license": "MIT",
+  "version": "0.1.8",
+  "author": "Yuki Ueda",
+  "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
   "icon": "images/Rlogo.svg",
-  "repository": "https://github.com/Ikuyadeu/vscode-R",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ikuyadeu/vscode-R"
+  },
+  "bugs": {
+    "url": "https://github.com/Ikuyadeu/vscode-R/issues"
+  },
   "categories": [
     "Other",
     "Languages",
