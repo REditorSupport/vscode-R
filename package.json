@@ -12,7 +12,7 @@
     "Snippets"
   ],
   "engines": {
-    "vscode": "^1.5.0"
+    "vscode": "^1.11.2"
   },
   "activationEvents": [
     "onCommand:r.createRterm",
@@ -106,7 +106,7 @@
       "properties": {
         "r.rterm.windows": {
           "type": "string",
-          "default": "C:\\Program Files\\R\\R-3.3.3\\bin\\",
+          "default": "C:\\Program Files\\R\\R-3.3.3\\bin\\x64\\Rterm.exe",
           "description": "R terms path for windows."
         },
         "r.rterm.mac": {

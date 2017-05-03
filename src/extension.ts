@@ -38,52 +38,30 @@ export function activate(context: ExtensionContext) {
     // The commandId parameter must match the command field in package.json
     function createRterm() {
         const termName = "R";
+        let termPath = ""
         if (process.platform == 'win32') {
-            Rterm = window.createTerminal(termName);
-            Rterm.show();
-            let termPath = config.get('rterm.windows');
-            Rterm.sendText("& " + "'" + termPath + "R'");
-        } else if (process.platform == 'darwin' || process.platform == 'linux') {
-            Rterm = window.createTerminal(termName);
-            Rterm.show();
-            Rterm.sendText("R");
-        } else{
+            termPath += config.get('rterm.windows');
+        } else if (process.platform == 'darwin') {
+            termPath += config.get('rterm.mac');
+        } else if ( process.platform == 'linux'){
+            termPath += config.get('rterm.linux');
+        }else{
             window.showErrorMessage(process.platform + "can't use R");
             return;
         }
+        Rterm = window.createTerminal(termName, termPath);
+        Rterm.show();
         return;
     }
 
     function runR()  {
         const path = ToRStringLiteral(window.activeTextEditor.document.fileName);
         
-        if (Rterm){
-            Rterm.show();
-            Rterm.sendText("source(" + path + ")");     
-        }else{
-            let RscriptPath = "Rscript";
-            if (process.platform == 'win32') {
-                RscriptPath = config.get('rterm.windows') + RscriptPath;
-            }
-            else if (process.platform == 'darwin'){
-                RscriptPath = config.get('rterm.mac') + RscriptPath;
-            }
-            else if (process.platform == 'linux'){
-                RscriptPath = config.get('rterm.linux') + RscriptPath;
-            }
-            cp.execFile(RscriptPath, [path], {}, (err, stdout, stderr) => {
-                try {
-                    if (err) {
-                        console.log(err);
-                    }
-                    outputChennel.show(true);
-                    outputChennel.append(stdout);
-                } catch (e) {
-                    window.showErrorMessage(e.message);
-                }
-            });
-            commands.executeCommand('r.createRterm');
+        if (!Rterm){
+            commands.executeCommand('r.createRterm');  
         }
+        Rterm.show();
+        Rterm.sendText("source(" + path + ")");
     }
 
     function createGitignore() {
