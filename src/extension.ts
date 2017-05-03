@@ -39,11 +39,11 @@ export function activate(context: ExtensionContext) {
     function createRterm() {
         const termName = "R";
         let termPath = ""
-        if (process.platform == 'win32') {
+        if (process.platform === 'win32') {
             termPath += config.get('rterm.windows');
-        } else if (process.platform == 'darwin') {
+        } else if (process.platform === 'darwin') {
             termPath += config.get('rterm.mac');
-        } else if ( process.platform == 'linux'){
+        } else if ( process.platform === 'linux'){
             termPath += config.get('rterm.linux');
         }else{
             window.showErrorMessage(process.platform + "can't use R");
@@ -88,7 +88,7 @@ export function activate(context: ExtensionContext) {
 
     function ToRStringLiteral(s) {
         let quote = '"';
-        if (s == null){
+        if (s === null){
             return "NULL";
         }
          return (quote +
