@@ -1,14 +1,14 @@
 'use strict';
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { workspace, window, commands, ExtensionContext} from 'vscode';
+import { workspace, window, commands, ExtensionContext, Terminal } from 'vscode';
 import cp = require('child_process');
 import fs = require('fs');
 import path = require('path');
 
 let outputChennel = window.createOutputChannel("r");
 let config = workspace.getConfiguration('r');
-let Rterm;
+let Rterm: Terminal;
 let ignorePath =  path.join(workspace.rootPath, '.gitignore');
 // from 'https://github.com/github/gitignore/raw/master/R.gitignore'
 let ignoreFiles = [".Rhistory", 
