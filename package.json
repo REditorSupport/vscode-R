@@ -1,8 +1,8 @@
 {
   "name": "r",
   "displayName": "R",
-  "description": "Support for R language(R doc, R md, exec, snippets)",
-  "version": "0.1.2",
+  "description": "Support for R language(run,snippet,R documantation,R Markdown)",
+  "version": "0.1.3",
   "publisher": "Ikuyadeu",
   "icon": "images/icon.png",
   "repository": "https://github.com/Ikuyadeu/vscode-R",
@@ -111,12 +111,12 @@
         },
         "r.rterm.mac": {
           "type": "string",
-          "default": "/usr/local/bin/",
+          "default": "/usr/local/bin/R",
           "description": "R terms path for Mac OS X."
         },
         "r.rterm.linux": {
           "type": "string",
-          "default": "/usr/bin/",
+          "default": "/usr/bin/R",
           "description": "R terms path for Linux."
         }
       }

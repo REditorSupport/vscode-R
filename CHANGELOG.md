@@ -1,4 +1,7 @@
 # Change Log
+## v0.1.3
+* fix R term's perform
+
 ## v0.1.2
 * fix packages
 
