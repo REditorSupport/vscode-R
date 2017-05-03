@@ -37,3 +37,5 @@ This extension contributes the following settings:
 * Debug
 * Language Server
 * Intellisense
+
+The R logo is © 2016 The R Foundation

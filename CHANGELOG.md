@@ -1,4 +1,7 @@
 # Change Log
+## v0.1.4
+* use new icon
+
 ## v0.1.3
 * fix R term's perform
 

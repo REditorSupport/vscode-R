@@ -2,9 +2,9 @@
   "name": "r",
   "displayName": "R",
   "description": "Support for R language(run,snippet,R documantation,R Markdown)",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "Ikuyadeu",
-  "icon": "images/icon.png",
+  "icon": "images/Rlogo.svg",
   "repository": "https://github.com/Ikuyadeu/vscode-R",
   "categories": [
     "Other",
