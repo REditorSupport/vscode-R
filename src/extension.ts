@@ -1,7 +1,8 @@
 'use strict';
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { workspace, window, commands, ExtensionContext, Diagnostic, DiagnosticSeverity, Terminal } from 'vscode';
+import { workspace, window, commands, ExtensionContext, languages, 
+    Diagnostic, DiagnosticSeverity, Range, Position, Terminal, Uri } from 'vscode';
 import cp = require('child_process');
 import fs = require('fs');
 import path = require('path');
@@ -10,6 +11,7 @@ let outputChennel = window.createOutputChannel("r");
 let config = workspace.getConfiguration('r');
 let Rterm: Terminal;
 let ignorePath =  path.join(workspace.rootPath, '.gitignore');
+let Diagnostics = languages.createDiagnosticCollection('R');
 // from 'https://github.com/github/gitignore/raw/master/R.gitignore'
 let ignoreFiles = [".Rhistory", 
                    ".Rapp.history",
@@ -61,13 +63,13 @@ export function activate(context: ExtensionContext) {
     }
 
     function runR()  {
-        const path = ToRStringLiteral(window.activeTextEditor.document.fileName, '"');
+        const Rpath = ToRStringLiteral(window.activeTextEditor.document.fileName, '"');
         
         if (!Rterm){
             commands.executeCommand('r.createRterm');  
         }
         Rterm.show();
-        Rterm.sendText(`source(${path})`);
+        Rterm.sendText(`source(${Rpath})`);
     }
 
     function createGitignore() {
@@ -86,6 +88,76 @@ export function activate(context: ExtensionContext) {
         });
     }
 
+
+    function parseSeverity(severity) {
+        switch (severity) {
+            case "error":
+                return DiagnosticSeverity.Warning;
+            case "warning":
+                return DiagnosticSeverity.Warning;
+            case "style":
+                return DiagnosticSeverity.Hint;
+        }
+    }
+
+    const lintRegex = /.+?:(\d+):(\d+): ((?:error)|(?:warning|style)): (.+)/g
+
+    function lintr() {
+        let RPath = getRpath();
+        if (!RPath) {
+            return
+        }
+        
+        if (process.platform === 'win32') {
+            RPath =  ToRStringLiteral(RPath, '');
+        }
+        const Fpath = ToRStringLiteral(window.activeTextEditor.document.fileName, "'");
+        const parameters = [
+            '--vanilla', '--slave',
+            '--no-save',
+            '-e',
+            `\"suppressPackageStartupMessages(library(lintr));lint(${Fpath})\"`,
+            '--args'
+        ];
+
+        console.log(RPath);
+        cp.execFile(RPath, parameters, (error,stdout, stderr) => {
+            console.log(stdout.toString());
+            if (stderr){
+                console.log("stderr:" + stderr.toString());
+            }
+            if (error){
+                console.log(error.toString());
+            }
+            let match = lintRegex.exec(stdout);
+            let results = []
+            const diagsCollection: {[key: string]: Diagnostic[]} = {}
+            
+            let filename = window.activeTextEditor.document.fileName;
+
+            while (match !== null) {
+                const range = new Range(new Position(Number(match[1]) - 1, 
+                                                     match[2] === undefined ? 0 : Number(match[2]) - 1),
+                                        new Position(Number(match[1]) - 1, 
+                                                     match[2] === undefined ? Number.MAX_SAFE_INTEGER : Number(match[2]) - 1));
+                
+                const message = match[4];
+                const severity = parseSeverity(match[3]);
+                const diag = new Diagnostic(range, message, severity);
+                if (diagsCollection[filename] === undefined) {
+                    diagsCollection[filename] = []
+                }
+                diagsCollection[filename].push(diag)
+                console.log(message);
+                match = lintRegex.exec(stdout);
+            }
+            Diagnostics.clear();
+            Diagnostics.set(Uri.file(filename),
+                            diagsCollection[filename]);
+            return results;
+        });
+    }
+
     function installLintr() {
         if (!Rterm){
             commands.executeCommand('r.createRterm');  
@@ -94,13 +166,17 @@ export function activate(context: ExtensionContext) {
         Rterm.sendText("install.packages(\"lintr\")");
     }
 
+
     context.subscriptions.push(
         commands.registerCommand('r.createRterm', createRterm),
         commands.registerCommand('r.runR', runR),
-        commands.registerCommand('r.createGitignore', createGitignore)
+        commands.registerCommand('r.createGitignore', createGitignore),
+        commands.registerCommand('r.lintr', lintr),
+        commands.registerCommand('r.installLintr', installLintr)
     );
 
-    function ToRStringLiteral(s, quote) {
+    function ToRStringLiteral(s, q) {
+        let quote = q;
         if (s === null){
             return "NULL";
         }

@@ -25,7 +25,8 @@
   "activationEvents": [
     "onCommand:r.createRterm",
     "onCommand:r.runR",
-    "onCommand:r.createGitignore"
+    "onCommand:r.createGitignore",
+    "onCommand:r.lintr"
   ],
   "main": "./out/src/extension",
   "contributes": {
@@ -44,6 +45,11 @@
         "title": "Create gitignore",
         "category": "R",
         "command": "r.createGitignore"
+      },
+      {
+        "title": "lintr",
+        "category": "R",
+        "command": "r.lintr"
       }
     ],
     "languages": [
