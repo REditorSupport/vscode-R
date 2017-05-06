@@ -20,10 +20,12 @@ This extension based on the
 
 * Create .gitignore based [R.gitignore](https://github.com/github/gitignore/raw/master/R.gitignore)
 * Support R Documentation and R Markdown
+* Support [lintr](https://github.com/jimhester/lintr)
 * Snippets
 
 ## Requirements
 * R base in https://www.r-project.org/
+* lintr package
 
 ## Extension Settings
 This extension contributes the following settings:

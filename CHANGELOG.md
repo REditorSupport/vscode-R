@@ -1,4 +1,7 @@
 # Change Log
+## v0.2.0
+* support lintr
+
 ## v0.1.4
 * use new icon
 
