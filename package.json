@@ -114,7 +114,7 @@
       "properties": {
         "r.rterm.windows": {
           "type": "string",
-          "default": "C:\\Program Files\\R\\R-3.3.3\\bin\\x64\\Rterm.exe",
+          "default": "C:\\Program Files\\R\\R-3.3.3\\bin\\x64\\R.exe",
           "description": "R terms path for windows."
         },
         "r.rterm.mac": {
@@ -146,6 +146,7 @@
   "dependencies": {
     "fs": "0.0.1-security",
     "path": "^0.12.7",
-    "tslint":"^5.1.0"
+    "tslint": "^5.1.0",
+    "vscode-languageserver": "^3.2.1"
   }
 }

@@ -1,7 +1,7 @@
 'use strict';
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { workspace, window, commands, ExtensionContext, Terminal } from 'vscode';
+import { workspace, window, commands, ExtensionContext, Diagnostic, DiagnosticSeverity, Terminal } from 'vscode';
 import cp = require('child_process');
 import fs = require('fs');
 import path = require('path');
@@ -36,32 +36,38 @@ export function activate(context: ExtensionContext) {
     // The command has been defined in the package.json file
     // Now provide the implementation of the command with  registerCommand
     // The commandId parameter must match the command field in package.json
-    function createRterm() {
-        const termName = "R";
-        let termPath = ""
+    function getRpath() {
+        let term = ""
         if (process.platform === 'win32') {
-            termPath += config.get('rterm.windows');
+            return term + config.get('rterm.windows');
         } else if (process.platform === 'darwin') {
-            termPath += config.get('rterm.mac');
+            return term + config.get('rterm.mac');
         } else if ( process.platform === 'linux'){
-            termPath += config.get('rterm.linux');
+            return term + config.get('rterm.linux');
         }else{
             window.showErrorMessage(process.platform + "can't use R");
-            return;
+            return term;
+        }
+    }
+
+    function createRterm() {
+        const termName = "R";
+        let termPath = getRpath()
+        if (!termPath) {
+            return
         }
         Rterm = window.createTerminal(termName, termPath);
         Rterm.show();
-        return;
     }
 
     function runR()  {
-        const path = ToRStringLiteral(window.activeTextEditor.document.fileName);
+        const path = ToRStringLiteral(window.activeTextEditor.document.fileName, '"');
         
         if (!Rterm){
             commands.executeCommand('r.createRterm');  
         }
         Rterm.show();
-        Rterm.sendText("source(" + path + ")");
+        Rterm.sendText(`source(${path})`);
     }
 
     function createGitignore() {
@@ -80,14 +86,21 @@ export function activate(context: ExtensionContext) {
         });
     }
 
+    function installLintr() {
+        if (!Rterm){
+            commands.executeCommand('r.createRterm');  
+        }
+        Rterm.show();
+        Rterm.sendText("install.packages(\"lintr\")");
+    }
+
     context.subscriptions.push(
         commands.registerCommand('r.createRterm', createRterm),
         commands.registerCommand('r.runR', runR),
         commands.registerCommand('r.createGitignore', createGitignore)
     );
 
-    function ToRStringLiteral(s) {
-        let quote = '"';
+    function ToRStringLiteral(s, quote) {
         if (s === null){
             return "NULL";
         }
