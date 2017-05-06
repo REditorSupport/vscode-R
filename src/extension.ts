@@ -96,7 +96,7 @@ export function activate(context: ExtensionContext) {
             case "warning":
                 return DiagnosticSeverity.Warning;
             case "style":
-                return DiagnosticSeverity.Hint;
+                return DiagnosticSeverity.Warning;
         }
     }
 

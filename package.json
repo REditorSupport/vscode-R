@@ -27,7 +27,8 @@
     "onCommand:r.createRterm",
     "onCommand:r.runR",
     "onCommand:r.createGitignore",
-    "onCommand:r.lintr"
+    "onCommand:r.lintr",
+    "onCommand:r.installLintr"
   ],
   "main": "./out/src/extension",
   "contributes": {
@@ -51,6 +52,11 @@
         "title": "lintr",
         "category": "R",
         "command": "r.lintr"
+      },
+      {
+        "title": "install lintr",
+        "category": "R",
+        "command": "r.installLintr"
       }
     ],
     "languages": [
