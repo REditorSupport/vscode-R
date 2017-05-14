@@ -1,6 +1,9 @@
 # Change Log
+## v0.2.2
+* support lintr on Mac and Linux
+
 ## v0.2.0
-* support lintr
+* support lintr on Windows
 
 ## v0.1.4
 * use new icon
