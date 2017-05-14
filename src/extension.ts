@@ -104,25 +104,29 @@ export function activate(context: ExtensionContext) {
 
     function lintr() {
         let RPath = getRpath();
+        let Rcommand;
         if (!RPath) {
             return
         }
-        
+        const Fpath = ToRStringLiteral(window.activeTextEditor.document.fileName, "'");
         if (process.platform === 'win32') {
             RPath =  ToRStringLiteral(RPath, '');
+            Rcommand = `\"suppressPackageStartupMessages(library(lintr));lint(${Fpath})\"`
+        }else{
+            RPath = "R";
+            Rcommand = `suppressPackageStartupMessages(library(lintr));lint(${Fpath})`
         }
-        const Fpath = ToRStringLiteral(window.activeTextEditor.document.fileName, "'");
         const parameters = [
             '--vanilla', '--slave',
             '--no-save',
             '-e',
-            `\"suppressPackageStartupMessages(library(lintr));lint(${Fpath})\"`,
+            Rcommand,
             '--args'
         ];
 
         console.log(RPath);
-        cp.execFile(RPath, parameters, (error,stdout, stderr) => {
-            console.log(stdout.toString());
+        console.log(RPath + " " + parameters.join(" "))
+        cp.execFile(RPath, parameters, (error, stdout, stderr) => {
             if (stderr){
                 console.log("stderr:" + stderr.toString());
             }
