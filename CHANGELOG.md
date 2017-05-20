@@ -1,4 +1,7 @@
 # Change Log
+## v0.2.3
+* support lintr option cache and linters
+
 ## v0.2.2
 * support lintr on Mac and Linux
 
