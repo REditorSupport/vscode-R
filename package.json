@@ -20,6 +20,14 @@
     "Linters",
     "Other"
   ],
+  "keywords": [
+    "R",
+    "R documantation",
+    "R Markdown",
+    "rd", 
+    "rmd",
+    "linters"
+  ],
   "engines": {
     "vscode": "^1.11.2"
   },
@@ -139,6 +147,16 @@
           "type": "string",
           "default": "/usr/bin/R",
           "description": "R terms path for Linux."
+        },
+        "r.lintr.linters": {
+          "type": "string",
+          "default": "default_linters",
+          "description": ""
+        },
+        "r.lintr.cache": {
+          "type": "boolean",
+          "default": true,
+          "description": ""
         }
       }
     }
