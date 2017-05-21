@@ -112,12 +112,13 @@ export function activate(context: ExtensionContext) {
 
         const cache = config.get('lintr.cache')? "TRUE" : "FALSE";
         const linters = config.get('lintr.linters');
-        const Fpath = `${ToRStringLiteral(window.activeTextEditor.document.fileName, "'")}, cache = ${cache}, linters = ${linters}`
+        let Fpath = ToRStringLiteral(window.activeTextEditor.document.fileName, "'")
         if (process.platform === 'win32') {
             RPath =  ToRStringLiteral(RPath, '');
             Rcommand = `\"suppressPackageStartupMessages(library(lintr));lint(${Fpath})\"`
         }else{
             RPath = "R";
+            Fpath = `${Fpath}, cache = ${cache}, linters = ${linters}`
             Rcommand = `suppressPackageStartupMessages(library(lintr));lint(${Fpath})`
         }
         const parameters = [
