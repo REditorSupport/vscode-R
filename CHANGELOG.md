@@ -1,4 +1,7 @@
 # Change Log
+## v0.2.4
+* fix for Windowd
+
 ## v0.2.3
 * support lintr option cache and linters
 
