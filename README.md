@@ -5,12 +5,6 @@
 R languagesupport for VS Code.
 Please Install R.
 
-This extension based on the 
-* [r.tmbundle](https://github.com/textmate/r.tmbundle)
-* [markdown-redcarpet.tmbandle](https://github.com/streeter/markdown-redcarpet.tmbundle)
-* [Markdown extension in VS Code](https://github.com/Microsoft/vscode/blob/master/extensions/markdown/snippets/markdown.json)
-* [R.gitignore](https://github.com/github/gitignore/raw/master/R.gitignore)
-
 ## Features
 * Run R program
 ![use Run .R](images/feature.png)
@@ -18,9 +12,10 @@ This extension based on the
 * R Integrated Terminal
 ![Create R terminal](images/terminal.png)
 
+* Support [lintr](https://github.com/jimhester/lintr)
+![lintr](images/lintr.png)
 * Create .gitignore based [R.gitignore](https://github.com/github/gitignore/raw/master/R.gitignore)
 * Support R Documentation and R Markdown
-* Support [lintr](https://github.com/jimhester/lintr)
 * Snippets
 
 ## Requirements
@@ -34,10 +29,17 @@ This extension contributes the following settings:
 * `r.rterm.mac`: set to R term's path for Mac OS X
 * `r.rterm.linux`: set to R term's path for Linux
 
-## Known Issues
+## TODO
+* Intellisense
 * Output Plot
 * Debug
 * Language Server
-* Intellisense
+
+This extension based on the 
+* [r.tmbundle](https://github.com/textmate/r.tmbundle)
+* [markdown-redcarpet.tmbandle](https://github.com/streeter/markdown-redcarpet.tmbundle)
+* [Markdown extension in VS Code](https://github.com/Microsoft/vscode/blob/master/extensions/markdown/snippets/markdown.json)
+* [R.gitignore](https://github.com/github/gitignore/raw/master/R.gitignore)
+
 
 The R logo is © 2016 The R Foundation
