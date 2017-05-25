@@ -1,4 +1,7 @@
 # Change Log
+## v0.2.5
+* add Run Selected and Run Source command
+
 ## v0.2.4
 * fix for Windowd
 

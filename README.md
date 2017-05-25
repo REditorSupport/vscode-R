@@ -7,7 +7,7 @@ Require [R](https://www.r-project.org/)
 
 ## Features
 Use `F1` key and `R:` command
-* Run R program
+* Run Source and Run Selected
 ![use Run .R](images/feature.png)
 
 * R Integrated Terminal
