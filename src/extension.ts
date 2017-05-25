@@ -62,7 +62,7 @@ export function activate(context: ExtensionContext) {
         Rterm.show();
     }
 
-    function runR()  {
+    function runSource()  {
         const Rpath = ToRStringLiteral(window.activeTextEditor.document.fileName, '"');
         
         if (!Rterm){
@@ -86,6 +86,17 @@ export function activate(context: ExtensionContext) {
                 window.showErrorMessage(e.message);
             }
         });
+    }
+
+    function runSelected() {
+        const { start, end } = window.activeTextEditor.selection;
+        const currentDocument = window.activeTextEditor.document;
+        const selectedLineText = currentDocument.getText(new Range(start, end));
+        if (!Rterm){
+            commands.executeCommand('r.createRterm');  
+        }
+        Rterm.show();
+        Rterm.sendText(selectedLineText);
     }
 
 
@@ -178,7 +189,8 @@ export function activate(context: ExtensionContext) {
 
     context.subscriptions.push(
         commands.registerCommand('r.createRterm', createRterm),
-        commands.registerCommand('r.runR', runR),
+        commands.registerCommand('r.runSource', runSource),
+        commands.registerCommand('r.runSelected', runSelected),
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.lintr', lintr),
         commands.registerCommand('r.installLintr', installLintr)

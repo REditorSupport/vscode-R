@@ -31,7 +31,8 @@
   },
   "activationEvents": [
     "onCommand:r.createRterm",
-    "onCommand:r.runR",
+    "onCommand:r.runSource",
+    "onCommand:r.runSelected",
     "onCommand:r.createGitignore",
     "onCommand:r.lintr",
     "onCommand:r.installLintr"
@@ -45,9 +46,14 @@
         "command": "r.createRterm"
       },
       {
-        "title": "Run R",
+        "title": "Run Source",
         "category": "R",
-        "command": "r.runR"
+        "command": "r.runSource"
+      },
+      {
+        "title": "Run Selected",
+        "category": "R",
+        "command": "r.runSelected"
       },
       {
         "title": "Create gitignore",
