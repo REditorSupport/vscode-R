@@ -64,12 +64,15 @@ export function activate(context: ExtensionContext) {
 
     function runSource()  {
         const Rpath = ToRStringLiteral(window.activeTextEditor.document.fileName, '"');
-        
+        var encodingParam = config.get('rterm.encoding');
+        if (encodingParam) {
+            encodingParam = `, encoding="${encodingParam}"`
+        }
         if (!Rterm){
             commands.executeCommand('r.createRterm');  
         }
         Rterm.show();
-        Rterm.sendText(`source(${Rpath})`);
+        Rterm.sendText(`source(${Rpath}${encodingParam})`);
     }
 
     function createGitignore() {
