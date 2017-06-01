@@ -39,16 +39,15 @@ export function activate(context: ExtensionContext) {
     // Now provide the implementation of the command with  registerCommand
     // The commandId parameter must match the command field in package.json
     function getRpath() {
-        let term = ""
         if (process.platform === 'win32') {
-            return term + config.get('rterm.windows');
+            return <string>config.get('rterm.windows');
         } else if (process.platform === 'darwin') {
-            return term + config.get('rterm.mac');
+            return <string>config.get('rterm.mac');
         } else if ( process.platform === 'linux'){
-            return term + config.get('rterm.linux');
+            return <string>config.get('rterm.linux');
         }else{
             window.showErrorMessage(process.platform + "can't use R");
-            return term;
+            return "";
         }
     }
 
@@ -58,21 +57,23 @@ export function activate(context: ExtensionContext) {
         if (!termPath) {
             return
         }
-        Rterm = window.createTerminal(termName, termPath);
+        const termOpt =  <Array<string>>config.get('rterm.option');
+        Rterm = window.createTerminal(termName, termPath, termOpt);
         Rterm.show();
     }
 
     function runSource()  {
-        const Rpath = ToRStringLiteral(window.activeTextEditor.document.fileName, '"');
-        var encodingParam = config.get('source.encoding');
+        let RPath = ToRStringLiteral(window.activeTextEditor.document.fileName, '"');
+        let encodingParam = <string>config.get('source.encoding');
         if (encodingParam) {
-            encodingParam = `encoding="${encodingParam}"`
+            encodingParam = `encoding = "${encodingParam}"`
+            RPath = [RPath, encodingParam].join(", ")
         }
         if (!Rterm){
             commands.executeCommand('r.createRterm');  
         }
         Rterm.show();
-        Rterm.sendText(`source(${Rpath}, ${encodingParam})`);
+        Rterm.sendText(`source(${RPath})`);
     }
 
     function createGitignore() {
@@ -119,7 +120,7 @@ export function activate(context: ExtensionContext) {
     function lintr() {
         let RPath
         if (config.get('lintr.executable') !== ""){
-            RPath = config.get('lintr.executable')
+            RPath = <string>config.get('lintr.executable')
         }else {
             RPath = getRpath();
         }
