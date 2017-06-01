@@ -153,7 +153,7 @@
           "default": "/usr/bin/R",
           "description": "R terms path for Linux."
         },
-        "r.rterm.encoding": {
+        "r.source.encoding": {
           "type": "string",
           "default": "UTF-8",
           "description": "An optional encoding to pass to R when executing the file, i.e. 'source(FILE, encoding=ENCODING)'"
@@ -167,6 +167,11 @@
           "type": "boolean",
           "default": true,
           "description": "toggle caching of lint results"
+        },
+        "r.lintr.executable": {
+          "type": "string",
+          "default": "",
+          "description": "lintr executable path."
         }
       }
     }

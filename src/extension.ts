@@ -64,15 +64,15 @@ export function activate(context: ExtensionContext) {
 
     function runSource()  {
         const Rpath = ToRStringLiteral(window.activeTextEditor.document.fileName, '"');
-        var encodingParam = config.get('rterm.encoding');
+        var encodingParam = config.get('source.encoding');
         if (encodingParam) {
-            encodingParam = `, encoding="${encodingParam}"`
+            encodingParam = `encoding="${encodingParam}"`
         }
         if (!Rterm){
             commands.executeCommand('r.createRterm');  
         }
         Rterm.show();
-        Rterm.sendText(`source(${Rpath}${encodingParam})`);
+        Rterm.sendText(`source(${Rpath}, ${encodingParam})`);
     }
 
     function createGitignore() {
@@ -117,13 +117,17 @@ export function activate(context: ExtensionContext) {
     const lintRegex = /.+?:(\d+):(\d+): ((?:error)|(?:warning|style)): (.+)/g
 
     function lintr() {
-        let RPath = getRpath();
-        let Rcommand;
+        let RPath
+        if (config.get('lintr.executable') !== ""){
+            RPath = config.get('lintr.term')
+        }else {
+            RPath = getRpath();
+        }
         if (!RPath) {
             return
         }
-        // const Fpath = ToRStringLiteral(window.activeTextEditor.document.fileName, "'");
 
+        let Rcommand;
         const cache = config.get('lintr.cache')? "TRUE" : "FALSE";
         const linters = config.get('lintr.linters');
         let Fpath = ToRStringLiteral(window.activeTextEditor.document.fileName, "'")
