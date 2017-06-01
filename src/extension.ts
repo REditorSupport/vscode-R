@@ -119,7 +119,7 @@ export function activate(context: ExtensionContext) {
     function lintr() {
         let RPath
         if (config.get('lintr.executable') !== ""){
-            RPath = config.get('lintr.term')
+            RPath = config.get('lintr.executable')
         }else {
             RPath = getRpath();
         }
