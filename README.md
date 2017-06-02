@@ -26,12 +26,14 @@ Use `F1` key and `R:` command
 ## Extension Settings
 This extension contributes the following settings:
 
-* `r.rterm.windows`: set to R term's path for Windows
+* `r.rterm.windows`: set to R.exe path for Windows
 * `r.rterm.mac`: set to R term's path for Mac OS X
 * `r.rterm.linux`: set to R term's path for Linux
+* `r.rterm.option`: R command line options (i.e: --vanilla)
+* `r.source.encoding`: An optional encoding to pass to R when executing the file
 * `r.lintr.linters`: list of [linter functions](https://github.com/jimhester/lintr#available-linters)
 * `r.lintr.cach`: toggle caching of lint results
-
+* `r.lintr.executable`: R executable path for lintr
 ## TODO
 * Intellisense
 * Output Plot
