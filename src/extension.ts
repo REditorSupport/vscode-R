@@ -63,6 +63,7 @@ export function activate(context: ExtensionContext) {
     }
 
     function runSource()  {
+        window.activeTextEditor.document.save();
         let RPath = ToRStringLiteral(window.activeTextEditor.document.fileName, '"');
         let encodingParam = <string>config.get('source.encoding');
         if (encodingParam) {
