@@ -45,6 +45,6 @@ This extension based on the
 * [markdown-redcarpet.tmbandle](https://github.com/streeter/markdown-redcarpet.tmbundle)
 * [Markdown extension in VS Code](https://github.com/Microsoft/vscode/blob/master/extensions/markdown/snippets/markdown.json)
 * [R.gitignore](https://github.com/github/gitignore/raw/master/R.gitignore)
-
+* [language-r](https://github.com/lee-dohm/language-r)
 
 The R logo is © 2016 The R Foundation
