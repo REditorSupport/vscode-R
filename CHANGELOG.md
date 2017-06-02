@@ -1,4 +1,12 @@
 # Change Log
+## v0.2.6
+* add setting 
+    * r.lintr.executable #2
+    * r.rterm.option #2
+    * r.source.encoding (Thank you Ondrej Pialek(@ondrejpialek)) #4
+* save before `R:Run Source` command #5
+* update snippets
+
 ## v0.2.5
 * add Run Selected and Run Source command
 
@@ -49,7 +57,7 @@
 ## v0.0.1
 * Initial release
 
-## [Unreleased]
+## TODO
 * Output Plot
 * Debug
 * Language Server
