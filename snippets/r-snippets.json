@@ -4,15 +4,41 @@
         "body": "rug(${1:jitter(${2:x})})",
         "descriptison": "Add Tick Marks"
     },
+    "app":{
+        "prefix": "app",
+        "body": "apply(${1:X}, ${2:MARGIN}, ${3:FUN}, ${4:...})",
+        "description": "Apply"
+    },
     "att":{
         "prefix": "att",
         "body": "attach(${1:frame})",
         "description": "Attach"
     },
+    "cat":{
+        "prefix": "cat",
+        "body": "cat(${1:file}, ${2:sep = ${3:\"\"}}, ${4:fill = ${5:FALSE}}, ${6:labels = ${7:NULL}}, ${8:append = ${9:FALSE}})",
+        "description": "Cat"
+    },
     "cum":{
         "prefix": "cum",
         "body": "cum${1:max}(${2:x})",
         "description": "Cummulative"
+    },
+    "cuma":{
+        "prefix": "cuma",
+        "body": "cummax(${1:x}",
+        "description": "Cummulative max"
+        
+    },
+    "cumi":{
+        "prefix": "cumi",
+        "body": "cummin(${1:x}",
+        "description": "Cummulative min"
+    },
+    "daf":{
+        "prefix": "daf",
+        "body": "data.frame(${1:...}, ${2:row.names = ${3:NULL}}, ${4:check.rows = ${5:FALSE}}, ${6:check.names = ${7:TRUE}}, ${8:stringsAsFactors = ${9:default.stringsAsFactors()}})",
+        "description": "Data Frame"
     },
     "den":{
         "prefix": "den",
@@ -29,6 +55,11 @@
         "body": "cut(${1:x}, breaks = c(${2:${3:}, ${4:max(${1:x})}}))",
         "description": "Divide Into Intervals"
     },
+    "exp":{
+        "prefix": "exp",
+        "body": "expand.grid(${1:...}, ${2:KEEP.OUT.ATTRS = ${3:TRUE}}, ${4:stringsAsFactors = ${5:TRUE}})",
+        "description": "Expand grid"
+    },
     "fac":{
         "prefix": "fac",
         "body": "factor(${1:x})",
@@ -44,30 +75,165 @@
         "body": "function(${1:x}) ${3:{$0\\}}",
         "description": "Function"
     },
+    "glm":{
+        "prefix": "glm",
+        "body": "glm(${1:formula}, ${2:family = {3:gaussian}}, ${4:data})",
+        "description": "Generalized Linear Models"
+    },
+    "grep":{
+        "prefix": "grep",
+        "body": "grep(${1:pattern}, ${2:x}, ${3:ignore.case = ${4:FALSE}}, ${5:perl = ${6:FALSE}})",
+        "description": "Grep"
+    },
+    "grep2":{
+        "prefix": "grep",
+        "body": "grep(${1:pattern}, ${2:x}, ${3:ignore.case = ${4:FALSE}}, ${5:perl = ${6:FALSE}}, ${7:value = ${8:FALSE}}, ${9:fixed = ${10:TRUE}})",
+        "description": "Grep"
+    },
+    "grepl":{
+        "prefix": "grepl",
+        "body": "grep(${1:pattern}, ${2:x}, ${3:ignore.case = ${4:FALSE}}, ${5:perl = ${6:FALSE}}, ${7:fixed = ${8:TRUE}})",
+        "description": "Grep logical"
+    },
     "ife":{
         "prefix": "ife",
         "body": "ifelse(${1:test}, ${2:yes}, ${3:no})",
         "description": "Ifelse"
+    },
+    "ins":{
+        "prefix": "ins",
+        "body": "nstall.packages(${1:pkgs}, ${2:lib}, ${3:repos = ${4:getOption(\"repos\")}}, ${5:contriburl = ${6:contrib.url(repos, type)}})",
+        "description": "Install package"
+    },
+    "km":{
+        "prefix": "km",
+        "body": "kmeans(${1:x}, ${2:centers}, ${3:iter.max = ${4:10}}, ${5:nstart = ${6:1}}, ${7:algorithm = ${8:c(\"Hartigan-Wong\", \"Lloyd\", \"Forgy\",\"MacQueen\")}}, ${9:trace = ${10:FALSE}})",
+        "description": "Kmeans"
+    },
+    "kr":{
+        "prefix": "kr",
+        "body": "kruskal.test(${1:formula}, ${2:data}, ${3:subset}, ${4:na.action}, ${5:...})",
+        "description": "Kruskal-Wallis Rank Sum test"
+    },
+    "lap":{
+        "prefix": "lap",
+        "body": "lapply(${1:X}, ${2:FUN}, ${3:...})",
+        "description": "Lapply"
     },
     "len":{
         "prefix": "len",
         "body": "length(${1:x})",
         "description": "Length"
     },
-    "dat":{
-        "prefix": "dat",
-        "body": "data(${1:name})",
-        "description": "Load Dataset"
+    "lib":{
+        "prefix": "lib",
+        "body": "library(${1:package}, ${2:help}, ${3:pos = ${4:2}}, ${5:lib.loc = ${6:NULL}})",
+        "description": "Library"
     },
     "lin":{
         "prefix": "lin",
         "body": "lines(${1:x}${2:, color=${3:red}})",
         "description": "Polygonal Line"
     },
-    "rea":{
-        "prefix": "rea",
+    "dat":{
+        "prefix": "dat",
+        "body": "data(${1:name})",
+        "description": "Load Dataset"
+    },
+    "loa":{
+        "prefix": "loa",
+        "body": "load(${1:file}, ${2:envir = ${3:parent.frame()}}, ${4:verbose = ${5:FALSE}})",
+        "description": "Load RData"
+    },
+    "lm":{
+        "prefix": "lm",
+        "body": "lm(${1:formula}, ${2:data}, ${3:subset}, ${4:weights}, ${5:na.action})",
+        "description": "Linear regression"
+    },
+    "mat":{
+        "prefix": "mat",
+        "body": "matrix(${1:data = ${2:NA}}, ${3:nrow = ${4:1}}, ${5:ncol = ${6:1}}, ${7:byrow = ${8:FALSE}}, ${9:dimnames = ${10:NULL}})",
+        "description": "Matrix"
+    },
+    "mea":{
+        "prefix": "mea",
+        "body": "mean(${1:x}${2:, na.rm=${3:FALSE}})",
+        "description": "Mean"
+    },
+    "mer":{
+        "prefix": "mer",
+        "body": "merge(${1:x}, ${2:y}, ${3:by = ${4:intersect(names(x), names(y))}}, ${5:all = ${6:FALSE}})",
+        "description": "Merge"
+    },
+    "nam":{
+        "prefix": "nam",
+        "body": "names(${1:x})",
+        "description": "Names"
+    },
+    "opt":{
+        "prefix": "opt",
+        "body": "options(${1:...})",
+        "description": "Options"
+    },
+    "ord":{
+        "prefix": "ord",
+        "body": "order(${1:...}, ${2:na.last = ${3:TRUE}}, ${4:decreasing = ${5:FALSE}})",
+        "description": "Order"
+    },
+    "out":{
+        "prefix": "out",
+        "body": "outer(${1:X}, ${2:Y}, ${3:FUN = ${4:\"*\"}}, ${5:...})",
+        "description": "Outer"
+    },
+    "pas":{
+        "prefix": "pas",
+        "body": "paste(${1:...}, ${2:sep = ${3:\" \"}}, ${3:collapse = ${4:NULL}})",
+        "description": "Paste"
+    },
+    "pas0":{
+        "prefix": "pas0",
+        "body": "paste(${1:...}, ${2:collapse = ${3:NULL}})",
+        "description": "Paste0"
+    },
+    "plot":{
+        "prefix": "plot",
+        "body": "plot(${1:x}, ${2:y}, ${3:...})",
+        "description": "Plot"
+    },
+    "poi":{
+        "prefix": "poi",
+        "body": "points(${1:x}, ${2:y = ${3:NULL}}, ${4:type = ${5:\"p\"}}, ${6:...})",
+        "description": "Points"
+    },
+    "pri":{
+        "prefix": "pri",
+        "body": "print(${1:x}, ${2:...})",
+        "description": "Print"
+    },
+    "qua":{
+        "prefix": "qua",
+        "body": "quantile(${1:x}, ${2:probs = ${3:seq(0, 1, 0.25)}}, ${4:na.rm = ${5:FALSE}}, ${6:names = ${7:TRUE}}, ${8:type = ${9:7}}, ${10:...})",
+        "description": "Quantile"
+    },
+    "reac":{
+        "prefix": "reac",
+        "body": "read.csv(\"${1:filename}\"${2:, header = ${3:TRUE},  sep = \"${4:\\,}\",  stringsAsFactors = ${5:FALSE}})",
+        "description": "Read From csv"
+    },
+    "reat":{
+        "prefix": "reat",
         "body": "read.table('${1:filename}'${2:, header = ${3:TRUE},  sep = '${4:\t}',  stringsAsFactors = ${5:FALSE}})",
         "description": "Read From File"
+    },
+    "rep":{
+        "prefix": "rep",
+        "body": "rep(${1:x}, ${2:...})",
+        "description": "Rep"
+    },
+    "sam":{
+        "prefix": "sam",
+        "body": "sample(${1:x}, ${2:size}, ${3:replace = ${4:FALSE}}, ${5:prob = ${6:NULL}})",
+        "description": "Sample"
     },
     "seq":{
         "prefix": "seq",
@@ -83,6 +249,36 @@
         "prefix": "sou",
         "body": "source(${1:'${2:}'}${3:, chdir = ${4:TRUE}})",
         "description": "Source"
+    },
+    "sd":{
+        "prefix": "sd",
+        "body": "sd(${1:x}${2:, na.rm=${3:FALSE}})",
+        "description": "Standard deviation"
+    },
+    "tab":{
+        "prefix": "tab",
+        "body": "table(${1:...})",
+        "description": "Table"
+    },
+    "tap":{
+        "prefix": "tap",
+        "body": "tapply(${1:X}, ${2:INDEX}, ${3:FUN = ${4:NULL}}, ${5:...}, ${6:simplify = ${7:TRUE}})",
+        "description": "Tapply"
+    },
+    "uni":{
+        "prefix": "uni",
+        "body": "unique(${1:x}, ${2:incomparables = ${3:FALSE}}, ${4:...})",
+        "description": "Unique"
+    },
+    "whi":{
+        "prefix": "whi",
+        "body": "which(${1:x}, ${2:arr.ind = ${3:FALSE}}, ${4:useNames = ${5:TRUE}})",
+        "description": "Which"
+    },
+    "wric":{
+        "prefix": "wric",
+        "body": "write.csv(${1:x}, ${2:file = ${3:\"\"}}, ${4:append = ${5:FALSE}}, ${6:quote = ${7:TRUE}}, ${8:sep = ${9:\" \"}}",
+        "description": "Write csv"
     },
     "fch":{
         "prefix": "fch",
