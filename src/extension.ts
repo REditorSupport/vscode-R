@@ -77,10 +77,17 @@ export function activate(context: ExtensionContext) {
         setFocus();
     }
 
-    function runSelected() {
-        const { start, end } = window.activeTextEditor.selection;
+    function runSelection() {
+        let { start, end } = window.activeTextEditor.selection;
         const currentDocument = window.activeTextEditor.document;
+        const range = new Range(start, end);
+        if (range.isEmpty) {
+            const line = currentDocument.lineAt(window.activeTextEditor.viewColumn.valueOf() - 1);
+            start = line.range.start;
+            end = line.range.end;
+        }
         const selectedLineText = currentDocument.getText(new Range(start, end));
+        
         if (!Rterm){
             createRterm(true);
         }
@@ -205,7 +212,7 @@ export function activate(context: ExtensionContext) {
     context.subscriptions.push(
         commands.registerCommand('r.createRterm', createRterm),
         commands.registerCommand('r.runSource', runSource),
-        commands.registerCommand('r.runSelected', runSelected),
+        commands.registerCommand('r.runSelection', runSelection),
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.lintr', lintr),
         commands.registerCommand('r.installLintr', installLintr)
