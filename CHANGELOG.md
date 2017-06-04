@@ -1,4 +1,7 @@
 # Change Log
+## v0.2.8
+* add command `R: Run Selection/Line`
+
 ## v0.2.7
 * add setting `r.source.focus` #5
 
