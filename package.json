@@ -165,6 +165,15 @@
           "default": "UTF-8",
           "description": "An optional encoding to pass to R when executing the file, i.e. 'source(FILE, encoding=ENCODING)'"
         },
+        "r.source.focus": {
+          "type": "string",
+          "default": "editor",
+          "enum": [
+            "editor",
+            "terminal"
+          ],
+          "description": "Keeping focus when run"
+        },
         "r.lintr.linters": {
           "type": "string",
           "default": "default_linters",

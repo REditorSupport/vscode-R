@@ -50,7 +50,7 @@ export function activate(context: ExtensionContext) {
         }
     }
 
-    function createRterm() {
+    function createRterm(preserveshow?: boolean) {
         const termName = "R";
         let termPath = getRpath();
         if (!termPath) {
@@ -58,22 +58,41 @@ export function activate(context: ExtensionContext) {
         }
         const termOpt =  <Array<string>>config.get('rterm.option');
         Rterm = window.createTerminal(termName, termPath, termOpt);
-        Rterm.show();
+        Rterm.show(preserveshow);
     }
 
     function runSource()  {
-        window.activeTextEditor.document.save();
-        let RPath = ToRStringLiteral(window.activeTextEditor.document.fileName, '"');
+        let wad = window.activeTextEditor.document;
+        wad.save();
+        let RPath = ToRStringLiteral(wad.fileName, '"');
         let encodingParam = <string>config.get('source.encoding');
         if (encodingParam) {
             encodingParam = `encoding = "${encodingParam}"`;
             RPath = [RPath, encodingParam].join(", ");
         }
         if (!Rterm){
-            commands.executeCommand('r.createRterm');  
+            createRterm(true);
         }
-        Rterm.show();
         Rterm.sendText(`source(${RPath})`);
+        setFocus();
+    }
+
+    function runSelected() {
+        const { start, end } = window.activeTextEditor.selection;
+        const currentDocument = window.activeTextEditor.document;
+        const selectedLineText = currentDocument.getText(new Range(start, end));
+        if (!Rterm){
+            createRterm(true);
+        }
+        Rterm.sendText(selectedLineText);
+        setFocus();
+    }
+
+    function setFocus() {
+        let focus = <string>config.get('source.focus');
+        if (focus === "terminal"){
+            Rterm.show();
+        }
     }
 
     function createGitignore() {
@@ -91,18 +110,6 @@ export function activate(context: ExtensionContext) {
             }
         });
     }
-
-    function runSelected() {
-        const { start, end } = window.activeTextEditor.selection;
-        const currentDocument = window.activeTextEditor.document;
-        const selectedLineText = currentDocument.getText(new Range(start, end));
-        if (!Rterm){
-            commands.executeCommand('r.createRterm');  
-        }
-        Rterm.show();
-        Rterm.sendText(selectedLineText);
-    }
-
 
     function parseSeverity(severity) {
         switch (severity) {
