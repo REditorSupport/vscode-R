@@ -1,17 +1,20 @@
 # Change Log
+## v0.2.7
+* add setting `r.source.focus` #5
+
 ## v0.2.6
 * add setting 
-    * r.lintr.executable #2
-    * r.rterm.option #2
-    * r.source.encoding (Thank you Ondrej Pialek(@ondrejpialek)) #4
+    * `r.lintr.executable` #2
+    * `r.rterm.option` #2
+    * `r.source.encoding` (Thank you @ondrejpialek) #4
 * save before `R:Run Source` command #5
 * update snippets
 
 ## v0.2.5
-* add Run Selected and Run Source command
+* add `Run Selected` and `Run Source` command
 
 ## v0.2.4
-* fix for Windowd
+* fix for Windows
 
 ## v0.2.3
 * support lintr option cache and linters

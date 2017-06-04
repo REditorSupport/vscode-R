@@ -34,6 +34,7 @@ This extension contributes the following settings:
 * `r.lintr.linters`: list of [linter functions](https://github.com/jimhester/lintr#available-linters)
 * `r.lintr.cach`: toggle caching of lint results
 * `r.lintr.executable`: R executable path for lintr(if not set, used r.rterm.xxx)
+* `r.source.focus` : Keeping focus when running(editor or terminal)
 
 ## TODO
 * Intellisense

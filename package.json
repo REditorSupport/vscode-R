@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "Support for R language(run,snippet, lint,R documantation,R Markdown)",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
@@ -172,7 +172,7 @@
             "editor",
             "terminal"
           ],
-          "description": "Keeping focus when run"
+          "description": "Keeping focus when running"
         },
         "r.lintr.linters": {
           "type": "string",
