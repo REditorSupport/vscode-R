@@ -7,7 +7,6 @@ import cp = require('child_process');
 import fs = require('fs');
 import path = require('path');
 
-let outputChennel = window.createOutputChannel("r");
 let config = workspace.getConfiguration('r');
 let Rterm: Terminal;
 let ignorePath =  path.join(workspace.rootPath, '.gitignore');
@@ -53,9 +52,9 @@ export function activate(context: ExtensionContext) {
 
     function createRterm() {
         const termName = "R";
-        let termPath = getRpath()
+        let termPath = getRpath();
         if (!termPath) {
-            return
+            return;
         }
         const termOpt =  <Array<string>>config.get('rterm.option');
         Rterm = window.createTerminal(termName, termPath, termOpt);
@@ -67,8 +66,8 @@ export function activate(context: ExtensionContext) {
         let RPath = ToRStringLiteral(window.activeTextEditor.document.fileName, '"');
         let encodingParam = <string>config.get('source.encoding');
         if (encodingParam) {
-            encodingParam = `encoding = "${encodingParam}"`
-            RPath = [RPath, encodingParam].join(", ")
+            encodingParam = `encoding = "${encodingParam}"`;
+            RPath = [RPath, encodingParam].join(", ");
         }
         if (!Rterm){
             commands.executeCommand('r.createRterm');  
@@ -116,30 +115,30 @@ export function activate(context: ExtensionContext) {
         }
     }
 
-    const lintRegex = /.+?:(\d+):(\d+): ((?:error)|(?:warning|style)): (.+)/g
+    const lintRegex = /.+?:(\d+):(\d+): ((?:error)|(?:warning|style)): (.+)/g;
 
     function lintr() {
-        let RPath
+        let RPath;
         if (config.get('lintr.executable') !== ""){
-            RPath = <string>config.get('lintr.executable')
+            RPath = <string>config.get('lintr.executable');
         }else {
             RPath = getRpath();
         }
         if (!RPath) {
-            return
+            return;
         }
 
         let Rcommand;
         const cache = config.get('lintr.cache')? "TRUE" : "FALSE";
         const linters = config.get('lintr.linters');
-        let Fpath = ToRStringLiteral(window.activeTextEditor.document.fileName, "'")
+        let Fpath = ToRStringLiteral(window.activeTextEditor.document.fileName, "'");
         if (process.platform === 'win32') {
             RPath =  ToRStringLiteral(RPath, '');
-            Rcommand = `\"suppressPackageStartupMessages(library(lintr));lint(${Fpath})\"`
+            Rcommand = `\"suppressPackageStartupMessages(library(lintr));lint(${Fpath})\"`;
         }else{
             RPath = "R";
-            Fpath = `${Fpath}, cache = ${cache}, linters = ${linters}`
-            Rcommand = `suppressPackageStartupMessages(library(lintr));lint(${Fpath})`
+            Fpath = `${Fpath}, cache = ${cache}, linters = ${linters}`;
+            Rcommand = `suppressPackageStartupMessages(library(lintr));lint(${Fpath})`;
         }
         const parameters = [
             '--vanilla', '--slave',
@@ -150,7 +149,7 @@ export function activate(context: ExtensionContext) {
         ];
 
         console.log(RPath);
-        console.log(RPath + " " + parameters.join(" "))
+        console.log(RPath + " " + parameters.join(" "));
         cp.execFile(RPath, parameters, (error, stdout, stderr) => {
             if (stderr){
                 console.log("stderr:" + stderr.toString());
@@ -159,8 +158,8 @@ export function activate(context: ExtensionContext) {
                 console.log(error.toString());
             }
             let match = lintRegex.exec(stdout);
-            let results = []
-            const diagsCollection: {[key: string]: Diagnostic[]} = {}
+            let results = [];
+            const diagsCollection: {[key: string]: Diagnostic[]} = {};
             
             let filename = window.activeTextEditor.document.fileName;
 
@@ -174,9 +173,9 @@ export function activate(context: ExtensionContext) {
                 const severity = parseSeverity(match[3]);
                 const diag = new Diagnostic(range, message, severity);
                 if (diagsCollection[filename] === undefined) {
-                    diagsCollection[filename] = []
+                    diagsCollection[filename] = [];
                 }
-                diagsCollection[filename].push(diag)
+                diagsCollection[filename].push(diag);
                 console.log(message);
                 match = lintRegex.exec(stdout);
             }
