@@ -150,7 +150,6 @@ export function activate(context: ExtensionContext) {
             RPath =  ToRStringLiteral(RPath, '');
             Rcommand = `\"suppressPackageStartupMessages(library(lintr));lint(${Fpath})\"`;
         }else{
-            RPath = "R";
             Fpath = `${Fpath}, cache = ${cache}, linters = ${linters}`;
             Rcommand = `suppressPackageStartupMessages(library(lintr));lint(${Fpath})`;
         }
