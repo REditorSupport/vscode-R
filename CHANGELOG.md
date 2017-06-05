@@ -1,4 +1,6 @@
 # Change Log
+## v0.2.9
+* fix lintr on Mac
 ## v0.2.8
 * add command `R: Run Selection/Line`
 
