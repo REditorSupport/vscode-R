@@ -1,6 +1,10 @@
 # Change Log
+## v0.3.0
+* update lintr behavar
+
 ## v0.2.9
 * fix lintr on Mac
+
 ## v0.2.8
 * add command `R: Run Selection/Line`
 
