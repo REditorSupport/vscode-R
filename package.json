@@ -40,38 +40,6 @@
   ],
   "main": "./out/src/extension",
   "contributes": {
-    "commands": [
-      {
-        "title": "Create R terminal",
-        "category": "R",
-        "command": "r.createRterm"
-      },
-      {
-        "title": "Run Source",
-        "category": "R",
-        "command": "r.runSource"
-      },
-      {
-        "title": "Run Selection/Line",
-        "category": "R",
-        "command": "r.runSelection"
-      },
-      {
-        "title": "Create gitignore",
-        "category": "R",
-        "command": "r.createGitignore"
-      },
-      {
-        "title": "lintr",
-        "category": "R",
-        "command": "r.lintr"
-      },
-      {
-        "title": "install lintr",
-        "category": "R",
-        "command": "r.installLintr"
-      }
-    ],
     "languages": [
       {
         "id": "r",
@@ -134,6 +102,38 @@
         "path": "./syntax/Markdown Redcarpet.tmLanguage"
       }
     ],
+    "commands": [
+      {
+        "title": "Create R terminal",
+        "category": "R",
+        "command": "r.createRterm"
+      },
+      {
+        "title": "Run Source",
+        "category": "R",
+        "command": "r.runSource"
+      },
+      {
+        "title": "Run Selection/Line",
+        "category": "R",
+        "command": "r.runSelection"
+      },
+      {
+        "title": "Create gitignore",
+        "category": "R",
+        "command": "r.createGitignore"
+      },
+      {
+        "title": "lintr",
+        "category": "R",
+        "command": "r.lintr"
+      },
+      {
+        "title": "install lintr",
+        "category": "R",
+        "command": "r.installLintr"
+      }
+    ],
     "configuration": {
       "type": "object",
       "title": "r",
@@ -154,10 +154,8 @@
           "description": "R path for Linux"
         },
         "r.rterm.option": {
-          "type":"array",
-          "default": [
-            
-          ],
+          "type": "array",
+          "default": [],
           "description": "R command line options (i.e: --vanilla)"
         },
         "r.source.encoding": {
@@ -200,9 +198,9 @@
   },
   "devDependencies": {
     "@types/mocha": "^2.2.32",
-    "@types/node": "^6.0.40",
+    "@types/node": "^6.0.78",
     "mocha": "^2.3.3",
-    "typescript": "^2.2.2",
+    "typescript": "^2.3.4",
     "vscode": "^1.1.0"
   },
   "dependencies": {
