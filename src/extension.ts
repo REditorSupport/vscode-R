@@ -79,14 +79,14 @@ export function activate(context: ExtensionContext) {
 
     function runSelection() {
         let { start, end } = window.activeTextEditor.selection;
-        const currentDocument = window.activeTextEditor.document;
-        const range = new Range(start, end);
+        let currentDocument = window.activeTextEditor.document;
+        let range = new Range(start, end);
         if (range.isEmpty) {
-            const line = currentDocument.lineAt(window.activeTextEditor.viewColumn.valueOf() - 1);
+            let line = currentDocument.lineAt(window.activeTextEditor.viewColumn.valueOf() - 1);
             start = line.range.start;
             end = line.range.end;
         }
-        const selectedLineText = currentDocument.getText(new Range(start, end));
+        let selectedLineText = currentDocument.getText(new Range(start, end));
         
         if (!Rterm){
             createRterm(true);
@@ -118,15 +118,17 @@ export function activate(context: ExtensionContext) {
         });
     }
 
-    function parseSeverity(severity) {
+    function parseSeverity(severity):DiagnosticSeverity {
+
         switch (severity) {
             case "error":
-                return DiagnosticSeverity.Warning;
+                return DiagnosticSeverity.Error;
             case "warning":
                 return DiagnosticSeverity.Warning;
             case "style":
-                return DiagnosticSeverity.Warning;
+                return DiagnosticSeverity.Information;
         }
+        return DiagnosticSeverity.Hint;
     }
 
     const lintRegex = /.+?:(\d+):(\d+): ((?:error)|(?:warning|style)): (.+)/g;
