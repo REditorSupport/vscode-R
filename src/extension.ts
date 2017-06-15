@@ -81,13 +81,9 @@ export function activate(context: ExtensionContext) {
         let { start, end } = window.activeTextEditor.selection;
         let currentDocument = window.activeTextEditor.document;
         let range = new Range(start, end);
-        if (range.isEmpty) {
-            let line = currentDocument.lineAt(window.activeTextEditor.viewColumn.valueOf() - 1);
-            start = line.range.start;
-            end = line.range.end;
-        }
-        let selectedLineText = currentDocument.getText(new Range(start, end));
-        
+        const selectedLineText = !range.isEmpty
+                                 ?currentDocument.getText(new Range(start, end))
+                                 :currentDocument.lineAt(start.line).text;
         if (!Rterm){
             createRterm(true);
         }
