@@ -1,4 +1,7 @@
 # Change Log
+## v0.3.1
+* fix Run Selection/Line only executes the first line of file when nothing was selected #9
+
 ## v0.3.0
 * update lintr behavar
 

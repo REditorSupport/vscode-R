@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "Support for R language(run,snippet, lint,R documantation,R Markdown)",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
