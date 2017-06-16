@@ -1,11 +1,33 @@
 {
 	"rules": {
+		"comment-format": [
+			"check-space"
+		],
 		"no-unused-expression": true,
 		"no-duplicate-variable": true,
 		"no-unused-variable": true,
+		"one-line": [
+			true,
+			"check-open-brace",
+			"check-whitespace"
+		],
 		"curly": true,
 		"class-name": true,
 		"semicolon": ["always"],
-		"triple-equals": true
+		"triple-equals": true,
+		"variable-name": [
+			true,
+			"ban-keywords",
+			"check-format"
+		],
+		"whitespace": [
+			true,
+			"check-branch",
+			"check-decl",
+			"check-operator",
+			"check-preblock",
+			"check-separator",
+			"check-type"
+		]
 	}
 }

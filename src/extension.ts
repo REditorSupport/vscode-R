@@ -8,10 +8,10 @@ import fs = require('fs');
 import path = require('path');
 
 let config = workspace.getConfiguration('r');
-let Rterm: Terminal;
+let rTerm: Terminal;
 let ignorePath =  path.join(workspace.rootPath, '.gitignore');
-let Diagnostics = languages.createDiagnosticCollection('R');
-// from 'https://github.com/github/gitignore/raw/master/R.gitignore'
+let diagnostics = languages.createDiagnosticCollection('R');
+// From 'https://github.com/github/gitignore/raw/master/R.gitignore'
 let ignoreFiles = [".Rhistory", 
                    ".Rapp.history",
                    ".RData",
@@ -27,8 +27,8 @@ let ignoreFiles = [".Rhistory",
                    "*.utf8.md",
                    "*.knit.md"].join('\n');
 
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
+// This method is called when your extension is activated
+// Your extension is activated the very first time the command is executed
 export function activate(context: ExtensionContext) {
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
@@ -42,9 +42,9 @@ export function activate(context: ExtensionContext) {
             return <string>config.get('rterm.windows');
         } else if (process.platform === 'darwin') {
             return <string>config.get('rterm.mac');
-        } else if ( process.platform === 'linux'){
+        } else if ( process.platform === 'linux') {
             return <string>config.get('rterm.linux');
-        }else{
+        }else {
             window.showErrorMessage(process.platform + "can't use R");
             return "";
         }
@@ -57,23 +57,23 @@ export function activate(context: ExtensionContext) {
             return;
         }
         const termOpt =  <Array<string>>config.get('rterm.option');
-        Rterm = window.createTerminal(termName, termPath, termOpt);
-        Rterm.show(preserveshow);
+        rTerm = window.createTerminal(termName, termPath, termOpt);
+        rTerm.show(preserveshow);
     }
 
     function runSource()  {
         let wad = window.activeTextEditor.document;
         wad.save();
-        let RPath = ToRStringLiteral(wad.fileName, '"');
+        let rPath = ToRStringLiteral(wad.fileName, '"');
         let encodingParam = <string>config.get('source.encoding');
         if (encodingParam) {
             encodingParam = `encoding = "${encodingParam}"`;
-            RPath = [RPath, encodingParam].join(", ");
+            rPath = [rPath, encodingParam].join(", ");
         }
-        if (!Rterm){
+        if (!rTerm) {
             createRterm(true);
         }
-        Rterm.sendText(`source(${RPath})`);
+        rTerm.sendText(`source(${rPath})`);
         setFocus();
     }
 
@@ -82,19 +82,19 @@ export function activate(context: ExtensionContext) {
         let currentDocument = window.activeTextEditor.document;
         let range = new Range(start, end);
         const selectedLineText = !range.isEmpty
-                                 ?currentDocument.getText(new Range(start, end))
-                                 :currentDocument.lineAt(start.line).text;
-        if (!Rterm){
+                                 ? currentDocument.getText(new Range(start, end))
+                                 : currentDocument.lineAt(start.line).text;
+        if (!rTerm) {
             createRterm(true);
         }
-        Rterm.sendText(selectedLineText);
+        rTerm.sendText(selectedLineText);
         setFocus();
     }
 
     function setFocus() {
         let focus = <string>config.get('source.focus');
-        if (focus === "terminal"){
-            Rterm.show();
+        if (focus === "terminal") {
+            rTerm.show();
         }
     }
 
@@ -114,7 +114,7 @@ export function activate(context: ExtensionContext) {
         });
     }
 
-    function parseSeverity(severity):DiagnosticSeverity {
+    function parseSeverity(severity): DiagnosticSeverity {
 
         switch (severity) {
             case "error":
@@ -130,42 +130,42 @@ export function activate(context: ExtensionContext) {
     const lintRegex = /.+?:(\d+):(\d+): ((?:error)|(?:warning|style)): (.+)/g;
 
     function lintr() {
-        let RPath;
-        if (config.get('lintr.executable') !== ""){
-            RPath = <string>config.get('lintr.executable');
+        let rPath: string;
+        if (config.get('lintr.executable') !== "") {
+            rPath = <string>config.get('lintr.executable');
         }else {
-            RPath = getRpath();
+            rPath = getRpath();
         }
-        if (!RPath) {
+        if (!rPath) {
             return;
         }
 
-        let Rcommand;
-        const cache = config.get('lintr.cache')? "TRUE" : "FALSE";
+        let rCommand;
+        const cache = config.get('lintr.cache') ? "TRUE" : "FALSE";
         const linters = config.get('lintr.linters');
-        let Fpath = ToRStringLiteral(window.activeTextEditor.document.fileName, "'");
+        let fPath = ToRStringLiteral(window.activeTextEditor.document.fileName, "'");
         if (process.platform === 'win32') {
-            RPath =  ToRStringLiteral(RPath, '');
-            Rcommand = `\"suppressPackageStartupMessages(library(lintr));lint(${Fpath})\"`;
-        }else{
-            Fpath = `${Fpath}, cache = ${cache}, linters = ${linters}`;
-            Rcommand = `suppressPackageStartupMessages(library(lintr));lint(${Fpath})`;
+            rPath =  ToRStringLiteral(rPath, '');
+            rCommand = `\"suppressPackageStartupMessages(library(lintr));lint(${fPath})\"`;
+        }else {
+            fPath = `${fPath}, cache = ${cache}, linters = ${linters}`;
+            rCommand = `suppressPackageStartupMessages(library(lintr));lint(${fPath})`;
         }
         const parameters = [
             '--vanilla', '--slave',
             '--no-save',
             '-e',
-            Rcommand,
+            rCommand,
             '--args'
         ];
 
-        console.log(RPath);
-        console.log(RPath + " " + parameters.join(" "));
-        cp.execFile(RPath, parameters, (error, stdout, stderr) => {
-            if (stderr){
+        console.log(rPath);
+        console.log(rPath + " " + parameters.join(" "));
+        cp.execFile(rPath, parameters, (error, stdout, stderr) => {
+            if (stderr) {
                 console.log("stderr:" + stderr.toString());
             }
-            if (error){
+            if (error) {
                 console.log(error.toString());
             }
             let match = lintRegex.exec(stdout);
@@ -190,19 +190,19 @@ export function activate(context: ExtensionContext) {
                 console.log(message);
                 match = lintRegex.exec(stdout);
             }
-            Diagnostics.clear();
-            Diagnostics.set(Uri.file(filename),
+            diagnostics.clear();
+            diagnostics.set(Uri.file(filename),
                             diagsCollection[filename]);
             return results;
         });
     }
 
     function installLintr() {
-        if (!Rterm){
+        if (!rTerm) {
             commands.executeCommand('r.createRterm');  
         }
-        Rterm.show();
-        Rterm.sendText("install.packages(\"lintr\")");
+        rTerm.show();
+        rTerm.sendText("install.packages(\"lintr\")");
     }
 
 
@@ -215,9 +215,8 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.installLintr', installLintr)
     );
 
-    function ToRStringLiteral(s, q) {
-        let quote = q;
-        if (s === null){
+    function ToRStringLiteral(s: string, quote: string) {
+        if (s === null) {
             return "NULL";
         }
          return (quote +
@@ -234,6 +233,6 @@ export function activate(context: ExtensionContext) {
     }
 }
 
-// this method is called when your extension is deactivated
+// This method is called when your extension is deactivated
 export function deactivate() {
 }
