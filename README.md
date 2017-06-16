@@ -2,12 +2,12 @@
 ![Marketplace Version](http://vsmarketplacebadge.apphb.com/version/ikuyadeu.r.svg "Current Version")
 ![Market Place Installs](http://vsmarketplacebadge.apphb.com/installs/ikuyadeu.r.svg "Number of Installs")
 
-R languagesupport for VS Code.
-Require [R](https://www.r-project.org/)
+R language support for VS Code.
+Requires [R](https://www.r-project.org/).
 
 # Usage
-* If Windows, set config `r.rterm.windows` to your `R.exe` Path like `"C:\\Program Files\\R\\R-3.3.4\\bin\\x64\\R.exe"`;
-* Open your folder that has R source file(Can't work if you open only file)
+* For Windows, set config `r.rterm.windows` to your `R.exe` Path like `"C:\\Program Files\\R\\R-3.3.4\\bin\\x64\\R.exe"`;
+* Open your folder that has R source file (Can't work if you open only file)
 * Use `F1` key and `R:` command
 
 ## Features
@@ -24,7 +24,7 @@ Require [R](https://www.r-project.org/)
 * Snippets
 
 ## Requirements
-* R base in https://www.r-project.org/
+* R base from https://www.r-project.org/
 * lintr package
 
 ## Extension Settings
@@ -36,19 +36,19 @@ This extension contributes the following settings:
 * `r.rterm.option`: R command line options (i.e: --vanilla)
 * `r.source.encoding`: An optional encoding to pass to R when executing the file
 * `r.lintr.linters`: list of [linter functions](https://github.com/jimhester/lintr#available-linters)
-* `r.lintr.cach`: toggle caching of lint results
+* `r.lintr.cache`: toggle caching of lint results
 * `r.lintr.executable`: R executable path for lintr(if not set, used r.rterm.xxx)
 * `r.source.focus` : Keeping focus when running(editor or terminal)
-
+ 
 ## TODO
 * Intellisense
 * Output Plot
 * Debug
 * Language Server
 
-This extension based on the 
+This extension based on 
 * [r.tmbundle](https://github.com/textmate/r.tmbundle)
-* [markdown-redcarpet.tmbandle](https://github.com/streeter/markdown-redcarpet.tmbundle)
+* [markdown-redcarpet.tmbundle](https://github.com/streeter/markdown-redcarpet.tmbundle)
 * [Markdown extension in VS Code](https://github.com/Microsoft/vscode/blob/master/extensions/markdown/snippets/markdown.json)
 * [R.gitignore](https://github.com/github/gitignore/raw/master/R.gitignore)
 * [language-r](https://github.com/lee-dohm/language-r)

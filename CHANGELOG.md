@@ -50,7 +50,7 @@
 * Create .gitignore
 
 ## v0.0.9
-* Fix Run R peform
+* Fix Run R perform
 
 ## v0.0.8
 * R Markdown Snippets as Markdown
@@ -67,7 +67,7 @@
 * R Snippets
 
 ## v0.0.3
-* Support R documantation
+* Support R documentation
 
 ## v0.0.1
 * Initial release
