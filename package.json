@@ -43,7 +43,7 @@
     "languages": [
       {
         "id": "r",
-        "extentions": [
+        "extensions": [
           ".r",
           ".rhistory",
           ".rprofile",
