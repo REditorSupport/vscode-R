@@ -1,7 +1,7 @@
 {
   "name": "r",
   "displayName": "R",
-  "description": "Support for R language(run,snippet, lint,R documantation,R Markdown)",
+  "description": "Support for R language(run,snippet, lint,R documentation,R Markdown)",
   "version": "0.3.1",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
@@ -23,7 +23,7 @@
   "keywords": [
     "R",
     "R language",
-    "R documantation",
+    "R documentation",
     "R Markdown",
     "lintr"
   ],
@@ -60,8 +60,8 @@
           ".rd"
         ],
         "aliases": [
-          "R documantation",
-          "r documantation"
+          "R documentation",
+          "r documentation"
         ],
         "configuration": "./rd-configuration.json"
       },
@@ -175,7 +175,7 @@
         "r.lintr.linters": {
           "type": "string",
           "default": "default_linters",
-          "description": " list of linter functions"
+          "description": "list of linter functions"
         },
         "r.lintr.cache": {
           "type": "boolean",

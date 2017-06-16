@@ -36,10 +36,10 @@ This extension contributes the following settings:
 * `r.rterm.option`: R command line options (i.e: --vanilla)
 * `r.source.encoding`: An optional encoding to pass to R when executing the file
 * `r.lintr.linters`: list of [linter functions](https://github.com/jimhester/lintr#available-linters)
-* `r.lintr.cach`: toggle caching of lint results
+* `r.lintr.cache`: toggle caching of lint results
 * `r.lintr.executable`: R executable path for lintr(if not set, used r.rterm.xxx)
 * `r.source.focus` : Keeping focus when running(editor or terminal)
-
+ 
 ## TODO
 * Intellisense
 * Output Plot

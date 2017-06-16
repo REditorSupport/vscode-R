@@ -67,7 +67,7 @@
 * R Snippets
 
 ## v0.0.3
-* Support R documantation
+* Support R documentation
 
 ## v0.0.1
 * Initial release
