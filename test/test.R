@@ -12,13 +12,13 @@ add <- function(x, y) {
   x + y
 }
 
-add(1, -2, 2.0)
-add(1.0e10, 2.0e10)
+print(add(1, -2))
+print(add(1.0e10, 2.0e10))
 
-paste("one", NULL)
-paste(NA, 'two')
+print(paste("one", NULL))
+print(paste(NA, 'two'))
 
-paste("multi-
+print(paste("multi-
       line",
       'multi-
-      line')
+      line'))

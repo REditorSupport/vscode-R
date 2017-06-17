@@ -1,4 +1,7 @@
 # Change Log
+## v0.3.4
+* add "builtin function" from RBox
+
 ## v0.3.3
 * New syntax from R Box
 * fix typo(Thank you @Shians) # 12
