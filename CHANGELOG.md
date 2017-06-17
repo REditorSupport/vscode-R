@@ -1,6 +1,7 @@
 # Change Log
-## v0.3.2
-* New syntax
+## v0.3.3
+* New syntax from R Box
+* fix typo(Thank you @Shians) # 12
 
 ## v0.3.1
 * fix Run Selection/Line only executes the first line of file when nothing was selected #9
