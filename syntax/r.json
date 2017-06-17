@@ -1,0 +1,340 @@
+{
+	"information_for_contributors": [
+		"This file has been converted from https://github.com/randy3k/R-Extended/blob/master/R%20Extended.tmLanguage",
+		"If you want to provide a fix or improvement, please create a pull request against the original repository.",
+		"Once accepted there, we are happy to receive an update request."
+	],
+	"version": "https://github.com/randy3k/R-Extended/commit/f5f3d9ba01cf8616928ca1a7b4371750eccc011d",
+	"fileTypes": [
+		"R",
+		"r",
+		"s",
+		"S",
+		"Rprofile"
+	],
+	"foldingStartMarker": "(\\(\\s*$|\\{\\s*$)",
+	"foldingStopMarker": "(^\\s*\\)|^\\s*\\})",
+	"keyEquivalent": "^~R",
+	"name": "R Extended",
+	"patterns": [
+		{
+			"include": "#roxygen"
+		},
+		{
+			"captures": {
+				"1": {
+					"name": "punctuation.definition.comment.r"
+				}
+			},
+			"match": "(#).*$\\n?",
+			"name": "comment.line.number-sign.r"
+		},
+		{
+			"include": "#constant"
+		},
+		{
+			"include": "#keyword"
+		},
+		{
+			"include": "#storage-type"
+		},
+		{
+			"include": "#string"
+		},
+		{
+			"include": "#parenthesis"
+		},
+		{
+			"include": "#function"
+		},
+		{
+			"begin": "\\b([a-zA-Z0-9._:]*)\\s*(<-|=)\\s*(?=(function)\\s*(\\())",
+			"beginCaptures": {
+				"1": {
+					"name": "entity.name.function.r"
+				},
+				"2": {
+					"name": "keyword.operator.assignment.r"
+				}
+			},
+			"end": "(?<=\\))",
+			"name": "meta.function.r",
+			"patterns": [
+				{
+					"include": "#function"
+				}
+			]
+		},
+		{
+			"include": "source.r.support-function"
+		},
+		{
+			"begin": "\\b([a-zA-Z._][a-zA-Z0-9._]*)\\s*(\\()",
+			"beginCaptures": {
+				"1": {
+					"name": "punctuation.definition.parameters.r"
+				}
+			},
+			"contentName": "meta.function-call.arguments.r",
+			"end": "(\\))",
+			"endCaptures": {
+				"1": {
+					"name": "punctuation.definition.parameters.r"
+				}
+			},
+			"name": "meta.function-call.r",
+			"patterns": [
+				{
+					"include": "#function-call-parameter"
+				},
+				{
+					"include": "$self"
+				}
+			]
+		}
+	],
+	"repository": {
+		"constant": {
+			"patterns": [
+				{
+					"match": "\\b(pi|letters|LETTERS|month\\.abb|month\\.name)\\b",
+					"name": "support.constant.misc.r"
+				},
+				{
+					"match": "\\b(TRUE|FALSE|NULL|NA|NA_integer_|NA_real_|NA_complex_|NA_character_|Inf|NaN)\\b",
+					"name": "constant.language.r"
+				},
+				{
+					"match": "\\b((0(x|X)[0-9a-fA-F]*)|(([0-9]+\\.?[0-9]*)|(\\.[0-9]+))((e|E)(\\+|-)?[0-9]+)?)(L|l|UL|ul|u|U|F|f|ll|LL|ull|ULL)?\\b",
+					"name": "constant.numeric.r"
+				}
+			]
+		},
+		"function": {
+			"begin": "\\b(function)\\s*(\\()",
+			"beginCaptures": {
+				"1": {
+					"name": "keyword.control.r"
+				},
+				"2": {
+					"name": "punctuation.definition.parameters.r"
+				}
+			},
+			"end": "(\\))",
+			"endCaptures": {
+				"1": {
+					"name": "punctuation.definition.parameters.r"
+				}
+			},
+			"patterns": [
+				{
+					"include": "#function-parameter"
+				},
+				{
+					"include": "$self"
+				}
+			]
+		},
+		"function-parameter": {
+			"patterns": [
+				{
+					"captures": {
+						"1": {
+							"name": "variable.parameter.r"
+						}
+					},
+					"match": "(?<=\\(|,|^)\\s*([a-zA-Z._][a-zA-Z0-9._]*)(?=\\s*(?:\\)|=[^=]|,|\\n))"
+				}
+			]
+		},
+		"function-call-parameter": {
+			"patterns": [
+				{
+					"captures": {
+						"1": {
+							"name": "variable.parameter.r"
+						}
+					},
+					"match": "(?<=\\(|,|^)\\s*([a-zA-Z._][a-zA-Z0-9._]*)\\s*(?==[^=])"
+				}
+			]
+		},
+		"keyword": {
+			"patterns": [
+				{
+					"match": "\\b(break|next|repeat|else|in)\\b",
+					"name": "keyword.control.r"
+				},
+				{
+					"match": "\\b(ifelse|if|for|return|switch|while|invisible)\\b(?=\\s*\\()",
+					"name": "keyword.control.r"
+				},
+				{
+					"match": "(\\-|\\+|\\*|\\/|%\\/%|%%|%\\*%|%in%|%o%|%x%|\\^|:=|%between%|%chin%|%like%|%\\+%|%\\+replace%|%:%|%do%|%dopar%|%>%|%<>%|%T>%|%\\$%)",
+					"name": "keyword.operator.arithmetic.r"
+				},
+				{
+					"match": "(=|<-|<<-|->|->>)",
+					"name": "keyword.operator.assignment.r"
+				},
+				{
+					"match": "(==|!=|<>|<|>|<=|>=)",
+					"name": "keyword.operator.comparison.r"
+				},
+				{
+					"match": "(!|&{1,2}|[|]{1,2})",
+					"name": "keyword.operator.logical.r"
+				},
+				{
+					"match": "(\\.\\.\\.|\\$|:|\\~|@)",
+					"name": "keyword.other.r"
+				}
+			]
+		},
+		"parenthesis": {
+			"patterns": [
+				{
+					"begin": "\\(",
+					"beginCaptures": {
+						"1": {
+							"name": "punctuation.definition.parameters.r"
+						}
+					},
+					"end": "\\)",
+					"endCaptures": {
+						"1": {
+							"name": "punctuation.definition.parameters.r"
+						}
+					},
+					"patterns": [
+						{
+							"include": "$self"
+						}
+					]
+				},
+				{
+					"begin": "{",
+					"beginCaptures": {
+						"1": {
+							"name": "punctuation.definition.parameters.r"
+						}
+					},
+					"end": "}",
+					"endCaptures": {
+						"1": {
+							"name": "punctuation.definition.parameters.r"
+						}
+					},
+					"patterns": [
+						{
+							"include": "$self"
+						}
+					]
+				},
+				{
+					"begin": "\\[",
+					"beginCaptures": {
+						"1": {
+							"name": "punctuation.definition.parameters.r"
+						}
+					},
+					"end": "\\]",
+					"endCaptures": {
+						"1": {
+							"name": "punctuation.definition.parameters.r"
+						}
+					},
+					"patterns": [
+						{
+							"include": "$self"
+						}
+					]
+				}
+			]
+		},
+		"roxygen": {
+			"patterns": [
+				{
+					"begin": "^(#')\\s*",
+					"beginCaptures": {
+						"1": {
+							"name": "punctuation.definition.comment.r"
+						}
+					},
+					"end": "$\\n?",
+					"patterns": [
+						{
+							"match": "@[a-zA-Z0-9]+",
+							"name": "keyword.other.r"
+						},
+						{
+							"captures": {
+								"1": {
+									"name": "variable.parameter.r"
+								}
+							},
+							"match": "(?<=@param)\\s*([^ ]+)",
+							"name": "keyword.other.r"
+						}
+					]
+				}
+			]
+		},
+		"storage-type": {
+			"patterns": [
+				{
+					"match": "\\b(character|complex|double|expression|integer|list|logical|numeric|single|raw)\\b(?=\\s*\\()",
+					"name": "storage.type.r"
+				}
+			]
+		},
+		"string": {
+			"patterns": [
+				{
+					"begin": "'",
+					"beginCaptures": {
+						"0": {
+							"name": "punctuation.definition.string.begin.r"
+						}
+					},
+					"end": "'",
+					"endCaptures": {
+						"0": {
+							"name": "punctuation.definition.string.end.r"
+						}
+					},
+					"name": "string.quoted.single.r",
+					"patterns": [
+						{
+							"match": "\\\\.",
+							"name": "constant.character.escape.r"
+						}
+					]
+				},
+				{
+					"begin": "\"",
+					"beginCaptures": {
+						"0": {
+							"name": "punctuation.definition.string.begin.r"
+						}
+					},
+					"end": "\"",
+					"endCaptures": {
+						"0": {
+							"name": "punctuation.definition.string.end.r"
+						}
+					},
+					"name": "string.quoted.double.r",
+					"patterns": [
+						{
+							"match": "\\\\.",
+							"name": "constant.character.escape.r"
+						}
+					]
+				}
+			]
+		}
+	},
+	"scopeName": "source.r",
+	"uuid": "B2E6B78D-6E70-11D9-A369-000D93B3A10A"
+}

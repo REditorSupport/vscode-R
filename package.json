@@ -92,6 +92,11 @@
     ],
     "grammars": [
       {
+        "language": "r",
+        "scopeName": "source.r",
+        "path": "./syntax/r.json"
+      },
+      {
         "language": "rd",
         "scopeName": "text.tex.latex.rd",
         "path": "./syntax/Rd (R Documentation).tmLanguage"
