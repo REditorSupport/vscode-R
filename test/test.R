@@ -19,6 +19,6 @@ print(paste("one", NULL))
 print(paste(NA, 'two'))
 
 print(paste("multi-
-      line",
-      'multi-
-      line'))
+line",
+'multi-
+line'))
