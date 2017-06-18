@@ -1,10 +1,9 @@
 {
     "information_for_contributors": [
-        "This file has been converted from https://github.com/randy3k/R-Extended/blob/master/R%20Extended.tmLanguage",
+        "This file has been converted from https://github.com/randy3k/R-Box/blob/master/syntax/R%20Extended.sublime-syntax",
         "If you want to provide a fix or improvement, please create a pull request against the original repository.",
         "Once accepted there, we are happy to receive an update request."
     ],
-    "version": "https://github.com/randy3k/R-Extended/commit/f5f3d9ba01cf8616928ca1a7b4371750eccc011d",
     "fileTypes": [
         "R",
         "r",
@@ -258,13 +257,13 @@
                 {
                     "begin": "\\(",
                     "beginCaptures": {
-                        "1": {
+                        "0": {
                             "name": "punctuation.section.parens.begin.r"
                         }
                     },
                     "end": "\\)",
                     "endCaptures": {
-                        "1": {
+                        "0": {
                             "name": "punctuation.section.parens.end.r"
                         }
                     },
@@ -277,13 +276,13 @@
                 {
                     "begin": "\\[(?!\\[)",
                     "beginCaptures": {
-                        "1": {
+                        "0": {
                             "name": "punctuation.section.brackets.single.begin.r"
                         }
                     },
                     "end": "\\](?!\\])",
                     "endCaptures": {
-                        "1": {
+                        "0": {
                             "name": "punctuation.section.brackets.single.end.r"
                         }
                     },
@@ -296,13 +295,13 @@
                 {
                     "begin": "\\[\\[",
                     "beginCaptures": {
-                        "1": {
+                        "0": {
                             "name": "punctuation.section.brackets.double.begin.r"
                         }
                     },
                     "end": "\\]\\]",
                     "endCaptures": {
-                        "1": {
+                        "0": {
                             "name": "punctuation.section.brackets.double.end.r"
                         }
                     },
@@ -316,13 +315,13 @@
                 {
                     "begin": "\\{",
                     "beginCaptures": {
-                        "1": {
+                        "0": {
                             "name": "punctuation.section.braces.begin.r"
                         }
                     },
                     "end": "\\}",
                     "endCaptures": {
-                        "1": {
+                        "0": {
                             "name": "punctuation.section.braces.end.r"
                         }
                     },
@@ -373,7 +372,7 @@
                     },
                     "end": "\\)",
                     "endCaptures": {
-                        "1": {
+                        "0": {
                             "name": "punctuation.section.parens.end.r"
                         }
                     },
@@ -451,7 +450,7 @@
                 {
                     "end": "\\)",
                     "endCaptures": {
-                        "1": "punctuation.section.parens.end.r"
+                        "0": "punctuation.section.parens.end.r"
                     }
                 },
                 {
