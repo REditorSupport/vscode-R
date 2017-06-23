@@ -205,10 +205,9 @@ export function activate(context: ExtensionContext) {
         rTerm.sendText("install.packages(\"lintr\")");
     }
 
-    function deleteTerminal(term) {
+    function deleteTerminal(term: Terminal) {
         if (term === rTerm) {
             rTerm = null; 
-            console.log("hello")
         }  
     }
 

@@ -1,4 +1,7 @@
 # Change Log
+## v0.3.6
+* fix Terminal #7
+
 ## v0.3.5
 * fix syntax
 
@@ -7,7 +10,7 @@
 
 ## v0.3.3
 * New syntax color from R Box
-* fix typo(Thank you @Shians) # 12
+* fix typo(Thank you @Shians) #s12
 
 ## v0.3.1
 * fix Run Selection/Line only executes the first line of file when nothing was selected #9

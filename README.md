@@ -17,11 +17,11 @@ Requires [R](https://www.r-project.org/).
 * R Integrated Terminal
 ![Create R terminal](images/terminal.png)
 
+* Extended Syntax(R, R Markdown, R Documentation)
+![Syntax](images/Rsyntax.png)
 * Support [lintr](https://github.com/jimhester/lintr)
 ![lintr](images/lintr.png)
-* Extend color
 * Create .gitignore based [R.gitignore](https://github.com/github/gitignore/raw/master/R.gitignore)
-* Support R Documentation and R Markdown
 * Snippets
 
 ## Requirements
