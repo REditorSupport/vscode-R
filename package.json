@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "Support for R language(run,syntax,snippet,lintr)",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",

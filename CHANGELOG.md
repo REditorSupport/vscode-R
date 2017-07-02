@@ -1,4 +1,7 @@
 # Change Log
+## v0.3.7
+* run lintr on did save automaticaly
+
 ## v0.3.6
 * fix Terminal #7
 
