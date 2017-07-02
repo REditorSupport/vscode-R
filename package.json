@@ -31,6 +31,8 @@
     "vscode": "^1.11.2"
   },
   "activationEvents": [
+    "onLanguage:r",
+    "workspaceContains:*.r|.rd|rmd",
     "onCommand:r.createRterm",
     "onCommand:r.runSource",
     "onCommand:r.runSelection",
@@ -176,6 +178,11 @@
             "terminal"
           ],
           "description": "Keeping focus when running"
+        },
+        "r.lintr.enabled": {
+          "type":"boolean",
+          "default": true,
+          "description": "Enable lintr"
         },
         "r.lintr.linters": {
           "type": "string",

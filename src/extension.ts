@@ -6,6 +6,8 @@ import { workspace, window, commands, ExtensionContext, languages,
 import cp = require('child_process');
 import fs = require('fs');
 import path = require('path');
+// import { R_MODE } from './rMode';
+// import { RHoverProvider } from "./rHoverProvider";
 
 let config = workspace.getConfiguration('r');
 let rTerm: Terminal;
@@ -130,6 +132,9 @@ export function activate(context: ExtensionContext) {
     const lintRegex = /.+?:(\d+):(\d+): ((?:error)|(?:warning|style)): (.+)/g;
 
     function lintr() {
+        if (!config.get('lintr.enabled')) {
+            return;
+        }
         let rPath: string;
         if (config.get('lintr.executable') !== "") {
             rPath = <string>config.get('lintr.executable');
@@ -159,13 +164,22 @@ export function activate(context: ExtensionContext) {
             '--args'
         ];
 
-        console.log(rPath);
-        console.log(rPath + " " + parameters.join(" "));
         cp.execFile(rPath, parameters, (error, stdout, stderr) => {
             if (stderr) {
                 console.log("stderr:" + stderr.toString());
             }
             if (error) {
+                window.showInformationMessage("lintr is not installed", "install lintr", "disable lintr").then(
+                    item => {
+                        if (item === "install lintr") {
+                            installLintr();
+                            return;
+                        }else {
+                            config.update("lintr.enabled", false);
+                            diagnostics.clear();
+                            return;
+                        }
+                });
                 console.log(error.toString());
             }
             let match = lintRegex.exec(stdout);
@@ -218,7 +232,9 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.lintr', lintr),
         commands.registerCommand('r.installLintr', installLintr),
-        window.onDidCloseTerminal(deleteTerminal)
+        // workspace.onDidChangeTextDocument(lintr),
+        workspace.onDidSaveTextDocument(lintr),
+        window.onDidCloseTerminal(deleteTerminal),
     );
 
     function ToRStringLiteral(s: string, quote: string) {
