@@ -89,6 +89,9 @@ export function activate(context: ExtensionContext) {
         if (!rTerm) {
             createRterm(true);
         }
+        
+        commands.executeCommand('cursorMove', {'to':'down'});
+        
         rTerm.sendText(selectedLineText);
         setFocus();
     }
