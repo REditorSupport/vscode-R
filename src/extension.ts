@@ -90,7 +90,7 @@ export function activate(context: ExtensionContext) {
             createRterm(true);
         }
         
-        commands.executeCommand('cursorMove', {'to':'down'});
+        commands.executeCommand('cursorMove', {'to': 'down'});
         
         rTerm.sendText(selectedLineText);
         setFocus();
