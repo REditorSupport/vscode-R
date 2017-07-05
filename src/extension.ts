@@ -93,7 +93,7 @@ export function activate(context: ExtensionContext) {
         commands.executeCommand('cursorMove', {'to': 'down'});
       
         // Skip comments
-        if(checkForComment(selectedLineText)){ return };
+        if (checkForComment(selectedLineText)) { return; }
       
         rTerm.sendText(selectedLineText);
         setFocus();
@@ -108,11 +108,11 @@ export function activate(context: ExtensionContext) {
 
     function checkForComment(line): boolean {
         var index = 0;
-        while(index < line.length){
-            if(!(line[index] == ' ')){ break };
+        while (index < line.length) {
+            if (!(line[index] === ' ')) { break; }
             index++;
         }
-        if(line[index] === '#'){ return true } else { return false };
+        return line[index] === '#';
     }
 
     function createGitignore() {
