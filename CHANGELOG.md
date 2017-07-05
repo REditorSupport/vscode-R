@@ -1,4 +1,9 @@
 # Change Log
+## v0.3.8
+* Improve `Run Selection/Line` (Thank you @Ladvien)
+    * Added cursorMove after line execution #13
+    * Don't pass Rterm comments #14
+
 ## v0.3.7
 * run lintr on did save automaticaly
 
@@ -13,7 +18,7 @@
 
 ## v0.3.3
 * New syntax color from R Box
-* fix typo(Thank you @Shians) #s12
+* fix typo(Thank you @Shians) #12
 
 ## v0.3.1
 * fix Run Selection/Line only executes the first line of file when nothing was selected #9
