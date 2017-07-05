@@ -89,11 +89,12 @@ export function activate(context: ExtensionContext) {
         if (!rTerm) {
             createRterm(true);
         }
-        commands.executeCommand('cursorMove', {'to':'down'});
-        
+      
+        commands.executeCommand('cursorMove', {'to': 'down'});
+      
         // Skip comments
         if(checkForComment(selectedLineText)){ return };
-        
+      
         rTerm.sendText(selectedLineText);
         setFocus();
     }
