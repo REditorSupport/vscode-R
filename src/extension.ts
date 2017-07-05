@@ -83,15 +83,18 @@ export function activate(context: ExtensionContext) {
         let { start, end } = window.activeTextEditor.selection;
         let currentDocument = window.activeTextEditor.document;
         let range = new Range(start, end);
-        const selectedLineText = !range.isEmpty
+        let selectedLineText = !range.isEmpty
                                  ? currentDocument.getText(new Range(start, end))
                                  : currentDocument.lineAt(start.line).text;
         if (!rTerm) {
             createRterm(true);
         }
-        
+      
         commands.executeCommand('cursorMove', {'to': 'down'});
-        
+      
+        // Skip comments
+        if(checkForComment(selectedLineText)){ return };
+      
         rTerm.sendText(selectedLineText);
         setFocus();
     }
@@ -101,6 +104,15 @@ export function activate(context: ExtensionContext) {
         if (focus === "terminal") {
             rTerm.show();
         }
+    }
+
+    function checkForComment(line): boolean {
+        var index = 0;
+        while(index < line.length){
+            if(!(line[index] == ' ')){ break };
+            index++;
+        }
+        if(line[index] === '#'){ return true } else { return false };
     }
 
     function createGitignore() {
