@@ -83,7 +83,7 @@ export function activate(context: ExtensionContext) {
         let { start, end } = window.activeTextEditor.selection;
         let currentDocument = window.activeTextEditor.document;
         let range = new Range(start, end);
-        var selectedLineText = !range.isEmpty
+        let selectedLineText = !range.isEmpty
                                  ? currentDocument.getText(new Range(start, end))
                                  : currentDocument.lineAt(start.line).text;
         if (!rTerm) {
@@ -105,13 +105,13 @@ export function activate(context: ExtensionContext) {
         }
     }
 
-    function checkForComment(string): boolean {
+    function checkForComment(line): boolean {
         var index = 0;
-        while(index < string.length){
-            if(!(string[index] == ' ')){ break };
+        while(index < line.length){
+            if(!(line[index] == ' ')){ break };
             index++;
         }
-        if(string[index] == '#'){ return true } else { return false };
+        if(line[index] === '#'){ return true } else { return false };
     }
 
     function createGitignore() {
