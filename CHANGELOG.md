@@ -1,4 +1,7 @@
 # Change Log
+## v0.3.9
+* Fix problem lintr was running other language's files
+
 ## v0.3.8
 * Improve `Run Selection/Line` (Thank you @Ladvien)
     * Added cursorMove after line execution #13
