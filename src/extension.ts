@@ -147,7 +147,8 @@ export function activate(context: ExtensionContext) {
     const lintRegex = /.+?:(\d+):(\d+): ((?:error)|(?:warning|style)): (.+)/g;
 
     function lintr() {
-        if (!config.get('lintr.enabled')) {
+        if (!(config.get('lintr.enabled') &&
+            window.activeTextEditor.document.languageId === "r")) {
             return;
         }
         let rPath: string;
@@ -189,7 +190,7 @@ export function activate(context: ExtensionContext) {
                         if (item === "install lintr") {
                             installLintr();
                             return;
-                        }else {
+                        }else if (item === "disable lintr") {
                             config.update("lintr.enabled", false);
                             diagnostics.clear();
                             return;
