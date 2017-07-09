@@ -4,7 +4,7 @@ Requires [R](https://www.r-project.org/).
 
 # Usage
 * For Windows, set config `r.rterm.windows` to your `R.exe` Path like `"C:\\Program Files\\R\\R-3.3.4\\bin\\x64\\R.exe"`;
-* Open your folder that has R source file (Can't work if you open only file)
+* Open your folder that has R source file (**Can't work if you open only file**)
 * Use `F1` key and `R:` command
 
 ## Features
