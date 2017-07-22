@@ -180,7 +180,7 @@
           "description": "Keeping focus when running"
         },
         "r.lintr.enabled": {
-          "type":"boolean",
+          "type": "boolean",
           "default": true,
           "description": "Enable lintr"
         },
@@ -210,16 +210,16 @@
   },
   "devDependencies": {
     "@types/mocha": "^2.2.32",
-    "@types/node": "^6.0.78",
+    "@types/node": "^6.0.84",
     "mocha": "^2.3.3",
-    "typescript": "^2.3.4",
-    "vscode": "^1.1.0",
-    "yaml-to-json": "^0.3.0"
+    "typescript": "^2.4.2",
+    "vscode": "^1.1.4",
+    "yamljs": "^0.3.0"
   },
   "dependencies": {
     "fs": "0.0.1-security",
     "path": "^0.12.7",
     "tslint": "^4.5.1",
-    "vscode-languageserver": "^3.2.1"
+    "vscode-languageserver": "^3.3.0"
   }
 }

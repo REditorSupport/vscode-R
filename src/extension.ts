@@ -132,7 +132,6 @@ export function activate(context: ExtensionContext) {
     }
 
     function parseSeverity(severity): DiagnosticSeverity {
-
         switch (severity) {
             case "error":
                 return DiagnosticSeverity.Error;
@@ -151,10 +150,8 @@ export function activate(context: ExtensionContext) {
             window.activeTextEditor.document.languageId === "r")) {
             return;
         }
-        let rPath: string;
-        if (config.get('lintr.executable') !== "") {
-            rPath = <string>config.get('lintr.executable');
-        }else {
+        let rPath: string = <string>config.get('lintr.executable');
+        if (!rPath)  {
             rPath = getRpath();
         }
         if (!rPath) {
@@ -248,7 +245,6 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.lintr', lintr),
         commands.registerCommand('r.installLintr', installLintr),
-        // workspace.onDidChangeTextDocument(lintr),
         workspace.onDidSaveTextDocument(lintr),
         window.onDidCloseTerminal(deleteTerminal),
     );
