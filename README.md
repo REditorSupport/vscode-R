@@ -52,4 +52,8 @@ This extension based on
 * [language-r](https://github.com/lee-dohm/language-r)
 * [R box](https://github.com/randy3k/R-Box)
 
+## FAQ
+* Q: I can't use command and message is `xxx no command found`.
+* A: Please open your folder that has R source file
+
 The R logo is © 2016 The R Foundation
