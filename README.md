@@ -7,6 +7,15 @@ Requires [R](https://www.r-project.org/).
 * Open your folder that has R source file (**Can't work if you open only file**)
 * Use `F1` key and `R:` command
 
+If you want to use shortcut, you should add to `keybindings.json`
+```
+{
+    "key": "alt+enter",
+    "command": "r.runSelection",
+    "when": "editorLangId == 'r'"
+}
+```
+
 ## Features
 * Run Source and Run Selected
 ![use Run .R](images/feature.png)
