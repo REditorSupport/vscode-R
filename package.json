@@ -141,6 +141,13 @@
         "command": "r.installLintr"
       }
     ],
+    "keybindings": [
+      {
+        "command": "r.runSelection",
+        "key": "alt+enter",
+        "when": "editorTextFocus && editorLangId == 'r'"
+      }
+    ],
     "configuration": {
       "type": "object",
       "title": "r",
@@ -212,6 +219,7 @@
     "@types/mocha": "^2.2.32",
     "@types/node": "^6.0.84",
     "mocha": "^2.3.3",
+    "node-atomizr": "^0.6.0",
     "typescript": "^2.4.2",
     "vscode": "^1.1.4",
     "yamljs": "^0.3.0"

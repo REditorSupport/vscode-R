@@ -5,16 +5,7 @@ Requires [R](https://www.r-project.org/).
 # Usage
 * For Windows, set config `r.rterm.windows` to your `R.exe` Path like `"C:\\Program Files\\R\\R-3.3.4\\bin\\x64\\R.exe"`;
 * Open your folder that has R source file (**Can't work if you open only file**)
-* Use `F1` key and `R:` command
-
-If you want to use shortcut, you should add to `keybindings.json`
-```
-{
-    "key": "alt+enter",
-    "command": "r.runSelection",
-    "when": "editorLangId == 'r'"
-}
-```
+* Use `F1` key and `R:` command or `alt+enter`
 
 ## Features
 * Run Source and Run Selected
