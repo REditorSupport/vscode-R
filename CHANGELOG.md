@@ -1,4 +1,8 @@
 # Change Log
+## v0.4.0
+* Add shortcut key
+* Fix README.md
+
 ## v0.3.9
 * Fix problem lintr was running other language's files
 
