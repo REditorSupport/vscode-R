@@ -1,5 +1,8 @@
 # Change Log
 ## v0.4.0
+* Add more shortcut key
+
+## v0.4.0
 * Add shortcut key
 * Fix README.md
 

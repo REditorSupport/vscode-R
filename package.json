@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "Support for R language(run,syntax,snippet,lintr)",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
@@ -145,6 +145,11 @@
       {
         "command": "r.runSelection",
         "key": "alt+enter",
+        "when": "editorTextFocus && editorLangId == 'r'"
+      },
+      {
+        "command": "r.runSource",
+        "key": "ctrl+shift+s",
         "when": "editorTextFocus && editorLangId == 'r'"
       }
     ],
