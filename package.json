@@ -35,6 +35,7 @@
     "workspaceContains:*.r|.rd|rmd",
     "onCommand:r.createRterm",
     "onCommand:r.runSource",
+    "onCommand:r.runSourcewithEcho",
     "onCommand:r.runSelection",
     "onCommand:r.createGitignore",
     "onCommand:r.lintr",
@@ -121,6 +122,11 @@
         "command": "r.runSource"
       },
       {
+        "title": "Run Source with Echo",
+        "category": "R",
+        "command": "r.runSourcewithEcho"
+      },
+      {
         "title": "Run Selection/Line",
         "category": "R",
         "command": "r.runSelection"
@@ -144,13 +150,16 @@
     "keybindings": [
       {
         "command": "r.runSelection",
-        "key": "alt+enter",
+        "key": "cmd+enter",
         "when": "editorTextFocus && editorLangId == 'r'"
       },
       {
         "command": "r.runSource",
-        "key": "ctrl+shift+s",
+        "key": "shift+cmd+s",
         "when": "editorTextFocus && editorLangId == 'r'"
+      },{
+        "command": "r.runSourcewithEcho",
+        "key": "shift+cmd+enter"
       }
     ],
     "configuration": {

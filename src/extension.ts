@@ -63,7 +63,7 @@ export function activate(context: ExtensionContext) {
         rTerm.show(preserveshow);
     }
 
-    function runSource()  {
+    function runSource(echo: boolean)  {
         let wad = window.activeTextEditor.document;
         wad.save();
         let rPath = ToRStringLiteral(wad.fileName, '"');
@@ -71,6 +71,9 @@ export function activate(context: ExtensionContext) {
         if (encodingParam) {
             encodingParam = `encoding = "${encodingParam}"`;
             rPath = [rPath, encodingParam].join(", ");
+        }
+        if (echo) {
+            rPath = [rPath, "echo = TRUE"].join(", ");
         }
         if (!rTerm) {
             createRterm(true);
@@ -240,7 +243,8 @@ export function activate(context: ExtensionContext) {
 
     context.subscriptions.push(
         commands.registerCommand('r.createRterm', createRterm),
-        commands.registerCommand('r.runSource', runSource),
+        commands.registerCommand('r.runSource', () => runSource(false)),
+        commands.registerCommand('r.runSourcewithEcho', () => runSource(true)),
         commands.registerCommand('r.runSelection', runSelection),
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.lintr', lintr),
