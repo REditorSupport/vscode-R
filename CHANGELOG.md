@@ -1,4 +1,8 @@
 # Change Log
+## v0.4.2
+* Add Source with echo
+* Fix keybind
+
 ## v0.4.0
 * Add more shortcut key
 
