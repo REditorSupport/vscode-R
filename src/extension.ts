@@ -1,33 +1,13 @@
 'use strict';
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { workspace, window, commands, ExtensionContext, languages, 
-    Diagnostic, DiagnosticSeverity, Range, Position, Terminal, Uri } from 'vscode';
-import cp = require('child_process');
-import fs = require('fs');
-import path = require('path');
+import { workspace, window, commands, ExtensionContext, Range } from 'vscode';
+import { rTerm, createRTerm, deleteTerminal } from './rTerminal';
+import { lintr, installLintr } from './rLint';
+import { createGitignore } from './rGitignore';
+import { config } from './util';
 // import { R_MODE } from './rMode';
 // import { RHoverProvider } from "./rHoverProvider";
-
-let config = workspace.getConfiguration('r');
-let rTerm: Terminal;
-let ignorePath =  path.join(workspace.rootPath, '.gitignore');
-let diagnostics = languages.createDiagnosticCollection('R');
-// From 'https://github.com/github/gitignore/raw/master/R.gitignore'
-let ignoreFiles = [".Rhistory", 
-                   ".Rapp.history",
-                   ".RData",
-                   "*-Ex.R",
-                   "/*.tar.gz",
-                   "/*.Rcheck/",
-                   ".Rproj.user/",
-                   "vignettes/*.html",
-                   "vignettes/*.pdf",
-                   ".httr-oauth",
-                   "/*_cache/",
-                   "/cache/",
-                   "*.utf8.md",
-                   "*.knit.md"].join('\n');
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -39,29 +19,6 @@ export function activate(context: ExtensionContext) {
     // The command has been defined in the package.json file
     // Now provide the implementation of the command with  registerCommand
     // The commandId parameter must match the command field in package.json
-    function getRpath() {
-        if (process.platform === 'win32') {
-            return <string>config.get('rterm.windows');
-        } else if (process.platform === 'darwin') {
-            return <string>config.get('rterm.mac');
-        } else if ( process.platform === 'linux') {
-            return <string>config.get('rterm.linux');
-        }else {
-            window.showErrorMessage(process.platform + "can't use R");
-            return "";
-        }
-    }
-
-    function createRterm(preserveshow?: boolean) {
-        const termName = "R";
-        let termPath = getRpath();
-        if (!termPath) {
-            return;
-        }
-        const termOpt =  <Array<string>>config.get('rterm.option');
-        rTerm = window.createTerminal(termName, termPath, termOpt);
-        rTerm.show(preserveshow);
-    }
 
     function runSource(echo: boolean)  {
         let wad = window.activeTextEditor.document;
@@ -76,7 +33,7 @@ export function activate(context: ExtensionContext) {
             rPath = [rPath, "echo = TRUE"].join(", ");
         }
         if (!rTerm) {
-            createRterm(true);
+            createRTerm(true);
         }
         rTerm.sendText(`source(${rPath})`);
         setFocus();
@@ -90,7 +47,7 @@ export function activate(context: ExtensionContext) {
                                  ? currentDocument.getText(new Range(start, end))
                                  : currentDocument.lineAt(start.line).text;
         if (!rTerm) {
-            createRterm(true);
+            createRTerm(true);
         }
       
         commands.executeCommand('cursorMove', {'to': 'down'});
@@ -118,131 +75,8 @@ export function activate(context: ExtensionContext) {
         return line[index] === '#';
     }
 
-    function createGitignore() {
-        if (!workspace.rootPath) {
-            window.showWarningMessage('Please open workspace to create .gitignore');
-            return;
-        }
-        fs.writeFile(ignorePath, ignoreFiles, (err) => {
-            try {
-                if (err) {
-                    console.log(err);
-                }
-            } catch (e) {
-                window.showErrorMessage(e.message);
-            }
-        });
-    }
-
-    function parseSeverity(severity): DiagnosticSeverity {
-        switch (severity) {
-            case "error":
-                return DiagnosticSeverity.Error;
-            case "warning":
-                return DiagnosticSeverity.Warning;
-            case "style":
-                return DiagnosticSeverity.Information;
-        }
-        return DiagnosticSeverity.Hint;
-    }
-
-    const lintRegex = /.+?:(\d+):(\d+): ((?:error)|(?:warning|style)): (.+)/g;
-
-    function lintr() {
-        if (!(config.get('lintr.enabled') &&
-            window.activeTextEditor.document.languageId === "r")) {
-            return;
-        }
-        let rPath: string = <string>config.get('lintr.executable');
-        if (!rPath)  {
-            rPath = getRpath();
-        }
-        if (!rPath) {
-            return;
-        }
-
-        let rCommand;
-        const cache = config.get('lintr.cache') ? "TRUE" : "FALSE";
-        const linters = config.get('lintr.linters');
-        let fPath = ToRStringLiteral(window.activeTextEditor.document.fileName, "'");
-        if (process.platform === 'win32') {
-            rPath =  ToRStringLiteral(rPath, '');
-            rCommand = `\"suppressPackageStartupMessages(library(lintr));lint(${fPath})\"`;
-        }else {
-            fPath = `${fPath}, cache = ${cache}, linters = ${linters}`;
-            rCommand = `suppressPackageStartupMessages(library(lintr));lint(${fPath})`;
-        }
-        const parameters = [
-            '--vanilla', '--slave',
-            '--no-save',
-            '-e',
-            rCommand,
-            '--args'
-        ];
-
-        cp.execFile(rPath, parameters, (error, stdout, stderr) => {
-            if (stderr) {
-                console.log("stderr:" + stderr.toString());
-            }
-            if (error) {
-                window.showInformationMessage("lintr is not installed", "install lintr", "disable lintr").then(
-                    item => {
-                        if (item === "install lintr") {
-                            installLintr();
-                            return;
-                        }else if (item === "disable lintr") {
-                            config.update("lintr.enabled", false);
-                            diagnostics.clear();
-                            return;
-                        }
-                });
-                console.log(error.toString());
-            }
-            let match = lintRegex.exec(stdout);
-            let results = [];
-            const diagsCollection: {[key: string]: Diagnostic[]} = {};
-            
-            let filename = window.activeTextEditor.document.fileName;
-
-            while (match !== null) {
-                const range = new Range(new Position(Number(match[1]) - 1, 
-                                                     match[2] === undefined ? 0 : Number(match[2]) - 1),
-                                        new Position(Number(match[1]) - 1, 
-                                                     match[2] === undefined ? Number.MAX_SAFE_INTEGER : Number(match[2]) - 1));
-                
-                const message = match[4];
-                const severity = parseSeverity(match[3]);
-                const diag = new Diagnostic(range, message, severity);
-                if (diagsCollection[filename] === undefined) {
-                    diagsCollection[filename] = [];
-                }
-                diagsCollection[filename].push(diag);
-                console.log(message);
-                match = lintRegex.exec(stdout);
-            }
-            diagnostics.clear();
-            diagnostics.set(Uri.file(filename),
-                            diagsCollection[filename]);
-            return results;
-        });
-    }
-
-    function installLintr() {
-        if (!rTerm) {
-            commands.executeCommand('r.createRterm');  
-        }
-        rTerm.show();
-        rTerm.sendText("install.packages(\"lintr\")");
-    }
-
-    function deleteTerminal(term: Terminal) {
-        if (term === rTerm) {
-            rTerm = null; 
-        }  
-    }
-
     context.subscriptions.push(
-        commands.registerCommand('r.createRterm', createRterm),
+        commands.registerCommand('r.createrTerm', createRTerm),
         commands.registerCommand('r.runSource', () => runSource(false)),
         commands.registerCommand('r.runSourcewithEcho', () => runSource(true)),
         commands.registerCommand('r.runSelection', runSelection),
