@@ -33,7 +33,7 @@
   "activationEvents": [
     "onLanguage:r",
     "workspaceContains:*.r|.rd|rmd",
-    "onCommand:r.createRterm",
+    "onCommand:r.createRTerm",
     "onCommand:r.runSource",
     "onCommand:r.runSourcewithEcho",
     "onCommand:r.runSelection",
@@ -114,7 +114,7 @@
       {
         "title": "Create R terminal",
         "category": "R",
-        "command": "r.createRterm"
+        "command": "r.createRTerm"
       },
       {
         "title": "Run Source",
@@ -157,9 +157,11 @@
         "command": "r.runSource",
         "key": "shift+cmd+s",
         "when": "editorTextFocus && editorLangId == 'r'"
-      },{
+      },
+      {
         "command": "r.runSourcewithEcho",
-        "key": "shift+cmd+enter"
+        "key": "shift+cmd+enter",
+        "when": "editorTextFocus && editorLangId == 'r'"
       }
     ],
     "configuration": {

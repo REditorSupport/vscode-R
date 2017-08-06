@@ -87,7 +87,7 @@ export function lintr() {
 
 export function installLintr() {
     if (!rTerm) {
-        commands.executeCommand('r.createRterm');  
+        commands.executeCommand('r.createRTerm');  
     }
     rTerm.show();
     rTerm.sendText("install.packages(\"lintr\")");

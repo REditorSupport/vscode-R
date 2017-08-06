@@ -2,10 +2,10 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { workspace, window, commands, ExtensionContext, Range } from 'vscode';
+import { config } from './util';
 import { rTerm, createRTerm, deleteTerminal } from './rTerminal';
 import { lintr, installLintr } from './rLint';
 import { createGitignore } from './rGitignore';
-import { config } from './util';
 // import { R_MODE } from './rMode';
 // import { RHoverProvider } from "./rHoverProvider";
 
@@ -76,8 +76,8 @@ export function activate(context: ExtensionContext) {
     }
 
     context.subscriptions.push(
-        commands.registerCommand('r.createrTerm', createRTerm),
         commands.registerCommand('r.runSource', () => runSource(false)),
+        commands.registerCommand('r.createRTerm', createRTerm),
         commands.registerCommand('r.runSourcewithEcho', () => runSource(true)),
         commands.registerCommand('r.runSelection', runSelection),
         commands.registerCommand('r.createGitignore', createGitignore),
