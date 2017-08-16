@@ -1,17 +1,17 @@
-import { window, commands,  
-    Diagnostic, Range, Position, Uri, languages, DiagnosticSeverity } from 'vscode';
-import { config, getRpath } from './util';
-import { rTerm } from './rTerminal';
-import cp = require('child_process');
-let diagnostics = languages.createDiagnosticCollection('R');
+import { commands, Diagnostic,
+    DiagnosticSeverity, languages, Position, Range, Uri, window } from "vscode";
+import { rTerm } from "./rTerminal";
+import { config, getRpath, ToRStringLiteral } from "./util";
+import cp = require("child_process");
+const diagnostics = languages.createDiagnosticCollection("R");
 const lintRegex = /.+?:(\d+):(\d+): ((?:error)|(?:warning|style)): (.+)/g;
 
 export function lintr() {
-    if (!(config.get('lintr.enabled') &&
+    if (!(config.get("lintr.enabled") &&
         window.activeTextEditor.document.languageId === "r")) {
         return;
     }
-    let rPath: string = <string>config.get('lintr.executable');
+    let rPath: string = <string> config.get("lintr.executable");
     if (!rPath)  {
         rPath = getRpath();
     }
@@ -20,31 +20,31 @@ export function lintr() {
     }
 
     let rCommand;
-    const cache = config.get('lintr.cache') ? "TRUE" : "FALSE";
-    const linters = config.get('lintr.linters');
+    const cache = config.get("lintr.cache") ? "TRUE" : "FALSE";
+    const linters = config.get("lintr.linters");
     let fPath = ToRStringLiteral(window.activeTextEditor.document.fileName, "'");
-    if (process.platform === 'win32') {
-        rPath =  ToRStringLiteral(rPath, '');
+    if (process.platform === "win32") {
+        rPath =  ToRStringLiteral(rPath, "");
         rCommand = `\"suppressPackageStartupMessages(library(lintr));lint(${fPath})\"`;
     }else {
         fPath = `${fPath}, cache = ${cache}, linters = ${linters}`;
         rCommand = `suppressPackageStartupMessages(library(lintr));lint(${fPath})`;
     }
     const parameters = [
-        '--vanilla', '--slave',
-        '--no-save',
-        '-e',
+        "--vanilla", "--slave",
+        "--no-save",
+        "-e",
         rCommand,
-        '--args'
+        "--args",
     ];
 
     cp.execFile(rPath, parameters, (error, stdout, stderr) => {
         if (stderr) {
-            console.log("stderr:" + stderr.toString());
+            // console.log("stderr:" + stderr.toString());
         }
         if (error) {
             window.showInformationMessage("lintr is not installed", "install lintr", "disable lintr").then(
-                item => {
+                (item) => {
                     if (item === "install lintr") {
                         installLintr();
                         return;
@@ -54,20 +54,22 @@ export function lintr() {
                         return;
                     }
             });
-            console.log(error.toString());
+            // console.log(error.toString());
         }
         let match = lintRegex.exec(stdout);
         let results = [];
         const diagsCollection: {[key: string]: Diagnostic[]} = {};
-        
+
         let filename = window.activeTextEditor.document.fileName;
 
         while (match !== null) {
-            const range = new Range(new Position(Number(match[1]) - 1, 
-                                                    match[2] === undefined ? 0 : Number(match[2]) - 1),
-                                    new Position(Number(match[1]) - 1, 
-                                                    match[2] === undefined ? Number.MAX_SAFE_INTEGER : Number(match[2]) - 1));
-            
+            const range = new Range(new Position(Number(match[1]) - 1,
+                                                    match[2] === undefined ? 0
+                                                                           : Number(match[2]) - 1),
+                                    new Position(Number(match[1]) - 1,
+                                                    match[2] === undefined ? Number.MAX_SAFE_INTEGER
+                                                                           : Number(match[2]) - 1));
+
             const message = match[4];
             const severity = parseSeverity(match[3]);
             const diag = new Diagnostic(range, message, severity);
@@ -75,7 +77,6 @@ export function lintr() {
                 diagsCollection[filename] = [];
             }
             diagsCollection[filename].push(diag);
-            console.log(message);
             match = lintRegex.exec(stdout);
         }
         diagnostics.clear();
@@ -87,27 +88,10 @@ export function lintr() {
 
 export function installLintr() {
     if (!rTerm) {
-        commands.executeCommand('r.createRTerm');  
+        commands.executeCommand("r.createRTerm");
     }
     rTerm.show();
     rTerm.sendText("install.packages(\"lintr\")");
-}
-
-function ToRStringLiteral(s: string, quote: string) {
-    if (s === null) {
-        return "NULL";
-    }
-        return (quote +
-            s.replace(/\\/g, "\\\\")
-            .replace(/"""/g, "\\" + quote)
-            .replace(/\\n/g, "\\n")
-            .replace(/\\r/g, "\\r")
-            .replace(/\\t/g, "\\t")
-            .replace(/\\b/g, "\\b")
-            .replace(/\\a/g, "\\a")
-            .replace(/\\f/g, "\\f")
-            .replace(/\\v/g, "\\v") +
-            quote);
 }
 
 function parseSeverity(severity): DiagnosticSeverity {
@@ -118,6 +102,7 @@ function parseSeverity(severity): DiagnosticSeverity {
             return DiagnosticSeverity.Warning;
         case "style":
             return DiagnosticSeverity.Information;
+        default:
+            return DiagnosticSeverity.Hint;
     }
-    return DiagnosticSeverity.Hint;
 }

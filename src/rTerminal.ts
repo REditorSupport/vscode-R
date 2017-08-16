@@ -1,7 +1,7 @@
-'use srict';
+"use srict";
 
-import { window, Terminal } from 'vscode';
-import { config, getRpath } from './util';
+import { Terminal, window } from "vscode";
+import { config, getRpath } from "./util";
 export let rTerm: Terminal;
 
 export function createRTerm(preserveshow?: boolean) {
@@ -10,13 +10,13 @@ export function createRTerm(preserveshow?: boolean) {
         if (!termPath) {
             return;
         }
-        const termOpt =  <Array<string>>config.get('rterm.option');
+        const termOpt =  <string[]> config.get("rterm.option");
         rTerm = window.createTerminal(termName, termPath, termOpt);
         rTerm.show(preserveshow);
     }
 
 export function deleteTerminal(term: Terminal) {
     if (term === rTerm) {
-        rTerm = null; 
-    }  
+        rTerm = null;
+    }
 }

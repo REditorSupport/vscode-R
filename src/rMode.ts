@@ -1,6 +1,5 @@
-'use strict';
+"use strict";
 
-import vscode = require('vscode');
+import vscode = require("vscode");
 
-export const R_MODE: vscode.DocumentFilter = { language: 'r', scheme: 'file' };
-
+export const R_MODE: vscode.DocumentFilter = { language: "r", scheme: "file" };
