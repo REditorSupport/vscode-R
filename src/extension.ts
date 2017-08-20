@@ -9,6 +9,8 @@ import { R_MODE } from "./rMode";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
 import { config } from "./util";
 
+import fs = require('fs');
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: ExtensionContext) {
@@ -38,13 +40,18 @@ export function activate(context: ExtensionContext) {
         setFocus();
     }
 
-    function runSelection() {
+    function getSelection(): string {
         let { start, end } = window.activeTextEditor.selection;
         let currentDocument = window.activeTextEditor.document;
         let range = new Range(start, end);
         let selectedLineText = !range.isEmpty
                                  ? currentDocument.getText(new Range(start, end))
                                  : currentDocument.lineAt(start.line).text;
+        return selectedLineText;
+    }
+
+    function runSelection() {
+        let selectedLineText = getSelection();
         if (!rTerm) {
             createRTerm(true);
         }
@@ -74,6 +81,55 @@ export function activate(context: ExtensionContext) {
         return line[index] === "#";
     }
 
+    async function previewDataframe(){
+        // TODO: Check for special characters and warn, 'Doesn't look like a dataframe'
+        let dataframeName = getSelection();
+        
+        // 1. Write datafram to CSV
+        // 2. Get CSV path
+        // 3. Autopreview CSV
+
+        if (!rTerm) {
+            createRTerm(true);
+        }
+        
+        // Build dataframe path.
+        let writeFolder = workspace.rootPath + "/" + dataframeName + ".csv";
+        let writeString = "write.csv(" + dataframeName + ", '" + writeFolder + "', row.names = FALSE, quote = FALSE)";
+        rTerm.sendText(writeString);
+
+        let index = 0;
+        let previousSize = 0;
+
+        var writingDataframeToCsv = true;
+        await waitForFileToFinish(writeFolder);
+        workspace.openTextDocument(writeFolder).then(function(file){
+            commands.executeCommand("csv.preview", file.uri);
+        });
+    }
+    
+    async function waitForFileToFinish(filePath){
+        let fileBusy = true;
+        let currentSize = 0;
+        let previousSize = 1;
+        await delay(100);
+        while(fileBusy){
+            let stats = fs.statSync(filePath);
+            currentSize = stats.size;
+            if(currentSize === previousSize){
+                return true;
+            } else {
+                previousSize = currentSize;
+            }
+            await delay(250);
+        }   
+    }
+
+    function delay(ms: number) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+
     context.subscriptions.push(
         commands.registerCommand("r.runSource", () => runSource(false)),
         commands.registerCommand("r.createRTerm", createRTerm),
@@ -82,6 +138,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.createGitignore", createGitignore),
         commands.registerCommand("r.lintr", lintr),
         commands.registerCommand("r.installLintr", installLintr),
+        commands.registerCommand('r.previewDataframe', previewDataframe)
         languages.registerHoverProvider(R_MODE, new RHoverProvider()),
         workspace.onDidSaveTextDocument(lintr),
         window.onDidCloseTerminal(deleteTerminal),
