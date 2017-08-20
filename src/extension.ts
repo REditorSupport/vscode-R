@@ -9,7 +9,9 @@ import { R_MODE } from "./rMode";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
 import { config } from "./util";
 
-import fs = require('fs');
+import fs = require('fs-extra');
+import fswin = require('fswin');
+
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -82,29 +84,45 @@ export function activate(context: ExtensionContext) {
     }
 
     async function previewDataframe(){
-        // TODO: Check for special characters and warn, 'Doesn't look like a dataframe'
-        let dataframeName = getSelection();
         
-        // 1. Write datafram to CSV
-        // 2. Get CSV path
-        // 3. Autopreview CSV
-
         if (!rTerm) {
             createRTerm(true);
         }
-        
-        // Build dataframe path.
-        let writeFolder = workspace.rootPath + "/" + dataframeName + ".csv";
+
+        // TODO: Check for special characters and warn, 'Doesn't look like a dataframe'
+        let dataframeName = getSelection();
+
+        // Make the tmp directory hidden.  Different depending on platform.
+        var tmpDir = "";
+        if (process.platform === "win32") {
+            tmpDir = workspace.rootPath + "/tmp"
+            if (!fs.existsSync(tmpDir)){
+                fs.mkdirSync(tmpDir);
+                // TODO: Need to test win32.
+                //fswin.setAttributesSync(tmpDir, { IS_HIDDEN: true });
+            }
+        } else {
+            tmpDir = workspace.rootPath + "/.tmp"
+            if (!fs.existsSync(tmpDir)){
+                fs.mkdirSync(tmpDir);
+            }
+        }
+
+        // Create R write CSV command.  Turn off row names and quotes, they mess with Excel Viewer.
+        let writeFolder = tmpDir + "/" + dataframeName + ".csv";
         let writeString = "write.csv(" + dataframeName + ", '" + writeFolder + "', row.names = FALSE, quote = FALSE)";
         rTerm.sendText(writeString);
 
-        let index = 0;
-        let previousSize = 0;
-
-        var writingDataframeToCsv = true;
+        // Async poll for R to complete writing CSV.
         await waitForFileToFinish(writeFolder);
-        workspace.openTextDocument(writeFolder).then(function(file){
+
+        // Open CSV in Excel Viewer.  Then delete the tmp directory and file.
+        workspace.openTextDocument(writeFolder).then(async function(file){
             commands.executeCommand("csv.preview", file.uri);
+
+            // TODO: Open Excel Viewer in side pane, or "Preview Position"
+
+            fs.removeSync(tmpDir);
         });
     }
     
@@ -121,7 +139,7 @@ export function activate(context: ExtensionContext) {
             } else {
                 previousSize = currentSize;
             }
-            await delay(250);
+            await delay(50);
         }   
     }
 
@@ -138,7 +156,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.createGitignore", createGitignore),
         commands.registerCommand("r.lintr", lintr),
         commands.registerCommand("r.installLintr", installLintr),
-        commands.registerCommand('r.previewDataframe', previewDataframe)
+        commands.registerCommand('r.previewDataframe', previewDataframe),
         languages.registerHoverProvider(R_MODE, new RHoverProvider()),
         workspace.onDidSaveTextDocument(lintr),
         window.onDidCloseTerminal(deleteTerminal),
@@ -164,4 +182,5 @@ export function activate(context: ExtensionContext) {
 
 // This method is called when your extension is deactivated
 // export function deactivate() {
+    
 // }
