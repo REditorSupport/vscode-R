@@ -28,3 +28,6 @@ peopleDf <- data.frame(PersonalID=c("ZP1U3EPU2FKAWI6K5US5LDV50KRI1LN7", "IA26X38
                        LastName=c("Tesa", "Falla", "Kerrigan"),
                        DOB=c("2010-01-01", "1999-1-1", "1992-04-01"))
                        
+data1mb <- read.csv("/Users/user/Documents/GitHub/vscode-R/test/data1mb.csv")
+data4.4 <- read.csv("/Users/user/Documents/GitHub/vscode-R/test/data4.4mb.csv")
+data5mb <- read.csv("/Users/user/Documents/GitHub/vscode-R/test/data5mb.csv")
