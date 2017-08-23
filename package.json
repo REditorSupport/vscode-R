@@ -252,8 +252,7 @@
     "path": "^0.12.7",
     "tslint": "^4.5.1",
     "vscode-languageserver": "^3.3.0"
-  },
-  "extensionDependencies": [
+  }, "extensionDependencies": [
     "GrapeCity.gc-excelviewer"
   ]
 }
