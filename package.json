@@ -247,6 +247,8 @@
   },
   "dependencies": {
     "fs": "0.0.1-security",
+    "fs-extra": "4.0.1",
+    "fswin": "2.17.726",
     "path": "^0.12.7",
     "tslint": "^4.5.1",
     "vscode-languageserver": "^3.3.0"

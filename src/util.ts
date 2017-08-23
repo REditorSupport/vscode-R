@@ -1,4 +1,5 @@
 import { window, workspace } from "vscode";
+import fs = require('fs-extra');
 export let config = workspace.getConfiguration("r");
 
 export function getRpath() {
@@ -29,4 +30,16 @@ export function ToRStringLiteral(s: string, quote: string) {
             .replace(/\\f/g, "\\f")
             .replace(/\\v/g, "\\v") +
             quote);
+}
+
+export function delay(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+export function checkForSpecialCharacters(text) {
+    return !/[~`!#$%\^&*+=\-\[\]\\';,/{}|\\":<>\?]/g.test(text);
+}
+
+export function checkIfFileExists(filePath) {
+    return fs.existsSync(filePath);
 }
