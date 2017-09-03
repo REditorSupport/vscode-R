@@ -7,7 +7,12 @@ import { RHoverProvider } from "./rHoverProvider";
 import { installLintr, lintr } from "./rLint";
 import { R_MODE } from "./rMode";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
-import { config } from "./util";
+import { config, delay, checkForSpecialCharacters, checkIfFileExists } from "./util";
+
+if (process.platform === "win32") {
+    var fswin = require('fswin');
+} 
+import fs = require('fs-extra');
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -38,13 +43,18 @@ export function activate(context: ExtensionContext) {
         setFocus();
     }
 
-    function runSelection() {
+    function getSelection(): string {
         let { start, end } = window.activeTextEditor.selection;
         let currentDocument = window.activeTextEditor.document;
         let range = new Range(start, end);
         let selectedLineText = !range.isEmpty
                                  ? currentDocument.getText(new Range(start, end))
                                  : currentDocument.lineAt(start.line).text;
+        return selectedLineText;
+    }
+
+    function runSelection() {
+        let selectedLineText = getSelection();
         if (!rTerm) {
             createRTerm(true);
         }
@@ -74,6 +84,88 @@ export function activate(context: ExtensionContext) {
         return line[index] === "#";
     }
 
+    async function previewDataframe(){
+        
+        if (!rTerm) {
+            createRTerm(true);
+        }
+
+        let dataframeName = getSelection();
+
+        if(!checkForSpecialCharacters(dataframeName)) {
+            window.showInformationMessage("This does not appear to be a dataframe.");
+            return false;
+        }
+
+        // Make the tmp directory hidden.
+        var tmpDir = "";
+        if (process.platform === "win32") {
+            tmpDir = workspace.rootPath + "/tmp"
+            if (!fs.existsSync(tmpDir)){
+                fs.mkdirSync(tmpDir);
+                fswin.setAttributesSync(tmpDir, { IS_HIDDEN: true });
+            }
+        } 
+        else {
+            tmpDir = workspace.rootPath + "/.tmp"
+            if (!fs.existsSync(tmpDir)){
+                fs.mkdirSync(tmpDir);
+            }
+        }
+
+        // Create R write CSV command.  Turn off row names and quotes, they mess with Excel Viewer.
+        let pathToTmpCsv = tmpDir + "/" + dataframeName + ".csv";
+        let rWriteCsvCommand = "write.csv(" + dataframeName + ", '" + pathToTmpCsv + "', row.names = FALSE, quote = FALSE)";
+        rTerm.sendText(rWriteCsvCommand);
+
+        await delay(50); // Needed since file size has not yet changed
+
+        if(!checkIfFileExists(pathToTmpCsv)) { 
+            window.showErrorMessage("Dataframe failed to display.");
+            fs.removeSync(tmpDir);
+            return false;
+        }
+
+        // Async poll for R to complete writing CSV.
+        let success = await waitForFileToFinish(pathToTmpCsv);
+        if(!success) {
+            window.showWarningMessage("Visual Studio Code currently limits opening files to 5 MB.");
+            fs.removeSync(tmpDir);
+            return false;
+        }
+
+        // Open CSV in Excel Viewer and clean up.
+        workspace.openTextDocument(pathToTmpCsv).then(async function(file) {
+            await commands.executeCommand("csv.preview", file.uri);
+            fs.removeSync(tmpDir);
+        });
+    }
+
+    async function waitForFileToFinish(filePath) {
+        let fileBusy = true;
+        let currentSize = 0;
+        let previousSize = 1;
+
+        while(fileBusy){
+            let stats = fs.statSync(filePath);
+            currentSize = stats.size;
+
+            // NOTE: This is needed until the VSCode team corrects:
+            // https://github.com/Microsoft/vscode/issues/32118
+            if(currentSize > 5 * 1000000){ // 5 MB
+                return false;
+            }
+
+            if(currentSize === previousSize){
+                return true;
+            } 
+            else {
+                previousSize = currentSize;
+            }
+            await delay(50);
+        }   
+    }
+
     context.subscriptions.push(
         commands.registerCommand("r.runSource", () => runSource(false)),
         commands.registerCommand("r.createRTerm", createRTerm),
@@ -81,6 +173,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.runSelection", runSelection),
         commands.registerCommand("r.createGitignore", createGitignore),
         commands.registerCommand("r.lintr", lintr),
+        commands.registerCommand('r.previewDataframe', previewDataframe),
         commands.registerCommand("r.installLintr", installLintr),
         languages.registerHoverProvider(R_MODE, new RHoverProvider()),
         workspace.onDidSaveTextDocument(lintr),
@@ -107,4 +200,5 @@ export function activate(context: ExtensionContext) {
 
 // This method is called when your extension is deactivated
 // export function deactivate() {
+    
 // }
