@@ -1,4 +1,7 @@
 # Change Log
+## v0.4.3
+* Added Dataviewer Command(Thank you @Lavien)
+
 ## v0.4.2
 * Add Source with echo
 * Fix keybind
