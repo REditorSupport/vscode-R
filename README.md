@@ -44,6 +44,7 @@ This extension contributes the following settings:
 * Output Plot
 * Debug
 * Language Server
+* Format R
 
 This extension based on 
 * [r.tmbundle](https://github.com/textmate/r.tmbundle)

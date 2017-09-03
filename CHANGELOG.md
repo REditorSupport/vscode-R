@@ -1,4 +1,7 @@
 # Change Log
+## v0.4.4
+* Add `Run Source` icon
+
 ## v0.4.3
 * Added Dataviewer Command(Thank you @Lavien)
 
