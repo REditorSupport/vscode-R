@@ -119,7 +119,8 @@
       {
         "title": "Run Source",
         "category": "R",
-        "command": "r.runSource"
+        "command": "r.runSource",
+        "icon": "./images/FileDownload.png"
       },
       {
         "title": "Run Source with Echo",
@@ -151,7 +152,7 @@
         "category": "R",
         "command": "r.previewDataframe"
       }
-    ],
+    ],    
     "keybindings": [
       {
         "command": "r.runSelection",
@@ -169,6 +170,15 @@
         "when": "editorTextFocus && editorLangId == 'r'"
       }
     ],
+    "menus": {
+      "editor/title": [
+        {
+          "when": "editorLangId == r",
+          "command": "r.runSource",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "type": "object",
       "title": "r",
