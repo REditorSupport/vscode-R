@@ -46,6 +46,9 @@ This extension contributes the following settings:
 * Language Server
 * Format R
 
+## CONTRIBUTING
+* Please see [CONTRIBUTING.md](https://github.com/Ikuyadeu/vscode-R/blob/master/CONTRIBUTING.md)
+
 This extension based on 
 * [r.tmbundle](https://github.com/textmate/r.tmbundle)
 * [markdown-redcarpet.tmbundle](https://github.com/streeter/markdown-redcarpet.tmbundle)
