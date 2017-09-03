@@ -1,5 +1,5 @@
 import { window, workspace } from "vscode";
-import fs = require('fs-extra');
+import fs = require("fs-extra");
 export let config = workspace.getConfiguration("r");
 
 export function getRpath() {
@@ -33,7 +33,7 @@ export function ToRStringLiteral(s: string, quote: string) {
 }
 
 export function delay(ms: number) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function checkForSpecialCharacters(text) {
