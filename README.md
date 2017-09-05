@@ -20,7 +20,9 @@ Requires [R](https://www.r-project.org/).
 ![lintr](images/lintr.png)
 * Create .gitignore based [R.gitignore](https://github.com/github/gitignore/raw/master/R.gitignore)
 * Data frame viewer
-<img src="https://ladvien.com/images/DataframePreview.gif"/>
+
+![Image](./images/DataframePreview.gif)
+
 * Snippets
 
 ## Requirements
