@@ -94,16 +94,16 @@ export function activate(context: ExtensionContext) {
         }
 
         // Make the tmp directory hidden.
-        let tmpDir = "";
+        let tmpDir = workspace.rootPath;
         if (process.platform === "win32") {
-            let fswin = require("fswin");
-            tmpDir = workspace.rootPath + "/tmp";
+            const fswin = require("fswin");
+            tmpDir += "/tmp";
             if (!fs.existsSync(tmpDir)) {
                 fs.mkdirSync(tmpDir);
                 fswin.setAttributesSync(tmpDir, { IS_HIDDEN: true });
             }
         } else {
-            tmpDir = workspace.rootPath + "/.tmp";
+            tmpDir += "/.tmp";
             if (!fs.existsSync(tmpDir)) {
                 fs.mkdirSync(tmpDir);
             }
