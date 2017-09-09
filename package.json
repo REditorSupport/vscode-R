@@ -120,7 +120,10 @@
         "title": "Run Source",
         "category": "R",
         "command": "r.runSource",
-        "icon": "./images/FileDownload.png"
+        "icon": {
+          "light": "./images/VSO_DownloadFile.ico",
+          "dark": "./images/DownloadFile_inverse.ico"
+        }
       },
       {
         "title": "Run Source with Echo",
@@ -152,7 +155,7 @@
         "category": "R",
         "command": "r.previewDataframe"
       }
-    ],    
+    ],
     "keybindings": [
       {
         "command": "r.runSelection",
