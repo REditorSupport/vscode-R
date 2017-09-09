@@ -96,11 +96,10 @@ export function activate(context: ExtensionContext) {
         // Make the tmp directory hidden.
         let tmpDir = workspace.rootPath;
         if (process.platform === "win32") {
-            const fswin = require("fswin");
+            tmpDir = tmpDir.replace(/\\/g, "/");
             tmpDir += "/tmp";
             if (!fs.existsSync(tmpDir)) {
                 fs.mkdirSync(tmpDir);
-                fswin.setAttributesSync(tmpDir, { IS_HIDDEN: true });
             }
         } else {
             tmpDir += "/.tmp";
@@ -116,7 +115,7 @@ export function activate(context: ExtensionContext) {
                                 + "', row.names = FALSE, quote = FALSE)";
         rTerm.sendText(rWriteCsvCommand);
 
-        await delay(50); // Needed since file size has not yet changed
+        await delay(350); // Needed since file size has not yet changed
 
         if (!checkIfFileExists(pathToTmpCsv)) {
             window.showErrorMessage("Dataframe failed to display.");
@@ -130,6 +129,11 @@ export function activate(context: ExtensionContext) {
             window.showWarningMessage("Visual Studio Code currently limits opening files to 5 MB.");
             fs.removeSync(tmpDir);
             return false;
+        }
+
+        if (process.platform === "win32") {
+            const winattr = require("winattr");
+            winattr.setSync(tmpDir, {hidden:true});
         }
 
         // Open CSV in Excel Viewer and clean up.
