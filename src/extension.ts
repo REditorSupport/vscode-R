@@ -133,7 +133,7 @@ export function activate(context: ExtensionContext) {
 
         if (process.platform === "win32") {
             const winattr = require("winattr");
-            winattr.setSync(tmpDir, {hidden:true});
+            winattr.setSync(tmpDir, {hidden: true});
         }
 
         // Open CSV in Excel Viewer and clean up.

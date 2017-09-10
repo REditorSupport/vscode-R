@@ -1,5 +1,5 @@
 import {  window, workspace } from "vscode";
-import fs = require("fs");
+import fs = require("fs-extra");
 import path = require("path");
 const ignorePath =  path.join(workspace.rootPath, ".gitignore");
 // From "https://github.com/github/gitignore/raw/master/R.gitignore"
