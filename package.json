@@ -252,7 +252,6 @@
   "devDependencies": {
     "@types/mocha": "^2.2.32",
     "@types/node": "^6.0.84",
-    "fswin": "^2.17.726",
     "mocha": "^2.3.3",
     "node-atomizr": "^0.6.0",
     "typescript": "^2.4.2",
@@ -260,9 +259,7 @@
     "yamljs": "^0.3.0"
   },
   "dependencies": {
-    "fs": "0.0.1-security",
     "fs-extra": "^4.0.1",
-    "fswin": "^2.17.726",
     "path": "^0.12.7",
     "tslint": "^4.5.1",
     "vscode-languageserver": "^3.3.0",
