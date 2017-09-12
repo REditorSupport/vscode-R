@@ -126,7 +126,7 @@ export function activate(context: ExtensionContext) {
         // Async poll for R to complete writing CSV.
         let success = await waitForFileToFinish(pathToTmpCsv);
         if (!success) {
-            window.showWarningMessage("Visual Studio Code currently limits opening files to 5 MB.");
+            window.showWarningMessage("Visual Studio Code currently limits opening files to 20 MB.");
             fs.removeSync(tmpDir);
             return false;
         }
@@ -152,9 +152,9 @@ export function activate(context: ExtensionContext) {
             let stats = fs.statSync(filePath);
             currentSize = stats.size;
 
-            // NOTE: This is needed until the VSCode team corrects:
-            // https://github.com/Microsoft/vscode/issues/32118
-            if (currentSize > 5 * 1000000) { // 5 MB
+            // UPDATE: We are now limited to 20 mb by MODEL_TOKENIZATION_LIMIT
+            // https://github.com/Microsoft/vscode/blob/master/src/vs/editor/common/model/textModel.ts#L34
+            if (currentSize > 2 * 10000000) { // 20 MB
                 return false;
             }
 
