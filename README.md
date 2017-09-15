@@ -43,11 +43,10 @@ This extension contributes the following settings:
 * `r.source.focus` : Keeping focus when running(editor or terminal)
  
 ## TODO
-* Intellisense
+* Language server(developing [here](https://github.com/REditorSupport/languageserver))
+* Intellisense and format(In Language server)
 * Output Plot
 * Debug
-* Language Server
-* Format R
 
 ## CONTRIBUTING
 * Please see [CONTRIBUTING.md](https://github.com/Ikuyadeu/vscode-R/blob/master/CONTRIBUTING.md)
