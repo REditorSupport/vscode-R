@@ -431,7 +431,7 @@
                     "contentName": "meta.function-call.parameters.r"
                 },
                 {
-                    "match": "[a-zA-Z._][a-zA-Z0-9._]*(?=\\s*=)",
+                    "match": "[a-zA-Z._][a-zA-Z0-9._]*(?=\\s[^=])",
                     "name": "variable.parameter.r"
                 },
                 {
