@@ -1,4 +1,9 @@
 # Change Log
+## v0.4.5
+* Fix syntax little
+* Set icon dark and light
+* Improve data viewer perform(Thank you @Lavien)
+
 ## v0.4.4
 * Add `Run Source` icon
 
