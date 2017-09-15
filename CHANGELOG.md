@@ -3,6 +3,7 @@
 * Fix syntax little
 * Set icon dark and light
 * Improve data viewer perform(Thank you @Lavien)
+* Remove extra package
 
 ## v0.4.4
 * Add `Run Source` icon
