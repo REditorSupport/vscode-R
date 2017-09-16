@@ -19,7 +19,7 @@ Requires [R](https://www.r-project.org/).
 * Support [lintr](https://github.com/jimhester/lintr)
 ![lintr](images/lintr.png)
 * Create .gitignore based [R.gitignore](https://github.com/github/gitignore/raw/master/R.gitignore)
-* Data frame viewer
+* Data frame viewer and Environment viewer(`Preview Data frame` or `Preview Environment`)
 
 ![Image](./images/DataframePreview.gif)
 

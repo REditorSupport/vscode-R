@@ -1,4 +1,7 @@
 # Change Log
+## v0.4.6
+* Added Environment Viewer command
+
 ## v0.4.5
 * Fix syntax little
 * Set icon dark and light
@@ -9,7 +12,7 @@
 * Add `Run Source` icon
 
 ## v0.4.3
-* Added Dataviewer Command(Thank you @Lavien)
+* Added Data viewer Command(Thank you @Lavien)
 
 ## v0.4.2
 * Add Source with echo
