@@ -154,6 +154,11 @@
         "title": "Preview Dataframe",
         "category": "R",
         "command": "r.previewDataframe"
+      },
+      {
+        "title": "Preview Environment",
+        "category": "R",
+        "command": "r.previewEnvironment"
       }
     ],
     "keybindings": [

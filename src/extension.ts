@@ -81,6 +81,38 @@ export function activate(context: ExtensionContext) {
         return line[index] === "#";
     }
 
+    function makeTmpDir() {
+        let tmpDir = workspace.rootPath;
+        if (process.platform === "win32") {
+            tmpDir = tmpDir.replace(/\\/g, "/");
+            tmpDir += "/tmp";
+        } else {
+            tmpDir += "/.tmp";
+        }
+        if (!fs.existsSync(tmpDir)) {
+            fs.mkdirSync(tmpDir);
+        }
+        return tmpDir;
+    }
+
+    async function previewEnvironment() {
+        if (!rTerm) {
+            createRTerm(true);
+        }
+        const tmpDir = makeTmpDir();
+        const pathToTmpCsv = tmpDir + "/environment.csv";
+        const envName = "name=ls()";
+        const envClass = "class=sapply(ls(), function(x) {class(get(x))})";
+        const envOut = "out=sapply(ls(), function(x) {capture.output(str(get(x)), silent = T)[1]})";
+        const rWriteCsvCommand = "write.csv(data.frame("
+                                 + envName + ","
+                                 + envClass + ","
+                                 + envOut + "), '"
+                                 + pathToTmpCsv + "', row.names=FALSE, quote = TRUE)";
+        rTerm.sendText(rWriteCsvCommand);
+        await openTmpCSV(pathToTmpCsv, tmpDir);
+    }
+
     async function previewDataframe() {
         if (!rTerm) {
             createRTerm(true);
@@ -93,20 +125,7 @@ export function activate(context: ExtensionContext) {
             return false;
         }
 
-        // Make the tmp directory hidden.
-        let tmpDir = workspace.rootPath;
-        if (process.platform === "win32") {
-            tmpDir = tmpDir.replace(/\\/g, "/");
-            tmpDir += "/tmp";
-            if (!fs.existsSync(tmpDir)) {
-                fs.mkdirSync(tmpDir);
-            }
-        } else {
-            tmpDir += "/.tmp";
-            if (!fs.existsSync(tmpDir)) {
-                fs.mkdirSync(tmpDir);
-            }
-        }
+        const tmpDir = makeTmpDir();
 
         // Create R write CSV command.  Turn off row names and quotes, they mess with Excel Viewer.
         let pathToTmpCsv = tmpDir + "/" + dataframeName + ".csv";
@@ -114,7 +133,10 @@ export function activate(context: ExtensionContext) {
                                 + pathToTmpCsv
                                 + "', row.names = FALSE, quote = FALSE)";
         rTerm.sendText(rWriteCsvCommand);
+        await openTmpCSV(pathToTmpCsv, tmpDir);
+    }
 
+    async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
         await delay(350); // Needed since file size has not yet changed
 
         if (!checkIfFileExists(pathToTmpCsv)) {
@@ -140,7 +162,7 @@ export function activate(context: ExtensionContext) {
         workspace.openTextDocument(pathToTmpCsv).then(async (file) => {
             await commands.executeCommand("csv.preview", file.uri);
             fs.removeSync(tmpDir);
-        });
+                });
     }
 
     async function waitForFileToFinish(filePath) {
@@ -175,6 +197,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.createGitignore", createGitignore),
         commands.registerCommand("r.lintr", lintr),
         commands.registerCommand("r.previewDataframe", previewDataframe),
+        commands.registerCommand("r.previewEnvironment", previewEnvironment),
         commands.registerCommand("r.installLintr", installLintr),
         languages.registerHoverProvider(R_MODE, new RHoverProvider()),
         workspace.onDidSaveTextDocument(lintr),
