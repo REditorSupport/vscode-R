@@ -11,7 +11,7 @@ export function lintr() {
         window.activeTextEditor.document.languageId === "r")) {
         return;
     }
-    let rPath: string = <string> config.get("lintr.executable");
+    let rPath: string = config.get("lintr.executable") as string;
     if (!rPath)  {
         rPath = getRpath();
     }
@@ -57,10 +57,9 @@ export function lintr() {
             // console.log(error.toString());
         }
         let match = lintRegex.exec(stdout);
-        let results = [];
         const diagsCollection: {[key: string]: Diagnostic[]} = {};
 
-        let filename = window.activeTextEditor.document.fileName;
+        const filename = window.activeTextEditor.document.fileName;
 
         while (match !== null) {
             const range = new Range(new Position(Number(match[1]) - 1,
@@ -82,7 +81,7 @@ export function lintr() {
         diagnostics.clear();
         diagnostics.set(Uri.file(filename),
                         diagsCollection[filename]);
-        return results;
+        return [];
     });
 }
 

@@ -6,11 +6,11 @@ export let rTerm: Terminal;
 
 export function createRTerm(preserveshow?: boolean) {
         const termName = "R";
-        let termPath = getRpath();
+        const termPath = getRpath();
         if (!termPath) {
             return;
         }
-        const termOpt =  <string[]> config.get("rterm.option");
+        const termOpt =  config.get("rterm.option") as string[];
         rTerm = window.createTerminal(termName, termPath, termOpt);
         rTerm.show(preserveshow);
     }

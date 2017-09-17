@@ -22,10 +22,10 @@ export function activate(context: ExtensionContext) {
     // The commandId parameter must match the command field in package.json
 
     function runSource(echo: boolean)  {
-        let wad = window.activeTextEditor.document;
+        const wad = window.activeTextEditor.document;
         wad.save();
         let rPath = ToRStringLiteral(wad.fileName, '"');
-        let encodingParam = <string> config.get("source.encoding");
+        let encodingParam = config.get("source.encoding") as string;
         if (encodingParam) {
             encodingParam = `encoding = "${encodingParam}"`;
             rPath = [rPath, encodingParam].join(", ");
@@ -41,17 +41,17 @@ export function activate(context: ExtensionContext) {
     }
 
     function getSelection(): string {
-        let { start, end } = window.activeTextEditor.selection;
-        let currentDocument = window.activeTextEditor.document;
-        let range = new Range(start, end);
-        let selectedLineText = !range.isEmpty
+        const { start, end } = window.activeTextEditor.selection;
+        const currentDocument = window.activeTextEditor.document;
+        const range = new Range(start, end);
+        const selectedLineText = !range.isEmpty
                                  ? currentDocument.getText(new Range(start, end))
                                  : currentDocument.lineAt(start.line).text;
         return selectedLineText;
     }
 
     function runSelection() {
-        let selectedLineText = getSelection();
+        const selectedLineText = getSelection();
         if (!rTerm) {
             createRTerm(true);
         }
@@ -66,7 +66,7 @@ export function activate(context: ExtensionContext) {
     }
 
     function setFocus() {
-        let focus = <string> config.get("source.focus");
+        const focus = config.get("source.focus") as string;
         if (focus === "terminal") {
             rTerm.show();
         }
@@ -118,7 +118,7 @@ export function activate(context: ExtensionContext) {
             createRTerm(true);
         }
 
-        let dataframeName = getSelection();
+        const dataframeName = getSelection();
 
         if (!checkForSpecialCharacters(dataframeName)) {
             window.showInformationMessage("This does not appear to be a dataframe.");
@@ -128,8 +128,8 @@ export function activate(context: ExtensionContext) {
         const tmpDir = makeTmpDir();
 
         // Create R write CSV command.  Turn off row names and quotes, they mess with Excel Viewer.
-        let pathToTmpCsv = tmpDir + "/" + dataframeName + ".csv";
-        let rWriteCsvCommand = "write.csv(" + dataframeName + ", '"
+        const pathToTmpCsv = tmpDir + "/" + dataframeName + ".csv";
+        const rWriteCsvCommand = "write.csv(" + dataframeName + ", '"
                                 + pathToTmpCsv
                                 + "', row.names = FALSE, quote = FALSE)";
         rTerm.sendText(rWriteCsvCommand);
@@ -146,7 +146,7 @@ export function activate(context: ExtensionContext) {
         }
 
         // Async poll for R to complete writing CSV.
-        let success = await waitForFileToFinish(pathToTmpCsv);
+        const success = await waitForFileToFinish(pathToTmpCsv);
         if (!success) {
             window.showWarningMessage("Visual Studio Code currently limits opening files to 20 MB.");
             fs.removeSync(tmpDir);
@@ -166,12 +166,12 @@ export function activate(context: ExtensionContext) {
     }
 
     async function waitForFileToFinish(filePath) {
-        let fileBusy = true;
+        const fileBusy = true;
         let currentSize = 0;
         let previousSize = 1;
 
         while (fileBusy) {
-            let stats = fs.statSync(filePath);
+            const stats = fs.statSync(filePath);
             currentSize = stats.size;
 
             // UPDATE: We are now limited to 20 mb by MODEL_TOKENIZATION_LIMIT
