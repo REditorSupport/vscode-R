@@ -259,14 +259,14 @@
     "@types/node": "^6.0.84",
     "mocha": "^2.3.3",
     "node-atomizr": "^0.6.0",
-    "typescript": "^2.4.2",
-    "vscode": "^1.1.4",
+    "typescript": "^2.5.2",
+    "vscode": "^1.1.5",
     "yamljs": "^0.3.0"
   },
   "dependencies": {
     "fs-extra": "^4.0.1",
     "path": "^0.12.7",
-    "tslint": "^4.5.1",
+    "tslint": "^5.7.0",
     "winattr": "^2.0.0"
   },
   "extensionDependencies": [
