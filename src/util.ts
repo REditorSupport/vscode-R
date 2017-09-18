@@ -4,11 +4,11 @@ export let config = workspace.getConfiguration("r");
 
 export function getRpath() {
     if (process.platform === "win32") {
-        return <string> config.get("rterm.windows");
+        return config.get("rterm.windows") as string;
     } else if (process.platform === "darwin") {
-        return <string> config.get("rterm.mac");
+        return config.get("rterm.mac") as string;
     } else if ( process.platform === "linux") {
-        return <string> config.get("rterm.linux");
+        return config.get("rterm.linux") as string;
     }else {
         window.showErrorMessage(process.platform + "can't use R");
         return "";

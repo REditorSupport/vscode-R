@@ -3,9 +3,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import { commands, ExtensionContext, languages, Range, window, workspace} from "vscode";
 import { createGitignore } from "./rGitignore";
-import { RHoverProvider } from "./rHoverProvider";
 import { installLintr, lintr } from "./rLint";
-import { R_MODE } from "./rMode";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
 import { checkForSpecialCharacters, checkIfFileExists, config, delay } from "./util";
 
@@ -199,7 +197,6 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.previewDataframe", previewDataframe),
         commands.registerCommand("r.previewEnvironment", previewEnvironment),
         commands.registerCommand("r.installLintr", installLintr),
-        languages.registerHoverProvider(R_MODE, new RHoverProvider()),
         workspace.onDidSaveTextDocument(lintr),
         window.onDidCloseTerminal(deleteTerminal),
     );
