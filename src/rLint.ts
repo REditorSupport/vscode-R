@@ -1,8 +1,8 @@
+import cp = require("child_process");
 import { commands, Diagnostic,
     DiagnosticSeverity, languages, Position, Range, Uri, window } from "vscode";
 import { rTerm } from "./rTerminal";
 import { config, getRpath, ToRStringLiteral } from "./util";
-import cp = require("child_process");
 const diagnostics = languages.createDiagnosticCollection("R");
 const lintRegex = /.+?:(\d+):(\d+): ((?:error)|(?:warning|style)): (.+)/g;
 
