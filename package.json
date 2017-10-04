@@ -121,7 +121,7 @@
         "category": "R",
         "command": "r.runSource",
         "icon": {
-          "light": "./images/VSO_DownloadFile.ico",
+          "light": "./images/DownloadFile.ico",
           "dark": "./images/DownloadFile_inverse.ico"
         }
       },
@@ -256,7 +256,7 @@
   },
   "devDependencies": {
     "@types/mocha": "^2.2.32",
-    "@types/node": "^6.0.84",
+    "@types/node": "^8.0.31",
     "mocha": "^2.3.3",
     "node-atomizr": "^0.6.0",
     "typescript": "^2.5.2",
