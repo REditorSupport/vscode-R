@@ -1,4 +1,9 @@
 # Change Log
+## v0.4.7
+* Fix syntax
+* Fix Readme
+* Fix icon
+
 ## v0.4.6
 * Added Environment Viewer command
 

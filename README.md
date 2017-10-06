@@ -8,7 +8,7 @@ Requires [R](https://www.r-project.org/).
 * Use `F1` key and `R:` command or `alt+enter`
 
 ## Features
-* Run Source and Run Selected
+* Run Source(⌘+Shift+S or Push icon![icon](images/FileDownload.png)) and Run Selected((⌘+Enter))
 ![use Run .R](images/feature.png)
 
 * R Integrated Terminal
