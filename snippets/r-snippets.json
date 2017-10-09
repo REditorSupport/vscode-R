@@ -65,11 +65,6 @@
         "body": "factor(${1:x})",
         "description": "Factor"
     },
-    "for":{
-        "prefix": "for",
-        "body": "for (${1:i} in ${2:seq}) ${3:{$0\\}}",
-        "description": "For Loop"
-    },
     "fun":{
         "prefix": "fun",
         "body": "function(${1:x}) ${3:{$0\\}}",
@@ -94,11 +89,6 @@
         "prefix": "grepl",
         "body": "grep(${1:pattern}, ${2:x}, ${3:ignore.case = ${4:FALSE}}, ${5:perl = ${6:FALSE}}, ${7:fixed = ${8:TRUE}})",
         "description": "Grep logical"
-    },
-    "ife":{
-        "prefix": "ife",
-        "body": "ifelse(${1:test}, ${2:yes}, ${3:no})",
-        "description": "Ifelse"
     },
     "ins":{
         "prefix": "ins",
@@ -144,16 +134,6 @@
         "prefix": "loa",
         "body": "load(${1:file}, ${2:envir = ${3:parent.frame()}}, ${4:verbose = ${5:FALSE}})",
         "description": "Load RData"
-    },
-    "lm":{
-        "prefix": "lm",
-        "body": "lm(${1:formula}, ${2:data}, ${3:subset}, ${4:weights}, ${5:na.action})",
-        "description": "Linear regression"
-    },
-    "mat":{
-        "prefix": "mat",
-        "body": "matrix(${1:data = ${2:NA}}, ${3:nrow = ${4:1}}, ${5:ncol = ${6:1}}, ${7:byrow = ${8:FALSE}}, ${9:dimnames = ${10:NULL}})",
-        "description": "Matrix"
     },
     "mea":{
         "prefix": "mea",
@@ -214,11 +194,6 @@
         "prefix": "qua",
         "body": "quantile(${1:x}, ${2:probs = ${3:seq(0, 1, 0.25)}}, ${4:na.rm = ${5:FALSE}}, ${6:names = ${7:TRUE}}, ${8:type = ${9:7}}, ${10:...})",
         "description": "Quantile"
-    },
-    "reac":{
-        "prefix": "reac",
-        "body": "read.csv(\"${1:filename}\"${2:, header = ${3:TRUE},  sep = \"${4:\\,}\",  stringsAsFactors = ${5:FALSE}})",
-        "description": "Read From csv"
     },
     "reat":{
         "prefix": "reat",
@@ -285,9 +260,131 @@
         "body": "${1:file = }file.choose()${0:}",
         "description": "file.choose"
     },
-    "nao":{
-        "prefix": "nao",
-        "body": "na.omit(${0:})",
-        "description": "na.omit"
+    // analysis
+    "Clustering": {
+        "prefix": "clara",
+        "body":[
+            "library(cluster)",
+            "clara(${1:xData}, k = ${2:k}, metric = ${3:metric}, stand = ${4:stand}, samples = ${5:samples})"
+        ],
+        "description":"Cluster data into k clusters (library: cluster)"
+    },
+    "Linear model":{
+        "prefix": "lm",
+        "body": ["lmObj <- lm(${1:yCol} ~ {2:xCol}, data = ${3:data}, subset = ${4:subset}, weights = ${5:weights}, na.action = ${6:na.action})",
+            "summary(lmObj)"
+        ],
+        "description": "Fit a linear model"
+    },
+    "Linear model with plot":{
+        "prefix": "lmplot",
+        "body": ["lmObj <- lm(${1:yCol} ~ {2:xCol}, data = ${3:data}, subset = ${4:subset}, weights = ${5:weights}, na.action = ${6:na.action})",
+            "summary(lmObj)",
+            "plot(lmObj, which=c(1)) # Plot residuals versus fitted"
+        ],
+        "description": "Fit a linear model and create a plot"
+    },
+    "loess": {
+        "prefix": "loess",
+        "body": ["loess(${1:yCol} ~ {2:xCol}, data = ${3:data}, subset = ${4:subset}, weights = ${5:weights}, span = ${6:span},",
+            "degree = ${7:degree}, na.action = {8:na.action})"
+    ],
+        "description": "Local polynomial regression"
+    },
+    "Descriptive statistics summary": {
+        "prefix": "summary",
+        "body": "summary(${1:dataName}, digits = ${2:digits}, maxsum = ${3:maxsum})",
+        "description": "Mean, median, 25th and 75th quartiles, min, and max of variables"
+    },
+    "Crosstabs": {
+        "prefix": "xtabs",
+        "body": [
+            "crossTable <- xtabs(~${1:varNames}, data= ${2:dataName}, exclude = c(${3:exclude}), subset = ${4:subset})",
+            "ftable(crossTable)  # print crosstabs",
+            "summary(crossTable) # chi-square tests"
+        ],
+        "description": "Crosstabulations for variables in a data frame"
+    },
+    // datasets
+    "Empty data frame (character)": {
+        "prefix": "df2c",
+        "body": "${1:dfname} <- data.frame(${2:a} = character(), ${3:b} = character())",
+        "description": "Code snippet for an empty character data frame"
+    },
+    "Empty data frame (numeric)": {
+        "prefix": "df2n",
+        "body": "${1:dfname} <- data.frame(${2:x} = numeric(), ${3:y} = numeric())",
+        "description": "Code snippet for an empty numerical data frame"
+    },
+    "Data frame": {
+        "prefix": "dfv",
+        "body": "${1:dfname} <- data.frame(${2:varlist})",
+        "description": "Create a data frame from vectors"
+    },
+    "Categorical variable": {
+        "prefix": "factor",
+        "body": "${1:outFactor} <- factor(x = ${2:dataVec}, levels = ${3:levels}, exclude = ${4:exclude})",
+        "description": "Create a factor (categorical variable) from a vector"
+    },
+    "Matrix":{
+        "prefix": "matrix",
+        "body": "${1:outMatrix} <- matrix(data = ${2:dataVec}, nrow = ${3:nrow}, ncol = ${4:ncol}, byrow = ${5:byrow})",
+        "description": "Create a matrix from a vector"
+    },
+    "remove missings":{
+        "prefix": "naomit",
+        "body": "${1:newdataframe} <- na.omit(${2:dataframe})",
+        "description": "Remove all rows with missing values from data frame"
+    },
+    "Read CSV":{
+        "prefix": "readc",
+        "body": "${1:dfname} <- read.csv(file = \"${2:file}\", header = ${3|TRUE,FALSE|},  sep = \"${4:\\,}\", row.names = ${5:NULL},  stringsAsFactors = ${6|FALSE,TRUE|}})",
+        "description": "Read a data table from a comma-separated file (CSV) and create a data frame"
+    },
+    // flow
+    "for":{
+        "prefix": "for",
+        "body": [
+            "for (${1:identifier} in ${2:collection}) {",
+            "   ${3:selected}",
+            "}"
+        ],
+        "description": "Code snippet for 'for' loop"
+    },
+    "if": {
+        "prefix": "if",
+        "body": [
+            "if (${1:condition}) {",
+                "   ${2:selected}",
+                "}"
+        ],
+        "description": "Code snippet for 'if' conditional"       
+    },
+    "if-else block": {
+        "prefix": "ifelse",
+        "body": [
+            "if (${1:condition}) {",
+            "   ${2:selected}",
+            "} else {",
+            "   ",
+            "}"
+        ],
+        "description": "Code snippet for 'if-else' conditional block"       
     }
+    // operators
+    // "Assignment": {
+    //     "prefix": "=",
+    //     "body": "<-",
+    //     "description": "Code snippet for '&lt;-' operator"
+    // }, 
+    // "Dplyr pipe": {
+    //     "prefix": "&gt;",
+    //     "body": "%>%",
+    //     "description": "Code snippet for '&gt;' operator"
+    // }
+    // "": {
+    //     "prefix": "",
+    //     "body": "",
+    //     "description": ""
+    // }, 
 }
