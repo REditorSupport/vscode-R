@@ -26,7 +26,7 @@ export function createGitignore() {
     fs.writeFile(ignorePath, ignoreFiles, (err) => {
         try {
             if (err) {
-                // console.log(err);
+                window.showErrorMessage(err);
             }
         } catch (e) {
             window.showErrorMessage(e.message);

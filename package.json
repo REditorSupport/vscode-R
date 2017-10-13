@@ -28,7 +28,7 @@
     "lintr"
   ],
   "engines": {
-    "vscode": "^1.11.2"
+    "vscode": "^1.15.0"
   },
   "activationEvents": [
     "onLanguage:r",
@@ -164,17 +164,20 @@
     "keybindings": [
       {
         "command": "r.runSelection",
-        "key": "cmd+enter",
+        "key": "Ctrl+enter",
+        "mac": "cmd+enter",
         "when": "editorTextFocus && editorLangId == 'r'"
       },
       {
         "command": "r.runSource",
-        "key": "shift+cmd+s",
+        "key": "shift+Ctrl+s",
+        "mac": "shift+cmd+s",
         "when": "editorTextFocus && editorLangId == 'r'"
       },
       {
         "command": "r.runSourcewithEcho",
-        "key": "shift+cmd+enter",
+        "key": "shift+Ctrl+enter",
+        "mac": "shift+cmd+enter",
         "when": "editorTextFocus && editorLangId == 'r'"
       }
     ],
