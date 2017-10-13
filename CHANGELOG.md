@@ -1,4 +1,8 @@
 # Change Log
+## v0.4.8
+* Fix Windows key map
+* Add some snippets from VS
+
 ## v0.4.7
 * Fix syntax
 * Fix Readme
