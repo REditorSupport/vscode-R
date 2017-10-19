@@ -5,6 +5,7 @@
 git clone https://github.com/Ikuyadeu/vscode-R.git
 cd vscode-R
 npm install
+code .
 ```
 ## Test
 * Press `F5` if you open this project by VS Code
