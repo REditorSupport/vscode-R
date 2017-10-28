@@ -49,7 +49,6 @@ export function activate(context: ExtensionContext) {
         const selectedTextArray = selectedLineText.split("\n");
 
         return selectedTextArray;
-
     }
 
     async function runSelection() {
