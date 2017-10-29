@@ -38,28 +38,33 @@ export function activate(context: ExtensionContext) {
         setFocus();
     }
 
-    function getSelection(): string {
+    function getSelection(): string[] {
         const { start, end } = window.activeTextEditor.selection;
         const currentDocument = window.activeTextEditor.document;
         const range = new Range(start, end);
         const selectedLineText = !range.isEmpty
                                  ? currentDocument.getText(new Range(start, end))
                                  : currentDocument.lineAt(start.line).text;
-        return selectedLineText;
+
+        const selectedTextArray = selectedLineText.split("\n");
+
+        return selectedTextArray;
     }
 
-    function runSelection() {
+    async function runSelection() {
         const selectedLineText = getSelection();
+
         if (!rTerm) {
             createRTerm(true);
+            await delay (200); // Let RTerm warm up
         }
 
-        commands.executeCommand("cursorMove", {to: "down"});
-
-        // Skip comments
-        if (checkForComment(selectedLineText)) { return; }
-
-        rTerm.sendText(selectedLineText);
+        for (const line of selectedLineText) {
+            commands.executeCommand("cursorMove", { to: "down" });
+            if (checkForComment(line)) { continue; }
+            await delay(5); // Increase delay if RTerm can't handle speed.
+            rTerm.sendText(line);
+        }
         setFocus();
     }
 
