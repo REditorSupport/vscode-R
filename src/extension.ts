@@ -1,7 +1,7 @@
 "use strict";
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { commands, ExtensionContext, languages, Range, window, workspace} from "vscode";
+import { commands, ExtensionContext, languages, Position, Range, window, workspace} from "vscode";
 import { createGitignore } from "./rGitignore";
 import { installLintr, lintr } from "./rLint";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
@@ -38,31 +38,74 @@ export function activate(context: ExtensionContext) {
         setFocus();
     }
 
-    function getSelection(): string[] {
+    function countBlockStartsAndEnds(textArray: string[]) {
+        let blockStartsCount = 0;
+        let blockEndsCount = 0;
+        for (const text of textArray) {
+            blockStartsCount += text.replace(/[^{]/g, "").length;
+            blockEndsCount += text.replace(/[^}]/g, "").length;
+        }
+        return { numberBlockStarts: blockStartsCount, numberBlockEnds: blockEndsCount };
+    }
+
+    function getSelection(): any {
+        const selection = { linesDownToMoveCursor: 0, selectedTextArray: [] };
         const { start, end } = window.activeTextEditor.selection;
         const currentDocument = window.activeTextEditor.document;
         const range = new Range(start, end);
-        const selectedLineText = !range.isEmpty
-                                 ? currentDocument.getText(new Range(start, end))
-                                 : currentDocument.lineAt(start.line).text;
 
-        const selectedTextArray = selectedLineText.split("\n");
+        let selectedLine: string;
+        if (!range.isEmpty) {
+            const newStart = new Position(start.line, 0);
+            selectedLine = currentDocument.getText(new Range(newStart, end));
+        } else {
+            selectedLine = currentDocument.lineAt(start.line).text;
+        }
 
-        return selectedTextArray;
+        const selectedTextArray = selectedLine.split("\n");
+
+        const blocks = countBlockStartsAndEnds(selectedTextArray);
+        if (blocks.numberBlockStarts > blocks.numberBlockEnds) {
+            let lineIndex = 1;
+            while (blocks.numberBlockStarts !== blocks.numberBlockEnds) {
+                selectedLine = currentDocument.lineAt(end.line + lineIndex).text;
+                selectedTextArray.push(selectedLine);
+
+                const thisLineBlocks = countBlockStartsAndEnds([selectedLine]);
+                blocks.numberBlockStarts += thisLineBlocks.numberBlockStarts;
+                blocks.numberBlockEnds += thisLineBlocks.numberBlockEnds;
+                lineIndex++;
+            }
+            selection.linesDownToMoveCursor = lineIndex;
+        } else if (blocks.numberBlockStarts < blocks.numberBlockEnds) {
+            let lineIndex = 1;
+            while (blocks.numberBlockStarts !== blocks.numberBlockEnds) {
+                selectedLine = currentDocument.lineAt(start.line - lineIndex).text;
+                selectedTextArray.unshift(selectedLine);
+
+                const thisLineBlocks = countBlockStartsAndEnds([selectedLine]);
+                blocks.numberBlockStarts += thisLineBlocks.numberBlockStarts;
+                blocks.numberBlockEnds += thisLineBlocks.numberBlockEnds;
+                lineIndex++;
+            }
+            selection.linesDownToMoveCursor = 0;
+        }
+        selection.selectedTextArray = selectedTextArray;
+
+        return selection;
     }
 
     async function runSelection() {
-        const selectedLineText = getSelection();
+        const selection = getSelection();
 
         if (!rTerm) {
             createRTerm(true);
             await delay (200); // Let RTerm warm up
         }
-
-        for (const line of selectedLineText) {
-            commands.executeCommand("cursorMove", { to: "down" });
+        commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
+        for (const line of selection.selectedTextArray) {
             if (checkForComment(line)) { continue; }
-            await delay(5); // Increase delay if RTerm can't handle speed.
+            await delay(8); // Increase delay if RTerm can't handle speed.
             rTerm.sendText(line);
         }
         setFocus();
