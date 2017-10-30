@@ -32,7 +32,8 @@ export function activate(context: ExtensionContext) {
             rPath = [rPath, "echo = TRUE"].join(", ");
         }
         if (!rTerm) {
-            createRTerm(true);
+            const success = createRTerm(true);
+            if(!success){ return; }
         }
         rTerm.sendText(`source(${rPath})`);
         setFocus();
@@ -99,7 +100,8 @@ export function activate(context: ExtensionContext) {
         const selection = getSelection();
 
         if (!rTerm) {
-            createRTerm(true);
+            const success = createRTerm(true);
+            if(!success){ return; }
             await delay (200); // Let RTerm warm up
         }
         commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
@@ -143,7 +145,8 @@ export function activate(context: ExtensionContext) {
 
     async function previewEnvironment() {
         if (!rTerm) {
-            createRTerm(true);
+            const success = createRTerm(true);
+            if(!success){ return; }
         }
         const tmpDir = makeTmpDir();
         const pathToTmpCsv = tmpDir + "/environment.csv";
@@ -161,7 +164,8 @@ export function activate(context: ExtensionContext) {
 
     async function previewDataframe() {
         if (!rTerm) {
-            createRTerm(true);
+            const success = createRTerm(true);
+            if(!success){ return; }
         }
 
         const dataframeName = getSelection();
