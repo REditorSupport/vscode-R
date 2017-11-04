@@ -11,6 +11,7 @@
         "s",
         "Rprofile"
     ],
+    "firstLine": "^#!/.*\\bRscript\\b",
     "foldingStartMarker": "(\\(\\s*$|\\{\\s*$)",
     "foldingStopMarker": "(^\\s*\\)|^\\s*\\})",
     "keyEquivalent": "^~R",
