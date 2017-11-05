@@ -2,17 +2,26 @@
 
 import { Terminal, window } from "vscode";
 import { config, getRpath } from "./util";
+import fs = require("fs-extra");
 export let rTerm: Terminal;
 
-export function createRTerm(preserveshow?: boolean) {
+export function createRTerm(preserveshow?: boolean): boolean {
         const termName = "R";
         const termPath = getRpath();
         if (!termPath) {
             return;
         }
         const termOpt =  config.get("rterm.option") as string[];
-        rTerm = window.createTerminal(termName, termPath, termOpt);
-        rTerm.show(preserveshow);
+        fs.pathExists(termPath, (err, exists) => {
+            if(exists){
+                rTerm = window.createTerminal(termName, termPath, termOpt);
+                rTerm.show(preserveshow);
+                return true;
+            } else {
+                window.showErrorMessage("Cannot find R client.  Please check R path in preferences and reload.");
+                return false;
+            }
+        })
     }
 
 export function deleteTerminal(term: Terminal) {
