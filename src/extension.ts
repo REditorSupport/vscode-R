@@ -33,7 +33,7 @@ export function activate(context: ExtensionContext) {
         }
         if (!rTerm) {
             const success = createRTerm(true);
-            if(!success){ return; }
+            if (!success) { return; }
         }
         rTerm.sendText(`source(${rPath})`);
         setFocus();
@@ -101,7 +101,7 @@ export function activate(context: ExtensionContext) {
 
         if (!rTerm) {
             const success = createRTerm(true);
-            if(!success){ return; }
+            if (!success) { return; }
             await delay (200); // Let RTerm warm up
         }
         commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
@@ -146,7 +146,7 @@ export function activate(context: ExtensionContext) {
     async function previewEnvironment() {
         if (!rTerm) {
             const success = createRTerm(true);
-            if(!success){ return; }
+            if (!success) { return; }
         }
         const tmpDir = makeTmpDir();
         const pathToTmpCsv = tmpDir + "/environment.csv";
@@ -165,7 +165,7 @@ export function activate(context: ExtensionContext) {
     async function previewDataframe() {
         if (!rTerm) {
             const success = createRTerm(true);
-            if(!success){ return; }
+            if (!success) { return; }
         }
 
         const dataframeName = getSelection();
