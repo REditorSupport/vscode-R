@@ -55,7 +55,8 @@
         "aliases": [
           "R",
           "r"
-        ]
+        ],
+        "firstLine": "^#!/.*\\bRscript\\b"
       },
       {
         "id": "rd",
