@@ -1,4 +1,10 @@
 # Change Log
+## v0.4.9
+* add shebang support for R syntax highlight #33(Thank you @dongzhuoer)
+* Added block detection and execute whole block #32(Thank you @Ladvien)
+* Proposed fix for Load Chunk problems #27 #31(Thank you @Ladvien)
+* Update some snippets from VS
+
 ## v0.4.8
 * Fix Windows key map
 * Add some snippets from VS
