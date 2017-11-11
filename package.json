@@ -248,6 +248,11 @@
           "type": "string",
           "default": "",
           "description": "R executable path for lintr"
+        },
+        "r.lintr.ispackage": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, lintr exec lint_package() instead of lint()"
         }
       }
     }
@@ -263,14 +268,14 @@
     "@types/node": "^8.0.31",
     "mocha": "^2.3.3",
     "node-atomizr": "^0.6.0",
-    "typescript": "^2.5.2",
+    "typescript": "^2.6.1",
     "vscode": "^1.1.5",
     "yamljs": "^0.3.0"
   },
   "dependencies": {
     "fs-extra": "^4.0.1",
     "path": "^0.12.7",
-    "tslint": "^5.7.0",
+    "tslint": "^5.8.0",
     "winattr": "^2.0.0"
   },
   "extensionDependencies": [
