@@ -1,4 +1,5 @@
 import cp = require("child_process");
+import path = require('path')
 import { commands, Diagnostic,
     DiagnosticSeverity, languages, Position, Range, Uri, window, workspace } from "vscode";
 import { rTerm } from "./rTerminal";
@@ -28,7 +29,6 @@ export function lintr() {
     const lintrExec = getLintrCommand(isPackage, lintrArgs, fPath);
 
     if (process.platform === "win32") {
-        rPath =  ToRStringLiteral(rPath, "");
         rCommand = `\"suppressPackageStartupMessages(library(lintr));${lintrExec}\"`;
     } else {
         rCommand = `suppressPackageStartupMessages(library(lintr));${lintrExec}`;
@@ -43,7 +43,9 @@ export function lintr() {
         "--args",
         "@"];
 
-    cp.execFile(rPath, parameters, (error, stdout, stderr) => {
+    const {dir:cwd, base: rBinary} = path.parse(rPath);
+
+    cp.execFile(rBinary, parameters, { cwd, shell: true }, (error, stdout, stderr) => {
         if (stderr) {
             // console.log("stderr:" + stderr.toString());
         }
