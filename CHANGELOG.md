@@ -1,5 +1,9 @@
 # Change Log
 
+## v0.5.1
+
+* Support code region by `#region` and `#endregion`
+
 ## v0.5.0
 
 * Support package lint
