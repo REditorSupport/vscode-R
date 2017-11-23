@@ -28,7 +28,7 @@
     "lintr"
   ],
   "engines": {
-    "vscode": "^1.15.0"
+    "vscode": "^1.17.0"
   },
   "activationEvents": [
     "onLanguage:r",
@@ -56,7 +56,8 @@
           "R",
           "r"
         ],
-        "firstLine": "^#!/.*\\bRscript\\b"
+        "firstLine": "^#!/.*\\bRscript\\b",
+        "configuration": "./r-configuration.json"
       },
       {
         "id": "rd",
@@ -269,7 +270,7 @@
     "mocha": "^2.3.3",
     "node-atomizr": "^0.6.0",
     "typescript": "^2.6.1",
-    "vscode": "^1.1.5",
+    "vscode": "^1.1.8",
     "yamljs": "^0.3.0"
   },
   "dependencies": {

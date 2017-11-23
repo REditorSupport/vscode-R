@@ -12,8 +12,12 @@ add <- function(x, y) {
   x + y
 }
 
+#region
+
 print(add(1, -2))
 print(add(1.0e10, 2.0e10))
+
+#endregion
 
 print(paste("one", NULL))
 print(paste(NA, 'two'))
