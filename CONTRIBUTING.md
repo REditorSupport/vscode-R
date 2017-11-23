@@ -1,31 +1,44 @@
+# Contributing to vscode-r
+
 1. install npm and Node.js
-2. install Visual Studio Code
-3. 
-```
+1. install Visual Studio Code
+
+```sh
 git clone https://github.com/Ikuyadeu/vscode-R.git
 cd vscode-R
 npm install
 code .
 ```
+
 ## Test
+
 * Press `F5` if you open this project by VS Code
 
 ## Pull Request
-1. Fork it(via GitHub) in your account
-2. Add your project url 
-```
+
+* Fork it(via GitHub) in your account
+* Add your project url
+
+```sh
 git remote add mine https://github.com/yourname/vscode-R.git
 ```
-3. Create your feature branch 
-```
+
+* Create your feature branch
+
+```sh
 git checkout -b my-new-feature
 ```
-4. Commit your changes
-```
+
+* Commit your changes
+
+```sh
 git commit -am 'Add some feature'
 ```
-5. Push to the branch
-```
+
+* Push to the branch
+
+```sh
 git push mine my-new-feature
 ```
-6. Create new Pull Request(via GitHub)
+
+* Create new Pull Request(via GitHub)
