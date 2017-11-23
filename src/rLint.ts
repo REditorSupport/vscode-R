@@ -1,5 +1,5 @@
 import cp = require("child_process");
-import path = require('path')
+// import path = require("path");
 import { commands, Diagnostic,
     DiagnosticSeverity, languages, Position, Range, Uri, window, workspace } from "vscode";
 import { rTerm } from "./rTerminal";
@@ -43,9 +43,7 @@ export function lintr() {
         "--args",
         "@"];
 
-    const {dir:cwd, base: rBinary} = path.parse(rPath);
-
-    cp.execFile(rBinary, parameters, { cwd, shell: true }, (error, stdout, stderr) => {
+    cp.execFile(rPath, parameters, (error, stdout, stderr) => {
         if (stderr) {
             // console.log("stderr:" + stderr.toString());
         }
