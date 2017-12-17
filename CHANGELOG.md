@@ -1,5 +1,9 @@
 # Change Log
 
+## v0.5.2
+
+* fix default r.rterm.option to `["--no-save", "--vanilla"]`
+
 ## v0.5.1
 
 * Support code region by `#region` and `#endregion`

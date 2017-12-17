@@ -6,11 +6,12 @@ Requires [R](https://www.r-project.org/).
 
 * For Windows, set config `r.rterm.windows` to your `R.exe` Path like `"C:\\Program Files\\R\\R-3.3.4\\bin\\x64\\R.exe"`;
 * Open your folder that has R source file (**Can't work if you open only file**)
-* Use `F1` key and `R:` command or `alt+enter`
+* Use `F1` key and `R:` command or `⌘+Enter`(windows: `ctrl+enter`)
 
 ## Features
 
-* Run Source(⌘+Shift+S or Push icon![icon](images/FileDownload.png)) and Run Selected((⌘+Enter))
+* Run Source(`⌘+Shift+S` or Push icon![icon](images/FileDownload.png)) and Run Selected((`⌘+Enter`))
+  * If you use Windows or linux `⌘` to `Ctrl`
 
 ![use Run .R](images/feature.png)
 
