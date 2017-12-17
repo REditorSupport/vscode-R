@@ -213,7 +213,7 @@
         },
         "r.rterm.option": {
           "type": "array",
-          "default": [],
+          "default": ["--no-save", "--vanilla"],
           "description": "R command line options (i.e: --vanilla)"
         },
         "r.source.encoding": {
