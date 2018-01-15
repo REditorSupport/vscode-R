@@ -215,7 +215,8 @@
           "type": "array",
           "default": [
             "--no-save",
-            "--vanilla"
+            "--no-restore",
+            "--no-site-file"
           ],
           "description": "R command line options (i.e: --vanilla)"
         },
@@ -273,7 +274,7 @@
     "mocha": "^2.3.3",
     "node-atomizr": "^0.6.0",
     "typescript": "^2.6.1",
-    "vscode": "^1.1.8",
+    "vscode": "^1.1.10",
     "yamljs": "^0.3.0"
   },
   "dependencies": {
