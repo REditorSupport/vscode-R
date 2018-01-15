@@ -1,5 +1,9 @@
 # Change Log
 
+## v0.5.3
+
+* fix default r.rterm.option again to `["--no-save", "--no-restore", "--no-site-file"]`
+
 ## v0.5.2
 
 * fix default r.rterm.option to `["--no-save", "--vanilla"]`
