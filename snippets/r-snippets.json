@@ -260,7 +260,6 @@
         "body": "${1:file = }file.choose()${0:}",
         "description": "file.choose"
     },
-    // analysis
     "Clustering": {
         "prefix": "clara",
         "body":[
@@ -305,7 +304,6 @@
         ],
         "description": "Crosstabulations for variables in a data frame"
     },
-    // datasets
     "Empty data frame (character)": {
         "prefix": "df2c",
         "body": "${1:dfname} <- data.frame(${2:a} = character(), ${3:b} = character())",
@@ -341,7 +339,6 @@
         "body": "${1:dfname} <- read.csv(file = \"${2:file}\", header = ${3|TRUE,FALSE|},  sep = \"${4:\\,}\", row.names = ${5:NULL},  stringsAsFactors = ${6|FALSE,TRUE|}})",
         "description": "Read a data table from a comma-separated file (CSV) and create a data frame"
     },
-    // flow
     "else": {
         "prefix": "else",
         "body": [
@@ -412,20 +409,4 @@
 		],
 		"description": "Folding Region End"
 	}
-    // operators
-    // "Assignment": {
-    //     "prefix": "=",
-    //     "body": "<-",
-    //     "description": "Code snippet for '&lt;-' operator"
-    // }, 
-    // "Dplyr pipe": {
-    //     "prefix": "&gt;",
-    //     "body": "%>%",
-    //     "description": "Code snippet for '&gt;' operator"
-    // }
-    // "": {
-    //     "prefix": "",
-    //     "body": "",
-    //     "description": ""
-    // }, 
 }
