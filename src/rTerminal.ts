@@ -6,7 +6,7 @@ import { config, getRpath } from "./util";
 export let rTerm: Terminal;
 
 export function createRTerm(preserveshow?: boolean): boolean {
-        const termName = "R";
+        const termName = "R Interactive";
         const termPath = getRpath();
         if (!termPath) {
             return;
