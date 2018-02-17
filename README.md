@@ -54,10 +54,10 @@ This extension contributes the following settings:
 * `r.lintr.executable`: R executable path for lintr(if not set, used r.rterm.xxx)
 * `r.source.focus` : Keeping focus when running(editor or terminal)
 
+* Language server(developing [here](https://github.com/REditorSupport/languageserver))
+
 ## TODO
 
-* Language server(developing [here](https://github.com/REditorSupport/languageserver))
-* Intellisense and format(In Language server)
 * Output Plot
 * Debug
 

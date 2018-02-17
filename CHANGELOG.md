@@ -1,5 +1,12 @@
 # Change Log
 
+## v0.5.4
+
+* fix snippets
+* R term name to R interactive (fix #46)
+* Send code from Rmd chunk to terminal (fix #49)
+* Depend R language server extension
+
 ## v0.5.3
 
 * fix default r.rterm.option again to `["--no-save", "--no-restore", "--no-site-file"]`
