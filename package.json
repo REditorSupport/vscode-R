@@ -32,7 +32,7 @@
   },
   "activationEvents": [
     "onLanguage:r",
-    "workspaceContains:*.r|.rd|rmd",
+    "workspaceContains:*.r|.rd|.rmd",
     "onCommand:r.createRTerm",
     "onCommand:r.runSource",
     "onCommand:r.runSourcewithEcho",
@@ -171,6 +171,12 @@
         "when": "editorTextFocus && editorLangId == 'r'"
       },
       {
+        "command": "r.runSelection",
+        "key": "Ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
         "command": "r.runSource",
         "key": "shift+Ctrl+s",
         "mac": "shift+cmd+s",
@@ -284,6 +290,7 @@
     "winattr": "^2.0.0"
   },
   "extensionDependencies": [
-    "GrapeCity.gc-excelviewer"
+    "GrapeCity.gc-excelviewer",
+    "Ikuyadeu.r-lsp"
   ]
 }
