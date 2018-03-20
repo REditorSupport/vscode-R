@@ -239,6 +239,56 @@ export function activate(context: ExtensionContext) {
         }
     }
 
+    async function loadAllPkg() {
+        if (!rTerm) {
+            const success = createRTerm(true);
+            if (!success) { return; }
+        }
+
+        const rLoadAllCommand = "devtools::load_all('.')";
+        rTerm.sendText(rLoadAllCommand);
+    }
+
+    async function testPkg() {
+        if (!rTerm) {
+            const success = createRTerm(true);
+            if (!success) { return; }
+        }
+
+        const rTestCommand = "devtools::test()";
+        rTerm.sendText(rTestCommand);
+    }
+
+    async function installPkg() {
+        if (!rTerm) {
+            const success = createRTerm(true);
+            if (!success) { return; }
+        }
+
+        const rInstallCommand = "devtools::install()";
+        rTerm.sendText(rInstallCommand);
+    }
+
+    async function buildPkg() {
+        if (!rTerm) {
+            const success = createRTerm(true);
+            if (!success) { return; }
+        }
+
+        const rBuildCommand = "devtools::build()";
+        rTerm.sendText(rBuildCommand);
+    }
+
+    async function documentPkg() {
+        if (!rTerm) {
+            const success = createRTerm(true);
+            if (!success) { return; }
+        }
+
+        const rDocumentCommand = "devtools::document()";
+        rTerm.sendText(rDocumentCommand);
+    }
+
     context.subscriptions.push(
         commands.registerCommand("r.runSource", () => runSource(false)),
         commands.registerCommand("r.createRTerm", createRTerm),
@@ -249,6 +299,11 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.previewDataframe", previewDataframe),
         commands.registerCommand("r.previewEnvironment", previewEnvironment),
         commands.registerCommand("r.installLintr", installLintr),
+        commands.registerCommand("r.loadAll", loadAllPkg),
+        commands.registerCommand("r.test", testPkg),
+        commands.registerCommand("r.install", installPkg),
+        commands.registerCommand("r.build", buildPkg),
+        commands.registerCommand("r.document", documentPkg),
         workspace.onDidSaveTextDocument(lintr),
         window.onDidCloseTerminal(deleteTerminal),
     );
