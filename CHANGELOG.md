@@ -1,5 +1,9 @@
 # Change Log
 
+## v0.5.6
+
+* Fix some dependencies for perform and developments
+
 ## v0.5.5
 
 * Add package dev commands #58 (Thank you @jacob-long)
