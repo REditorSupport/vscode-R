@@ -161,6 +161,31 @@
         "title": "Preview Environment",
         "category": "R",
         "command": "r.previewEnvironment"
+      },
+      {
+        "title": "Load All",
+        "category": "R",
+        "command": "r.loadAll"
+      },
+      {
+        "title": "Test Package",
+        "category": "R",
+        "command": "r.test"
+      },
+      {
+        "title": "Install Package",
+        "category": "R",
+        "command": "r.install"
+      },
+      {
+        "title": "Build Package",
+        "category": "R",
+        "command": "r.build"
+      },
+      {
+        "title": "Document",
+        "category": "R",
+        "command": "r.document"
       }
     ],
     "keybindings": [
