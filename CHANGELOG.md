@@ -1,5 +1,9 @@
 # Change Log
 
+## v0.5.5
+
+* Add package dev commands #58 (Thank you @jacob-long)
+
 ## v0.5.4
 
 * fix snippets
