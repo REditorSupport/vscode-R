@@ -62,8 +62,8 @@ export function activate(context: ExtensionContext) {
         } else {
             selectedLine = currentDocument.lineAt(start.line).text;
         }
-
-        const selectedTextArray = selectedLine.split("\n");
+        let selectedTextArray = selectedLine.split("\n");
+        selectedTextArray = removeCommentedLines(selectedTextArray);
 
         const blocks = countBlockStartsAndEnds(selectedTextArray);
         if (blocks.numberBlockStarts > blocks.numberBlockEnds) {
@@ -127,6 +127,14 @@ export function activate(context: ExtensionContext) {
             index++;
         }
         return line[index] === "#";
+    }
+
+    function removeCommentedLines(selection: string[]): string[] {
+        const selectionWithoutComments = [];
+        selection.forEach((line) => {
+            if (!checkForComment(line)) { selectionWithoutComments.push(line); }
+        });
+        return selectionWithoutComments;
     }
 
     function makeTmpDir() {
