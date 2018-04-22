@@ -1,5 +1,10 @@
 # Change Log
 
+## v0.5.7
+
+* Disabled lintr for default setting that is already implemented by LSP
+* Fix Commented lines are not ignored when determining code blocks #61 (Thank you @Ladvien)
+
 ## v0.5.6
 
 * Fix some dependencies for perform and developments
