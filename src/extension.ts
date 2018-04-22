@@ -43,8 +43,8 @@ export function activate(context: ExtensionContext) {
         let blockStartsCount = 0;
         let blockEndsCount = 0;
         for (const text of textArray) {
-            blockStartsCount += text.replace(/[^{]/g, "").length;
-            blockEndsCount += text.replace(/[^}]/g, "").length;
+            blockStartsCount += text.replace(/\s*#.*{|[^{]/g, "").length;
+            blockEndsCount += text.replace(/\s*#.*}|[^}]/g, "").length;
         }
         return { numberBlockStarts: blockStartsCount, numberBlockEnds: blockEndsCount };
     }
@@ -120,7 +120,7 @@ export function activate(context: ExtensionContext) {
         }
     }
 
-    function checkForComment(line): boolean {
+    function checkForComment(line: string): boolean {
         let index = 0;
         while (index < line.length) {
             if (!(line[index] === " ")) { break; }
