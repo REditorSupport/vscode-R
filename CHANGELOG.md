@@ -1,5 +1,7 @@
 # Change Log
 
+* Fix Run Selected has strange behavior #42 (Thank you @Ladvien)
+
 ## v0.5.7
 
 * Disabled lintr for default setting that is already implemented by LSP

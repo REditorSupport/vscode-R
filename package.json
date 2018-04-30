@@ -227,11 +227,6 @@
       "type": "object",
       "title": "r",
       "properties": {
-        "r.rterm": {
-          "type": "string",
-          "default": "",
-          "description": "R.exe path for terminal"
-        },
         "r.rterm.windows": {
           "type": "string",
           "default": "C:\\Program Files\\R\\R-3.5.0\\bin\\x64\\R.exe",
