@@ -49,6 +49,7 @@ This extension contributes the following settings:
 * `r.rterm.windows`: set to R.exe path for Windows
 * `r.rterm.mac`: set to R term's path for Mac OS X
 * `r.rterm.linux`: set to R term's path for Linux
+* `r.rpath.lsp`: set to R.exe path for Language Server Protocol
 * `r.rterm.option`: R command line options (i.e: --vanilla)
 * `r.source.encoding`: An optional encoding to pass to R when executing the file
 * `r.lintr.linters`: list of [linter functions](https://github.com/jimhester/lintr#available-linters)
