@@ -55,13 +55,21 @@ export function activate(context: ExtensionContext) {
         const currentDocument = window.activeTextEditor.document;
         const range = new Range(start, end);
 
-        let selectedLine: string;
-        if (!range.isEmpty) {
+        let selectedLine = currentDocument.getText(range);
+        if (!selectedLine) {
             const newStart = new Position(start.line, 0);
-            selectedLine = currentDocument.getText(new Range(newStart, end));
+            commands.executeCommand("cursorMove", { to: "wrappedLineEnd", by: "line", value: 1 });
+            const charactersOnLine = window.activeTextEditor.document.lineAt(newStart.line).text.length;
+            const newEnd = new Position(start.line, charactersOnLine);
+            selectedLine = currentDocument.getText(new Range(newStart, newEnd));
+        } else if (start.line === end.line) {
+            selection.linesDownToMoveCursor = 0;
+            selection.selectedTextArray = [currentDocument.getText(new Range(start, end))];
+            return selection;
         } else {
-            selectedLine = currentDocument.lineAt(start.line).text;
+            selectedLine = currentDocument.getText(new Range(start, end));
         }
+
         let selectedTextArray = selectedLine.split("\n");
         selectedTextArray = removeCommentedLines(selectedTextArray);
 
@@ -89,7 +97,9 @@ export function activate(context: ExtensionContext) {
                 blocks.numberBlockEnds += thisLineBlocks.numberBlockEnds;
                 lineIndex++;
             }
-            selection.linesDownToMoveCursor = 0;
+            selection.linesDownToMoveCursor = lineIndex;
+        } else {
+            selection.linesDownToMoveCursor = 1;
         }
         selection.selectedTextArray = selectedTextArray;
 
@@ -104,7 +114,10 @@ export function activate(context: ExtensionContext) {
             if (!success) { return; }
             await delay (200); // Let RTerm warm up
         }
-        commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
+        if (selection.linesDownToMoveCursor > 0) {
+            commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
+            commands.executeCommand("cursorMove", { to: "wrappedLineEnd" });
+        }
         for (const line of selection.selectedTextArray) {
             if (checkForComment(line)) { continue; }
             await delay(8); // Increase delay if RTerm can't handle speed.
@@ -302,7 +315,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.createRTerm", createRTerm),
         commands.registerCommand("r.runSourcewithEcho", () => runSource(true)),
         commands.registerCommand("r.runSelection", runSelection),
-        commands.registerCommand("r.createGitignore", createGitignore),
+        // commands.registerCommand("r.createGitignore", createGitignore),
         commands.registerCommand("r.lintr", lintr),
         commands.registerCommand("r.previewDataframe", previewDataframe),
         commands.registerCommand("r.previewEnvironment", previewEnvironment),
