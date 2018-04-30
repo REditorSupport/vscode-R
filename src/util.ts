@@ -3,6 +3,10 @@ import { window, workspace } from "vscode";
 export let config = workspace.getConfiguration("r");
 
 export function getRpath() {
+    const path = config.get("rterm") as string;
+    if (path !== "") {
+        return path;
+    }
     if (process.platform === "win32") {
         return config.get("rterm.windows") as string;
     } else if (process.platform === "darwin") {

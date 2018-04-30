@@ -28,7 +28,7 @@
     "lintr"
   ],
   "engines": {
-    "vscode": "^1.17.0"
+    "vscode": "^1.22.2"
   },
   "activationEvents": [
     "onLanguage:r",
@@ -227,9 +227,14 @@
       "type": "object",
       "title": "r",
       "properties": {
+        "r.rterm": {
+          "type": "string",
+          "default": "",
+          "description": "R.exe path for terminal"
+        },
         "r.rterm.windows": {
           "type": "string",
-          "default": "C:\\Program Files\\R\\R-3.4.4\\bin\\x64\\R.exe",
+          "default": "C:\\Program Files\\R\\R-3.5.0\\bin\\x64\\R.exe",
           "description": "R.exe path for windows"
         },
         "r.rterm.mac": {
@@ -307,7 +312,7 @@
     "node-atomizr": "^0.6.1",
     "tslint": "^5.9.1",
     "typescript": "^2.8.3",
-    "vscode": "^1.1.14",
+    "vscode": "^1.1.16",
     "yamljs": "^0.3.0"
   },
   "dependencies": {
