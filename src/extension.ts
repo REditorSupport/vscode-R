@@ -315,7 +315,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.createRTerm", createRTerm),
         commands.registerCommand("r.runSourcewithEcho", () => runSource(true)),
         commands.registerCommand("r.runSelection", runSelection),
-        // commands.registerCommand("r.createGitignore", createGitignore),
+        commands.registerCommand("r.createGitignore", createGitignore),
         commands.registerCommand("r.lintr", lintr),
         commands.registerCommand("r.previewDataframe", previewDataframe),
         commands.registerCommand("r.previewEnvironment", previewEnvironment),
