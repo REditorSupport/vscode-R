@@ -1,5 +1,11 @@
 # Change Log
 
+## v0.5.9
+
+* Fix for security dependencies
+
+## v0.5.8
+
 * Fix Run Selected has strange behavior #42 (Thank you @Ladvien)
 
 ## v0.5.7
