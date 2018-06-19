@@ -3,7 +3,6 @@
 // Import the module and reference it with the alias vscode in your code below
 import { commands, ExtensionContext, languages, Position, Range, window, workspace} from "vscode";
 import { createGitignore } from "./rGitignore";
-import { installLintr, lintr } from "./rLint";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
 import { checkForSpecialCharacters, checkIfFileExists, config, delay } from "./util";
 
@@ -316,16 +315,13 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.runSourcewithEcho", () => runSource(true)),
         commands.registerCommand("r.runSelection", runSelection),
         commands.registerCommand("r.createGitignore", createGitignore),
-        commands.registerCommand("r.lintr", lintr),
         commands.registerCommand("r.previewDataframe", previewDataframe),
         commands.registerCommand("r.previewEnvironment", previewEnvironment),
-        commands.registerCommand("r.installLintr", installLintr),
         commands.registerCommand("r.loadAll", loadAllPkg),
         commands.registerCommand("r.test", testPkg),
         commands.registerCommand("r.install", installPkg),
         commands.registerCommand("r.build", buildPkg),
         commands.registerCommand("r.document", documentPkg),
-        workspace.onDidSaveTextDocument(lintr),
         window.onDidCloseTerminal(deleteTerminal),
     );
 

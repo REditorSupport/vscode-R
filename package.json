@@ -1,7 +1,7 @@
 {
   "name": "r",
   "displayName": "R",
-  "description": "Support for R language(run,syntax,snippet,lintr)",
+  "description": "Support for R language(run,syntax,snippet)",
   "version": "0.5.9",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
@@ -17,18 +17,16 @@
   "categories": [
     "Programming Languages",
     "Snippets",
-    "Linters",
     "Other"
   ],
   "keywords": [
     "R",
     "R language",
     "R documentation",
-    "R Markdown",
-    "lintr"
+    "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.22.2"
+    "vscode": "^1.24"
   },
   "activationEvents": [
     "onLanguage:r",
@@ -37,9 +35,7 @@
     "onCommand:r.runSource",
     "onCommand:r.runSourcewithEcho",
     "onCommand:r.runSelection",
-    "onCommand:r.createGitignore",
-    "onCommand:r.lintr",
-    "onCommand:r.installLintr"
+    "onCommand:r.createGitignore"
   ],
   "main": "./out/src/extension",
   "contributes": {
@@ -141,16 +137,6 @@
         "title": "Create gitignore",
         "category": "R",
         "command": "r.createGitignore"
-      },
-      {
-        "title": "lintr",
-        "category": "R",
-        "command": "r.lintr"
-      },
-      {
-        "title": "install lintr",
-        "category": "R",
-        "command": "r.installLintr"
       },
       {
         "title": "Preview Dataframe",
@@ -264,31 +250,6 @@
             "terminal"
           ],
           "description": "Keeping focus when running"
-        },
-        "r.lintr.enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable lintr"
-        },
-        "r.lintr.linters": {
-          "type": "string",
-          "default": "default_linters",
-          "description": "list of linter functions"
-        },
-        "r.lintr.cache": {
-          "type": "boolean",
-          "default": true,
-          "description": "toggle caching of lint results"
-        },
-        "r.lintr.executable": {
-          "type": "string",
-          "default": "",
-          "description": "R executable path for lintr"
-        },
-        "r.lintr.ispackage": {
-          "type": "boolean",
-          "default": false,
-          "description": "If true, lintr exec lint_package() instead of lint()"
         }
       }
     }
@@ -307,7 +268,7 @@
     "node-atomizr": "^0.6.1",
     "tslint": "^5.10.0",
     "typescript": "^2.8.3",
-    "vscode": "^1.1.17",
+    "vscode": "^1.1.18",
     "yamljs": "^0.3.0"
   },
   "dependencies": {
@@ -317,6 +278,6 @@
   },
   "extensionDependencies": [
     "GrapeCity.gc-excelviewer",
-    "Ikuyadeu.r-lsp"
+    "REditorSupport.r-lsp"
   ]
 }
