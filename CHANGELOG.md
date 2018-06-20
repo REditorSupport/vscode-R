@@ -1,5 +1,9 @@
 # Change Log
 
+## v0.6.0
+
+* Remove lintr function. If you want to use lintr, please install R LSP Client
+
 ## v0.5.9
 
 * Fix for security dependencies
