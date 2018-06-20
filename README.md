@@ -23,10 +23,6 @@ Requires [R](https://www.r-project.org/).
 
 ![Syntax](images/Rsyntax.png)
 
-* Support [lintr](https://github.com/jimhester/lintr)
-
-![lintr](images/lintr.png)
-
 * Create .gitignore based [R.gitignore](https://github.com/github/gitignore/raw/master/R.gitignore)
 
 * Data frame viewer and Environment viewer(`Preview Data frame` or `Preview Environment`)
@@ -40,7 +36,6 @@ Requires [R](https://www.r-project.org/).
 ## Requirements
 
 * R base from <https://www.r-project.org/>
-* lintr package
 
 ## Extension Settings
 
@@ -52,9 +47,6 @@ This extension contributes the following settings:
 * `r.rpath.lsp`: set to R.exe path for Language Server Protocol
 * `r.rterm.option`: R command line options (i.e: --vanilla)
 * `r.source.encoding`: An optional encoding to pass to R when executing the file
-* `r.lintr.linters`: list of [linter functions](https://github.com/jimhester/lintr#available-linters)
-* `r.lintr.cache`: toggle caching of lint results
-* `r.lintr.executable`: R executable path for lintr(if not set, used r.rterm.xxx)
 * `r.source.focus` : Keeping focus when running(editor or terminal)
 
 * Language server(developing [here](https://github.com/REditorSupport/languageserver))

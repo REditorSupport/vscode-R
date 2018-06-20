@@ -26,7 +26,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.24"
+    "vscode": "^1.24.0"
   },
   "activationEvents": [
     "onLanguage:r",
@@ -277,7 +277,6 @@
     "winattr": "^2.0.0"
   },
   "extensionDependencies": [
-    "GrapeCity.gc-excelviewer",
-    "REditorSupport.r-lsp"
+    "GrapeCity.gc-excelviewer"
   ]
 }
