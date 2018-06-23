@@ -54,7 +54,10 @@ This extension contributes the following settings:
 ## TODO
 
 * Output Plot
-* Debug
+* Debug support
+* styler integration
+* covr integration
+* Rcpp integration
 
 ## CONTRIBUTING
 
