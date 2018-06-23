@@ -309,6 +309,26 @@ export function activate(context: ExtensionContext) {
         rTerm.sendText(rDocumentCommand);
     }
 
+    async function checkPkg() {
+        if (!rTerm) {
+            const success = createRTerm(true);
+            if (!success) { return; }
+        }
+
+        const rCheckCommand = "devtools::check()";
+        rTerm.sendText(rCheckCommand);
+    }
+
+    async function buildVignettes() {
+        if (!rTerm) {
+            const success = createRTerm(true);
+            if (!success) { return; }
+        }
+
+        const rBuildVignettesCommand = "devtools::build_vignettes()"
+        rTerm.sendText(rBuildVignettesCommand);
+    }
+
     context.subscriptions.push(
         commands.registerCommand("r.runSource", () => runSource(false)),
         commands.registerCommand("r.createRTerm", createRTerm),
@@ -322,6 +342,8 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.install", installPkg),
         commands.registerCommand("r.build", buildPkg),
         commands.registerCommand("r.document", documentPkg),
+        commands.registerCommand("r.check", checkPkg),
+        commands.registerCommand("r.buildVignettes", buildVignettes),
         window.onDidCloseTerminal(deleteTerminal),
     );
 

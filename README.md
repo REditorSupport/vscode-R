@@ -31,7 +31,7 @@ Requires [R](https://www.r-project.org/).
 
 * Snippets
 
-* Package development short cut (`Load All`, `Test Package`, `Install Package`, `Build Package` and `Document`)
+* Package development short cut (`Load All`, `Test Package`, `Install Package`, `Build Package`, `Document`, `Check Package`, and `Build Vignettes`)
 
 ## Requirements
 

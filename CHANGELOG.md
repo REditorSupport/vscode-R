@@ -1,5 +1,9 @@
 # Change Log
 
+## v0.6.1
+
+* Add `Check Package` and `Build Vignettes` commands (by @renkun-ken)
+
 ## v0.6.0
 
 * Remove lintr function. If you want to use lintr, please install R LSP Client
