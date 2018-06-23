@@ -325,7 +325,7 @@ export function activate(context: ExtensionContext) {
             if (!success) { return; }
         }
 
-        const rBuildVignettesCommand = "devtools::build_vignettes()"
+        const rBuildVignettesCommand = "devtools::build_vignettes()";
         rTerm.sendText(rBuildVignettesCommand);
     }
 
