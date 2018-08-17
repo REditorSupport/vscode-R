@@ -1,5 +1,10 @@
 # Change Log
 
+## v0.6.1
+
+* Added detection of bracket and pipe blocks #82 (fix #26) (Thank you @andycraig)
+* Fix dependency
+
 ## v0.6.0
 
 * Remove lintr function. If you want to use lintr, please install R LSP Client
