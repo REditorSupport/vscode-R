@@ -1,11 +1,11 @@
 "use strict";
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { commands, ExtensionContext, languages, Position, Range, window, workspace} from "vscode";
+import { commands, ExtensionContext, Position, Range, window, workspace} from "vscode";
+import { extendSelection } from "./extendSelection";
 import { createGitignore } from "./rGitignore";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
 import { checkForSpecialCharacters, checkIfFileExists, config, delay } from "./util";
-import { extendSelection } from "./extendSelection";
 
 import fs = require("fs-extra");
 
@@ -47,7 +47,8 @@ export function activate(context: ExtensionContext) {
 
         let selectedLine = currentDocument.getText(range);
         if (!selectedLine) {
-            const { startLine, endLine } = extendSelection(start.line, function(x) { return (currentDocument.lineAt(x).text) }, currentDocument.lineCount);
+            const { startLine, endLine }
+            = extendSelection(start.line, (x) => currentDocument.lineAt(x).text, currentDocument.lineCount);
             const charactersOnLine = window.activeTextEditor.document.lineAt(endLine).text.length;
             const newStart = new Position(startLine, 0);
             const newEnd = new Position(endLine, charactersOnLine);
@@ -61,7 +62,7 @@ export function activate(context: ExtensionContext) {
             selectedLine = currentDocument.getText(new Range(start, end));
         }
 
-        let selectedTextArray = selectedLine.split("\n");
+        const selectedTextArray = selectedLine.split("\n");
         selection.selectedTextArray = removeCommentedLines(selectedTextArray);
 
         return selection;
