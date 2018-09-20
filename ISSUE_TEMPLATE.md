@@ -1,12 +1,20 @@
 <!-- Use Help > Report Issues to prefill these. -->
-- VSCode Version:
-- VSCode-R Version:
-- OS Version:
+- VSCode Version: 
+- VSCode-R Version: 
+- OS Version: 
 
 Steps to Reproduce:
 
 1. 
 1. 
+
+Do you want to fix by self? (I hope your help!)
+
+Yes / No
+
+(If yes,) what kind of help do you want? (e.g. Which file should I fix, Survey (related documents)
+
+
 
 (If related)setting.json
 
@@ -28,19 +36,4 @@ Steps to Reproduce:
 
 // Keeping focus when running
 "r.source.focus": "editor",
-
-// Enable lintr
-"r.lintr.enabled": true,
-
-// list of linter functions
-"r.lintr.linters": "default_linters",
-
-// toggle caching of lint results
-"r.lintr.cache": true,
-
-// R executable path for lintr
-"r.lintr.executable": "",
-
-// If true, lintr exec lint_package() instead of lint()
-"r.lintr.ispackage": false
 ```
