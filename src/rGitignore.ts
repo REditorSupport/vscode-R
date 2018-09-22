@@ -4,19 +4,20 @@ import {  window, workspace } from "vscode";
 const ignorePath =  path.join(workspace.rootPath, ".gitignore");
 // From "https://github.com/github/gitignore/raw/master/R.gitignore"
 const ignoreFiles = [".Rhistory",
-                   ".Rapp.history",
-                   ".RData",
-                   "*-Ex.R",
-                   "/*.tar.gz",
-                   "/*.Rcheck/",
-                   ".Rproj.user/",
-                   "vignettes/*.html",
-                   "vignettes/*.pdf",
-                   ".httr-oauth",
-                   "/*_cache/",
-                   "/cache/",
-                   "*.utf8.md",
-                   "*.knit.md"].join("\n");
+                    ".Rapp.history",
+                    ".RData",
+                    "*-Ex.R",
+                    "/*.tar.gz",
+                    "/*.Rcheck/",
+                    ".Rproj.user/",
+                    "vignettes/*.html",
+                    "vignettes/*.pdf",
+                    ".httr-oauth",
+                    "/*_cache/",
+                    "/cache/",
+                    "*.utf8.md",
+                    "*.knit.md",
+                    "rsconnect/"].join("\n");
 
 export function createGitignore() {
     if (!workspace.rootPath) {

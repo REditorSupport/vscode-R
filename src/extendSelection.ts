@@ -5,7 +5,8 @@ import { LineCache } from "./lineCache";
  */
 class PositionNeg {
     public line: number;
-    public character: number;
+    public character;
+    public cter: number;
     constructor(line: number, character: number) {
         this.line = line;
         this.character = character;
