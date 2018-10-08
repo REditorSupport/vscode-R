@@ -1,13 +1,14 @@
 "use strict";
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { commands, ExtensionContext, Position, Range, window, workspace} from "vscode";
+import { commands, ExtensionContext, languages, Position, Range, window, workspace} from "vscode";
 import { extendSelection } from "./extendSelection";
 import { createGitignore } from "./rGitignore";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
 import { checkForSpecialCharacters, checkIfFileExists, config, delay } from "./util";
 
 import fs = require("fs-extra");
+const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -271,6 +272,10 @@ export function activate(context: ExtensionContext) {
         const rDocumentCommand = "devtools::document()";
         rTerm.sendText(rDocumentCommand);
     }
+
+    languages.setLanguageConfiguration("r", {
+        wordPattern,
+    });
 
     context.subscriptions.push(
         commands.registerCommand("r.runSource", () => runSource(false)),
