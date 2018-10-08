@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "Support for R language(run,syntax,snippet)",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
@@ -26,7 +26,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.24.0"
+    "vscode": "^1.27.0"
   },
   "activationEvents": [
     "onLanguage:r",
@@ -261,18 +261,18 @@
     "test": "node ./node_modules/vscode/bin/test"
   },
   "devDependencies": {
-    "@types/fs-extra": "^5.0.2",
+    "@types/fs-extra": "^5.0.4",
     "@types/mocha": "^5.2.0",
     "@types/node": "^10.0.0",
     "mocha": "^5.1.1",
     "node-atomizr": "^0.6.1",
-    "tslint": "^5.10.0",
-    "typescript": "^2.8.3",
+    "tslint": "^5.11.0",
+    "typescript": "^3.1.1",
     "vscode": "^1.1.21",
     "yamljs": "^0.3.0"
   },
   "dependencies": {
-    "fs-extra": "^6.0.0",
+    "fs-extra": "^7.0.0",
     "path": "^0.12.7",
     "winattr": "^2.0.0"
   },
