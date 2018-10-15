@@ -1,5 +1,9 @@
 # Change Log
 
+## v1.0.0
+
+* Sorry, supporting this extension is ended. Please looking forward to coming new one (<https://github.com/Microsoft/RTVS/issues/1295>).
+
 ## v0.6.2
 
 * fix wordPattern to avoid `.`

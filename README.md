@@ -1,5 +1,7 @@
 # R support for Visual Studio Code
 
+**Sorry, supporting this extension is ended. Please looking forward to coming new one (<https://github.com/Microsoft/RTVS/issues/1295>).**
+
 Requires [R](https://www.r-project.org/).
 
 ## Usage
