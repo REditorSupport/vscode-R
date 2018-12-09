@@ -1,4 +1,51 @@
+import { Position, Range, window} from "vscode";
 import { LineCache } from "./lineCache";
+
+export function getSelection(): any {
+    const selection = { linesDownToMoveCursor: 0, selectedTextArray: [] };
+    const { start, end } = window.activeTextEditor.selection;
+    const currentDocument = window.activeTextEditor.document;
+    const range = new Range(start, end);
+
+    let selectedLine = currentDocument.getText(range);
+    if (!selectedLine) {
+        const { startLine, endLine }
+        = extendSelection(start.line, (x) => currentDocument.lineAt(x).text, currentDocument.lineCount);
+        const charactersOnLine = window.activeTextEditor.document.lineAt(endLine).text.length;
+        const newStart = new Position(startLine, 0);
+        const newEnd = new Position(endLine, charactersOnLine);
+        selection.linesDownToMoveCursor = 1 + endLine - start.line;
+        selectedLine = currentDocument.getText(new Range(newStart, newEnd));
+    } else if (start.line === end.line) {
+        selection.linesDownToMoveCursor = 0;
+        selection.selectedTextArray = [currentDocument.getText(new Range(start, end))];
+        return selection;
+    } else {
+        selectedLine = currentDocument.getText(new Range(start, end));
+    }
+
+    const selectedTextArray = selectedLine.split("\n");
+    selection.selectedTextArray = removeCommentedLines(selectedTextArray);
+
+    return selection;
+}
+
+function removeCommentedLines(selection: string[]): string[] {
+    const selectionWithoutComments = [];
+    selection.forEach((line) => {
+        if (!checkForComment(line)) { selectionWithoutComments.push(line); }
+    });
+    return selectionWithoutComments;
+}
+
+export function checkForComment(line: string): boolean {
+    let index = 0;
+    while (index < line.length) {
+        if (!(line[index] === " ")) { break; }
+        index++;
+    }
+    return line[index] === "#";
+}
 
 /**
  * Like vscode's Position class, but allows negative values.

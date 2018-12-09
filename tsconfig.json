@@ -1,10 +1,10 @@
 {
     "compilerOptions": {
         "module": "commonjs",
-        "target": "es2017",
+        "target": "es2018",
         "outDir": "out",
         "lib": [
-            "es2017"
+            "es2018"
         ],
         "sourceMap": true,
         "rootDir": "."
