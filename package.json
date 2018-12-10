@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "Support for R language(run,syntax,snippet)",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
@@ -275,8 +275,5 @@
     "fs-extra": "^7.0.1",
     "path": "^0.12.7",
     "winattr": "^2.0.0"
-  },
-  "extensionDependencies": [
-    "GrapeCity.gc-excelviewer"
-  ]
+  }
 }

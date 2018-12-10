@@ -1,5 +1,14 @@
 # Change Log
 
+## v1.0.2
+
+* Remove excel dependency
+
+## v1.0.1
+
+* Fix Dependency
+* Refactoring
+
 ## v1.0.0
 
 * Sorry, supporting this extension is ended. Please looking forward to coming new one (<https://github.com/Microsoft/RTVS/issues/1295>).
