@@ -1,4 +1,4 @@
-"use srict";
+"use strict";
 
 import fs = require("fs-extra");
 import { Terminal, window } from "vscode";
