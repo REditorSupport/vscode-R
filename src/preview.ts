@@ -35,9 +35,10 @@ export async function previewDataframe() {
         return;
     }
 
-    const dataframeName = getSelection();
+    const selectedTextArray = getSelection().selectedTextArray;
+    const dataframeName = selectedTextArray[0];
 
-    if (!checkForSpecialCharacters(dataframeName)) {
+    if (selectedTextArray.length !== 1 || !checkForSpecialCharacters(dataframeName)) {
         window.showInformationMessage("This does not appear to be a dataframe.");
         return false;
     }
