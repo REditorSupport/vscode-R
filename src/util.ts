@@ -37,7 +37,7 @@ export function delay(ms: number) {
 }
 
 export function checkForSpecialCharacters(text) {
-    return !/[~`!#$%\^&*+=\-\[\]\\';,/{}|\\":<>\?]/g.test(text);
+    return !/[~`!#$%\^&*+=\-\[\]\\';,/{}|\\":<>\?\s]/g.test(text);
 }
 
 export function checkIfFileExists(filePath) {
