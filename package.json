@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "Support for R language(run,syntax,snippet)",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
@@ -261,13 +261,13 @@
     "test": "node ./node_modules/vscode/bin/test"
   },
   "devDependencies": {
-    "@types/fs-extra": "^5.0.4",
-    "@types/mocha": "^5.2.5",
+    "@types/fs-extra": "^5.0.5",
+    "@types/mocha": "^5.2.6",
     "@types/node": "^10.12.12",
-    "mocha": "^5.2.0",
+    "mocha": "^6.0.0",
     "node-atomizr": "^0.6.1",
-    "tslint": "^5.11.0",
-    "typescript": "^3.2.2",
+    "tslint": "^5.12.1",
+    "typescript": "^3.3.3",
     "vscode": "^1.1.26",
     "yamljs": "^0.3.0"
   },

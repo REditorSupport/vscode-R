@@ -1,5 +1,9 @@
 # Change Log
 
+## v1.0.3
+
+* Fix Preview Dataframe command #67(fix #97) (Thank you @andycraig)
+
 ## v1.0.2
 
 * Remove excel dependency
