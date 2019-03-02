@@ -41,8 +41,8 @@ export function activate(context: ExtensionContext) {
         setFocus();
     }
 
-    async function runSelection(rFunctionName) {
-		const selection = getSelection();
+    async function runSelection(rFunctionName: string[]) {
+        const selection = getSelection();
         if (!rTerm) {
             const success = createRTerm(true);
             if (!success) {
@@ -61,16 +61,16 @@ export function activate(context: ExtensionContext) {
             }
             await delay(8); // Increase delay if RTerm can't handle speed.
 
-            if (rFunctionName) {
-                let rFunctionCall = ""
+            if (rFunctionName && rFunctionName.length) {
+                let rFunctionCall = "";
                 for (const feature of rFunctionName) {
-                    rFunctionCall += feature + "("  
+                    rFunctionCall += feature + "(";
                 }
                 line = rFunctionCall + line.trim() + ")".repeat(rFunctionName.length);
             }
             rTerm.sendText(line);
         }
-        setFocus(); 	
+        setFocus();
     }
 
     function setFocus() {
