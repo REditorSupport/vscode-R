@@ -1,5 +1,11 @@
 # Change Log
 
+## v1.0.4
+
+* Shortcuts with R functions #101
+(fix #100) (Thank you @MaTo04)
+
+
 ## v1.0.3
 
 * Fix Preview Dataframe command #67(fix #97) (Thank you @andycraig)
