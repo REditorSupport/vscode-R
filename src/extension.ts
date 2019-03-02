@@ -41,21 +41,33 @@ export function activate(context: ExtensionContext) {
         setFocus();
     }
 
-    async function runSelection() {
+    async function runSelection(rFunctionName: string[]) {
         const selection = getSelection();
-
         if (!rTerm) {
             const success = createRTerm(true);
-            if (!success) { return; }
-            await delay (200); // Let RTerm warm up
+            if (!success) {
+                return;
+            }
+            await delay(200); // Let RTerm warm up
         }
         if (selection.linesDownToMoveCursor > 0) {
             commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
             commands.executeCommand("cursorMove", { to: "wrappedLineEnd" });
         }
-        for (const line of selection.selectedTextArray) {
-            if (checkForComment(line)) { continue; }
+
+        for (let line of selection.selectedTextArray) {
+            if (checkForComment(line)) {
+                continue;
+            }
             await delay(8); // Increase delay if RTerm can't handle speed.
+
+            if (rFunctionName && rFunctionName.length) {
+                let rFunctionCall = "";
+                for (const feature of rFunctionName) {
+                    rFunctionCall += feature + "(";
+                }
+                line = rFunctionCall + line.trim() + ")".repeat(rFunctionName.length);
+            }
             rTerm.sendText(line);
         }
         setFocus();
@@ -73,10 +85,15 @@ export function activate(context: ExtensionContext) {
     });
 
     context.subscriptions.push(
+        commands.registerCommand("r.nrow", () => runSelection(["nrow"])),
+        commands.registerCommand("r.length", () => runSelection(["length"])),
+        commands.registerCommand("r.head", () => runSelection(["head"])),
+        commands.registerCommand("r.thead", () => runSelection(["t", "head"])),
+        commands.registerCommand("r.names", () => runSelection(["names"])),
         commands.registerCommand("r.runSource", () => runSource(false)),
         commands.registerCommand("r.createRTerm", createRTerm),
         commands.registerCommand("r.runSourcewithEcho", () => runSource(true)),
-        commands.registerCommand("r.runSelection", runSelection),
+        commands.registerCommand("r.runSelection", () => runSelection([])),
         commands.registerCommand("r.createGitignore", createGitignore),
         commands.registerCommand("r.previewDataframe", previewDataframe),
         commands.registerCommand("r.previewEnvironment", previewEnvironment),

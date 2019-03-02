@@ -134,6 +134,31 @@
         "command": "r.runSelection"
       },
       {
+        "title": "Show number of rows for selected object",
+        "category": "R",
+        "command": "r.nrow"
+      },
+      {
+        "title": "Show length for a selected object",
+        "category": "R",
+        "command": "r.length"
+      },
+      {
+        "title": "Show first part of a selected object",
+        "category": "R",
+        "command": "r.head"
+      },
+      {
+        "title": "Show first part of a selected object (transposed)",
+        "category": "R",
+        "command": "r.thead"
+      },
+      {
+        "title": "Show names for a selected object",
+        "category": "R",
+        "command": "r.names"
+      },
+      {
         "title": "Create gitignore",
         "category": "R",
         "command": "r.createGitignore"
@@ -186,6 +211,36 @@
         "key": "Ctrl+enter",
         "mac": "cmd+enter",
         "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
+        "command": "r.nrow",
+        "key": "Ctrl+1",
+        "mac": "cmd+1",
+        "when": "editorTextFocus && editorLangId == 'r'"
+      },
+      {
+        "command": "r.length",
+        "key": "Ctrl+2",
+        "mac": "cmd+2",
+        "when": "editorTextFocus && editorLangId == 'r'"
+      },
+      {
+        "command": "r.head",
+        "key": "Ctrl+3",
+        "mac": "cmd+3",
+        "when": "editorTextFocus && editorLangId == 'r'"
+      },
+      {
+        "command": "r.thead",
+        "key": "Ctrl+4",
+        "mac": "cmd+4",
+        "when": "editorTextFocus && editorLangId == 'r'"
+      },
+      {
+        "command": "r.names",
+        "key": "Ctrl+5",
+        "mac": "cmd+5",
+        "when": "editorTextFocus && editorLangId == 'r'"
       },
       {
         "command": "r.runSource",
@@ -266,7 +321,7 @@
     "@types/node": "^10.12.12",
     "mocha": "^6.0.0",
     "node-atomizr": "^0.6.1",
-    "tslint": "^5.12.1",
+    "tslint": "^5.13.1",
     "typescript": "^3.3.3",
     "vscode": "^1.1.26",
     "yamljs": "^0.3.0"
