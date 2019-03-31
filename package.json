@@ -26,7 +26,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.27.0"
+    "vscode": "^1.29.0"
   },
   "activationEvents": [
     "onLanguage:r",
@@ -35,6 +35,7 @@
     "onCommand:r.runSource",
     "onCommand:r.runSourcewithEcho",
     "onCommand:r.runSelection",
+    "onCommand:r.runSelectionInActiveTerm",
     "onCommand:r.createGitignore"
   ],
   "main": "./out/src/extension",
@@ -132,6 +133,11 @@
         "title": "Run Selection/Line",
         "category": "R",
         "command": "r.runSelection"
+      },
+      {
+        "title": "Run Selection/Line in Active Terminal",
+        "category": "R",
+        "command": "r.runSelectionInActiveTerm"
       },
       {
         "title": "Show number of rows for selected object",

@@ -1,7 +1,7 @@
 "use strict";
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { commands, ExtensionContext, languages, window } from "vscode";
+import { commands, ExtensionContext, languages, window, Terminal } from "vscode";
 import { buildPkg, documentPkg, installPkg, loadAllPkg, testPkg } from "./package";
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
@@ -38,11 +38,10 @@ export function activate(context: ExtensionContext) {
             if (!success) { return; }
         }
         rTerm.sendText(`source(${rPath})`);
-        setFocus();
+        setFocus(rTerm);
     }
 
     async function runSelection(rFunctionName: string[]) {
-        const selection = getSelection();
         if (!rTerm) {
             const success = createRTerm(true);
             if (!success) {
@@ -50,6 +49,21 @@ export function activate(context: ExtensionContext) {
             }
             await delay(200); // Let RTerm warm up
         }
+        runSelectionInTerm(rTerm, rFunctionName);
+        setFocus(rTerm);
+    }
+    
+    function runSelectionInActiveTerm(rFunctionName: string[]) {
+        if (window.terminals.length < 1) {
+            window.showInformationMessage("There are no open terminals.");
+        } else {
+            runSelectionInTerm(window.activeTerminal, rFunctionName);
+            setFocus(window.activeTerminal);
+        }
+    }
+
+    async function runSelectionInTerm(term: Terminal, rFunctionName: string[]) {
+        const selection = getSelection();
         if (selection.linesDownToMoveCursor > 0) {
             commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
             commands.executeCommand("cursorMove", { to: "wrappedLineEnd" });
@@ -68,15 +82,14 @@ export function activate(context: ExtensionContext) {
                 }
                 line = rFunctionCall + line.trim() + ")".repeat(rFunctionName.length);
             }
-            rTerm.sendText(line);
+            term.sendText(line);
         }
-        setFocus();
     }
 
-    function setFocus() {
+    function setFocus(term: Terminal) {
         const focus = config.get("source.focus") as string;
         if (focus === "terminal") {
-            rTerm.show();
+            term.show();
         }
     }
 
@@ -94,6 +107,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.createRTerm", createRTerm),
         commands.registerCommand("r.runSourcewithEcho", () => runSource(true)),
         commands.registerCommand("r.runSelection", () => runSelection([])),
+        commands.registerCommand("r.runSelectionInActiveTerm", () => runSelectionInActiveTerm([])),
         commands.registerCommand("r.createGitignore", createGitignore),
         commands.registerCommand("r.previewDataframe", previewDataframe),
         commands.registerCommand("r.previewEnvironment", previewEnvironment),
