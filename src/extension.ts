@@ -1,7 +1,8 @@
 "use strict";
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { commands, ExtensionContext, languages, window, Terminal } from "vscode";
+import { isNull } from "util";
+import { commands, ExtensionContext, languages, Terminal, window } from "vscode";
 import { buildPkg, documentPkg, installPkg, loadAllPkg, testPkg } from "./package";
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
@@ -42,17 +43,36 @@ export function activate(context: ExtensionContext) {
     }
 
     async function runSelection(rFunctionName: string[]) {
+        const callableTerminal = await chooseTerminal();
+        if (isNull(callableTerminal)) {
+            return;
+        }
+        runSelectionInTerm(callableTerminal, rFunctionName);
+        setFocus(rTerm);
+    }
+
+    async function chooseTerminal() {
+        if (window.terminals.length < 1) {
+            window.showInformationMessage("There are no open terminals.");
+            return null;
+        }
+        const RTermNameOpinions = ["R", "R Interactive"];
+        const activeTerminalName = window.activeTerminal.name;
+        if (RTermNameOpinions.includes(activeTerminalName)) {
+            return window.activeTerminal;
+        }
+
         if (!rTerm) {
             const success = createRTerm(true);
             if (!success) {
-                return;
+                window.showInformationMessage("Faild to make R terminals.");
+                return null;
             }
             await delay(200); // Let RTerm warm up
         }
-        runSelectionInTerm(rTerm, rFunctionName);
-        setFocus(rTerm);
+        return rTerm;
     }
-    
+
     function runSelectionInActiveTerm(rFunctionName: string[]) {
         if (window.terminals.length < 1) {
             window.showInformationMessage("There are no open terminals.");

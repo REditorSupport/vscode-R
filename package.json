@@ -324,12 +324,12 @@
   "devDependencies": {
     "@types/fs-extra": "^5.0.5",
     "@types/mocha": "^5.2.6",
-    "@types/node": "^10.12.12",
-    "mocha": "^6.0.0",
+    "@types/node": "^10.14.4",
+    "mocha": "^6.0.2",
     "node-atomizr": "^0.6.1",
-    "tslint": "^5.13.1",
-    "typescript": "^3.3.3",
-    "vscode": "^1.1.26",
+    "tslint": "^5.15.0",
+    "typescript": "^3.4.2",
+    "vscode": "^1.1.33",
     "yamljs": "^0.3.0"
   },
   "dependencies": {
