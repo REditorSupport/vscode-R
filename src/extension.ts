@@ -47,8 +47,8 @@ export function activate(context: ExtensionContext) {
         if (isNull(callableTerminal)) {
             return;
         }
+        setFocus(callableTerminal);
         runSelectionInTerm(callableTerminal, rFunctionName);
-        setFocus(rTerm);
     }
 
     async function chooseTerminal() {
@@ -64,11 +64,10 @@ export function activate(context: ExtensionContext) {
 
         if (!rTerm) {
             const success = createRTerm(true);
+            await delay(200); // Let RTerm warm up
             if (!success) {
-                window.showInformationMessage("Faild to make R terminals.");
                 return null;
             }
-            await delay(200); // Let RTerm warm up
         }
         return rTerm;
     }
@@ -108,9 +107,7 @@ export function activate(context: ExtensionContext) {
 
     function setFocus(term: Terminal) {
         const focus = config.get("source.focus") as string;
-        if (focus === "terminal") {
-            term.show();
-        }
+        term.show(focus !== "terminal");
     }
 
     languages.setLanguageConfiguration("r", {
