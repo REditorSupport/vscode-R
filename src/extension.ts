@@ -1,7 +1,7 @@
 "use strict";
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { isNull } from "util";
+import { isNull, isUndefined } from "util";
 import { commands, ExtensionContext, languages, Terminal, window } from "vscode";
 import { buildPkg, documentPkg, installPkg, loadAllPkg, testPkg } from "./package";
 import { previewDataframe, previewEnvironment } from "./preview";
@@ -52,14 +52,22 @@ export function activate(context: ExtensionContext) {
     }
 
     async function chooseTerminal() {
-        if (window.terminals.length < 1) {
-            window.showInformationMessage("There are no open terminals.");
-            return null;
-        }
-        const RTermNameOpinions = ["R", "R Interactive"];
-        const activeTerminalName = window.activeTerminal.name;
-        if (RTermNameOpinions.includes(activeTerminalName)) {
-            return window.activeTerminal;
+        if (window.terminals.length > 0) {    
+            const RTermNameOpinions = ["R", "R Interactive"];
+            // Creating a terminal when there aren't any already 
+            // does not seem to set activeTerminal
+            if (isUndefined(window.activeTerminal)) {
+                // No other terminals, so should be window.terminals[0]
+                const activeTerminalName = window.terminals[0].name;
+                if (RTermNameOpinions.includes(activeTerminalName)) {
+                    return window.terminals[0];
+                }
+            } else {
+                const activeTerminalName = window.activeTerminal.name;
+                if (RTermNameOpinions.includes(activeTerminalName)) {
+                    return window.activeTerminal;
+                }
+            }
         }
 
         if (!rTerm) {
