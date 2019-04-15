@@ -1,7 +1,8 @@
 "use strict";
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { commands, ExtensionContext, languages, window } from "vscode";
+import { isNull } from "util";
+import { commands, ExtensionContext, languages, Terminal, window } from "vscode";
 import { buildPkg, documentPkg, installPkg, loadAllPkg, testPkg } from "./package";
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
@@ -38,18 +39,62 @@ export function activate(context: ExtensionContext) {
             if (!success) { return; }
         }
         rTerm.sendText(`source(${rPath})`);
-        setFocus();
+        setFocus(rTerm);
     }
 
     async function runSelection(rFunctionName: string[]) {
-        const selection = getSelection();
+        const callableTerminal = await chooseTerminal();
+        if (isNull(callableTerminal)) {
+            return;
+        }
+        setFocus(callableTerminal);
+        runSelectionInTerm(callableTerminal, rFunctionName);
+    }
+
+    async function chooseTerminal() {
+        if (window.terminals.length > 0) {    
+            const RTermNameOpinions = ["R", "R Interactive"];
+            if (window.activeTerminal) {
+                const activeTerminalName = window.activeTerminal.name;
+                if (RTermNameOpinions.includes(activeTerminalName)) {
+                    return window.activeTerminal;
+                }
+            } else {
+                // Creating a terminal when there aren't any already 
+                // does not seem to set activeTerminal
+                if (window.terminals.length === 1) {
+                    const activeTerminalName = window.terminals[0].name;
+                    if (RTermNameOpinions.includes(activeTerminalName)) {
+                        return window.terminals[0];
+                    }
+                } else {
+                    window.showInformationMessage("Error identifying terminal! This shouldn't happen, so please file an issue at https://github.com/Ikuyadeu/vscode-R/issues")
+                    return null;
+                }
+            }
+        }
+
         if (!rTerm) {
             const success = createRTerm(true);
-            if (!success) {
-                return;
-            }
             await delay(200); // Let RTerm warm up
+            if (!success) {
+                return null;
+            }
         }
+        return rTerm;
+    }
+
+    function runSelectionInActiveTerm(rFunctionName: string[]) {
+        if (window.terminals.length < 1) {
+            window.showInformationMessage("There are no open terminals.");
+        } else {
+            runSelectionInTerm(window.activeTerminal, rFunctionName);
+            setFocus(window.activeTerminal);
+        }
+    }
+
+    async function runSelectionInTerm(term: Terminal, rFunctionName: string[]) {
+        const selection = getSelection();
         if (selection.linesDownToMoveCursor > 0) {
             commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
             commands.executeCommand("cursorMove", { to: "wrappedLineEnd" });
@@ -68,16 +113,13 @@ export function activate(context: ExtensionContext) {
                 }
                 line = rFunctionCall + line.trim() + ")".repeat(rFunctionName.length);
             }
-            rTerm.sendText(line);
+            term.sendText(line);
         }
-        setFocus();
     }
 
-    function setFocus() {
+    function setFocus(term: Terminal) {
         const focus = config.get("source.focus") as string;
-        if (focus === "terminal") {
-            rTerm.show();
-        }
+        term.show(focus !== "terminal");
     }
 
     languages.setLanguageConfiguration("r", {
@@ -94,6 +136,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.createRTerm", createRTerm),
         commands.registerCommand("r.runSourcewithEcho", () => runSource(true)),
         commands.registerCommand("r.runSelection", () => runSelection([])),
+        commands.registerCommand("r.runSelectionInActiveTerm", () => runSelectionInActiveTerm([])),
         commands.registerCommand("r.createGitignore", createGitignore),
         commands.registerCommand("r.previewDataframe", previewDataframe),
         commands.registerCommand("r.previewEnvironment", previewEnvironment),

@@ -20,6 +20,10 @@ Requires [R](https://www.r-project.org/).
 
 ![Create R terminal](images/terminal.png)
 
+* Run code in terminal containing existing R session, for example over SSH (`Run Selection/Line in Active Terminal`)
+
+![R over SSH](images/ssh.gif)
+
 * Extended Syntax(R, R Markdown, R Documentation)
 
 ![Syntax](images/Rsyntax.png)
