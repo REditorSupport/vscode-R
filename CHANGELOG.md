@@ -1,5 +1,9 @@
 # Change Log
 
+## v1.0.5
+
+* Add runSelectionInActiveTerm command #104 (fix #80 #102) (Thank you @andycraig)
+
 ## v1.0.4
 
 * Shortcuts with R functions #101

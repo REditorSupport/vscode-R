@@ -20,6 +20,10 @@ Requires [R](https://www.r-project.org/).
 
 ![Create R terminal](images/terminal.png)
 
+* Run code in terminal containing existing R session, for example over SSH (`Run Selection/Line in Active Terminal`)
+
+![R over SSH](images/ssh.gif)
+
 * Extended Syntax(R, R Markdown, R Documentation)
 
 ![Syntax](images/Rsyntax.png)
@@ -69,6 +73,13 @@ This extension based on
 * [R.gitignore](https://github.com/github/gitignore/raw/master/R.gitignore)
 * [language-r](https://github.com/lee-dohm/language-r)
 * [R box](https://github.com/randy3k/R-Box)
+
+## Collaboraters
+
+I hope you will join us.
+
+* @andycraig
+* @Ladvien
 
 ## FAQ
 
