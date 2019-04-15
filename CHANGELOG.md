@@ -1,5 +1,9 @@
 # Change Log
 
+## v1.0.7
+
+* Add web pack for performance
+
 ## v1.0.6
 
 * Add runSelectionInActiveTerm command #104 (fix #80 #102) (Thank you @andycraig)
