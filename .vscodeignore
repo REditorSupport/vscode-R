@@ -10,3 +10,9 @@ vsc-extension-quickstart.md
 .csv
 .xlsx
 .xls
+.vscode
+node_modules
+out/
+src/
+tsconfig.json
+webpack.config.json

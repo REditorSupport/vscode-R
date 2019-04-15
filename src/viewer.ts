@@ -1,3 +1,5 @@
+"use strict";
+
 import {commands, ExtensionContext, ViewColumn, window} from "vscode";
 
 export function activate(context: ExtensionContext) {

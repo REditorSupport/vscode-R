@@ -1,3 +1,5 @@
+"use strict";
+
 import { Position, Range, window} from "vscode";
 import { LineCache } from "./lineCache";
 

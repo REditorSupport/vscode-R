@@ -1,3 +1,5 @@
+"use strict";
+
 import fs = require("fs-extra");
 import path = require("path");
 import {  window, workspace } from "vscode";

@@ -52,7 +52,7 @@ export function activate(context: ExtensionContext) {
     }
 
     async function chooseTerminal() {
-        if (window.terminals.length > 0) {    
+        if (window.terminals.length > 0) {
             const RTermNameOpinions = ["R", "R Interactive"];
             if (window.activeTerminal) {
                 const activeTerminalName = window.activeTerminal.name;
@@ -60,7 +60,7 @@ export function activate(context: ExtensionContext) {
                     return window.activeTerminal;
                 }
             } else {
-                // Creating a terminal when there aren't any already 
+                // Creating a terminal when there aren't any already
                 // does not seem to set activeTerminal
                 if (window.terminals.length === 1) {
                     const activeTerminalName = window.terminals[0].name;
@@ -68,7 +68,8 @@ export function activate(context: ExtensionContext) {
                         return window.terminals[0];
                     }
                 } else {
-                    window.showInformationMessage("Error identifying terminal! This shouldn't happen, so please file an issue at https://github.com/Ikuyadeu/vscode-R/issues")
+                    // tslint:disable-next-line: max-line-length
+                    window.showInformationMessage("Error identifying terminal! This shouldn't happen, so please file an issue at https://github.com/Ikuyadeu/vscode-R/issues");
                     return null;
                 }
             }

@@ -1,3 +1,5 @@
+"use strict";
+
 import fs = require("fs-extra");
 import { commands, extensions, window, workspace } from "vscode";
 import { createRTerm, rTerm } from "./rTerminal";

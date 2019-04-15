@@ -1,3 +1,5 @@
+"use strict";
+
 import fs = require("fs-extra");
 import { window, workspace} from "vscode";
 export let config = workspace.getConfiguration("r");
