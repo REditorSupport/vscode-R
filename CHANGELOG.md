@@ -1,6 +1,6 @@
 # Change Log
 
-## v1.0.5
+## v1.0.6
 
 * Add runSelectionInActiveTerm command #104 (fix #80 #102) (Thank you @andycraig)
 
