@@ -4,3 +4,4 @@ node_modules
 *.xlsx
 *.xls
 *.DS_Store
+dist

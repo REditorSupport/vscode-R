@@ -38,7 +38,7 @@
     "onCommand:r.runSelectionInActiveTerm",
     "onCommand:r.createGitignore"
   ],
-  "main": "./out/src/extension",
+  "main": "./dist/extension",
   "contributes": {
     "languages": [
       {
