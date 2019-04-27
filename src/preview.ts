@@ -125,7 +125,7 @@ function makeTmpDir() {
 
 function checkcsv() {
     const iscsv = extensions.getExtension("GrapeCity.gc-excelviewer");
-    if (iscsv.isActive) {
+    if (iscsv && iscsv.isActive) {
         return true;
     } else {
         window.showInformationMessage("This function need to install `GrapeCity.gc-excelviewer`");
