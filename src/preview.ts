@@ -128,7 +128,12 @@ function checkcsv() {
     if (iscsv && iscsv.isActive) {
         return true;
     } else {
-        window.showInformationMessage("This function need to install `GrapeCity.gc-excelviewer`");
+        window.showInformationMessage("This function need to install `GrapeCity.gc-excelviewer`, will you install?",
+        "Yes", "No").then((select) => {
+            if (select === "Yes") {
+                commands.executeCommand("workbench.extensions.installExtension", "GrapeCity.gc-excelviewer");
+            }
+        });
         return false;
     }
 }
