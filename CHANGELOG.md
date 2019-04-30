@@ -1,5 +1,9 @@
 # Change Log
 
+## v1.0.9
+
+* Fix check for Excel Viewer extension
+
 ## v1.0.7
 
 * Add web pack for performance
