@@ -1,5 +1,10 @@
 # Change Log
 
+## v1.1.0
+
+* Fix for R markdown config
+* Fix for valunerability
+
 ## v1.0.9
 
 * Fix check for Excel Viewer extension
