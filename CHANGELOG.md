@@ -1,5 +1,11 @@
 # Change Log
 
+## v1.1.1
+
+* Fix Preview Environment for variable x (fix  #111) by @andycraig
+* Fix Preview Environment for multi-class objects (fix #111) by @andycraig
+* Fix danger package dependency
+
 ## v1.1.0
 
 * Fix for R markdown config
@@ -11,7 +17,7 @@
 
 ## v1.0.7
 
-* Add web pack for performance
+* Add web pack for performance by @andycraig
 
 ## v1.0.6
 
