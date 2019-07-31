@@ -17,8 +17,8 @@ export async function previewEnvironment() {
     const tmpDir = makeTmpDir();
     const pathToTmpCsv = tmpDir + "/environment.csv";
     const envName = "name=ls()";
-    const envClass = "class=sapply(ls(), function(x) {class(get(x))[1]})";
-    const envOut = "out=sapply(ls(), function(x) {capture.output(str(get(x)), silent = T)[1]})";
+    const envClass = "class=sapply(ls(), function(x) {class(get(x, envir = parent.env(environment())))[1]})";
+    const envOut = "out=sapply(ls(), function(x) {capture.output(str(get(x, envir = parent.env(environment()))), silent = T)[1]})";
     const rWriteCsvCommand = "write.csv(data.frame("
                              + envName + ","
                              + envClass + ","
