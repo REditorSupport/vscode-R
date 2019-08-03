@@ -101,6 +101,12 @@ export function activate(context: ExtensionContext) {
             commands.executeCommand("cursorMove", { to: "wrappedLineEnd" });
         }
 
+        if (selection.selectedTextArray.length > 1 && config.get("bracketedPaste")) {
+            // Surround with ANSI control characters for bracketed paste mode
+            selection.selectedTextArray[0] = "\x1b[200~" + selection.selectedTextArray[0];
+            selection.selectedTextArray[selection.selectedTextArray.length - 1] += "\x1b[201~";
+        }
+
         for (let line of selection.selectedTextArray) {
             if (checkForComment(line)) {
                 continue;
