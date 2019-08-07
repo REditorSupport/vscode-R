@@ -7,7 +7,7 @@ import { buildPkg, documentPkg, installPkg, loadAllPkg, testPkg } from "./packag
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
-import { checkForComment, getSelection } from "./selection";
+import { checkForBlankOrComment, getSelection } from "./selection";
 import { config, delay } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -108,9 +108,6 @@ export function activate(context: ExtensionContext) {
         }
 
         for (let line of selection.selectedTextArray) {
-            if (checkForComment(line)) {
-                continue;
-            }
             await delay(8); // Increase delay if RTerm can't handle speed.
 
             if (rFunctionName && rFunctionName.length) {
