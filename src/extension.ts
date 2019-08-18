@@ -7,7 +7,7 @@ import { buildPkg, documentPkg, installPkg, loadAllPkg, testPkg } from "./packag
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
-import { checkForComment, getSelection } from "./selection";
+import { checkForBlankOrComment, getSelection } from "./selection";
 import { config, delay } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -101,10 +101,13 @@ export function activate(context: ExtensionContext) {
             commands.executeCommand("cursorMove", { to: "wrappedLineEnd" });
         }
 
+        if (selection.selectedTextArray.length > 1 && config.get("bracketedPaste")) {
+            // Surround with ANSI control characters for bracketed paste mode
+            selection.selectedTextArray[0] = "\x1b[200~" + selection.selectedTextArray[0];
+            selection.selectedTextArray[selection.selectedTextArray.length - 1] += "\x1b[201~";
+        }
+
         for (let line of selection.selectedTextArray) {
-            if (checkForComment(line)) {
-                continue;
-            }
             await delay(8); // Increase delay if RTerm can't handle speed.
 
             if (rFunctionName && rFunctionName.length) {

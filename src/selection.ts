@@ -35,18 +35,22 @@ export function getSelection(): any {
 function removeCommentedLines(selection: string[]): string[] {
     const selectionWithoutComments = [];
     selection.forEach((line) => {
-        if (!checkForComment(line)) { selectionWithoutComments.push(line); }
+        if (!checkForBlankOrComment(line)) { selectionWithoutComments.push(line); }
     });
     return selectionWithoutComments;
 }
 
-export function checkForComment(line: string): boolean {
+export function checkForBlankOrComment(line: string): boolean {
     let index = 0;
+    let isWhitespaceOnly = true;
     while (index < line.length) {
-        if (!(line[index] === " ")) { break; }
+        if (!((line[index] === " ") || (line[index] === "\t"))) {
+            isWhitespaceOnly = false;
+            break;
+        }
         index++;
     }
-    return line[index] === "#";
+    return isWhitespaceOnly || line[index] === "#";
 }
 
 /**
