@@ -33,6 +33,7 @@
     "workspaceContains:*.r|.rd|.rmd",
     "onCommand:r.createRTerm",
     "onCommand:r.runSource",
+    "onCommand:r.runRmdSource",
     "onCommand:r.runSourcewithEcho",
     "onCommand:r.runSelection",
     "onCommand:r.runSelectionInActiveTerm",
@@ -120,6 +121,15 @@
         "title": "Run Source",
         "category": "R",
         "command": "r.runSource",
+        "icon": {
+          "light": "./images/DownloadFile.ico",
+          "dark": "./images/DownloadFile_inverse.ico"
+        }
+      },
+      {
+        "title": "Run Rmd Source",
+        "category": "R",
+        "command": "r.runRmdSource",
         "icon": {
           "light": "./images/DownloadFile.ico",
           "dark": "./images/DownloadFile_inverse.ico"
@@ -256,6 +266,12 @@
         "when": "editorTextFocus && editorLangId == 'r'"
       },
       {
+        "command": "r.runRmdSource",
+        "key": "shift+Ctrl+s",
+        "mac": "shift+cmd+s",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
         "command": "r.runSourcewithEcho",
         "key": "shift+Ctrl+enter",
         "mac": "shift+cmd+enter",
@@ -267,6 +283,11 @@
         {
           "when": "editorLangId == r",
           "command": "r.runSource",
+          "group": "navigation"
+        },
+        {
+          "when": "editorLangId == rmd",
+          "command": "r.runRmdSource",
           "group": "navigation"
         }
       ]
