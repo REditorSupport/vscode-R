@@ -42,7 +42,7 @@ export function activate(context: ExtensionContext) {
         setFocus(rTerm);
     }
 
-    function runRmdSource(echo: boolean)  {
+    function knitRmd(echo: boolean, outputFormat: string)  {
         const wad = window.activeTextEditor.document;
         wad.save();
         let rPath = ToRStringLiteral(wad.fileName, '"');
@@ -58,7 +58,7 @@ export function activate(context: ExtensionContext) {
             const success = createRTerm(true);
             if (!success) { return; }
         }
-        rTerm.sendText(`rmarkdown::render(${rPath})`);
+        rTerm.sendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
     }
 
     async function runSelection(rFunctionName: string[]) {
@@ -156,7 +156,8 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.thead", () => runSelection(["t", "head"])),
         commands.registerCommand("r.names", () => runSelection(["names"])),
         commands.registerCommand("r.runSource", () => runSource(false)),
-        commands.registerCommand("r.runRmdSource", () => runRmdSource(false)),
+        commands.registerCommand("r.knitRmd", () => knitRmd(false, '')),
+        commands.registerCommand("r.knitRmdToPdf", () => knitRmd(false, "pdf_document")),
         commands.registerCommand("r.createRTerm", createRTerm),
         commands.registerCommand("r.runSourcewithEcho", () => runSource(true)),
         commands.registerCommand("r.runSelection", () => runSelection([])),
