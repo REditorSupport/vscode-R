@@ -312,6 +312,11 @@
             "terminal"
           ],
           "description": "Keeping focus when running"
+        },
+        "r.bracketedPaste": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use bracketed paste mode when sending code to console. Enable for Radian console"
         }
       }
     }

@@ -43,6 +43,9 @@ Yes / No
 
 // Keeping focus when running
 "r.source.focus": "editor",
+
+// Use bracketed paste mode
+"r.bracketedPaste": false,
 ```
 
 **Expected behavior**

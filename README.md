@@ -5,6 +5,7 @@ Requires [R](https://www.r-project.org/).
 ## Usage
 
 * For Windows, set config `r.rterm.windows` to your `R.exe` Path like `"C:\\Program Files\\R\\R-3.3.4\\bin\\x64\\R.exe"`;
+* For Radian console, enable config `r.bracketedPaste`
 * Open your folder that has R source file (**Can't work if you open only file**)
 * Use `F1` key and `R:` command or `Ctrl+Enter`(Mac: `⌘+Enter`)
 
@@ -52,7 +53,8 @@ This extension contributes the following settings:
 * `r.rpath.lsp`: set to R.exe path for Language Server Protocol
 * `r.rterm.option`: R command line options (i.e: --vanilla)
 * `r.source.encoding`: An optional encoding to pass to R when executing the file
-* `r.source.focus` : Keeping focus when running(editor or terminal)
+* `r.source.focus`: Keeping focus when running (editor or terminal)
+* `r.bracketedPaste`: For consoles supporting bracketed paste mode (such as Radian)
 
 * Language server(developing [here](https://github.com/REditorSupport/languageserver))
 
