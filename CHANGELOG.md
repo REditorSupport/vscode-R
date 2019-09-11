@@ -1,5 +1,8 @@
 # Change Log
 
+## v1.1.2
+* Fix send code for newlines and Radian #114 #117 
+
 ## v1.1.1
 
 * Fix Preview Environment for variable x (fix  #111) by @andycraig
