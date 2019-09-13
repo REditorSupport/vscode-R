@@ -141,29 +141,17 @@
       {
         "title": "Knit Rmd To PDF",
         "category": "R",
-        "command": "r.knitRmdToPdf",
-        "icon": {
-          "light": "./images/DownloadFile.ico",
-          "dark": "./images/DownloadFile_inverse.ico"
-        }
+        "command": "r.knitRmdToPdf"
       },
       {
         "title": "Knit Rmd To HTML",
         "category": "R",
-        "command": "r.knitRmdToHtml",
-        "icon": {
-          "light": "./images/DownloadFile.ico",
-          "dark": "./images/DownloadFile_inverse.ico"
-        }
+        "command": "r.knitRmdToHtml"
       },
       {
         "title": "Knit Rmd To All Formats",
         "category": "R",
-        "command": "r.knitRmdToAll",
-        "icon": {
-          "light": "./images/DownloadFile.ico",
-          "dark": "./images/DownloadFile_inverse.ico"
-        }
+        "command": "r.knitRmdToAll"
       },
       {
         "title": "Run Source with Echo",
@@ -318,11 +306,6 @@
         {
           "when": "editorLangId == rmd",
           "command": "r.knitRmd",
-          "group": "navigation"
-        },
-        {
-          "when": "editorLangId == rmd",
-          "command": "r.knitRmdToPdf",
           "group": "navigation"
         }
       ]
