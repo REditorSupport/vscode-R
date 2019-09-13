@@ -35,6 +35,8 @@
     "onCommand:r.runSource",
     "onCommand:r.knitRmd",
     "onCommand:r.knitRmdToPdf",
+    "onCommand:r.knitRmdToHtml",
+    "onCommand:r.knitRmdToAll",
     "onCommand:r.runSourcewithEcho",
     "onCommand:r.runSelection",
     "onCommand:r.runSelectionInActiveTerm",
@@ -140,6 +142,24 @@
         "title": "Knit Rmd To PDF",
         "category": "R",
         "command": "r.knitRmdToPdf",
+        "icon": {
+          "light": "./images/DownloadFile.ico",
+          "dark": "./images/DownloadFile_inverse.ico"
+        }
+      },
+      {
+        "title": "Knit Rmd To HTML",
+        "category": "R",
+        "command": "r.knitRmdToHtml",
+        "icon": {
+          "light": "./images/DownloadFile.ico",
+          "dark": "./images/DownloadFile_inverse.ico"
+        }
+      },
+      {
+        "title": "Knit Rmd To All Formats",
+        "category": "R",
+        "command": "r.knitRmdToAll",
         "icon": {
           "light": "./images/DownloadFile.ico",
           "dark": "./images/DownloadFile_inverse.ico"

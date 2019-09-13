@@ -58,7 +58,11 @@ export function activate(context: ExtensionContext) {
             const success = createRTerm(true);
             if (!success) { return; }
         }
-        rTerm.sendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
+        if (isNull(outputFormat)) {
+            rTerm.sendText(`rmarkdown::render(${rPath})`);
+        } else {
+            rTerm.sendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
+        }
     }
 
     async function runSelection(rFunctionName: string[]) {
@@ -156,8 +160,10 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.thead", () => runSelection(["t", "head"])),
         commands.registerCommand("r.names", () => runSelection(["names"])),
         commands.registerCommand("r.runSource", () => runSource(false)),
-        commands.registerCommand("r.knitRmd", () => knitRmd(false, '')),
+        commands.registerCommand("r.knitRmd", () => knitRmd(false, null)),
         commands.registerCommand("r.knitRmdToPdf", () => knitRmd(false, "pdf_document")),
+        commands.registerCommand("r.knitRmdToHtml", () => knitRmd(false, "html_document")),
+        commands.registerCommand("r.knitRmdToAll", () => knitRmd(false, "all")),
         commands.registerCommand("r.createRTerm", createRTerm),
         commands.registerCommand("r.runSourcewithEcho", () => runSource(true)),
         commands.registerCommand("r.runSelection", () => runSelection([])),
