@@ -1,5 +1,8 @@
 # Change Log
 
+## v1.1.3
+* RMarkdown knit support (fix #121) (Thank you @dominicwhite)
+
 ## v1.1.2
 * Fix send code for newlines and Radian #114 #117 
 
