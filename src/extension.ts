@@ -42,6 +42,29 @@ export function activate(context: ExtensionContext) {
         setFocus(rTerm);
     }
 
+    function knitRmd(echo: boolean, outputFormat: string)  {
+        const wad = window.activeTextEditor.document;
+        wad.save();
+        let rPath = ToRStringLiteral(wad.fileName, '"');
+        let encodingParam = config.get("source.encoding") as string;
+        if (encodingParam) {
+            encodingParam = `encoding = "${encodingParam}"`;
+            rPath = [rPath, encodingParam].join(", ");
+        }
+        if (echo) {
+            rPath = [rPath, "echo = TRUE"].join(", ");
+        }
+        if (!rTerm) {
+            const success = createRTerm(true);
+            if (!success) { return; }
+        }
+        if (isNull(outputFormat)) {
+            rTerm.sendText(`rmarkdown::render(${rPath})`);
+        } else {
+            rTerm.sendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
+        }
+    }
+
     async function runSelection(rFunctionName: string[]) {
         const callableTerminal = await chooseTerminal();
         if (isNull(callableTerminal)) {
@@ -137,6 +160,10 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.thead", () => runSelection(["t", "head"])),
         commands.registerCommand("r.names", () => runSelection(["names"])),
         commands.registerCommand("r.runSource", () => runSource(false)),
+        commands.registerCommand("r.knitRmd", () => knitRmd(false, null)),
+        commands.registerCommand("r.knitRmdToPdf", () => knitRmd(false, "pdf_document")),
+        commands.registerCommand("r.knitRmdToHtml", () => knitRmd(false, "html_document")),
+        commands.registerCommand("r.knitRmdToAll", () => knitRmd(false, "all")),
         commands.registerCommand("r.createRTerm", createRTerm),
         commands.registerCommand("r.runSourcewithEcho", () => runSource(true)),
         commands.registerCommand("r.runSelection", () => runSelection([])),
