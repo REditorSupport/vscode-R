@@ -6,13 +6,13 @@ Requires [R](https://www.r-project.org/).
 
 * For Windows, set config `r.rterm.windows` to your `R.exe` Path like `"C:\\Program Files\\R\\R-3.3.4\\bin\\x64\\R.exe"`;
 * For Radian console, enable config `r.bracketedPaste`
-* Open your folder that has R source file (**Can't work if you open only file**)
+* Open your *folder* that has R source file (**Can't work if you open only file**)
 * Use `F1` key and `R:` command or `Ctrl+Enter`(Mac: `⌘+Enter`)
 
 ## Features
 
 * Run Source(`Ctrl+Shift+S` or Push icon![icon](images/FileDownload.png)) and Run Selected Line (`Ctrl+Enter`)
-* Run nrow, length, head, thead, names function (`Ctrl` + `1`, `2`, `3`, `4`, `5`)
+* Run `nrow`, `length`, `head`, `thead`, `names` functions (`Ctrl` + `1`, `2`, `3`, `4`, `5`)
   * If you are using Mac `Ctrl` to `⌘`
 
 ![use Run .R](images/feature.png)
@@ -76,7 +76,7 @@ This extension based on
 * [language-r](https://github.com/lee-dohm/language-r)
 * [R box](https://github.com/randy3k/R-Box)
 
-## Collaboraters
+## Collaborators
 
 I hope you will join us.
 
