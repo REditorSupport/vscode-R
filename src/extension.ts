@@ -2,7 +2,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { isNull } from "util";
-import { commands, ExtensionContext, languages, Terminal, window } from "vscode";
+import { commands, ExtensionContext, languages, Terminal, window, IndentAction } from "vscode";
 import { buildPkg, documentPkg, installPkg, loadAllPkg, testPkg } from "./package";
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
@@ -151,6 +151,10 @@ export function activate(context: ExtensionContext) {
 
     languages.setLanguageConfiguration("r", {
         wordPattern,
+        onEnterRules: [{ // Automatically continue roxygen comments: #'
+                beforeText: /^#'.*/,
+                action: { indentAction: IndentAction.None, appendText: '#\' ' }
+        }]
     });
 
     context.subscriptions.push(
