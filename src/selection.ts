@@ -44,7 +44,7 @@ export function checkForBlankOrComment(line: string): boolean {
     let index = 0;
     let isWhitespaceOnly = true;
     while (index < line.length) {
-        if (!((line[index] === " ") || (line[index] === "\t"))) {
+        if (!((line[index] === " ") || (line[index] === "\t") || (line[index] === "\r"))) {
             isWhitespaceOnly = false;
             break;
         }
