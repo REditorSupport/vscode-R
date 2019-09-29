@@ -80,8 +80,8 @@ This extension based on
 
 I hope you will join us.
 
-* @andycraig
-* @Ladvien
+* [@andycraig](https://github.com/andycraig)
+* [@Ladvien](https://github.com/Ladvien)
 
 ## FAQ
 

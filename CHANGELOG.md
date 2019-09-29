@@ -1,5 +1,13 @@
 # Change Log
 
+
+## 1.1.4
+* Fixed spelling, improved formatting #129 (Thank you @wleoncio)
+* Automatically comment new lines in roxygen sections (fix #124)
+* Fix send code for newlines on Windows (fix #114)
+* Add auto-completion of roxygen tags (fix #128)
+* Change cursorMove to wrappedLineFirstNonWhitespaceCharacter  (fix 126)
+
 ## v1.1.3
 * RMarkdown knit support (fix #121) (Thank you @dominicwhite)
 
