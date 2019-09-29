@@ -133,7 +133,7 @@ export function activate(context: ExtensionContext) {
         const selection = getSelection();
         if (selection.linesDownToMoveCursor > 0) {
             commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
-            commands.executeCommand("cursorMove", { to: "wrappedLineEnd" });
+            commands.executeCommand("cursorMove", { to: "wrappedLineFirstNonWhitespaceCharacter" });
         }
 
         if (selection.selectedTextArray.length > 1 && config.get("bracketedPaste")) {
