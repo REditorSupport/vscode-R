@@ -8,6 +8,12 @@
 #' @examples
 #' add(1, 1)
 #' add(10, 1)
+
+
+#' roxygen tag
+#' @params x Numeric
+f <- function(x) x + 1
+
 add <- function(x, y) {
   x + y
 }
