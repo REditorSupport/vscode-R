@@ -2,12 +2,13 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { isNull } from "util";
-import { commands, ExtensionContext, languages, Terminal, window, IndentAction, Position, TextDocument, CompletionItem } from "vscode";
+import { commands, CompletionItem, ExtensionContext, IndentAction,
+         languages, Position, Terminal, TextDocument, window } from "vscode";
 import { buildPkg, documentPkg, installPkg, loadAllPkg, testPkg } from "./package";
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
-import { checkForBlankOrComment, getSelection } from "./selection";
+import { getSelection } from "./selection";
 import { config, delay } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -167,16 +168,16 @@ export function activate(context: ExtensionContext) {
                 return roxygenTagCompletionItems;
             } else {
                 return undefined;
-            };
-        }
-    }, '@'); // Trigger on '@'
+            }
+        },
+    }, "@"); // Trigger on '@'
 
     languages.setLanguageConfiguration("r", {
-        wordPattern,
         onEnterRules: [{ // Automatically continue roxygen comments: #'
-                beforeText: /^#'.*/,
-                action: { indentAction: IndentAction.None, appendText: '#\' ' }
-        }]
+        action: { indentAction: IndentAction.None, appendText: "#' " },
+            beforeText: /^#'.*/,
+        }],
+        wordPattern,
     });
 
     context.subscriptions.push(
