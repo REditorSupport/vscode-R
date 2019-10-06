@@ -1,6 +1,7 @@
 "use strict";
 
 import fs = require("fs-extra");
+import { isNull } from "util";
 import { commands, Terminal, window } from "vscode";
 import { getSelection } from "./selection";
 import { config, delay, getRpath } from "./util";
@@ -31,7 +32,16 @@ export function deleteTerminal(term: Terminal) {
     }
 }
 
-export async function chooseTerminal() {
+export async function chooseTerminal(active: boolean = false) {
+    if (active || config.get("alwaysUseActiveTerminal")) {
+        if (window.terminals.length < 1) {
+            window.showInformationMessage("There are no open terminals.");
+            return null;
+        } else {
+            return window.activeTerminal;
+        }
+    }
+
     if (window.terminals.length > 0) {
         const RTermNameOpinions = ["R", "R Interactive"];
         if (window.activeTerminal) {
@@ -90,9 +100,19 @@ export async function runSelectionInTerm(term: Terminal, rFunctionName: string[]
         }
         term.sendText(line);
     }
+    setFocus(term);
 }
 
-export function setFocus(term: Terminal) {
+export async function chooseTerminalAndSendText(text: string) {
+    const callableTerminal = await chooseTerminal();
+    if (isNull(callableTerminal)) {
+        return;
+    }
+    callableTerminal.sendText(text);
+    setFocus(callableTerminal);
+}
+
+function setFocus(term: Terminal) {
     const focus = config.get("source.focus") as string;
     term.show(focus !== "terminal");
 }

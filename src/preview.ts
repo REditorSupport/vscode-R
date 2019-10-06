@@ -2,15 +2,11 @@
 
 import fs = require("fs-extra");
 import { commands, extensions, window, workspace } from "vscode";
-import { createRTerm, rTerm } from "./rTerminal";
+import { chooseTerminalAndSendText } from "./rTerminal";
 import { getSelection } from "./selection";
 import { checkForSpecialCharacters, checkIfFileExists, delay } from "./util";
 
 export async function previewEnvironment() {
-    if (!rTerm) {
-        const success = createRTerm(true);
-        if (!success) { return; }
-    }
     if (!checkcsv()) {
         return;
     }
@@ -24,15 +20,11 @@ export async function previewEnvironment() {
                              + envClass + ","
                              + envOut + "), '"
                              + pathToTmpCsv + "', row.names=FALSE, quote = TRUE)";
-    rTerm.sendText(rWriteCsvCommand);
+    chooseTerminalAndSendText(rWriteCsvCommand);
     await openTmpCSV(pathToTmpCsv, tmpDir);
 }
 
 export async function previewDataframe() {
-    if (!rTerm) {
-        const success = createRTerm(true);
-        if (!success) { return; }
-    }
     if (!checkcsv()) {
         return;
     }
@@ -52,7 +44,7 @@ export async function previewDataframe() {
     const rWriteCsvCommand = "write.csv(" + dataframeName + ", '"
                             + pathToTmpCsv
                             + "', row.names = FALSE, quote = FALSE)";
-    rTerm.sendText(rWriteCsvCommand);
+    chooseTerminalAndSendText(rWriteCsvCommand);
     await openTmpCSV(pathToTmpCsv, tmpDir);
 }
 

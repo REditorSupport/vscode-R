@@ -3,11 +3,11 @@
 // Import the module and reference it with the alias vscode in your code below
 import { isNull } from "util";
 import { commands, CompletionItem, ExtensionContext, IndentAction,
-         languages, Position, Terminal, TextDocument, window } from "vscode";
-import { buildPkg, documentPkg, installPkg, loadAllPkg, testPkg } from "./package";
+         languages, Position, TextDocument, window } from "vscode";
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
-import { chooseTerminal, createRTerm, deleteTerminal, rTerm, runSelectionInTerm, setFocus } from "./rTerminal";
+import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
+         runSelectionInTerm } from "./rTerminal";
 import { config, ToRStringLiteral } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -46,12 +46,7 @@ export function activate(context: ExtensionContext) {
         if (echo) {
             rPath = [rPath, "echo = TRUE"].join(", ");
         }
-        if (!rTerm) {
-            const success = createRTerm(true);
-            if (!success) { return; }
-        }
-        rTerm.sendText(`source(${rPath})`);
-        setFocus(rTerm);
+        chooseTerminalAndSendText(`source(${rPath})`);
     }
 
     function knitRmd(echo: boolean, outputFormat: string)  {
@@ -66,14 +61,10 @@ export function activate(context: ExtensionContext) {
         if (echo) {
             rPath = [rPath, "echo = TRUE"].join(", ");
         }
-        if (!rTerm) {
-            const success = createRTerm(true);
-            if (!success) { return; }
-        }
         if (isNull(outputFormat)) {
-            rTerm.sendText(`rmarkdown::render(${rPath})`);
+            chooseTerminalAndSendText(`rmarkdown::render(${rPath})`);
         } else {
-            rTerm.sendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
+            chooseTerminalAndSendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
         }
     }
 
@@ -82,17 +73,15 @@ export function activate(context: ExtensionContext) {
         if (isNull(callableTerminal)) {
             return;
         }
-        setFocus(callableTerminal);
         runSelectionInTerm(callableTerminal, rFunctionName);
     }
 
-    function runSelectionInActiveTerm(rFunctionName: string[]) {
-        if (window.terminals.length < 1) {
-            window.showInformationMessage("There are no open terminals.");
-        } else {
-            runSelectionInTerm(window.activeTerminal, rFunctionName);
-            setFocus(window.activeTerminal);
+    async function runSelectionInActiveTerm(rFunctionName: string[]) {
+        const callableTerminal = await chooseTerminal(true);
+        if (isNull(callableTerminal)) {
+            return;
         }
+        runSelectionInTerm(callableTerminal, rFunctionName);
     }
 
     languages.registerCompletionItemProvider("r", {
@@ -131,11 +120,11 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.createGitignore", createGitignore),
         commands.registerCommand("r.previewDataframe", previewDataframe),
         commands.registerCommand("r.previewEnvironment", previewEnvironment),
-        commands.registerCommand("r.loadAll", loadAllPkg),
-        commands.registerCommand("r.test", testPkg),
-        commands.registerCommand("r.install", installPkg),
-        commands.registerCommand("r.build", buildPkg),
-        commands.registerCommand("r.document", documentPkg),
+        commands.registerCommand("r.loadAll", () => chooseTerminalAndSendText("devtools::load_all()")),
+        commands.registerCommand("r.test", () => chooseTerminalAndSendText("devtools::test()")),
+        commands.registerCommand("r.install", () => chooseTerminalAndSendText("devtools::install()")),
+        commands.registerCommand("r.build", () => chooseTerminalAndSendText("devtools::build()")),
+        commands.registerCommand("r.document", () => chooseTerminalAndSendText("devtools::document()")),
         window.onDidCloseTerminal(deleteTerminal),
     );
 }
