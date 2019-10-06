@@ -45,12 +45,3 @@ export function checkForSpecialCharacters(text) {
 export function checkIfFileExists(filePath) {
     return fs.existsSync(filePath);
 }
-
-export function assertRTerminalCreation(rTerm): boolean {
-    if (!rTerm) {
-        window.showErrorMessage("Could not create R terminal.");
-        return false;
-    } else {
-        return true;
-    }
-}

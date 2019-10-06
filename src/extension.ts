@@ -9,7 +9,7 @@ import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
 import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
 import { getSelection } from "./selection";
-import { config, delay } from "./util";
+import { config, delay, ToRStringLiteral } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -205,23 +205,6 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.document", documentPkg),
         window.onDidCloseTerminal(deleteTerminal),
     );
-
-    function ToRStringLiteral(s: string, quote: string) {
-        if (s === null) {
-            return "NULL";
-        }
-        return (quote +
-                s.replace(/\\/g, "\\\\")
-                .replace(/"""/g, "\\" + quote)
-                .replace(/\\n/g, "\\n")
-                .replace(/\\r/g, "\\r")
-                .replace(/\\t/g, "\\t")
-                .replace(/\\b/g, "\\b")
-                .replace(/\\a/g, "\\a")
-                .replace(/\\f/g, "\\f")
-                .replace(/\\v/g, "\\v") +
-                quote);
-    }
 }
 
 // This method is called when your extension is deactivated
