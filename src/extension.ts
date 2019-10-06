@@ -7,9 +7,8 @@ import { commands, CompletionItem, ExtensionContext, IndentAction,
 import { buildPkg, documentPkg, installPkg, loadAllPkg, testPkg } from "./package";
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
-import { createRTerm, deleteTerminal, rTerm } from "./rTerminal";
-import { getSelection } from "./selection";
-import { config, delay, ToRStringLiteral } from "./util";
+import { chooseTerminal, createRTerm, deleteTerminal, rTerm, runSelectionInTerm, setFocus } from "./rTerminal";
+import { config, ToRStringLiteral } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -87,40 +86,6 @@ export function activate(context: ExtensionContext) {
         runSelectionInTerm(callableTerminal, rFunctionName);
     }
 
-    async function chooseTerminal() {
-        if (window.terminals.length > 0) {
-            const RTermNameOpinions = ["R", "R Interactive"];
-            if (window.activeTerminal) {
-                const activeTerminalName = window.activeTerminal.name;
-                if (RTermNameOpinions.includes(activeTerminalName)) {
-                    return window.activeTerminal;
-                }
-            } else {
-                // Creating a terminal when there aren't any already
-                // does not seem to set activeTerminal
-                if (window.terminals.length === 1) {
-                    const activeTerminalName = window.terminals[0].name;
-                    if (RTermNameOpinions.includes(activeTerminalName)) {
-                        return window.terminals[0];
-                    }
-                } else {
-                    // tslint:disable-next-line: max-line-length
-                    window.showInformationMessage("Error identifying terminal! This shouldn't happen, so please file an issue at https://github.com/Ikuyadeu/vscode-R/issues");
-                    return null;
-                }
-            }
-        }
-
-        if (!rTerm) {
-            const success = createRTerm(true);
-            await delay(200); // Let RTerm warm up
-            if (!success) {
-                return null;
-            }
-        }
-        return rTerm;
-    }
-
     function runSelectionInActiveTerm(rFunctionName: string[]) {
         if (window.terminals.length < 1) {
             window.showInformationMessage("There are no open terminals.");
@@ -128,38 +93,6 @@ export function activate(context: ExtensionContext) {
             runSelectionInTerm(window.activeTerminal, rFunctionName);
             setFocus(window.activeTerminal);
         }
-    }
-
-    async function runSelectionInTerm(term: Terminal, rFunctionName: string[]) {
-        const selection = getSelection();
-        if (selection.linesDownToMoveCursor > 0) {
-            commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
-            commands.executeCommand("cursorMove", { to: "wrappedLineFirstNonWhitespaceCharacter" });
-        }
-
-        if (selection.selectedTextArray.length > 1 && config.get("bracketedPaste")) {
-            // Surround with ANSI control characters for bracketed paste mode
-            selection.selectedTextArray[0] = "\x1b[200~" + selection.selectedTextArray[0];
-            selection.selectedTextArray[selection.selectedTextArray.length - 1] += "\x1b[201~";
-        }
-
-        for (let line of selection.selectedTextArray) {
-            await delay(8); // Increase delay if RTerm can't handle speed.
-
-            if (rFunctionName && rFunctionName.length) {
-                let rFunctionCall = "";
-                for (const feature of rFunctionName) {
-                    rFunctionCall += feature + "(";
-                }
-                line = rFunctionCall + line.trim() + ")".repeat(rFunctionName.length);
-            }
-            term.sendText(line);
-        }
-    }
-
-    function setFocus(term: Terminal) {
-        const focus = config.get("source.focus") as string;
-        term.show(focus !== "terminal");
     }
 
     languages.registerCompletionItemProvider("r", {
