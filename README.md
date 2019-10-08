@@ -55,6 +55,7 @@ This extension contributes the following settings:
 * `r.rterm.option`: R command line options (i.e: --vanilla)
 * `r.source.encoding`: An optional encoding to pass to R when executing the file
 * `r.source.focus`: Keeping focus when running (editor or terminal)
+* `r.alwaysUseActiveTerminal`: Use active terminal for all commands, rather than creating a new R terminal
 * `r.bracketedPaste`: For consoles supporting bracketed paste mode (such as Radian)
 
 * Language server(developing [here](https://github.com/REditorSupport/languageserver))

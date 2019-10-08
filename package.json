@@ -355,7 +355,7 @@
         "r.alwaysUseActiveTerminal": {
           "type": "boolean",
           "default": false,
-          "description": "If enabled, will use active terminal for all commands, rather than creating a new R terminal"
+          "description": "Use active terminal for all commands, rather than creating a new R terminal"
         },
         "r.bracketedPaste": {
           "type": "boolean",
