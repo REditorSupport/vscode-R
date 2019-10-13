@@ -44,6 +44,9 @@ Yes / No
 // Keeping focus when running
 "r.source.focus": "editor",
 
+// Use active terminal for all commands, rather than creating a new R terminal
+"r.alwaysUseActiveTerminal": false,
+
 // Use bracketed paste mode
 "r.bracketedPaste": false,
 ```
