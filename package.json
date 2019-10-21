@@ -336,7 +336,10 @@
             "--no-restore",
             "--no-site-file"
           ],
-          "description": "R command line options (i.e: --vanilla)"
+          "description": "R command line options",
+          "items": {
+            "type": "string"
+          }
         },
         "r.source.encoding": {
           "type": "string",
