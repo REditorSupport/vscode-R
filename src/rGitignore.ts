@@ -3,7 +3,6 @@
 import fs = require("fs-extra");
 import path = require("path");
 import {  window, workspace } from "vscode";
-const ignorePath =  path.join(workspace.workspaceFolders[0].uri.path, ".gitignore");
 // From "https://github.com/github/gitignore/raw/master/R.gitignore"
 const ignoreFiles = [".Rhistory",
                     ".Rapp.history",
@@ -26,6 +25,7 @@ export function createGitignore() {
         window.showWarningMessage("Please open workspace to create .gitignore");
         return;
     }
+    const ignorePath =  path.join(workspace.workspaceFolders[0].uri.path, ".gitignore");
     fs.writeFile(ignorePath, ignoreFiles, (err) => {
         try {
             if (err) {
