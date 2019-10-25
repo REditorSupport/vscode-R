@@ -25,7 +25,7 @@ export function createGitignore() {
         window.showWarningMessage("Please open workspace to create .gitignore");
         return;
     }
-    const ignorePath =  path.join(workspace.workspaceFolders[0].uri.path, ".gitignore");
+    const ignorePath = path.join(workspace.workspaceFolders[0].uri.path, ".gitignore");
     fs.writeFile(ignorePath, ignoreFiles, (err) => {
         try {
             if (err) {

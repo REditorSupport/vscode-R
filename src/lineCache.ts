@@ -8,7 +8,7 @@ export class LineCache {
     public endsInOperatorCache: Map<number, boolean>;
     public getLine: (line: number) => string;
     public lineCount: number;
-    constructor(getLine: (line: number) => string, lineCount: number) {
+    public constructor(getLine: (line: number) => string, lineCount: number) {
         this.getLine = getLine;
         this.lineCount = lineCount;
         this.lineCache = new Map<number, string>();
@@ -20,6 +20,7 @@ export class LineCache {
             this.addLineToCache(line);
         }
         const s = this.lineCache.get(line);
+
         return (s);
     }
     public getEndsInOperatorFromCache(line: number) {
@@ -28,6 +29,7 @@ export class LineCache {
             this.addLineToCache(line);
         }
         const s = this.endsInOperatorCache.get(line);
+
         return (s);
     }
     public addLineToCache(line: number) {
@@ -39,12 +41,14 @@ export class LineCache {
 }
 
 function cleanLine(text: string) {
-    const cleaned = text.replace(/\s*\#.*/, ""); // Remove comments and preceeding spaces
+    const cleaned = text.replace(/\s*\#.*/, "");
+
     return (cleaned);
 }
 
 function doesLineEndInOperator(text: string) {
     const endingOperatorIndex = text.search(/(,|\+|!|\$|\^|&|\*|-|=|:|\'|~|\||\/|\?|%.*%)(\s*|\s*\#.*)$/);
-    const spacesOnlyIndex = text.search(/^\s*$/); // Space-only lines also counted.
+    const spacesOnlyIndex = text.search(/^\s*$/);
+
     return ((0 <= endingOperatorIndex) || (0 <= spacesOnlyIndex));
 }

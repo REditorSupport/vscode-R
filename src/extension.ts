@@ -1,9 +1,9 @@
 "use strict";
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { isNull } from "util";
 import { commands, CompletionItem, ExtensionContext, IndentAction,
          languages, Position, TextDocument, window } from "vscode";
+
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
 import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
@@ -22,7 +22,7 @@ const roxygenTagCompletionItems = [
     "keywords", "method", "name", "md", "noMd", "noRd",
     "note", "param", "rdname", "rawRd", "references", "return",
     "section", "seealso", "slot", "source", "template", "templateVar",
-    "title", "usage"].map((x) => new CompletionItem(x + " "));
+    "title", "usage"].map((x: string) => new CompletionItem(`${x} `));
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -37,10 +37,10 @@ export function activate(context: ExtensionContext) {
     function runSource(echo: boolean)  {
         const wad = window.activeTextEditor.document;
         wad.save();
-        let rPath = ToRStringLiteral(wad.fileName, '"');
-        let encodingParam = config.get("source.encoding") as string;
+        let rPath: string = ToRStringLiteral(wad.fileName, '"');
+        let encodingParam = config.get("source.encoding");
         if (encodingParam) {
-            encodingParam = `encoding = "${encodingParam}"`;
+            encodingParam = `encoding = "${String(encodingParam)}"`;
             rPath = [rPath, encodingParam].join(", ");
         }
         if (echo) {
@@ -50,18 +50,18 @@ export function activate(context: ExtensionContext) {
     }
 
     function knitRmd(echo: boolean, outputFormat: string)  {
-        const wad = window.activeTextEditor.document;
+        const wad: TextDocument = window.activeTextEditor.document;
         wad.save();
         let rPath = ToRStringLiteral(wad.fileName, '"');
-        let encodingParam = config.get("source.encoding") as string;
+        let encodingParam = config.get("source.encoding");
         if (encodingParam) {
-            encodingParam = `encoding = "${encodingParam}"`;
+            encodingParam = `encoding = "${String(encodingParam)}"`;
             rPath = [rPath, encodingParam].join(", ");
         }
         if (echo) {
             rPath = [rPath, "echo = TRUE"].join(", ");
         }
-        if (isNull(outputFormat)) {
+        if (outputFormat === undefined) {
             chooseTerminalAndSendText(`rmarkdown::render(${rPath})`);
         } else {
             chooseTerminalAndSendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
@@ -70,7 +70,7 @@ export function activate(context: ExtensionContext) {
 
     async function runSelection(rFunctionName: string[]) {
         const callableTerminal = await chooseTerminal();
-        if (isNull(callableTerminal)) {
+        if (callableTerminal === undefined) {
             return;
         }
         runSelectionInTerm(callableTerminal, rFunctionName);
@@ -78,7 +78,7 @@ export function activate(context: ExtensionContext) {
 
     async function runSelectionInActiveTerm(rFunctionName: string[]) {
         const callableTerminal = await chooseTerminal(true);
-        if (isNull(callableTerminal)) {
+        if (callableTerminal === undefined) {
             return;
         }
         runSelectionInTerm(callableTerminal, rFunctionName);
@@ -86,18 +86,19 @@ export function activate(context: ExtensionContext) {
 
     languages.registerCompletionItemProvider("r", {
         provideCompletionItems(document: TextDocument, position: Position) {
-            if (document.lineAt(position).text.substr(0, 2) === "#'") {
+            if (document.lineAt(position).text
+                        .substr(0, 2) === "#'") {
                 return roxygenTagCompletionItems;
-            } else {
-                return undefined;
             }
+
+            return undefined;
         },
-    }, "@"); // Trigger on '@'
+    },                                       "@"); // Trigger on '@'
 
     languages.setLanguageConfiguration("r", {
         onEnterRules: [{ // Automatically continue roxygen comments: #'
         action: { indentAction: IndentAction.None, appendText: "#' " },
-            beforeText: /^#'.*/,
+        beforeText: /^#'.*/,
         }],
         wordPattern,
     });
@@ -109,7 +110,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.thead", () => runSelection(["t", "head"])),
         commands.registerCommand("r.names", () => runSelection(["names"])),
         commands.registerCommand("r.runSource", () => runSource(false)),
-        commands.registerCommand("r.knitRmd", () => knitRmd(false, null)),
+        commands.registerCommand("r.knitRmd", () => knitRmd(false, undefined)),
         commands.registerCommand("r.knitRmdToPdf", () => knitRmd(false, "pdf_document")),
         commands.registerCommand("r.knitRmdToHtml", () => knitRmd(false, "html_document")),
         commands.registerCommand("r.knitRmdToAll", () => knitRmd(false, "all")),
@@ -130,6 +131,6 @@ export function activate(context: ExtensionContext) {
 }
 
 // This method is called when your extension is deactivated
-// export function deactivate() {
+// Export function deactivate() {
 
 // }

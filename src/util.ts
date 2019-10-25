@@ -18,7 +18,7 @@ export function getRpath() {
 }
 
 export function ToRStringLiteral(s: string, quote: string) {
-    if (s === null) {
+    if (s === undefined) {
         return "NULL";
     }
     return (quote +

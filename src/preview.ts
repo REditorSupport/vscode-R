@@ -2,6 +2,7 @@
 
 import fs = require("fs-extra");
 import { commands, extensions, window, workspace } from "vscode";
+
 import { chooseTerminalAndSendText } from "./rTerminal";
 import { getSelection } from "./selection";
 import { checkForSpecialCharacters, checkIfFileExists, delay } from "./util";
@@ -11,22 +12,22 @@ export async function previewEnvironment() {
         return;
     }
     const tmpDir = makeTmpDir();
-    const pathToTmpCsv = tmpDir + "/environment.csv";
+    const pathToTmpCsv = `${tmpDir}/environment.csv`;
     const envName = "name=ls()";
     const envClass = "class=sapply(ls(), function(x) {class(get(x, envir = parent.env(environment())))[1]})";
     const envOut = "out=sapply(ls(), function(x) {capture.output(str(get(x, envir = parent.env(environment()))), silent = T)[1]})";
     const rWriteCsvCommand = "write.csv(data.frame("
-                             + envName + ","
-                             + envClass + ","
-                             + envOut + "), '"
-                             + pathToTmpCsv + "', row.names=FALSE, quote = TRUE)";
+                             + `${envName},`
+                             + `${envClass},`
+                             + `${envOut}), '`
+                             + `${pathToTmpCsv}', row.names=FALSE, quote = TRUE)`;
     chooseTerminalAndSendText(rWriteCsvCommand);
     await openTmpCSV(pathToTmpCsv, tmpDir);
 }
 
 export async function previewDataframe() {
     if (!checkcsv()) {
-        return;
+        return undefined;
     }
 
     const selectedTextArray = getSelection().selectedTextArray;
@@ -34,16 +35,16 @@ export async function previewDataframe() {
 
     if (selectedTextArray.length !== 1 || !checkForSpecialCharacters(dataframeName)) {
         window.showInformationMessage("This does not appear to be a dataframe.");
+
         return false;
     }
 
     const tmpDir = makeTmpDir();
 
     // Create R write CSV command.  Turn off row names and quotes, they mess with Excel Viewer.
-    const pathToTmpCsv = tmpDir + "/" + dataframeName + ".csv";
-    const rWriteCsvCommand = "write.csv(" + dataframeName + ", '"
-                            + pathToTmpCsv
-                            + "', row.names = FALSE, quote = FALSE)";
+    const pathToTmpCsv = `${tmpDir}/${dataframeName}.csv`;
+    const rWriteCsvCommand = `write.csv(${dataframeName}, '`
+                            + `'${pathToTmpCsv}', row.names = FALSE, quote = FALSE)`;
     chooseTerminalAndSendText(rWriteCsvCommand);
     await openTmpCSV(pathToTmpCsv, tmpDir);
 }
@@ -54,6 +55,7 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
     if (!checkIfFileExists(pathToTmpCsv)) {
         window.showErrorMessage("Dataframe failed to display.");
         fs.removeSync(tmpDir);
+
         return false;
     }
 
@@ -62,6 +64,7 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
     if (!success) {
         window.showWarningMessage("Visual Studio Code currently limits opening files to 20 MB.");
         fs.removeSync(tmpDir);
+
         return false;
     }
 
@@ -94,9 +97,8 @@ async function waitForFileToFinish(filePath) {
 
         if (currentSize === previousSize) {
             return true;
-        } else {
-            previousSize = currentSize;
         }
+        previousSize = currentSize;
         await delay(50);
     }
 }
@@ -112,6 +114,7 @@ function makeTmpDir() {
     if (!fs.existsSync(tmpDir)) {
         fs.mkdirSync(tmpDir);
     }
+
     return tmpDir;
 }
 
@@ -119,13 +122,13 @@ function checkcsv() {
     const iscsv = extensions.getExtension("GrapeCity.gc-excelviewer");
     if (iscsv && iscsv.isActive) {
         return true;
-    } else {
-        window.showInformationMessage("This function need to install `GrapeCity.gc-excelviewer`, will you install?",
-        "Yes", "No").then((select) => {
-            if (select === "Yes") {
-                commands.executeCommand("workbench.extensions.installExtension", "GrapeCity.gc-excelviewer");
-            }
-        });
-        return false;
     }
+    window.showInformationMessage("This function need to install `GrapeCity.gc-excelviewer`, will you install?",
+                                  "Yes", "No").then((select) => {
+        if (select === "Yes") {
+            commands.executeCommand("workbench.extensions.installExtension", "GrapeCity.gc-excelviewer");
+        }
+    });
+
+    return false;
 }
