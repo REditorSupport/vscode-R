@@ -1,5 +1,11 @@
 # Change Log
 
+## 1.1.6
+
+* Fix behaviour when workplacefolders is Undefiend (thankyou @masterhands)
+* Show r.term.option value in settings UI
+* Refactoring
+
 ## 1.1.5
 
 * Replace deprecated function (Refactoring)
