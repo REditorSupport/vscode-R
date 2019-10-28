@@ -43,7 +43,7 @@ export async function previewDataframe() {
 
     // Create R write CSV command.  Turn off row names and quotes, they mess with Excel Viewer.
     const pathToTmpCsv = `${tmpDir}/${dataframeName}.csv`;
-    const rWriteCsvCommand = `write.csv(${dataframeName}, '`
+    const rWriteCsvCommand = `write.csv(${dataframeName}, `
                             + `'${pathToTmpCsv}', row.names = FALSE, quote = FALSE)`;
     chooseTerminalAndSendText(rWriteCsvCommand);
     await openTmpCSV(pathToTmpCsv, tmpDir);
