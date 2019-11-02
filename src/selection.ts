@@ -18,14 +18,14 @@ export function getWordOrSelection() {
 }
 
 export function surroundSelection(textArray: string[], rFunctionName: string[]) {
-    for (let i: number = 0; i < textArray.length; i++) {
-        if (rFunctionName && rFunctionName.length) {
-            let rFunctionCall = "";
-            for (const feature of rFunctionName) {
-                rFunctionCall += feature + "(";
-            }
-            textArray[i] = rFunctionCall + textArray[i].trim() + ")".repeat(rFunctionName.length);
+    if (rFunctionName && rFunctionName.length) {
+        let rFunctionCall = "";
+        for (const feature of rFunctionName) {
+            rFunctionCall += feature + "(";
         }
+        textArray[0] = rFunctionCall + textArray[0].trimLeft();
+        const end = textArray.length - 1;
+        textArray[end] = textArray[end].trimRight() + ")".repeat(rFunctionName.length);
     }
     return textArray;
 }
