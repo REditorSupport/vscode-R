@@ -79,29 +79,24 @@ export async function chooseTerminal(active: boolean = false) {
     return rTerm;
 }
 
-export async function runSelectionInTerm(term: Terminal, rFunctionName: string[]) {
+export async function runSelectionInTerm(term: Terminal) {
     const selection = getSelection();
     if (selection.linesDownToMoveCursor > 0) {
         commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
         commands.executeCommand("cursorMove", { to: "wrappedLineFirstNonWhitespaceCharacter" });
     }
+    runTextInTerm(term, selection.selectedTextArray);
+}
 
-    if (selection.selectedTextArray.length > 1 && config.get("bracketedPaste")) {
+export async function runTextInTerm(term: Terminal, textArray: string[]) {
+    if (textArray.length > 1 && config.get("bracketedPaste")) {
         // Surround with ANSI control characters for bracketed paste mode
-        selection.selectedTextArray[0] = "\x1b[200~" + selection.selectedTextArray[0];
-        selection.selectedTextArray[selection.selectedTextArray.length - 1] += "\x1b[201~";
+        textArray[0] = "\x1b[200~" + textArray[0];
+        textArray[textArray.length - 1] += "\x1b[201~";
     }
 
-    for (let line of selection.selectedTextArray) {
+    for (const line of textArray) {
         await delay(8); // Increase delay if RTerm can't handle speed.
-
-        if (rFunctionName && rFunctionName.length) {
-            let rFunctionCall = "";
-            for (const feature of rFunctionName) {
-                rFunctionCall += feature + "(";
-            }
-            line = rFunctionCall + line.trim() + ")".repeat(rFunctionName.length);
-        }
         term.sendText(line);
     }
     setFocus(term);

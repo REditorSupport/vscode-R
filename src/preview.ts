@@ -4,7 +4,7 @@ import fs = require("fs-extra");
 import { commands, extensions, window, workspace } from "vscode";
 
 import { chooseTerminalAndSendText } from "./rTerminal";
-import { getSelection } from "./selection";
+import { getWordOrSelection } from "./selection";
 import { checkForSpecialCharacters, checkIfFileExists, delay } from "./util";
 
 export async function previewEnvironment() {
@@ -30,7 +30,7 @@ export async function previewDataframe() {
         return undefined;
     }
 
-    const selectedTextArray = getSelection().selectedTextArray;
+    const selectedTextArray = getWordOrSelection();
     const dataframeName = selectedTextArray[0];
 
     if (selectedTextArray.length !== 1 || !checkForSpecialCharacters(dataframeName)) {

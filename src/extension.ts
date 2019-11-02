@@ -7,7 +7,8 @@ import { commands, CompletionItem, ExtensionContext, IndentAction,
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
 import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
-         runSelectionInTerm } from "./rTerminal";
+         runSelectionInTerm, runTextInTerm } from "./rTerminal";
+import { getWordOrSelection, surroundSelection } from "./selection";
 import { config, ToRStringLiteral } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -68,20 +69,30 @@ export function activate(context: ExtensionContext) {
         }
     }
 
-    async function runSelection(rFunctionName: string[]) {
+    async function runSelection() {
         const callableTerminal = await chooseTerminal();
         if (callableTerminal === undefined) {
             return;
         }
-        runSelectionInTerm(callableTerminal, rFunctionName);
+        runSelectionInTerm(callableTerminal);
     }
 
-    async function runSelectionInActiveTerm(rFunctionName: string[]) {
+    async function runSelectionInActiveTerm() {
         const callableTerminal = await chooseTerminal(true);
         if (callableTerminal === undefined) {
             return;
         }
-        runSelectionInTerm(callableTerminal, rFunctionName);
+        runSelectionInTerm(callableTerminal);
+    }
+
+    async function runSelectionOrWord(rFunctionName: string[]) {
+        const callableTerminal = await chooseTerminal();
+        if (callableTerminal === undefined) {
+            return;
+        }
+        const text = getWordOrSelection();
+        const wrappedText = surroundSelection(text, rFunctionName);
+        runTextInTerm(callableTerminal, wrappedText);
     }
 
     languages.registerCompletionItemProvider("r", {
@@ -104,11 +115,11 @@ export function activate(context: ExtensionContext) {
     });
 
     context.subscriptions.push(
-        commands.registerCommand("r.nrow", () => runSelection(["nrow"])),
-        commands.registerCommand("r.length", () => runSelection(["length"])),
-        commands.registerCommand("r.head", () => runSelection(["head"])),
-        commands.registerCommand("r.thead", () => runSelection(["t", "head"])),
-        commands.registerCommand("r.names", () => runSelection(["names"])),
+        commands.registerCommand("r.nrow", () => runSelectionOrWord(["nrow"])),
+        commands.registerCommand("r.length", () => runSelectionOrWord(["length"])),
+        commands.registerCommand("r.head", () => runSelectionOrWord(["head"])),
+        commands.registerCommand("r.thead", () => runSelectionOrWord(["t", "head"])),
+        commands.registerCommand("r.names", () => runSelectionOrWord(["names"])),
         commands.registerCommand("r.runSource", () => runSource(false)),
         commands.registerCommand("r.knitRmd", () => knitRmd(false, undefined)),
         commands.registerCommand("r.knitRmdToPdf", () => knitRmd(false, "pdf_document")),
@@ -116,8 +127,8 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.knitRmdToAll", () => knitRmd(false, "all")),
         commands.registerCommand("r.createRTerm", createRTerm),
         commands.registerCommand("r.runSourcewithEcho", () => runSource(true)),
-        commands.registerCommand("r.runSelection", () => runSelection([])),
-        commands.registerCommand("r.runSelectionInActiveTerm", () => runSelectionInActiveTerm([])),
+        commands.registerCommand("r.runSelection", () => runSelection()),
+        commands.registerCommand("r.runSelectionInActiveTerm", () => runSelectionInActiveTerm()),
         commands.registerCommand("r.createGitignore", createGitignore),
         commands.registerCommand("r.previewDataframe", previewDataframe),
         commands.registerCommand("r.previewEnvironment", previewEnvironment),
