@@ -2,13 +2,14 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { commands, CompletionItem, ExtensionContext, IndentAction,
-         languages, Position, TextDocument, window } from "vscode";
+         languages, Position, TextDocument, window, Hover } from "vscode";
 
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
 import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from "./rTerminal";
 import { getWordOrSelection, surroundSelection } from "./selection";
+import { globalenv, sessionStart } from "./session";
 import { config, ToRStringLiteral } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -91,6 +92,10 @@ export function activate(context: ExtensionContext) {
         runTextInTerm(callableTerminal, wrappedText);
     }
 
+    function callSessionStart() {
+        sessionStart();
+    }
+
     languages.registerCompletionItemProvider("r", {
         provideCompletionItems(document: TextDocument, position: Position) {
             if (document.lineAt(position).text
@@ -101,6 +106,14 @@ export function activate(context: ExtensionContext) {
             return undefined;
         },
     },                                       "@"); // Trigger on '@'
+
+    languages.registerHoverProvider("r", {
+        provideHover(document, position, token) {
+            const wordRange = document.getWordRangeAtPosition(position);
+            const text = document.getText(wordRange);
+            return new Hover("VALUE: " + globalenv[text].str);
+        }
+    });
 
     languages.setLanguageConfiguration("r", {
         onEnterRules: [{ // Automatically continue roxygen comments: #'
@@ -133,6 +146,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.install", () => chooseTerminalAndSendText("devtools::install()")),
         commands.registerCommand("r.build", () => chooseTerminalAndSendText("devtools::build()")),
         commands.registerCommand("r.document", () => chooseTerminalAndSendText("devtools::document()")),
+        commands.registerCommand("r.sessionStart", callSessionStart),
         window.onDidCloseTerminal(deleteTerminal),
     );
 }

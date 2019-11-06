@@ -232,6 +232,11 @@
         "title": "Document",
         "category": "R",
         "command": "r.document"
+      },
+      {
+        "title": "Start Session",
+        "category": "R",
+        "command": "r.sessionStart"
       }
     ],
     "keybindings": [
