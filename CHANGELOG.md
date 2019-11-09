@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.1.8
+
+* Use word under cursor for previewDataframe, nrow (fix #137)
+* Change license MIT -> AGPL-3.0
+
 ## 1.1.6
 
 * Fix behaviour when workplacefolders is Undefiend (thankyou @masterhands)
