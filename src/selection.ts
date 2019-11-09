@@ -3,6 +3,33 @@
 import { Position, Range, window} from "vscode";
 import { LineCache } from "./lineCache";
 
+export function getWordOrSelection() {
+    const selection = window.activeTextEditor.selection;
+    const currentDocument = window.activeTextEditor.document;
+    let text: string;
+    if ((selection.start.line === selection.end.line) &&
+        (selection.start.character === selection.end.character)) {
+        const wordRange = currentDocument.getWordRangeAtPosition(selection.start);
+        text = currentDocument.getText(wordRange);
+    } else {
+        text = currentDocument.getText(window.activeTextEditor.selection);
+    }
+    return text.split("\n");
+}
+
+export function surroundSelection(textArray: string[], rFunctionName: string[]) {
+    if (rFunctionName && rFunctionName.length) {
+        let rFunctionCall = "";
+        for (const feature of rFunctionName) {
+            rFunctionCall += feature + "(";
+        }
+        textArray[0] = rFunctionCall + textArray[0].trimLeft();
+        const end = textArray.length - 1;
+        textArray[end] = textArray[end].trimRight() + ")".repeat(rFunctionName.length);
+    }
+    return textArray;
+}
+
 export function getSelection(): any {
     const selection = { linesDownToMoveCursor: 0, selectedTextArray: [] };
     const { start, end } = window.activeTextEditor.selection;
