@@ -1,6 +1,6 @@
 "use strict";
 
-import fs = require("fs-extra");
+import { existsSync, mkdirSync, removeSync, statSync } from "fs-extra";
 import { commands, extensions, window, workspace } from "vscode";
 
 import { chooseTerminalAndSendText } from "./rTerminal";
@@ -54,7 +54,7 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
 
     if (!checkIfFileExists(pathToTmpCsv)) {
         window.showErrorMessage("Dataframe failed to display.");
-        fs.removeSync(tmpDir);
+        removeSync(tmpDir);
 
         return false;
     }
@@ -63,7 +63,7 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
     const success = await waitForFileToFinish(pathToTmpCsv);
     if (!success) {
         window.showWarningMessage("Visual Studio Code currently limits opening files to 20 MB.");
-        fs.removeSync(tmpDir);
+        removeSync(tmpDir);
 
         return false;
     }
@@ -74,23 +74,24 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
     }
 
     // Open CSV in Excel Viewer and clean up.
-    workspace.openTextDocument(pathToTmpCsv).then(async (file) => {
-        await commands.executeCommand("csv.preview", file.uri);
-        fs.removeSync(tmpDir);
+    workspace.openTextDocument(pathToTmpCsv)
+             .then(async (file) => {
+                await commands.executeCommand("csv.preview", file.uri);
+                removeSync(tmpDir);
             });
 }
 
-async function waitForFileToFinish(filePath) {
+async function waitForFileToFinish(filePath: string) {
     const fileBusy = true;
     let currentSize = 0;
     let previousSize = 1;
 
     while (fileBusy) {
-        const stats = fs.statSync(filePath);
+        const stats = statSync(filePath);
         currentSize = stats.size;
 
         // UPDATE: We are now limited to 20 mb by MODEL_TOKENIZATION_LIMIT
-        // https://github.com/Microsoft/vscode/blob/master/src/vs/editor/common/model/textModel.ts#L34
+        // Https://github.com/Microsoft/vscode/blob/master/src/vs/editor/common/model/textModel.ts#L34
         if (currentSize > 2 * 10000000) { // 20 MB
             return false;
         }
@@ -111,8 +112,8 @@ function makeTmpDir() {
     } else {
         tmpDir += "/.tmp";
     }
-    if (!fs.existsSync(tmpDir)) {
-        fs.mkdirSync(tmpDir);
+    if (!existsSync(tmpDir)) {
+        mkdirSync(tmpDir);
     }
 
     return tmpDir;
@@ -120,11 +121,12 @@ function makeTmpDir() {
 
 function checkcsv() {
     const iscsv = extensions.getExtension("GrapeCity.gc-excelviewer");
-    if (iscsv && iscsv.isActive) {
+    if (iscsv !== undefined && iscsv.isActive) {
         return true;
     }
     window.showInformationMessage("This function need to install `GrapeCity.gc-excelviewer`, will you install?",
-                                  "Yes", "No").then((select) => {
+                                  "Yes", "No")
+          .then((select) => {
         if (select === "Yes") {
             commands.executeCommand("workbench.extensions.installExtension", "GrapeCity.gc-excelviewer");
         }

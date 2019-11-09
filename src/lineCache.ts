@@ -50,5 +50,5 @@ function doesLineEndInOperator(text: string) {
     const endingOperatorIndex = text.search(/(,|\+|!|\$|\^|&|\*|-|=|:|\'|~|\||\/|\?|%.*%)(\s*|\s*\#.*)$/);
     const spacesOnlyIndex = text.search(/^\s*$/);
 
-    return ((0 <= endingOperatorIndex) || (0 <= spacesOnlyIndex));
+    return ((endingOperatorIndex >= 0) || (spacesOnlyIndex >= 0));
 }

@@ -1,6 +1,7 @@
 "use strict";
 
-import { Position, Range, window} from "vscode";
+import { Position, Range, window } from "vscode";
+
 import { LineCache } from "./lineCache";
 
 export function getWordOrSelection() {
@@ -14,6 +15,7 @@ export function getWordOrSelection() {
     } else {
         text = currentDocument.getText(window.activeTextEditor.selection);
     }
+
     return text.split("\n");
 }
 
@@ -21,16 +23,17 @@ export function surroundSelection(textArray: string[], rFunctionName: string[]) 
     if (rFunctionName && rFunctionName.length) {
         let rFunctionCall = "";
         for (const feature of rFunctionName) {
-            rFunctionCall += feature + "(";
+            rFunctionCall += `${feature}(`;
         }
         textArray[0] = rFunctionCall + textArray[0].trimLeft();
         const end = textArray.length - 1;
         textArray[end] = textArray[end].trimRight() + ")".repeat(rFunctionName.length);
     }
+
     return textArray;
 }
 
-export function getSelection(): any {
+export function getSelection() {
     const selection = { linesDownToMoveCursor: 0, selectedTextArray: [] };
     const { start, end } = window.activeTextEditor.selection;
     const currentDocument = window.activeTextEditor.document;
@@ -43,11 +46,12 @@ export function getSelection(): any {
         const charactersOnLine = window.activeTextEditor.document.lineAt(endLine).text.length;
         const newStart = new Position(startLine, 0);
         const newEnd = new Position(endLine, charactersOnLine);
-        selection.linesDownToMoveCursor = 1 + endLine - start.line;
+        selection.linesDownToMoveCursor = endLine + 1 - start.line;
         selectedLine = currentDocument.getText(new Range(newStart, newEnd));
     } else if (start.line === end.line) {
         selection.linesDownToMoveCursor = 0;
         selection.selectedTextArray = [currentDocument.getText(new Range(start, end))];
+
         return selection;
     } else {
         selectedLine = currentDocument.getText(new Range(start, end));
@@ -64,6 +68,7 @@ function removeCommentedLines(selection: string[]): string[] {
     selection.forEach((line) => {
         if (!checkForBlankOrComment(line)) { selectionWithoutComments.push(line); }
     });
+
     return selectionWithoutComments;
 }
 
@@ -75,8 +80,9 @@ export function checkForBlankOrComment(line: string): boolean {
             isWhitespaceOnly = false;
             break;
         }
-        index++;
+        index += 1;
     }
+
     return isWhitespaceOnly || line[index] === "#";
 }
 
@@ -85,9 +91,9 @@ export function checkForBlankOrComment(line: string): boolean {
  */
 class PositionNeg {
     public line: number;
-    public character;
+    public character: number;
     public cter: number;
-    constructor(line: number, character: number) {
+    public constructor(line: number, character: number) {
         this.line = line;
         this.character = character;
     }
@@ -95,15 +101,16 @@ class PositionNeg {
 
 function doBracketsMatch(a: string, b: string): boolean {
     const matches = { "(": ")", "[": "]", "{": "}", ")": "(", "]": "[", "}": "{" };
+
     return matches[a] === b;
 }
 
 function isBracket(c: string, lookingForward: boolean) {
     if (lookingForward) {
         return ((c === "(") || (c === "[") || (c === "{"));
-    } else {
-        return ((c === ")") || (c === "]") || (c === "}"));
     }
+
+    return ((c === ")") || (c === "]") || (c === "}"));
 }
 
 /**
@@ -120,9 +127,9 @@ function getNextChar(p: PositionNeg,
                      lookingForward: boolean,
                      getLine: (x: number) => string,
                      getEndsInOperator: (y: number) => boolean,
-                     lineCount) {
+                     lineCount: number) {
     const s = getLine(p.line);
-    let nextPos: PositionNeg = null;
+    let nextPos: PositionNeg;
     let isEndOfCodeLine = false;
     let isEndOfFile = false;
     if (lookingForward) {
@@ -158,6 +165,7 @@ function getNextChar(p: PositionNeg,
         }
     }
     const nextChar = getLine(nextPos.line)[nextPos.character];
+
     return ({ nextChar, nextPos, isEndOfCodeLine, isEndOfFile });
 }
 
@@ -201,8 +209,8 @@ export function extendSelection(line: number, getLine: (line: number) => string,
     const getLineFromCache = (x) => lc.getLineFromCache(x);
     const getEndsInOperatorFromCache = (x) => lc.getEndsInOperatorFromCache(x);
     let lookingForward = true;
-    // poss[1] is the farthest point reached looking forward from line,
-    // and poss[0] is the farthest point reached looking backward from line.
+    /* poss[1] is the farthest point reached looking forward from line,
+     and poss[0] is the farthest point reached looking backward from line. */
     const poss = { 0: new PositionNeg(line, 0), 1: new PositionNeg(line, -1) };
     const flagsFinish = { 0: false, 1: false }; // 1 represents looking forward, 0 represents looking back.
     let flagAbort = false;
@@ -214,24 +222,21 @@ export function extendSelection(line: number, getLine: (line: number) => string,
                       getLineFromCache,
                       getEndsInOperatorFromCache,
                       lineCount);
-        poss[lookingForward ? 1 : 0] = nextPos;
+        poss[Number(lookingForward)] = nextPos;
         if (isBracket(nextChar, lookingForward)) {
             unmatched[lookingForward ? 1 : 0].push(nextChar);
         } else if (isBracket(nextChar, !lookingForward)) {
             if (unmatched[lookingForward ? 1 : 0].length === 0) {
                 lookingForward = !lookingForward;
                 unmatched[lookingForward ? 1 : 0].push(nextChar);
-                flagsFinish[lookingForward ? 1 : 0] = false;
-            } else {
-                const needsToMatch = unmatched[lookingForward ? 1 : 0].pop();
-                if (!doBracketsMatch(nextChar, needsToMatch)) {
-                    flagAbort = true;
-                }
+                flagsFinish[Number(lookingForward)] = false;
+            } else if (!doBracketsMatch(nextChar, unmatched[lookingForward ? 1 : 0].pop())) {
+                flagAbort = true;
             }
         } else if (isEndOfCodeLine) {
             if (unmatched[lookingForward ? 1 : 0].length === 0) {
                 // We have found everything we need to in this direction. Continue looking in the other direction.
-                flagsFinish[lookingForward ? 1 : 0] = true;
+                flagsFinish[Number(lookingForward)] = true;
                 lookingForward = !lookingForward;
             } else if (isEndOfFile) {
                 // Have hit the start or end of the file without finding the matching bracket.
@@ -241,7 +246,7 @@ export function extendSelection(line: number, getLine: (line: number) => string,
     }
     if (flagAbort) {
         return ({ startLine: line, endLine: line });
-    } else {
-        return ({ startLine: poss[0].line, endLine: poss[1].line });
     }
+
+    return ({ startLine: poss[0].line, endLine: poss[1].line });
 }

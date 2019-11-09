@@ -39,11 +39,9 @@ export function activate(context: ExtensionContext) {
         const wad = window.activeTextEditor.document;
         wad.save();
         let rPath: string = ToRStringLiteral(wad.fileName, '"');
-        let encodingParam = config.get("source.encoding");
-        if (encodingParam) {
-            encodingParam = `encoding = "${String(encodingParam)}"`;
-            rPath = [rPath, encodingParam].join(", ");
-        }
+        let encodingParam = config.get<string>("source.encoding");
+        encodingParam = `encoding = "${encodingParam}"`;
+        rPath = [rPath, encodingParam].join(", ");
         if (echo) {
             rPath = [rPath, "echo = TRUE"].join(", ");
         }
@@ -54,11 +52,9 @@ export function activate(context: ExtensionContext) {
         const wad: TextDocument = window.activeTextEditor.document;
         wad.save();
         let rPath = ToRStringLiteral(wad.fileName, '"');
-        let encodingParam = config.get("source.encoding");
-        if (encodingParam) {
-            encodingParam = `encoding = "${String(encodingParam)}"`;
-            rPath = [rPath, encodingParam].join(", ");
-        }
+        let encodingParam = config.get<string>("source.encoding");
+        encodingParam = `encoding = "${encodingParam}"`;
+        rPath = [rPath, encodingParam].join(", ");
         if (echo) {
             rPath = [rPath, "echo = TRUE"].join(", ");
         }
@@ -120,13 +116,13 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.head", () => runSelectionOrWord(["head"])),
         commands.registerCommand("r.thead", () => runSelectionOrWord(["t", "head"])),
         commands.registerCommand("r.names", () => runSelectionOrWord(["names"])),
-        commands.registerCommand("r.runSource", () => runSource(false)),
-        commands.registerCommand("r.knitRmd", () => knitRmd(false, undefined)),
-        commands.registerCommand("r.knitRmdToPdf", () => knitRmd(false, "pdf_document")),
-        commands.registerCommand("r.knitRmdToHtml", () => knitRmd(false, "html_document")),
-        commands.registerCommand("r.knitRmdToAll", () => knitRmd(false, "all")),
+        commands.registerCommand("r.runSource", () => { runSource(false); }),
+        commands.registerCommand("r.knitRmd", () => { knitRmd(false, undefined); }),
+        commands.registerCommand("r.knitRmdToPdf", () => { knitRmd(false, "pdf_document"); }),
+        commands.registerCommand("r.knitRmdToHtml", () => { knitRmd(false, "html_document"); }),
+        commands.registerCommand("r.knitRmdToAll", () => { knitRmd(false, "all"); }),
         commands.registerCommand("r.createRTerm", createRTerm),
-        commands.registerCommand("r.runSourcewithEcho", () => runSource(true)),
+        commands.registerCommand("r.runSourcewithEcho", () => { runSource(true); }),
         commands.registerCommand("r.runSelection", runSelection),
         commands.registerCommand("r.runSelectionInActiveTerm", runSelectionInActiveTerm),
         commands.registerCommand("r.createGitignore", createGitignore),

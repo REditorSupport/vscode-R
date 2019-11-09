@@ -1,6 +1,6 @@
 "use strict";
 
-import fs = require("fs-extra");
+import { pathExists } from "fs-extra";
 import { isDeepStrictEqual } from "util";
 import { commands, Terminal, window } from "vscode";
 
@@ -11,11 +11,11 @@ export let rTerm: Terminal;
 export function createRTerm(preserveshow?: boolean): boolean {
         const termName = "R Interactive";
         const termPath = getRpath();
-        if (!termPath) {
-            return;
+        if (termPath === undefined) {
+            return undefined;
         }
         const termOpt: string[] = config.get("rterm.option");
-        fs.pathExists(termPath, (err, exists) => {
+        pathExists(termPath, (err, exists) => {
             if (exists) {
                 rTerm = window.createTerminal(termName, termPath, termOpt);
                 rTerm.show(preserveshow);
@@ -46,17 +46,17 @@ export async function chooseTerminal(active: boolean = false) {
     }
 
     if (window.terminals.length > 0) {
-        const RTermNameOpinions = ["R", "R Interactive"];
+        const rTermNameOpinions = ["R", "R Interactive"];
         if (window.activeTerminal) {
             const activeTerminalName = window.activeTerminal.name;
-            if (RTermNameOpinions.includes(activeTerminalName)) {
+            if (rTermNameOpinions.includes(activeTerminalName)) {
                 return window.activeTerminal;
             }
         } else {
             // Creating a terminal when there aren't any already does not seem to set activeTerminal
             if (window.terminals.length === 1) {
                 const activeTerminalName = window.terminals[0].name;
-                if (RTermNameOpinions.includes(activeTerminalName)) {
+                if (rTermNameOpinions.includes(activeTerminalName)) {
                     return window.terminals[0];
                 }
             } else {
@@ -68,7 +68,7 @@ export async function chooseTerminal(active: boolean = false) {
         }
     }
 
-    if (!rTerm) {
+    if (rTerm === undefined) {
         const success = createRTerm(true);
         await delay(200); // Let RTerm warm up
         if (!success) {
@@ -79,7 +79,7 @@ export async function chooseTerminal(active: boolean = false) {
     return rTerm;
 }
 
-export async function runSelectionInTerm(term: Terminal) {
+export function runSelectionInTerm(term: Terminal) {
     const selection = getSelection();
     if (selection.linesDownToMoveCursor > 0) {
         commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
@@ -89,9 +89,9 @@ export async function runSelectionInTerm(term: Terminal) {
 }
 
 export async function runTextInTerm(term: Terminal, textArray: string[]) {
-    if (textArray.length > 1 && config.get("bracketedPaste")) {
+    if (textArray.length > 1 && config.get<boolean>("bracketedPaste")) {
         // Surround with ANSI control characters for bracketed paste mode
-        textArray[0] = "\x1b[200~" + textArray[0];
+        textArray[0] = `\x1b[200~${textArray[0]}`;
         textArray[textArray.length - 1] += "\x1b[201~";
     }
 

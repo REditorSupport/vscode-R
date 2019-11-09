@@ -1,6 +1,6 @@
 "use strict";
 
-import {commands, ExtensionContext, ViewColumn, window} from "vscode";
+import { commands, ExtensionContext, ViewColumn, window } from "vscode";
 
 export function activate(context: ExtensionContext) {
     context.subscriptions.push(commands.registerCommand("catCoding.start", () => {
