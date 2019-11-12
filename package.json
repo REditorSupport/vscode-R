@@ -234,9 +234,9 @@
         "command": "r.document"
       },
       {
-        "title": "Start Session",
+        "title": "Attach Active Terminal",
         "category": "R",
-        "command": "r.sessionStart"
+        "command": "r.attachActive"
       }
     ],
     "keybindings": [

@@ -1,30 +1,64 @@
 "use strict";
 
 import fs = require("fs-extra");
-import { window, workspace, RelativePattern } from "vscode";
+import { RelativePattern, window, workspace } from "vscode";
+import { chooseTerminalAndSendText } from "./rTerminal";
 
 export let globalenv: any;
+let sessionWatcher: any;
+let PID: string;
 
-function updateGlobalenv(event) {
-    const globalenvPath = workspace.rootPath + "/.vscode-R/session/PID/globalenv.json";
-    const parseResult = JSON.parse(fs.readFileSync(globalenvPath, "utf8"));
-    globalenv = parseResult;
-    window.showInformationMessage("parseResult.a: " + parseResult['a'].str);
-    window.showInformationMessage("Updated globalenv.a: " + globalenv['a'].str);
+export function attachActive() {
+    startLogWatcher();
+    chooseTerminalAndSendText("getOption('vscodeR')$attach()");
 }
 
-export function sessionStart() {
-    //TODO Make async?
-    //TODO Specify location of .vscode-R
+function updateSessionWatcher() {
     const uri = window.activeTextEditor!.document.uri;
-    const globalenvPath = workspace.rootPath + "/.vscode-R/session/PID/globalenv.json";
-    window.showInformationMessage("Path: " + globalenvPath);
-    globalenv = JSON.parse(fs.readFileSync(globalenvPath, "utf8"));
-    window.showInformationMessage("Probably loaded globalenv" + globalenv['a'].str);
+    window.showInformationMessage("Updating session to PID " + PID);
+    sessionWatcher = workspace.createFileSystemWatcher(
+        new RelativePattern(
+            workspace.getWorkspaceFolder(uri)!,
+            ".vscode/vscode-R/" + PID + "/globalenv.json"));
+    sessionWatcher.onDidChange(updateGlobalenv);
+}
+
+function _updateGlobalenv() {
+    const globalenvPath = workspace.rootPath + "/.vscode/vscode-R/" + PID + "/globalenv.json";
+    const parseResult = JSON.parse(fs.readFileSync(globalenvPath, "utf8"));
+    globalenv = parseResult;
+    window.showInformationMessage("Updated globalenv");
+}
+
+function updateGlobalenv(event) {
+    _updateGlobalenv();
+}
+
+function updateResponse(event) {
+    window.showInformationMessage("Response file updated!");
+    // Read last line from response file
+    const responseLogFile = workspace.rootPath + "/.vscode/vscode-R/response.log";
+    window.showInformationMessage("File exists? " + fs.existsSync(responseLogFile));
+    const lines = fs.readFileSync(responseLogFile, "utf8").split("\n");
+    window.showInformationMessage("Read response file");
+    const lastLine = lines[lines.length - 2];
+    window.showInformationMessage("Last line: " + lastLine);
+    const parseResult = JSON.parse(lastLine);
+    if (parseResult.command === "attach") {
+        PID = parseResult.pid;
+        updateSessionWatcher();
+        _updateGlobalenv();
+        window.showInformationMessage("Got PID: " + PID);
+    } else {
+        window.showInformationMessage("Command was not attach");
+    }
+}
+
+function startLogWatcher() {
+    const uri = window.activeTextEditor!.document.uri;
     const fileWatcher = workspace.createFileSystemWatcher(
         new RelativePattern(
             workspace.getWorkspaceFolder(uri)!,
-            ".vscode-R/session/PID/globalenv.json"));
-    fileWatcher.onDidChange(updateGlobalenv);
-    //TODO createFileSystemWatcher can only watch workspace
+            ".vscode/vscode-R/response.log"));
+    fileWatcher.onDidChange(updateResponse);
 }
