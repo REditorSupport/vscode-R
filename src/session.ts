@@ -21,6 +21,20 @@ function updateSessionWatcher() {
             workspace.getWorkspaceFolder(uri)!,
             ".vscode/vscode-R/" + PID + "/globalenv.json"));
     sessionWatcher.onDidChange(updateGlobalenv);
+    sessionWatcher = workspace.createFileSystemWatcher(
+        new RelativePattern(
+            workspace.getWorkspaceFolder(uri)!,
+            ".vscode/vscode-R/" + PID + "/plot.png"));
+    sessionWatcher.onDidChange(updatePlot);
+}
+
+function _updatePlot() {
+    const plotPath = workspace.rootPath + "/.vscode/vscode-R/" + PID + "/plot.png";
+    window.showInformationMessage("Updated plot");
+}
+
+function updatePlot(event) {
+    _updatePlot();
 }
 
 function _updateGlobalenv() {
@@ -48,6 +62,7 @@ function updateResponse(event) {
         PID = parseResult.pid;
         updateSessionWatcher();
         _updateGlobalenv();
+        _updatePlot();
         window.showInformationMessage("Got PID: " + PID);
     } else {
         window.showInformationMessage("Command was not attach");
