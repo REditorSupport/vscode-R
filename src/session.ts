@@ -1,7 +1,8 @@
 "use strict";
 
 import fs = require("fs-extra");
-import { RelativePattern, window, workspace } from "vscode";
+import { dirname } from "path";
+import { RelativePattern, window, workspace, ViewColumn, Uri } from "vscode";
 import { chooseTerminalAndSendText } from "./rTerminal";
 
 export let globalenv: any;
@@ -48,6 +49,19 @@ function updateGlobalenv(event) {
     _updateGlobalenv();
 }
 
+function showWebView(file) {
+    const dir = dirname(file);
+    window.showInformationMessage("webview uri: " + file);
+    const panel = window.createWebviewPanel("webview", "WebView", ViewColumn.One, {
+        enableScripts: true,
+        localResourceRoots: [Uri.file(dir)]
+    });
+    const html = fs.readFileSync(file).toString()
+        .replace(/<script src="/g, '<script src="vscode-resource://' + dir + "/")
+        .replace(/<link href="/g, '<link href="vscode-resource://' + dir + "/");
+    panel.webview.html = html;
+}
+
 function updateResponse(event) {
     window.showInformationMessage("Response file updated!");
     // Read last line from response file
@@ -64,6 +78,10 @@ function updateResponse(event) {
         _updateGlobalenv();
         _updatePlot();
         window.showInformationMessage("Got PID: " + PID);
+    } else if (parseResult.command === "webview") {
+        PID = parseResult.pid;
+        showWebView(parseResult.file);
+        window.showInformationMessage("Show webview: " + parseResult.file);
     } else {
         window.showInformationMessage("Command was not attach");
     }
