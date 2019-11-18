@@ -79,7 +79,6 @@ function updateResponse(event) {
         _updatePlot();
         window.showInformationMessage("Got PID: " + PID);
     } else if (parseResult.command === "webview") {
-        PID = parseResult.pid;
         showWebView(parseResult.file);
         window.showInformationMessage("Show webview: " + parseResult.file);
     } else {
