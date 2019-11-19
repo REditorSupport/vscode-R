@@ -2,7 +2,7 @@
 
 import fs = require("fs-extra");
 import { dirname } from "path";
-import { RelativePattern, window, workspace, ViewColumn, Uri } from "vscode";
+import { commands, RelativePattern, window, workspace, ViewColumn, Uri } from "vscode";
 import { chooseTerminalAndSendText } from "./rTerminal";
 
 export let globalenv: any;
@@ -31,6 +31,9 @@ function updateSessionWatcher() {
 
 function _updatePlot() {
     const plotPath = workspace.rootPath + "/.vscode/vscode-R/" + PID + "/plot.png";
+    commands.executeCommand("vscode.open", Uri.file(plotPath), {
+        preserveFocus: true, preview: true, viewColumn: ViewColumn.Beside
+    });
     window.showInformationMessage("Updated plot");
 }
 
