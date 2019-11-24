@@ -37,7 +37,7 @@ function _updatePlot() {
             preserveFocus: true, preview: true, viewColumn: ViewColumn.Two
         });
         window.showInformationMessage("Updated plot");
-    }    
+    }
 }
 
 function createPlot(event) {
@@ -62,9 +62,9 @@ function updateGlobalenv(event) {
 function showWebView(file) {
     const dir = dirname(file);
     window.showInformationMessage("webview uri: " + file);
-    const panel = window.createWebviewPanel("webview", "WebView", ViewColumn.Two, {
-        enableScripts: true,
-        localResourceRoots: [Uri.file(dir)]
+    const panel = window.createWebviewPanel("webview", "WebView",
+        { preserveFocus: true, viewColumn: ViewColumn.Two },
+        { enableScripts: true, localResourceRoots: [Uri.file(dir)]
     });
     const html = fs.readFileSync(file).toString()
         .replace(/<script src="/g, '<script src="vscode-resource://' + dir + "/")
