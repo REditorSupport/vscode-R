@@ -26,15 +26,22 @@ function updateSessionWatcher() {
         new RelativePattern(
             workspace.getWorkspaceFolder(uri)!,
             ".vscode/vscode-R/" + PID + "/plot.png"));
+    sessionWatcher.onDidCreate(createPlot);
     sessionWatcher.onDidChange(updatePlot);
 }
 
 function _updatePlot() {
     const plotPath = workspace.rootPath + "/.vscode/vscode-R/" + PID + "/plot.png";
-    commands.executeCommand("vscode.open", Uri.file(plotPath), {
-        preserveFocus: true, preview: true, viewColumn: ViewColumn.Beside
-    });
-    window.showInformationMessage("Updated plot");
+    if (fs.existsSync(plotPath)) {
+        commands.executeCommand("vscode.open", Uri.file(plotPath), {
+            preserveFocus: true, preview: true, viewColumn: ViewColumn.Two
+        });
+        window.showInformationMessage("Updated plot");
+    }    
+}
+
+function createPlot(event) {
+    _updatePlot();
 }
 
 function updatePlot(event) {
@@ -55,7 +62,7 @@ function updateGlobalenv(event) {
 function showWebView(file) {
     const dir = dirname(file);
     window.showInformationMessage("webview uri: " + file);
-    const panel = window.createWebviewPanel("webview", "WebView", ViewColumn.One, {
+    const panel = window.createWebviewPanel("webview", "WebView", ViewColumn.Two, {
         enableScripts: true,
         localResourceRoots: [Uri.file(dir)]
     });
