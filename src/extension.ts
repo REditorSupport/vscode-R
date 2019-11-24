@@ -107,7 +107,7 @@ export function activate(context: ExtensionContext) {
         provideHover(document, position, token) {
             const wordRange = document.getWordRangeAtPosition(position);
             const text = document.getText(wordRange);
-            return new Hover("VALUE: " + globalenv[text].str);
+            return new Hover("```\n" + globalenv[text].str + "\n```");
         }
     });
 
