@@ -16,7 +16,7 @@ export function attachActive() {
 
 function updateSessionWatcher() {
     const uri = window.activeTextEditor!.document.uri;
-    window.showInformationMessage("Updating session to PID " + PID);
+    console.info("Updating session to PID " + PID);
     sessionWatcher = workspace.createFileSystemWatcher(
         new RelativePattern(
             workspace.getWorkspaceFolder(uri)!,
@@ -36,7 +36,7 @@ function _updatePlot() {
         commands.executeCommand("vscode.open", Uri.file(plotPath), {
             preserveFocus: true, preview: true, viewColumn: ViewColumn.Two
         });
-        window.showInformationMessage("Updated plot");
+        console.info("Updated plot");
     }
 }
 
@@ -52,7 +52,7 @@ function _updateGlobalenv() {
     const globalenvPath = workspace.rootPath + "/.vscode/vscode-R/" + PID + "/globalenv.json";
     const parseResult = JSON.parse(fs.readFileSync(globalenvPath, "utf8"));
     globalenv = parseResult;
-    window.showInformationMessage("Updated globalenv");
+    console.info("Updated globalenv");
 }
 
 function updateGlobalenv(event) {
@@ -61,7 +61,7 @@ function updateGlobalenv(event) {
 
 function showWebView(file) {
     const dir = dirname(file);
-    window.showInformationMessage("webview uri: " + file);
+    console.info("webview uri: " + file);
     const panel = window.createWebviewPanel("webview", "WebView",
         { preserveFocus: true, viewColumn: ViewColumn.Two },
         { enableScripts: true, localResourceRoots: [Uri.file(dir)]
@@ -73,26 +73,26 @@ function showWebView(file) {
 }
 
 function updateResponse(event) {
-    window.showInformationMessage("Response file updated!");
+    console.info("Response file updated!");
     // Read last line from response file
     const responseLogFile = workspace.rootPath + "/.vscode/vscode-R/response.log";
-    window.showInformationMessage("File exists? " + fs.existsSync(responseLogFile));
+    console.info("File exists? " + fs.existsSync(responseLogFile));
     const lines = fs.readFileSync(responseLogFile, "utf8").split("\n");
-    window.showInformationMessage("Read response file");
+    console.info("Read response file");
     const lastLine = lines[lines.length - 2];
-    window.showInformationMessage("Last line: " + lastLine);
+    console.info("Last line: " + lastLine);
     const parseResult = JSON.parse(lastLine);
     if (parseResult.command === "attach") {
         PID = parseResult.pid;
         updateSessionWatcher();
         _updateGlobalenv();
         _updatePlot();
-        window.showInformationMessage("Got PID: " + PID);
+        console.info("Got PID: " + PID);
     } else if (parseResult.command === "webview") {
         showWebView(parseResult.file);
-        window.showInformationMessage("Show webview: " + parseResult.file);
+        console.info("Show webview: " + parseResult.file);
     } else {
-        window.showInformationMessage("Command was not attach");
+        console.info("Command was not attach");
     }
 }
 
