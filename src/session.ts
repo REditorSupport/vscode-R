@@ -2,8 +2,9 @@
 
 import fs = require("fs-extra");
 import { dirname } from "path";
-import { commands, RelativePattern, window, workspace, ViewColumn, Uri } from "vscode";
+import { commands, StatusBarItem, RelativePattern, window, workspace, ViewColumn, Uri, StatusBarAlignment } from "vscode";
 import { chooseTerminalAndSendText } from "./rTerminal";
+import { sessionStatusBarItem } from "./extension";
 
 export let globalenv: any;
 let sessionWatcher: any;
@@ -88,6 +89,8 @@ function updateResponse(event) {
     const parseResult = JSON.parse(lastLine);
     if (parseResult.command === "attach") {
         PID = parseResult.pid;
+        sessionStatusBarItem.text = "R: " + PID;
+        sessionStatusBarItem.show();
         updateSessionWatcher();
         _updateGlobalenv();
         _updatePlot();

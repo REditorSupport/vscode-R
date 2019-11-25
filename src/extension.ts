@@ -2,7 +2,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { commands, CompletionItem, ExtensionContext, IndentAction,
-         languages, Position, TextDocument, window, Hover } from "vscode";
+    languages, Position, TextDocument, window, Hover, StatusBarAlignment, StatusBarItem } from "vscode";
 
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
@@ -25,6 +25,8 @@ const roxygenTagCompletionItems = [
     "note", "param", "rdname", "rawRd", "references", "return",
     "section", "seealso", "slot", "source", "template", "templateVar",
     "title", "usage"].map((x: string) => new CompletionItem(`${x} `));
+
+export let sessionStatusBarItem: StatusBarItem;
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -144,6 +146,12 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.document", () => chooseTerminalAndSendText("devtools::document()")),
         commands.registerCommand("r.attachActive", attachActive),
         window.onDidCloseTerminal(deleteTerminal),
+    );
+
+    sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Left, 0);
+    sessionStatusBarItem.command = "r.attachActive";
+    context.subscriptions.push(
+        sessionStatusBarItem
     );
 
     startLogWatcher();
