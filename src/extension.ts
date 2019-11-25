@@ -148,11 +148,14 @@ export function activate(context: ExtensionContext) {
         window.onDidCloseTerminal(deleteTerminal),
     );
 
-    sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Left, 0);
+    sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
     sessionStatusBarItem.command = "r.attachActive";
     context.subscriptions.push(
         sessionStatusBarItem
     );
+
+    sessionStatusBarItem.text = "R: (not attached)";
+    sessionStatusBarItem.show();
 
     startLogWatcher();
 }
