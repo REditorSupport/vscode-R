@@ -9,8 +9,16 @@ export let globalenv: any;
 let sessionWatcher: any;
 let PID: string;
 
+export function startLogWatcher() {
+    const fileWatcher = workspace.createFileSystemWatcher(
+        new RelativePattern(
+            workspace.rootPath,
+            ".vscode/vscode-R/response.log"));
+    fileWatcher.onDidCreate(updateResponse);
+    fileWatcher.onDidChange(updateResponse);
+}
+
 export function attachActive() {
-    startLogWatcher();
     chooseTerminalAndSendText("getOption('vscodeR')$attach()");
 }
 
@@ -26,7 +34,7 @@ function updateSessionWatcher() {
         new RelativePattern(
             workspace.getWorkspaceFolder(uri)!,
             ".vscode/vscode-R/" + PID + "/plot.png"));
-    sessionWatcher.onDidCreate(createPlot);
+    sessionWatcher.onDidCreate(updatePlot);
     sessionWatcher.onDidChange(updatePlot);
 }
 
@@ -38,10 +46,6 @@ function _updatePlot() {
         });
         console.info("Updated plot");
     }
-}
-
-function createPlot(event) {
-    _updatePlot();
 }
 
 function updatePlot(event) {
@@ -94,13 +98,4 @@ function updateResponse(event) {
     } else {
         console.info("Command was not attach");
     }
-}
-
-function startLogWatcher() {
-    const uri = window.activeTextEditor!.document.uri;
-    const fileWatcher = workspace.createFileSystemWatcher(
-        new RelativePattern(
-            workspace.getWorkspaceFolder(uri)!,
-            ".vscode/vscode-R/response.log"));
-    fileWatcher.onDidChange(updateResponse);
 }

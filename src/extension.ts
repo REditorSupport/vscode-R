@@ -9,7 +9,7 @@ import { createGitignore } from "./rGitignore";
 import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from "./rTerminal";
 import { getWordOrSelection, surroundSelection } from "./selection";
-import { attachActive, globalenv } from "./session";
+import { startLogWatcher, attachActive, globalenv } from "./session";
 import { config, ToRStringLiteral } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -145,6 +145,8 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.attachActive", attachActive),
         window.onDidCloseTerminal(deleteTerminal),
     );
+
+    startLogWatcher();
 }
 
 // This method is called when your extension is deactivated
