@@ -93,11 +93,12 @@ export async function runTextInTerm(term: Terminal, textArray: string[]) {
         // Surround with ANSI control characters for bracketed paste mode
         textArray[0] = `\x1b[200~${textArray[0]}`;
         textArray[textArray.length - 1] += "\x1b[201~";
-    }
-
-    for (const line of textArray) {
-        await delay(8); // Increase delay if RTerm can't handle speed.
-        term.sendText(line);
+        term.sendText(textArray.join("\n"));
+    } else {
+        for (const line of textArray) {
+            await delay(8); // Increase delay if RTerm can't handle speed.
+            term.sendText(line);
+        }
     }
     setFocus(term);
 }
