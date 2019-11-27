@@ -90,9 +90,11 @@ export function runSelectionInTerm(term: Terminal) {
 
 export async function runTextInTerm(term: Terminal, textArray: string[]) {
     if (textArray.length > 1 && config.get<boolean>("bracketedPaste")) {
-        // Surround with ANSI control characters for bracketed paste mode
-        textArray[0] = `\x1b[200~${textArray[0]}`;
-        textArray[textArray.length - 1] += "\x1b[201~";
+        if (process.platform !== "win32") {
+            // Surround with ANSI control characters for bracketed paste mode
+            textArray[0] = `\x1b[200~${textArray[0]}`;
+            textArray[textArray.length - 1] += "\x1b[201~";
+        }
         term.sendText(textArray.join("\n"));
     } else {
         for (const line of textArray) {
