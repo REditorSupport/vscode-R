@@ -2,9 +2,10 @@
 
 import fs = require("fs-extra");
 import { dirname } from "path";
-import { commands, StatusBarItem, RelativePattern, window, workspace, ViewColumn, Uri, StatusBarAlignment } from "vscode";
+import { commands, RelativePattern, window, workspace, ViewColumn, Uri, StatusBarAlignment } from "vscode";
 import { chooseTerminalAndSendText } from "./rTerminal";
 import { sessionStatusBarItem } from "./extension";
+import { config } from "./util";
 
 export let globalenv: any;
 let sessionWatcher: any;
@@ -20,7 +21,11 @@ export function startLogWatcher() {
 }
 
 export function attachActive() {
-    chooseTerminalAndSendText("getOption('vscodeR')$attach()");
+    if (config.get("sessionWatcher")) {
+        chooseTerminalAndSendText("getOption('vscodeR')$attach()");
+    } else {
+        window.showInformationMessage("This command requires that r.sessionWatcher be enabled.");
+    }
 }
 
 function updateSessionWatcher() {

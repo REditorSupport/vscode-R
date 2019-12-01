@@ -105,14 +105,6 @@ export function activate(context: ExtensionContext) {
         },
     },                                       "@"); // Trigger on '@'
 
-    languages.registerHoverProvider("r", {
-        provideHover(document, position, token) {
-            const wordRange = document.getWordRangeAtPosition(position);
-            const text = document.getText(wordRange);
-            return new Hover("```\n" + globalenv[text].str + "\n```");
-        }
-    });
-
     languages.setLanguageConfiguration("r", {
         onEnterRules: [{ // Automatically continue roxygen comments: #'
         action: { indentAction: IndentAction.None, appendText: "#' " },
@@ -148,16 +140,26 @@ export function activate(context: ExtensionContext) {
         window.onDidCloseTerminal(deleteTerminal),
     );
 
-    sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
-    sessionStatusBarItem.command = "r.attachActive";
-    context.subscriptions.push(
-        sessionStatusBarItem
-    );
+    if (config.get("sessionWatcher")) {
+        languages.registerHoverProvider("r", {
+            provideHover(document, position, token) {
+                const wordRange = document.getWordRangeAtPosition(position);
+                const text = document.getText(wordRange);
+                return new Hover("```\n" + globalenv[text].str + "\n```");
+            }
+        });
 
-    sessionStatusBarItem.text = "R: (not attached)";
-    sessionStatusBarItem.show();
+        sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
+        sessionStatusBarItem.command = "r.attachActive";
+        context.subscriptions.push(
+            sessionStatusBarItem
+        );
 
-    startLogWatcher();
+        sessionStatusBarItem.text = "R: (not attached)";
+        sessionStatusBarItem.show();
+
+        startLogWatcher();
+    }
 }
 
 // This method is called when your extension is deactivated

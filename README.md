@@ -57,6 +57,7 @@ This extension contributes the following settings:
 * `r.source.focus`: Keeping focus when running (editor or terminal)
 * `r.alwaysUseActiveTerminal`: Use active terminal for all commands, rather than creating a new R terminal
 * `r.bracketedPaste`: For consoles supporting bracketed paste mode (such as Radian)
+* `r.sessionWatcher`: Enable R session watcher (experimental)
 
 * Language server(developing [here](https://github.com/REditorSupport/languageserver))
 

@@ -42,4 +42,7 @@ Yes / No
 
 // Use bracketed paste mode
 "r.bracketedPaste": false,
+
+// Enable R session watcher (experimental)
+"r.sessionWatcher": false,
 ```

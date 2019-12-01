@@ -369,6 +369,11 @@
           "type": "boolean",
           "default": false,
           "description": "Use bracketed paste mode when sending code to console. Enable for Radian console"
+        },
+        "r.sessionWatcher": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable R session watcher (experimental)"
         }
       }
     }
