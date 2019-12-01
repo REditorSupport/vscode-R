@@ -1,8 +1,9 @@
 "use strict";
 
+import os = require("os");
 import fs = require("fs-extra");
-import { dirname } from "path";
-import { commands, RelativePattern, window, workspace, ViewColumn, Uri, StatusBarAlignment } from "vscode";
+import path = require("path");
+import { commands, RelativePattern, window, workspace, ViewColumn, Uri } from "vscode";
 import { chooseTerminalAndSendText } from "./rTerminal";
 import { sessionStatusBarItem } from "./extension";
 import { config } from "./util";
@@ -10,6 +11,16 @@ import { config } from "./util";
 export let globalenv: any;
 let sessionWatcher: any;
 let PID: string;
+
+export function deploySessionWatcher(extensionPath: string) {
+    const srcPath = path.join(extensionPath, "R", "init.R");
+    const targetDir = path.join(os.homedir(), ".vscode-R");
+    if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir);
+    }
+    const targetPath = path.join(targetDir, "init.R");
+    fs.copySync(srcPath, targetPath);
+}
 
 export function startLogWatcher() {
     const fileWatcher = workspace.createFileSystemWatcher(
@@ -70,7 +81,7 @@ function updateGlobalenv(event) {
 }
 
 function showWebView(file) {
-    const dir = dirname(file);
+    const dir = path.dirname(file);
     console.info("webview uri: " + file);
     const panel = window.createWebviewPanel("webview", "WebView",
         { preserveFocus: true, viewColumn: ViewColumn.Two },
