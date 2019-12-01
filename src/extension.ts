@@ -9,7 +9,7 @@ import { createGitignore } from "./rGitignore";
 import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from "./rTerminal";
 import { getWordOrSelection, surroundSelection } from "./selection";
-import { startLogWatcher, attachActive, globalenv, deploySessionWatcher } from "./session";
+import { startResponseWatcher, attachActive, globalenv, deploySessionWatcher } from "./session";
 import { config, ToRStringLiteral } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -151,6 +151,7 @@ export function activate(context: ExtensionContext) {
 
         sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
         sessionStatusBarItem.command = "r.attachActive";
+        sessionStatusBarItem.tooltip = "Attach Active Terminal";
         context.subscriptions.push(
             sessionStatusBarItem
         );
@@ -159,7 +160,7 @@ export function activate(context: ExtensionContext) {
         sessionStatusBarItem.show();
         
         deploySessionWatcher(context.extensionPath);
-        startLogWatcher();
+        startResponseWatcher();
     }
 }
 
