@@ -46,10 +46,6 @@ function updateSessionWatcher() {
     console.info("Updating session to PID " + PID);
 
     console.info("Create globalEnvWatcher");
-    if (globalEnvWatcher) {
-        console.info("Dispose existing globalEnvWatcher");
-        globalEnvWatcher.dispose();
-    }
     globalEnvWatcher = workspace.createFileSystemWatcher(
         new RelativePattern(
             workspace.getWorkspaceFolder(uri)!,
@@ -57,10 +53,6 @@ function updateSessionWatcher() {
     globalEnvWatcher.onDidChange(updateGlobalenv);
 
     console.info("Create plotWatcher");
-    if (plotWatcher) {
-        console.info("Dispose existing plotWatcher");
-        plotWatcher.dispose();
-    }
     plotWatcher = workspace.createFileSystemWatcher(
         new RelativePattern(
             workspace.getWorkspaceFolder(uri)!,
