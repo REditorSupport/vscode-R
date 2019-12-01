@@ -10,7 +10,6 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
       }, onexit = TRUE)
 
       response_file <- file.path(dir, "response.log")
-      session_file <- file.path(dir_session, "session.json")
       globalenv_file <- file.path(dir_session, "globalenv.json")
       plot_file <- file.path(dir_session, "plot.png")
       plot_updated <- FALSE
@@ -44,30 +43,22 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
       }
 
       update <- function(...) {
-        session <- list(
-          pid = pid,
-          args = commandArgs(),
-          wd = getwd(),
-          time = Sys.time()
-        )
-        jsonlite::write_json(session, session_file, auto_unbox = TRUE, pretty = TRUE)
         objs <- eapply(.GlobalEnv, function(obj) {
           list(
             class = class(obj),
             type = typeof(obj),
             length = length(obj),
-            names = names(obj),
-            str = utils::capture.output(str(obj, max.level = 0, give.attr = FALSE))
+            str = trimws(utils::capture.output(str(obj, max.level = 0, give.attr = FALSE)))
           )
         }, all.names = FALSE, USE.NAMES = TRUE)
         jsonlite::write_json(objs, globalenv_file, auto_unbox = TRUE, pretty = TRUE)
-        if (grDevices::dev.cur() == 2L && plot_updated) {
+        if (plot_updated && dev.cur() == 2L) {
           plot_updated <<- FALSE
-          record <- grDevices::recordPlot()
+          record <- recordPlot()
           if (length(record[[1]])) {
-            grDevices::png(plot_file)
-            on.exit(grDevices::dev.off())
-            grDevices::replayPlot(record)
+            png(plot_file)
+            on.exit(dev.off())
+            replayPlot(record)
           }
         }
         TRUE
