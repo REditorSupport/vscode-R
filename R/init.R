@@ -22,6 +22,9 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
       setHook("plot.new", function(...) {
         plot_updated <<- TRUE
       })
+      setHook("grid.newpage", function(...) {
+        plot_updated <<- TRUE
+      })
       unlockBinding(".External.graphics", baseenv())
       assign(".External.graphics", function(...) {
         plot_updated <<- TRUE
