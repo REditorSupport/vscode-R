@@ -41,6 +41,14 @@ export function attachActive() {
     }
 }
 
+export function removeSessionFiles() {
+    console.info("removeSessionFiles");
+    const sessionPath = path.join(workspace.rootPath, ".vscode", "vscode-R", PID);
+    if (fs.existsSync(sessionPath)) {
+        fs.rmdirSync(sessionPath);
+    }
+}
+
 function updateSessionWatcher() {
     const uri = window.activeTextEditor!.document.uri;
     console.info("Updating session to PID " + PID);

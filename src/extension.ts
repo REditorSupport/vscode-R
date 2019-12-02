@@ -151,12 +151,9 @@ export function activate(context: ExtensionContext) {
 
         sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
         sessionStatusBarItem.command = "r.attachActive";
-        sessionStatusBarItem.tooltip = "Attach Active Terminal";
-        context.subscriptions.push(
-            sessionStatusBarItem
-        );
-
         sessionStatusBarItem.text = "R: (not attached)";
+        sessionStatusBarItem.tooltip = "Attach Active Terminal";
+        context.subscriptions.push(sessionStatusBarItem);
         sessionStatusBarItem.show();
         
         deploySessionWatcher(context.extensionPath);
