@@ -25,13 +25,6 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
       setHook("grid.newpage", function(...) {
         plot_updated <<- TRUE
       })
-      unlockBinding(".External.graphics", baseenv())
-      assign(".External.graphics", function(...) {
-        plot_updated <<- TRUE
-        .prim <- .Primitive(".External.graphics")
-        .prim(...)
-      }, baseenv())
-      lockBinding(".External.graphics", baseenv())
 
       options(viewer = function(url, ...) {
         respond("webview", file = url)
@@ -71,20 +64,41 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
         respond("attach")
       }
 
-      dataview <- function(name) {
-        obj <- get(name, envir = .GlobalEnv)
-        if (is.data.frame(obj)) {
-          file <- file.path(tempdir, paste0(name, ".csv"))
-          write.csv(obj, file)
-          respond("dataview", type = "csv", file = file)
+      dataview <- function(x, title, ...) {
+        if (missing(title)) {
+          title <- deparse(substitute(x))[[1]]
+        }
+        filename <- make.names(title)
+        if (is.data.frame(x)) {
+          file <- file.path(tempdir, paste0(filename, ".html"))
+          html <- knitr::kable(x = x, format = "html", ...)
+          writeLines(html, file)
+          respond("dataview", source = "data.frame", type = "html",
+            title = title, file = file)
         } else if (is.list(obj)) {
-          file <- file.path(tempdir, paste0(name, ".json"))
+          file <- file.path(tempdir, paste0(filename, ".json"))
           jsonlite::write_json(obj, file, auto_unbox = TRUE)
-          respond("dataview", type = "json", file = file)
+          respond("dataview", source = "list", type = "json",
+            title = title, file = file)
         } else {
           stop("Unsupported object class")
         }
       }
+
+      rebind <- function(sym, value, ns) {
+        ns <- getNamespace(ns)
+        unlockBinding(sym, ns)
+        on.exit(lockBinding(sym, ns))
+        assign(sym, value, envir = ns)
+      }
+
+      rebind(".External.graphics", function(...) {
+        plot_updated <<- TRUE
+        .prim <- .Primitive(".External.graphics")
+        .prim(...)
+      }, "base")
+      rebind("View", dataview, "utils")
+
       update()
       addTaskCallback(update, name = "vscode-R")
       lockEnvironment(environment(), bindings = TRUE)
