@@ -34,7 +34,12 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
       })
 
       respond <- function(command, ...) {
-        json <- jsonlite::toJSON(list(pid = pid, command = command, ...), auto_unbox = TRUE)
+        json <- jsonlite::toJSON(list(
+          time = Sys.time(),
+          pid = pid,
+          command = command,
+          ...
+        ), auto_unbox = TRUE)
         cat(json, "\n", file = response_file, append = TRUE)
       }
 
