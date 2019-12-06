@@ -145,9 +145,9 @@ async function showDataView(source: string, type: string, title: string, file: s
 }
 
 function getDataFrameHtml(file) {
-    return `<!DOCTYPE html>
+    return `
+<!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -155,7 +155,6 @@ function getDataFrameHtml(file) {
   <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.3/css/bootstrap.css" rel="stylesheet">
   <link href="https://cdn.datatables.net/1.10.20/css/dataTables.bootstrap4.min.css" rel="stylesheet">
 </head>
-
 <body>
   <div class="container-fluid">
     <div id='table-container'></div>
@@ -168,28 +167,26 @@ function getDataFrameHtml(file) {
     $(document).ready(function () {
       $("#table-container").load(path, function (data) {
         $table = $("table");
-        $table.attr("class", "table table-striped table-condensed");
+        $table.attr("class", "table table-sm table-striped table-condensed");
         $table.DataTable({ "paging": false });
       });
     })    
   </script>
 </body>
-
 </html>
 `;
 }
 
 async function getListHtml(file) {
     var content = await fs.readFile(file);
-    return `<!doctype HTML>
+    return `
+<!doctype HTML>
 <html>
-
 <head>
   <meta charset="utf-8" />
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
   <script src="vscode-resource://${resDir}/js/jquery.json-viewer.js"></script>
   <link href="vscode-resource://${resDir}/css/jquery.json-viewer.css" type="text/css" rel="stylesheet">
-
   <style type="text/css">
     body {
         color: black;
@@ -199,7 +196,6 @@ async function getListHtml(file) {
       border: 1px solid #aaa;
     }
   </style>
-
   <script>
     var data = ${content};
     $(document).ready(function() {
@@ -213,11 +209,9 @@ async function getListHtml(file) {
     });
   </script>
 </head>
-
 <body>
   <pre id="json-renderer"></pre>
 </body>
-
 </html>
 `;
 }
