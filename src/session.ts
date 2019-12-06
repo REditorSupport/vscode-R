@@ -120,7 +120,7 @@ async function showDataView(source: string, type: string, title: string, file: s
             const panel = window.createWebviewPanel("dataview", title,
                 { preserveFocus: true, viewColumn: ViewColumn.Two },
                 {
-                    enableScripts: true, localResourceRoots: [Uri.file(dir)]
+                    enableScripts: true, localResourceRoots: [Uri.file(resDir), Uri.file(dir)]
                 });
             const content = await getDataFrameHtml(file);
             panel.webview.html = content;
@@ -132,7 +132,7 @@ async function showDataView(source: string, type: string, title: string, file: s
             const panel = window.createWebviewPanel("dataview", title,
                 { preserveFocus: true, viewColumn: ViewColumn.Two },
                 {
-                    enableScripts: true
+                    enableScripts: true, localResourceRoots: [Uri.file(resDir)]
                 });
             const content = await getListHtml(file);
             panel.webview.html = content;
@@ -152,16 +152,25 @@ function getDataFrameHtml(file) {
   <meta charset="utf-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.3/css/bootstrap.css" rel="stylesheet">
-  <link href="https://cdn.datatables.net/1.10.20/css/dataTables.bootstrap4.min.css" rel="stylesheet">
+  <link href="vscode-resource://${resDir}/css/bootstrap.min.css" rel="stylesheet">
+  <link href="vscode-resource://${resDir}/css/dataTables.bootstrap4.min.css" rel="stylesheet">
+  <style type="text/css">
+    body {
+        color: black;
+        background-color: white;
+    }
+    table {
+        font-size: 0.75em;
+    }
+  </style>
 </head>
 <body>
   <div class="container-fluid">
     <div id='table-container'></div>
   </div>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
-  <script type="text/javascript" src="https://cdn.datatables.net/1.10.20/js/jquery.dataTables.min.js"></script>
-  <script type="text/javascript" src="https://cdn.datatables.net/1.10.20/js/dataTables.bootstrap4.min.js"></script>
+  <script type="text/javascript" src="vscode-resource://${resDir}/js/jquery.min.js"></script>
+  <script type="text/javascript" src="vscode-resource://${resDir}/js/jquery.dataTables.min.js"></script>
+  <script type="text/javascript" src="vscode-resource://${resDir}/js/dataTables.bootstrap4.min.js"></script>
   <script type="text/javascript">
     var path = 'vscode-resource://${file}';
     $(document).ready(function () {
@@ -184,7 +193,7 @@ async function getListHtml(file) {
 <html>
 <head>
   <meta charset="utf-8" />
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script type="text/javascript" src="vscode-resource://${resDir}/js/jquery.min.js"></script>
   <script src="vscode-resource://${resDir}/js/jquery.json-viewer.js"></script>
   <link href="vscode-resource://${resDir}/css/jquery.json-viewer.css" type="text/css" rel="stylesheet">
   <style type="text/css">
