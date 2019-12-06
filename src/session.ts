@@ -13,8 +13,10 @@ let responseWatcher: FileSystemWatcher;
 let globalEnvWatcher: FileSystemWatcher;
 let plotWatcher: FileSystemWatcher;
 let PID: string;
+let resDir: string;
 
 export function deploySessionWatcher(extensionPath: string) {
+    resDir = path.join(extensionPath, "resources");
     const srcPath = path.join(extensionPath, "R", "init.R");
     const targetDir = path.join(os.homedir(), ".vscode-R");
     if (!fs.existsSync(targetDir)) {
@@ -109,6 +111,115 @@ async function showWebView(file) {
     panel.webview.html = html;
 }
 
+async function showDataView(source: string, type: string, title: string, file: string) {
+    const dir = path.dirname(file);
+    if (source == "data.frame") {
+        if (type == "html") {
+            const panel = window.createWebviewPanel("dataview", title,
+                { preserveFocus: true, viewColumn: ViewColumn.Two },
+                {
+                    enableScripts: true, localResourceRoots: [Uri.file(dir)]
+                });
+            const content = await getDataFrameHtml(file);
+            panel.webview.html = content;
+        } else {
+            console.error("Unsupported type: " + type);
+        }
+    } else if (source == "list") {
+        if (type == "json") {
+            const panel = window.createWebviewPanel("dataview", title,
+                { preserveFocus: true, viewColumn: ViewColumn.Two },
+                {
+                    enableScripts: true
+                });
+            const content = await getListHtml(file);
+            panel.webview.html = content;
+        } else {
+            console.error("Unsupported type: " + type);
+        }
+    } else {
+        console.error("Unsupported data source: " + source);
+    }
+}
+
+function getDataFrameHtml(file) {
+    return `<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.1.3/css/bootstrap.css" rel="stylesheet">
+  <link href="https://cdn.datatables.net/1.10.20/css/dataTables.bootstrap4.min.css" rel="stylesheet">
+</head>
+
+<body>
+  <div class="container-fluid">
+    <div id='table-container'></div>
+  </div>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script type="text/javascript" src="https://cdn.datatables.net/1.10.20/js/jquery.dataTables.min.js"></script>
+  <script type="text/javascript" src="https://cdn.datatables.net/1.10.20/js/dataTables.bootstrap4.min.js"></script>
+  <script type="text/javascript">
+    var path = 'vscode-resource://${file}';
+    $(document).ready(function () {
+      $("#table-container").load(path, function (data) {
+        $table = $("table");
+        $table.attr("class", "table table-striped table-condensed");
+        $table.DataTable({ "paging": false });
+      });
+    })    
+  </script>
+</body>
+
+</html>
+`;
+}
+
+async function getListHtml(file) {
+    var content = await fs.readFile(file);
+    return `<!doctype HTML>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script src="vscode-resource://${resDir}/js/jquery.json-viewer.js"></script>
+  <link href="vscode-resource://${resDir}/css/jquery.json-viewer.css" type="text/css" rel="stylesheet">
+
+  <style type="text/css">
+    body {
+        color: black;
+        background-color: white;
+    }
+    pre#json-renderer {
+      border: 1px solid #aaa;
+    }
+  </style>
+
+  <script>
+    var data = ${content};
+    $(document).ready(function() {
+      var options = {
+        collapsed: false,
+        rootCollapsable: false,
+        withQuotes: false,
+        withLinks: true
+      };
+      $("#json-renderer").jsonViewer(data, options);
+    });
+  </script>
+</head>
+
+<body>
+  <pre id="json-renderer"></pre>
+</body>
+
+</html>
+`;
+}
+
 async function updateResponse(event) {
     console.info("Response file updated!");
     // Read last line from response file
@@ -129,6 +240,8 @@ async function updateResponse(event) {
         _updatePlot();
     } else if (parseResult.command === "webview") {
         showWebView(parseResult.file);
+    } else if (parseResult.command === "dataview") {
+        showDataView(parseResult.source, parseResult.type, parseResult.title, parseResult.file);
     } else {
         console.info("Command was not attach");
     }
