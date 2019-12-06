@@ -80,9 +80,9 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
           writeLines(html, file)
           respond("dataview", source = "data.frame", type = "html",
             title = title, file = file)
-        } else if (is.list(obj)) {
+        } else if (is.list(x)) {
           file <- file.path(tempdir, paste0(filename, ".json"))
-          jsonlite::write_json(obj, file, auto_unbox = TRUE)
+          jsonlite::write_json(x, file, auto_unbox = TRUE)
           respond("dataview", source = "list", type = "json",
             title = title, file = file)
         } else {
