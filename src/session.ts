@@ -106,6 +106,8 @@ async function showWebView(file) {
         });
     const content = await fs.readFile(file);
     const html = content.toString()
+        .replace("<style>body{background-color:white;}</style>",
+            "<style>body{background-color:white;color:black;}</style>")
         .replace(/<script src="/g, '<script src="vscode-resource://' + dir + "/")
         .replace(/<link href="/g, '<link href="vscode-resource://' + dir + "/");
     panel.webview.html = html;
