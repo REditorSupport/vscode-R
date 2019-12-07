@@ -73,16 +73,15 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
         if (missing(title)) {
           title <- deparse(substitute(x))[[1]]
         }
-        filename <- make.names(title)
-        if (is.data.frame(x)) {
-          file <- file.path(tempdir, paste0(filename, ".html"))
+        if (is.data.frame(x) || is.matrix(x)) {
           html <- knitr::kable(x = x, format = "html", ...)
+          file <- tempfile(tmpdir = tempdir, fileext = ".html")
           writeLines(html, file)
-          respond("dataview", source = "data.frame", type = "html",
+          respond("dataview", source = "table", type = "html",
             title = title, file = file)
         } else if (is.list(x)) {
-          file <- file.path(tempdir, paste0(filename, ".json"))
-          jsonlite::write_json(x, file, auto_unbox = TRUE)
+          file <- tempfile(tmpdir = tempdir, fileext = ".json")
+          jsonlite::write_json(x, file, auto_unbox = TRUE, ...)
           respond("dataview", source = "list", type = "json",
             title = title, file = file)
         } else {

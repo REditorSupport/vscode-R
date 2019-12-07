@@ -115,14 +115,14 @@ async function showWebView(file) {
 
 async function showDataView(source: string, type: string, title: string, file: string) {
     const dir = path.dirname(file);
-    if (source == "data.frame") {
+    if (source == "table") {
         if (type == "html") {
             const panel = window.createWebviewPanel("dataview", title,
                 { preserveFocus: true, viewColumn: ViewColumn.Two },
                 {
                     enableScripts: true, localResourceRoots: [Uri.file(resDir), Uri.file(dir)]
                 });
-            const content = await getDataFrameHtml(file);
+            const content = await getTableHtml(file);
             panel.webview.html = content;
         } else {
             console.error("Unsupported type: " + type);
@@ -144,13 +144,12 @@ async function showDataView(source: string, type: string, title: string, file: s
     }
 }
 
-function getDataFrameHtml(file) {
+function getTableHtml(file) {
     return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="vscode-resource://${resDir}/css/bootstrap.min.css" rel="stylesheet">
   <link href="vscode-resource://${resDir}/css/dataTables.bootstrap4.min.css" rel="stylesheet">
@@ -193,6 +192,7 @@ async function getListHtml(file) {
 <html>
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <script type="text/javascript" src="vscode-resource://${resDir}/js/jquery.min.js"></script>
   <script src="vscode-resource://${resDir}/js/jquery.json-viewer.js"></script>
   <link href="vscode-resource://${resDir}/css/jquery.json-viewer.css" type="text/css" rel="stylesheet">
