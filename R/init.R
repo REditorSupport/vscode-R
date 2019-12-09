@@ -1,7 +1,7 @@
 if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
   local({
     pid <- Sys.getpid()
-    tempdir <- tempdir(check = TRUE)
+    tempdir <- tempdir()
     dir <- normalizePath(file.path(".vscode", "vscode-R"), mustWork = FALSE)
     dir_session <- file.path(dir, pid)
     if (dir.create(dir_session, showWarnings = FALSE, recursive = TRUE) || dir.exists(dir_session)) {
