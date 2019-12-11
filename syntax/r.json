@@ -423,7 +423,7 @@
             "end": "(\\))",
             "endCaptures": {
                 "1": {
-                    "name": "punctuation.definition.parameters.r"
+                    "name": "punctuation.section.parens.end.r"
                 }
             },
             "name": "meta.function-call.r",
