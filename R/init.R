@@ -26,6 +26,9 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
         plot_updated <<- TRUE
       })
 
+      options(browser = function(url, ...) {
+        respond("browser", url = url)
+      })
       options(viewer = function(url, ...) {
         respond("webview", file = url)
       })

@@ -96,6 +96,30 @@ async function updateGlobalenv(event) {
     _updateGlobalenv();
 }
 
+function showBrowser(url) {
+    console.info("browse uri: " + url);
+    const panel = window.createWebviewPanel("webview", "WebView",
+        { preserveFocus: true, viewColumn: ViewColumn.Active },
+        {
+            enableScripts: true
+        });
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+    <div style="border:0px;position:absolute;left:0px;top:0px;bottom:0px;right:0px;">
+        <iframe src="${url}"; width="100%" height="100%" frameborder="0" />
+    </div>
+</body>
+</html>
+`;
+    panel.webview.html = html;
+}
+
 async function showWebView(file) {
     const dir = path.dirname(file);
     console.info("webview uri: " + file);
@@ -243,6 +267,8 @@ async function updateResponse(event) {
         updateSessionWatcher();
         _updateGlobalenv();
         _updatePlot();
+    } else if (parseResult.command === "browser") {
+        showBrowser(parseResult.url);
     } else if (parseResult.command === "webview") {
         showWebView(parseResult.file);
     } else if (parseResult.command === "dataview") {
