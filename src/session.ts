@@ -7,6 +7,7 @@ import { commands, RelativePattern, window, workspace, ViewColumn, Uri, FileSyst
 import { chooseTerminalAndSendText } from "./rTerminal";
 import { sessionStatusBarItem } from "./extension";
 import { config } from "./util";
+import { URL } from "url";
 
 export let globalenv: any;
 let responseWatcher: FileSystemWatcher;
@@ -96,12 +97,19 @@ async function updateGlobalenv(event) {
     _updateGlobalenv();
 }
 
-function showBrowser(url) {
+function showBrowser(url: string) {
     console.info("browse uri: " + url);
+    const port = parseInt(new URL(url).port);
     const panel = window.createWebviewPanel("webview", "WebView",
         { preserveFocus: true, viewColumn: ViewColumn.Active },
         {
-            enableScripts: true
+            enableScripts: true,
+            portMapping: [
+                {
+                    webviewPort: port,
+                    extensionHostPort: port
+                }
+            ]
         });
     const html = `
 <!DOCTYPE html>
@@ -120,7 +128,7 @@ function showBrowser(url) {
     panel.webview.html = html;
 }
 
-async function showWebView(file) {
+async function showWebView(file: string) {
     const dir = path.dirname(file);
     console.info("webview uri: " + file);
     const panel = window.createWebviewPanel("webview", "WebView",
