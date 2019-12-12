@@ -100,7 +100,7 @@ async function updateGlobalenv(event) {
 function showBrowser(url: string) {
     console.info("browse uri: " + url);
     const port = parseInt(new URL(url).port);
-    const panel = window.createWebviewPanel("browser", "Browser",
+    const panel = window.createWebviewPanel("browser", url,
         { preserveFocus: true, viewColumn: ViewColumn.Active },
         {
             enableScripts: true,
