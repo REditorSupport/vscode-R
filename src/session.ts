@@ -15,6 +15,7 @@ let globalEnvWatcher: FileSystemWatcher;
 let plotWatcher: FileSystemWatcher;
 let PID: string;
 let resDir: string;
+let sessionDir = path.join(".vscode", "vscode-R");
 
 export function deploySessionWatcher(extensionPath: string) {
     resDir = path.join(extensionPath, "resources");
@@ -30,8 +31,8 @@ export function deploySessionWatcher(extensionPath: string) {
 export function startResponseWatcher() {
     responseWatcher = workspace.createFileSystemWatcher(
         new RelativePattern(
-            workspace.rootPath,
-            ".vscode/vscode-R/response.log"));
+            workspace.workspaceFolders[0],
+            path.join(".vscode", "vscode-R", "response.log")));
     responseWatcher.onDidCreate(updateResponse);
     responseWatcher.onDidChange(updateResponse);
 }
@@ -44,39 +45,51 @@ export function attachActive() {
     }
 }
 
+function removeDirectory(dir: string) {
+    if (fs.existsSync(dir)) {
+        fs.readdirSync(dir).forEach((file) => {
+            const curPath = path.join(dir, file);
+            fs.unlinkSync(curPath);
+        });
+        fs.rmdirSync(dir);
+    }
+};
+
 export function removeSessionFiles() {
-    console.info("removeSessionFiles");
-    const sessionPath = path.join(workspace.rootPath, ".vscode", "vscode-R", PID);
+    const sessionPath = path.join(
+        workspace.workspaceFolders[0].uri.fsPath, sessionDir, PID);
+    console.info("removeSessionFiles: ", sessionPath);
     if (fs.existsSync(sessionPath)) {
-        fs.rmdirSync(sessionPath);
+        removeDirectory(sessionPath);
     }
 }
 
 function updateSessionWatcher() {
-    const uri = window.activeTextEditor!.document.uri;
     console.info("Updating session to PID " + PID);
-
     console.info("Create globalEnvWatcher");
     globalEnvWatcher = workspace.createFileSystemWatcher(
         new RelativePattern(
-            workspace.getWorkspaceFolder(uri)!,
-            ".vscode/vscode-R/" + PID + "/globalenv.json"));
+            workspace.workspaceFolders[0],
+            path.join(sessionDir, PID, "globalenv.json")));
     globalEnvWatcher.onDidChange(updateGlobalenv);
 
     console.info("Create plotWatcher");
     plotWatcher = workspace.createFileSystemWatcher(
         new RelativePattern(
-            workspace.getWorkspaceFolder(uri)!,
-            ".vscode/vscode-R/" + PID + "/plot.png"));
+            workspace.workspaceFolders[0],
+            path.join(sessionDir, PID, "plot.png")));
     plotWatcher.onDidCreate(updatePlot);
     plotWatcher.onDidChange(updatePlot);
 }
 
 function _updatePlot() {
-    const plotPath = path.join(workspace.rootPath, ".vscode", "vscode-R", PID, "plot.png");
+    const plotPath = path.join(workspace.workspaceFolders[0].uri.fsPath,
+        sessionDir, PID, "plot.png");
     if (fs.existsSync(plotPath)) {
         commands.executeCommand("vscode.open", Uri.file(plotPath), {
-            preserveFocus: true, preview: true, viewColumn: ViewColumn.Two
+            preserveFocus: true,
+            preview: true,
+            viewColumn: ViewColumn.Two
         });
         console.info("Updated plot");
     }
@@ -87,7 +100,8 @@ function updatePlot(event) {
 }
 
 async function _updateGlobalenv() {
-    const globalenvPath = path.join(workspace.rootPath, ".vscode", "vscode-R", PID, "globalenv.json");
+    const globalenvPath = path.join(workspace.workspaceFolders[0].uri.fsPath,
+        sessionDir, PID, "globalenv.json");
     const content = await fs.readFile(globalenvPath, "utf8");
     globalenv = JSON.parse(content);;
     console.info("Updated globalenv");
@@ -98,7 +112,7 @@ async function updateGlobalenv(event) {
 }
 
 function showBrowser(url: string) {
-    console.info("browse uri: " + url);
+    console.info("browser uri: " + url);
     const port = parseInt(new URL(url).port);
     const panel = window.createWebviewPanel("browser", url,
         { preserveFocus: true, viewColumn: ViewColumn.Active },
@@ -150,9 +164,13 @@ async function showDataView(source: string, type: string, title: string, file: s
     if (source == "table") {
         if (type == "html") {
             const panel = window.createWebviewPanel("dataview", title,
-                { preserveFocus: true, viewColumn: ViewColumn.Two },
                 {
-                    enableScripts: true, localResourceRoots: [Uri.file(resDir), Uri.file(dir)]
+                    preserveFocus: true,
+                    viewColumn: ViewColumn.Two
+                },
+                {
+                    enableScripts: true,
+                    localResourceRoots: [Uri.file(resDir), Uri.file(dir)]
                 });
             const content = await getTableHtml(file);
             panel.webview.html = content;
@@ -162,9 +180,13 @@ async function showDataView(source: string, type: string, title: string, file: s
     } else if (source == "list") {
         if (type == "json") {
             const panel = window.createWebviewPanel("dataview", title,
-                { preserveFocus: true, viewColumn: ViewColumn.Two },
                 {
-                    enableScripts: true, localResourceRoots: [Uri.file(resDir)]
+                    preserveFocus: true,
+                    viewColumn: ViewColumn.Two
+                },
+                {
+                    enableScripts: true,
+                    localResourceRoots: [Uri.file(resDir)]
                 });
             const content = await getListHtml(file);
             panel.webview.html = content;
@@ -260,7 +282,8 @@ async function getListHtml(file) {
 async function updateResponse(event) {
     console.info("Response file updated!");
     // Read last line from response file
-    const responseLogFile = workspace.rootPath + "/.vscode/vscode-R/response.log";
+    const responseLogFile = path.join(workspace.workspaceFolders[0].uri.fsPath,
+        sessionDir, "response.log");
     const content = await fs.readFile(responseLogFile, "utf8");
     const lines = content.split("\n");
     console.info("Read response file");
@@ -280,7 +303,8 @@ async function updateResponse(event) {
     } else if (parseResult.command === "webview") {
         showWebView(parseResult.file);
     } else if (parseResult.command === "dataview") {
-        showDataView(parseResult.source, parseResult.type, parseResult.title, parseResult.file);
+        showDataView(parseResult.source,
+            parseResult.type, parseResult.title, parseResult.file);
     } else {
         console.info("Command was not attach");
     }
