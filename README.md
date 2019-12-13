@@ -61,9 +61,36 @@ This extension contributes the following settings:
 
 * Language server(developing [here](https://github.com/REditorSupport/languageserver))
 
+## R Session Watcher (Experimental)
+
+An opt-in experimental R session watcher is implemented to support the following features:
+
+* Watch any R session
+* Show symbol value in hover
+* `View()` data frames and list objects
+* Show plot output on update
+* Show htmlwidgets and shiny apps
+
+To enable this feature, turn on `r.sessionWatcher` and append the following code to your `.Rprofile` (in your home directory):
+
+```r
+source(file.path(Sys.getenv("HOME"), ".vscode-R", "init.R"))
+```
+
+Each time the extension is activated, the latest session watcher script (`init.R`) will be deployed to
+`~/.vscode-R/init.R`.
+
+R sessions started from the workspace root folder will be automatically attached. The session watcher works no matter whether it is official R terminal or `radian` console, whether it is started by `Create R terminal` or by terminal command, whether it is in a `tmux` or `screen` window, whether there are multiple running R sessions, whether it is local or remote development.
+
+The status bar item shows the process id of the attached R session. Click the status bar item and it will
+attach to currently active session.
+
+![Attached R process](./images/RStatusBarItem.png)
+
+![R session watcher](https://user-images.githubusercontent.com/4662568/70815935-65391480-1e09-11ea-9ad6-7ebbebf9a9c8.gif)
+
 ## TODO
 
-* Output Plot
 * Debug
 
 ## CONTRIBUTING
