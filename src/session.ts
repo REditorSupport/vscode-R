@@ -3,7 +3,7 @@
 import os = require("os");
 import fs = require("fs-extra");
 import path = require("path");
-import { commands, RelativePattern, window, workspace, ViewColumn, Uri, FileSystemWatcher } from "vscode";
+import { commands, RelativePattern, window, workspace, ViewColumn, Uri, FileSystemWatcher, Webview } from "vscode";
 import { chooseTerminalAndSendText } from "./rTerminal";
 import { sessionStatusBarItem } from "./extension";
 import { config } from "./util";
@@ -125,7 +125,11 @@ function showBrowser(url: string) {
                 }
             ]
         });
-    const html = `
+    panel.webview.html = getBrowserHtml(url);
+}
+
+function getBrowserHtml(url: string) {
+    return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -139,7 +143,6 @@ function showBrowser(url: string) {
 </body>
 </html>
 `;
-    panel.webview.html = html;
 }
 
 async function showWebView(file: string) {
@@ -172,7 +175,7 @@ async function showDataView(source: string, type: string, title: string, file: s
                     enableScripts: true,
                     localResourceRoots: [Uri.file(resDir), Uri.file(dir)]
                 });
-            const content = await getTableHtml(file);
+            const content = getTableHtml(panel.webview, file);
             panel.webview.html = content;
         } else {
             console.error("Unsupported type: " + type);
@@ -188,7 +191,7 @@ async function showDataView(source: string, type: string, title: string, file: s
                     enableScripts: true,
                     localResourceRoots: [Uri.file(resDir)]
                 });
-            const content = await getListHtml(file);
+            const content = await getListHtml(panel.webview, file);
             panel.webview.html = content;
         } else {
             console.error("Unsupported type: " + type);
@@ -198,15 +201,15 @@ async function showDataView(source: string, type: string, title: string, file: s
     }
 }
 
-function getTableHtml(file) {
+function getTableHtml(webview: Webview, file: string) {
     return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="vscode-resource://${resDir}/css/bootstrap.min.css" rel="stylesheet">
-  <link href="vscode-resource://${resDir}/css/dataTables.bootstrap4.min.css" rel="stylesheet">
+  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "css", "bootstrap.min.css")))}" rel="stylesheet">
+  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "css", "dataTables.bootstrap4.min.css")))}" rel="stylesheet">
   <style type="text/css">
     body {
         color: black;
@@ -221,11 +224,11 @@ function getTableHtml(file) {
   <div class="container-fluid">
     <div id='table-container'></div>
   </div>
-  <script type="text/javascript" src="vscode-resource://${resDir}/js/jquery.min.js"></script>
-  <script type="text/javascript" src="vscode-resource://${resDir}/js/jquery.dataTables.min.js"></script>
-  <script type="text/javascript" src="vscode-resource://${resDir}/js/dataTables.bootstrap4.min.js"></script>
-  <script type="text/javascript">
-    var path = 'vscode-resource://${file}';
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jquery.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jquery.dataTables.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "dataTables.bootstrap4.min.js")))}"></script>
+  <script>
+    var path = '${webview.asWebviewUri(Uri.file(file))}';
     $(document).ready(function () {
       $("#table-container").load(path, function (data) {
         $table = $("table");
@@ -239,7 +242,7 @@ function getTableHtml(file) {
 `;
 }
 
-async function getListHtml(file) {
+async function getListHtml(webview: Webview, file: string) {
     var content = await fs.readFile(file);
     return `
 <!doctype HTML>
@@ -247,9 +250,9 @@ async function getListHtml(file) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script type="text/javascript" src="vscode-resource://${resDir}/js/jquery.min.js"></script>
-  <script src="vscode-resource://${resDir}/js/jquery.json-viewer.js"></script>
-  <link href="vscode-resource://${resDir}/css/jquery.json-viewer.css" type="text/css" rel="stylesheet">
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jquery.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jquery.json-viewer.js")))}"></script>
+  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "css", "jquery.json-viewer.css")))}" rel="stylesheet">
   <style type="text/css">
     body {
         color: black;
