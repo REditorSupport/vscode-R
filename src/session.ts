@@ -309,6 +309,6 @@ async function updateResponse(event) {
         showDataView(parseResult.source,
             parseResult.type, parseResult.title, parseResult.file);
     } else {
-        console.info("Command was not attach");
+        console.info("Unrecognised command: ${parseResult.command}");
     }
 }
