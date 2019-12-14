@@ -77,6 +77,9 @@ To enable this feature, turn on `r.sessionWatcher` and append the following code
 source(file.path(Sys.getenv("HOME"), ".vscode-R", "init.R"))
 ```
 
+This script writes the metadata of symbols in the global environment to `${workspaceFolder}/.vscode/vscode-R/PID` where `PID` is the R process ID. It also writes the graphics to `plot.png` in this folder and notify
+vscode-R to open the file when it is updated and open a WebView when an htmlwidget is produced or a shiny app is started.
+
 Each time the extension is activated, the latest session watcher script (`init.R`) will be deployed to
 `~/.vscode-R/init.R`.
 
