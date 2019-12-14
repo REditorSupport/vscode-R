@@ -1,13 +1,13 @@
 "use strict";
 
-import os = require("os");
 import fs = require("fs-extra");
+import os = require("os");
 import path = require("path");
-import { commands, RelativePattern, window, workspace, ViewColumn, Uri, FileSystemWatcher, Webview } from "vscode";
-import { chooseTerminalAndSendText } from "./rTerminal";
-import { sessionStatusBarItem } from "./extension";
-import { config } from "./util";
 import { URL } from "url";
+import { commands, FileSystemWatcher, RelativePattern, Uri, ViewColumn, Webview, window, workspace } from "vscode";
+import { sessionStatusBarItem } from "./extension";
+import { chooseTerminalAndSendText } from "./rTerminal";
+import { config } from "./util";
 
 export let globalenv: any;
 let responseWatcher: FileSystemWatcher;
@@ -15,7 +15,7 @@ let globalEnvWatcher: FileSystemWatcher;
 let plotWatcher: FileSystemWatcher;
 let PID: string;
 let resDir: string;
-let sessionDir = path.join(".vscode", "vscode-R");
+const sessionDir = path.join(".vscode", "vscode-R");
 
 export function deploySessionWatcher(extensionPath: string) {
     resDir = path.join(extensionPath, "resources");
@@ -53,7 +53,7 @@ function removeDirectory(dir: string) {
         });
         fs.rmdirSync(dir);
     }
-};
+}
 
 export function removeSessionFiles() {
     const sessionPath = path.join(
@@ -89,7 +89,7 @@ function _updatePlot() {
         commands.executeCommand("vscode.open", Uri.file(plotPath), {
             preserveFocus: true,
             preview: true,
-            viewColumn: ViewColumn.Two
+            viewColumn: ViewColumn.Two,
         });
         console.info("Updated plot");
     }
@@ -103,7 +103,7 @@ async function _updateGlobalenv() {
     const globalenvPath = path.join(workspace.workspaceFolders[0].uri.fsPath,
         sessionDir, PID, "globalenv.json");
     const content = await fs.readFile(globalenvPath, "utf8");
-    globalenv = JSON.parse(content);;
+    globalenv = JSON.parse(content);
     console.info("Updated globalenv");
 }
 
@@ -113,17 +113,17 @@ async function updateGlobalenv(event) {
 
 function showBrowser(url: string) {
     console.info("browser uri: " + url);
-    const port = parseInt(new URL(url).port);
+    const port = parseInt(new URL(url).port, 10);
     const panel = window.createWebviewPanel("browser", url,
         { preserveFocus: true, viewColumn: ViewColumn.Active },
         {
             enableScripts: true,
             portMapping: [
                 {
+                    extensionHostPort: port,
                     webviewPort: port,
-                    extensionHostPort: port
-                }
-            ]
+                },
+            ],
         });
     panel.webview.html = getBrowserHtml(url);
 }
@@ -151,7 +151,7 @@ async function showWebView(file: string) {
     const panel = window.createWebviewPanel("webview", "WebView",
         { preserveFocus: true, viewColumn: ViewColumn.Two },
         {
-            enableScripts: true, localResourceRoots: [Uri.file(dir)]
+            enableScripts: true, localResourceRoots: [Uri.file(dir)],
         });
     const content = await fs.readFile(file);
     const html = content.toString()
@@ -164,32 +164,32 @@ async function showWebView(file: string) {
 
 async function showDataView(source: string, type: string, title: string, file: string) {
     const dir = path.dirname(file);
-    if (source == "table") {
-        if (type == "html") {
+    if (source === "table") {
+        if (type === "html") {
             const panel = window.createWebviewPanel("dataview", title,
                 {
                     preserveFocus: true,
-                    viewColumn: ViewColumn.Two
+                    viewColumn: ViewColumn.Two,
                 },
                 {
                     enableScripts: true,
-                    localResourceRoots: [Uri.file(resDir), Uri.file(dir)]
+                    localResourceRoots: [Uri.file(resDir), Uri.file(dir)],
                 });
             const content = getTableHtml(panel.webview, file);
             panel.webview.html = content;
         } else {
             console.error("Unsupported type: " + type);
         }
-    } else if (source == "list") {
-        if (type == "json") {
+    } else if (source === "list") {
+        if (type === "json") {
             const panel = window.createWebviewPanel("dataview", title,
                 {
                     preserveFocus: true,
-                    viewColumn: ViewColumn.Two
+                    viewColumn: ViewColumn.Two,
                 },
                 {
                     enableScripts: true,
-                    localResourceRoots: [Uri.file(resDir)]
+                    localResourceRoots: [Uri.file(resDir)],
                 });
             const content = await getListHtml(panel.webview, file);
             panel.webview.html = content;
@@ -235,7 +235,7 @@ function getTableHtml(webview: Webview, file: string) {
         $table.attr("class", "table table-sm table-striped table-condensed");
         $table.DataTable({ "paging": false });
       });
-    })    
+    })
   </script>
 </body>
 </html>
@@ -243,7 +243,7 @@ function getTableHtml(webview: Webview, file: string) {
 }
 
 async function getListHtml(webview: Webview, file: string) {
-    var content = await fs.readFile(file);
+    const content = await fs.readFile(file);
     return `
 <!doctype HTML>
 <html>

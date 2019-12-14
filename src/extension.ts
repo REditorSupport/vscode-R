@@ -1,15 +1,15 @@
 "use strict";
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { commands, CompletionItem, ExtensionContext, IndentAction,
-    languages, Position, TextDocument, window, Hover, StatusBarAlignment, StatusBarItem } from "vscode";
+import { commands, CompletionItem, ExtensionContext, Hover, IndentAction,
+         languages, Position, StatusBarAlignment, StatusBarItem, TextDocument, window } from "vscode";
 
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
 import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from "./rTerminal";
 import { getWordOrSelection, surroundSelection } from "./selection";
-import { startResponseWatcher, attachActive, globalenv, deploySessionWatcher } from "./session";
+import { attachActive, deploySessionWatcher, globalenv, startResponseWatcher } from "./session";
 import { config, ToRStringLiteral } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -146,7 +146,7 @@ export function activate(context: ExtensionContext) {
                 const wordRange = document.getWordRangeAtPosition(position);
                 const text = document.getText(wordRange);
                 return new Hover("```\n" + globalenv[text].str + "\n```");
-            }
+            },
         });
 
         sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
@@ -155,7 +155,7 @@ export function activate(context: ExtensionContext) {
         sessionStatusBarItem.tooltip = "Attach Active Terminal";
         context.subscriptions.push(sessionStatusBarItem);
         sessionStatusBarItem.show();
-        
+
         deploySessionWatcher(context.extensionPath);
         startResponseWatcher();
     }
