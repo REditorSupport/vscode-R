@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.1.9
+
+* Fix bracketed paste on Windows (fix #117)
+* Fix function call closing bracket highlight (Thank you @kiendang)
+
 ## 1.1.8
 
 * Use word under cursor for previewDataframe, nrow (fix #137)
@@ -7,7 +12,7 @@
 
 ## 1.1.6
 
-* Fix behaviour when workplacefolders is Undefiend (thankyou @masterhands)
+* Fix behaviour when workplacefolders is Undefiend (Thank you @masterhands)
 * Show r.term.option value in settings UI
 * Refactoring
 
