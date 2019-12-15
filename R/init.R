@@ -74,20 +74,25 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
 
       table_to_json <- function(data) {
         if (is.data.frame(data)) {
+          colnames <- colnames(data)
+          if (is.null(colnames)) {
+            colnames <- sprintf("(X%d)", seq_len(ncol(data)))
+          } else {
+            colnames <- trimws(colnames)
+          }
           if (.row_names_info(data) > 0L) {
             rownames <- rownames(data)
             rownames(data) <- NULL
-            data <- cbind(` ` = rownames, data, stringsAsFactors = FALSE)
+            data <- cbind(rownames, data, stringsAsFactors = FALSE)
+            colnames <- c(" ", colnames)
           }
           size <- dim(data)
-          colnames <- trimws(colnames(data))
-          colnames(data) <- NULL
           types <- vapply(data, typeof, character(1L), USE.NAMES = FALSE)
-          isf <- vapply(data, is.factor, logical(1L))
+          isf <- vapply(data, is.factor, logical(1L), USE.NAMES = FALSE)
           types[isf] <- "character"
           data <- vapply(data, function(x) {
             trimws(format(x))
-          }, character(nrow(data)))
+          }, character(nrow(data)), USE.NAMES = FALSE)
         } else if (is.matrix(data)) {
           if (is.factor(data)) {
             data <- format(data)
