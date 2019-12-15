@@ -163,45 +163,37 @@ async function showWebView(file: string) {
 }
 
 async function showDataView(source: string, type: string, title: string, file: string) {
-    const dir = path.dirname(file);
     if (source === "table") {
-        if (type === "html") {
-            const panel = window.createWebviewPanel("dataview", title,
-                {
-                    preserveFocus: true,
-                    viewColumn: ViewColumn.Two,
-                },
-                {
-                    enableScripts: true,
-                    localResourceRoots: [Uri.file(resDir), Uri.file(dir)],
-                });
-            const content = getTableHtml(panel.webview, file);
-            panel.webview.html = content;
-        } else {
-            console.error("Unsupported type: " + type);
-        }
+        const panel = window.createWebviewPanel("dataview", title,
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn.Two,
+            },
+            {
+                enableScripts: true,
+                localResourceRoots: [Uri.file(resDir)],
+            });
+        const content = await getTableHtml(panel.webview, file);
+        panel.webview.html = content;
     } else if (source === "list") {
-        if (type === "json") {
-            const panel = window.createWebviewPanel("dataview", title,
-                {
-                    preserveFocus: true,
-                    viewColumn: ViewColumn.Two,
-                },
-                {
-                    enableScripts: true,
-                    localResourceRoots: [Uri.file(resDir)],
-                });
-            const content = await getListHtml(panel.webview, file);
-            panel.webview.html = content;
-        } else {
-            console.error("Unsupported type: " + type);
-        }
+        const panel = window.createWebviewPanel("dataview", title,
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn.Two,
+            },
+            {
+                enableScripts: true,
+                localResourceRoots: [Uri.file(resDir)],
+            });
+        const content = await getListHtml(panel.webview, file);
+        panel.webview.html = content;
     } else {
         console.error("Unsupported data source: " + source);
     }
 }
 
-function getTableHtml(webview: Webview, file: string) {
+async function getTableHtml(webview: Webview, file: string) {
+    const content = await fs.readFile(file);
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -218,6 +210,13 @@ function getTableHtml(webview: Webview, file: string) {
     table {
         font-size: 0.75em;
     }
+    table td,
+    table th {
+      text-align: right;
+    }
+    .left {
+      text-align: left;
+    }
   </style>
 </head>
 <body>
@@ -227,15 +226,15 @@ function getTableHtml(webview: Webview, file: string) {
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jquery.min.js")))}"></script>
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jquery.dataTables.min.js")))}"></script>
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "dataTables.bootstrap4.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jsonTable.js")))}"></script>
   <script>
-    var path = '${webview.asWebviewUri(Uri.file(file))}';
+    var data = ${content};
     $(document).ready(function () {
-      $("#table-container").load(path, function (data) {
-        $table = $("table");
-        $table.attr("class", "table table-sm table-striped table-condensed");
-        $table.DataTable({ "paging": false });
+      jsonTable.init(data, {
+        container: "table-container",
+        datatables_options: { "paging": false }
       });
-    })
+    });
   </script>
 </body>
 </html>

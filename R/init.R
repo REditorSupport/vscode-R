@@ -72,15 +72,58 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
         respond("attach")
       }
 
+      table_to_json <- function(data) {
+        if (is.data.frame(data)) {
+          if (.row_names_info(data) > 0L) {
+            rownames <- rownames(data)
+            rownames(data) <- NULL
+            data <- cbind(` ` = rownames, data, stringsAsFactors = FALSE)
+          }
+          size <- dim(data)
+          colnames <- trimws(colnames(data))
+          colnames(data) <- NULL
+          types <- vapply(data, typeof, character(1L), USE.NAMES = FALSE)
+          isf <- vapply(data, is.factor, logical(1L))
+          types[isf] <- "character"
+          data <- vapply(data, function(x) {
+            trimws(format(x))
+          }, character(nrow(data)))
+        } else if (is.matrix(data)) {
+          if (is.factor(data)) {
+            data <- format(data)
+          }
+          types <- rep(typeof(data), ncol(data))
+          colnames <- colnames(data)
+          colnames(data) <- NULL
+          if (is.null(colnames)) {
+            colnames <- sprintf("(X%d)", seq_len(ncol(data)))
+          } else {
+            colnames <- trimws(colnames)
+          }
+          rownames <- rownames(data)
+          rownames(data) <- NULL
+          data <- trimws(format(data))
+          if (!is.null(rownames)) {
+            types <- c("character", types)
+            colnames <- c(" ", colnames)
+            data <- cbind(` ` = trimws(rownames), data)
+          }
+          size <- dim(data)
+        } else {
+          stop("data must be data.frame or matrix")
+        }
+        list(size = size, columns = colnames, types = types, data = data)
+      }
+
       dataview <- function(x, title, ...) {
         if (missing(title)) {
           title <- deparse(substitute(x))[[1]]
         }
         if (is.data.frame(x) || is.matrix(x)) {
-          html <- knitr::kable(x = x, format = "html", ...)
-          file <- tempfile(tmpdir = tempdir, fileext = ".html")
-          writeLines(html, file)
-          respond("dataview", source = "table", type = "html",
+          data <- table_to_json(x)
+          file <- tempfile(tmpdir = tempdir, fileext = ".json")
+          jsonlite::write_json(data, file, matrix = "columnmajor")
+          respond("dataview", source = "table", type = "json",
             title = title, file = file)
         } else if (is.list(x)) {
           file <- tempfile(tmpdir = tempdir, fileext = ".json")
