@@ -1,4 +1,6 @@
-if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
+if (interactive() && 
+  is.null(getOption("vscodeR")) && 
+  !identical(Sys.getenv("RSTUDIO"), "1")) {
   local({
     pid <- Sys.getpid()
     tempdir <- tempdir()
