@@ -74,7 +74,7 @@ if (interactive() &&
         respond("attach")
       }
 
-      table_to_json <- function(data) {
+      dataview_table <- function(data) {
         if (is.data.frame(data)) {
           colnames <- colnames(data)
           if (is.null(colnames)) {
@@ -88,7 +88,6 @@ if (interactive() &&
             data <- cbind(rownames, data, stringsAsFactors = FALSE)
             colnames <- c(" ", colnames)
           }
-          size <- dim(data)
           types <- vapply(data, typeof, character(1L), USE.NAMES = FALSE)
           isf <- vapply(data, is.factor, logical(1L), USE.NAMES = FALSE)
           types[isf] <- "character"
@@ -115,11 +114,15 @@ if (interactive() &&
             colnames <- c(" ", colnames)
             data <- cbind(` ` = trimws(rownames), data)
           }
-          size <- dim(data)
         } else {
           stop("data must be data.frame or matrix")
         }
-        list(size = size, columns = colnames, types = types, data = data)
+        columns <- .mapply(function(title, type) {
+          class <- if (type == "character") "text-left" else "text-right"
+          list(title = jsonlite::unbox(title),
+            className = jsonlite::unbox(class))
+        }, list(colnames, types), NULL)
+        list(columns = columns, data = data)
       }
 
       dataview <- function(x, title, ...) {
@@ -127,9 +130,9 @@ if (interactive() &&
           title <- deparse(substitute(x))[[1]]
         }
         if (is.data.frame(x) || is.matrix(x)) {
-          data <- table_to_json(x)
+          data <- dataview_table(x)
           file <- tempfile(tmpdir = tempdir, fileext = ".json")
-          jsonlite::write_json(data, file, matrix = "columnmajor")
+          jsonlite::write_json(data, file, matrix = "rowmajor")
           respond("dataview", source = "table", type = "json",
             title = title, file = file)
         } else if (is.list(x)) {

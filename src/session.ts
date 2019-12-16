@@ -210,29 +210,23 @@ async function getTableHtml(webview: Webview, file: string) {
     table {
         font-size: 0.75em;
     }
-    table td,
-    table th {
-      text-align: right;
-    }
-    .left {
-      text-align: left;
-    }
   </style>
 </head>
 <body>
   <div class="container-fluid">
-    <div id='table-container'></div>
+    <table id="data-table" class="display compact table table-sm table-striped table-condensed"></table>
   </div>
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jquery.min.js")))}"></script>
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jquery.dataTables.min.js")))}"></script>
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "dataTables.bootstrap4.min.js")))}"></script>
-  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jsonTable.js")))}"></script>
   <script>
     var data = ${content};
     $(document).ready(function () {
-      jsonTable.init(data, {
-        container: "table-container",
-        datatables_options: { "paging": false }
+      $("#data-table").DataTable({
+        data: data.data,
+        columns: data.columns,
+        paging: false,
+        autoWidth: false
       });
     });
   </script>
