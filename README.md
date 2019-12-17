@@ -63,6 +63,9 @@ This extension contributes the following settings:
 
 ## R Session Watcher (Experimental)
 
+*This experimental feature is still under development and the behavior
+**may change without notice**. Please file an issue [here](https://github.com/Ikuyadeu/vscode-R/issues) if you experience problems or have any suggestions.*
+
 An opt-in experimental R session watcher is implemented to support the following features:
 
 * Watch any R session
@@ -77,13 +80,17 @@ To enable this feature, turn on `r.sessionWatcher` and append the following code
 source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "HOMEPATH" else "HOME"), ".vscode-R", "init.R"))
 ```
 
-This script writes the metadata of symbols in the global environment to `${workspaceFolder}/.vscode/vscode-R/PID` where `PID` is the R process ID. It also writes the graphics to `plot.png` in this folder and notify
-vscode-R to open the file when it is updated and open a WebView when an htmlwidget is produced or a shiny app is started.
+This script writes the metadata of symbols in the global environment and plot file to `${workspaceFolder}/.vscode/vscode-R/PID` where `PID` is the R process ID. It also captures user input and append command lines to `${workspaceFolder}/.vscode/vscode-R/response.log`, which enables the communication between vscode-R and a live R sesson.
 
-Each time the extension is activated, the latest session watcher script (`init.R`) will be deployed to
-`~/.vscode-R/init.R`.
+Each time the extension is activated, the latest session watcher script (`init.R`) will be deployed to `~/.vscode-R/init.R`.
 
-R sessions started from the workspace root folder will be automatically attached. The session watcher works no matter whether it is official R terminal or `radian` console, whether it is started by `Create R terminal` or by terminal command, whether it is in a `tmux` or `screen` window, whether there are multiple running R sessions, whether it is local or remote development.
+R sessions started from the workspace root folder will be automatically attached. The session watcher is designed to work in a wide range of scenarios:
+
+* Official R terminal or `radian` console
+* R session started by vscode-R or user
+* R session in a `tmux` or `screen` window
+* Switch between multiple running R sessions
+* [Remote Development](https://code.visualstudio.com/docs/remote/remote-overview)
 
 The status bar item shows the process id of the attached R session. Click the status bar item and it will
 attach to currently active session.
