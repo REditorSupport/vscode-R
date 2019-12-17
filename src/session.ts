@@ -115,7 +115,10 @@ function showBrowser(url: string) {
     console.info("browser uri: " + url);
     const port = parseInt(new URL(url).port, 10);
     const panel = window.createWebviewPanel("browser", url,
-        { preserveFocus: true, viewColumn: ViewColumn.Active },
+        {
+            preserveFocus: true,
+            viewColumn: ViewColumn.Active
+        },
         {
             enableScripts: true,
             portMapping: [
@@ -149,9 +152,13 @@ async function showWebView(file: string) {
     const dir = path.dirname(file);
     console.info("webview uri: " + file);
     const panel = window.createWebviewPanel("webview", "WebView",
-        { preserveFocus: true, viewColumn: ViewColumn.Two },
         {
-            enableScripts: true, localResourceRoots: [Uri.file(dir)],
+            preserveFocus: true,
+            viewColumn: ViewColumn.Two
+        },
+        {
+            enableScripts: true,
+            localResourceRoots: [Uri.file(dir)],
         });
     const content = await fs.readFile(file);
     const html = content.toString()
@@ -163,33 +170,24 @@ async function showWebView(file: string) {
 }
 
 async function showDataView(source: string, type: string, title: string, file: string) {
+    const panel = window.createWebviewPanel("dataview", title,
+        {
+            preserveFocus: true,
+            viewColumn: ViewColumn.Two,
+        },
+        {
+            enableScripts: true,
+            localResourceRoots: [Uri.file(resDir)],
+        });
+    let content: string;
     if (source === "table") {
-        const panel = window.createWebviewPanel("dataview", title,
-            {
-                preserveFocus: true,
-                viewColumn: ViewColumn.Two,
-            },
-            {
-                enableScripts: true,
-                localResourceRoots: [Uri.file(resDir)],
-            });
-        const content = await getTableHtml(panel.webview, file);
-        panel.webview.html = content;
+        content = await getTableHtml(panel.webview, file);
     } else if (source === "list") {
-        const panel = window.createWebviewPanel("dataview", title,
-            {
-                preserveFocus: true,
-                viewColumn: ViewColumn.Two,
-            },
-            {
-                enableScripts: true,
-                localResourceRoots: [Uri.file(resDir)],
-            });
-        const content = await getListHtml(panel.webview, file);
-        panel.webview.html = content;
+        content = await getListHtml(panel.webview, file);
     } else {
         console.error("Unsupported data source: " + source);
     }
+    panel.webview.html = content;
 }
 
 async function getTableHtml(webview: Webview, file: string) {
@@ -302,6 +300,6 @@ async function updateResponse(event) {
         showDataView(parseResult.source,
             parseResult.type, parseResult.title, parseResult.file);
     } else {
-        console.info("Unrecognised command: ${parseResult.command}");
+        console.error("Unsupported command: " + parseResult.command);
     }
 }
