@@ -13,13 +13,11 @@ let responseWatcher: FileSystemWatcher;
 let globalEnvWatcher: FileSystemWatcher;
 let plotWatcher: FileSystemWatcher;
 let PID: string;
-let nodeDir: string;
 let resDir: string;
 const sessionDir = path.join(".vscode", "vscode-R");
 
 export function deploySessionWatcher(extensionPath: string) {
-    nodeDir = path.join(extensionPath, "node_modules");
-    resDir = path.join(extensionPath, "resources");
+    resDir = path.join(extensionPath, "dist", "resources");
     const srcPath = path.join(extensionPath, "R", "init.R");
     const targetDir = path.join(os.homedir(), ".vscode-R");
     if (!fs.existsSync(targetDir)) {
@@ -153,13 +151,13 @@ async function showWebView(file: string) {
     const dir = path.dirname(file);
     console.info("webview uri: " + file);
     const panel = window.createWebviewPanel("webview", "WebView",
-    {
-    preserveFocus: true,
-    viewColumn: ViewColumn.Two
-},
-{
-    enableScripts: true,
-    localResourceRoots: [Uri.file(dir)],
+        {
+            preserveFocus: true,
+            viewColumn: ViewColumn.Two
+        },
+        {
+            enableScripts: true,
+            localResourceRoots: [Uri.file(dir)],
         });
     const content = await fs.readFile(file);
     const html = content.toString()
@@ -199,8 +197,8 @@ async function getTableHtml(webview: Webview, file: string) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="${webview.asWebviewUri(Uri.file(path.join(nodeDir, "bootstrap", "dist", "css", "bootstrap.min.css")))}" rel="stylesheet">
-  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "css", "dataTables.bootstrap4.min.css")))}" rel="stylesheet">
+  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "bootstrap.min.css")))}" rel="stylesheet">
+  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "dataTables.bootstrap4.min.css")))}" rel="stylesheet">
   <style type="text/css">
     body {
         color: black;
@@ -215,9 +213,9 @@ async function getTableHtml(webview: Webview, file: string) {
   <div class="container-fluid">
     <table id="data-table" class="display compact table table-sm table-striped table-condensed"></table>
   </div>
-  <script src="${webview.asWebviewUri(Uri.file(path.join(nodeDir, "jquery", "dist", "jquery.min.js")))}"></script>
-  <script src="${webview.asWebviewUri(Uri.file(path.join(nodeDir, "datatables", "media", "js", "jquery.dataTables.min.js")))}"></script>
-  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "dataTables.bootstrap4.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.dataTables.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "dataTables.bootstrap4.min.js")))}"></script>
   <script>
     var data = ${content};
     $(document).ready(function () {
@@ -242,9 +240,9 @@ async function getListHtml(webview: Webview, file: string) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery", "dist", "jquery.min.js")))}"></script>
-  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.json-viewer", "json-viewer", "jquery.json-viewer.js")))}"></script>
-  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.json-viewer", "json-viewer", "jquery.json-viewer.css")))}" rel="stylesheet">
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.json-viewer.js")))}"></script>
+  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.json-viewer.css")))}" rel="stylesheet">
   <style type="text/css">
     body {
         color: black;

@@ -3,6 +3,7 @@
 'use strict';
 
 const path = require('path');
+const CopyPlugin = require('copy-webpack-plugin');
 
 /**@type {import('webpack').Configuration}*/
 const config = {
@@ -36,6 +37,17 @@ const config = {
         ]
       }
     ]
-  }
+  },
+  plugins: [
+    new CopyPlugin([
+      { from: './node_modules/jquery/dist/jquery.min.js', to: 'resources' },
+      { from: './node_modules/jquery.json-viewer/json-viewer', to: 'resources' },
+      { from: './node_modules/bootstrap/dist/js/bootstrap.min.js', to: 'resources' },
+      { from: './node_modules/bootstrap/dist/css/bootstrap.min.css', to: 'resources' },
+      { from: './node_modules/datatables.net-bs4/js/dataTables.bootstrap4.min.js', to: 'resources' },
+      { from: './node_modules/datatables.net-bs4/css/dataTables.bootstrap4.min.css', to: 'resources' },
+      { from: './node_modules/datatables.net/js/jquery.dataTables.min.js', to: 'resources' },
+    ]),
+  ],
 };
 module.exports = config;
