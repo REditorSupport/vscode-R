@@ -2,7 +2,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { commands, CompletionItem, ExtensionContext, Hover, IndentAction,
-         languages, Position, StatusBarAlignment, StatusBarItem, TextDocument, window } from "vscode";
+         languages, Position, StatusBarAlignment, TextDocument, window } from "vscode";
 
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
@@ -25,8 +25,6 @@ const roxygenTagCompletionItems = [
     "note", "param", "rdname", "rawRd", "references", "return",
     "section", "seealso", "slot", "source", "template", "templateVar",
     "title", "usage"].map((x: string) => new CompletionItem(`${x} `));
-
-export let sessionStatusBarItem: StatusBarItem;
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -148,8 +146,7 @@ export function activate(context: ExtensionContext) {
                 return new Hover("```\n" + globalenv[text].str + "\n```");
             },
         });
-
-        sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
+        const sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
         sessionStatusBarItem.command = "r.attachActive";
         sessionStatusBarItem.text = "R: (not attached)";
         sessionStatusBarItem.tooltip = "Attach Active Terminal";
@@ -157,7 +154,7 @@ export function activate(context: ExtensionContext) {
         sessionStatusBarItem.show();
 
         deploySessionWatcher(context.extensionPath);
-        startResponseWatcher();
+        startResponseWatcher(sessionStatusBarItem);
     }
 }
 

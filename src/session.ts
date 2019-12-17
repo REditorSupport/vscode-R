@@ -4,8 +4,7 @@ import fs = require("fs-extra");
 import os = require("os");
 import path = require("path");
 import { URL } from "url";
-import { commands, FileSystemWatcher, RelativePattern, Uri, ViewColumn, Webview, window, workspace } from "vscode";
-import { sessionStatusBarItem } from "./extension";
+import { commands, FileSystemWatcher, RelativePattern, StatusBarItem, Uri, ViewColumn, Webview, window, workspace } from "vscode";
 import { chooseTerminalAndSendText } from "./rTerminal";
 import { config } from "./util";
 
@@ -14,10 +13,12 @@ let responseWatcher: FileSystemWatcher;
 let globalEnvWatcher: FileSystemWatcher;
 let plotWatcher: FileSystemWatcher;
 let PID: string;
+let nodeDir: string;
 let resDir: string;
 const sessionDir = path.join(".vscode", "vscode-R");
 
 export function deploySessionWatcher(extensionPath: string) {
+    nodeDir = path.join(extensionPath, "node_modules");
     resDir = path.join(extensionPath, "resources");
     const srcPath = path.join(extensionPath, "R", "init.R");
     const targetDir = path.join(os.homedir(), ".vscode-R");
@@ -28,13 +29,13 @@ export function deploySessionWatcher(extensionPath: string) {
     fs.copySync(srcPath, targetPath);
 }
 
-export function startResponseWatcher() {
+export function startResponseWatcher(sessionStatusBarItem: StatusBarItem) {
     responseWatcher = workspace.createFileSystemWatcher(
         new RelativePattern(
             workspace.workspaceFolders[0],
             path.join(".vscode", "vscode-R", "response.log")));
-    responseWatcher.onDidCreate(updateResponse);
-    responseWatcher.onDidChange(updateResponse);
+    responseWatcher.onDidCreate(() => updateResponse(sessionStatusBarItem));
+    responseWatcher.onDidChange(() => updateResponse(sessionStatusBarItem));
 }
 
 export function attachActive() {
@@ -117,7 +118,7 @@ function showBrowser(url: string) {
     const panel = window.createWebviewPanel("browser", url,
         {
             preserveFocus: true,
-            viewColumn: ViewColumn.Active
+            viewColumn: ViewColumn.Active,
         },
         {
             enableScripts: true,
@@ -152,13 +153,13 @@ async function showWebView(file: string) {
     const dir = path.dirname(file);
     console.info("webview uri: " + file);
     const panel = window.createWebviewPanel("webview", "WebView",
-        {
-            preserveFocus: true,
-            viewColumn: ViewColumn.Two
-        },
-        {
-            enableScripts: true,
-            localResourceRoots: [Uri.file(dir)],
+    {
+    preserveFocus: true,
+    viewColumn: ViewColumn.Two
+},
+{
+    enableScripts: true,
+    localResourceRoots: [Uri.file(dir)],
         });
     const content = await fs.readFile(file);
     const html = content.toString()
@@ -198,7 +199,7 @@ async function getTableHtml(webview: Webview, file: string) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "css", "bootstrap.min.css")))}" rel="stylesheet">
+  <link href="${webview.asWebviewUri(Uri.file(path.join(nodeDir, "bootstrap", "dist", "css", "bootstrap.min.css")))}" rel="stylesheet">
   <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "css", "dataTables.bootstrap4.min.css")))}" rel="stylesheet">
   <style type="text/css">
     body {
@@ -214,8 +215,8 @@ async function getTableHtml(webview: Webview, file: string) {
   <div class="container-fluid">
     <table id="data-table" class="display compact table table-sm table-striped table-condensed"></table>
   </div>
-  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jquery.min.js")))}"></script>
-  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jquery.dataTables.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(nodeDir, "jquery", "dist", "jquery.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(nodeDir, "datatables", "media", "js", "jquery.dataTables.min.js")))}"></script>
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "dataTables.bootstrap4.min.js")))}"></script>
   <script>
     var data = ${content};
@@ -241,9 +242,9 @@ async function getListHtml(webview: Webview, file: string) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jquery.min.js")))}"></script>
-  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "js", "jquery.json-viewer.js")))}"></script>
-  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "css", "jquery.json-viewer.css")))}" rel="stylesheet">
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery", "dist", "jquery.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.json-viewer", "json-viewer", "jquery.json-viewer.js")))}"></script>
+  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.json-viewer", "json-viewer", "jquery.json-viewer.css")))}" rel="stylesheet">
   <style type="text/css">
     body {
         color: black;
@@ -273,7 +274,7 @@ async function getListHtml(webview: Webview, file: string) {
 `;
 }
 
-async function updateResponse(event) {
+async function updateResponse(sessionStatusBarItem: StatusBarItem) {
     console.info("Response file updated!");
     // Read last line from response file
     const responseLogFile = path.join(workspace.workspaceFolders[0].uri.fsPath,

@@ -401,6 +401,9 @@
   "dependencies": {
     "fs-extra": "^8.1.0",
     "path": "^0.12.7",
-    "winattr": "^3.0.0"
+    "winattr": "^3.0.0",
+    "bootstrap": "^4.4.1",
+    "datatables": "^1.10.18",
+    "jquery.json-viewer": "^1.4.0"
   }
 }
