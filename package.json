@@ -407,6 +407,7 @@
     "jquery": "^3.4.1",
     "jquery.json-viewer": "^1.4.0",
     "path": "^0.12.7",
+    "popper.js": "^1.16.0",
     "winattr": "^3.0.0"
   }
 }
