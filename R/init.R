@@ -74,6 +74,20 @@ if (interactive() &&
         respond("attach")
       }
 
+      dataview_data_type <- function(x) {
+        if (is.numeric(x)) {
+          if (is.null(attr(x, "class"))) {
+            "num"
+          } else {
+            "num-fmt"
+          }
+        } else if (inherits(x, "Date")) {
+          "date"
+        } else {
+          "string"
+        }
+      }
+      
       dataview_table <- function(data) {
         if (is.data.frame(data)) {
           colnames <- colnames(data)
@@ -88,9 +102,8 @@ if (interactive() &&
             data <- cbind(rownames, data, stringsAsFactors = FALSE)
             colnames <- c(" ", colnames)
           }
-          types <- vapply(data, typeof, character(1L), USE.NAMES = FALSE)
-          isf <- vapply(data, is.factor, logical(1L), USE.NAMES = FALSE)
-          types[isf] <- "character"
+          types <- vapply(data, dataview_data_type,
+            character(1L), USE.NAMES = FALSE)
           data <- vapply(data, function(x) {
             trimws(format(x))
           }, character(nrow(data)), USE.NAMES = FALSE)
@@ -98,7 +111,7 @@ if (interactive() &&
           if (is.factor(data)) {
             data <- format(data)
           }
-          types <- rep(typeof(data), ncol(data))
+          types <- rep(dataview_data_type(data), ncol(data))
           colnames <- colnames(data)
           colnames(data) <- NULL
           if (is.null(colnames)) {
@@ -110,7 +123,7 @@ if (interactive() &&
           rownames(data) <- NULL
           data <- trimws(format(data))
           if (!is.null(rownames)) {
-            types <- c("character", types)
+            types <- c("string", types)
             colnames <- c(" ", colnames)
             data <- cbind(` ` = trimws(rownames), data)
           }
@@ -118,14 +131,15 @@ if (interactive() &&
           stop("data must be data.frame or matrix")
         }
         columns <- .mapply(function(title, type) {
-          class <- if (type == "character") "text-left" else "text-right"
+          class <- if (type == "string") "text-left" else "text-right"
           list(title = jsonlite::unbox(title),
-            className = jsonlite::unbox(class))
+            className = jsonlite::unbox(class),
+            type = jsonlite::unbox(type))
         }, list(colnames, types), NULL)
         list(columns = columns, data = data)
       }
 
-      dataview <- function(x, title, ...) {
+      dataview <- function(x, title) {
         if (missing(title)) {
           title <- deparse(substitute(x))[[1]]
         }
@@ -137,7 +151,7 @@ if (interactive() &&
             title = title, file = file)
         } else if (is.list(x)) {
           file <- tempfile(tmpdir = tempdir, fileext = ".json")
-          jsonlite::write_json(x, file, auto_unbox = TRUE, ...)
+          jsonlite::write_json(x, file, auto_unbox = TRUE)
           respond("dataview", source = "list", type = "json",
             title = title, file = file)
         } else {
