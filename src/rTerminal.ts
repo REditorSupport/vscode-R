@@ -6,6 +6,7 @@ import { commands, Terminal, window } from "vscode";
 
 import { getSelection } from "./selection";
 import { config, delay, getRpath } from "./util";
+import { removeSessionFiles } from "./session";
 export let rTerm: Terminal;
 
 export function createRTerm(preserveshow?: boolean): boolean {
@@ -19,7 +20,6 @@ export function createRTerm(preserveshow?: boolean): boolean {
             if (exists) {
                 rTerm = window.createTerminal(termName, termPath, termOpt);
                 rTerm.show(preserveshow);
-
                 return true;
             }
             window.showErrorMessage("Cannot find R client.  Please check R path in preferences and reload.");
@@ -30,6 +30,9 @@ export function createRTerm(preserveshow?: boolean): boolean {
 
 export function deleteTerminal(term: Terminal) {
     if (isDeepStrictEqual(term, rTerm)) {
+        if (config.get("sessionWatcher")) {
+            removeSessionFiles();
+        }
         rTerm = undefined;
     }
 }

@@ -1,14 +1,15 @@
 "use strict";
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { commands, CompletionItem, ExtensionContext, IndentAction,
-         languages, Position, TextDocument, window } from "vscode";
+import { commands, CompletionItem, ExtensionContext, Hover, IndentAction,
+         languages, Position, StatusBarAlignment, TextDocument, window } from "vscode";
 
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
 import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from "./rTerminal";
 import { getWordOrSelection, surroundSelection } from "./selection";
+import { attachActive, deploySessionWatcher, globalenv, startResponseWatcher } from "./session";
 import { config, ToRStringLiteral } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -133,8 +134,28 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.install", () => chooseTerminalAndSendText("devtools::install()")),
         commands.registerCommand("r.build", () => chooseTerminalAndSendText("devtools::build()")),
         commands.registerCommand("r.document", () => chooseTerminalAndSendText("devtools::document()")),
+        commands.registerCommand("r.attachActive", attachActive),
         window.onDidCloseTerminal(deleteTerminal),
     );
+
+    if (config.get("sessionWatcher")) {
+        languages.registerHoverProvider("r", {
+            provideHover(document, position, token) {
+                const wordRange = document.getWordRangeAtPosition(position);
+                const text = document.getText(wordRange);
+                return new Hover("```\n" + globalenv[text].str + "\n```");
+            },
+        });
+        const sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
+        sessionStatusBarItem.command = "r.attachActive";
+        sessionStatusBarItem.text = "R: (not attached)";
+        sessionStatusBarItem.tooltip = "Attach Active Terminal";
+        context.subscriptions.push(sessionStatusBarItem);
+        sessionStatusBarItem.show();
+
+        deploySessionWatcher(context.extensionPath);
+        startResponseWatcher(sessionStatusBarItem);
+    }
 }
 
 // This method is called when your extension is deactivated

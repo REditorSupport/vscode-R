@@ -232,6 +232,11 @@
         "title": "Document",
         "category": "R",
         "command": "r.document"
+      },
+      {
+        "title": "Attach Active Terminal",
+        "category": "R",
+        "command": "r.attachActive"
       }
     ],
     "keybindings": [
@@ -364,6 +369,11 @@
           "type": "boolean",
           "default": false,
           "description": "Use bracketed paste mode when sending code to console. Enable for Radian console"
+        },
+        "r.sessionWatcher": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable R session watcher (experimental)"
         }
       }
     }
@@ -379,6 +389,7 @@
     "@types/mocha": "^5.2.7",
     "@types/node": "^12.7.8",
     "@types/vscode": "^1.40.0",
+    "copy-webpack-plugin": "^5.1.1",
     "mocha": "^6.2.2",
     "node-atomizr": "^0.6.1",
     "ts-loader": "^6.2.0",
@@ -389,8 +400,14 @@
     "yamljs": "^0.3.0"
   },
   "dependencies": {
+    "bootstrap": "^4.4.1",
+    "datatables.net": "^1.10.20",
+    "datatables.net-bs4": "^1.10.20",
     "fs-extra": "^8.1.0",
+    "jquery": "^3.4.1",
+    "jquery.json-viewer": "^1.4.0",
     "path": "^0.12.7",
+    "popper.js": "^1.16.0",
     "winattr": "^3.0.0"
   }
 }
