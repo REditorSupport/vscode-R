@@ -153,7 +153,7 @@ async function showWebView(file: string) {
     const panel = window.createWebviewPanel("webview", "WebView",
         {
             preserveFocus: true,
-            viewColumn: ViewColumn.Two
+            viewColumn: ViewColumn.Two,
         },
         {
             enableScripts: true,

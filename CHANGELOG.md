@@ -1,5 +1,15 @@
 # Change Log
 
+## 1.2.0
+
+* R session watcher (Thank you @renkun-ken). Usage is written on the README.md
+    * Attach Active Terminal (by command or clicking status bar item)
+    * Auto attach on R session startup: if init.R is sourced in .Rprofile, starting an R session will notify vscode-R to automatically attach to it.
+    * Provide hover to global symbol in attached session
+    * Show plot file on the fly
+    * Show WebView to present htmlwidgets and shiny apps
+    * Show WebView for data.frame and list object when calling View()
+
 ## 1.1.9
 
 * Fix bracketed paste on Windows (fix #117)
