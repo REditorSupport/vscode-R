@@ -143,6 +143,20 @@ if (interactive() &&
         if (missing(title)) {
           title <- deparse(substitute(x))[[1]]
         }
+        if (is.environment(x)) {
+          x <- eapply(x, function(obj) {
+            data.frame(
+              class = paste0(class(obj), collapse = ", "),
+              type = typeof(obj),
+              length = length(obj),
+              size = as.integer(object.size(obj)),
+              value = trimws(utils::capture.output(str(obj, max.level = 0, give.attr = FALSE))),
+              stringsAsFactors = FALSE,
+              check.names = FALSE
+            )
+          }, all.names = FALSE, USE.NAMES = TRUE)
+          x <- do.call(rbind, x)
+        }
         if (is.data.frame(x) || is.matrix(x)) {
           data <- dataview_table(x)
           file <- tempfile(tmpdir = tempdir, fileext = ".json")
