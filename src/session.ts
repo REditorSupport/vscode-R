@@ -169,24 +169,39 @@ async function showWebView(file: string) {
 }
 
 async function showDataView(source: string, type: string, title: string, file: string) {
-    const panel = window.createWebviewPanel("dataview", title,
-        {
-            preserveFocus: true,
-            viewColumn: ViewColumn.Two,
-        },
-        {
-            enableScripts: true,
-            localResourceRoots: [Uri.file(resDir)],
-        });
-    let content: string;
     if (source === "table") {
-        content = await getTableHtml(panel.webview, file);
+        const panel = window.createWebviewPanel("dataview", title,
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn.Two,
+            },
+            {
+                enableScripts: true,
+                localResourceRoots: [Uri.file(resDir)],
+            });
+        const content = await getTableHtml(panel.webview, file);
+        panel.webview.html = content;
     } else if (source === "list") {
-        content = await getListHtml(panel.webview, file);
+        const panel = window.createWebviewPanel("dataview", title,
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn.Two,
+            },
+            {
+                enableScripts: true,
+                localResourceRoots: [Uri.file(resDir)],
+            });
+        const content = await getListHtml(panel.webview, file);
+        panel.webview.html = content;
+    } else if (source === "function") {
+        commands.executeCommand("vscode.open", Uri.file(file), {
+            preserveFocus: true,
+            preview: true,
+            viewColumn: ViewColumn.Active,
+        });
     } else {
         console.error("Unsupported data source: " + source);
     }
-    panel.webview.html = content;
 }
 
 async function getTableHtml(webview: Webview, file: string) {
