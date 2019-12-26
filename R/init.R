@@ -169,7 +169,7 @@ if (interactive() &&
           jsonlite::write_json(x, file, auto_unbox = TRUE)
           respond("dataview", source = "list", type = "json",
             title = title, file = file)
-        } else if (is.function(x)) {
+        } else {
           file <- file.path(tempdir, paste0(make.names(title), ".R"))
           if (is.primitive(x)) {
             code <- utils::capture.output(print(x))
@@ -177,10 +177,8 @@ if (interactive() &&
             code <- deparse(x)
           }
           writeLines(code, file)
-          respond("dataview", source = "function", type = "R",
+          respond("dataview", source = "object", type = "R",
             title = title, file = file)
-        } else {
-          stop("Unsupported object class")
         }
       }
 
