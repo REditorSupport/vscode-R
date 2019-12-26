@@ -25,7 +25,7 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
         }, "replace")
         setHook("grid.newpage", function(...) {
           plot_updated <<- TRUE
-        }, "repalce")
+        }, "replace")
 
         options(browser = function(url, ...) {
           respond("browser", url = url)
