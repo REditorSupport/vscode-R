@@ -193,14 +193,12 @@ async function showDataView(source: string, type: string, title: string, file: s
             });
         const content = await getListHtml(panel.webview, file);
         panel.webview.html = content;
-    } else if (type === "R") {
+    } else {
         commands.executeCommand("vscode.open", Uri.file(file), {
             preserveFocus: true,
             preview: true,
             viewColumn: ViewColumn.Active,
         });
-    } else {
-        console.error("Unsupported data");
     }
 }
 

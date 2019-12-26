@@ -165,10 +165,18 @@ if (interactive() &&
           respond("dataview", source = "table", type = "json",
             title = title, file = file)
         } else if (is.list(x)) {
-          file <- tempfile(tmpdir = tempdir, fileext = ".json")
-          jsonlite::write_json(x, file, auto_unbox = TRUE)
-          respond("dataview", source = "list", type = "json",
-            title = title, file = file)
+          tryCatch({
+            file <- tempfile(tmpdir = tempdir, fileext = ".json")
+            jsonlite::write_json(x, file, auto_unbox = TRUE)
+            respond("dataview", source = "list", type = "json",
+              title = title, file = file)
+          }, error = function(e) {
+            file <- file.path(tempdir, paste0(make.names(title), ".txt"))
+            text <- utils::capture.output(print(x))
+            writeLines(text, file)
+            respond("dataview", source = "object", type = "txt",
+              title = title, file = file)
+          })
         } else {
           file <- file.path(tempdir, paste0(make.names(title), ".R"))
           if (is.primitive(x)) {
