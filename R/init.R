@@ -141,7 +141,8 @@ if (interactive() &&
 
       dataview <- function(x, title) {
         if (missing(title)) {
-          title <- deparse(substitute(x))[[1]]
+          sub <- substitute(x)
+          title <- deparse(sub)[[1]]
         }
         if (is.environment(x)) {
           x <- eapply(x, function(obj) {
@@ -167,6 +168,16 @@ if (interactive() &&
           file <- tempfile(tmpdir = tempdir, fileext = ".json")
           jsonlite::write_json(x, file, auto_unbox = TRUE)
           respond("dataview", source = "list", type = "json",
+            title = title, file = file)
+        } else if (is.function(x)) {
+          file <- file.path(tempdir, paste0(make.names(title), ".R"))
+          if (is.primitive(x)) {
+            code <- utils::capture.output(print(x))
+          } else {
+            code <- deparse(x)
+          }
+          writeLines(code, file)
+          respond("dataview", source = "function", type = "R",
             title = title, file = file)
         } else {
           stop("Unsupported object class")
