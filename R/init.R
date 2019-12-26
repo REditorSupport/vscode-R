@@ -1,5 +1,4 @@
-if (interactive() &&
-  !identical(Sys.getenv("RSTUDIO"), "1")) {
+if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
   if (requireNamespace("jsonlite", quietly = TRUE)) {
     local({
       pid <- Sys.getpid()
@@ -23,10 +22,10 @@ if (interactive() &&
         })
         setHook("plot.new", function(...) {
           plot_updated <<- TRUE
-        })
+        }, "replace")
         setHook("grid.newpage", function(...) {
           plot_updated <<- TRUE
-        })
+        }, "repalce")
 
         options(browser = function(url, ...) {
           respond("browser", url = url)
