@@ -15,27 +15,17 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
         plot_file <- file.path(dir_session, "plot.png")
         plot_updated <- FALSE
 
-        options(vscodeR = environment())
-        options(device = function(...) {
-          pdf(NULL, bg = "white")
-          dev.control(displaylist = "enable")
-        })
-        setHook("plot.new", function(...) {
-          plot_updated <<- TRUE
-        }, "replace")
-        setHook("grid.newpage", function(...) {
-          plot_updated <<- TRUE
-        }, "replace")
-
-        options(browser = function(url, ...) {
-          respond("browser", url = url)
-        })
-        options(viewer = function(url, ...) {
-          respond("webview", file = url)
-        })
-        options(page_viewer = function(url, ...) {
-          respond("webview", file = url)
-        })
+        options(
+          vscodeR = environment(),
+          device = function(...) {
+            pdf(NULL, bg = "white")
+            dev.control(displaylist = "enable")
+          },
+          browser = function(url, ...) respond("browser", url = url, ...),
+          viewer = function(url, ...) respond("webview", file = url, ...),
+          page_viewer = function(url, ...) respond("webview", file = url, ...),
+          html_type = "html"
+        )
 
         respond <- function(command, ...) {
           json <- jsonlite::toJSON(list(
@@ -48,24 +38,28 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
         }
 
         update <- function(...) {
-          objs <- eapply(.GlobalEnv, function(obj) {
-            list(
-              class = class(obj),
-              type = typeof(obj),
-              length = length(obj),
-              str = trimws(utils::capture.output(str(obj, max.level = 0, give.attr = FALSE)))
-            )
-          }, all.names = FALSE, USE.NAMES = TRUE)
-          jsonlite::write_json(objs, globalenv_file, auto_unbox = TRUE, pretty = TRUE)
-          if (plot_updated && dev.cur() == 2L) {
-            plot_updated <<- FALSE
-            record <- recordPlot()
-            if (length(record[[1]])) {
-              png(plot_file)
-              on.exit(dev.off())
-              replayPlot(record)
+          tryCatch({
+            objs <- eapply(.GlobalEnv, function(obj) {
+              list(
+                class = class(obj),
+                type = typeof(obj),
+                length = length(obj),
+                str = trimws(utils::capture.output(str(obj, max.level = 0, give.attr = FALSE)))
+              )
+            }, all.names = FALSE, USE.NAMES = TRUE)
+            jsonlite::write_json(objs, globalenv_file, auto_unbox = TRUE, pretty = FALSE)
+            if (plot_updated && dev.cur() == 2L) {
+              plot_updated <<- FALSE
+              record <- recordPlot()
+              if (length(record[[1]])) {
+                png(plot_file)
+                on.exit(dev.off())
+                replayPlot(record)
+              }
             }
-          }
+          }, error = function(e) {
+            message(e)
+          })
           TRUE
         }
 
@@ -195,6 +189,9 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
           on.exit(lockBinding(sym, ns))
           assign(sym, value, envir = ns)
         }
+
+        setHook("plot.new", function(...) plot_updated <<- TRUE, "replace")
+        setHook("grid.newpage", function(...) plot_updated <<- TRUE, "replace")
 
         rebind(".External.graphics", function(...) {
           plot_updated <<- TRUE
