@@ -24,7 +24,7 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
           browser = function(url, ...) respond("browser", url = url, ...),
           viewer = function(url, ...) respond("webview", file = url, ...),
           page_viewer = function(url, ...) respond("webview", file = url, ...),
-          html_type = "html"
+          help_type = "html"
         )
 
         respond <- function(command, ...) {
