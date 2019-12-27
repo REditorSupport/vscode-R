@@ -141,7 +141,22 @@ if (interactive() &&
 
       dataview <- function(x, title) {
         if (missing(title)) {
-          title <- deparse(substitute(x))[[1]]
+          sub <- substitute(x)
+          title <- deparse(sub)[[1]]
+        }
+        if (is.environment(x)) {
+          x <- eapply(x, function(obj) {
+            data.frame(
+              class = paste0(class(obj), collapse = ", "),
+              type = typeof(obj),
+              length = length(obj),
+              size = as.integer(object.size(obj)),
+              value = trimws(utils::capture.output(str(obj, max.level = 0, give.attr = FALSE))),
+              stringsAsFactors = FALSE,
+              check.names = FALSE
+            )
+          }, all.names = FALSE, USE.NAMES = TRUE)
+          x <- do.call(rbind, x)
         }
         if (is.data.frame(x) || is.matrix(x)) {
           data <- dataview_table(x)
@@ -150,12 +165,28 @@ if (interactive() &&
           respond("dataview", source = "table", type = "json",
             title = title, file = file)
         } else if (is.list(x)) {
-          file <- tempfile(tmpdir = tempdir, fileext = ".json")
-          jsonlite::write_json(x, file, auto_unbox = TRUE)
-          respond("dataview", source = "list", type = "json",
-            title = title, file = file)
+          tryCatch({
+            file <- tempfile(tmpdir = tempdir, fileext = ".json")
+            jsonlite::write_json(x, file, auto_unbox = TRUE)
+            respond("dataview", source = "list", type = "json",
+              title = title, file = file)
+          }, error = function(e) {
+            file <- file.path(tempdir, paste0(make.names(title), ".txt"))
+            text <- utils::capture.output(print(x))
+            writeLines(text, file)
+            respond("dataview", source = "object", type = "txt",
+              title = title, file = file)
+          })
         } else {
-          stop("Unsupported object class")
+          file <- file.path(tempdir, paste0(make.names(title), ".R"))
+          if (is.primitive(x)) {
+            code <- utils::capture.output(print(x))
+          } else {
+            code <- deparse(x)
+          }
+          writeLines(code, file)
+          respond("dataview", source = "object", type = "R",
+            title = title, file = file)
         }
       }
 
