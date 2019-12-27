@@ -223,7 +223,8 @@ async function getTableHtml(webview: Webview, file: string) {
         data: data.data,
         columns: data.columns,
         paging: false,
-        autoWidth: false
+        autoWidth: false,
+        order: []
       });
     });
   </script>
