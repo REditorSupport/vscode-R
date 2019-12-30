@@ -120,6 +120,7 @@ function showBrowser(url: string) {
         },
         {
             enableScripts: true,
+            retainContextWhenHidden: true,
             portMapping: [
                 {
                     extensionHostPort: port,
@@ -157,6 +158,7 @@ async function showWebView(file: string) {
         },
         {
             enableScripts: true,
+            retainContextWhenHidden: true,
             localResourceRoots: [Uri.file(dir)],
         });
     const content = await fs.readFile(file);
@@ -177,6 +179,7 @@ async function showDataView(source: string, type: string, title: string, file: s
             },
             {
                 enableScripts: true,
+                retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
             });
         const content = await getTableHtml(panel.webview, file);
@@ -189,6 +192,7 @@ async function showDataView(source: string, type: string, title: string, file: s
             },
             {
                 enableScripts: true,
+                retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
             });
         const content = await getListHtml(panel.webview, file);
