@@ -37,28 +37,35 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
           cat(json, "\n", file = response_file, append = TRUE)
         }
 
+        unbox <- jsonlite::unbox
+
         update <- function(...) {
-          tryCatch({
-            objs <- eapply(.GlobalEnv, function(obj) {
-              list(
-                class = class(obj),
-                type = typeof(obj),
-                length = length(obj),
-                str = trimws(utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE)))
-              )
-            }, all.names = FALSE, USE.NAMES = TRUE)
-            jsonlite::write_json(objs, globalenv_file, auto_unbox = TRUE, pretty = FALSE)
-            if (plot_updated && dev.cur() == 2L) {
-              plot_updated <<- FALSE
-              record <- recordPlot()
-              if (length(record[[1]])) {
-                png(plot_file)
-                on.exit(dev.off())
-                replayPlot(record)
-              }
+          objs <- eapply(.GlobalEnv, function(obj) {
+            str <- utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE))[[1L]]
+            info <- list(
+              class = class(obj),
+              type = unbox(typeof(obj)),
+              length = unbox(length(obj)),
+              str = unbox(trimws(str))
+            )
+            if ((is.list(obj) || is.environment(obj)) && !is.null(names(obj))) {
+              info$names <- names(obj)
             }
-          }, error = message)
-          TRUE
+            if (isS4(obj)) {
+              info$slots <- slotNames(obj)
+            }
+            info
+          }, all.names = FALSE, USE.NAMES = TRUE)
+          jsonlite::write_json(objs, globalenv_file, pretty = FALSE)
+          if (plot_updated && dev.cur() == 2L) {
+            plot_updated <<- FALSE
+            record <- recordPlot()
+            if (length(record[[1]])) {
+              png(plot_file)
+              on.exit(dev.off())
+              replayPlot(record)
+            }
+          }
         }
 
         attach <- function() {

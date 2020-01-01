@@ -2,7 +2,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { commands, CompletionItem, ExtensionContext, Hover, IndentAction,
-         languages, Position, StatusBarAlignment, TextDocument, window, CompletionItemKind, MarkdownString } from "vscode";
+         languages, Position, StatusBarAlignment, TextDocument, window, CompletionItemKind, MarkdownString, CompletionContext } from "vscode";
 
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
@@ -161,6 +161,28 @@ export function activate(context: ExtensionContext) {
                 });
             },
         });
+
+        languages.registerCompletionItemProvider("r", {
+            provideCompletionItems(document: TextDocument, position: Position, token, context: CompletionContext) {
+                const wordPosition = new Position(position.line, position.character - 1);
+                const wordRange = document.getWordRangeAtPosition(wordPosition);
+                const word = document.getText(wordRange);
+                const obj = globalenv[word];
+                let items = new Array();
+                if (obj != undefined) {
+                    if (context.triggerCharacter === "$") {
+                        items = obj.names;
+                    } else if (context.triggerCharacter === "@") {
+                        items = obj.slots;
+                    }
+                }
+                return items.map((key) => {
+                    const item = new CompletionItem(key, CompletionItemKind.Field);
+                    item.detail = "[session]";
+                    return item;
+                });
+            },
+        }, "$", "@");
 
         const sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
         sessionStatusBarItem.command = "r.attachActive";
