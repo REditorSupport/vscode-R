@@ -48,16 +48,32 @@ if (interactive() &&
         cat(json, "\n", file = response_file, append = TRUE)
       }
 
+      unbox <- jsonlite::unbox
+
       update <- function(...) {
         objs <- eapply(.GlobalEnv, function(obj) {
-          list(
+          str <- utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE))[[1L]]
+          info <- list(
             class = class(obj),
+<<<<<<< HEAD
             type = typeof(obj),
             length = length(obj),
             str = trimws(utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE)))
+=======
+            type = unbox(typeof(obj)),
+            length = unbox(length(obj)),
+            str = unbox(trimws(str))
+>>>>>>> Provide completion for elements in list-like objects
           )
+          if ((is.list(obj) || is.environment(obj)) && !is.null(names(obj))) {
+            info$names <- names(obj)
+          }
+          if (isS4(obj)) {
+            info$slots <- slotNames(obj)
+          }
+          info
         }, all.names = FALSE, USE.NAMES = TRUE)
-        jsonlite::write_json(objs, globalenv_file, auto_unbox = TRUE, pretty = TRUE)
+        jsonlite::write_json(objs, globalenv_file, pretty = FALSE)
         if (plot_updated && dev.cur() == 2L) {
           plot_updated <<- FALSE
           record <- recordPlot()
@@ -132,9 +148,9 @@ if (interactive() &&
         }
         columns <- .mapply(function(title, type) {
           class <- if (type == "string") "text-left" else "text-right"
-          list(title = jsonlite::unbox(title),
-            className = jsonlite::unbox(class),
-            type = jsonlite::unbox(type))
+          list(title = unbox(title),
+            className = unbox(class),
+            type = unbox(type))
         }, list(colnames, types), NULL)
         list(columns = columns, data = data)
       }
