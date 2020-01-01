@@ -44,7 +44,7 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
                 class = class(obj),
                 type = typeof(obj),
                 length = length(obj),
-                str = trimws(utils::capture.output(str(obj, max.level = 0, give.attr = FALSE)))
+                str = trimws(utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE)))
               )
             }, all.names = FALSE, USE.NAMES = TRUE)
             jsonlite::write_json(objs, globalenv_file, auto_unbox = TRUE, pretty = FALSE)
