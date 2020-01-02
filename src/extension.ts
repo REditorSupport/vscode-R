@@ -197,8 +197,7 @@ export function activate(context: ExtensionContext) {
             provideCompletionItems(document: TextDocument, position: Position, token: CancellationToken, context: CompletionContext) {
                 let items = [];
 
-                if (context.triggerCharacter != '"' && context.triggerCharacter != "'") {
-                    // global symbols
+                if (context.triggerCharacter === undefined) {
                     Object.keys(globalenv).map((key) => {
                         if (token.isCancellationRequested)
                             return items;
@@ -211,37 +210,36 @@ export function activate(context: ExtensionContext) {
                         item.documentation = new MarkdownString("```r\n" + obj.str + "\n```");
                         items.push(item);
                     });
+                } else if (context.triggerCharacter === "$" || context.triggerCharacter === "@") {
+                    const symbolPosition = new Position(position.line, position.character - 1);
+                    const symbolRange = document.getWordRangeAtPosition(symbolPosition);
+                    const symbol = document.getText(symbolRange);
+                    const doc = new MarkdownString("Element of `" + symbol + "`");
+                    const obj = globalenv[symbol];
+                    let elements: string[];
+                    if (obj != undefined) {
+                        if (context.triggerCharacter === "$") {
+                            elements = obj.names;
+                        } else if (context.triggerCharacter === "@") {
+                            elements = obj.slots;
+                        }
+                    }
+                    elements.map((key) => {
+                        if (token.isCancellationRequested)
+                            return items;
+                        const item = new CompletionItem(key, CompletionItemKind.Field);
+                        item.detail = "[session]";
+                        item.documentation = doc;
+                        items.push(item);
+                    });
                 }
                 
                 // object elements in brackets
                 getBracketCompletionItems(document, position, token, items);
+                
                 return items;
             },
-        }, "", '"', "'");
-
-        languages.registerCompletionItemProvider("r", {
-            provideCompletionItems(document: TextDocument, position: Position, token, context: CompletionContext) {
-                const symbolPosition = new Position(position.line, position.character - 1);
-                const symbolRange = document.getWordRangeAtPosition(symbolPosition);
-                const symbol = document.getText(symbolRange);
-                const doc = new MarkdownString("Element of `" + symbol + "`");
-                const obj = globalenv[symbol];
-                let items = [];
-                if (obj != undefined) {
-                    if (context.triggerCharacter === "$") {
-                        items = obj.names;
-                    } else if (context.triggerCharacter === "@") {
-                        items = obj.slots;
-                    }
-                }
-                return items.map((key) => {
-                    const item = new CompletionItem(key, CompletionItemKind.Field);
-                    item.detail = "[session]";
-                    item.documentation = doc;
-                    return item;
-                });
-            },
-        }, "$", "@");
+        }, "", "$", "@", '"', "'");
 
         const sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
         sessionStatusBarItem.command = "r.attachActive";
