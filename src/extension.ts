@@ -2,7 +2,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { commands, CompletionItem, ExtensionContext, Hover, IndentAction,
-         languages, Position, StatusBarAlignment, TextDocument, window, CompletionItemKind, MarkdownString, CompletionContext } from "vscode";
+         languages, Position, StatusBarAlignment, TextDocument, window, CompletionItemKind, MarkdownString, CompletionContext, Range, CancellationToken } from "vscode";
 
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
@@ -147,28 +147,86 @@ export function activate(context: ExtensionContext) {
             },
         });
 
+        function getBracketCompletionItems(document: TextDocument, position: Position, token: CancellationToken, items: CompletionItem[]) {
+            let range = new Range(new Position(position.line, 0), position);
+            let expectOpenBrackets = 0;
+            let symbol: string;
+
+            loop1:
+            while (range.start.line >= 0) {
+                if (token.isCancellationRequested) return;
+                const text = document.getText(range);
+                for (let i = text.length - 1; i >= 0; i--) {
+                    const chr = text.charAt(i);
+                    if (chr === "]") {
+                        expectOpenBrackets++;
+                    } else if (chr == "[") {
+                        if (expectOpenBrackets == 0) {
+                            const symbolPosition = new Position(range.start.line, i - 1);
+                            const symbolRange = document.getWordRangeAtPosition(symbolPosition);
+                            symbol = document.getText(symbolRange);
+                            break loop1;
+                        } else {
+                            expectOpenBrackets--;
+                        }
+                    }
+                }
+                if (range.start.line > 0) {
+                    range = document.lineAt(range.start.line - 1).range;
+                } else {
+                    break;
+                }
+            }
+
+            if (symbol != undefined) {
+                const obj = globalenv[symbol];
+                if (obj != undefined && obj.names != undefined) {
+                    const doc = new MarkdownString("Element of `" + symbol + "`");
+                    obj.names.map((name: string) => {
+                        if (token.isCancellationRequested) return;
+                        const item = new CompletionItem(name, CompletionItemKind.Field)
+                        item.detail = "[session]";
+                        item.documentation = doc;
+                        items.push(item);
+                    });
+                }
+            }
+        }
+
         languages.registerCompletionItemProvider("r", {
-            provideCompletionItems(document: TextDocument, position: Position) {
-                return Object.keys(globalenv).map((key) => {
-                    const obj = globalenv[key];
-                    const item = new CompletionItem(key,
-                        obj.class === "function" ?
-                            CompletionItemKind.Function :
-                            CompletionItemKind.Field);
-                    item.detail = "[session]";
-                    item.documentation = new MarkdownString("```r\n" + obj.str + "\n```");
-                    return item;
-                });
+            provideCompletionItems(document: TextDocument, position: Position, token: CancellationToken, context: CompletionContext) {
+                let items = [];
+
+                if (context.triggerCharacter != '"' && context.triggerCharacter != "'") {
+                    // global symbols
+                    Object.keys(globalenv).map((key) => {
+                        if (token.isCancellationRequested)
+                            return items;
+                        const obj = globalenv[key];
+                        const item = new CompletionItem(key,
+                            obj.class === "function" ?
+                                CompletionItemKind.Function :
+                                CompletionItemKind.Field);
+                        item.detail = "[session]";
+                        item.documentation = new MarkdownString("```r\n" + obj.str + "\n```");
+                        items.push(item);
+                    });
+                }
+                
+                // object elements in brackets
+                getBracketCompletionItems(document, position, token, items);
+                return items;
             },
-        });
+        }, "", '"', "'");
 
         languages.registerCompletionItemProvider("r", {
             provideCompletionItems(document: TextDocument, position: Position, token, context: CompletionContext) {
-                const wordPosition = new Position(position.line, position.character - 1);
-                const wordRange = document.getWordRangeAtPosition(wordPosition);
-                const word = document.getText(wordRange);
-                const obj = globalenv[word];
-                let items = new Array();
+                const symbolPosition = new Position(position.line, position.character - 1);
+                const symbolRange = document.getWordRangeAtPosition(symbolPosition);
+                const symbol = document.getText(symbolRange);
+                const doc = new MarkdownString("Element of `" + symbol + "`");
+                const obj = globalenv[symbol];
+                let items = [];
                 if (obj != undefined) {
                     if (context.triggerCharacter === "$") {
                         items = obj.names;
@@ -179,6 +237,7 @@ export function activate(context: ExtensionContext) {
                 return items.map((key) => {
                     const item = new CompletionItem(key, CompletionItemKind.Field);
                     item.detail = "[session]";
+                    item.documentation = doc;
                     return item;
                 });
             },
