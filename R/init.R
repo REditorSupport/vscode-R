@@ -55,15 +55,9 @@ if (interactive() &&
           str <- utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE))[[1L]]
           info <- list(
             class = class(obj),
-<<<<<<< HEAD
-            type = typeof(obj),
-            length = length(obj),
-            str = trimws(utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE)))
-=======
             type = unbox(typeof(obj)),
             length = unbox(length(obj)),
             str = unbox(trimws(str))
->>>>>>> Provide completion for elements in list-like objects
           )
           if ((is.list(obj) || is.environment(obj)) && !is.null(names(obj))) {
             info$names <- names(obj)
