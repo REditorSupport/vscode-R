@@ -57,9 +57,7 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
                 replayPlot(record)
               }
             }
-          }, error = function(e) {
-            message(e)
-          })
+          }, error = message)
           TRUE
         }
 
