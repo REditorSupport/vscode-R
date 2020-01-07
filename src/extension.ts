@@ -203,7 +203,7 @@ export function activate(context: ExtensionContext) {
                             return items;
                         const obj = globalenv[key];
                         const item = new CompletionItem(key,
-                            obj.class === "function" ?
+                            obj.type === "closure" || obj.type === "builtin" ?
                                 CompletionItemKind.Function :
                                 CompletionItemKind.Field);
                         item.detail = "[session]";
