@@ -192,17 +192,6 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
               title = title, file = file)
           }
         }
-<<<<<<< HEAD
-=======
-        columns <- .mapply(function(title, type) {
-          class <- if (type == "string") "text-left" else "text-right"
-          list(title = unbox(title),
-            className = unbox(class),
-            type = unbox(type))
-        }, list(colnames, types), NULL)
-        list(columns = columns, data = data)
-      }
->>>>>>> completion
 
         rebind <- function(sym, value, ns) {
           ns <- getNamespace(ns)
