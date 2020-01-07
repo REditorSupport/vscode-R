@@ -216,6 +216,7 @@ async function getTableHtml(webview: Webview, file: string) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "bootstrap.min.css")))}" rel="stylesheet">
   <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "dataTables.bootstrap4.min.css")))}" rel="stylesheet">
+  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "fixedHeader.jqueryui.min.css")))}" rel="stylesheet">
   <style type="text/css">
     body {
         color: black;
@@ -233,6 +234,8 @@ async function getTableHtml(webview: Webview, file: string) {
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.min.js")))}"></script>
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.dataTables.min.js")))}"></script>
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "dataTables.bootstrap4.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "dataTables.fixedHeader.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "fixedHeader.jqueryui.min.js")))}"></script>
   <script>
     var data = ${content};
     $(document).ready(function () {
@@ -241,7 +244,8 @@ async function getTableHtml(webview: Webview, file: string) {
         columns: data.columns,
         paging: false,
         autoWidth: false,
-        order: []
+        order: [],
+        fixedHeader: true
       });
     });
   </script>
