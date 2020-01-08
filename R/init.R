@@ -11,22 +11,28 @@ if (interactive() &&
         unlink(dir_session, recursive = TRUE, force = TRUE)
       }, onexit = TRUE)
 
+      dir_plot_history <- file.path(tempdir, "images")
+      dir.create(dir_plot_history, showWarnings = FALSE, recursive = TRUE)
+
       response_file <- file.path(dir, "response.log")
       globalenv_file <- file.path(dir_session, "globalenv.json")
       plot_file <- file.path(dir_session, "plot.png")
+      plot_history_file <- NULL
       plot_updated <- FALSE
+
+      new_plot <- function() {
+        plot_history_file <<- file.path(dir_plot_history,
+          format(Sys.time(), "%Y%m%d-%H%M%OS3.png"))
+        plot_updated <<- TRUE
+      }
 
       options(vscodeR = environment())
       options(device = function(...) {
         pdf(NULL, bg = "white")
         dev.control(displaylist = "enable")
       })
-      setHook("plot.new", function(...) {
-        plot_updated <<- TRUE
-      })
-      setHook("grid.newpage", function(...) {
-        plot_updated <<- TRUE
-      })
+      setHook("plot.new", new_plot, "replace")
+      setHook("grid.newpage", new_plot, "replace")
 
       options(browser = function(url, ...) {
         respond("browser", url = url)
@@ -63,7 +69,12 @@ if (interactive() &&
           record <- recordPlot()
           if (length(record[[1]])) {
             png(plot_file)
-            on.exit(dev.off())
+            on.exit({
+              dev.off()
+              if (!is.null(plot_history_file)) {
+                file.copy(plot_file, plot_history_file, overwrite = TRUE)
+              }
+            })
             replayPlot(record)
           }
         }
@@ -71,7 +82,7 @@ if (interactive() &&
       }
 
       attach <- function() {
-        respond("attach")
+        respond("attach", tempdir = tempdir)
       }
 
       dataview_data_type <- function(x) {
@@ -177,6 +188,7 @@ if (interactive() &&
       addTaskCallback(update, name = "vscode-R")
       lockEnvironment(environment(), bindings = TRUE)
       unlockBinding("plot_updated", environment())
+      unlockBinding("plot_history_file", environment())
       attach()
     }
     invisible()

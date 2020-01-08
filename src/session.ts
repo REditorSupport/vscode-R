@@ -13,6 +13,8 @@ let responseWatcher: FileSystemWatcher;
 let globalEnvWatcher: FileSystemWatcher;
 let plotWatcher: FileSystemWatcher;
 let PID: string;
+let tempDir: string;
+let plotDir: string;
 let resDir: string;
 const sessionDir = path.join(".vscode", "vscode-R");
 
@@ -273,6 +275,53 @@ async function getListHtml(webview: Webview, file: string) {
 `;
 }
 
+export async function showPlotHistory() {
+    if (config.get("sessionWatcher")) {
+        const files = await fs.readdir(plotDir);
+        const panel = window.createWebviewPanel("plotHistory", "Plot History",
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn.Two,
+            },
+            {
+                enableScripts: true,
+                localResourceRoots: [Uri.file(resDir), Uri.file(plotDir)],
+            });
+        const html = getPlotHistoryHtml(panel.webview, files)
+        panel.webview.html = html;
+    } else {
+        window.showInformationMessage("This command requires that r.sessionWatcher be enabled.");
+    }
+}
+
+function getPlotHistoryHtml(webview: Webview, files: string[]) {
+    const imgs = files
+        .map((file) => `<img src="${webview.asWebviewUri(Uri.file(path.join(plotDir, file)))}" />`)
+        .join("\n");
+    return `
+<!doctype HTML>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "fotorama.js")))}"></script>
+  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "fotorama.css")))}" rel="stylesheet">
+  <style type="text/css">
+    body {
+        background-color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="fotorama" data-maxheight="100%" data-maxwidth="100%" data-nav="thumbs" data-keyboard="true">
+    ${imgs}
+  </div>
+</body>
+</html>
+`;
+}
+
 async function updateResponse(sessionStatusBarItem: StatusBarItem) {
     console.info("Response file updated!");
     // Read last line from response file
@@ -286,6 +335,8 @@ async function updateResponse(sessionStatusBarItem: StatusBarItem) {
     const parseResult = JSON.parse(lastLine);
     if (parseResult.command === "attach") {
         PID = String(parseResult.pid);
+        tempDir = parseResult.tempdir;
+        plotDir = path.join(tempDir, "images");
         console.info("Got PID: " + PID);
         sessionStatusBarItem.text = "R: " + PID;
         sessionStatusBarItem.show();

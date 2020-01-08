@@ -237,6 +237,11 @@
         "title": "Attach Active Terminal",
         "category": "R",
         "command": "r.attachActive"
+      },
+      {
+        "title": "Show Plot History",
+        "category": "R",
+        "command": "r.showPlotHistory"
       }
     ],
     "keybindings": [
@@ -403,6 +408,7 @@
     "bootstrap": "^4.4.1",
     "datatables.net": "^1.10.20",
     "datatables.net-bs4": "^1.10.20",
+    "fotorama": "^4.6.4",
     "fs-extra": "^8.1.0",
     "jquery": "^3.4.1",
     "jquery.json-viewer": "^1.4.0",
