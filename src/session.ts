@@ -325,8 +325,7 @@ function getPlotHistoryHtml(webview: Webview, files: string[]) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.min.js")))}"></script>
-  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "fotorama.js")))}"></script>
+  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "bootstrap.min.css")))}" rel="stylesheet">
   <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "fotorama.css")))}" rel="stylesheet">
   <style type="text/css">
     body {
@@ -335,9 +334,15 @@ function getPlotHistoryHtml(webview: Webview, files: string[]) {
   </style>
 </head>
 <body>
-  <div class="fotorama" data-maxheight="100%" data-maxwidth="100%" data-nav="thumbs" data-keyboard="true">
-    ${imgs}
+  <div class="container">
+    <div class="text-center">
+      <div class="fotorama" data-width="100%" data-maxheight="100%" data-nav="thumbs" data-keyboard="true">
+        ${imgs}
+      </div>
+    </div>
   </div>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "fotorama.js")))}"></script>
 </body>
 </html>
 `;
