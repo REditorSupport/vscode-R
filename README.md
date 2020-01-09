@@ -78,7 +78,7 @@ An opt-in experimental R session watcher is implemented to support the following
 To enable this feature, turn on `r.sessionWatcher` and append the following code to your `.Rprofile` (in your home directory):
 
 ```r
-source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "HOMEPATH" else "HOME"), ".vscode-R", "init.R"))
+source(file.path(if (.Platform$OS.type == "windows") file.path(Sys.getenv("HOMEDRIVE"), Sys.getenv("HOMEPATH")) else Sys.getenv("HOME"), ".vscode-R", "init.R"))
 ```
 
 This script writes the metadata of symbols in the global environment and plot file to `${workspaceFolder}/.vscode/vscode-R/PID` where `PID` is the R process ID. It also captures user input and append command lines to `${workspaceFolder}/.vscode/vscode-R/response.log`, which enables the communication between vscode-R and a live R sesson.

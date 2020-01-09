@@ -62,7 +62,8 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
               plot_updated <<- FALSE
               record <- recordPlot()
               if (length(record[[1]])) {
-                png(plot_file)
+                dev_args <- getOption("dev.args")
+                do.call(png, c(list(filename = plot_file), dev_args))
                 on.exit(dev.off())
                 replayPlot(record)
               }
