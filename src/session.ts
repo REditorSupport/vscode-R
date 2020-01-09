@@ -277,19 +277,27 @@ async function getListHtml(webview: Webview, file: string) {
 
 export async function showPlotHistory() {
     if (config.get("sessionWatcher")) {
-        const files = await fs.readdir(plotDir);
-        const panel = window.createWebviewPanel("plotHistory", "Plot History",
-            {
-                preserveFocus: true,
-                viewColumn: ViewColumn.Two,
-            },
-            {
-                retainContextWhenHidden: true,
-                enableScripts: true,
-                localResourceRoots: [Uri.file(resDir), Uri.file(plotDir)],
-            });
-        const html = getPlotHistoryHtml(panel.webview, files)
-        panel.webview.html = html;
+        if (plotDir === undefined) {
+            window.showErrorMessage("No session is attached.")
+        } else {
+            const files = await fs.readdir(plotDir);
+            if (files.length > 0) {
+                const panel = window.createWebviewPanel("plotHistory", "Plot History",
+                    {
+                        preserveFocus: true,
+                        viewColumn: ViewColumn.Two,
+                    },
+                    {
+                        retainContextWhenHidden: true,
+                        enableScripts: true,
+                        localResourceRoots: [Uri.file(resDir), Uri.file(plotDir)],
+                    });
+                const html = getPlotHistoryHtml(panel.webview, files)
+                panel.webview.html = html;
+            } else {
+                window.showInformationMessage("There is no plot to show yet.")
+            }
+        }
     } else {
         window.showInformationMessage("This command requires that r.sessionWatcher be enabled.");
     }
