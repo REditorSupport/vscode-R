@@ -210,7 +210,7 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
 
         new_plot <- function() {
           plot_history_file <<- file.path(dir_plot_history,
-            format(Sys.time(), "%Y%m%d-%H%M%OS3.png"))
+            format(Sys.time(), "%Y%m%d-%H%M%OS6.png"))
           plot_updated <<- TRUE
         }
 
