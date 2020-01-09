@@ -10,9 +10,13 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
           unlink(dir_session, recursive = TRUE, force = TRUE)
         }, onexit = TRUE)
 
+        dir_plot_history <- file.path(tempdir, "images")
+        dir.create(dir_plot_history, showWarnings = FALSE, recursive = TRUE)
+        
         response_file <- file.path(dir, "response.log")
         globalenv_file <- file.path(dir_session, "globalenv.json")
         plot_file <- file.path(dir_session, "plot.png")
+        plot_history_file <- NULL
         plot_updated <- FALSE
 
         options(
@@ -64,18 +68,21 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
               if (length(record[[1]])) {
                 dev_args <- getOption("dev.args")
                 do.call(png, c(list(filename = plot_file), dev_args))
-                on.exit(dev.off())
+                on.exit({
+                  dev.off()
+                  if (!is.null(plot_history_file)) {
+                    file.copy(plot_file, plot_history_file, overwrite = TRUE)
+                  }
+                })
                 replayPlot(record)
               }
             }
-          }, error = function(e) {
-            message(e)
-          })
+          }, error = message)
           TRUE
         }
 
         attach <- function() {
-          respond("attach")
+          respond("attach", tempdir = tempdir)
         }
 
         dataview_data_type <- function(x) {
@@ -201,8 +208,14 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
           assign(sym, value, envir = ns)
         }
 
-        setHook("plot.new", function(...) plot_updated <<- TRUE, "replace")
-        setHook("grid.newpage", function(...) plot_updated <<- TRUE, "replace")
+        new_plot <- function() {
+          plot_history_file <<- file.path(dir_plot_history,
+            format(Sys.time(), "%Y%m%d-%H%M%OS3.png"))
+          plot_updated <<- TRUE
+        }
+
+        setHook("plot.new", new_plot, "replace")
+        setHook("grid.newpage", new_plot, "replace")
 
         rebind(".External.graphics", function(...) {
           plot_updated <<- TRUE
@@ -216,6 +229,7 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
         addTaskCallback(update, name = "vscode-R")
         lockEnvironment(environment(), bindings = TRUE)
         unlockBinding("plot_updated", environment())
+        unlockBinding("plot_history_file", environment())
         attach()
       }
       invisible()
