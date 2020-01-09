@@ -284,6 +284,7 @@ export async function showPlotHistory() {
                 viewColumn: ViewColumn.Two,
             },
             {
+                retainContextWhenHidden: true,
                 enableScripts: true,
                 localResourceRoots: [Uri.file(resDir), Uri.file(plotDir)],
             });
