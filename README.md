@@ -75,19 +75,25 @@ An opt-in experimental R session watcher is implemented to support the following
 * Show plot output on update
 * Show htmlwidgets and shiny apps
 
-To enable this feature, turn on `r.sessionWatcher` and then edit your `.Rprofile` by running the following code in R:
+To enable this feature, follow the following steps:
 
-```r
-system2("code", normalizePath("~/.Rprofile"))
-```
+1. Turn on `r.sessionWatcher` in VSCode settings.
+2. Locate `.Rprofile` in your home directory by running the following code in R:
 
-It will open a VSCode tab for you to edit the file. You may change `code` to whatever editor you like.
+    ```r
+    normalizePath("~/.Rprofile")
+    ```
 
-Then append the following code to the file:
+    Following are typical paths in different operating systems:
+    * Windows: `C:\\Users\\user\\Documents\\.Rprofile`
+    * Linux: `/home/user/.Rprofile`
+    * macOS: `/Users/user/.Rprofile`
 
-```r
-source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"), ".vscode-R", "init.R"))
-```
+3. Create (if not exists) or open the file and append the following code to the file:
+
+    ```r
+    source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"), ".vscode-R", "init.R"))
+    ```
 
 If the workspace folder you open in VSCode already has a `.Rprofile`, you need to append the code above in this file too because `~/.Rprofile` will not
 be executed when a local `.Rprofile` is found.
@@ -102,7 +108,7 @@ R sessions started from the workspace root folder will be automatically attached
 * R session started by vscode-R or user
 * R session in a `tmux` or `screen` window
 * Switch between multiple running R sessions
-* [Remote Development](https://code.visualstudio.com/docs/remote/remote-overview)
+* [Remote Development](https://code.visualstudio.com/docs/remote/remote-overview) via SSH, WSL and Docker
 
 The status bar item shows the process id of the attached R session. Click the status bar item and it will
 attach to currently active session.
