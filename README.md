@@ -74,11 +74,22 @@ An opt-in experimental R session watcher is implemented to support the following
 * Show plot output on update
 * Show htmlwidgets and shiny apps
 
-To enable this feature, turn on `r.sessionWatcher` and append the following code to your `.Rprofile` (in your home directory):
+To enable this feature, turn on `r.sessionWatcher` and then edit your `.Rprofile` by running the following code in R:
 
 ```r
-source(file.path(if (.Platform$OS.type == "windows") file.path(Sys.getenv("HOMEDRIVE"), Sys.getenv("HOMEPATH")) else Sys.getenv("HOME"), ".vscode-R", "init.R"))
+system2("code", normalizePath("~/.Rprofile"))
 ```
+
+It will open a VSCode tab for you to edit the file. You may change `code` to whatever editor you like.
+
+Then append the following code to the file you get in the output of above command:
+
+```r
+source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"), ".vscode-R", "init.R"))
+```
+
+If the workspace folder you open in VSCode already has a `.Rprofile`, you need to append the code above in this file too because `~/.Rprofile` will not
+be executed when a local `.Rprofile` is found.
 
 This script writes the metadata of symbols in the global environment and plot file to `${workspaceFolder}/.vscode/vscode-R/PID` where `PID` is the R process ID. It also captures user input and append command lines to `${workspaceFolder}/.vscode/vscode-R/response.log`, which enables the communication between vscode-R and a live R sesson.
 
