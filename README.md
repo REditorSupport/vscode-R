@@ -83,7 +83,7 @@ system2("code", normalizePath("~/.Rprofile"))
 
 It will open a VSCode tab for you to edit the file. You may change `code` to whatever editor you like.
 
-Then append the following code to the file you get in the output of above command:
+Then append the following code to the file:
 
 ```r
 source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"), ".vscode-R", "init.R"))
