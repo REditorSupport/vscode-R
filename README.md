@@ -95,6 +95,8 @@ To enable this feature, follow the following steps:
     source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"), ".vscode-R", "init.R"))
     ```
 
+4. Restart or Reload Window in VSCode
+
 If the workspace folder you open in VSCode already has a `.Rprofile`, you need to append the code above in this file too because `~/.Rprofile` will not
 be executed when a local `.Rprofile` is found.
 
