@@ -110,9 +110,11 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
             if (.row_names_info(data) > 0L) {
               rownames <- rownames(data)
               rownames(data) <- NULL
-              data <- cbind(rownames, data, stringsAsFactors = FALSE)
-              colnames <- c(" ", colnames)
+            } else {
+              rownames <- seq_len(nrow(data))
             }
+            data <- cbind(rownames, data, stringsAsFactors = FALSE)
+            colnames <- c(" ", colnames)
             types <- vapply(data, dataview_data_type,
               character(1L), USE.NAMES = FALSE)
             data <- vapply(data, function(x) {
@@ -133,10 +135,14 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
             rownames <- rownames(data)
             rownames(data) <- NULL
             data <- trimws(format(data))
-            if (!is.null(rownames)) {
+            if (is.null(rownames)) {
+              types <- c("num", types)
+              colnames <- c(" ", colnames)
+              data <- cbind(" " = seq_len(nrow(data)), data)
+            } else {
               types <- c("string", types)
               colnames <- c(" ", colnames)
-              data <- cbind(` ` = trimws(rownames), data)
+              data <- cbind(" " = trimws(rownames), data)
             }
           } else {
             stop("data must be data.frame or matrix")
