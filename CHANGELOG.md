@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.2.1
+
+* Extend View (Thank you @renkun-ken)
+* Fix session watcher init.R path on Windows (Fixed #176)
+
 ## 1.2.0
 
 * R session watcher (Thank you @renkun-ken). Usage is written on the README.md

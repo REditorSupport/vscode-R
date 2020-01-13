@@ -5,8 +5,8 @@ import { isDeepStrictEqual } from "util";
 import { commands, Terminal, window } from "vscode";
 
 import { getSelection } from "./selection";
-import { config, delay, getRpath } from "./util";
 import { removeSessionFiles } from "./session";
+import { config, delay, getRpath } from "./util";
 export let rTerm: Terminal;
 
 export function createRTerm(preserveshow?: boolean): boolean {
