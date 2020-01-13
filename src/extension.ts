@@ -140,6 +140,7 @@ export function activate(context: ExtensionContext) {
     );
 
     if (config.get("sessionWatcher")) {
+        console.info("Initialize session watcher");
         languages.registerHoverProvider("r", {
             provideHover(document, position, token) {
                 const wordRange = document.getWordRangeAtPosition(position);
@@ -242,13 +243,14 @@ export function activate(context: ExtensionContext) {
             },
         }, "", "$", "@", '"', "'");
 
+        console.info("Create sessionStatusBarItem");
         const sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
         sessionStatusBarItem.command = "r.attachActive";
         sessionStatusBarItem.text = "R: (not attached)";
         sessionStatusBarItem.tooltip = "Attach Active Terminal";
         context.subscriptions.push(sessionStatusBarItem);
         sessionStatusBarItem.show();
-
+        
         deploySessionWatcher(context.extensionPath);
         startResponseWatcher(sessionStatusBarItem);
     }
