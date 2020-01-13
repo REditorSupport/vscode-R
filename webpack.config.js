@@ -47,6 +47,9 @@ const config = {
       { from: './node_modules/datatables.net-bs4/js/dataTables.bootstrap4.min.js', to: 'resources' },
       { from: './node_modules/datatables.net-bs4/css/dataTables.bootstrap4.min.css', to: 'resources' },
       { from: './node_modules/datatables.net/js/jquery.dataTables.min.js', to: 'resources' },
+      { from: './node_modules/datatables.net-fixedheader/js/dataTables.fixedHeader.min.js', to: 'resources' },
+      { from: './node_modules/datatables.net-fixedheader-jqui/js/fixedHeader.jqueryui.min.js', to: 'resources' },
+      { from: './node_modules/datatables.net-fixedheader-jqui/css/fixedHeader.jqueryui.min.css', to: 'resources' },
     ]),
   ],
 };

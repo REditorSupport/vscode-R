@@ -120,6 +120,7 @@ function showBrowser(url: string) {
         },
         {
             enableScripts: true,
+            retainContextWhenHidden: true,
             portMapping: [
                 {
                     extensionHostPort: port,
@@ -157,6 +158,7 @@ async function showWebView(file: string) {
         },
         {
             enableScripts: true,
+            retainContextWhenHidden: true,
             localResourceRoots: [Uri.file(dir)],
         });
     const content = await fs.readFile(file);
@@ -169,24 +171,39 @@ async function showWebView(file: string) {
 }
 
 async function showDataView(source: string, type: string, title: string, file: string) {
-    const panel = window.createWebviewPanel("dataview", title,
-        {
-            preserveFocus: true,
-            viewColumn: ViewColumn.Two,
-        },
-        {
-            enableScripts: true,
-            localResourceRoots: [Uri.file(resDir)],
-        });
-    let content: string;
     if (source === "table") {
-        content = await getTableHtml(panel.webview, file);
+        const panel = window.createWebviewPanel("dataview", title,
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn.Two,
+            },
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [Uri.file(resDir)],
+            });
+        const content = await getTableHtml(panel.webview, file);
+        panel.webview.html = content;
     } else if (source === "list") {
-        content = await getListHtml(panel.webview, file);
+        const panel = window.createWebviewPanel("dataview", title,
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn.Two,
+            },
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [Uri.file(resDir)],
+            });
+        const content = await getListHtml(panel.webview, file);
+        panel.webview.html = content;
     } else {
-        console.error("Unsupported data source: " + source);
+        commands.executeCommand("vscode.open", Uri.file(file), {
+            preserveFocus: true,
+            preview: true,
+            viewColumn: ViewColumn.Active,
+        });
     }
-    panel.webview.html = content;
 }
 
 async function getTableHtml(webview: Webview, file: string) {
@@ -199,6 +216,7 @@ async function getTableHtml(webview: Webview, file: string) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "bootstrap.min.css")))}" rel="stylesheet">
   <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "dataTables.bootstrap4.min.css")))}" rel="stylesheet">
+  <link href="${webview.asWebviewUri(Uri.file(path.join(resDir, "fixedHeader.jqueryui.min.css")))}" rel="stylesheet">
   <style type="text/css">
     body {
         color: black;
@@ -216,6 +234,8 @@ async function getTableHtml(webview: Webview, file: string) {
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.min.js")))}"></script>
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.dataTables.min.js")))}"></script>
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "dataTables.bootstrap4.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "dataTables.fixedHeader.min.js")))}"></script>
+  <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "fixedHeader.jqueryui.min.js")))}"></script>
   <script>
     var data = ${content};
     $(document).ready(function () {
@@ -224,7 +244,8 @@ async function getTableHtml(webview: Webview, file: string) {
         columns: data.columns,
         paging: false,
         autoWidth: false,
-        order: []
+        order: [],
+        fixedHeader: true
       });
     });
   </script>
