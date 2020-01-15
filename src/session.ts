@@ -165,10 +165,8 @@ async function showWebView(file: string) {
         });
     const content = await fs.readFile(file);
     const html = content.toString()
-        .replace("<style>body{background-color:white;}</style>",
-            "<style>body{background-color:white;color:black;}</style>")
-        .replace(/<script src="/g, '<script src="' + panel.webview.asWebviewUri(Uri.file(dir)) + "/")
-        .replace(/<link href="/g, '<link href="' + panel.webview.asWebviewUri(Uri.file(dir)) + "/");
+        .replace("<body>", "<body style=\"color: black;\"")
+        .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g, '<$1 $2="' + panel.webview.asWebviewUri(Uri.file(dir)) + "/");
     panel.webview.html = html;
 }
 
