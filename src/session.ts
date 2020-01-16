@@ -229,7 +229,7 @@ async function getTableHtml(webview: Webview, file: string) {
 </head>
 <body>
   <div class="container-fluid">
-    <table id="data-table" class="display compact table table-sm table-striped table-condensed table-hover"></table>
+    <table id="data-table" class="display table table-sm table-striped table-condensed table-hover"></table>
   </div>
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.min.js")))}"></script>
   <script src="${webview.asWebviewUri(Uri.file(path.join(resDir, "jquery.dataTables.min.js")))}"></script>
@@ -248,7 +248,7 @@ async function getTableHtml(webview: Webview, file: string) {
         fixedHeader: true
       });
       $("#data-table tbody").on("click", "tr", function() {
-        $(this).toggleClass("bg-dark text-light");
+        $(this).toggleClass("table-active");
       });
     });
   </script>
