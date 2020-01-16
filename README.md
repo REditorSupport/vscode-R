@@ -119,6 +119,9 @@ attach to currently active session.
 
 ![R session watcher](https://user-images.githubusercontent.com/4662568/70815935-65391480-1e09-11ea-9ad6-7ebbebf9a9c8.gif)
 
+*The R terminal used in the screenshot is [radian](https://github.com/randy3k/radian) which is cross-platform and
+supports syntax highlighting, auto-completion and many other features.*
+
 ## TODO
 
 * Debug
