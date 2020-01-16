@@ -22,8 +22,8 @@ if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
             dev.control(displaylist = "enable")
           },
           browser = function(url, ...) respond("browser", url = url, ...),
-          viewer = function(url, ...) respond("webview", file = url, ...),
-          page_viewer = function(url, ...) respond("webview", file = url, ...),
+          viewer = function(url, ...) respond("webview", file = url, ..., viewColumn = "Two"),
+          page_viewer = function(url, ...) respond("webview", file = url, ..., viewColumn = "Active"),
           help_type = "html"
         )
 
