@@ -2,7 +2,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { commands, CompletionItem, ExtensionContext, Hover, IndentAction,
-         languages, Position, StatusBarAlignment, TextDocument, window } from "vscode";
+         languages, Position, StatusBarAlignment, TextDocument, window, SymbolInformation, Location, Range, SymbolKind, CancellationToken } from "vscode";
 
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
@@ -101,7 +101,23 @@ export function activate(context: ExtensionContext) {
 
             return undefined;
         },
-    },                                       "@"); // Trigger on '@'
+    }, "@"); // Trigger on '@'
+    
+    languages.registerDocumentSymbolProvider("r", {
+        provideDocumentSymbols(document: TextDocument, token: CancellationToken) {
+            let sections: SymbolInformation[] =  [];
+            for (let i = 0; i < document.lineCount; i++) {
+                if (token.isCancellationRequested) break;
+                const line = document.lineAt(i);
+                if (line.isEmptyOrWhitespace || !line.text.startsWith("#")) continue;
+                const match = line.text.match(/^\#+\s*(.+)\s*(\#{4,}|\+{4,}|\-{4,}|\={4,})\s*$/);
+                if (match != null) {
+                    sections.push(new SymbolInformation(match[1], SymbolKind.String, "", new Location(document.uri, new Position(i, 0))));    
+                }
+            }
+            return sections;
+        },
+    });
 
     languages.setLanguageConfiguration("r", {
         onEnterRules: [{ // Automatically continue roxygen comments: #'
