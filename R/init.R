@@ -113,13 +113,14 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
             } else {
               rownames <- seq_len(nrow(data))
             }
-            data <- cbind(rownames, data, stringsAsFactors = FALSE)
+            data <- cbind(" " = rownames, data, stringsAsFactors = FALSE)
             colnames <- c(" ", colnames)
             types <- vapply(data, dataview_data_type,
               character(1L), USE.NAMES = FALSE)
             data <- vapply(data, function(x) {
               trimws(format(x))
             }, character(nrow(data)), USE.NAMES = FALSE)
+            dim(data) <- c(length(rownames), length(colnames))
           } else if (is.matrix(data)) {
             if (is.factor(data)) {
               data <- format(data)
@@ -137,13 +138,14 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
             data <- trimws(format(data))
             if (is.null(rownames)) {
               types <- c("num", types)
-              colnames <- c(" ", colnames)
-              data <- cbind(" " = seq_len(nrow(data)), data)
+              rownames <- seq_len(nrow(data))
             } else {
               types <- c("string", types)
-              colnames <- c(" ", colnames)
-              data <- cbind(" " = trimws(rownames), data)
+              rownames <- trimws(rownames)
             }
+            dim(data) <- c(length(rownames), length(colnames))
+            colnames <- c(" ", colnames)
+            data <- cbind(rownames, data)
           } else {
             stop("data must be data.frame or matrix")
           }
