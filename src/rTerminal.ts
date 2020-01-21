@@ -28,6 +28,7 @@ export function createRTerm(preserveshow?: boolean): boolean {
                 };
                 if (config.get("sessionWatcher")) {
                     termOptions.env = {
+                        R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
                         R_PROFILE_USER: path.join(os.homedir(), ".vscode-R", ".Rprofile")
                     };
                 }
