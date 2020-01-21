@@ -234,10 +234,11 @@ export function activate(context: ExtensionContext) {
                         items.push(item);
                     });
                 }
-                
-                // object elements in brackets
-                getBracketCompletionItems(document, position, token, items);
-                
+
+                if (context.triggerCharacter === undefined || context.triggerCharacter === '"' || context.triggerCharacter === "'") {
+                    getBracketCompletionItems(document, position, token, items);
+                }
+
                 return items;
             },
         }, "", "$", "@", '"', "'");
