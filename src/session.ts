@@ -18,13 +18,13 @@ const sessionDir = path.join(".vscode", "vscode-R");
 
 export function deploySessionWatcher(extensionPath: string) {
     resDir = path.join(extensionPath, "dist", "resources");
-    const srcPath = path.join(extensionPath, "R", "init.R");
     const targetDir = path.join(os.homedir(), ".vscode-R");
     if (!fs.existsSync(targetDir)) {
         fs.mkdirSync(targetDir);
     }
-    const targetPath = path.join(targetDir, "init.R");
-    fs.copySync(srcPath, targetPath);
+
+    fs.copySync(path.join(extensionPath, "R", "init.R"), path.join(targetDir, "init.R"));
+    fs.copySync(path.join(extensionPath, "R", ".Rprofile"), path.join(targetDir, ".Rprofile"));
 }
 
 export function startResponseWatcher(sessionStatusBarItem: StatusBarItem) {
