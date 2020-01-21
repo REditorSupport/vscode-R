@@ -79,9 +79,12 @@ An opt-in experimental R session watcher is implemented to support the following
 To enable this feature, turn on `r.sessionWatcher` in VSCode settings, reload or restart VSCode, and the session watcher will be activated automatically
 on R sessions launched by vscode-R via `R: Create R Terminal` command.
 
+*If you previously appended the `source(...)` line to `~/.Rprofile`, you may safely remove it since the configuration for basic usage is automated. It is
+now only necessary for advanced usage described below.*
+
 ### Advanced usage (for self-managed R sessions)
 
-For advanced users to work with self-managed R sessions (e.g. manually started R terminal in `tmux` or `screen` window), some extra
+For advanced users to work with self-managed R sessions (e.g. manually launched R terminal or started in `tmux` or `screen` window), some extra
 configuration is needed. Follow the steps below to make R session watcher work with any external R session:
 
 1. Turn on `r.sessionWatcher` in VSCode settings.
