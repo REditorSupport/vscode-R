@@ -2,7 +2,7 @@
 name: Bug report
 about: Create a report to help us improve
 title: ''
-labels: ''
+labels: bug
 assignees: ''
 
 ---
@@ -59,6 +59,7 @@ A clear and concise description of what you expected to happen.
 
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
+You can show the keybord contents by pressing `F1` and `Developer: toggle screencast mode`
 
 **Environment (please complete the following information):**
  - OS: [e.g. iOS]

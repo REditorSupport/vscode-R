@@ -1,4 +1,4 @@
-if (interactive() && !identical(Sys.getenv("RSTUDIO"), "1")) {
+if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
   if (requireNamespace("jsonlite", quietly = TRUE)) {
     local({
       pid <- Sys.getpid()
