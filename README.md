@@ -71,25 +71,28 @@ An opt-in experimental R session watcher is implemented to support the following
 * Watch any R session
 * Show value of session symbol on hover
 * Provide completion for session symbol
-* `View()` data frames and list objects
+* `View()` any objects including data frames and list objects
 * Show plot output on update
-* Show htmlwidgets and shiny apps
+* Show htmlwidgets, documentation and shiny apps in WebView
 
-To enable this feature, follow the following steps:
+### Basic usage
+
+To enable this feature, turn on `r.sessionWatcher` in VSCode settings, reload or restart VSCode, and the session watcher will be activated automatically
+on R sessions launched by vscode-R via `R: Create R Terminal` command.
+
+### Advanced usage (for self-managed R sessions)
+
+For advanced users to work with self-managed R sessions (e.g. manually started R terminal in `tmux` or `screen` window), some extra
+configuration is needed. Follow the steps below to make R session watcher work with any external R session:
 
 1. Turn on `r.sessionWatcher` in VSCode settings.
-2. Locate `.Rprofile` in your home directory by running the following code in R:
+2. Edit `.Rprofile` in your home directory by running the following code in R:
 
     ```r
-    normalizePath("~/.Rprofile")
+    file.edit("~/.Rprofile")
     ```
 
-    Following are typical paths in different operating systems:
-    * Windows: `C:\\Users\\user\\Documents\\.Rprofile`
-    * Linux: `/home/user/.Rprofile`
-    * macOS: `/Users/user/.Rprofile`
-
-3. Create (if not exists) or open the file and append the following code to the file:
+3. Append the following code to the file:
 
     ```r
     source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"), ".vscode-R", "init.R"))
@@ -99,6 +102,17 @@ To enable this feature, follow the following steps:
 
 If the workspace folder you open in VSCode already has a `.Rprofile`, you need to append the code above in this file too because `~/.Rprofile` will not
 be executed when a local `.Rprofile` is found.
+
+The script only works with environment variable `TERM_PROGRAM=vscode`. the script will not take effect with R sessions started in a `tmux` or `screen` window that does not have it, unless this environment variable is manually set before sourcing `init.R`, for example, you may insert a line `Sys.setenv(TERM_PROGRAM="vscode")` before it.
+
+### How to disable it
+
+For the case of basic usage, turning off `r.sessionWatcher` in VSCode settings is sufficient
+to disable R session watcher.
+
+For the case of advanced usage, user should, in addition, comment out or remove the `source(...)` line appended to `~/.Rprofile`.
+
+### How it works
 
 This script writes the metadata of symbols in the global environment and plot file to `${workspaceFolder}/.vscode/vscode-R/PID` where `PID` is the R process ID. It also captures user input and append command lines to `${workspaceFolder}/.vscode/vscode-R/response.log`, which enables the communication between vscode-R and a live R sesson.
 
