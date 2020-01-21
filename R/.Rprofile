@@ -1,4 +1,6 @@
-if (file.exists(".Rprofile")) {
+if (nzchar(Sys.getenv("R_PROFILE_USER_OLD"))) {
+  source(Sys.getenv("R_PROFILE_USER_OLD"))
+} else if (file.exists(".Rprofile")) {
   source(".Rprofile")
 } else if (file.exists("~/.Rprofile")) {
   source("~/.Rprofile")
