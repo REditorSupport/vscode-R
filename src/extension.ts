@@ -178,12 +178,11 @@ export function activate(context: ExtensionContext) {
                 }
             }
 
-            if (symbol != undefined) {
+            if (!token.isCancellationRequested && symbol != undefined) {
                 const obj = globalenv[symbol];
                 if (obj != undefined && obj.names != undefined) {
                     const doc = new MarkdownString("Element of `" + symbol + "`");
                     obj.names.map((name: string) => {
-                        if (token.isCancellationRequested) return;
                         const item = new CompletionItem(name, CompletionItemKind.Field)
                         item.detail = "[session]";
                         item.documentation = doc;
@@ -196,11 +195,10 @@ export function activate(context: ExtensionContext) {
         languages.registerCompletionItemProvider("r", {
             provideCompletionItems(document: TextDocument, position: Position, token: CancellationToken, context: CompletionContext) {
                 let items = [];
+                if (token.isCancellationRequested) return items;
 
                 if (context.triggerCharacter === undefined) {
                     Object.keys(globalenv).map((key) => {
-                        if (token.isCancellationRequested)
-                            return items;
                         const obj = globalenv[key];
                         const item = new CompletionItem(key,
                             obj.type === "closure" || obj.type === "builtin" ?
@@ -225,8 +223,6 @@ export function activate(context: ExtensionContext) {
                         }
                     }
                     elements.map((key) => {
-                        if (token.isCancellationRequested)
-                            return items;
                         const item = new CompletionItem(key, CompletionItemKind.Field);
                         item.detail = "[session]";
                         item.documentation = doc;
