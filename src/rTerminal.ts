@@ -1,8 +1,11 @@
 "use strict";
 
+import os = require("os");
+import path = require("path");
+
 import { pathExists } from "fs-extra";
 import { isDeepStrictEqual } from "util";
-import { commands, Terminal, window } from "vscode";
+import { commands, Terminal, window, TerminalOptions } from "vscode";
 
 import { getSelection } from "./selection";
 import { removeSessionFiles } from "./session";
@@ -18,7 +21,18 @@ export function createRTerm(preserveshow?: boolean): boolean {
         const termOpt: string[] = config.get("rterm.option");
         pathExists(termPath, (err, exists) => {
             if (exists) {
-                rTerm = window.createTerminal(termName, termPath, termOpt);
+                let termOptions: TerminalOptions = {
+                    name: termName,
+                    shellPath: termPath,
+                    shellArgs: termOpt
+                };
+                if (config.get("sessionWatcher")) {
+                    termOptions.env = {
+                        R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
+                        R_PROFILE_USER: path.join(os.homedir(), ".vscode-R", ".Rprofile")
+                    };
+                }
+                rTerm = window.createTerminal(termOptions);
                 rTerm.show(preserveshow);
                 return true;
             }
