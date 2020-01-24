@@ -69,10 +69,10 @@ This extension contributes the following settings:
 An opt-in experimental R session watcher is implemented to support the following features:
 
 * Watch any R session
-* Show value of session symbol on hover
-* Provide completion for session symbol
+* Show value of session symbols on hover
+* Provide completion for session symbols
 * `View()` any objects including data frames and list objects
-* Show plot output on update
+* Show plot output on update and plot history
 * Show htmlwidgets, documentation and shiny apps in WebView
 
 ### Basic usage
