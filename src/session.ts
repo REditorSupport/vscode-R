@@ -150,13 +150,13 @@ function getBrowserHtml(url: string) {
 `;
 }
 
-async function showWebView(file: string) {
+async function showWebView(file: string, viewColumn: ViewColumn) {
     const dir = path.dirname(file);
     console.info("webview uri: " + file);
     const panel = window.createWebviewPanel("webview", "WebView",
         {
             preserveFocus: true,
-            viewColumn: ViewColumn.Two,
+            viewColumn: viewColumn,
         },
         {
             enableScripts: true,
@@ -382,7 +382,8 @@ async function updateResponse(sessionStatusBarItem: StatusBarItem) {
     } else if (parseResult.command === "browser") {
         showBrowser(parseResult.url);
     } else if (parseResult.command === "webview") {
-        showWebView(parseResult.file);
+        const viewColumn: string = parseResult.viewColumn;
+        showWebView(parseResult.file, ViewColumn[viewColumn]);
     } else if (parseResult.command === "dataview") {
         showDataView(parseResult.source,
             parseResult.type, parseResult.title, parseResult.file);
