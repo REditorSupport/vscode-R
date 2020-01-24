@@ -2,7 +2,7 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import { commands, CompletionItem, ExtensionContext, Hover, IndentAction,
-         languages, Position, StatusBarAlignment, TextDocument, window } from "vscode";
+         languages, Position, StatusBarAlignment, TextDocument, window, CompletionItemKind, MarkdownString, CompletionContext, Range, CancellationToken } from "vscode";
 
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
@@ -146,6 +146,98 @@ export function activate(context: ExtensionContext) {
                 return new Hover("```\n" + globalenv[text].str + "\n```");
             },
         });
+
+        function getBracketCompletionItems(document: TextDocument, position: Position, token: CancellationToken, items: CompletionItem[]) {
+            let range = new Range(new Position(position.line, 0), position);
+            let expectOpenBrackets = 0;
+            let symbol: string;
+
+            loop1:
+            while (range.start.line >= 0) {
+                if (token.isCancellationRequested) return;
+                const text = document.getText(range);
+                for (let i = text.length - 1; i >= 0; i--) {
+                    const chr = text.charAt(i);
+                    if (chr === "]") {
+                        expectOpenBrackets++;
+                    } else if (chr == "[") {
+                        if (expectOpenBrackets == 0) {
+                            const symbolPosition = new Position(range.start.line, i - 1);
+                            const symbolRange = document.getWordRangeAtPosition(symbolPosition);
+                            symbol = document.getText(symbolRange);
+                            break loop1;
+                        } else {
+                            expectOpenBrackets--;
+                        }
+                    }
+                }
+                if (range.start.line > 0) {
+                    range = document.lineAt(range.start.line - 1).range;
+                } else {
+                    break;
+                }
+            }
+
+            if (!token.isCancellationRequested && symbol != undefined) {
+                const obj = globalenv[symbol];
+                if (obj != undefined && obj.names != undefined) {
+                    const doc = new MarkdownString("Element of `" + symbol + "`");
+                    obj.names.map((name: string) => {
+                        const item = new CompletionItem(name, CompletionItemKind.Field)
+                        item.detail = "[session]";
+                        item.documentation = doc;
+                        items.push(item);
+                    });
+                }
+            }
+        }
+
+        languages.registerCompletionItemProvider("r", {
+            provideCompletionItems(document: TextDocument, position: Position, token: CancellationToken, context: CompletionContext) {
+                let items = [];
+                if (token.isCancellationRequested) return items;
+
+                if (context.triggerCharacter === undefined) {
+                    Object.keys(globalenv).map((key) => {
+                        const obj = globalenv[key];
+                        const item = new CompletionItem(key,
+                            obj.type === "closure" || obj.type === "builtin" ?
+                                CompletionItemKind.Function :
+                                CompletionItemKind.Field);
+                        item.detail = "[session]";
+                        item.documentation = new MarkdownString("```r\n" + obj.str + "\n```");
+                        items.push(item);
+                    });
+                } else if (context.triggerCharacter === "$" || context.triggerCharacter === "@") {
+                    const symbolPosition = new Position(position.line, position.character - 1);
+                    const symbolRange = document.getWordRangeAtPosition(symbolPosition);
+                    const symbol = document.getText(symbolRange);
+                    const doc = new MarkdownString("Element of `" + symbol + "`");
+                    const obj = globalenv[symbol];
+                    let elements: string[];
+                    if (obj != undefined) {
+                        if (context.triggerCharacter === "$") {
+                            elements = obj.names;
+                        } else if (context.triggerCharacter === "@") {
+                            elements = obj.slots;
+                        }
+                    }
+                    elements.map((key) => {
+                        const item = new CompletionItem(key, CompletionItemKind.Field);
+                        item.detail = "[session]";
+                        item.documentation = doc;
+                        items.push(item);
+                    });
+                }
+
+                if (context.triggerCharacter === undefined || context.triggerCharacter === '"' || context.triggerCharacter === "'") {
+                    getBracketCompletionItems(document, position, token, items);
+                }
+
+                return items;
+            },
+        }, "", "$", "@", '"', "'");
+
         const sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
         sessionStatusBarItem.command = "r.attachActive";
         sessionStatusBarItem.text = "R: (not attached)";
