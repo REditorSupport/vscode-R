@@ -1,3 +1,4 @@
+// tslint:disable: no-console
 "use strict";
 
 import fs = require("fs-extra");
@@ -156,7 +157,7 @@ async function showWebView(file: string, viewColumn: ViewColumn) {
     const panel = window.createWebviewPanel("webview", "WebView",
         {
             preserveFocus: true,
-            viewColumn: viewColumn,
+            viewColumn,
         },
         {
             enableScripts: true,

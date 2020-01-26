@@ -161,8 +161,9 @@ export function activate(context: ExtensionContext) {
                     const chr = text.charAt(i);
                     if (chr === "]") {
                         expectOpenBrackets++;
+                    // tslint:disable-next-line: triple-equals
                     } else if (chr == "[") {
-                        if (expectOpenBrackets == 0) {
+                        if (expectOpenBrackets === 0) {
                             const symbolPosition = new Position(range.start.line, i - 1);
                             const symbolRange = document.getWordRangeAtPosition(symbolPosition);
                             symbol = document.getText(symbolRange);
@@ -179,9 +180,9 @@ export function activate(context: ExtensionContext) {
                 }
             }
 
-            if (!token.isCancellationRequested && symbol != undefined) {
+            if (!token.isCancellationRequested && symbol !== undefined) {
                 const obj = globalenv[symbol];
-                if (obj != undefined && obj.names != undefined) {
+                if (obj !== undefined && obj.names !== undefined) {
                     const doc = new MarkdownString("Element of `" + symbol + "`");
                     obj.names.map((name: string) => {
                         const item = new CompletionItem(name, CompletionItemKind.Field)
@@ -194,11 +195,11 @@ export function activate(context: ExtensionContext) {
         }
 
         languages.registerCompletionItemProvider("r", {
-            provideCompletionItems(document: TextDocument, position: Position, token: CancellationToken, context: CompletionContext) {
-                let items = [];
+            provideCompletionItems(document: TextDocument, position: Position, token: CancellationToken, completionContext: CompletionContext) {
+                const items = [];
                 if (token.isCancellationRequested) return items;
 
-                if (context.triggerCharacter === undefined) {
+                if (completionContext.triggerCharacter === undefined) {
                     Object.keys(globalenv).map((key) => {
                         const obj = globalenv[key];
                         const item = new CompletionItem(key,
@@ -209,17 +210,17 @@ export function activate(context: ExtensionContext) {
                         item.documentation = new MarkdownString("```r\n" + obj.str + "\n```");
                         items.push(item);
                     });
-                } else if (context.triggerCharacter === "$" || context.triggerCharacter === "@") {
+                } else if (completionContext.triggerCharacter === "$" || completionContext.triggerCharacter === "@") {
                     const symbolPosition = new Position(position.line, position.character - 1);
                     const symbolRange = document.getWordRangeAtPosition(symbolPosition);
                     const symbol = document.getText(symbolRange);
                     const doc = new MarkdownString("Element of `" + symbol + "`");
                     const obj = globalenv[symbol];
                     let elements: string[];
-                    if (obj != undefined) {
-                        if (context.triggerCharacter === "$") {
+                    if (obj !== undefined) {
+                        if (completionContext.triggerCharacter === "$") {
                             elements = obj.names;
-                        } else if (context.triggerCharacter === "@") {
+                        } else if (completionContext.triggerCharacter === "@") {
                             elements = obj.slots;
                         }
                     }
@@ -231,7 +232,9 @@ export function activate(context: ExtensionContext) {
                     });
                 }
 
-                if (context.triggerCharacter === undefined || context.triggerCharacter === '"' || context.triggerCharacter === "'") {
+                if (completionContext.triggerCharacter === undefined ||
+                    completionContext.triggerCharacter === '"' ||
+                    completionContext.triggerCharacter === "'") {
                     getBracketCompletionItems(document, position, token, items);
                 }
 
