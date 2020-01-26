@@ -1,5 +1,16 @@
 # Change Log
 
+## 1.2.2
+
+* View improvement (Thank you @renkun-ken)
+    * Fix dataview_table handling single row data
+    * Show WebView triggered by page_viewer in Active column
+    * Fix WebView Uri replacing
+    * Add row hover and select
+    * Improve session watcher initialization
+    * Use dev.args option when creating png device before replay
+    * Show plot history
+
 ## 1.2.1
 
 * Extend View (Thank you @renkun-ken)
