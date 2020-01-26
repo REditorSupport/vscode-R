@@ -242,6 +242,11 @@
         "title": "Show Plot History",
         "category": "R",
         "command": "r.showPlotHistory"
+      },
+      {
+        "title": "Run Code with Path",
+        "category": "R",
+        "command": "r.runCodeWithPath"
       }
     ],
     "keybindings": [

@@ -36,34 +36,20 @@ export function activate(context: ExtensionContext) {
     // Now provide the implementation of the command with  registerCommand
     // The commandId parameter must match the command field in package.json
 
-    function runSource(echo: boolean)  {
+    function runCodeWithPath(args: any[]) {
         const wad = window.activeTextEditor.document;
         wad.save();
-        let rPath: string = ToRStringLiteral(wad.fileName, '"');
-        let encodingParam = config.get<string>("source.encoding");
-        encodingParam = `encoding = "${encodingParam}"`;
-        rPath = [rPath, encodingParam].join(", ");
-        if (echo) {
-            rPath = [rPath, "echo = TRUE"].join(", ");
-        }
-        chooseTerminalAndSendText(`source(${rPath})`);
+        const rPath: string = ToRStringLiteral(wad.fileName, '"');
+        chooseTerminalAndSendText(`${args[0]}${rPath}${args[1]}`);
     }
 
-    function knitRmd(echo: boolean, outputFormat: string)  {
-        const wad: TextDocument = window.activeTextEditor.document;
-        wad.save();
-        let rPath = ToRStringLiteral(wad.fileName, '"');
+    function runSource(echo: boolean) {
         let encodingParam = config.get<string>("source.encoding");
-        encodingParam = `encoding = "${encodingParam}"`;
-        rPath = [rPath, encodingParam].join(", ");
+        encodingParam = `, encoding = "${encodingParam}")`;
         if (echo) {
-            rPath = [rPath, "echo = TRUE"].join(", ");
+            encodingParam = [", echo = TRUE", encodingParam].join("");
         }
-        if (outputFormat === undefined) {
-            chooseTerminalAndSendText(`rmarkdown::render(${rPath})`);
-        } else {
-            chooseTerminalAndSendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
-        }
+        runCodeWithPath(["source(", encodingParam]);
     }
 
     async function runSelection() {
@@ -117,11 +103,15 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.head", () => runSelectionOrWord(["head"])),
         commands.registerCommand("r.thead", () => runSelectionOrWord(["t", "head"])),
         commands.registerCommand("r.names", () => runSelectionOrWord(["names"])),
+        commands.registerCommand("r.runCodeWithPath", (args: any[]) => runCodeWithPath(args)),
         commands.registerCommand("r.runSource", () => { runSource(false); }),
-        commands.registerCommand("r.knitRmd", () => { knitRmd(false, undefined); }),
-        commands.registerCommand("r.knitRmdToPdf", () => { knitRmd(false, "pdf_document"); }),
-        commands.registerCommand("r.knitRmdToHtml", () => { knitRmd(false, "html_document"); }),
-        commands.registerCommand("r.knitRmdToAll", () => { knitRmd(false, "all"); }),
+        commands.registerCommand("r.knitRmd", () => { runCodeWithPath(["rmarkdown::render(", ")"]); }),
+        commands.registerCommand("r.knitRmdToPdf", () => {
+            runCodeWithPath(["rmarkdown::render(", ", \"pdf_document\")"]); }),
+        commands.registerCommand("r.knitRmdToHtml", () => {
+            runCodeWithPath(["rmarkdown::render(", ", \"html_document\")"]); }),
+        commands.registerCommand("r.knitRmdToAll", () => {
+            runCodeWithPath(["rmarkdown::render(", ", \"all\")"]); }),
         commands.registerCommand("r.createRTerm", createRTerm),
         commands.registerCommand("r.runSourcewithEcho", () => { runSource(true); }),
         commands.registerCommand("r.runSelection", runSelection),

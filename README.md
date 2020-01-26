@@ -40,6 +40,21 @@ Requires [R](https://www.r-project.org/).
 
 * Package development short cut (`Load All`, `Test Package`, `Install Package`, `Build Package` and `Document`)
 
+* Commands for use in `keybindings.json`:
+
+    * `r.runCodeWithPath`: Wraps current file path in `args`. Example `keybindings.json`:
+
+        ```
+        [
+            {
+                "key": "ctrl+alt+shift+1;"",
+                "command": "r.runCodeWithPath",
+                "when": "editorTextFocus",
+                "args": [ "rmarkdown::run(", ")" ]
+            }
+        ]
+        ```
+
 ## Requirements
 
 * R base from <https://www.r-project.org/>
