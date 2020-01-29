@@ -391,7 +391,7 @@ async function updateResponse(sessionStatusBarItem: StatusBarItem) {
     console.info("[updateResponse] responseLogFile: " + responseLogFile);
     const content = await fs.readFile(responseLogFile, "utf8");
     const lines = content.split("\n");
-    if (lines.length > responseLineCount) {
+    if (lines.length != responseLineCount) {
         responseLineCount = lines.length;
         console.info("[updateResponse] lines: " + responseLineCount.toString());
         const lastLine = lines[lines.length - 2];
