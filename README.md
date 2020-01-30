@@ -168,4 +168,9 @@ I hope you will join us.
 * Q: I can't use command and message is `xxx no command found`.
 * A: Please open your folder that has R source file
 
+* Q: About code formatter, completion, definition...
+* A: Please visit to the language server [issues](https://github.com/REditorSupport/languageserver/issues)
+
+Other past questions can be found from [StackOverflow](https://stackoverflow.com/questions/tagged/visual-studio-code+r) or [issues](https://github.com/Ikuyadeu/vscode-R/issues)
+
 The R logo is © 2016 The R Foundation
