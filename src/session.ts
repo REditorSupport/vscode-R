@@ -17,6 +17,7 @@ let PID: string;
 let tempDir: string;
 let plotDir: string;
 let resDir: string;
+let responseLineCount: number;
 const sessionDir = path.join(".vscode", "vscode-R");
 
 export function deploySessionWatcher(extensionPath: string) {
@@ -37,6 +38,7 @@ export function deploySessionWatcher(extensionPath: string) {
 
 export function startResponseWatcher(sessionStatusBarItem: StatusBarItem) {
     console.info("[startResponseWatcher] Starting");
+    responseLineCount = 0;
     responseWatcher = workspace.createFileSystemWatcher(
         new RelativePattern(
             workspace.workspaceFolders[0],
@@ -389,29 +391,34 @@ async function updateResponse(sessionStatusBarItem: StatusBarItem) {
     console.info("[updateResponse] responseLogFile: " + responseLogFile);
     const content = await fs.readFile(responseLogFile, "utf8");
     const lines = content.split("\n");
-    console.info("[updateResponse] lines: " + lines.length.toString());
-    const lastLine = lines[lines.length - 2];
-    console.info("[updateResponse] lastLine: " + lastLine);
-    const parseResult = JSON.parse(lastLine);
-    if (parseResult.command === "attach") {
-        PID = String(parseResult.pid);
-        tempDir = parseResult.tempdir;
-        plotDir = path.join(tempDir, "images");
-        console.info("[updateResponse] attach PID: " + PID);
-        sessionStatusBarItem.text = "R: " + PID;
-        sessionStatusBarItem.show();
-        updateSessionWatcher();
-        _updateGlobalenv();
-        _updatePlot();
-    } else if (parseResult.command === "browser") {
-        showBrowser(parseResult.url);
-    } else if (parseResult.command === "webview") {
-        const viewColumn: string = parseResult.viewColumn;
-        showWebView(parseResult.file, ViewColumn[viewColumn]);
-    } else if (parseResult.command === "dataview") {
-        showDataView(parseResult.source,
-            parseResult.type, parseResult.title, parseResult.file);
+    if (lines.length != responseLineCount) {
+        responseLineCount = lines.length;
+        console.info("[updateResponse] lines: " + responseLineCount.toString());
+        const lastLine = lines[lines.length - 2];
+        console.info("[updateResponse] lastLine: " + lastLine);
+        const parseResult = JSON.parse(lastLine);
+        if (parseResult.command === "attach") {
+            PID = String(parseResult.pid);
+            tempDir = parseResult.tempdir;
+            plotDir = path.join(tempDir, "images");
+            console.info("[updateResponse] attach PID: " + PID);
+            sessionStatusBarItem.text = "R: " + PID;
+            sessionStatusBarItem.show();
+            updateSessionWatcher();
+            _updateGlobalenv();
+            _updatePlot();
+        } else if (parseResult.command === "browser") {
+            showBrowser(parseResult.url);
+        } else if (parseResult.command === "webview") {
+            const viewColumn: string = parseResult.viewColumn;
+            showWebView(parseResult.file, ViewColumn[viewColumn]);
+        } else if (parseResult.command === "dataview") {
+            showDataView(parseResult.source,
+                parseResult.type, parseResult.title, parseResult.file);
+        } else {
+            console.error("[updateResponse] Unsupported command: " + parseResult.command);
+        }
     } else {
-        console.error("Unsupported command: " + parseResult.command);
+        console.warn("[updateResponse] Duplicate update on response change");
     }
 }
