@@ -1,15 +1,16 @@
 "use strict";
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import { commands, CompletionItem, ExtensionContext, Hover, IndentAction,
-         languages, Position, StatusBarAlignment, TextDocument, window, CompletionItemKind, MarkdownString, CompletionContext, Range, CancellationToken } from "vscode";
+import { CancellationToken, commands, CompletionContext, CompletionItem, CompletionItemKind,
+         ExtensionContext, Hover, IndentAction, languages, MarkdownString, Position, Range,
+         StatusBarAlignment, TextDocument, window } from "vscode";
 
 import { previewDataframe, previewEnvironment } from "./preview";
 import { createGitignore } from "./rGitignore";
 import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from "./rTerminal";
 import { getWordOrSelection, surroundSelection } from "./selection";
-import { attachActive, deploySessionWatcher, globalenv, startResponseWatcher, showPlotHistory } from "./session";
+import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startResponseWatcher } from "./session";
 import { config, ToRStringLiteral } from "./util";
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -139,12 +140,13 @@ export function activate(context: ExtensionContext) {
         window.onDidCloseTerminal(deleteTerminal),
     );
 
-    if (config.get("sessionWatcher")) {
+    if (config.get<boolean>("sessionWatcher")) {
         console.info("Initialize session watcher");
         languages.registerHoverProvider("r", {
             provideHover(document, position, token) {
                 const wordRange = document.getWordRangeAtPosition(position);
                 const text = document.getText(wordRange);
+
                 return new Hover("```\n" + globalenv[text].str + "\n```");
             },
         });
@@ -156,12 +158,12 @@ export function activate(context: ExtensionContext) {
 
             loop1:
             while (range.start.line >= 0) {
-                if (token.isCancellationRequested) return;
+                if (token.isCancellationRequested) { return; }
                 const text = document.getText(range);
-                for (let i = text.length - 1; i >= 0; i--) {
+                for (let i = text.length - 1; i >= 0; i -= 1) {
                     const chr = text.charAt(i);
                     if (chr === "]") {
-                        expectOpenBrackets++;
+                        expectOpenBrackets += 1;
                     // tslint:disable-next-line: triple-equals
                     } else if (chr == "[") {
                         if (expectOpenBrackets === 0) {
@@ -170,7 +172,7 @@ export function activate(context: ExtensionContext) {
                             symbol = document.getText(symbolRange);
                             break loop1;
                         } else {
-                            expectOpenBrackets--;
+                            expectOpenBrackets -= 1;
                         }
                     }
                 }
@@ -186,7 +188,7 @@ export function activate(context: ExtensionContext) {
                 if (obj !== undefined && obj.names !== undefined) {
                     const doc = new MarkdownString("Element of `" + symbol + "`");
                     obj.names.map((name: string) => {
-                        const item = new CompletionItem(name, CompletionItemKind.Field)
+                        const item = new CompletionItem(name, CompletionItemKind.Field);
                         item.detail = "[session]";
                         item.documentation = doc;
                         items.push(item);
@@ -198,13 +200,13 @@ export function activate(context: ExtensionContext) {
         languages.registerCompletionItemProvider("r", {
             provideCompletionItems(document: TextDocument, position: Position, token: CancellationToken, completionContext: CompletionContext) {
                 const items = [];
-                if (token.isCancellationRequested) return items;
+                if (token.isCancellationRequested) { return items; }
 
                 if (completionContext.triggerCharacter === undefined) {
                     Object.keys(globalenv).map((key) => {
                         const obj = globalenv[key];
                         const item = new CompletionItem(key,
-                            obj.type === "closure" || obj.type === "builtin" ?
+                                                        obj.type === "closure" || obj.type === "builtin" ?
                                 CompletionItemKind.Function :
                                 CompletionItemKind.Field);
                         item.detail = "[session]";
@@ -241,7 +243,7 @@ export function activate(context: ExtensionContext) {
 
                 return items;
             },
-        }, "", "$", "@", '"', "'");
+        },                                       "", "$", "@", '"', "'");
 
         console.info("Create sessionStatusBarItem");
         const sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
@@ -250,7 +252,7 @@ export function activate(context: ExtensionContext) {
         sessionStatusBarItem.tooltip = "Attach Active Terminal";
         context.subscriptions.push(sessionStatusBarItem);
         sessionStatusBarItem.show();
-        
+
         deploySessionWatcher(context.extensionPath);
         startResponseWatcher(sessionStatusBarItem);
     }

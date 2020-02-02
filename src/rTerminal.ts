@@ -5,7 +5,7 @@ import path = require("path");
 
 import { pathExists } from "fs-extra";
 import { isDeepStrictEqual } from "util";
-import { commands, Terminal, window, TerminalOptions } from "vscode";
+import { commands, Terminal, TerminalOptions, window } from "vscode";
 
 import { getSelection } from "./selection";
 import { removeSessionFiles } from "./session";
@@ -21,12 +21,12 @@ export function createRTerm(preserveshow?: boolean): boolean {
         const termOpt: string[] = config.get("rterm.option");
         pathExists(termPath, (err, exists) => {
             if (exists) {
-                let termOptions: TerminalOptions = {
+                const termOptions: TerminalOptions = {
                     name: termName,
                     shellPath: termPath,
-                    shellArgs: termOpt
+                    shellArgs: termOpt,
                 };
-                if (config.get("sessionWatcher")) {
+                if (config.get<boolean>("sessionWatcher")) {
                     termOptions.env = {
                         R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
                         R_PROFILE_USER: path.join(os.homedir(), ".vscode-R", ".Rprofile")
@@ -34,6 +34,7 @@ export function createRTerm(preserveshow?: boolean): boolean {
                 }
                 rTerm = window.createTerminal(termOptions);
                 rTerm.show(preserveshow);
+
                 return true;
             }
             window.showErrorMessage("Cannot find R client.  Please check R path in preferences and reload.");
@@ -44,7 +45,7 @@ export function createRTerm(preserveshow?: boolean): boolean {
 
 export function deleteTerminal(term: Terminal) {
     if (isDeepStrictEqual(term, rTerm)) {
-        if (config.get("sessionWatcher")) {
+        if (config.get<boolean>("sessionWatcher")) {
             removeSessionFiles();
         }
         rTerm = undefined;
