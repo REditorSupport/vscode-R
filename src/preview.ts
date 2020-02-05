@@ -105,7 +105,7 @@ async function waitForFileToFinish(filePath: string) {
 }
 
 function makeTmpDir() {
-    let tmpDir = workspace.workspaceFolders[0].uri.path;
+    let tmpDir = workspace.workspaceFolders[0].uri.fsPath;
     if (process.platform === "win32") {
         tmpDir = tmpDir.replace(/\\/g, "/");
         tmpDir += "/tmp";
