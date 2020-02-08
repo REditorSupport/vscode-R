@@ -32,6 +32,8 @@
     "onLanguage:r",
     "onLanguage:rd",
     "onLanguage:rmd",
+    "workspaceContains:*.rproj",
+    "workspaceContains:*.Rproj",
     "workspaceContains:**/*.r",
     "workspaceContains:**/*.R",
     "workspaceContains:**/*.rd",
