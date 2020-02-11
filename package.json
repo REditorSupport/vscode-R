@@ -30,7 +30,9 @@
   },
   "activationEvents": [
     "onLanguage:r",
-    "workspaceContains:*.r|.rd|.rmd",
+    "onLanguage:rd",
+    "onLanguage:rmd",
+    "workspaceContains:*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
     "onCommand:r.createRTerm",
     "onCommand:r.runSource",
     "onCommand:r.knitRmd",
