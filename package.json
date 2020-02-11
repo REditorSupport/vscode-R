@@ -114,6 +114,11 @@
         "language": "rmd",
         "scopeName": "text.html.markdown.redcarpet",
         "path": "./syntax/Markdown Redcarpet.tmLanguage"
+      },
+      {
+        "path": "./syntax/Rcpp.tmLanguage",
+        "scopeName": "comment.block.r",
+        "injectTo": ["source.cpp"]
       }
     ],
     "commands": [
