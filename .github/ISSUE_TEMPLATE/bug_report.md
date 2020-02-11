@@ -7,6 +7,12 @@ assignees: ''
 
 ---
 
+<!-- Is the issue about auto-completion, hover help, go to definition,
+  document highlight,  document outline/symbols, workspace symbols, formatting, 
+  document link, document color and color picker?
+  If so it is more likely an issue with the language server.
+  Please report issue at <https://github.com/REditorSupport/languageserver/issues>. -->
+
 **Describe the bug**
 A clear and concise description of what the bug is.
 
@@ -62,9 +68,10 @@ If applicable, add screenshots to help explain your problem.
 You can show the keybord contents by pressing `F1` and `Developer: toggle screencast mode`
 
 **Environment (please complete the following information):**
- - OS: [e.g. iOS]
- - VSCode Version [e.g. 22]
- - R Version
+ - OS: [e.g. Windows, macOS, Linux]
+ - VSCode Version: [e.g. 1.42.0]
+ - R Version: [e.g. 3.6.2]
+ - vscode-R version: [e.g. 1.2.2]
 
 **Additional context**
 Add any other context about the problem here.
