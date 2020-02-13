@@ -369,11 +369,11 @@
     "function": {
         "prefix": "function",
         "body": [
-            "${1:name} <- function(${2:parameters})",
+            "${1:name} <- function(${2:parameters}) {",
             "   ${3:selected}",
             "}"
         ],
-        "description": "Code snippet for 'if' conditional"       
+        "description": "Named function"       
     },
     "if": {
         "prefix": "if",
