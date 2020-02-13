@@ -162,6 +162,7 @@ I hope you will join us.
 
 * [@andycraig](https://github.com/andycraig)
 * [@Ladvien](https://github.com/Ladvien)
+* [@renkun-ken](https://github.com/renkun-ken)
 
 ## FAQ
 
