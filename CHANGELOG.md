@@ -1,5 +1,12 @@
 # Change Log
 
+## 1.2.3
+* Fixed the function snippet (Fixed #230) (Thank you @stanmart)
+* Update activationEvents
+* Add more logging to session watcher
+* Avoid duplicate handling of response update
+* Add syntax highlighting for R code in Rcpp comment #225
+
 ## 1.2.2
 
 * View improvement (Thank you @renkun-ken)

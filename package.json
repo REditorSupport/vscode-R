@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "Support for R language(run,syntax,snippet)",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
@@ -118,7 +118,9 @@
       {
         "path": "./syntax/Rcpp.tmLanguage",
         "scopeName": "comment.block.r",
-        "injectTo": ["source.cpp"]
+        "injectTo": [
+          "source.cpp"
+        ]
       }
     ],
     "commands": [
@@ -398,17 +400,17 @@
   },
   "devDependencies": {
     "@types/fs-extra": "^8.0.1",
-    "@types/mocha": "^5.2.7",
-    "@types/node": "^12.7.8",
-    "@types/vscode": "^1.40.0",
+    "@types/mocha": "^7.0.1",
+    "@types/node": "^13.7.1",
+    "@types/vscode": "^1.42.0",
     "copy-webpack-plugin": "^5.1.1",
-    "mocha": "^6.2.2",
+    "mocha": "^7.0.1",
     "node-atomizr": "^0.6.1",
-    "ts-loader": "^6.2.0",
+    "ts-loader": "^6.2.1",
     "tslint": "^6.0.0",
     "typescript": "^3.7.5",
-    "webpack": "^4.41.2",
-    "webpack-cli": "^3.3.9",
+    "webpack": "^4.41.6",
+    "webpack-cli": "^3.3.11",
     "yamljs": "^0.3.0"
   },
   "dependencies": {
@@ -421,7 +423,7 @@
     "jquery": "^3.4.1",
     "jquery.json-viewer": "^1.4.0",
     "path": "^0.12.7",
-    "popper.js": "^1.16.0",
+    "popper.js": "^1.16.1",
     "winattr": "^3.0.0"
   }
 }
