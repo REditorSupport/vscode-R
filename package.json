@@ -26,7 +26,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.40.0"
+    "vscode": "^1.42.0"
   },
   "activationEvents": [
     "onLanguage:r",
