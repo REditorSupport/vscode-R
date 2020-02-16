@@ -26,34 +26,6 @@
 			<array>
 				<dict>
 					<key>include</key>
-					<string>#fenced_block_ruby</string>
-				</dict>
-				<dict>
-					<key>include</key>
-					<string>#fenced_block_javascript</string>
-				</dict>
-				<dict>
-					<key>include</key>
-					<string>#fenced_block_coffee</string>
-				</dict>
-				<dict>
-					<key>include</key>
-					<string>#fenced_block_elixir</string>
-				</dict>
-				<dict>
-					<key>include</key>
-					<string>#fenced_block_shell</string>
-				</dict>
-				<dict>
-					<key>include</key>
-					<string>#fenced_block_haml</string>
-				</dict>
-				<dict>
-					<key>include</key>
-					<string>#fenced_block_html</string>
-				</dict>
-				<dict>
-					<key>include</key>
 					<string>#fenced_block_r</string>
 				</dict>
 				<dict>
@@ -103,22 +75,6 @@
 						</dict>
 					</array>
 				</dict>
-				<key>fenced_block_coffee</key>
-				<dict>
-					<key>begin</key>
-					<string>(^|\G)([`]{3})[ ]*(?:coffee|coffeescript)$</string>
-					<key>end</key>
-					<string>(^|\G)([`]{3})($|\z)</string>
-					<key>name</key>
-					<string>meta.embedded.block.coffee</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>source.coffee</string>
-						</dict>
-					</array>
-				</dict>
 				<key>fenced_block_cpp</key>
 				<dict>
 					<key>begin</key>
@@ -135,70 +91,6 @@
 						</dict>
 					</array>
 				</dict>
-				<key>fenced_block_elixir</key>
-				<dict>
-					<key>begin</key>
-					<string>(^|\G)([`]{3})[ ]*(?:elixir)$</string>
-					<key>end</key>
-					<string>(^|\G)([`]{3})($|\z)</string>
-					<key>name</key>
-					<string>meta.embedded.block.elixer</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>source.elixir</string>
-						</dict>
-					</array>
-				</dict>
-				<key>fenced_block_haml</key>
-				<dict>
-					<key>begin</key>
-					<string>(^|\G)([`]{3})[ ]*(?:haml)$</string>
-					<key>end</key>
-					<string>(^|\G)([`]{3})($|\z)</string>
-					<key>name</key>
-					<string>meta.embedded.block.haml</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>text.haml</string>
-						</dict>
-					</array>
-				</dict>
-				<key>fenced_block_html</key>
-				<dict>
-					<key>begin</key>
-					<string>(^|\G)([`]{3})[ ]*(?:html)$</string>
-					<key>end</key>
-					<string>(^|\G)([`]{3})($|\z)</string>
-					<key>name</key>
-					<string>meta.embedded.block.html</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>text.html.basic</string>
-						</dict>
-					</array>
-				</dict>
-				<key>fenced_block_javascript</key>
-				<dict>
-					<key>begin</key>
-					<string>(^|\G)([`]{3})[ ]*(?:js|javascript)$</string>
-					<key>end</key>
-					<string>(^|\G)([`]{3})($|\z)</string>
-					<key>name</key>
-					<string>meta.embedded.block.js</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>source.js</string>
-						</dict>
-					</array>
-				</dict>
 				<key>fenced_block_r</key>
 				<dict>
 					<key>begin</key>
@@ -212,38 +104,6 @@
 						<dict>
 							<key>include</key>
 							<string>source.r</string>
-						</dict>
-					</array>
-				</dict>
-				<key>fenced_block_ruby</key>
-				<dict>
-					<key>begin</key>
-					<string>(^|\G)([`]{3})[ ]*(?:rb|ruby)$</string>
-					<key>end</key>
-					<string>(^|\G)([`]{3})($|\z)</string>
-					<key>name</key>
-					<string>meta.embedded.block.ruby</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>source.ruby</string>
-						</dict>
-					</array>
-				</dict>
-				<key>fenced_block_shell</key>
-				<dict>
-					<key>begin</key>
-					<string>(^|\G)([`]{3})[ ]*(?:bash|shell|sh)$</string>
-					<key>end</key>
-					<string>(^|\G)([`]{3})($|\z)</string>
-					<key>name</key>
-					<string>meta.embedded.block.shell</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>source.shell</string>
 						</dict>
 					</array>
 				</dict>
