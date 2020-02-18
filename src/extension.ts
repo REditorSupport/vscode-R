@@ -93,6 +93,21 @@ export function activate(context: ExtensionContext) {
         runTextInTerm(callableTerminal, wrappedText);
     }
 
+    async function runCommandWithSelectionOrWord(rCommand: string) {
+        const text = getWordOrSelection().join("\n");
+        const callableTerminal = await chooseTerminal();
+
+        const call = rCommand.replace("$1", text)
+
+        runTextInTerm(callableTerminal, [call]);
+    }
+
+    async function runCommand(rCommand: string) {
+        const callableTerminal = await chooseTerminal();
+
+        runTextInTerm(callableTerminal, [rCommand]);
+    }
+
     languages.registerCompletionItemProvider("r", {
         provideCompletionItems(document: TextDocument, position: Position) {
             if (document.lineAt(position).text
@@ -137,6 +152,8 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.document", () => chooseTerminalAndSendText("devtools::document()")),
         commands.registerCommand("r.attachActive", attachActive),
         commands.registerCommand("r.showPlotHistory", showPlotHistory),
+        commands.registerCommand("r.runCommandWithSelectionOrWord", runCommandWithSelectionOrWord),
+        commands.registerCommand("r.runCommand", runCommand),
         window.onDidCloseTerminal(deleteTerminal),
     );
 

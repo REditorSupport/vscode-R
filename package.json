@@ -42,7 +42,9 @@
     "onCommand:r.runSourcewithEcho",
     "onCommand:r.runSelection",
     "onCommand:r.runSelectionInActiveTerm",
-    "onCommand:r.createGitignore"
+    "onCommand:r.createGitignore",
+    "onCommand:r.runCommandWithSelectionOrWord",
+    "onCommand:r.runCommand"
   ],
   "main": "./dist/extension",
   "contributes": {
@@ -251,6 +253,16 @@
         "title": "Show Plot History",
         "category": "R",
         "command": "r.showPlotHistory"
+      },
+      {
+        "title": "Run Command With Selection or Word in Terminal",
+        "category": "R",
+        "command": "r.runCommandWithSelectionOrWord"
+      },
+      {
+        "title": "Run Command in Terminal",
+        "category": "R",
+        "command": "r.runCommand"
       }
     ],
     "keybindings": [
