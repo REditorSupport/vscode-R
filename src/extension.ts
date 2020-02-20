@@ -96,15 +96,21 @@ export function activate(context: ExtensionContext) {
     async function runCommandWithSelectionOrWord(rCommand: string) {
         const text = getWordOrSelection().join("\n");
         const callableTerminal = await chooseTerminal();
+        let call = rCommand.replace("$1", text);
+        runTextInTerm(callableTerminal, [call]);
+    }
 
-        const call = rCommand.replace("$1", text)
-
+    async function runCommandWithEditorPath(rCommand: string) {
+        const wad: TextDocument = window.activeTextEditor.document;
+        wad.save();
+        const callableTerminal = await chooseTerminal();
+        let rPath = ToRStringLiteral(wad.fileName, '"');
+        let call = rCommand.replace("$1",rPath);
         runTextInTerm(callableTerminal, [call]);
     }
 
     async function runCommand(rCommand: string) {
         const callableTerminal = await chooseTerminal();
-
         runTextInTerm(callableTerminal, [rCommand]);
     }
 
@@ -153,6 +159,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.attachActive", attachActive),
         commands.registerCommand("r.showPlotHistory", showPlotHistory),
         commands.registerCommand("r.runCommandWithSelectionOrWord", runCommandWithSelectionOrWord),
+        commands.registerCommand("r.runCommandWithEditorPath", runCommandWithEditorPath),
         commands.registerCommand("r.runCommand", runCommand),
         window.onDidCloseTerminal(deleteTerminal),
     );

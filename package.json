@@ -44,6 +44,7 @@
     "onCommand:r.runSelectionInActiveTerm",
     "onCommand:r.createGitignore",
     "onCommand:r.runCommandWithSelectionOrWord",
+    "onCommand:r.runCommandWithEditorPath",
     "onCommand:r.runCommand"
   ],
   "main": "./dist/extension",
@@ -258,6 +259,11 @@
         "title": "Run Command With Selection or Word in Terminal",
         "category": "R",
         "command": "r.runCommandWithSelectionOrWord"
+      },
+      {
+        "title": "Run Command With Editor Path in Terminal",
+        "category": "R",
+        "command": "r.runCommandWithEditorPath"
       },
       {
         "title": "Run Command in Terminal",
