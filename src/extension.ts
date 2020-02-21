@@ -96,7 +96,7 @@ export function activate(context: ExtensionContext) {
     async function runCommandWithSelectionOrWord(rCommand: string) {
         const text = getWordOrSelection().join("\n");
         const callableTerminal = await chooseTerminal();
-        let call = rCommand.replace("$1", text);
+        let call = rCommand.replace("$$", text);
         runTextInTerm(callableTerminal, [call]);
     }
 
@@ -104,8 +104,8 @@ export function activate(context: ExtensionContext) {
         const wad: TextDocument = window.activeTextEditor.document;
         wad.save();
         const callableTerminal = await chooseTerminal();
-        let rPath = ToRStringLiteral(wad.fileName, '"');
-        let call = rCommand.replace("$1",rPath);
+        let rPath = ToRStringLiteral(wad.fileName, "");
+        let call = rCommand.replace("$$",rPath);
         runTextInTerm(callableTerminal, [call]);
     }
 
