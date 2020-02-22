@@ -101,8 +101,23 @@ export function activate(context: ExtensionContext) {
     }
 
     async function runCommandWithEditorPath(rCommand: string) {
-        const wad: TextDocument = window.activeTextEditor.document;
-        wad.save();
+        let wad: TextDocument = window.activeTextEditor.document;
+        let is_saved :boolean;
+        
+        if (wad.isUntitled){
+            throw("Doucment is unsaved. Please save and retry running R command.")
+        }
+
+        if (wad.isDirty) {
+           is_saved = await wad.save();
+        } else {
+           is_saved = true;
+        }
+
+        if (!is_saved){
+            throw("Cannot run R command: Document could not be saved.")
+        }
+        
         const callableTerminal = await chooseTerminal();
         let rPath = ToRStringLiteral(wad.fileName, "");
         let call = rCommand.replace("$$",rPath);
