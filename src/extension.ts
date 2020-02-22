@@ -93,6 +93,42 @@ export function activate(context: ExtensionContext) {
         runTextInTerm(callableTerminal, wrappedText);
     }
 
+    async function runCommandWithSelectionOrWord(rCommand: string) {
+        const text = getWordOrSelection().join("\n");
+        const callableTerminal = await chooseTerminal();
+        let call = rCommand.replace(/\$\$/g, text);
+        runTextInTerm(callableTerminal, [call]);
+    }
+
+    async function runCommandWithEditorPath(rCommand: string) {
+        let wad: TextDocument = window.activeTextEditor.document;
+        let is_saved :boolean;
+        
+        if (wad.isUntitled){
+            throw("Doucment is unsaved. Please save and retry running R command.")
+        }
+
+        if (wad.isDirty) {
+           is_saved = await wad.save();
+        } else {
+           is_saved = true;
+        }
+
+        if (!is_saved){
+            throw("Cannot run R command: Document could not be saved.")
+        }
+        
+        const callableTerminal = await chooseTerminal();
+        let rPath = ToRStringLiteral(wad.fileName, "");
+        let call = rCommand.replace(/\$\$/g,rPath);
+        runTextInTerm(callableTerminal, [call]);
+    }
+
+    async function runCommand(rCommand: string) {
+        const callableTerminal = await chooseTerminal();
+        runTextInTerm(callableTerminal, [rCommand]);
+    }
+
     languages.registerCompletionItemProvider("r", {
         provideCompletionItems(document: TextDocument, position: Position) {
             if (document.lineAt(position).text
@@ -137,6 +173,9 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand("r.document", () => chooseTerminalAndSendText("devtools::document()")),
         commands.registerCommand("r.attachActive", attachActive),
         commands.registerCommand("r.showPlotHistory", showPlotHistory),
+        commands.registerCommand("r.runCommandWithSelectionOrWord", runCommandWithSelectionOrWord),
+        commands.registerCommand("r.runCommandWithEditorPath", runCommandWithEditorPath),
+        commands.registerCommand("r.runCommand", runCommand),
         window.onDidCloseTerminal(deleteTerminal),
     );
 
