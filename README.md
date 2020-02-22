@@ -172,7 +172,7 @@ Here are some example entries from `keybindings.json`:
         "key": "ctrl+i",
         "command": "r.runCommandWithEditorPath",
         "when": "editorTextFocus",
-        "args": "rmarkdown::render('$$', output_format = rmarkdown::html_document(), output_dir = \".\", clean = TRUE)"
+        "args": "rmarkdown::render(\"$$\", output_format = rmarkdown::html_document(), output_dir = \".\", clean = TRUE)"
     },
 ...
 ]
