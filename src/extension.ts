@@ -96,7 +96,7 @@ export function activate(context: ExtensionContext) {
     async function runCommandWithSelectionOrWord(rCommand: string) {
         const text = getWordOrSelection().join("\n");
         const callableTerminal = await chooseTerminal();
-        let call = rCommand.replace("$$", text);
+        let call = rCommand.replace(/\$\$/g, text);
         runTextInTerm(callableTerminal, [call]);
     }
 
@@ -120,7 +120,7 @@ export function activate(context: ExtensionContext) {
         
         const callableTerminal = await chooseTerminal();
         let rPath = ToRStringLiteral(wad.fileName, "");
-        let call = rCommand.replace("$$",rPath);
+        let call = rCommand.replace(/\$\$/g,rPath);
         runTextInTerm(callableTerminal, [call]);
     }
 
