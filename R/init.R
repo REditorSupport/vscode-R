@@ -232,6 +232,10 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         }, "base")
         rebind("View", dataview, "utils")
 
+        platform <- .Platform
+        platform$GUI <- "vscode"
+        rebind(".Platform", platform, "base")
+
         update()
         removeTaskCallback("vscode-R")
         addTaskCallback(update, name = "vscode-R")
@@ -243,6 +247,6 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
       invisible()
     })
   } else {
-    message("VSCode R Session Watcher requires jsonlite. Please install it with install.packages(\"jsonlite\")")
+    message("VSCode R Session Watcher requires jsonlite. Please install it with install.packages(\"jsonlite\").")
   }
 }
