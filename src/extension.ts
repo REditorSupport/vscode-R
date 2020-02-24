@@ -44,7 +44,7 @@ export function activate(context: ExtensionContext) {
             return false;
         }
 
-        const isSaved: boolean = document.isDirty ? await document.save() : true;
+        const isSaved: boolean = document.isDirty ? (await document.save()) : true;
         if (!isSaved) {
             window.showErrorMessage("Cannot run R command: document could not be saved.");
 
