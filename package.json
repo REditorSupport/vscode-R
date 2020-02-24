@@ -84,8 +84,7 @@
         "aliases": [
           "R Markdown",
           "r markdown"
-        ],
-        "configuration": "./rd-configuration.json"
+        ]
       }
     ],
     "snippets": [
@@ -115,8 +114,22 @@
       },
       {
         "language": "rmd",
+        "scopeName": "text.html.rmarkdown",
+        "path": "./syntax/RMarkdown.json",
+        "embeddedLanguages": {
+          "text.html.rmarkdown": "markdown"
+        }
+      },
+      {
         "scopeName": "text.html.markdown.redcarpet",
-        "path": "./syntax/Markdown Redcarpet.tmLanguage"
+        "path": "./syntax/Markdown Redcarpet.tmLanguage",
+        "injectTo": ["text.html.rmarkdown"],
+        "embeddedLanguages": {
+          "meta.embedded.block.c": "c",
+          "meta.embedded.block.cpp": "cpp",
+          "meta.embedded.block.r": "r",
+          "meta.embedded.block.yaml": "yaml"
+        }
       },
       {
         "path": "./syntax/Rcpp.tmLanguage",
