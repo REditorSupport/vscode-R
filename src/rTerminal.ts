@@ -29,7 +29,7 @@ export function createRTerm(preserveshow?: boolean): boolean {
                 if (config.get<boolean>("sessionWatcher")) {
                     termOptions.env = {
                         R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
-                        R_PROFILE_USER: path.join(os.homedir(), ".vscode-R", ".Rprofile")
+                        R_PROFILE_USER: path.join(os.homedir(), ".vscode-R", ".Rprofile"),
                     };
                 }
                 rTerm = window.createTerminal(termOptions);
@@ -65,7 +65,7 @@ export async function chooseTerminal(active: boolean = false) {
 
     if (window.terminals.length > 0) {
         const rTermNameOpinions = ["R", "R Interactive"];
-        if (window.activeTerminal) {
+        if (window.activeTerminal !== undefined) {
             const activeTerminalName = window.activeTerminal.name;
             if (rTermNameOpinions.includes(activeTerminalName)) {
                 return window.activeTerminal;

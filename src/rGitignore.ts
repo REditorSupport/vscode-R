@@ -21,7 +21,7 @@ const ignoreFiles = [".Rhistory",
                      "rsconnect/"].join("\n");
 
 export function createGitignore() {
-    if (!workspace.workspaceFolders[0].uri.path) {
+    if (workspace.workspaceFolders[0].uri.path === undefined) {
         window.showWarningMessage("Please open workspace to create .gitignore");
 
         return;

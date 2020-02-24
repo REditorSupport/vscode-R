@@ -14,7 +14,7 @@ export let globalenv: any;
 let responseWatcher: FileSystemWatcher;
 let globalEnvWatcher: FileSystemWatcher;
 let plotWatcher: FileSystemWatcher;
-let PID: string;
+let pid: string;
 let tempDir: string;
 let plotDir: string;
 let resDir: string;
@@ -22,10 +22,10 @@ let responseLineCount: number;
 const sessionDir = path.join(".vscode", "vscode-R");
 
 export function deploySessionWatcher(extensionPath: string) {
-    console.info("[deploySessionWatcher] extensionPath: " + extensionPath);
+    console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, "dist", "resources");
     const targetDir = path.join(os.homedir(), ".vscode-R");
-    console.info("[deploySessionWatcher] targetDir: " + targetDir);
+    console.info(`[deploySessionWatcher] targetDir: ${targetDir}`);
     if (!fs.existsSync(targetDir)) {
         console.info("[deploySessionWatcher] targetDir not exists, create directory");
         fs.mkdirSync(targetDir);
@@ -59,15 +59,16 @@ export function attachActive() {
 }
 
 function removeDirectory(dir: string) {
-    console.info("[removeDirectory] dir: " + dir);
+    console.info(`[removeDirectory] dir: ${dir}`);
     if (fs.existsSync(dir)) {
         console.info("[removeDirectory] dir exists");
-        fs.readdirSync(dir).forEach((file) => {
-            const curPath = path.join(dir, file);
-            console.info("[removeDirectory] Remove " + curPath);
-            fs.unlinkSync(curPath);
+        fs.readdirSync(dir)
+          .forEach((file) => {
+              const curPath = path.join(dir, file);
+              console.info(`[removeDirectory] Remove ${curPath}`);
+              fs.unlinkSync(curPath);
         });
-        console.info("[removeDirectory] Remove dir " + dir);
+        console.info(`[removeDirectory] Remove dir ${dir}`);
         fs.rmdirSync(dir);
     }
     console.info("[removeDirectory] Done");
@@ -75,7 +76,7 @@ function removeDirectory(dir: string) {
 
 export function removeSessionFiles() {
     const sessionPath = path.join(
-        workspace.workspaceFolders[0].uri.fsPath, sessionDir, PID);
+        workspace.workspaceFolders[0].uri.fsPath, sessionDir, pid);
     console.info("[removeSessionFiles] ", sessionPath);
     if (fs.existsSync(sessionPath)) {
         removeDirectory(sessionPath);
@@ -84,19 +85,19 @@ export function removeSessionFiles() {
 }
 
 function updateSessionWatcher() {
-    console.info("[updateSessionWatcher] PID: " + PID);
+    console.info(`[updateSessionWatcher] PID: ${pid}`);
     console.info("[updateSessionWatcher] Create globalEnvWatcher");
     globalEnvWatcher = workspace.createFileSystemWatcher(
         new RelativePattern(
             workspace.workspaceFolders[0],
-            path.join(sessionDir, PID, "globalenv.json")));
+            path.join(sessionDir, pid, "globalenv.json")));
     globalEnvWatcher.onDidChange(updateGlobalenv);
 
     console.info("[updateSessionWatcher] Create plotWatcher");
     plotWatcher = workspace.createFileSystemWatcher(
         new RelativePattern(
             workspace.workspaceFolders[0],
-            path.join(sessionDir, PID, "plot.png")));
+            path.join(sessionDir, pid, "plot.png")));
     plotWatcher.onDidCreate(updatePlot);
     plotWatcher.onDidChange(updatePlot);
 
@@ -105,8 +106,8 @@ function updateSessionWatcher() {
 
 function _updatePlot() {
     const plotPath = path.join(workspace.workspaceFolders[0].uri.fsPath,
-                               sessionDir, PID, "plot.png");
-    console.info("[_updatePlot] " + plotPath);
+                               sessionDir, pid, "plot.png");
+    console.info(`[_updatePlot] ${plotPath}`);
     if (fs.existsSync(plotPath)) {
         commands.executeCommand("vscode.open", Uri.file(plotPath), {
             preserveFocus: true,
@@ -123,8 +124,8 @@ function updatePlot(event) {
 
 async function _updateGlobalenv() {
     const globalenvPath = path.join(workspace.workspaceFolders[0].uri.fsPath,
-                                    sessionDir, PID, "globalenv.json");
-    console.info("[_updateGlobalenv] " + globalenvPath);
+                                    sessionDir, pid, "globalenv.json");
+    console.info(`[_updateGlobalenv] ${globalenvPath}`);
     const content = await fs.readFile(globalenvPath, "utf8");
     globalenv = JSON.parse(content);
     console.info("[_updateGlobalenv] Done");
@@ -135,7 +136,7 @@ async function updateGlobalenv(event) {
 }
 
 function showBrowser(url: string) {
-    console.info("[showBrowser] uri: " + url);
+    console.info(`[showBrowser] uri: ${url}`);
     const port = parseInt(new URL(url).port, 10);
     const panel = window.createWebviewPanel(
         "browser",
@@ -176,7 +177,7 @@ function getBrowserHtml(url: string) {
 }
 
 async function showWebView(file: string, viewColumn: ViewColumn) {
-    console.info("[showWebView] file: " + file);
+    console.info(`[showWebView] file: ${file}`);
     const dir = path.dirname(file);
     const panel = window.createWebviewPanel("webview", "WebView",
                                             {
@@ -191,7 +192,8 @@ async function showWebView(file: string, viewColumn: ViewColumn) {
     const content = await fs.readFile(file);
     const html = content.toString()
         .replace("<body>", "<body style=\"color: black;\"")
-        .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g, '<$1 $2="' + String(panel.webview.asWebviewUri(Uri.file(dir))) + "/");
+        .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
+                 `<$1 $2="${String(panel.webview.asWebviewUri(Uri.file(dir)))}"/`);
     panel.webview.html = html;
     console.info("[showWebView] Done");
 }
@@ -394,35 +396,40 @@ async function updateResponse(sessionStatusBarItem: StatusBarItem) {
     // Read last line from response file
     const responseLogFile = path.join(workspace.workspaceFolders[0].uri.fsPath,
                                       sessionDir, "response.log");
-    console.info("[updateResponse] responseLogFile: " + responseLogFile);
+    console.info(`[updateResponse] responseLogFile: ${responseLogFile}`);
     const content = await fs.readFile(responseLogFile, "utf8");
     const lines = content.split("\n");
     if (lines.length !== responseLineCount) {
         responseLineCount = lines.length;
-        console.info("[updateResponse] lines: " + responseLineCount.toString());
+        console.info(`[updateResponse] lines: ${responseLineCount}`);
         const lastLine = lines[lines.length - 2];
-        console.info("[updateResponse] lastLine: " + lastLine);
+        console.info(`[updateResponse] lastLine: ${lastLine}`);
         const parseResult = JSON.parse(lastLine);
-        if (parseResult.command === "attach") {
-            PID = String(parseResult.pid);
-            tempDir = parseResult.tempdir;
-            plotDir = path.join(tempDir, "images");
-            console.info("[updateResponse] attach PID: " + PID);
-            sessionStatusBarItem.text = "R: " + PID;
-            sessionStatusBarItem.show();
-            updateSessionWatcher();
-            _updateGlobalenv();
-            _updatePlot();
-        } else if (parseResult.command === "browser") {
-            showBrowser(parseResult.url);
-        } else if (parseResult.command === "webview") {
-            const viewColumn: string = parseResult.viewColumn;
-            showWebView(parseResult.file, ViewColumn[viewColumn]);
-        } else if (parseResult.command === "dataview") {
-            showDataView(parseResult.source,
-                         parseResult.type, parseResult.title, parseResult.file);
-        } else {
-            console.error("[updateResponse] Unsupported command: " + parseResult.command);
+        switch (parseResult.command) {
+            case "attach":
+                pid = String(parseResult.pid);
+                tempDir = parseResult.tempdir;
+                plotDir = path.join(tempDir, "images");
+                console.info(`[updateResponse] attach PID: ${pid}`);
+                sessionStatusBarItem.text = `R: ${pid}`;
+                sessionStatusBarItem.show();
+                updateSessionWatcher();
+                _updateGlobalenv();
+                _updatePlot();
+                break;
+            case "browser":
+                showBrowser(parseResult.url);
+                break;
+            case "webview":
+                const viewColumn: string = parseResult.viewColumn;
+                showWebView(parseResult.file, ViewColumn[viewColumn]);
+                break;
+            case "dataview":
+                showDataView(parseResult.source,
+                             parseResult.type, parseResult.title, parseResult.file);
+                break;
+            default:
+                console.error(`[updateResponse] Unsupported command: ${parseResult.command}`);
         }
     } else {
         console.warn("[updateResponse] Duplicate update on response change");

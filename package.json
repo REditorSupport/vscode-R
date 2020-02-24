@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "Support for R language(run,syntax,snippet)",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
@@ -123,7 +123,9 @@
       {
         "scopeName": "text.html.markdown.redcarpet",
         "path": "./syntax/Markdown Redcarpet.tmLanguage",
-        "injectTo": ["text.html.rmarkdown"],
+        "injectTo": [
+          "text.html.rmarkdown"
+        ],
         "embeddedLanguages": {
           "meta.embedded.block.c": "c",
           "meta.embedded.block.cpp": "cpp",
@@ -430,16 +432,16 @@
     "test-compile": "tsc -p ./"
   },
   "devDependencies": {
-    "@types/fs-extra": "^8.0.1",
+    "@types/fs-extra": "^8.1.0",
     "@types/mocha": "^7.0.1",
-    "@types/node": "^13.7.1",
+    "@types/node": "^13.7.4",
     "@types/vscode": "^1.42.0",
     "copy-webpack-plugin": "^5.1.1",
     "mocha": "^7.0.1",
     "node-atomizr": "^0.6.1",
     "ts-loader": "^6.2.1",
     "tslint": "^6.0.0",
-    "typescript": "^3.7.5",
+    "typescript": "^3.8.2",
     "webpack": "^4.41.6",
     "webpack-cli": "^3.3.11",
     "yamljs": "^0.3.0"

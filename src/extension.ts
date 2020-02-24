@@ -94,33 +94,29 @@ export function activate(context: ExtensionContext) {
     }
 
     async function runCommandWithSelectionOrWord(rCommand: string) {
-        const text = getWordOrSelection().join("\n");
+        const text = getWordOrSelection()
+                    .join("\n");
         const callableTerminal = await chooseTerminal();
-        let call = rCommand.replace(/\$\$/g, text);
+        const call = rCommand.replace(/\$\$/g, text);
         runTextInTerm(callableTerminal, [call]);
     }
 
     async function runCommandWithEditorPath(rCommand: string) {
-        let wad: TextDocument = window.activeTextEditor.document;
-        let is_saved :boolean;
-        
-        if (wad.isUntitled){
-            throw("Doucment is unsaved. Please save and retry running R command.")
+        const wad: TextDocument = window.activeTextEditor.document;
+        let isSaved: boolean;
+
+        if (wad.isUntitled) {
+            throw new Error("Doucment is unsaved. Please save and retry running R command.");
+        }
+        isSaved = wad.isDirty ? (await wad.save()) : true;
+
+        if (!isSaved) {
+            throw new Error("Cannot run R command: Document could not be saved.");
         }
 
-        if (wad.isDirty) {
-           is_saved = await wad.save();
-        } else {
-           is_saved = true;
-        }
-
-        if (!is_saved){
-            throw("Cannot run R command: Document could not be saved.")
-        }
-        
         const callableTerminal = await chooseTerminal();
-        let rPath = ToRStringLiteral(wad.fileName, "");
-        let call = rCommand.replace(/\$\$/g,rPath);
+        const rPath = ToRStringLiteral(wad.fileName, "");
+        const call = rCommand.replace(/\$\$/g, rPath);
         runTextInTerm(callableTerminal, [call]);
     }
 
@@ -186,7 +182,7 @@ export function activate(context: ExtensionContext) {
                 const wordRange = document.getWordRangeAtPosition(position);
                 const text = document.getText(wordRange);
 
-                return new Hover("```\n" + globalenv[text].str + "\n```");
+                return new Hover(`\`\`\`\n${globalenv[text].str}\n\`\`\``);
             },
         });
 
