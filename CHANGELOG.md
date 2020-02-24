@@ -1,5 +1,13 @@
 # Change Log
 
+## 1.2.4
+
+* Add configurable command runner functions (Thank you @MilesMCBain)
+* Change .Platform$GUI to vscode on session start
+* Fixed the function snippet (Fixed #230) (Thank you @stanmart)
+* Add statement of languageserver features to bug report template (Fixed #210)
+* Inject R Markdown features into Markdown grammar (Fixed #220, #116, #48, #36)
+
 ## 1.2.3
 * Fixed the function snippet (Fixed #230) (Thank you @stanmart)
 * Update activationEvents
