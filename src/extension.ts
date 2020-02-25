@@ -37,33 +37,54 @@ export function activate(context: ExtensionContext) {
     // Now provide the implementation of the command with  registerCommand
     // The commandId parameter must match the command field in package.json
 
-    function runSource(echo: boolean)  {
-        const wad = window.activeTextEditor.document;
-        wad.save();
-        let rPath: string = ToRStringLiteral(wad.fileName, '"');
-        let encodingParam = config.get<string>("source.encoding");
-        encodingParam = `encoding = "${encodingParam}"`;
-        rPath = [rPath, encodingParam].join(", ");
-        if (echo) {
-            rPath = [rPath, "echo = TRUE"].join(", ");
+    async function saveDocument(document: TextDocument) {
+        if (document.isUntitled) {
+            window.showErrorMessage("Document is unsaved. Please save and retry running R command.");
+
+            return false;
         }
-        chooseTerminalAndSendText(`source(${rPath})`);
+
+        const isSaved: boolean = document.isDirty ? (await document.save()) : true;
+        if (!isSaved) {
+            window.showErrorMessage("Cannot run R command: document could not be saved.");
+
+            return false;
+        }
+
+        return true;
     }
 
-    function knitRmd(echo: boolean, outputFormat: string)  {
-        const wad: TextDocument = window.activeTextEditor.document;
-        wad.save();
-        let rPath = ToRStringLiteral(wad.fileName, '"');
-        let encodingParam = config.get<string>("source.encoding");
-        encodingParam = `encoding = "${encodingParam}"`;
-        rPath = [rPath, encodingParam].join(", ");
-        if (echo) {
-            rPath = [rPath, "echo = TRUE"].join(", ");
+    async function runSource(echo: boolean)  {
+        const wad = window.activeTextEditor.document;
+        const isSaved = await saveDocument(wad);
+        if (isSaved) {
+            let rPath: string = ToRStringLiteral(wad.fileName, '"');
+            let encodingParam = config.get<string>("source.encoding");
+            encodingParam = `encoding = "${encodingParam}"`;
+            rPath = [rPath, encodingParam].join(", ");
+            if (echo) {
+                rPath = [rPath, "echo = TRUE"].join(", ");
+            }
+            chooseTerminalAndSendText(`source(${rPath})`);
         }
-        if (outputFormat === undefined) {
-            chooseTerminalAndSendText(`rmarkdown::render(${rPath})`);
-        } else {
-            chooseTerminalAndSendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
+    }
+
+    async function knitRmd(echo: boolean, outputFormat: string)  {
+        const wad: TextDocument = window.activeTextEditor.document;
+        const isSaved = await saveDocument(wad);
+        if (isSaved) {
+            let rPath = ToRStringLiteral(wad.fileName, '"');
+            let encodingParam = config.get<string>("source.encoding");
+            encodingParam = `encoding = "${encodingParam}"`;
+            rPath = [rPath, encodingParam].join(", ");
+            if (echo) {
+                rPath = [rPath, "echo = TRUE"].join(", ");
+            }
+            if (outputFormat === undefined) {
+                chooseTerminalAndSendText(`rmarkdown::render(${rPath})`);
+            } else {
+                chooseTerminalAndSendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
+            }
         }
     }
 
@@ -103,21 +124,13 @@ export function activate(context: ExtensionContext) {
 
     async function runCommandWithEditorPath(rCommand: string) {
         const wad: TextDocument = window.activeTextEditor.document;
-        let isSaved: boolean;
-
-        if (wad.isUntitled) {
-            throw new Error("Doucment is unsaved. Please save and retry running R command.");
+        const isSaved = await saveDocument(wad);
+        if (isSaved) {
+            const callableTerminal = await chooseTerminal();
+            const rPath = ToRStringLiteral(wad.fileName, "");
+            const call = rCommand.replace(/\$\$/g, rPath);
+            runTextInTerm(callableTerminal, [call]);
         }
-        isSaved = wad.isDirty ? (await wad.save()) : true;
-
-        if (!isSaved) {
-            throw new Error("Cannot run R command: Document could not be saved.");
-        }
-
-        const callableTerminal = await chooseTerminal();
-        const rPath = ToRStringLiteral(wad.fileName, "");
-        const call = rCommand.replace(/\$\$/g, rPath);
-        runTextInTerm(callableTerminal, [call]);
     }
 
     async function runCommand(rCommand: string) {
