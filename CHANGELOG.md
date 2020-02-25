@@ -1,5 +1,9 @@
 # Change Log
 
+## 1.2.5
+
+* Check untitled document and save result before running command
+
 ## 1.2.4
 
 * Add configurable command runner functions (Thank you @MilesMCBain)
