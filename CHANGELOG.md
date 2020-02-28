@@ -1,5 +1,9 @@
 # Change Log
 
+## 1.2.6
+
+* Fix showWebView
+
 ## 1.2.5
 
 * Check untitled document and save result before running command
