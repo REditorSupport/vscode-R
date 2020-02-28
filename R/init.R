@@ -107,6 +107,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
 
         dataview_table <- function(data) {
           if (is.data.frame(data)) {
+            nrow <- nrow(data)
             colnames <- colnames(data)
             if (is.null(colnames)) {
               colnames <- sprintf("(X%d)", seq_len(ncol(data)))
@@ -117,15 +118,15 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
               rownames <- rownames(data)
               rownames(data) <- NULL
             } else {
-              rownames <- seq_len(nrow(data))
+              rownames <- seq_len(nrow)
             }
-            data <- cbind(" " = rownames, data, stringsAsFactors = FALSE)
+            data <- c(list(" " = rownames), .subset(data))
             colnames <- c(" ", colnames)
             types <- vapply(data, dataview_data_type,
               character(1L), USE.NAMES = FALSE)
             data <- vapply(data, function(x) {
               trimws(format(x))
-            }, character(nrow(data)), USE.NAMES = FALSE)
+            }, character(nrow), USE.NAMES = FALSE)
             dim(data) <- c(length(rownames), length(colnames))
           } else if (is.matrix(data)) {
             if (is.factor(data)) {
