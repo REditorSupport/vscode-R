@@ -1,4 +1,4 @@
-name: lint
+name: lintr
 on: [push, pull_request]
 jobs:
   linux:
