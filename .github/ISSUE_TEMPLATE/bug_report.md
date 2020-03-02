@@ -33,7 +33,7 @@ Yes / No
 
 ```json
 // R.exe path for windows
-"r.rterm.windows": "C:\\Program Files\\R\\R-3.4.4\\bin\\x64\\R.exe",
+"r.rterm.windows": "",
 
 // R path for Mac OS X
 "r.rterm.mac": "/usr/local/bin/R",

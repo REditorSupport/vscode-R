@@ -1,12 +1,34 @@
 "use strict";
 
 import { existsSync } from "fs-extra";
+import path = require("path");
 import { window, workspace } from "vscode";
+import winreg = require("winreg");
 export let config = workspace.getConfiguration("r");
 
-export function getRpath() {
+export async function getRpath() {
     if (process.platform === "win32") {
-        return config.get<string>("rterm.windows");
+        let rpath: string = config.get<string>("rterm.windows");
+        if (rpath === "") {
+            // Find path from registry
+            try {
+                const key = new windreg({
+                    hive: winreg.HKLM,
+                    key: "\\Software\\R-Core\\R",
+                });
+                const item: winreg.RegistryItem = await new Promise((c, e) =>
+                    key.get('InstallPath', (err, result) => err ? e(err) : c(result)));
+                const rhome: string = String(item.value);
+                rpath = path.join(rhome, "bin", "R.exe");
+            } catch (e) {
+                rpath = "";
+            }
+            if (!existsSync(rpath)) {
+                rpath = "";
+            }
+        }
+
+        return rpath;
     }
     if (process.platform === "darwin") {
         return config.get<string>("rterm.mac");
@@ -25,7 +47,7 @@ export function ToRStringLiteral(s: string, quote: string) {
     }
 
     return (quote +
-            s.replace(/\\/g, "\\\\")
+        s.replace(/\\/g, "\\\\")
             .replace(/"""/g, `\\${quote}`)
             .replace(/\\n/g, "\\n")
             .replace(/\\r/g, "\\r")
@@ -34,7 +56,7 @@ export function ToRStringLiteral(s: string, quote: string) {
             .replace(/\\a/g, "\\a")
             .replace(/\\f/g, "\\f")
             .replace(/\\v/g, "\\v") +
-            quote);
+        quote);
 }
 
 export async function delay(ms: number) {
