@@ -11,13 +11,12 @@ jobs:
           args: "package -o vscode-R.vsix"
       - uses: actions/upload-artifact@v1
         with:
-          name: vsix
+          name: vscode-R.vsix
           path: vscode-R.vsix
   tslint:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - name: Prepare
         run: npm ci
       - name: Lint
@@ -30,7 +29,7 @@ jobs:
     container:
       image: rocker/tidyverse:latest
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - name: Install apt-get dependencies
         run: |
           apt-get update
