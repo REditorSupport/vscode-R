@@ -8,8 +8,8 @@ jobs:
       - run: npm install
       - uses: lannonbr/vsce-action@master
         with:
-          args: "package"
+          args: "package -o /tmp/vscode-R.vsix"
       - uses: actions/upload-artifact@v1
         with:
           name: vsix
-          path: r-*.vsix
+          path: /tmp/vscode-R.vsix
