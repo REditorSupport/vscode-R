@@ -4,10 +4,10 @@ Requires [R](https://www.r-project.org/).
 
 ## Usage
 
-* For Windows, set config `r.rterm.windows` to your `R.exe` Path like `"C:\\Program Files\\R\\R-3.3.4\\bin\\x64\\R.exe"`;
+* For Windows, if `r.rterm.windows` is empty, then the path to `R.exe` will be searched in Windows registry. If your R is not installed with path written in registry or if you need a specific R executable path, set it to a path like `"C:\\Program Files\\R\\R-3.3.4\\bin\\x64\\R.exe"`.
 * For Radian console, enable config `r.bracketedPaste`
 * Open your *folder* that has R source file (**Can't work if you open only file**)
-* Use `F1` key and `R:` command or `Ctrl+Enter`(Mac: `⌘+Enter`)
+* Use `F1` key and `R:` command or `Ctrl+Enter` (Mac: `⌘+Enter`)
 
 ## Features
 

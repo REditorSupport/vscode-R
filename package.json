@@ -368,7 +368,7 @@
       "properties": {
         "r.rterm.windows": {
           "type": "string",
-          "default": "C:\\Program Files\\R\\R-3.5.0\\bin\\x64\\R.exe",
+          "default": "",
           "description": "R.exe path for windows"
         },
         "r.rterm.mac": {
@@ -436,6 +436,7 @@
     "@types/mocha": "^7.0.1",
     "@types/node": "^13.7.6",
     "@types/vscode": "^1.42.0",
+    "@types/winreg": "^1.2.30",
     "copy-webpack-plugin": "^5.1.1",
     "mocha": "^7.1.0",
     "node-atomizr": "^0.6.1",
@@ -457,6 +458,7 @@
     "jquery.json-viewer": "^1.4.0",
     "path": "^0.12.7",
     "popper.js": "^1.16.1",
-    "winattr": "^3.0.0"
+    "winattr": "^3.0.0",
+    "winreg": "^1.2.4"
   }
 }

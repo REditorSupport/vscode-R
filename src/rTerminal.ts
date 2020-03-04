@@ -12,36 +12,37 @@ import { removeSessionFiles } from "./session";
 import { config, delay, getRpath } from "./util";
 export let rTerm: Terminal;
 
-export function createRTerm(preserveshow?: boolean): boolean {
-        const termName = "R Interactive";
-        const termPath = getRpath();
-        if (termPath === undefined) {
-            return undefined;
-        }
-        const termOpt: string[] = config.get("rterm.option");
-        pathExists(termPath, (err, exists) => {
-            if (exists) {
-                const termOptions: TerminalOptions = {
-                    name: termName,
-                    shellPath: termPath,
-                    shellArgs: termOpt,
-                };
-                if (config.get<boolean>("sessionWatcher")) {
-                    termOptions.env = {
-                        R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
-                        R_PROFILE_USER: path.join(os.homedir(), ".vscode-R", ".Rprofile"),
-                    };
-                }
-                rTerm = window.createTerminal(termOptions);
-                rTerm.show(preserveshow);
-
-                return true;
-            }
-            window.showErrorMessage("Cannot find R client.  Please check R path in preferences and reload.");
-
-            return false;
-        });
+export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
+    const termName = "R Interactive";
+    const termPath = await getRpath();
+    console.info(`termPath: ${termPath}`);
+    if (termPath === undefined) {
+        return undefined;
     }
+    const termOpt: string[] = config.get("rterm.option");
+    pathExists(termPath, (err, exists) => {
+        if (exists) {
+            const termOptions: TerminalOptions = {
+                name: termName,
+                shellPath: termPath,
+                shellArgs: termOpt,
+            };
+            if (config.get<boolean>("sessionWatcher")) {
+                termOptions.env = {
+                    R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
+                    R_PROFILE_USER: path.join(os.homedir(), ".vscode-R", ".Rprofile"),
+                };
+            }
+            rTerm = window.createTerminal(termOptions);
+            rTerm.show(preserveshow);
+
+            return true;
+        }
+        window.showErrorMessage("Cannot find R client.  Please check R path in preferences and reload.");
+
+        return false;
+    });
+}
 
 export function deleteTerminal(term: Terminal) {
     if (isDeepStrictEqual(term, rTerm)) {
