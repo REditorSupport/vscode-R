@@ -6,24 +6,22 @@ import { window, workspace } from "vscode";
 import winreg = require("winreg");
 export let config = workspace.getConfiguration("r");
 
-export async function getRpath() {
+export function getRpath() {
     if (process.platform === "win32") {
         let rpath: string = config.get<string>("rterm.windows");
         if (rpath === "") {
             // Find path from registry
             try {
-                const key = new windreg({
+                const key = new winreg({
                     hive: winreg.HKLM,
                     key: "\\Software\\R-Core\\R",
                 });
-                const item: winreg.RegistryItem = await new Promise((c, e) =>
-                    key.get('InstallPath', (err, result) => err ? e(err) : c(result)));
-                const rhome: string = String(item.value);
-                rpath = path.join(rhome, "bin", "R.exe");
+                key.get("InstallPath", (err: Error, result: winreg.RegistryItem) => {
+                    if (err !== null) {
+                        rpath = path.join(result.value, "bin", "R.exe");
+                    }
+                });
             } catch (e) {
-                rpath = "";
-            }
-            if (!existsSync(rpath)) {
                 rpath = "";
             }
         }
