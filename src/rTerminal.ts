@@ -15,6 +15,7 @@ export let rTerm: Terminal;
 export function createRTerm(preserveshow?: boolean): boolean {
     const termName = "R Interactive";
     const termPath = getRpath();
+    console.info(`termPath: ${termPath}`);
     if (termPath === undefined) {
         return undefined;
     }

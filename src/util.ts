@@ -19,9 +19,11 @@ export function getRpath() {
                 key.get("InstallPath", (err: Error, result: winreg.RegistryItem) => {
                     if (err !== null) {
                         rpath = path.join(result.value, "bin", "R.exe");
+                        console.info(`rpath: ${rpath}`);
                     }
                 });
             } catch (e) {
+                console.info("winreg error");
                 rpath = "";
             }
         }
