@@ -6,7 +6,7 @@ import { window, workspace } from "vscode";
 import winreg = require("winreg");
 export let config = workspace.getConfiguration("r");
 
-export function getRpath() {
+export async function getRpath() {
     if (process.platform === "win32") {
         let rpath: string = config.get<string>("rterm.windows");
         if (rpath === "") {
@@ -16,14 +16,10 @@ export function getRpath() {
                     hive: winreg.HKLM,
                     key: "\\Software\\R-Core\\R",
                 });
-                key.get("InstallPath", (err: Error, result: winreg.RegistryItem) => {
-                    if (err !== null) {
-                        rpath = path.join(result.value, "bin", "R.exe");
-                        console.info(`rpath: ${rpath}`);
-                    }
-                });
+                const item: winreg.RegistryItem = await new Promise((c, e) =>
+                    key.get("InstallPath", (err, result) => err === null ? c(result) : e(err)));
+                rpath = path.join(item.value, "bin", "R.exe");
             } catch (e) {
-                console.info("winreg error");
                 rpath = "";
             }
         }

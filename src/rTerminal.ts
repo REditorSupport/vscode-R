@@ -12,9 +12,9 @@ import { removeSessionFiles } from "./session";
 import { config, delay, getRpath } from "./util";
 export let rTerm: Terminal;
 
-export function createRTerm(preserveshow?: boolean): boolean {
+export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     const termName = "R Interactive";
-    const termPath = getRpath();
+    const termPath = await getRpath();
     console.info(`termPath: ${termPath}`);
     if (termPath === undefined) {
         return undefined;
