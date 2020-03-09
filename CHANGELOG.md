@@ -1,5 +1,12 @@
 # Change Log
 
+## 1.2.7
+
+* Add [new wiki page](https://github.com/Ikuyadeu/vscode-R/wiki) !
+* Use Windows registry to find R path
+* Fix handling grouped_df in dataview_table
+* Use GitHub Actions for linting 
+
 ## 1.2.6
 
 * Fix showWebView
