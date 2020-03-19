@@ -4,6 +4,8 @@ Requires [R](https://www.r-project.org/).
 
 ## Usage
 
+Full document is on the [wiki](https://github.com/Ikuyadeu/vscode-R/wiki)
+
 * For Windows, if `r.rterm.windows` is empty, then the path to `R.exe` will be searched in Windows registry. If your R is not installed with path written in registry or if you need a specific R executable path, set it to a path like `"C:\\Program Files\\R\\R-3.3.4\\bin\\x64\\R.exe"`.
 * For Radian console, enable config `r.bracketedPaste`
 * Open your *folder* that has R source file (**Can't work if you open only file**)
