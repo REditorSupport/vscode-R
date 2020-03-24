@@ -1,6 +1,6 @@
 {
         "recommendations": [
-                "eg2.tslint",
+                "dbaeumer.vscode-eslint",
                 "GrapeCity.gc-excelviewer"
 	]
 }
