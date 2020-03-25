@@ -20,7 +20,7 @@ jobs:
       - name: Lint
         uses: stefanoeb/eslint-action@1.0.2
         with:
-          files: src/
+          files: src/*.ts
   lintr:
     runs-on: ubuntu-latest
     container:
