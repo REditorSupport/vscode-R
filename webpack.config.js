@@ -2,8 +2,8 @@
 
 'use strict';
 
-import { resolve as _resolve } from 'path';
-import CopyPlugin from 'copy-webpack-plugin';
+const path = require('path');
+const CopyPlugin = require('copy-webpack-plugin');
 
 /**@type {import('webpack').Configuration}*/
 const config = {
@@ -12,7 +12,7 @@ const config = {
   entry: './src/extension.ts', // the entry point of this extension, 📖 -> https://webpack.js.org/configuration/entry-context/
   output: {
     // the bundle is stored in the 'dist' folder (check package.json), 📖 -> https://webpack.js.org/configuration/output/
-    path: _resolve(__dirname, 'dist'),
+    path: path.resolve(__dirname, 'dist'),
     filename: 'extension.js',
     libraryTarget: 'commonjs2',
     devtoolModuleFilenameTemplate: '../[resource-path]'
@@ -57,4 +57,4 @@ const config = {
     ]),
   ],
 };
-export default config;
+module.exports = config
