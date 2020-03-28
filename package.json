@@ -84,7 +84,8 @@
         "aliases": [
           "R Markdown",
           "r markdown"
-        ]
+        ],
+        "configuration": "./rd-configuration.json"
       }
     ],
     "snippets": [
