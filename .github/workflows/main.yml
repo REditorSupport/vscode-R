@@ -21,7 +21,8 @@ jobs:
         with:
           node-version: "13.x"
       - run: npm ci
-      - run: eslint -c ./.eslintrc.js src/*.ts
+      - name: Run eslint
+        run: ./node_modules/.bin/eslint -c ./.eslintrc.js src/*.ts
   lintr:
     runs-on: ubuntu-latest
     container:
