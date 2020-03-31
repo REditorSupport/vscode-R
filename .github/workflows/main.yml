@@ -17,10 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Lint
-        uses: stefanoeb/eslint-action@1.0.2
+      - uses: actions/setup-node@v1
         with:
-          files: src/*.ts
+          node-version: "13.x"
+      - run: npm ci
+      - run: eslint -c ./.eslintrc.js src/*.ts
   lintr:
     runs-on: ubuntu-latest
     container:
