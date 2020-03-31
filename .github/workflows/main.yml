@@ -13,17 +13,16 @@ jobs:
         with:
           name: vscode-R.vsix
           path: vscode-R.vsix
-  tslint:
+  eslint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Prepare
-        run: npm ci
-      - name: Lint
-        uses: mooyoul/tslint-actions@v1.1.1
+      - uses: actions/setup-node@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          pattern: "src/*.ts"
+          node-version: "13.x"
+      - run: npm ci
+      - name: Run eslint
+        run: ./node_modules/.bin/eslint -c ./.eslintrc.js src/*.ts
   lintr:
     runs-on: ubuntu-latest
     container:
