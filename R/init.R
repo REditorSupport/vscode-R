@@ -22,7 +22,8 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         null_dev_size <- c(7 + pi, 7 + pi)
 
         check_null_dev <- function() {
-          identical(dev.cur(), null_dev_id) && identical(dev.size(), null_dev_size)
+          identical(dev.cur(), null_dev_id) &&
+            identical(dev.size(), null_dev_size)
         }
 
         new_plot <- function() {
@@ -76,7 +77,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
               info
             }, all.names = FALSE, USE.NAMES = TRUE)
             jsonlite::write_json(objs, globalenv_file, pretty = FALSE)
-            if (check_null_dev() && plot_updated) {
+            if (plot_updated && check_null_dev()) {
               plot_updated <<- FALSE
               record <- recordPlot()
               if (length(record[[1L]])) {
