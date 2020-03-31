@@ -85,7 +85,7 @@
           "R Markdown",
           "r markdown"
         ],
-        "configuration": "./rd-configuration.json"
+        "configuration": "./rmd-configuration.json"
       }
     ],
     "snippets": [
