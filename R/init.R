@@ -18,17 +18,25 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         plot_file <- file.path(dir_session, "plot.png")
         plot_history_file <- NULL
         plot_updated <- FALSE
+        null_dev_id <- c(pdf = 2L)
+        null_dev_size <- c(7 + pi, 7 + pi)
+
+        check_null_dev <- function() {
+          identical(dev.cur(), null_dev_id) && identical(dev.size(), null_dev_size)
+        }
 
         new_plot <- function() {
-          plot_history_file <<- file.path(dir_plot_history,
-            format(Sys.time(), "%Y%m%d-%H%M%OS6.png"))
-          plot_updated <<- TRUE
+          if (check_null_dev()) {
+            plot_history_file <<- file.path(dir_plot_history,
+              format(Sys.time(), "%Y%m%d-%H%M%OS6.png"))
+            plot_updated <<- TRUE
+          }
         }
 
         options(
           vscodeR = environment(),
           device = function(...) {
-            pdf(NULL, bg = "white")
+            pdf(NULL, width = null_dev_size[[1L]], height = null_dev_size[[2L]], bg = "white")
             dev.control(displaylist = "enable")
           },
           browser = function(url, ...) respond("browser", url = url, ...),
@@ -68,10 +76,10 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
               info
             }, all.names = FALSE, USE.NAMES = TRUE)
             jsonlite::write_json(objs, globalenv_file, pretty = FALSE)
-            if (plot_updated && dev.cur() == 2L) {
+            if (check_null_dev() && plot_updated) {
               plot_updated <<- FALSE
               record <- recordPlot()
-              if (length(record[[1]])) {
+              if (length(record[[1L]])) {
                 dev_args <- getOption("dev.args")
                 do.call(png, c(list(filename = plot_file), dev_args))
                 on.exit({
@@ -227,9 +235,11 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         setHook("grid.newpage", new_plot, "replace")
 
         rebind(".External.graphics", function(...) {
-          plot_updated <<- TRUE
-          .prim <- .Primitive(".External.graphics")
-          .prim(...)
+          out <- .Primitive(".External.graphics")(...)
+          if (check_null_dev()) {
+            plot_updated <<- TRUE
+          }
+          out
         }, "base")
         rebind("View", dataview, "utils")
 
