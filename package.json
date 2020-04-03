@@ -435,7 +435,7 @@
     "@types/fs-extra": "^8.1.0",
     "@types/mocha": "^7.0.2",
     "@types/node": "^13.11.0",
-    "@types/vscode": "^1.43.0",
+    "@types/vscode": "^1.42.0",
     "@types/winreg": "^1.2.30",
     "@typescript-eslint/eslint-plugin": "^2.26.0",
     "@typescript-eslint/parser": "^2.26.0",
