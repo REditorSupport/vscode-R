@@ -1,11 +1,11 @@
-"use strict";
+'use strict';
 
-import { existsSync, mkdirSync, removeSync, statSync } from "fs-extra";
-import { commands, extensions, window, workspace } from "vscode";
+import { existsSync, mkdirSync, removeSync, statSync } from 'fs-extra';
+import { commands, extensions, window, workspace } from 'vscode';
 
-import { chooseTerminalAndSendText } from "./rTerminal";
-import { getWordOrSelection } from "./selection";
-import { checkForSpecialCharacters, checkIfFileExists, delay } from "./util";
+import { chooseTerminalAndSendText } from './rTerminal';
+import { getWordOrSelection } from './selection';
+import { checkForSpecialCharacters, checkIfFileExists, delay } from './util';
 
 export async function previewEnvironment() {
     if (!checkcsv()) {
@@ -13,10 +13,10 @@ export async function previewEnvironment() {
     }
     const tmpDir = makeTmpDir();
     const pathToTmpCsv = `${tmpDir}/environment.csv`;
-    const envName = "name=ls()";
-    const envClass = "class=sapply(ls(), function(x) {class(get(x, envir = parent.env(environment())))[1]})";
-    const envOut = "out=sapply(ls(), function(x) {capture.output(str(get(x, envir = parent.env(environment()))), silent = T)[1]})";
-    const rWriteCsvCommand = "write.csv(data.frame("
+    const envName = 'name=ls()';
+    const envClass = 'class=sapply(ls(), function(x) {class(get(x, envir = parent.env(environment())))[1]})';
+    const envOut = 'out=sapply(ls(), function(x) {capture.output(str(get(x, envir = parent.env(environment()))), silent = T)[1]})';
+    const rWriteCsvCommand = 'write.csv(data.frame('
                              + `${envName},`
                              + `${envClass},`
                              + `${envOut}), '`
@@ -34,7 +34,7 @@ export async function previewDataframe() {
     const dataframeName = selectedTextArray[0];
 
     if (selectedTextArray.length !== 1 || !checkForSpecialCharacters(dataframeName)) {
-        window.showInformationMessage("This does not appear to be a dataframe.");
+        window.showInformationMessage('This does not appear to be a dataframe.');
 
         return false;
     }
@@ -53,7 +53,7 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
     await delay(350); // Needed since file size has not yet changed
 
     if (!checkIfFileExists(pathToTmpCsv)) {
-        window.showErrorMessage("Dataframe failed to display.");
+        window.showErrorMessage('Dataframe failed to display.');
         removeSync(tmpDir);
 
         return false;
@@ -62,21 +62,21 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
     // Async poll for R to complete writing CSV.
     const success = await waitForFileToFinish(pathToTmpCsv);
     if (!success) {
-        window.showWarningMessage("Visual Studio Code currently limits opening files to 20 MB.");
+        window.showWarningMessage('Visual Studio Code currently limits opening files to 20 MB.');
         removeSync(tmpDir);
 
         return false;
     }
 
-    if (process.platform === "win32") {
-        const winattr = require("winattr");
+    if (process.platform === 'win32') {
+        const winattr = require('winattr');
         winattr.setSync(tmpDir, {hidden: true});
     }
 
     // Open CSV in Excel Viewer and clean up.
     workspace.openTextDocument(pathToTmpCsv)
              .then(async (file) => {
-                await commands.executeCommand("csv.preview", file.uri);
+                await commands.executeCommand('csv.preview', file.uri);
                 removeSync(tmpDir);
             });
 }
@@ -106,11 +106,11 @@ async function waitForFileToFinish(filePath: string) {
 
 function makeTmpDir() {
     let tmpDir = workspace.workspaceFolders[0].uri.fsPath;
-    if (process.platform === "win32") {
-        tmpDir = tmpDir.replace(/\\/g, "/");
-        tmpDir += "/tmp";
+    if (process.platform === 'win32') {
+        tmpDir = tmpDir.replace(/\\/g, '/');
+        tmpDir += '/tmp';
     } else {
-        tmpDir += "/.tmp";
+        tmpDir += '/.tmp';
     }
     if (!existsSync(tmpDir)) {
         mkdirSync(tmpDir);
@@ -120,15 +120,15 @@ function makeTmpDir() {
 }
 
 function checkcsv() {
-    const iscsv = extensions.getExtension("GrapeCity.gc-excelviewer");
+    const iscsv = extensions.getExtension('GrapeCity.gc-excelviewer');
     if (iscsv !== undefined && iscsv.isActive) {
         return true;
     }
-    window.showInformationMessage("This function need to install `GrapeCity.gc-excelviewer`, will you install?",
-                                  "Yes", "No")
+    window.showInformationMessage('This function need to install `GrapeCity.gc-excelviewer`, will you install?',
+                                  'Yes', 'No')
           .then((select) => {
-        if (select === "Yes") {
-            commands.executeCommand("workbench.extensions.installExtension", "GrapeCity.gc-excelviewer");
+        if (select === 'Yes') {
+            commands.executeCommand('workbench.extensions.installExtension', 'GrapeCity.gc-excelviewer');
         }
     });
 

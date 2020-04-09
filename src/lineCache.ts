@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 
 /**
  * Class to hold lines that have been fetched from the document after they have been preprocessed.
@@ -41,7 +41,7 @@ export class LineCache {
 }
 
 function cleanLine(text: string) {
-    const cleaned = text.replace(/\s*\#.*/, "");
+    const cleaned = text.replace(/\s*\#.*/, '');
 
     return (cleaned);
 }

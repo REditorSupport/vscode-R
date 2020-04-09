@@ -1,25 +1,25 @@
-"use strict";
+'use strict';
 
-import os = require("os");
-import path = require("path");
+import os = require('os');
+import path = require('path');
 
-import { pathExists } from "fs-extra";
-import { isDeepStrictEqual } from "util";
-import { commands, Terminal, TerminalOptions, window } from "vscode";
+import { pathExists } from 'fs-extra';
+import { isDeepStrictEqual } from 'util';
+import { commands, Terminal, TerminalOptions, window } from 'vscode';
 
-import { getSelection } from "./selection";
-import { removeSessionFiles } from "./session";
-import { config, delay, getRpath } from "./util";
+import { getSelection } from './selection';
+import { removeSessionFiles } from './session';
+import { config, delay, getRpath } from './util';
 export let rTerm: Terminal;
 
 export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
-    const termName = "R Interactive";
+    const termName = 'R Interactive';
     const termPath = await getRpath();
     console.info(`termPath: ${termPath}`);
     if (termPath === undefined) {
         return undefined;
     }
-    const termOpt: string[] = config.get("rterm.option");
+    const termOpt: string[] = config.get('rterm.option');
     pathExists(termPath, (err, exists) => {
         if (exists) {
             const termOptions: TerminalOptions = {
@@ -27,10 +27,10 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
                 shellPath: termPath,
                 shellArgs: termOpt,
             };
-            if (config.get<boolean>("sessionWatcher")) {
+            if (config.get<boolean>('sessionWatcher')) {
                 termOptions.env = {
                     R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
-                    R_PROFILE_USER: path.join(os.homedir(), ".vscode-R", ".Rprofile"),
+                    R_PROFILE_USER: path.join(os.homedir(), '.vscode-R', '.Rprofile'),
                 };
             }
             rTerm = window.createTerminal(termOptions);
@@ -38,7 +38,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
 
             return true;
         }
-        window.showErrorMessage("Cannot find R client.  Please check R path in preferences and reload.");
+        window.showErrorMessage('Cannot find R client.  Please check R path in preferences and reload.');
 
         return false;
     });
@@ -46,7 +46,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
 
 export function deleteTerminal(term: Terminal) {
     if (isDeepStrictEqual(term, rTerm)) {
-        if (config.get<boolean>("sessionWatcher")) {
+        if (config.get<boolean>('sessionWatcher')) {
             removeSessionFiles();
         }
         rTerm = undefined;
@@ -54,9 +54,9 @@ export function deleteTerminal(term: Terminal) {
 }
 
 export async function chooseTerminal(active: boolean = false) {
-    if (active || config.get("alwaysUseActiveTerminal")) {
+    if (active || config.get('alwaysUseActiveTerminal')) {
         if (window.terminals.length < 1) {
-            window.showInformationMessage("There are no open terminals.");
+            window.showInformationMessage('There are no open terminals.');
 
             return undefined;
         }
@@ -65,7 +65,7 @@ export async function chooseTerminal(active: boolean = false) {
     }
 
     if (window.terminals.length > 0) {
-        const rTermNameOpinions = ["R", "R Interactive"];
+        const rTermNameOpinions = ['R', 'R Interactive'];
         if (window.activeTerminal !== undefined) {
             const activeTerminalName = window.activeTerminal.name;
             if (rTermNameOpinions.includes(activeTerminalName)) {
@@ -80,7 +80,7 @@ export async function chooseTerminal(active: boolean = false) {
                 }
             } else {
                 // tslint:disable-next-line: max-line-length
-                window.showInformationMessage("Error identifying terminal! This shouldn't happen, so please file an issue at https://github.com/Ikuyadeu/vscode-R/issues");
+                window.showInformationMessage('Error identifying terminal! This shouldn\'t happen, so please file an issue at https://github.com/Ikuyadeu/vscode-R/issues');
 
                 return undefined;
             }
@@ -101,20 +101,20 @@ export async function chooseTerminal(active: boolean = false) {
 export function runSelectionInTerm(term: Terminal) {
     const selection = getSelection();
     if (selection.linesDownToMoveCursor > 0) {
-        commands.executeCommand("cursorMove", { to: "down", value: selection.linesDownToMoveCursor });
-        commands.executeCommand("cursorMove", { to: "wrappedLineFirstNonWhitespaceCharacter" });
+        commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
+        commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
     }
     runTextInTerm(term, selection.selectedTextArray);
 }
 
 export async function runTextInTerm(term: Terminal, textArray: string[]) {
-    if (textArray.length > 1 && config.get<boolean>("bracketedPaste")) {
-        if (process.platform !== "win32") {
+    if (textArray.length > 1 && config.get<boolean>('bracketedPaste')) {
+        if (process.platform !== 'win32') {
             // Surround with ANSI control characters for bracketed paste mode
             textArray[0] = `\x1b[200~${textArray[0]}`;
-            textArray[textArray.length - 1] += "\x1b[201~";
+            textArray[textArray.length - 1] += '\x1b[201~';
         }
-        term.sendText(textArray.join("\n"));
+        term.sendText(textArray.join('\n'));
     } else {
         for (const line of textArray) {
             await delay(8); // Increase delay if RTerm can't handle speed.
@@ -134,6 +134,6 @@ export async function chooseTerminalAndSendText(text: string) {
 }
 
 function setFocus(term: Terminal) {
-    const focus: string = config.get("source.focus");
-    term.show(focus !== "terminal");
+    const focus: string = config.get('source.focus');
+    term.show(focus !== 'terminal');
 }

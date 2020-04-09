@@ -1,8 +1,8 @@
-"use strict";
+'use strict';
 
-import { Position, Range, window } from "vscode";
+import { Position, Range, window } from 'vscode';
 
-import { LineCache } from "./lineCache";
+import { LineCache } from './lineCache';
 
 export function getWordOrSelection() {
     const selection = window.activeTextEditor.selection;
@@ -16,18 +16,18 @@ export function getWordOrSelection() {
         text = currentDocument.getText(window.activeTextEditor.selection);
     }
 
-    return text.split("\n");
+    return text.split('\n');
 }
 
 export function surroundSelection(textArray: string[], rFunctionName: string[]) {
     if (rFunctionName && rFunctionName.length) {
-        let rFunctionCall = "";
+        let rFunctionCall = '';
         for (const feature of rFunctionName) {
             rFunctionCall += `${feature}(`;
         }
         textArray[0] = rFunctionCall + textArray[0].trimLeft();
         const end = textArray.length - 1;
-        textArray[end] = textArray[end].trimRight() + ")".repeat(rFunctionName.length);
+        textArray[end] = textArray[end].trimRight() + ')'.repeat(rFunctionName.length);
     }
 
     return textArray;
@@ -57,7 +57,7 @@ export function getSelection() {
         selectedLine = currentDocument.getText(new Range(start, end));
     }
 
-    const selectedTextArray = selectedLine.split("\n");
+    const selectedTextArray = selectedLine.split('\n');
     selection.selectedTextArray = removeCommentedLines(selectedTextArray);
 
     return selection;
@@ -76,14 +76,14 @@ export function checkForBlankOrComment(line: string): boolean {
     let index = 0;
     let isWhitespaceOnly = true;
     while (index < line.length) {
-        if (!((line[index] === " ") || (line[index] === "\t") || (line[index] === "\r"))) {
+        if (!((line[index] === ' ') || (line[index] === '\t') || (line[index] === '\r'))) {
             isWhitespaceOnly = false;
             break;
         }
         index += 1;
     }
 
-    return isWhitespaceOnly || line[index] === "#";
+    return isWhitespaceOnly || line[index] === '#';
 }
 
 /**
@@ -100,17 +100,17 @@ class PositionNeg {
 }
 
 function doBracketsMatch(a: string, b: string): boolean {
-    const matches = { "(": ")", "[": "]", "{": "}", ")": "(", "]": "[", "}": "{" };
+    const matches = { '(': ')', '[': ']', '{': '}', ')': '(', ']': '[', '}': '{' };
 
     return matches[a] === b;
 }
 
 function isBracket(c: string, lookingForward: boolean) {
     if (lookingForward) {
-        return ((c === "(") || (c === "[") || (c === "{"));
+        return ((c === '(') || (c === '[') || (c === '{'));
     }
 
-    return ((c === ")") || (c === "]") || (c === "}"));
+    return ((c === ')') || (c === ']') || (c === '}'));
 }
 
 /**

@@ -1,11 +1,11 @@
-"use strict";
+'use strict';
 
-import { commands, ExtensionContext, ViewColumn, window } from "vscode";
+import { commands, ExtensionContext, ViewColumn, window } from 'vscode';
 
 export function activate(context: ExtensionContext) {
-    context.subscriptions.push(commands.registerCommand("catCoding.start", () => {
+    context.subscriptions.push(commands.registerCommand('catCoding.start', () => {
         // Create and show panel
-        const panel = window.createWebviewPanel("catCoding", "Cat Coding", ViewColumn.One, { });
+        const panel = window.createWebviewPanel('catCoding', 'Cat Coding', ViewColumn.One, { });
 
         // And set its HTML content
         panel.webview.html = getWebviewContent();
