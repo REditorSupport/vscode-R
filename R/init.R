@@ -5,7 +5,8 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
       tempdir <- tempdir()
       dir <- normalizePath(file.path(".vscode", "vscode-R"), mustWork = FALSE)
       dir_session <- file.path(dir, pid)
-      if (dir.create(dir_session, showWarnings = FALSE, recursive = TRUE) || dir.exists(dir_session)) {
+      if (dir.create(dir_session, showWarnings = FALSE, recursive = TRUE) ||
+        dir.exists(dir_session)) {
         reg.finalizer(.GlobalEnv, function(e) {
           unlink(dir_session, recursive = TRUE, force = TRUE)
         }, onexit = TRUE)
@@ -31,9 +32,15 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
             pdf(NULL, bg = "white")
             dev.control(displaylist = "enable")
           },
-          browser = function(url, ...) respond("browser", url = url, ...),
-          viewer = function(url, ...) respond("webview", file = url, ..., viewColumn = "Two"),
-          page_viewer = function(url, ...) respond("webview", file = url, ..., viewColumn = "Active"),
+          browser = function(url, ...) {
+            respond("browser", url = url, ...)
+          },
+          viewer = function(url, ...) {
+            respond("webview", file = url, ..., viewColumn = "Two")
+          },
+          page_viewer = function(url, ...) {
+            respond("webview", file = url, ..., viewColumn = "Active")
+          },
           help_type = "html"
         )
 
@@ -49,17 +56,25 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
 
         unbox <- jsonlite::unbox
 
+        capture_str <- function(object) {
+          utils::capture.output(
+            utils::str(object, max.level = 0, give.attr = FALSE)
+          )
+        }
+
         update <- function(...) {
           tryCatch({
             objs <- eapply(.GlobalEnv, function(obj) {
-              str <- utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE))[[1L]]
+              str <- capture_str(obj)[[1L]]
               info <- list(
                 class = class(obj),
                 type = unbox(typeof(obj)),
                 length = unbox(length(obj)),
                 str = unbox(trimws(str))
               )
-              if ((is.list(obj) || is.environment(obj)) && !is.null(names(obj))) {
+              if ((is.list(obj) ||
+                is.environment(obj)) &&
+                !is.null(names(obj))) {
                 info$names <- names(obj)
               }
               if (isS4(obj)) {
@@ -177,7 +192,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
                 type = typeof(obj),
                 length = length(obj),
                 size = as.integer(object.size(obj)),
-                value = trimws(utils::capture.output(str(obj, max.level = 0, give.attr = FALSE))),
+                value = trimws(capture_str(obj)),
                 stringsAsFactors = FALSE,
                 check.names = FALSE
               )
@@ -234,7 +249,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         rebind("View", dataview, "utils")
 
         platform <- .Platform
-        platform$GUI <- "vscode"
+        platform[["GUI"]] <- "vscode"
         rebind(".Platform", platform, "base")
 
         update()
@@ -248,6 +263,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
       invisible()
     })
   } else {
-    message("VSCode R Session Watcher requires jsonlite. Please install it with install.packages(\"jsonlite\").")
+    message("VSCode R Session Watcher requires jsonlite.")
+    message("Please install it with install.packages(\"jsonlite\").")
   }
 }
