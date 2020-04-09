@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.2.8
+
+* Use eslint in GitHub Actions
+* Add R Markdown surround and frontmatter comments (Fix #260)
+
 ## 1.2.7
 
 * Add [new wiki page](https://github.com/Ikuyadeu/vscode-R/wiki) !
