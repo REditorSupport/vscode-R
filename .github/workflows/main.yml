@@ -3,16 +3,18 @@ on: [push, pull_request]
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      VSIX_FILE: vscode-R.vsix
     steps:
       - uses: actions/checkout@v2
       - run: npm install
       - uses: lannonbr/vsce-action@master
         with:
-          args: "package -o vscode-R.vsix"
+          args: "package -o $VSIX_FILE"
       - uses: actions/upload-artifact@v1
         with:
-          name: vscode-R.vsix
-          path: vscode-R.vsix
+          name: ${{ env.VSIX_FILE }}
+          path: ${{ env.VSIX_FILE }}
   eslint:
     runs-on: ubuntu-latest
     steps:
