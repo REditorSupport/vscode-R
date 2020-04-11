@@ -38,7 +38,10 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         options(
           vscodeR = environment(),
           device = function(...) {
-            pdf(NULL, width = null_dev_size[[1L]], height = null_dev_size[[2L]], bg = "white")
+            pdf(NULL,
+              width = null_dev_size[[1L]],
+              height = null_dev_size[[2L]],
+              bg = "white")
             dev.control(displaylist = "enable")
           },
           browser = function(url, ...) {
