@@ -232,10 +232,21 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         }
 
         rebind <- function(sym, value, ns) {
-          ns <- getNamespace(ns)
-          unlockBinding(sym, ns)
-          on.exit(lockBinding(sym, ns))
-          assign(sym, value, envir = ns)
+          if (is.character(ns)) {
+            Recall(sym, value, getNamespace(ns))
+            pkg <- paste0("package:", ns)
+            if (pkg %in% search()) {
+              Recall(sym, value, as.environment(pkg))
+            }
+          } else if (is.environment(ns)) {
+            if (bindingIsLocked(sym, ns)) {
+              unlockBinding(sym, ns)
+              on.exit(lockBinding(sym, ns))
+            }
+            assign(sym, value, ns)
+          } else {
+            stop("ns must be a string or environment")
+          }
         }
 
         setHook("plot.new", new_plot, "replace")
