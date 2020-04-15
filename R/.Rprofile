@@ -1,10 +1,18 @@
-if (nzchar(Sys.getenv("R_PROFILE_USER_OLD"))) {
-  source(Sys.getenv("R_PROFILE_USER_OLD"))
-} else if (file.exists(".Rprofile")) {
-  source(".Rprofile")
-} else if (file.exists("~/.Rprofile")) {
-  source("~/.Rprofile")
-}
+local({
+  try_source <- function(file) {
+    if (file.exists(file)) {
+      source(file)
+      TRUE
+    } else {
+      FALSE
+    }
+  }
+
+  try_source(Sys.getenv("R_PROFILE_USER_OLD")) ||
+    try_source(".Rprofile") ||
+    try_source(file.path("~", ".Rprofile")) ||
+    try_source(file.path(R.home(), "etc", "Rprofile.site"))
+})
 
 if (is.null(getOption("vscodeR"))) {
   source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"), ".vscode-R", "init.R"))
