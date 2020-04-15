@@ -8,9 +8,12 @@ local({
     }
   }
 
-  try_source(Sys.getenv("R_PROFILE_USER_OLD")) ||
-    try_source(".Rprofile") ||
-    try_source(file.path("~", ".Rprofile"))
+  r_profile <- Sys.getenv("R_PROFILE_USER_OLD")
+  if (nzchar(r_profile)) {
+    try_source(r_profile)
+  } else {
+    try_source(".Rprofile") || try_source(file.path("~", ".Rprofile"))
+  }
 })
 
 if (is.null(getOption("vscodeR"))) {
