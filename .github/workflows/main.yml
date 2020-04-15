@@ -41,5 +41,5 @@ jobs:
         shell: bash
       - name: Running lintr
         run: |
-          Rscript -e "stopifnot(length(print(lintr::lint_dir("./R"))) == 0)"
+          Rscript -e "stopifnot(length(print(lintr::lint_dir('./R'))) == 0)"
         shell: bash
