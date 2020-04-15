@@ -10,8 +10,7 @@ local({
 
   try_source(Sys.getenv("R_PROFILE_USER_OLD")) ||
     try_source(".Rprofile") ||
-    try_source(file.path("~", ".Rprofile")) ||
-    try_source(file.path(R.home(), "etc", "Rprofile.site"))
+    try_source(file.path("~", ".Rprofile"))
 })
 
 if (is.null(getOption("vscodeR"))) {
