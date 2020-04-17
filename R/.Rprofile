@@ -7,5 +7,8 @@ if (nzchar(Sys.getenv("R_PROFILE_USER_OLD"))) {
 }
 
 if (is.null(getOption("vscodeR"))) {
-  source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"), ".vscode-R", "init.R"))
+  source(file.path(
+    Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"),
+    ".vscode-R", "init.R")
+  )
 }
