@@ -429,8 +429,7 @@
           "type": "array",
           "default": [
             "--no-save",
-            "--no-restore",
-            "--no-site-file"
+            "--no-restore"
           ],
           "description": "R command line options",
           "items": {
