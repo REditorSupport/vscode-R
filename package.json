@@ -328,6 +328,11 @@
         "title": "Run Command in Terminal",
         "category": "R",
         "command": "r.runCommand"
+      },
+      {
+        "title": "Run from Beginning to Line",
+        "category": "R",
+        "command": "r.runFromBeginningToLine"
       }
     ],
     "keybindings": [
@@ -389,6 +394,12 @@
         "command": "r.runSourcewithEcho",
         "key": "shift+Ctrl+enter",
         "mac": "shift+cmd+enter",
+        "when": "editorTextFocus && editorLangId == 'r'"
+      },
+      {
+        "command": "r.runFromBeginningToLine",
+        "key": "Ctrl+alt+b",
+        "mac": "cmd+alt+b",
         "when": "editorTextFocus && editorLangId == 'r'"
       }
     ],
