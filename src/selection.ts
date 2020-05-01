@@ -34,7 +34,7 @@ export function surroundSelection(textArray: string[], rFunctionName: string[]) 
 }
 
 export function getSelection() {
-    const selection = { linesDownToMoveCursor: 0, selectedTextArray: [] };
+    const selection = { linesDownToMoveCursor: 0, selectedText: '' };
     const { start, end } = window.activeTextEditor.selection;
     const currentDocument = window.activeTextEditor.document;
     const range = new Range(start, end);
@@ -50,7 +50,7 @@ export function getSelection() {
         selectedLine = currentDocument.getText(new Range(newStart, newEnd));
     } else if (start.line === end.line) {
         selection.linesDownToMoveCursor = 0;
-        selection.selectedTextArray = [currentDocument.getText(new Range(start, end))];
+        selection.selectedText = currentDocument.getText(new Range(start, end));
 
         return selection;
     } else {
@@ -58,7 +58,7 @@ export function getSelection() {
     }
 
     const selectedTextArray = selectedLine.split('\n');
-    selection.selectedTextArray = removeCommentedLines(selectedTextArray);
+    selection.selectedText = removeCommentedLines(selectedTextArray).join('\n');
 
     return selection;
 }

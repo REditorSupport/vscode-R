@@ -104,19 +104,18 @@ export function runSelectionInTerm(term: Terminal) {
         commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
         commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
     }
-    runTextInTerm(term, selection.selectedTextArray);
+    runTextInTerm(term, selection.selectedText);
 }
 
-export async function runTextInTerm(term: Terminal, textArray: string[]) {
-    if (textArray.length > 1 && config().get<boolean>('bracketedPaste')) {
+export async function runTextInTerm(term: Terminal, text: string) {
+    if (config().get<boolean>('bracketedPaste')) {
         if (process.platform !== 'win32') {
             // Surround with ANSI control characters for bracketed paste mode
-            textArray[0] = `\x1b[200~${textArray[0]}`;
-            textArray[textArray.length - 1] += '\x1b[201~';
+            text = `\x1b[200~${text}\x1b[201~`;
         }
-        term.sendText(textArray.join('\n'));
+        term.sendText(text);
     } else {
-        for (const line of textArray) {
+        for (const line of text.split('\n')) {
             await delay(8); // Increase delay if RTerm can't handle speed.
             term.sendText(line);
         }
