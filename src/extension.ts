@@ -11,7 +11,7 @@ import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startResponseWatcher } from './session';
-import { config, ToRStringLiteral } from './util';
+import { ToRStringLiteral } from './util';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 

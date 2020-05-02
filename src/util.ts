@@ -4,7 +4,6 @@ import { existsSync } from 'fs-extra';
 import path = require('path');
 import { window, workspace } from 'vscode';
 import winreg = require('winreg');
-export let config = workspace.getConfiguration('r');
 
 export async function getRpath() {
     if (process.platform === 'win32') {

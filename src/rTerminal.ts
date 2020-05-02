@@ -9,7 +9,7 @@ import { commands, Terminal, TerminalOptions, window, workspace } from 'vscode';
 
 import { getSelection } from './selection';
 import { removeSessionFiles } from './session';
-import { config, delay, getRpath } from './util';
+import { delay, getRpath } from './util';
 export let rTerm: Terminal;
 
 export async function createRTerm(preserveshow?: boolean): Promise<boolean> {

@@ -8,7 +8,6 @@ import { URL } from 'url';
 import { commands, FileSystemWatcher, RelativePattern, StatusBarItem, Uri, ViewColumn, Webview, window, workspace } from 'vscode';
 
 import { chooseTerminalAndSendText } from './rTerminal';
-import { config } from './util';
 
 export let globalenv: any;
 let responseWatcher: FileSystemWatcher;
