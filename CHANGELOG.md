@@ -1,5 +1,12 @@
 # Change Log
 
+## 1.3.0
+
+* Change so setting changes take effect immediately (Fix #301)
+* Fix package volunerability
+* Improve .Rprofile
+* Remove --no-site-file from default r.rterm.option 
+
 ## 1.2.8
 
 * Use eslint in GitHub Actions
