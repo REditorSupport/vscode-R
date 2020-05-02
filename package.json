@@ -413,17 +413,17 @@
         "r.rterm.windows": {
           "type": "string",
           "default": "",
-          "description": "R.exe path for windows"
+          "description": "R.exe path for windows."
         },
         "r.rterm.mac": {
           "type": "string",
           "default": "/usr/local/bin/R",
-          "description": "R path for Mac OS X"
+          "description": "R path for Mac OS X."
         },
         "r.rterm.linux": {
           "type": "string",
           "default": "/usr/bin/R",
-          "description": "R path for Linux"
+          "description": "R path for Linux."
         },
         "r.rterm.option": {
           "type": "array",
@@ -431,7 +431,7 @@
             "--no-save",
             "--no-restore"
           ],
-          "description": "R command line options",
+          "description": "R command line options.",
           "items": {
             "type": "string"
           }
@@ -439,7 +439,7 @@
         "r.source.encoding": {
           "type": "string",
           "default": "UTF-8",
-          "description": "An optional encoding to pass to R when executing the file, i.e. 'source(FILE, encoding=ENCODING)'"
+          "description": "An optional encoding to pass to R when executing the file, i.e. 'source(FILE, encoding=ENCODING)'."
         },
         "r.source.focus": {
           "type": "string",
@@ -448,22 +448,22 @@
             "editor",
             "terminal"
           ],
-          "description": "Keeping focus when running"
+          "description": "Keeping focus when running."
         },
         "r.alwaysUseActiveTerminal": {
           "type": "boolean",
           "default": false,
-          "description": "Use active terminal for all commands, rather than creating a new R terminal"
+          "description": "Use active terminal for all commands, rather than creating a new R terminal."
         },
         "r.bracketedPaste": {
           "type": "boolean",
           "default": false,
-          "description": "Use bracketed paste mode when sending code to console. Enable for Radian console"
+          "description": "Use bracketed paste mode when sending code to console. Enable for Radian console."
         },
         "r.sessionWatcher": {
           "type": "boolean",
           "default": false,
-          "description": "Enable R session watcher (experimental). Restart required to take effect"
+          "description": "Enable R session watcher (experimental). Restart required to take effect."
         }
       }
     }
