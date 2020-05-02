@@ -463,7 +463,7 @@
         "r.sessionWatcher": {
           "type": "boolean",
           "default": false,
-          "description": "Enable R session watcher (experimental)"
+          "description": "Enable R session watcher (experimental). Restart required to take effect"
         }
       }
     }
