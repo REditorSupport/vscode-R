@@ -5,7 +5,7 @@ import path = require('path');
 
 import { pathExists } from 'fs-extra';
 import { isDeepStrictEqual } from 'util';
-import { commands, Terminal, TerminalOptions, window } from 'vscode';
+import { commands, Terminal, TerminalOptions, window, workspace } from 'vscode';
 
 import { getSelection } from './selection';
 import { removeSessionFiles } from './session';
@@ -19,7 +19,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     if (termPath === undefined) {
         return undefined;
     }
-    const termOpt: string[] = config.get('rterm.option');
+    const termOpt: string[] = workspace.getConfiguration('r').get('rterm.option');
     pathExists(termPath, (err, exists) => {
         if (exists) {
             const termOptions: TerminalOptions = {
@@ -27,7 +27,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
                 shellPath: termPath,
                 shellArgs: termOpt,
             };
-            if (config.get<boolean>('sessionWatcher')) {
+            if (workspace.getConfiguration('r').get<boolean>('sessionWatcher')) {
                 termOptions.env = {
                     R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
                     R_PROFILE_USER: path.join(os.homedir(), '.vscode-R', '.Rprofile'),
@@ -46,7 +46,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
 
 export function deleteTerminal(term: Terminal) {
     if (isDeepStrictEqual(term, rTerm)) {
-        if (config.get<boolean>('sessionWatcher')) {
+        if (workspace.getConfiguration('r').get<boolean>('sessionWatcher')) {
             removeSessionFiles();
         }
         rTerm = undefined;
@@ -54,7 +54,7 @@ export function deleteTerminal(term: Terminal) {
 }
 
 export async function chooseTerminal(active: boolean = false) {
-    if (active || config.get('alwaysUseActiveTerminal')) {
+    if (active || workspace.getConfiguration('r').get('alwaysUseActiveTerminal')) {
         if (window.terminals.length < 1) {
             window.showInformationMessage('There are no open terminals.');
 
@@ -108,7 +108,7 @@ export function runSelectionInTerm(term: Terminal) {
 }
 
 export async function runTextInTerm(term: Terminal, textArray: string[]) {
-    if (textArray.length > 1 && config.get<boolean>('bracketedPaste')) {
+    if (textArray.length > 1 && workspace.getConfiguration('r').get<boolean>('bracketedPaste')) {
         if (process.platform !== 'win32') {
             // Surround with ANSI control characters for bracketed paste mode
             textArray[0] = `\x1b[200~${textArray[0]}`;
@@ -134,6 +134,6 @@ export async function chooseTerminalAndSendText(text: string) {
 }
 
 function setFocus(term: Terminal) {
-    const focus: string = config.get('source.focus');
+    const focus: string = workspace.getConfiguration('r').get('source.focus');
     term.show(focus !== 'terminal');
 }
