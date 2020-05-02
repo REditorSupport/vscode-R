@@ -8,6 +8,7 @@ import { URL } from 'url';
 import { commands, FileSystemWatcher, RelativePattern, StatusBarItem, Uri, ViewColumn, Webview, window, workspace } from 'vscode';
 
 import { chooseTerminalAndSendText } from './rTerminal';
+import { config } from './util';
 
 export let globalenv: any;
 let responseWatcher: FileSystemWatcher;
@@ -49,7 +50,7 @@ export function startResponseWatcher(sessionStatusBarItem: StatusBarItem) {
 }
 
 export function attachActive() {
-    if (workspace.getConfiguration('r').get<boolean>('sessionWatcher')) {
+    if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
         chooseTerminalAndSendText('getOption(\'vscodeR\')$attach()');
     } else {
@@ -329,7 +330,7 @@ async function getListHtml(webview: Webview, file: string) {
 }
 
 export async function showPlotHistory() {
-    if (workspace.getConfiguration('r').get<boolean>('sessionWatcher')) {
+    if (config().get<boolean>('sessionWatcher')) {
         if (plotDir === undefined) {
             window.showErrorMessage('No session is attached.');
         } else {

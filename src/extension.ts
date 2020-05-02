@@ -3,7 +3,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import { CancellationToken, commands, CompletionContext, CompletionItem, CompletionItemKind,
          ExtensionContext, Hover, IndentAction, languages, MarkdownString, Position, Range,
-         StatusBarAlignment, TextDocument, window, workspace } from 'vscode';
+         StatusBarAlignment, TextDocument, window } from 'vscode';
 
 import { previewDataframe, previewEnvironment } from './preview';
 import { createGitignore } from './rGitignore';
@@ -11,7 +11,7 @@ import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startResponseWatcher } from './session';
-import { ToRStringLiteral } from './util';
+import { config, ToRStringLiteral } from './util';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -59,7 +59,7 @@ export function activate(context: ExtensionContext) {
         const isSaved = await saveDocument(wad);
         if (isSaved) {
             let rPath: string = ToRStringLiteral(wad.fileName, '"');
-            let encodingParam = workspace.getConfiguration('r').get<string>('source.encoding');
+            let encodingParam = config().get<string>('source.encoding');
             encodingParam = `encoding = "${encodingParam}"`;
             rPath = [rPath, encodingParam].join(', ');
             if (echo) {
@@ -74,7 +74,7 @@ export function activate(context: ExtensionContext) {
         const isSaved = await saveDocument(wad);
         if (isSaved) {
             let rPath = ToRStringLiteral(wad.fileName, '"');
-            let encodingParam = workspace.getConfiguration('r').get<string>('source.encoding');
+            let encodingParam = config().get<string>('source.encoding');
             encodingParam = `encoding = "${encodingParam}"`;
             rPath = [rPath, encodingParam].join(', ');
             if (echo) {
@@ -188,7 +188,7 @@ export function activate(context: ExtensionContext) {
         window.onDidCloseTerminal(deleteTerminal),
     );
 
-    if (workspace.getConfiguration('r').get<boolean>('sessionWatcher')) {
+    if (config().get<boolean>('sessionWatcher')) {
         console.info('Initialize session watcher');
         languages.registerHoverProvider('r', {
             provideHover(document, position, token) {
