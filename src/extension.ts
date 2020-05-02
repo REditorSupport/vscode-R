@@ -59,7 +59,7 @@ export function activate(context: ExtensionContext) {
         const isSaved = await saveDocument(wad);
         if (isSaved) {
             let rPath: string = ToRStringLiteral(wad.fileName, '"');
-            let encodingParam = config.get<string>('source.encoding');
+            let encodingParam = config().get<string>('source.encoding');
             encodingParam = `encoding = "${encodingParam}"`;
             rPath = [rPath, encodingParam].join(', ');
             if (echo) {
@@ -74,7 +74,7 @@ export function activate(context: ExtensionContext) {
         const isSaved = await saveDocument(wad);
         if (isSaved) {
             let rPath = ToRStringLiteral(wad.fileName, '"');
-            let encodingParam = config.get<string>('source.encoding');
+            let encodingParam = config().get<string>('source.encoding');
             encodingParam = `encoding = "${encodingParam}"`;
             rPath = [rPath, encodingParam].join(', ');
             if (echo) {
@@ -188,7 +188,7 @@ export function activate(context: ExtensionContext) {
         window.onDidCloseTerminal(deleteTerminal),
     );
 
-    if (config.get<boolean>('sessionWatcher')) {
+    if (config().get<boolean>('sessionWatcher')) {
         console.info('Initialize session watcher');
         languages.registerHoverProvider('r', {
             provideHover(document, position, token) {

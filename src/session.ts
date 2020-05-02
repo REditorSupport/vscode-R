@@ -50,7 +50,7 @@ export function startResponseWatcher(sessionStatusBarItem: StatusBarItem) {
 }
 
 export function attachActive() {
-    if (config.get<boolean>('sessionWatcher')) {
+    if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
         chooseTerminalAndSendText('getOption(\'vscodeR\')$attach()');
     } else {
@@ -330,7 +330,7 @@ async function getListHtml(webview: Webview, file: string) {
 }
 
 export async function showPlotHistory() {
-    if (config.get<boolean>('sessionWatcher')) {
+    if (config().get<boolean>('sessionWatcher')) {
         if (plotDir === undefined) {
             window.showErrorMessage('No session is attached.');
         } else {

@@ -4,11 +4,14 @@ import { existsSync } from 'fs-extra';
 import path = require('path');
 import { window, workspace } from 'vscode';
 import winreg = require('winreg');
-export let config = workspace.getConfiguration('r');
+
+export function config() {
+    return workspace.getConfiguration('r');
+}
 
 export async function getRpath() {
     if (process.platform === 'win32') {
-        let rpath: string = config.get<string>('rterm.windows');
+        let rpath: string = config().get<string>('rterm.windows');
         if (rpath === '') {
             // Find path from registry
             try {
@@ -27,10 +30,10 @@ export async function getRpath() {
         return rpath;
     }
     if (process.platform === 'darwin') {
-        return config.get<string>('rterm.mac');
+        return config().get<string>('rterm.mac');
     }
     if (process.platform === 'linux') {
-        return config.get<string>('rterm.linux');
+        return config().get<string>('rterm.linux');
     }
     window.showErrorMessage(`${process.platform} can't use R`);
 
