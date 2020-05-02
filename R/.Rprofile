@@ -14,6 +14,8 @@ local({
   } else {
     try_source(".Rprofile") || try_source(file.path("~", ".Rprofile"))
   }
+
+  invisible()
 })
 
 if (is.null(getOption("vscodeR"))) {
