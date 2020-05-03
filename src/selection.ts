@@ -61,12 +61,7 @@ export function getSelection() {
 }
 
 function removeCommentedLines(selection: string): string {
-    const selectionWithoutComments = [];
-    selection.split('\n').forEach((line) => {
-        if (!checkForBlankOrComment(line)) { selectionWithoutComments.push(line); }
-    });
-
-    return selectionWithoutComments.join('\n');
+    return selection.split('\n').filter((line) => !checkForBlankOrComment(line)).join('\n');
 }
 
 export function checkForBlankOrComment(line: string): boolean {
