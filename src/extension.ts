@@ -110,13 +110,12 @@ export function activate(context: ExtensionContext) {
             return;
         }
         const text = getWordOrSelection();
-        const wrappedText = surroundSelection(text, rFunctionName).join('\n');
+        const wrappedText = surroundSelection(text, rFunctionName);
         runTextInTerm(callableTerminal, wrappedText);
     }
 
     async function runCommandWithSelectionOrWord(rCommand: string) {
-        const text = getWordOrSelection()
-                    .join('\n');
+        const text = getWordOrSelection();
         const callableTerminal = await chooseTerminal();
         const call = rCommand.replace(/\$\$/g, text);
         runTextInTerm(callableTerminal, call);

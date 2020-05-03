@@ -4,7 +4,7 @@ import { Position, Range, window } from 'vscode';
 
 import { LineCache } from './lineCache';
 
-export function getWordOrSelection() {
+export function getWordOrSelection(): string {
     const selection = window.activeTextEditor.selection;
     const currentDocument = window.activeTextEditor.document;
     let text: string;
@@ -16,21 +16,19 @@ export function getWordOrSelection() {
         text = currentDocument.getText(window.activeTextEditor.selection);
     }
 
-    return text.split('\n');
+    return text;
 }
 
-export function surroundSelection(textArray: string[], rFunctionName: string[]) {
+export function surroundSelection(text: string, rFunctionName: string[]): string {
     if (rFunctionName && rFunctionName.length) {
         let rFunctionCall = '';
         for (const feature of rFunctionName) {
             rFunctionCall += `${feature}(`;
         }
-        textArray[0] = rFunctionCall + textArray[0].trimLeft();
-        const end = textArray.length - 1;
-        textArray[end] = textArray[end].trimRight() + ')'.repeat(rFunctionName.length);
+        text = rFunctionCall + text.trim() + ')'.repeat(rFunctionName.length);
     }
 
-    return textArray;
+    return text;
 }
 
 export function getSelection() {
@@ -57,19 +55,18 @@ export function getSelection() {
         selectedLine = currentDocument.getText(new Range(start, end));
     }
 
-    const selectedTextArray = selectedLine.split('\n');
-    selection.selectedText = removeCommentedLines(selectedTextArray).join('\n');
+    selection.selectedText = removeCommentedLines(selectedLine);
 
     return selection;
 }
 
-function removeCommentedLines(selection: string[]): string[] {
+function removeCommentedLines(selection: string): string {
     const selectionWithoutComments = [];
-    selection.forEach((line) => {
+    selection.split('\n').forEach((line) => {
         if (!checkForBlankOrComment(line)) { selectionWithoutComments.push(line); }
     });
 
-    return selectionWithoutComments;
+    return selectionWithoutComments.join('\n');
 }
 
 export function checkForBlankOrComment(line: string): boolean {
