@@ -4,7 +4,7 @@ import { Position, Range, window } from 'vscode';
 
 import { LineCache } from './lineCache';
 
-export function getWordOrSelection() {
+export function getWordOrSelection(): string {
     const selection = window.activeTextEditor.selection;
     const currentDocument = window.activeTextEditor.document;
     let text: string;
@@ -16,25 +16,23 @@ export function getWordOrSelection() {
         text = currentDocument.getText(window.activeTextEditor.selection);
     }
 
-    return text.split('\n');
+    return text;
 }
 
-export function surroundSelection(textArray: string[], rFunctionName: string[]) {
+export function surroundSelection(text: string, rFunctionName: string[]): string {
     if (rFunctionName && rFunctionName.length) {
         let rFunctionCall = '';
         for (const feature of rFunctionName) {
             rFunctionCall += `${feature}(`;
         }
-        textArray[0] = rFunctionCall + textArray[0].trimLeft();
-        const end = textArray.length - 1;
-        textArray[end] = textArray[end].trimRight() + ')'.repeat(rFunctionName.length);
+        text = rFunctionCall + text.trim() + ')'.repeat(rFunctionName.length);
     }
 
-    return textArray;
+    return text;
 }
 
 export function getSelection() {
-    const selection = { linesDownToMoveCursor: 0, selectedTextArray: [] };
+    const selection = { linesDownToMoveCursor: 0, selectedText: '' };
     const { start, end } = window.activeTextEditor.selection;
     const currentDocument = window.activeTextEditor.document;
     const range = new Range(start, end);
@@ -50,26 +48,20 @@ export function getSelection() {
         selectedLine = currentDocument.getText(new Range(newStart, newEnd));
     } else if (start.line === end.line) {
         selection.linesDownToMoveCursor = 0;
-        selection.selectedTextArray = [currentDocument.getText(new Range(start, end))];
+        selection.selectedText = currentDocument.getText(new Range(start, end));
 
         return selection;
     } else {
         selectedLine = currentDocument.getText(new Range(start, end));
     }
 
-    const selectedTextArray = selectedLine.split('\n');
-    selection.selectedTextArray = removeCommentedLines(selectedTextArray);
+    selection.selectedText = removeCommentedLines(selectedLine);
 
     return selection;
 }
 
-function removeCommentedLines(selection: string[]): string[] {
-    const selectionWithoutComments = [];
-    selection.forEach((line) => {
-        if (!checkForBlankOrComment(line)) { selectionWithoutComments.push(line); }
-    });
-
-    return selectionWithoutComments;
+function removeCommentedLines(selection: string): string {
+    return selection.split('\n').filter((line) => !checkForBlankOrComment(line)).join('\n');
 }
 
 export function checkForBlankOrComment(line: string): boolean {

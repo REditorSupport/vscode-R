@@ -115,11 +115,10 @@ export function activate(context: ExtensionContext) {
     }
 
     async function runCommandWithSelectionOrWord(rCommand: string) {
-        const text = getWordOrSelection()
-                    .join('\n');
+        const text = getWordOrSelection();
         const callableTerminal = await chooseTerminal();
         const call = rCommand.replace(/\$\$/g, text);
-        runTextInTerm(callableTerminal, [call]);
+        runTextInTerm(callableTerminal, call);
     }
 
     async function runCommandWithEditorPath(rCommand: string) {
@@ -129,13 +128,13 @@ export function activate(context: ExtensionContext) {
             const callableTerminal = await chooseTerminal();
             const rPath = ToRStringLiteral(wad.fileName, '');
             const call = rCommand.replace(/\$\$/g, rPath);
-            runTextInTerm(callableTerminal, [call]);
+            runTextInTerm(callableTerminal, call);
         }
     }
 
     async function runCommand(rCommand: string) {
         const callableTerminal = await chooseTerminal();
-        runTextInTerm(callableTerminal, [rCommand]);
+        runTextInTerm(callableTerminal, rCommand);
     }
 
     languages.registerCompletionItemProvider('r', {
