@@ -137,6 +137,19 @@ export function activate(context: ExtensionContext) {
         runTextInTerm(callableTerminal, rCommand);
     }
 
+    async function runFromBeginningToLine() {
+        const callableTerminal = await chooseTerminal(true);
+        if (callableTerminal === undefined) {
+            return;
+        }
+        const endLine = window.activeTextEditor.selection.end.line;
+        const charactersOnLine = window.activeTextEditor.document.lineAt(endLine).text.length;
+        const endPos = new Position(endLine, charactersOnLine);
+        const range = new Range(new Position(0, 0), endPos);
+        const text = window.activeTextEditor.document.getText(range);
+        runTextInTerm(callableTerminal, text);
+    }
+
     languages.registerCompletionItemProvider('r', {
         provideCompletionItems(document: TextDocument, position: Position) {
             if (document.lineAt(position).text
@@ -171,6 +184,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.runSourcewithEcho', () => { runSource(true); }),
         commands.registerCommand('r.runSelection', runSelection),
         commands.registerCommand('r.runSelectionInActiveTerm', runSelectionInActiveTerm),
+        commands.registerCommand('r.runFromBeginningToLine', runFromBeginningToLine),
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.previewDataframe', previewDataframe),
         commands.registerCommand('r.previewEnvironment', previewEnvironment),
