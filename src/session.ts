@@ -330,7 +330,7 @@ async function getListHtml(webview: Webview, file: string) {
 }
 
 export async function showPlotHistory() {
-    if (config().get<boolean>('sessionWatcher')) {
+    if (workspace.getConfiguration('r').get<boolean>('sessionWatcher')) {
         if (plotDir === undefined) {
             window.showErrorMessage('No session is attached.');
         } else {
