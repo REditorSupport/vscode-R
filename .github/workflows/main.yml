@@ -43,3 +43,13 @@ jobs:
         run: |
           Rscript -e "stopifnot(length(print(lintr::lint_dir('./R'))) == 0)"
         shell: bash
+  devreplay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: "13.x"
+      - run: npm ci
+      - name: Run devreplay
+        run: ./node_modules/.bin/devreplay --dir ./src devreplay.json
