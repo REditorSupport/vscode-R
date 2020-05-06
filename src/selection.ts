@@ -55,7 +55,7 @@ export function getSelection() {
         selectedLine = currentDocument.getText(new Range(start, end));
     }
 
-    selection.selectedText = removeCommentedLines(selectedLine);
+    selection.selectedText = selectedLine.trim();
 
     return selection;
 }
