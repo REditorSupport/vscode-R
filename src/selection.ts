@@ -60,10 +60,6 @@ export function getSelection() {
     return selection;
 }
 
-function removeCommentedLines(selection: string): string {
-    return selection.split('\n').filter((line) => !checkForBlankOrComment(line)).join('\n');
-}
-
 export function checkForBlankOrComment(line: string): boolean {
     let index = 0;
     let isWhitespaceOnly = true;
