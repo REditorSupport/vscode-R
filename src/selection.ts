@@ -60,20 +60,6 @@ export function getSelection() {
     return selection;
 }
 
-export function checkForBlankOrComment(line: string): boolean {
-    let index = 0;
-    let isWhitespaceOnly = true;
-    while (index < line.length) {
-        if (!((line[index] === ' ') || (line[index] === '\t') || (line[index] === '\r'))) {
-            isWhitespaceOnly = false;
-            break;
-        }
-        index += 1;
-    }
-
-    return isWhitespaceOnly || line[index] === '#';
-}
-
 /**
  * Like vscode's Position class, but allows negative values.
  */
