@@ -55,27 +55,9 @@ export function getSelection() {
         selectedLine = currentDocument.getText(new Range(start, end));
     }
 
-    selection.selectedText = removeCommentedLines(selectedLine);
+    selection.selectedText = selectedLine.trim();
 
     return selection;
-}
-
-function removeCommentedLines(selection: string): string {
-    return selection.split('\n').filter((line) => !checkForBlankOrComment(line)).join('\n');
-}
-
-export function checkForBlankOrComment(line: string): boolean {
-    let index = 0;
-    let isWhitespaceOnly = true;
-    while (index < line.length) {
-        if (!((line[index] === ' ') || (line[index] === '\t') || (line[index] === '\r'))) {
-            isWhitespaceOnly = false;
-            break;
-        }
-        index += 1;
-    }
-
-    return isWhitespaceOnly || line[index] === '#';
 }
 
 /**
