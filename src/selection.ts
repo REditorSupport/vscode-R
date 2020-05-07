@@ -220,17 +220,17 @@ export function extendSelection(line: number, getLine: (line: number) => string,
                 }
             }
         } else {
-            if (lookingForward) {
-                if (nextChar === quoteChar && curChar !== '\\') {
-                    quoteChar = '';
-                }
-            } else {
-                if (nextChar === quoteChar) {
+            if (nextChar === quoteChar) {
+                if (lookingForward) {
+                    if (curChar !== '\\') {
+                        quoteChar = '';
+                    }
+                } else {
                     const next = getNextChar(poss[lookingForward ? 1 : 0],
-                            lookingForward,
-                            getLineFromCache,
-                            getEndsInOperatorFromCache,
-                            lineCount);
+                        lookingForward,
+                        getLineFromCache,
+                        getEndsInOperatorFromCache,
+                        lineCount);
                     if (next.nextChar !== '\\') {
                         quoteChar = '';
                     }
