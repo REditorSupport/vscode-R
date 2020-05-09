@@ -2,14 +2,20 @@ name: main
 on: [push, pull_request]
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
         with:
           node-version: "13.x"
-      - run: npm ci
-      - run: npm run test
+      - run: npm install
+      - name: Run tests
+        uses: GabrielBB/xvfb-action@v1.0
+        with:
+          run: npm run test
   build:
     runs-on: ubuntu-latest
     env:
