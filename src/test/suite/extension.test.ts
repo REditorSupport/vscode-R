@@ -496,18 +496,6 @@ suite('Extension Tests', () => {
         })
         `.split('\n');
         function f(i) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
-    });
-
-    test('Selecting multi-line brackets with escaped quote', () => {
-        const doc = `
-        lapply(1:5, function(i) {
-            paste0("\"", i)
-        })
-        `.split('\n');
-        function f(i) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 3);
         assert.equal(extendSelection(3, f, doc.length).startLine, 0);
@@ -529,16 +517,30 @@ suite('Extension Tests', () => {
         assert.equal(extendSelection(3, f, doc.length).endLine, 3);
     });
 
-    test('Selecting multi-line brackets with escaped quotes', () => {
+    test('Selecting multi-line brackets with escaped quote', () => {
         const doc = `
-        print("\"hello"
+        lapply(1:5, function(i) {
+            paste0("\\"", i)
+        })
+        `.split('\n');
+        function f(i) { return (doc[i]); }
+        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
+        assert.equal(extendSelection(1, f, doc.length).endLine, 3);
+        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
+        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
+    });
+
+    test('Selecting multi-line brackets with escaped quotes in multi-line string', () => {
+        const doc = `
+        print("\\"hello
+        hello\\""
         )
         `.split('\n');
         function f(i) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
+        assert.equal(extendSelection(1, f, doc.length).endLine, 3);
+        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
+        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
     });
 
     test('Selecting multi-line brackets with multi-line string and unmatched brackets', () => {
@@ -551,9 +553,9 @@ suite('Extension Tests', () => {
         `.split('\n');
         function f(i) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 4);
+        assert.equal(extendSelection(1, f, doc.length).endLine, 5);
         assert.equal(extendSelection(5, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(5, f, doc.length).endLine, 4);
+        assert.equal(extendSelection(5, f, doc.length).endLine, 5);
     });
 
     test('Selecting multi-line expression with escaped backtick and ending operator', () => {
