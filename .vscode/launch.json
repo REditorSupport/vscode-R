@@ -2,7 +2,6 @@
 {
     "version": "0.1.0",
     "configurations": [
-
         {
             "name": "Launch Extension",
             "type": "extensionHost",
@@ -12,6 +11,20 @@
             "stopOnEntry": false,
             "sourceMaps": true,
             "outFiles": [ "${workspaceRoot}/out/src/**/*.js" ],
+            "preLaunchTask": "npm"
+        },
+        {
+            "name": "Extension Tests",
+            "type": "extensionHost",
+            "request": "launch",
+            "runtimeExecutable": "${execPath}",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}",
+                "--extensionTestsPath=${workspaceFolder}/out/test/suite/index"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/out/test/**/*.js"
+            ],
             "preLaunchTask": "npm"
         }
     ]
