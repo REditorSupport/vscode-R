@@ -39,7 +39,7 @@ jobs:
           node-version: "13.x"
       - run: npm ci
       - name: Run eslint
-        run: ./node_modules/.bin/eslint -c ./.eslintrc.js src/*.ts test/*.ts
+        run: ./node_modules/.bin/eslint -c ./.eslintrc.js './src/**'
   lintr:
     runs-on: ubuntu-latest
     container:
