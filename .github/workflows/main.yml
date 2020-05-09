@@ -49,7 +49,7 @@ jobs:
       - name: Install apt-get dependencies
         run: |
           apt-get update
-          apt-get install git ssh curl bzip2 libffi6 libffi-dev -y
+          apt-get install git ssh curl bzip2 -y
       - name: Install lintr
         run: |
           Rscript -e "install.packages('lintr', repos = 'https://cloud.r-project.org')"
