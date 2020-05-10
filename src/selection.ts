@@ -87,6 +87,10 @@ function isBracket(c: string, lookingForward: boolean) {
     return ((c === ')') || (c === ']') || (c === '}'));
 }
 
+function isQuote(c: string) {
+    return c === '"' || c === '\'' || c === '`';
+}
+
 /**
  * From a given position, return the 'next' character, its position in the document,
  * whether it is start/end of a code line (possibly broken over multiple text lines), and whether it is the
@@ -188,7 +192,9 @@ export function extendSelection(line: number, getLine: (line: number) => string,
     const poss = { 0: new PositionNeg(line, 0), 1: new PositionNeg(line, -1) };
     const flagsFinish = { 0: false, 1: false }; // 1 represents looking forward, 0 represents looking back.
     let flagAbort = false;
-    const unmatched = { 0: [] as string[], 1: [] as string[]};
+    const unmatched = { 0: [] as string[], 1: [] as string[] };
+    let curChar = '';
+    let quoteChar = '';
     while (!flagAbort && !(flagsFinish[0] && flagsFinish[1])) {
         const { nextChar, nextPos, isEndOfCodeLine, isEndOfFile }
         = getNextChar(poss[lookingForward ? 1 : 0],
@@ -197,17 +203,42 @@ export function extendSelection(line: number, getLine: (line: number) => string,
                       getEndsInOperatorFromCache,
                       lineCount);
         poss[Number(lookingForward)] = nextPos;
-        if (isBracket(nextChar, lookingForward)) {
-            unmatched[lookingForward ? 1 : 0].push(nextChar);
-        } else if (isBracket(nextChar, !lookingForward)) {
-            if (unmatched[lookingForward ? 1 : 0].length === 0) {
-                lookingForward = !lookingForward;
-                unmatched[lookingForward ? 1 : 0].push(nextChar);
-                flagsFinish[Number(lookingForward)] = false;
-            } else if (!doBracketsMatch(nextChar, unmatched[lookingForward ? 1 : 0].pop())) {
-                flagAbort = true;
+        if (quoteChar === '') {
+            if (isQuote(nextChar)) {
+                quoteChar = nextChar;
+            } else {
+                if (isBracket(nextChar, lookingForward)) {
+                    unmatched[lookingForward ? 1 : 0].push(nextChar);
+                } else if (isBracket(nextChar, !lookingForward)) {
+                    if (unmatched[lookingForward ? 1 : 0].length === 0) {
+                        lookingForward = !lookingForward;
+                        unmatched[lookingForward ? 1 : 0].push(nextChar);
+                        flagsFinish[Number(lookingForward)] = false;
+                    } else if (!doBracketsMatch(nextChar, unmatched[lookingForward ? 1 : 0].pop())) {
+                        flagAbort = true;
+                    }
+                }
             }
-        } else if (isEndOfCodeLine) {
+        } else {
+            if (nextChar === quoteChar) {
+                if (lookingForward) {
+                    if (curChar !== '\\') {
+                        quoteChar = '';
+                    }
+                } else {
+                    const next = getNextChar(poss[lookingForward ? 1 : 0],
+                        lookingForward,
+                        getLineFromCache,
+                        getEndsInOperatorFromCache,
+                        lineCount);
+                    if (next.nextChar !== '\\') {
+                        quoteChar = '';
+                    }
+                }
+            }
+        }
+
+        if (isEndOfCodeLine) {
             if (unmatched[lookingForward ? 1 : 0].length === 0) {
                 // We have found everything we need to in this direction. Continue looking in the other direction.
                 flagsFinish[Number(lookingForward)] = true;
@@ -217,6 +248,8 @@ export function extendSelection(line: number, getLine: (line: number) => string,
                 flagAbort = true;
             }
         }
+        
+        curChar = nextChar;
     }
     if (flagAbort) {
         return ({ startLine: line, endLine: line });
