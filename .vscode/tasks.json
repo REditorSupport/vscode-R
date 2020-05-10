@@ -13,7 +13,6 @@
         "--loglevel",
         "silent"
       ],
-      "isBackground": true,
       "problemMatcher": "$tsc-watch"
     },
     {
@@ -24,7 +23,6 @@
         "run",
         "pretest"
       ],
-      "isBackground": true,
       "problemMatcher": "$tsc-watch"
     }
   ]
