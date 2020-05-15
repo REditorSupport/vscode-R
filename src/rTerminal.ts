@@ -98,9 +98,9 @@ export async function chooseTerminal(active: boolean = false) {
     return rTerm;
 }
 
-export function runSelectionInTerm(term: Terminal) {
+export function runSelectionInTerm(term: Terminal, moveCursor: boolean) {
     const selection = getSelection();
-    if (selection.linesDownToMoveCursor > 0) {
+    if (moveCursor && selection.linesDownToMoveCursor > 0) {
         commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
         commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
     }

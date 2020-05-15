@@ -93,7 +93,7 @@ export function activate(context: ExtensionContext) {
         if (callableTerminal === undefined) {
             return;
         }
-        runSelectionInTerm(callableTerminal);
+        runSelectionInTerm(callableTerminal, true);
     }
 
     async function runSelectionInActiveTerm() {
@@ -101,7 +101,15 @@ export function activate(context: ExtensionContext) {
         if (callableTerminal === undefined) {
             return;
         }
-        runSelectionInTerm(callableTerminal);
+        runSelectionInTerm(callableTerminal, true);
+    }
+
+    async function runSelectionRetainCursor() {
+        const callableTerminal = await chooseTerminal();
+        if (callableTerminal === undefined) {
+            return;
+        }
+        runSelectionInTerm(callableTerminal, false);
     }
 
     async function runSelectionOrWord(rFunctionName: string[]) {
@@ -185,6 +193,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.runSelection', runSelection),
         commands.registerCommand('r.runSelectionInActiveTerm', runSelectionInActiveTerm),
         commands.registerCommand('r.runFromBeginningToLine', runFromBeginningToLine),
+        commands.registerCommand('r.runSelectionRetainCursor', runSelectionRetainCursor),
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.previewDataframe', previewDataframe),
         commands.registerCommand('r.previewEnvironment', previewEnvironment),

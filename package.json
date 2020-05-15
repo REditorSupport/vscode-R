@@ -333,6 +333,11 @@
         "title": "Run from Beginning to Line",
         "category": "R",
         "command": "r.runFromBeginningToLine"
+      },
+      {
+        "title": "Run Selection/Line (Retain Cursor)",
+        "category": "R",
+        "command": "r.runSelectionRetainCursor"
       }
     ],
     "keybindings": [
@@ -347,6 +352,12 @@
         "key": "Ctrl+enter",
         "mac": "cmd+enter",
         "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
+        "command": "r.runSelectionRetainCursor",
+        "key": "alt+enter",
+        "mac": "option+enter",
+        "when": "editorTextFocus && editorLangId == 'r'"
       },
       {
         "command": "r.nrow",
