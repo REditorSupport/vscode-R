@@ -10,7 +10,7 @@
             "patterns" : [
                 {"include" : "#fenced_block_r"},
                 {"include" : "#fenced_block_c"},
-                {"include" : "#fenced_block_cpp"},
+                {"include" : "#fenced_block_rcpp"},
                 {"include" : "#fenced_block_yaml"},
                 {"include" : "#fenced_block"},
                 {"include" : "#link-def"},
@@ -26,8 +26,8 @@
                         {"include" : "source.c"}
                     ]
                 },
-                "fenced_block_cpp" : {
-                    "begin" : "(^|\\G)([`]{3})\\{*[ ]*(?:cpp|c\\+\\+|C\\+\\+).*\\}*$",
+                "fenced_block_rcpp" : {
+                    "begin" : "(^|\\G)([`]{3})\\{*[ ]*(?:rcpp|c\\+\\+|C\\+\\+).*\\}*$",
                     "end" : "(^|\\G)([`]{3})($|\\z)",
                     "name" :  "meta.embedded.block.cpp",
                     "patterns" :  [
@@ -35,7 +35,7 @@
                     ]
                 },
                 "fenced_block_r" : {
-                    "begin" : "(^|\\G)([`]{3})\\{*[ ]*(?:r|R).*\\}*$",
+                    "begin" : "(^|\\G)([`]{3})\\{*[ ]*(?:r|R)([ ,\\}].*\\}*|\\})$",
                     "end" : "(^|\\G)([`]{3})($|\\z)",
                     "name" : "meta.embedded.block.r",
                     "patterns" : [
