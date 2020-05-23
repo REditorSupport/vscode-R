@@ -111,7 +111,7 @@
       {
         "language": "rd",
         "scopeName": "text.tex.latex.rd",
-        "path": "./syntax/Rd (R Documentation).tmLanguage"
+        "path": "./syntax/Rd (R Documentation).json"
       },
       {
         "language": "rmd",
