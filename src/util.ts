@@ -2,11 +2,23 @@
 
 import { existsSync } from 'fs-extra';
 import path = require('path');
+import fs = require('fs');
 import { window, workspace } from 'vscode';
 import winreg = require('winreg');
 
 export function config() {
     return workspace.getConfiguration('r');
+}
+
+function getMacLinuxRpath() {
+    const os_paths: string[]|string = process.env.PATH.split(':');
+    for (const os_path of os_paths) {
+        const os_r_path: string = path.join(os_path, 'R');
+        if (fs.existsSync(os_r_path)) {
+            return os_r_path;
+        }
+    }
+    return '';
 }
 
 export async function getRpath() {
@@ -30,10 +42,18 @@ export async function getRpath() {
         return rpath;
     }
     if (process.platform === 'darwin') {
-        return config().get<string>('rterm.mac');
+        let rpath: string = config().get<string>('rterm.mac');
+        if (rpath === '') {
+            rpath = getMacLinuxRpath();
+        }
+        return rpath;
     }
     if (process.platform === 'linux') {
-        return config().get<string>('rterm.linux');
+        let rpath: string = config().get<string>('rterm.linux');
+        if (rpath === '') {
+            rpath = getMacLinuxRpath();
+        }
+        return rpath;
     }
     window.showErrorMessage(`${process.platform} can't use R`);
 
