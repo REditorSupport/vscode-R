@@ -166,7 +166,7 @@
       },
       {
         "scopeName": "text.html.markdown.redcarpet",
-        "path": "./syntax/Markdown Redcarpet.tmLanguage",
+        "path": "./syntax/Markdown Redcarpet.json",
         "injectTo": [
           "text.html.rmarkdown"
         ],
