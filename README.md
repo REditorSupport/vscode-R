@@ -62,6 +62,7 @@ This extension contributes the following settings:
 * `r.alwaysUseActiveTerminal`: Use active terminal for all commands, rather than creating a new R terminal
 * `r.bracketedPaste`: For consoles supporting bracketed paste mode (such as Radian)
 * `r.sessionWatcher`: Enable R session watcher (experimental)
+* `r.rtermSendDelay`: Delay before sending text to rterm
 
 * Language server(developing [here](https://github.com/REditorSupport/languageserver))
 

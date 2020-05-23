@@ -45,4 +45,7 @@ Yes / No
 
 // Enable R session watcher (experimental)
 "r.sessionWatcher": false,
+
+// Delay before sending text to rterm
+"r.rtermSendDelay": 8,
 ```

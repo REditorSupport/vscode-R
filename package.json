@@ -486,6 +486,11 @@
           "type": "boolean",
           "default": false,
           "description": "Enable R session watcher (experimental). Restart required to take effect."
+        },
+        "r.rtermSendDelay": {
+          "type" : "integer",
+          "default" : 8,
+          "description": "Delay before sending text to rterm"
         }
       }
     }

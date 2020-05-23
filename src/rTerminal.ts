@@ -116,7 +116,7 @@ export async function runTextInTerm(term: Terminal, text: string) {
         term.sendText(text);
     } else {
         for (const line of text.split('\n')) {
-            await delay(8); // Increase delay if RTerm can't handle speed.
+            await delay(config().get('rtermSendDelay')); // Increase delay if RTerm can't handle speed.
             term.sendText(line);
         }
     }
