@@ -71,6 +71,13 @@ export async function chooseTerminal(active: boolean = false) {
             if (rTermNameOpinions.includes(activeTerminalName)) {
                 return window.activeTerminal;
             }
+            for (const terminal of window.terminals) {
+                let terminalName = terminal.name;
+                if (rTermNameOpinions.includes(terminalName)) {
+                    terminal.show(true);
+                    return terminal;
+                }
+            }
         } else {
             // Creating a terminal when there aren't any already does not seem to set activeTerminal
             if (window.terminals.length === 1) {
