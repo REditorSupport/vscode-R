@@ -178,7 +178,7 @@
         }
       },
       {
-        "path": "./syntax/Rcpp.tmLanguage",
+        "path": "./syntax/Rcpp.json",
         "scopeName": "comment.block.r",
         "injectTo": [
           "source.cpp"
