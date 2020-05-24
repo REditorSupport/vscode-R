@@ -111,7 +111,7 @@
       {
         "language": "rd",
         "scopeName": "text.tex.latex.rd",
-        "path": "./syntax/Rd (R Documentation).tmLanguage"
+        "path": "./syntax/Rd (R Documentation).json"
       },
       {
         "language": "rmd",
@@ -166,7 +166,7 @@
       },
       {
         "scopeName": "text.html.markdown.redcarpet",
-        "path": "./syntax/Markdown Redcarpet.tmLanguage",
+        "path": "./syntax/Markdown Redcarpet.json",
         "injectTo": [
           "text.html.rmarkdown"
         ],
@@ -178,7 +178,7 @@
         }
       },
       {
-        "path": "./syntax/Rcpp.tmLanguage",
+        "path": "./syntax/Rcpp.json",
         "scopeName": "comment.block.r",
         "injectTo": [
           "source.cpp"

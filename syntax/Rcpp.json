@@ -1,0 +1,34 @@
+{
+    "fileTypes": [],
+    "injectionSelector" : "L:source.cpp",
+    "patterns" : [
+        {
+            "include" : "#block"
+        }
+    ],
+    "repository" :{
+        "block" : {
+            "patterns" : [
+                {"include" : "#rcpp"}
+            ],
+            "repository" : {
+                "rcpp" : {
+                    "begin" : "(^|\\G)(/[\\*]{3}\\sR\\s*)$",
+                    "captures" : {
+                        "2" : {
+                            "name" : "comment.block.cpp"
+                        }
+                    },
+                    "end" : "(^|\\G)(\\*/\\s*)($|\\z)",
+                    "contentName" : "meta.embedded.block.r",
+                    "patterns" : [
+                        {
+                            "include" : "source.r"
+                        }
+                    ]
+                }
+            }
+        }
+    },
+    "scopeName" : "comment.block.r"
+}
