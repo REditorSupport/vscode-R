@@ -65,17 +65,25 @@ export async function chooseTerminal(active: boolean = false) {
     }
 
     if (window.terminals.length > 0) {
-        const rTermNameOpinions = ['R', 'R Interactive'];
+        const rTermNameOptions = ['R', 'R Interactive'];
         if (window.activeTerminal !== undefined) {
             const activeTerminalName = window.activeTerminal.name;
-            if (rTermNameOpinions.includes(activeTerminalName)) {
+            if (rTermNameOptions.includes(activeTerminalName)) {
                 return window.activeTerminal;
+            }
+            for (let i = window.terminals.length - 1; i >= 0; i--){ 
+                const terminal = window.terminals[i];
+                let terminalName = terminal.name;
+                if (rTermNameOptions.includes(terminalName)) {
+                    terminal.show(true);
+                    return terminal;
+                }
             }
         } else {
             // Creating a terminal when there aren't any already does not seem to set activeTerminal
             if (window.terminals.length === 1) {
                 const activeTerminalName = window.terminals[0].name;
-                if (rTermNameOpinions.includes(activeTerminalName)) {
+                if (rTermNameOptions.includes(activeTerminalName)) {
                     return window.terminals[0];
                 }
             } else {
