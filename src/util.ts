@@ -10,7 +10,7 @@ export function config() {
     return workspace.getConfiguration('r');
 }
 
-function getRfromEnvPath(platform) {
+function getRfromEnvPath(platform: string) {
     let splitChar: string = ':';
     let fileExtension: string = '';
     
