@@ -10,10 +10,18 @@ export function config() {
     return workspace.getConfiguration('r');
 }
 
-function getMacLinuxRpath() {
-    const os_paths: string[]|string = process.env.PATH.split(':');
+function getRfromEnvPath(platform) {
+    let splitChar: string = ':';
+    let fileExtension: string = '';
+    
+    if (platform === 'win32') {
+        splitChar = ';';
+        fileExtension = '.exe';
+    }
+    
+    const os_paths: string[]|string = process.env.PATH.split(splitChar);
     for (const os_path of os_paths) {
-        const os_r_path: string = path.join(os_path, 'R');
+        const os_r_path: string = path.join(os_path, 'R' + fileExtension);
         if (fs.existsSync(os_r_path)) {
             return os_r_path;
         }
@@ -22,8 +30,12 @@ function getMacLinuxRpath() {
 }
 
 export async function getRpath() {
-    if (process.platform === 'win32') {
-        let rpath: string = config().get<string>('rterm.windows');
+    
+    let rpath: string = '';
+    const platform: string = process.platform;
+    
+    if ( platform === 'win32') {
+        rpath = config().get<string>('rterm.windows');
         if (rpath === '') {
             // Find path from registry
             try {
@@ -38,25 +50,19 @@ export async function getRpath() {
                 rpath = '';
             }
         }
-
-        return rpath;
+    } else if (platform === 'darwin') {
+        rpath = config().get<string>('rterm.mac');
+    } else if (platform === 'linux') {
+        rpath = config().get<string>('rterm.linux');
     }
-    if (process.platform === 'darwin') {
-        let rpath: string = config().get<string>('rterm.mac');
-        if (rpath === '') {
-            rpath = getMacLinuxRpath();
-        }
-        return rpath;
+    
+    if (rpath === '') {
+        rpath = getRfromEnvPath(platform);
     }
-    if (process.platform === 'linux') {
-        let rpath: string = config().get<string>('rterm.linux');
-        if (rpath === '') {
-            rpath = getMacLinuxRpath();
-        }
+    if (rpath !== '') {
         return rpath;
     }
     window.showErrorMessage(`${process.platform} can't use R`);
-
     return undefined;
 }
 
