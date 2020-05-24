@@ -71,7 +71,8 @@ export async function chooseTerminal(active: boolean = false) {
             if (rTermNameOptions.includes(activeTerminalName)) {
                 return window.activeTerminal;
             }
-            for (const terminal of window.terminals) {
+            for (let i = window.terminals.length - 1; i >= 0; i--){ 
+                const terminal = window.terminals[i];
                 let terminalName = terminal.name;
                 if (rTermNameOptions.includes(terminalName)) {
                     terminal.show(true);
