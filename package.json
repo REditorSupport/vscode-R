@@ -486,6 +486,11 @@
           "type": "boolean",
           "default": false,
           "description": "Enable R session watcher (experimental). Restart required to take effect."
+        },
+        "r.rtermSendDelay": {
+          "type" : "integer",
+          "default" : 8,
+          "description": "Delay in milliseconds before sending each line to rterm (only applies if r.bracketedPaste is false)"
         }
       }
     }
