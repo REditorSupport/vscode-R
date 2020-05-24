@@ -115,8 +115,9 @@ export async function runTextInTerm(term: Terminal, text: string) {
         }
         term.sendText(text);
     } else {
+        const rtermSendDelay: number = config().get('rtermSendDelay');
         for (const line of text.split('\n')) {
-            await delay(config().get('rtermSendDelay')); // Increase delay if RTerm can't handle speed.
+            await delay(rtermSendDelay); // Increase delay if RTerm can't handle speed.
             term.sendText(line);
         }
     }

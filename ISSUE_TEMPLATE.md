@@ -46,6 +46,6 @@ Yes / No
 // Enable R session watcher (experimental)
 "r.sessionWatcher": false,
 
-// Delay before sending text to rterm
+// Delay in milliseconds before sending each line to rterm (only applies if r.bracketedPaste is false)
 "r.rtermSendDelay": 8,
 ```
