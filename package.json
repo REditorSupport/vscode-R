@@ -32,6 +32,7 @@
     "onLanguage:r",
     "onLanguage:rd",
     "onLanguage:rmd",
+    "onLanguage:debian-control.r",
     "workspaceContains:*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
     "onCommand:r.createRTerm",
     "onCommand:r.runSource",
@@ -63,7 +64,7 @@
           "r"
         ],
         "firstLine": "^#!/.*\\bRscript\\b",
-        "configuration": "./r-configuration.json"
+        "configuration": "./language/r-configuration.json"
       },
       {
         "id": "rd",
@@ -74,7 +75,7 @@
           "R documentation",
           "r documentation"
         ],
-        "configuration": "./rd-configuration.json"
+        "configuration": "./language/rd-configuration.json"
       },
       {
         "id": "rmd",
@@ -85,7 +86,20 @@
           "R Markdown",
           "r markdown"
         ],
-        "configuration": "./rmd-configuration.json"
+        "configuration": "./language/rmd-configuration.json"
+      },
+      {
+        "id": "debian-control.r",
+        "extensions": [
+          ".Rproj"
+        ],
+        "aliases": [
+            "R DCF"
+        ],
+        "filenames": [
+          "DESCRIPTION"
+        ],
+        "configuration": "./language/dcf-configuration.json"
       }
     ],
     "snippets": [
@@ -112,6 +126,14 @@
         "language": "rd",
         "scopeName": "text.tex.latex.rd",
         "path": "./syntax/Rd (R Documentation).json"
+      },
+      {
+        "language": "debian-control.r",
+        "scopeName": "debian-control.r",
+        "path": "./syntax/dcf.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.r": "r"
+        }
       },
       {
         "language": "rmd",
@@ -488,8 +510,8 @@
           "description": "Enable R session watcher (experimental). Restart required to take effect."
         },
         "r.rtermSendDelay": {
-          "type" : "integer",
-          "default" : 8,
+          "type": "integer",
+          "default": 8,
           "description": "Delay in milliseconds before sending each line to rterm (only applies if r.bracketedPaste is false)"
         }
       }
