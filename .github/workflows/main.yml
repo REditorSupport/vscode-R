@@ -37,9 +37,8 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: "13.x"
-      - run: npm ci
-      - name: Run eslint
-        run: ./node_modules/.bin/eslint -c ./.eslintrc.js './src/**'
+      - run: npm install
+      - run: npm run lint
   lintr:
     runs-on: ubuntu-latest
     container:
