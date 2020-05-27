@@ -3,15 +3,15 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
     local({
       pid <- Sys.getpid()
       tempdir <- tempdir()
-      dir <- normalizePath(file.path(".vscode", "vscode-R"), mustWork = FALSE)
-      dir_session <- file.path(dir, pid)
+      dir <- normalizePath(file.path("~", ".vscode-R"), mustWork = FALSE)
+      dir_session <- file.path(tempdir, "vscode-R")
       if (dir.create(dir_session, showWarnings = FALSE, recursive = TRUE) ||
         dir.exists(dir_session)) {
         reg.finalizer(.GlobalEnv, function(e) {
           unlink(dir_session, recursive = TRUE, force = TRUE)
         }, onexit = TRUE)
 
-        dir_plot_history <- file.path(tempdir, "images")
+        dir_plot_history <- file.path(dir_session, "images")
         dir.create(dir_plot_history, showWarnings = FALSE, recursive = TRUE)
 
         response_file <- file.path(dir, "response.log")
@@ -21,6 +21,8 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         plot_updated <- FALSE
         null_dev_id <- c(pdf = 2L)
         null_dev_size <- c(7 + pi, 7 + pi)
+
+        file.create(globalenv_file, plot_file, showWarnings = FALSE)
 
         check_null_dev <- function() {
           identical(dev.cur(), null_dev_id) &&
