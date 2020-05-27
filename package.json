@@ -500,7 +500,8 @@
     "compile": "webpack --mode none",
     "watch": "webpack --mode none --watch",
     "pretest": "tsc -p ./",
-    "test": "node ./out/test/runTest.js"
+    "test": "node ./out/test/runTest.js",
+    "lint": "eslint src --ext ts"
   },
   "devDependencies": {
     "@types/fs-extra": "^8.1.0",
