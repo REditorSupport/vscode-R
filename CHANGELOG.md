@@ -1,5 +1,23 @@
 # Change Log
 
+## 1.4.0
+
+### Feature improvement
+
+* Add syntax highlight for DESCRIPTION and .Rproj #342 (Thank you @qinwf)
+* A lot of works (Thank you @gowerc)
+  * Enable default R location to be used on mac/linux if none is supplied #340 
+  * Added functionality to switch to an existing R terminal #338
+  * Expose send text delay as a parameter #336
+  * Supress auto-opening quote in roxygen comment #328
+* Add r.runSelectionRetainCursor #325
+
+### Project engineering
+
+* Convert language files to Json #333 (Thank you @gowerc)
+* Define lint in package.json and use it in GitHub Actions #344
+
+
 ## 1.3.0
 
 * Change so setting changes take effect immediately (Fix #301)
