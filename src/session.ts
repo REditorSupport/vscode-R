@@ -19,8 +19,12 @@ let requestLockFile: string;
 let requestTimeStamp: number;
 let sessionDir: string;
 let pid: string;
-let globalenvPath: string;
-let plotPath: string;
+let globalenvFile: string;
+let globalenvLockFile: string;
+let globalenvTimeStamp: number;
+let plotFile: string;
+let plotLockFile: string;
+let plotTimeStamp: number;
 let plotDir: string;
 let requestWatcher: FSWatcher;
 let globalEnvWatcher: FSWatcher;
@@ -93,41 +97,55 @@ export function removeSessionFiles() {
 function updateSessionWatcher() {
     console.info(`[updateSessionWatcher] PID: ${pid}`);
     console.info('[updateSessionWatcher] Create globalEnvWatcher');
-    globalenvPath = path.join(sessionDir, 'globalenv.json');
+    globalenvFile = path.join(sessionDir, 'globalenv.json');
+    globalenvLockFile = path.join(sessionDir, 'globalenv.lock');
+    globalenvTimeStamp = 0;
     if (globalEnvWatcher !== undefined) {
         globalEnvWatcher.close();
     }
-    globalEnvWatcher = fs.watch(globalenvPath, {}, (event: string, filename: string) => {
+    globalEnvWatcher = fs.watch(globalenvLockFile, {}, (event: string, filename: string) => {
         updateGlobalenv();
     });
     console.info('[updateSessionWatcher] Create plotWatcher');
-    plotPath = path.join(sessionDir, 'plot.png');
+    plotFile = path.join(sessionDir, 'plot.png');
+    plotLockFile = path.join(sessionDir, 'plot.lock');
+    plotTimeStamp = 0;
     if (plotWatcher !== undefined) {
         plotWatcher.close();
     }
-    plotWatcher = fs.watch(plotPath, {}, (event: string, filename: string) => { 
+    plotWatcher = fs.watch(plotLockFile, {}, (event: string, filename: string) => { 
         updatePlot();
     });
     console.info('[updateSessionWatcher] Done');
 }
 
-function updatePlot() {
-    console.info(`[_updatePlot] ${plotPath}`);
-    if (fs.existsSync(plotPath) && fs.statSync(plotPath).size > 0) {
-        commands.executeCommand('vscode.open', Uri.file(plotPath), {
-            preserveFocus: true,
-            preview: true,
-            viewColumn: ViewColumn.Two,
-        });
-        console.info('[_updatePlot] Done');
+async function updatePlot() {
+    console.info(`[updatePlot] ${plotFile}`);
+    const lockContent = await fs.readFile(plotLockFile, 'utf8');
+    const newTimeStamp = Number.parseFloat(lockContent);
+    if (newTimeStamp !== plotTimeStamp) {
+        plotTimeStamp = newTimeStamp;
+        if (fs.existsSync(plotFile) && fs.statSync(plotFile).size > 0) {
+            commands.executeCommand('vscode.open', Uri.file(plotFile), {
+                preserveFocus: true,
+                preview: true,
+                viewColumn: ViewColumn.Two,
+            });
+            console.info('[updatePlot] Done');
+        }    
     }
 }
 
 async function updateGlobalenv() {
-    console.info(`[_updateGlobalenv] ${globalenvPath}`);
-    const content = await fs.readFile(globalenvPath, 'utf8');
-    globalenv = JSON.parse(content);
-    console.info('[_updateGlobalenv] Done');
+    console.info(`[updateGlobalenv] ${globalenvFile}`);
+    const lockContent = await fs.readFile(globalenvLockFile, 'utf8');
+    const newTimeStamp = Number.parseFloat(lockContent);
+    if (newTimeStamp !== globalenvTimeStamp) {
+        globalenvTimeStamp = newTimeStamp;
+        const content = await fs.readFile(globalenvFile, 'utf8');
+        globalenv = JSON.parse(content);
+        console.info('[updateGlobalenv] Done');
+    }
 }
 
 function showBrowser(url: string) {
@@ -400,9 +418,9 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     console.info('[updateRequest] Started');
     console.info(`[updateRequest] requestFile: ${requestFile}`);
     const lockContent = await fs.readFile(requestLockFile, 'utf8');
-    const newRequestTimeStamp = Number.parseFloat(lockContent);
-    if (newRequestTimeStamp !== requestTimeStamp) {
-        requestTimeStamp = newRequestTimeStamp;
+    const newTimeStamp = Number.parseFloat(lockContent);
+    if (newTimeStamp !== requestTimeStamp) {
+        requestTimeStamp = newTimeStamp;
         const requestContent = await fs.readFile(requestFile, 'utf8');
         console.info(`[updateRequest] request: ${requestContent}`);
         const parseResult = JSON.parse(requestContent);
@@ -436,7 +454,5 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         } else {
             console.info(`[updateRequest] Ignored request not from workspace`);
         }
-    } else {
-        console.warn('[updateRequest] Duplicate update on request change');
     }
 }

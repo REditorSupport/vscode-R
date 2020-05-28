@@ -18,13 +18,19 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         request_file <- file.path(dir, "request.log")
         request_lock_file <- file.path(dir, "request.lock")
         globalenv_file <- file.path(dir_session, "globalenv.json")
+        globalenv_lock_file <- file.path(dir_session, "globalenv.lock")
         plot_file <- file.path(dir_session, "plot.png")
+        plot_lock_file <- file.path(dir_session, "plot.lock")
         plot_history_file <- NULL
         plot_updated <- FALSE
         null_dev_id <- c(pdf = 2L)
         null_dev_size <- c(7 + pi, 7 + pi)
 
-        file.create(globalenv_file, plot_file, showWarnings = FALSE)
+        file.create(globalenv_lock_file, plot_lock_file, showWarnings = FALSE)
+
+        get_timestamp <- function() {
+          format.default(Sys.time(), nsmall = 6)
+        }
 
         check_null_dev <- function() {
           identical(dev.cur(), null_dev_id) &&
@@ -69,7 +75,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
             ...
           ), auto_unbox = TRUE)
           cat(json, "\n", sep = "", file = request_file)
-          cat(as.numeric(Sys.time()), file = request_lock_file)
+          cat(get_timestamp(), file = request_lock_file)
         }
 
         unbox <- jsonlite::unbox
@@ -101,6 +107,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
               info
             }, all.names = FALSE, USE.NAMES = TRUE)
             jsonlite::write_json(objs, globalenv_file, pretty = FALSE)
+            cat(get_timestamp(), file = globalenv_lock_file)
             if (plot_updated && check_null_dev()) {
               plot_updated <<- FALSE
               record <- recordPlot()
@@ -109,6 +116,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
                 do.call(png, c(list(filename = plot_file), dev_args))
                 on.exit({
                   dev.off()
+                  cat(get_timestamp(), file = plot_lock_file)
                   if (!is.null(plot_history_file)) {
                     file.copy(plot_file, plot_history_file, overwrite = TRUE)
                   }
