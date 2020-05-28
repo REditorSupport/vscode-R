@@ -5,7 +5,7 @@ import fs = require('fs-extra');
 import os = require('os');
 import path = require('path');
 import { URL } from 'url';
-import { commands, RelativePattern, StatusBarItem, Uri, ViewColumn, Webview, window, workspace } from 'vscode';
+import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace } from 'vscode';
 
 import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
@@ -14,14 +14,14 @@ import { FSWatcher } from 'fs-extra';
 export let globalenv: any;
 let resDir: string;
 let watcherDir: string;
-let responseLogFile: string;
-let responseLineCount: number;
+let requestFile: string;
+let requestLineCount: number;
 let sessionDir: string;
 let pid: string;
 let globalenvPath: string;
 let plotPath: string;
 let plotDir: string;
-let responseWatcher: FSWatcher;
+let requestWatcher: FSWatcher;
 let globalEnvWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
 
@@ -42,17 +42,17 @@ export function deploySessionWatcher(extensionPath: string) {
     console.info('[deploySessionWatcher] Done');
 }
 
-export function startResponseWatcher(sessionStatusBarItem: StatusBarItem) {
-    console.info('[startResponseWatcher] Starting');
-    responseLogFile = path.join(watcherDir, 'response.log');
-    responseLineCount = 0;
-    if (!fs.existsSync(responseLogFile)) {
-        fs.createFileSync(responseLogFile);
+export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
+    console.info('[startRequestWatcher] Starting');
+    requestFile = path.join(watcherDir, 'request.log');
+    requestLineCount = 0;
+    if (!fs.existsSync(requestFile)) {
+        fs.createFileSync(requestFile);
     }
-    responseWatcher = fs.watch(responseLogFile, {}, (event: string, filename: string) => {
-        updateResponse(sessionStatusBarItem);
+    requestWatcher = fs.watch(requestFile, {}, (event: string, filename: string) => {
+        updateRequest(sessionStatusBarItem);
     });
-    console.info('[startResponseWatcher] Done');
+    console.info('[startRequestWatcher] Done');
 }
 
 export function attachActive() {
@@ -384,44 +384,58 @@ function getPlotHistoryHtml(webview: Webview, files: string[]) {
 `;
 }
 
-async function updateResponse(sessionStatusBarItem: StatusBarItem) {
-    console.info('[updateResponse] Started');
-    console.info(`[updateResponse] responseLogFile: ${responseLogFile}`);
-    const content = await fs.readFile(responseLogFile, 'utf8');
+function isFromWorkspace(dir: string) {
+    for (const folder of workspace.workspaceFolders) {
+        const rel = path.relative(folder.uri.fsPath, dir);
+        if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+async function updateRequest(sessionStatusBarItem: StatusBarItem) {
+    console.info('[updateRequest] Started');
+    console.info(`[updateRequest] requestFile: ${requestFile}`);
+    const content = await fs.readFile(requestFile, 'utf8');
     const lines = content.split('\n');
-    if (lines.length !== responseLineCount) {
-        responseLineCount = lines.length;
-        console.info(`[updateResponse] lines: ${responseLineCount}`);
+    if (lines.length !== requestLineCount) {
+        requestLineCount = lines.length;
+        console.info(`[updateRequest] lines: ${requestLineCount}`);
         const lastLine = lines[lines.length - 2];
-        console.info(`[updateResponse] lastLine: ${lastLine}`);
+        console.info(`[updateRequest] lastLine: ${lastLine}`);
         const parseResult = JSON.parse(lastLine);
-        switch (parseResult.command) {
-            case 'attach':
-                pid = String(parseResult.pid);
-                sessionDir = path.join(parseResult.tempdir, 'vscode-R');
-                plotDir = path.join(sessionDir, 'images');
-                console.info(`[updateResponse] attach PID: ${pid}`);
-                sessionStatusBarItem.text = `R: ${pid}`;
-                sessionStatusBarItem.show();
-                updateSessionWatcher();
-                updateGlobalenv();
-                updatePlot();
-                break;
-            case 'browser':
-                showBrowser(parseResult.url);
-                break;
-            case 'webview':
-                const viewColumn: string = parseResult.viewColumn;
-                showWebView(parseResult.file, ViewColumn[viewColumn]);
-                break;
-            case 'dataview':
-                showDataView(parseResult.source,
-                             parseResult.type, parseResult.title, parseResult.file);
-                break;
-            default:
-                console.error(`[updateResponse] Unsupported command: ${parseResult.command}`);
+        if (isFromWorkspace(parseResult.wd)) {
+            switch (parseResult.command) {
+                case 'attach':
+                    pid = String(parseResult.pid);
+                    sessionDir = path.join(parseResult.tempdir, 'vscode-R');
+                    plotDir = path.join(sessionDir, 'images');
+                    console.info(`[updateRequest] attach PID: ${pid}`);
+                    sessionStatusBarItem.text = `R: ${pid}`;
+                    sessionStatusBarItem.show();
+                    updateSessionWatcher();
+                    updateGlobalenv();
+                    updatePlot();
+                    break;
+                case 'browser':
+                    showBrowser(parseResult.url);
+                    break;
+                case 'webview':
+                    const viewColumn: string = parseResult.viewColumn;
+                    showWebView(parseResult.file, ViewColumn[viewColumn]);
+                    break;
+                case 'dataview':
+                    showDataView(parseResult.source,
+                        parseResult.type, parseResult.title, parseResult.file);
+                    break;
+                default:
+                    console.error(`[updateRequest] Unsupported command: ${parseResult.command}`);
+            }
+        } else {
+            console.info(`[updateRequest] Ignored request not from workspace`);
         }
     } else {
-        console.warn('[updateResponse] Duplicate update on response change');
+        console.warn('[updateRequest] Duplicate update on request change');
     }
 }

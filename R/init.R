@@ -2,6 +2,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
   if (requireNamespace("jsonlite", quietly = TRUE)) {
     local({
       pid <- Sys.getpid()
+      wd <- getwd()
       tempdir <- tempdir()
       dir <- normalizePath(file.path("~", ".vscode-R"), mustWork = FALSE)
       dir_session <- file.path(tempdir, "vscode-R")
@@ -14,7 +15,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         dir_plot_history <- file.path(dir_session, "images")
         dir.create(dir_plot_history, showWarnings = FALSE, recursive = TRUE)
 
-        response_file <- file.path(dir, "response.log")
+        request_file <- file.path(dir, "request.log")
         globalenv_file <- file.path(dir_session, "globalenv.json")
         plot_file <- file.path(dir_session, "plot.png")
         plot_history_file <- NULL
@@ -47,25 +48,26 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
             dev.control(displaylist = "enable")
           },
           browser = function(url, ...) {
-            respond("browser", url = url, ...)
+            request("browser", url = url, ...)
           },
           viewer = function(url, ...) {
-            respond("webview", file = url, ..., viewColumn = "Two")
+            request("webview", file = url, ..., viewColumn = "Two")
           },
           page_viewer = function(url, ...) {
-            respond("webview", file = url, ..., viewColumn = "Active")
+            request("webview", file = url, ..., viewColumn = "Active")
           },
           help_type = "html"
         )
 
-        respond <- function(command, ...) {
+        request <- function(command, ...) {
           json <- jsonlite::toJSON(list(
             time = Sys.time(),
             pid = pid,
+            wd = wd,
             command = command,
             ...
           ), auto_unbox = TRUE)
-          cat(json, "\n", file = response_file, append = TRUE)
+          cat(json, "\n", sep = "", file = request_file, append = TRUE)
         }
 
         unbox <- jsonlite::unbox
@@ -117,7 +119,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         }
 
         attach <- function() {
-          respond("attach", tempdir = tempdir)
+          request("attach", tempdir = tempdir)
         }
 
         dataview_data_type <- function(x) {
@@ -229,19 +231,19 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
             data <- dataview_table(x)
             file <- tempfile(tmpdir = tempdir, fileext = ".json")
             jsonlite::write_json(data, file, matrix = "rowmajor")
-            respond("dataview", source = "table", type = "json",
+            request("dataview", source = "table", type = "json",
               title = title, file = file)
           } else if (is.list(x)) {
             tryCatch({
               file <- tempfile(tmpdir = tempdir, fileext = ".json")
               jsonlite::write_json(x, file, auto_unbox = TRUE)
-              respond("dataview", source = "list", type = "json",
+              request("dataview", source = "list", type = "json",
                 title = title, file = file)
             }, error = function(e) {
               file <- file.path(tempdir, paste0(make.names(title), ".txt"))
               text <- utils::capture.output(print(x))
               writeLines(text, file)
-              respond("dataview", source = "object", type = "txt",
+              request("dataview", source = "object", type = "txt",
                 title = title, file = file)
             })
           } else {
@@ -252,7 +254,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
               code <- deparse(x)
             }
             writeLines(code, file)
-            respond("dataview", source = "object", type = "R",
+            request("dataview", source = "object", type = "R",
               title = title, file = file)
           }
         }
