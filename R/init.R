@@ -16,6 +16,7 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         dir.create(dir_plot_history, showWarnings = FALSE, recursive = TRUE)
 
         request_file <- file.path(dir, "request.log")
+        request_lock_file <- file.path(dir, "request.lock")
         globalenv_file <- file.path(dir_session, "globalenv.json")
         plot_file <- file.path(dir_session, "plot.png")
         plot_history_file <- NULL
@@ -67,7 +68,8 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
             command = command,
             ...
           ), auto_unbox = TRUE)
-          cat(json, "\n", sep = "", file = request_file, append = TRUE)
+          cat(json, "\n", sep = "", file = request_file)
+          cat(as.numeric(Sys.time()), file = request_lock_file)
         }
 
         unbox <- jsonlite::unbox

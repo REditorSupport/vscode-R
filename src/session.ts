@@ -15,7 +15,8 @@ export let globalenv: any;
 let resDir: string;
 let watcherDir: string;
 let requestFile: string;
-let requestLineCount: number;
+let requestLockFile: string;
+let requestTimeStamp: number;
 let sessionDir: string;
 let pid: string;
 let globalenvPath: string;
@@ -45,11 +46,12 @@ export function deploySessionWatcher(extensionPath: string) {
 export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
     console.info('[startRequestWatcher] Starting');
     requestFile = path.join(watcherDir, 'request.log');
-    requestLineCount = 0;
-    if (!fs.existsSync(requestFile)) {
-        fs.createFileSync(requestFile);
+    requestLockFile = path.join(watcherDir, 'request.lock');
+    requestTimeStamp = 0;
+    if (!fs.existsSync(requestLockFile)) {
+        fs.createFileSync(requestLockFile);
     }
-    requestWatcher = fs.watch(requestFile, {}, (event: string, filename: string) => {
+    requestWatcher = fs.watch(requestLockFile, {}, (event: string, filename: string) => {
         updateRequest(sessionStatusBarItem);
     });
     console.info('[startRequestWatcher] Done');
@@ -397,14 +399,13 @@ function isFromWorkspace(dir: string) {
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     console.info('[updateRequest] Started');
     console.info(`[updateRequest] requestFile: ${requestFile}`);
-    const content = await fs.readFile(requestFile, 'utf8');
-    const lines = content.split('\n');
-    if (lines.length !== requestLineCount) {
-        requestLineCount = lines.length;
-        console.info(`[updateRequest] lines: ${requestLineCount}`);
-        const lastLine = lines[lines.length - 2];
-        console.info(`[updateRequest] lastLine: ${lastLine}`);
-        const parseResult = JSON.parse(lastLine);
+    const lockContent = await fs.readFile(requestLockFile, 'utf8');
+    const newRequestTimeStamp = Number.parseFloat(lockContent);
+    if (newRequestTimeStamp !== requestTimeStamp) {
+        requestTimeStamp = newRequestTimeStamp;
+        const requestContent = await fs.readFile(requestFile, 'utf8');
+        console.info(`[updateRequest] request: ${requestContent}`);
+        const parseResult = JSON.parse(requestContent);
         if (isFromWorkspace(parseResult.wd)) {
             switch (parseResult.command) {
                 case 'attach':
