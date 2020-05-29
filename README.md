@@ -131,7 +131,7 @@ For the case of advanced usage, user should, in addition, comment out or remove 
 * When user creates or updates a plot, the `{tempDir}/vscode-R/plot.png` is updated, and vscode-R will open the plot file.
 * When user calls `View()` with a data frame, list, environment, or any other object, the request is written to `~/.vscode-R/request.log` and
 vscode-R will open a WebView to show the data or open a text document to show the content of the object.
-* When user calls the viewer (e.g. htmlwidget, provis) or browser (e.g. shiny app, HTML help documentation), the request is wrtten to `~/.vscode-R/request.log` and vscode-R will open a WebView to present the viewer content.
+* When user calls the viewer (e.g. htmlwidget, provis) or browser (e.g. shiny app, HTML help documentation), the request is written to `~/.vscode-R/request.log` and vscode-R will open a WebView to present the viewer content.
 
 R sessions started from the workspace root folder or a subfolder will be automatically attached. The session watcher is designed to work in a wide range of scenarios:
 
