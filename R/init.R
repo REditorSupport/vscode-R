@@ -209,7 +209,19 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
                 check.names = FALSE
               )
             }, all.names = FALSE, USE.NAMES = TRUE)
-            x <- do.call(rbind, x)
+            if (length(x)) {
+              x <- do.call(rbind, x)
+            } else {
+              x <- data.frame(
+                class = character(),
+                type = character(),
+                length = integer(),
+                size = integer(),
+                value = character(),
+                stringsAsFactors = FALSE,
+                check.names = FALSE
+              )
+            }
           }
           if (is.data.frame(x) || is.matrix(x)) {
             data <- dataview_table(x)
