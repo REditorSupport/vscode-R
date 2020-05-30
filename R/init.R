@@ -4,7 +4,10 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
       pid <- Sys.getpid()
       wd <- getwd()
       tempdir <- tempdir()
-      dir <- normalizePath(file.path("~", ".vscode-R"), mustWork = FALSE)
+      homedir <- Sys.getenv(
+        if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"
+      )
+      dir_extension <- file.path(homedir, ".vscode-R")
       dir_session <- file.path(tempdir, "vscode-R")
       if (dir.create(dir_session, showWarnings = FALSE, recursive = TRUE) ||
         dir.exists(dir_session)) {
@@ -15,8 +18,8 @@ if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode") {
         dir_plot_history <- file.path(dir_session, "images")
         dir.create(dir_plot_history, showWarnings = FALSE, recursive = TRUE)
 
-        request_file <- file.path(dir, "request.log")
-        request_lock_file <- file.path(dir, "request.lock")
+        request_file <- file.path(dir_extension, "request.log")
+        request_lock_file <- file.path(dir_extension, "request.lock")
         globalenv_file <- file.path(dir_session, "globalenv.json")
         globalenv_lock_file <- file.path(dir_session, "globalenv.lock")
         plot_file <- file.path(dir_session, "plot.png")
