@@ -97,11 +97,7 @@ export function activate(context: ExtensionContext) {
     }
 
     async function runSelectionInActiveTerm() {
-        const callableTerminal = await chooseTerminal(true);
-        if (callableTerminal === undefined) {
-            return;
-        }
-        runSelectionInTerm(callableTerminal, true);
+        window.showWarningMessage('This command has been removed. Enable setting "Always Use Active Terminal".');
     }
 
     async function runSelectionRetainCursor() {
