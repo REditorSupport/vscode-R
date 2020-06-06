@@ -179,11 +179,16 @@ function getBrowserHtml(url: string) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body {
+        height: 100%;
+        padding: 0;
+        overflow: hidden;
+    }
+  </style>
 </head>
 <body>
-    <div style="border:0px;position:absolute;left:0px;top:0px;bottom:0px;right:0px;">
-        <iframe src="${url}"; width="100%" height="100%" frameborder="0" />
-    </div>
+    <iframe src="${url}" width="100%" height="100%" frameborder="0" />
 </body>
 </html>
 `;
