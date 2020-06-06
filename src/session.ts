@@ -5,48 +5,60 @@ import fs = require('fs-extra');
 import os = require('os');
 import path = require('path');
 import { URL } from 'url';
-import { commands, FileSystemWatcher, RelativePattern, StatusBarItem, Uri, ViewColumn, Webview, window, workspace } from 'vscode';
+import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace } from 'vscode';
 
 import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
+import { FSWatcher } from 'fs-extra';
 
 export let globalenv: any;
-let responseWatcher: FileSystemWatcher;
-let globalEnvWatcher: FileSystemWatcher;
-let plotWatcher: FileSystemWatcher;
-let pid: string;
-let tempDir: string;
-let plotDir: string;
 let resDir: string;
-let responseLineCount: number;
-const sessionDir = path.join('.vscode', 'vscode-R');
+let watcherDir: string;
+let requestFile: string;
+let requestLockFile: string;
+let requestTimeStamp: number;
+let sessionDir: string;
+let pid: string;
+let globalenvFile: string;
+let globalenvLockFile: string;
+let globalenvTimeStamp: number;
+let plotFile: string;
+let plotLockFile: string;
+let plotTimeStamp: number;
+let plotDir: string;
+let requestWatcher: FSWatcher;
+let globalEnvWatcher: FSWatcher;
+let plotWatcher: FSWatcher;
+
 
 export function deploySessionWatcher(extensionPath: string) {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
-    const targetDir = path.join(os.homedir(), '.vscode-R');
-    console.info(`[deploySessionWatcher] targetDir: ${targetDir}`);
-    if (!fs.existsSync(targetDir)) {
-        console.info('[deploySessionWatcher] targetDir not exists, create directory');
-        fs.mkdirSync(targetDir);
+    watcherDir = path.join(os.homedir(), '.vscode-R');
+    console.info(`[deploySessionWatcher] watcherDir: ${watcherDir}`);
+    if (!fs.existsSync(watcherDir)) {
+        console.info('[deploySessionWatcher] watcherDir not exists, create directory');
+        fs.mkdirSync(watcherDir);
     }
     console.info('[deploySessionWatcher] Deploy init.R');
-    fs.copySync(path.join(extensionPath, 'R', 'init.R'), path.join(targetDir, 'init.R'));
+    fs.copySync(path.join(extensionPath, 'R', 'init.R'), path.join(watcherDir, 'init.R'));
     console.info('[deploySessionWatcher] Deploy .Rprofile');
-    fs.copySync(path.join(extensionPath, 'R', '.Rprofile'), path.join(targetDir, '.Rprofile'));
+    fs.copySync(path.join(extensionPath, 'R', '.Rprofile'), path.join(watcherDir, '.Rprofile'));
     console.info('[deploySessionWatcher] Done');
 }
 
-export function startResponseWatcher(sessionStatusBarItem: StatusBarItem) {
-    console.info('[startResponseWatcher] Starting');
-    responseLineCount = 0;
-    responseWatcher = workspace.createFileSystemWatcher(
-        new RelativePattern(
-            workspace.workspaceFolders[0],
-            path.join('.vscode', 'vscode-R', 'response.log')));
-    responseWatcher.onDidCreate(() => updateResponse(sessionStatusBarItem));
-    responseWatcher.onDidChange(() => updateResponse(sessionStatusBarItem));
-    console.info('[startResponseWatcher] Done');
+export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
+    console.info('[startRequestWatcher] Starting');
+    requestFile = path.join(watcherDir, 'request.log');
+    requestLockFile = path.join(watcherDir, 'request.lock');
+    requestTimeStamp = 0;
+    if (!fs.existsSync(requestLockFile)) {
+        fs.createFileSync(requestLockFile);
+    }
+    requestWatcher = fs.watch(requestLockFile, {}, (event: string, filename: string) => {
+        updateRequest(sessionStatusBarItem);
+    });
+    console.info('[startRequestWatcher] Done');
 }
 
 export function attachActive() {
@@ -75,11 +87,9 @@ function removeDirectory(dir: string) {
 }
 
 export function removeSessionFiles() {
-    const sessionPath = path.join(
-        workspace.workspaceFolders[0].uri.fsPath, sessionDir, pid);
-    console.info('[removeSessionFiles] ', sessionPath);
-    if (fs.existsSync(sessionPath)) {
-        removeDirectory(sessionPath);
+    console.info('[removeSessionFiles] ', sessionDir);
+    if (fs.existsSync(sessionDir)) {
+        removeDirectory(sessionDir);
     }
     console.info('[removeSessionFiles] Done');
 }
@@ -87,52 +97,55 @@ export function removeSessionFiles() {
 function updateSessionWatcher() {
     console.info(`[updateSessionWatcher] PID: ${pid}`);
     console.info('[updateSessionWatcher] Create globalEnvWatcher');
-    globalEnvWatcher = workspace.createFileSystemWatcher(
-        new RelativePattern(
-            workspace.workspaceFolders[0],
-            path.join(sessionDir, pid, 'globalenv.json')));
-    globalEnvWatcher.onDidChange(updateGlobalenv);
-
+    globalenvFile = path.join(sessionDir, 'globalenv.json');
+    globalenvLockFile = path.join(sessionDir, 'globalenv.lock');
+    globalenvTimeStamp = 0;
+    if (globalEnvWatcher !== undefined) {
+        globalEnvWatcher.close();
+    }
+    globalEnvWatcher = fs.watch(globalenvLockFile, {}, (event: string, filename: string) => {
+        updateGlobalenv();
+    });
     console.info('[updateSessionWatcher] Create plotWatcher');
-    plotWatcher = workspace.createFileSystemWatcher(
-        new RelativePattern(
-            workspace.workspaceFolders[0],
-            path.join(sessionDir, pid, 'plot.png')));
-    plotWatcher.onDidCreate(updatePlot);
-    plotWatcher.onDidChange(updatePlot);
-
+    plotFile = path.join(sessionDir, 'plot.png');
+    plotLockFile = path.join(sessionDir, 'plot.lock');
+    plotTimeStamp = 0;
+    if (plotWatcher !== undefined) {
+        plotWatcher.close();
+    }
+    plotWatcher = fs.watch(plotLockFile, {}, (event: string, filename: string) => { 
+        updatePlot();
+    });
     console.info('[updateSessionWatcher] Done');
 }
 
-function _updatePlot() {
-    const plotPath = path.join(workspace.workspaceFolders[0].uri.fsPath,
-                               sessionDir, pid, 'plot.png');
-    console.info(`[_updatePlot] ${plotPath}`);
-    if (fs.existsSync(plotPath)) {
-        commands.executeCommand('vscode.open', Uri.file(plotPath), {
-            preserveFocus: true,
-            preview: true,
-            viewColumn: ViewColumn.Two,
-        });
-        console.info('[_updatePlot] Done');
+async function updatePlot() {
+    console.info(`[updatePlot] ${plotFile}`);
+    const lockContent = await fs.readFile(plotLockFile, 'utf8');
+    const newTimeStamp = Number.parseFloat(lockContent);
+    if (newTimeStamp !== plotTimeStamp) {
+        plotTimeStamp = newTimeStamp;
+        if (fs.existsSync(plotFile) && fs.statSync(plotFile).size > 0) {
+            commands.executeCommand('vscode.open', Uri.file(plotFile), {
+                preserveFocus: true,
+                preview: true,
+                viewColumn: ViewColumn.Two,
+            });
+            console.info('[updatePlot] Done');
+        }    
     }
 }
 
-function updatePlot(event) {
-    _updatePlot();
-}
-
-async function _updateGlobalenv() {
-    const globalenvPath = path.join(workspace.workspaceFolders[0].uri.fsPath,
-                                    sessionDir, pid, 'globalenv.json');
-    console.info(`[_updateGlobalenv] ${globalenvPath}`);
-    const content = await fs.readFile(globalenvPath, 'utf8');
-    globalenv = JSON.parse(content);
-    console.info('[_updateGlobalenv] Done');
-}
-
-async function updateGlobalenv(event) {
-    _updateGlobalenv();
+async function updateGlobalenv() {
+    console.info(`[updateGlobalenv] ${globalenvFile}`);
+    const lockContent = await fs.readFile(globalenvLockFile, 'utf8');
+    const newTimeStamp = Number.parseFloat(lockContent);
+    if (newTimeStamp !== globalenvTimeStamp) {
+        globalenvTimeStamp = newTimeStamp;
+        const content = await fs.readFile(globalenvFile, 'utf8');
+        globalenv = JSON.parse(content);
+        console.info('[updateGlobalenv] Done');
+    }
 }
 
 function showBrowser(url: string) {
@@ -391,47 +404,55 @@ function getPlotHistoryHtml(webview: Webview, files: string[]) {
 `;
 }
 
-async function updateResponse(sessionStatusBarItem: StatusBarItem) {
-    console.info('[updateResponse] Started');
-    // Read last line from response file
-    const responseLogFile = path.join(workspace.workspaceFolders[0].uri.fsPath,
-                                      sessionDir, 'response.log');
-    console.info(`[updateResponse] responseLogFile: ${responseLogFile}`);
-    const content = await fs.readFile(responseLogFile, 'utf8');
-    const lines = content.split('\n');
-    if (lines.length !== responseLineCount) {
-        responseLineCount = lines.length;
-        console.info(`[updateResponse] lines: ${responseLineCount}`);
-        const lastLine = lines[lines.length - 2];
-        console.info(`[updateResponse] lastLine: ${lastLine}`);
-        const parseResult = JSON.parse(lastLine);
-        switch (parseResult.command) {
-            case 'attach':
-                pid = String(parseResult.pid);
-                tempDir = parseResult.tempdir;
-                plotDir = path.join(tempDir, 'images');
-                console.info(`[updateResponse] attach PID: ${pid}`);
-                sessionStatusBarItem.text = `R: ${pid}`;
-                sessionStatusBarItem.show();
-                updateSessionWatcher();
-                _updateGlobalenv();
-                _updatePlot();
-                break;
-            case 'browser':
-                showBrowser(parseResult.url);
-                break;
-            case 'webview':
-                const viewColumn: string = parseResult.viewColumn;
-                showWebView(parseResult.file, ViewColumn[viewColumn]);
-                break;
-            case 'dataview':
-                showDataView(parseResult.source,
-                             parseResult.type, parseResult.title, parseResult.file);
-                break;
-            default:
-                console.error(`[updateResponse] Unsupported command: ${parseResult.command}`);
+function isFromWorkspace(dir: string) {
+    for (const folder of workspace.workspaceFolders) {
+        const rel = path.relative(folder.uri.fsPath, dir);
+        if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+            return true;
         }
-    } else {
-        console.warn('[updateResponse] Duplicate update on response change');
+    }
+    return false;
+}
+
+async function updateRequest(sessionStatusBarItem: StatusBarItem) {
+    console.info('[updateRequest] Started');
+    console.info(`[updateRequest] requestFile: ${requestFile}`);
+    const lockContent = await fs.readFile(requestLockFile, 'utf8');
+    const newTimeStamp = Number.parseFloat(lockContent);
+    if (newTimeStamp !== requestTimeStamp) {
+        requestTimeStamp = newTimeStamp;
+        const requestContent = await fs.readFile(requestFile, 'utf8');
+        console.info(`[updateRequest] request: ${requestContent}`);
+        const parseResult = JSON.parse(requestContent);
+        if (isFromWorkspace(parseResult.wd)) {
+            switch (parseResult.command) {
+                case 'attach':
+                    pid = String(parseResult.pid);
+                    sessionDir = path.join(parseResult.tempdir, 'vscode-R');
+                    plotDir = path.join(sessionDir, 'images');
+                    console.info(`[updateRequest] attach PID: ${pid}`);
+                    sessionStatusBarItem.text = `R: ${pid}`;
+                    sessionStatusBarItem.show();
+                    updateSessionWatcher();
+                    updateGlobalenv();
+                    updatePlot();
+                    break;
+                case 'browser':
+                    showBrowser(parseResult.url);
+                    break;
+                case 'webview':
+                    const viewColumn: string = parseResult.viewColumn;
+                    showWebView(parseResult.file, ViewColumn[viewColumn]);
+                    break;
+                case 'dataview':
+                    showDataView(parseResult.source,
+                        parseResult.type, parseResult.title, parseResult.file);
+                    break;
+                default:
+                    console.error(`[updateRequest] Unsupported command: ${parseResult.command}`);
+            }
+        } else {
+            console.info(`[updateRequest] Ignored request not from workspace`);
+        }
     }
 }

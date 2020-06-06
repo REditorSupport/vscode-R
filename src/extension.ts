@@ -10,7 +10,7 @@ import { createGitignore } from './rGitignore';
 import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
-import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startResponseWatcher } from './session';
+import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
 import { config, ToRStringLiteral } from './util';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -324,7 +324,7 @@ export function activate(context: ExtensionContext) {
         sessionStatusBarItem.show();
 
         deploySessionWatcher(context.extensionPath);
-        startResponseWatcher(sessionStatusBarItem);
+        startRequestWatcher(sessionStatusBarItem);
     }
 }
 

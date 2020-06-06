@@ -122,15 +122,25 @@ For the case of advanced usage, user should, in addition, comment out or remove 
 
 ### How it works
 
-This script writes the metadata of symbols in the global environment and plot file to `${workspaceFolder}/.vscode/vscode-R/PID` where `PID` is the R process ID. It also captures user input and append command lines to `${workspaceFolder}/.vscode/vscode-R/response.log`, which enables the communication between vscode-R and a live R sesson.
+* When vscode-R is activated with session watcher enabled, it deploys the initialization script to `~/.vscode-R/init.R`.
+* vscode-R watches `~/.vscode-R/request.log` for requests from user R sessions.
+* When a new R session is created, it sources `init.R` to initialize the session watcher and writes attach request to `~/.vscode-R/request.log`.
+* vscode-R reads the attach request and knows the working directory and session temp directory (`{tempDir}`) of the attaching session.
+* vscode-R watches `{tempDir}/vscode-R/globalenv.json` for global environment info and `{tempDir}/vscode-R/plot.png` for plot graphics.
+* In the R session, the global environment info will be updated on each evaluation of top-level expression.
+* When user creates or updates a plot, the `{tempDir}/vscode-R/plot.png` is updated, and vscode-R will open the plot file.
+* When user calls `View()` with a data frame, list, environment, or any other object, the request is written to `~/.vscode-R/request.log` and
+vscode-R will open a WebView to show the data or open a text document to show the content of the object.
+* When user calls the viewer (e.g. htmlwidget, provis) or browser (e.g. shiny app, HTML help documentation), the request is written to `~/.vscode-R/request.log` and vscode-R will open a WebView to present the viewer content.
 
-Each time the extension is activated, the latest session watcher script (`init.R`) will be deployed to `~/.vscode-R/init.R`.
-
-R sessions started from the workspace root folder will be automatically attached. The session watcher is designed to work in a wide range of scenarios:
+R sessions started from the workspace root folder or a subfolder will be automatically attached. The session watcher is designed to work in a wide range of scenarios:
 
 * Official R terminal or `radian` console
 * R session started by vscode-R or user
 * R session in a `tmux` or `screen` window
+* Multiple R sessions in VSCode terminal
+* Multiple R sessions in `tmux` windows or panes.
+* Multi-root workspace in VSCode
 * Switch between multiple running R sessions
 * [Remote Development](https://code.visualstudio.com/docs/remote/remote-overview) via SSH, WSL and Docker
 
