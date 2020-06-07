@@ -1,5 +1,12 @@
 # Change Log
 
+## 1.4.1
+
+* Fix View empty environment #350 (Fix #349)
+* Change runSelectionInActiveTerm effect to warning #351
+* Improve getBrowserHtml #353
+* Use fs.watch instead of vscode.FileSystemWatcher #348 (Fix #347, #352, #236, #179, #272, #330)
+
 ## 1.4.0
 
 ### Feature improvement

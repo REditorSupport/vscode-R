@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "R language support (run, snippet, viewer)",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
@@ -26,7 +26,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.44.0"
+    "vscode": "^1.45.1"
   },
   "activationEvents": [
     "onLanguage:r",
