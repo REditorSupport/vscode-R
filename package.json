@@ -452,7 +452,7 @@
     },
     "configuration": {
       "type": "object",
-      "title": "r",
+      "title": "R",
       "properties": {
         "r.rterm.windows": {
           "type": "string",
