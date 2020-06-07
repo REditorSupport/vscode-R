@@ -73,7 +73,7 @@ export async function chooseTerminal(active: boolean = false) {
             }
             for (let i = window.terminals.length - 1; i >= 0; i--){ 
                 const terminal = window.terminals[i];
-                let terminalName = terminal.name;
+                const terminalName = terminal.name;
                 if (rTermNameOptions.includes(terminalName)) {
                     terminal.show(true);
                     return terminal;

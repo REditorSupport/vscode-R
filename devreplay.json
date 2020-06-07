@@ -74,5 +74,13 @@
     "consequent": [
       "config().get"
     ]
+  },
+  {
+    "condition": [
+      "delay(8)"
+    ],
+    "consequent": [
+      "delay(rtermSendDelay)"
+    ]
   }
 ]
