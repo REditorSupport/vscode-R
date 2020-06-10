@@ -166,9 +166,9 @@ async function updateGlobalenv() {
     }
 }
 
-function showBrowser(url: string, viewer: string) {
+function showBrowser(url: string, viewer: string | boolean) {
     console.info(`[showBrowser] uri: ${url}, viewer: ${viewer}`);
-    if (viewer.toLowerCase() === 'external') {
+    if (viewer === false) {
         env.openExternal(Uri.parse(url));
     } else {
         const port = parseInt(new URL(url).port);
@@ -177,7 +177,7 @@ function showBrowser(url: string, viewer: string) {
             url,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[viewer],
+                viewColumn: ViewColumn[String(viewer)],
             },
             {
                 enableScripts: true,
@@ -216,16 +216,16 @@ function getBrowserHtml(url: string) {
 `;
 }
 
-async function showWebView(file: string, viewer: string) {
+async function showWebView(file: string, viewer: string | boolean) {
     console.info(`[showWebView] file: ${file}, viewer: ${viewer}`);
-    if (viewer.toLowerCase() === 'external') {
+    if (viewer === false) {
         env.openExternal(Uri.parse(file));
     } else {
         const dir = path.dirname(file);
         const panel = window.createWebviewPanel('webview', 'WebView',
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[viewer],
+                viewColumn: ViewColumn[String(viewer)],
             },
             {
                 enableScripts: true,
