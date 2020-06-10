@@ -256,7 +256,7 @@ if (interactive() &&
           list(columns = columns, data = data)
         }
 
-        dataview <- function(x, title) {
+        dataview <- function(x, title, viewer = getOption("vsc.view")) {
           if (missing(title)) {
             sub <- substitute(x)
             title <- deparse(sub)[[1]]
@@ -292,22 +292,19 @@ if (interactive() &&
             file <- tempfile(tmpdir = tempdir, fileext = ".json")
             jsonlite::write_json(data, file, matrix = "rowmajor")
             request("dataview", source = "table", type = "json",
-              title = title, file = file,
-              viewer = getOption("vsc.view.table", "Two"))
+              title = title, file = file, viewer = viewer)
           } else if (is.list(x)) {
             tryCatch({
               file <- tempfile(tmpdir = tempdir, fileext = ".json")
               jsonlite::write_json(x, file, auto_unbox = TRUE)
               request("dataview", source = "list", type = "json",
-                title = title, file = file,
-                viewer = getOption("vsc.view.list", "Two"))
+                title = title, file = file, viewer = viewer)
             }, error = function(e) {
               file <- file.path(tempdir, paste0(make.names(title), ".txt"))
               text <- utils::capture.output(print(x))
               writeLines(text, file)
               request("dataview", source = "object", type = "txt",
-                title = title, file = file,
-                viewer = getOption("vsc.view.object", "Two"))
+                title = title, file = file, viewer = viewer)
             })
           } else {
             file <- file.path(tempdir, paste0(make.names(title), ".R"))
@@ -318,25 +315,24 @@ if (interactive() &&
             }
             writeLines(code, file)
             request("dataview", source = "object", type = "R",
-              title = title, file = file,
-              viewer = getOption("vsc.view.table", "Two"))
+              title = title, file = file, viewer = viewer)
           }
         }
 
         rebind("View", dataview, "utils")
       }
 
-      browser <- function(url,
+      browser <- function(url, ...,
         viewer = getOption("vsc.browser", "Active")) {
         request("browser", url = url, ..., viewer = viewer)
       }
 
-      viewer <- function(url,
+      viewer <- function(url, ...,
         viewer = getOption("vsc.viewer", "Two")) {
         request("webview", file = url, ..., viewer = viewer)
       }
 
-      page_viewer <- function(url,
+      page_viewer <- function(url, ...,
         viewer = getOption("vsc.page_viewer", "Active")) {
         request("webview", file = url, ..., viewer = viewer)
       }
@@ -347,7 +343,6 @@ if (interactive() &&
         page_viewer = page_viewer
       )
 
-      attach()
       environment()
     })
 
@@ -358,6 +353,8 @@ if (interactive() &&
     .vsc.page_viewer <- .vsc$page_viewer
 
     attach(environment(), name = .vsc.name)
+
+    .vsc.attach()
   }) else {
     message("VSCode R Session Watcher requires jsonlite.")
     message("Please install it with install.packages(\"jsonlite\").")

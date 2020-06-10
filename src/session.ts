@@ -165,7 +165,7 @@ async function updateGlobalenv() {
     }
 }
 
-function showBrowser(url: string) {
+function showBrowser(url: string, viewer: string) {
     console.info(`[showBrowser] uri: ${url}`);
     const port = parseInt(new URL(url).port, 10);
     const panel = window.createWebviewPanel(
@@ -173,7 +173,7 @@ function showBrowser(url: string) {
         url,
         {
             preserveFocus: true,
-            viewColumn: ViewColumn.Active,
+            viewColumn: ViewColumn[viewer],
         },
         {
             enableScripts: true,
@@ -211,13 +211,13 @@ function getBrowserHtml(url: string) {
 `;
 }
 
-async function showWebView(file: string, viewColumn: ViewColumn) {
+async function showWebView(file: string, viewer: string) {
     console.info(`[showWebView] file: ${file}`);
     const dir = path.dirname(file);
     const panel = window.createWebviewPanel('webview', 'WebView',
                                             {
             preserveFocus: true,
-            viewColumn,
+            viewColumn: ViewColumn[viewer],
         },
                                             {
             enableScripts: true,
@@ -233,13 +233,13 @@ async function showWebView(file: string, viewColumn: ViewColumn) {
     console.info('[showWebView] Done');
 }
 
-async function showDataView(source: string, type: string, title: string, file: string) {
+async function showDataView(source: string, type: string, title: string, file: string, viewer: string) {
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}`);
     if (source === 'table') {
         const panel = window.createWebviewPanel('dataview', title,
                                                 {
                 preserveFocus: true,
-                viewColumn: ViewColumn.Two,
+                viewColumn: ViewColumn[viewer],
             },
                                                 {
                 enableScripts: true,
@@ -252,7 +252,7 @@ async function showDataView(source: string, type: string, title: string, file: s
         const panel = window.createWebviewPanel('dataview', title,
                                                 {
                 preserveFocus: true,
-                viewColumn: ViewColumn.Two,
+                viewColumn: ViewColumn[viewer],
             },
                                                 {
                 enableScripts: true,
@@ -265,7 +265,7 @@ async function showDataView(source: string, type: string, title: string, file: s
         commands.executeCommand('vscode.open', Uri.file(file), {
             preserveFocus: true,
             preview: true,
-            viewColumn: ViewColumn.Active,
+            viewColumn: ViewColumn[viewer],
         });
     }
     console.info('[showDataView] Done');
@@ -374,7 +374,7 @@ export async function showPlotHistory() {
                 const panel = window.createWebviewPanel('plotHistory', 'Plot History',
                                                         {
                         preserveFocus: true,
-                        viewColumn: ViewColumn.Two,
+                        viewColumn: ViewColumn.Active,
                     },
                                                         {
                         retainContextWhenHidden: true,
@@ -448,7 +448,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         const parseResult = JSON.parse(requestContent);
         if (isFromWorkspace(parseResult.wd)) {
             switch (parseResult.command) {
-                case 'attach':
+                case 'attach': {
                     pid = String(parseResult.pid);
                     sessionDir = path.join(parseResult.tempdir, 'vscode-R');
                     plotDir = path.join(sessionDir, 'images');
@@ -457,17 +457,20 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     sessionStatusBarItem.show();
                     updateSessionWatcher();
                     break;
-                case 'browser':
-                    showBrowser(parseResult.url);
+                }
+                case 'browser': {
+                    showBrowser(parseResult.url, parseResult.viewer);
                     break;
-                case 'webview':
-                    const viewColumn: string = parseResult.viewColumn;
-                    showWebView(parseResult.file, ViewColumn[viewColumn]);
+                }
+                case 'webview': {
+                    showWebView(parseResult.file, parseResult.viewer);
                     break;
-                case 'dataview':
+                }
+                case 'dataview': {
                     showDataView(parseResult.source,
-                        parseResult.type, parseResult.title, parseResult.file);
+                        parseResult.type, parseResult.title, parseResult.file, parseResult.viewer);
                     break;
+                }
                 default:
                     console.error(`[updateRequest] Unsupported command: ${parseResult.command}`);
             }
