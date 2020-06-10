@@ -65,7 +65,7 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
 export function attachActive() {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
-        chooseTerminalAndSendText('.vsc$attach()');
+        chooseTerminalAndSendText('.vsc.attach()');
     } else {
         window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }

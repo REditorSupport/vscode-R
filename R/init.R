@@ -2,6 +2,10 @@ if (interactive() &&
   Sys.getenv("RSTUDIO") == "" &&
   Sys.getenv("TERM_PROGRAM") == "vscode") {
   if (requireNamespace("jsonlite", quietly = TRUE)) local({
+    # cleanup previous version
+    removeTaskCallback("vscode-R")
+    options(vscodeR = NULL)
+
     .vsc.name <- "tools:vscode"
     if (.vsc.name %in% search()) {
       detach(.vsc.name, character.only = TRUE)
