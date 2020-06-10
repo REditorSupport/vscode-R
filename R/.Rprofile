@@ -18,7 +18,7 @@ local({
   invisible()
 })
 
-if (is.null(getOption("vscodeR"))) {
+if (!exists(".vsc")) {
   source(file.path(
     Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"),
     ".vscode-R", "init.R")

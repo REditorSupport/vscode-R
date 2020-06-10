@@ -64,7 +64,7 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
 export function attachActive() {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
-        chooseTerminalAndSendText('getOption(\'vscodeR\')$attach()');
+        chooseTerminalAndSendText('.vsc$attach()');
     } else {
         window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }
@@ -103,9 +103,15 @@ function updateSessionWatcher() {
     if (globalEnvWatcher !== undefined) {
         globalEnvWatcher.close();
     }
-    globalEnvWatcher = fs.watch(globalenvLockFile, {}, (event: string, filename: string) => {
+    if (fs.existsSync(globalenvLockFile)) {
+        globalEnvWatcher = fs.watch(globalenvLockFile, {}, (event: string, filename: string) => {
+            updateGlobalenv();
+        });
         updateGlobalenv();
-    });
+    } else {
+        console.info('[updateSessionWatcher] globalenvLockFile not found');
+    }
+    
     console.info('[updateSessionWatcher] Create plotWatcher');
     plotFile = path.join(sessionDir, 'plot.png');
     plotLockFile = path.join(sessionDir, 'plot.lock');
@@ -113,9 +119,14 @@ function updateSessionWatcher() {
     if (plotWatcher !== undefined) {
         plotWatcher.close();
     }
-    plotWatcher = fs.watch(plotLockFile, {}, (event: string, filename: string) => { 
+    if (fs.existsSync(plotLockFile)) {
+        plotWatcher = fs.watch(plotLockFile, {}, (event: string, filename: string) => {
+            updatePlot();
+        });
         updatePlot();
-    });
+    } else {
+        console.info('[updateSessionWatcher] plotLockFile not found');
+    }
     console.info('[updateSessionWatcher] Done');
 }
 
@@ -132,7 +143,9 @@ async function updatePlot() {
                 viewColumn: ViewColumn.Two,
             });
             console.info('[updatePlot] Done');
-        }    
+        } else {
+            console.info('[updatePlot] File not found');
+        }
     }
 }
 
@@ -142,9 +155,13 @@ async function updateGlobalenv() {
     const newTimeStamp = Number.parseFloat(lockContent);
     if (newTimeStamp !== globalenvTimeStamp) {
         globalenvTimeStamp = newTimeStamp;
-        const content = await fs.readFile(globalenvFile, 'utf8');
-        globalenv = JSON.parse(content);
-        console.info('[updateGlobalenv] Done');
+        if (fs.existsSync(globalenvFile)) {
+            const content = await fs.readFile(globalenvFile, 'utf8');
+            globalenv = JSON.parse(content);
+            console.info('[updateGlobalenv] Done');
+        } else {
+            console.info('[updateGlobalenv] File not found');
+        }
     }
 }
 
@@ -439,8 +456,6 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     sessionStatusBarItem.text = `R: ${pid}`;
                     sessionStatusBarItem.show();
                     updateSessionWatcher();
-                    updateGlobalenv();
-                    updatePlot();
                     break;
                 case 'browser':
                     showBrowser(parseResult.url);
