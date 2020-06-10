@@ -22,6 +22,7 @@ let pid: string;
 let globalenvFile: string;
 let globalenvLockFile: string;
 let globalenvTimeStamp: number;
+let plotView: string;
 let plotFile: string;
 let plotLockFile: string;
 let plotTimeStamp: number;
@@ -140,7 +141,7 @@ async function updatePlot() {
             commands.executeCommand('vscode.open', Uri.file(plotFile), {
                 preserveFocus: true,
                 preview: true,
-                viewColumn: ViewColumn.Two,
+                viewColumn: ViewColumn[plotView],
             });
             console.info('[updatePlot] Done');
         } else {
@@ -452,6 +453,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     pid = String(parseResult.pid);
                     sessionDir = path.join(parseResult.tempdir, 'vscode-R');
                     plotDir = path.join(sessionDir, 'images');
+                    plotView = String(parseResult.plot);
                     console.info(`[updateRequest] attach PID: ${pid}`);
                     sessionStatusBarItem.text = `R: ${pid}`;
                     sessionStatusBarItem.show();

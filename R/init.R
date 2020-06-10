@@ -44,10 +44,6 @@ if (interactive() &&
         )
       }
 
-      attach <- function() {
-        request("attach", tempdir = tempdir)
-      }
-
       rebind <- function(sym, value, ns) {
         if (is.character(ns)) {
           Recall(sym, value, getNamespace(ns))
@@ -69,9 +65,9 @@ if (interactive() &&
       dir_session <- file.path(tempdir, "vscode-R")
       dir.create(dir_session, showWarnings = FALSE, recursive = TRUE)
 
-      removeTaskCallback("vsc.watch.globalenv")
-      watch_globalenv <- isTRUE(getOption("vsc.watch.globalenv", TRUE))
-      if (watch_globalenv) {
+      removeTaskCallback("vsc.globalenv")
+      show_globalenv <- isTRUE(getOption("vsc.globalenv", TRUE))
+      if (show_globalenv) {
         globalenv_file <- file.path(dir_session, "globalenv.json")
         globalenv_lock_file <- file.path(dir_session, "globalenv.lock")
         file.create(globalenv_lock_file, showWarnings = FALSE)
@@ -103,12 +99,12 @@ if (interactive() &&
         }
 
         update_globalenv()
-        addTaskCallback(update_globalenv, name = "vsc.watch.globalenv")
+        addTaskCallback(update_globalenv, name = "vsc.globalenv")
       }
 
-      removeTaskCallback("vsc.watch.plot")
-      watch_plot <- isTRUE(getOption("vsc.watch.plot", TRUE))
-      if (watch_plot) {
+      removeTaskCallback("vsc.plot")
+      show_plot <- !identical(getOption("vsc.plot", TRUE), FALSE)
+      if (show_plot) {
         dir_plot_history <- file.path(dir_session, "images")
         dir.create(dir_plot_history, showWarnings = FALSE, recursive = TRUE)
         plot_file <- file.path(dir_session, "plot.png")
@@ -177,11 +173,11 @@ if (interactive() &&
         }, "base")
 
         update_plot()
-        addTaskCallback(update_plot, name = "vsc.watch.plot")
+        addTaskCallback(update_plot, name = "vsc.plot")
       }
 
-      watch_view <- isTRUE(getOption("vsc.watch.view", TRUE))
-      if (watch_view) {
+      show_view <- !identical(getOption("vsc.view", TRUE), FALSE)
+      if (show_view) {
         dataview_data_type <- function(x) {
           if (is.numeric(x)) {
             if (is.null(attr(x, "class"))) {
@@ -320,6 +316,12 @@ if (interactive() &&
         }
 
         rebind("View", dataview, "utils")
+      }
+
+      attach <- function() {
+        request("attach",
+          tempdir = tempdir,
+          plot = show_plot)
       }
 
       browser <- function(url, ...,
