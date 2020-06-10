@@ -5,7 +5,7 @@ import fs = require('fs-extra');
 import os = require('os');
 import path = require('path');
 import { URL } from 'url';
-import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace } from 'vscode';
+import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
 import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
@@ -167,26 +167,30 @@ async function updateGlobalenv() {
 }
 
 function showBrowser(url: string, viewer: string) {
-    console.info(`[showBrowser] uri: ${url}`);
-    const port = parseInt(new URL(url).port, 10);
-    const panel = window.createWebviewPanel(
-        'browser',
-        url,
-        {
-            preserveFocus: true,
-            viewColumn: ViewColumn[viewer],
-        },
-        {
-            enableScripts: true,
-            retainContextWhenHidden: true,
-            portMapping: [
-                {
-                    extensionHostPort: port,
-                    webviewPort: port,
-                },
-            ],
-        });
-    panel.webview.html = getBrowserHtml(url);
+    console.info(`[showBrowser] uri: ${url}, viewer: ${viewer}`);
+    if (viewer.toLowerCase() === 'external') {
+        env.openExternal(Uri.parse(url));
+    } else {
+        const port = parseInt(new URL(url).port);
+        const panel = window.createWebviewPanel(
+            'browser',
+            url,
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn[viewer],
+            },
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                portMapping: [
+                    {
+                        extensionHostPort: port,
+                        webviewPort: port,
+                    },
+                ],
+            });
+        panel.webview.html = getBrowserHtml(url);
+    }
     console.info('[showBrowser] Done');
 }
 
@@ -213,36 +217,40 @@ function getBrowserHtml(url: string) {
 }
 
 async function showWebView(file: string, viewer: string) {
-    console.info(`[showWebView] file: ${file}`);
-    const dir = path.dirname(file);
-    const panel = window.createWebviewPanel('webview', 'WebView',
-                                            {
-            preserveFocus: true,
-            viewColumn: ViewColumn[viewer],
-        },
-                                            {
-            enableScripts: true,
-            retainContextWhenHidden: true,
-            localResourceRoots: [Uri.file(dir)],
-        });
-    const content = await fs.readFile(file);
-    const html = content.toString()
-        .replace('<body>', '<body style="color: black;">')
-        .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
-                 `<$1 $2="${String(panel.webview.asWebviewUri(Uri.file(dir)))}/`);
-    panel.webview.html = html;
+    console.info(`[showWebView] file: ${file}, viewer: ${viewer}`);
+    if (viewer.toLowerCase() === 'external') {
+        env.openExternal(Uri.parse(file));
+    } else {
+        const dir = path.dirname(file);
+        const panel = window.createWebviewPanel('webview', 'WebView',
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn[viewer],
+            },
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [Uri.file(dir)],
+            });
+        const content = await fs.readFile(file);
+        const html = content.toString()
+            .replace('<body>', '<body style="color: black;">')
+            .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
+                `<$1 $2="${String(panel.webview.asWebviewUri(Uri.file(dir)))}/`);
+        panel.webview.html = html;
+    }
     console.info('[showWebView] Done');
 }
 
 async function showDataView(source: string, type: string, title: string, file: string, viewer: string) {
-    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}`);
+    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}`);
     if (source === 'table') {
         const panel = window.createWebviewPanel('dataview', title,
-                                                {
+            {
                 preserveFocus: true,
                 viewColumn: ViewColumn[viewer],
             },
-                                                {
+            {
                 enableScripts: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
@@ -251,11 +259,11 @@ async function showDataView(source: string, type: string, title: string, file: s
         panel.webview.html = content;
     } else if (source === 'list') {
         const panel = window.createWebviewPanel('dataview', title,
-                                                {
+            {
                 preserveFocus: true,
                 viewColumn: ViewColumn[viewer],
             },
-                                                {
+            {
                 enableScripts: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],

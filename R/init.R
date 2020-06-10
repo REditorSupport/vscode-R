@@ -34,7 +34,7 @@ if (interactive() &&
           command = command,
           ...
         )
-        jsonlite::write_json(obj, request_file, auto_unbox = TRUE)
+        jsonlite::write_json(obj, request_file, auto_unbox = TRUE, force = TRUE)
         cat(get_timestamp(), file = request_lock_file)
       }
 
