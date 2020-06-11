@@ -355,7 +355,7 @@ if (interactive() &&
         viewer = getOption("vsc.viewer", "Two")) {
         if (is.null(title)) {
           expr <- substitute(url)
-          if (is.character(expr)) {
+          if (is.character(url)) {
             title <- "Viewer"
           } else {
             title <- deparse(expr, nlines = 1)
@@ -368,7 +368,7 @@ if (interactive() &&
         viewer = getOption("vsc.page_viewer", "Active")) {
         if (is.null(title)) {
           expr <- substitute(url)
-          if (is.character(expr)) {
+          if (is.character(url)) {
             title <- "Page Viewer"
           } else {
             title <- deparse(expr, nlines = 1)
