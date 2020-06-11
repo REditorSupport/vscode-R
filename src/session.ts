@@ -454,14 +454,14 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         requestTimeStamp = newTimeStamp;
         const requestContent = await fs.readFile(requestFile, 'utf8');
         console.info(`[updateRequest] request: ${requestContent}`);
-        const parseResult = JSON.parse(requestContent);
-        if (isFromWorkspace(parseResult.wd)) {
-            switch (parseResult.command) {
+        const request = JSON.parse(requestContent);
+        if (isFromWorkspace(request.wd)) {
+            switch (request.command) {
                 case 'attach': {
-                    pid = String(parseResult.pid);
-                    sessionDir = path.join(parseResult.tempdir, 'vscode-R');
+                    pid = String(request.pid);
+                    sessionDir = path.join(request.tempdir, 'vscode-R');
                     plotDir = path.join(sessionDir, 'images');
-                    plotView = String(parseResult.plot);
+                    plotView = String(request.plot);
                     console.info(`[updateRequest] attach PID: ${pid}`);
                     sessionStatusBarItem.text = `R: ${pid}`;
                     sessionStatusBarItem.show();
@@ -469,23 +469,23 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     break;
                 }
                 case 'browser': {
-                    showBrowser(parseResult.url, parseResult.title, parseResult.viewer);
+                    showBrowser(request.url, request.title, request.viewer);
                     break;
                 }
                 case 'webview': {
-                    showWebView(parseResult.file, parseResult.title, parseResult.viewer);
+                    showWebView(request.file, request.title, request.viewer);
                     break;
                 }
                 case 'dataview': {
-                    showDataView(parseResult.source,
-                        parseResult.type, parseResult.title, parseResult.file, parseResult.viewer);
+                    showDataView(request.source,
+                        request.type, request.title, request.file, request.viewer);
                     break;
                 }
                 default:
-                    console.error(`[updateRequest] Unsupported command: ${parseResult.command}`);
+                    console.error(`[updateRequest] Unsupported command: ${request.command}`);
             }
         } else {
-            console.info(`[updateRequest] Ignored request not from workspace`);
+            console.info(`[updateRequest] Ignored request outside workspace`);
         }
     }
 }
