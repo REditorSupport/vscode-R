@@ -259,7 +259,7 @@ if (interactive() &&
         dataview <- function(x, title, viewer = getOption("vsc.view")) {
           if (missing(title)) {
             sub <- substitute(x)
-            title <- deparse(sub)[[1]]
+            title <- deparse(sub, nlines = 1)
           }
           if (is.environment(x)) {
             x <- eapply(x, function(obj) {
@@ -328,19 +328,53 @@ if (interactive() &&
           plot = show_plot)
       }
 
-      browser <- function(url, ...,
+      browser <- function(url, title = url, ...,
         viewer = getOption("vsc.browser", "Active")) {
-        request("browser", url = url, ..., viewer = viewer)
+        request("browser", url = url, title = title, ..., viewer = viewer)
       }
 
-      viewer <- function(url, ...,
+      webview <- function(url, title, ..., viewer) {
+        if (!is.character(url)) {
+          real_url <- NULL
+          temp_viewer <- function(url, ...) {
+            real_url <<- url
+          }
+          op <- options(viewer = temp_viewer, page_viewer = temp_viewer)
+          on.exit(options(op))
+          print(url)
+          if (is.character(real_url)) {
+            url <- real_url
+          } else {
+            stop("Invalid object")
+          }
+        }
+        request("webview", file = url, title = title, viewer = viewer, ...)
+      }
+
+      viewer <- function(url, title = NULL, ...,
         viewer = getOption("vsc.viewer", "Two")) {
-        request("webview", file = url, ..., viewer = viewer)
+        if (is.null(title)) {
+          expr <- substitute(url)
+          if (is.character(expr)) {
+            title <- "Viewer"
+          } else {
+            title <- deparse(expr, nlines = 1)
+          }
+        }
+        webview(url = url, title = title, ..., viewer = viewer)
       }
 
-      page_viewer <- function(url, ...,
+      page_viewer <- function(url, title = NULL, ...,
         viewer = getOption("vsc.page_viewer", "Active")) {
-        request("webview", file = url, ..., viewer = viewer)
+        if (is.null(title)) {
+          expr <- substitute(url)
+          if (is.character(expr)) {
+            title <- "Page Viewer"
+          } else {
+            title <- deparse(expr, nlines = 1)
+          }
+        }
+        webview(url = url, title = title, ..., viewer = viewer)
       }
 
       options(

@@ -166,7 +166,7 @@ async function updateGlobalenv() {
     }
 }
 
-function showBrowser(url: string, viewer: string | boolean) {
+function showBrowser(url: string, title: string, viewer: string | boolean) {
     console.info(`[showBrowser] uri: ${url}, viewer: ${viewer}`);
     if (viewer === false) {
         env.openExternal(Uri.parse(url));
@@ -174,7 +174,7 @@ function showBrowser(url: string, viewer: string | boolean) {
         const port = parseInt(new URL(url).port);
         const panel = window.createWebviewPanel(
             'browser',
-            url,
+            title,
             {
                 preserveFocus: true,
                 viewColumn: ViewColumn[String(viewer)],
@@ -216,13 +216,13 @@ function getBrowserHtml(url: string) {
 `;
 }
 
-async function showWebView(file: string, viewer: string | boolean) {
+async function showWebView(file: string, title: string, viewer: string | boolean) {
     console.info(`[showWebView] file: ${file}, viewer: ${viewer}`);
     if (viewer === false) {
         env.openExternal(Uri.parse(file));
     } else {
         const dir = path.dirname(file);
-        const panel = window.createWebviewPanel('webview', 'WebView',
+        const panel = window.createWebviewPanel('webview', title,
             {
                 preserveFocus: true,
                 viewColumn: ViewColumn[String(viewer)],
@@ -469,11 +469,11 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     break;
                 }
                 case 'browser': {
-                    showBrowser(parseResult.url, parseResult.viewer);
+                    showBrowser(parseResult.url, parseResult.title, parseResult.viewer);
                     break;
                 }
                 case 'webview': {
-                    showWebView(parseResult.file, parseResult.viewer);
+                    showWebView(parseResult.file, parseResult.title, parseResult.viewer);
                     break;
                 }
                 case 'dataview': {
