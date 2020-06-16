@@ -41,13 +41,13 @@ export class LineCache {
 }
 
 function cleanLine(text: string) {
-    const cleaned = text.replace(/\s*\#.*/, '');
+    const cleaned = text.replace(/\s*#.*/, '');
 
     return (cleaned);
 }
 
 function doesLineEndInOperator(text: string) {
-    const endingOperatorIndex = text.search(/(,|\+|!|\$|\^|&|\*|-|=|:|\'|~|\||\/|\?|%.*%)(\s*|\s*\#.*)$/);
+    const endingOperatorIndex = text.search(/(,|\+|!|\$|\^|&|\*|-|=|:|'|~|\||\/|\?|%.*%)(\s*|\s*#.*)$/);
     const spacesOnlyIndex = text.search(/^\s*$/);
 
     return ((endingOperatorIndex >= 0) || (spacesOnlyIndex >= 0));

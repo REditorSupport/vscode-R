@@ -53,7 +53,7 @@ export function deleteTerminal(term: Terminal) {
     }
 }
 
-export async function chooseTerminal(active: boolean = false) {
+export async function chooseTerminal(active = false) {
     if (active || config().get('alwaysUseActiveTerminal')) {
         if (window.terminals.length < 1) {
             window.showInformationMessage('There are no open terminals.');

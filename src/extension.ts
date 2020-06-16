@@ -13,7 +13,7 @@ import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
 import { config, ToRStringLiteral } from './util';
 
-const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
+const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
 
 // Get with names(roxygen2:::default_tags())
 const roxygenTagCompletionItems = [
@@ -209,59 +209,13 @@ export function activate(context: ExtensionContext) {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('Initialize session watcher');
         languages.registerHoverProvider('r', {
-            provideHover(document, position, token) {
+            provideHover(document, position) {
                 const wordRange = document.getWordRangeAtPosition(position);
                 const text = document.getText(wordRange);
 
                 return new Hover(`\`\`\`\n${globalenv[text].str}\n\`\`\``);
             },
         });
-
-        function getBracketCompletionItems(document: TextDocument, position: Position, token: CancellationToken, items: CompletionItem[]) {
-            let range = new Range(new Position(position.line, 0), position);
-            let expectOpenBrackets = 0;
-            let symbol: string;
-
-            loop1:
-            while (range.start.line >= 0) {
-                if (token.isCancellationRequested) { return; }
-                const text = document.getText(range);
-                for (let i = text.length - 1; i >= 0; i -= 1) {
-                    const chr = text.charAt(i);
-                    if (chr === ']') {
-                        expectOpenBrackets += 1;
-                    // tslint:disable-next-line: triple-equals
-                    } else if (chr === '[') {
-                        if (expectOpenBrackets === 0) {
-                            const symbolPosition = new Position(range.start.line, i - 1);
-                            const symbolRange = document.getWordRangeAtPosition(symbolPosition);
-                            symbol = document.getText(symbolRange);
-                            break loop1;
-                        } else {
-                            expectOpenBrackets -= 1;
-                        }
-                    }
-                }
-                if (range.start.line > 0) {
-                    range = document.lineAt(range.start.line - 1).range;
-                } else {
-                    break;
-                }
-            }
-
-            if (!token.isCancellationRequested && symbol !== undefined) {
-                const obj = globalenv[symbol];
-                if (obj !== undefined && obj.names !== undefined) {
-                    const doc = new MarkdownString('Element of `' + symbol + '`');
-                    obj.names.map((name: string) => {
-                        const item = new CompletionItem(name, CompletionItemKind.Field);
-                        item.detail = '[session]';
-                        item.documentation = doc;
-                        items.push(item);
-                    });
-                }
-            }
-        }
 
         languages.registerCompletionItemProvider('r', {
             provideCompletionItems(document: TextDocument, position: Position, token: CancellationToken, completionContext: CompletionContext) {
@@ -273,7 +227,7 @@ export function activate(context: ExtensionContext) {
                         const obj = globalenv[key];
                         const item = new CompletionItem(key,
                                                         obj.type === 'closure' || obj.type === 'builtin' ?
-                                CompletionItemKind.Function :
+                               CompletionItemKind.Function :
                                 CompletionItemKind.Field);
                         item.detail = '[session]';
                         item.documentation = new MarkdownString('```r\n' + obj.str + '\n```');
@@ -321,6 +275,52 @@ export function activate(context: ExtensionContext) {
 
         deploySessionWatcher(context.extensionPath);
         startRequestWatcher(sessionStatusBarItem);
+    }
+}
+
+function getBracketCompletionItems(document: TextDocument, position: Position, token: CancellationToken, items: CompletionItem[]) {
+    let range = new Range(new Position(position.line, 0), position);
+    let expectOpenBrackets = 0;
+    let symbol: string;
+
+    loop1:
+    while (range.start.line >= 0) {
+        if (token.isCancellationRequested) { return; }
+        const text = document.getText(range);
+        for (let i = text.length - 1; i >= 0; i -= 1) {
+            const chr = text.charAt(i);
+            if (chr === ']') {
+                expectOpenBrackets += 1;
+            // tslint:disable-next-line: triple-equals
+            } else if (chr === '[') {
+                if (expectOpenBrackets === 0) {
+                    const symbolPosition = new Position(range.start.line, i - 1);
+                    const symbolRange = document.getWordRangeAtPosition(symbolPosition);
+                    symbol = document.getText(symbolRange);
+                    break loop1;
+                } else {
+                    expectOpenBrackets -= 1;
+                }
+            }
+        }
+        if (range.start.line > 0) {
+            range = document.lineAt(range.start.line - 1).range;
+        } else {
+            break;
+        }
+    }
+
+    if (!token.isCancellationRequested && symbol !== undefined) {
+        const obj = globalenv[symbol];
+        if (obj !== undefined && obj.names !== undefined) {
+            const doc = new MarkdownString('Element of `' + symbol + '`');
+            obj.names.map((name: string) => {
+                const item = new CompletionItem(name, CompletionItemKind.Field);
+                item.detail = '[session]';
+                item.documentation = doc;
+                items.push(item);
+            });
+        }
     }
 }
 

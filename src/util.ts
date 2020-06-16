@@ -11,8 +11,8 @@ export function config() {
 }
 
 function getRfromEnvPath(platform: string) {
-    let splitChar: string = ':';
-    let fileExtension: string = '';
+    let splitChar = ':';
+    let fileExtension = '';
     
     if (platform === 'win32') {
         splitChar = ';';
@@ -31,7 +31,7 @@ function getRfromEnvPath(platform: string) {
 
 export async function getRpath() {
     
-    let rpath: string = '';
+    let rpath = '';
     const platform: string = process.platform;
     
     if ( platform === 'win32') {
@@ -89,7 +89,7 @@ export async function delay(ms: number) {
 }
 
 export function checkForSpecialCharacters(text: string) {
-    return !/[~`!#$%\^&*+=\-\[\]\\';,/{}|\\":<>\?\s]/g.test(text);
+    return !/[~`!#$%^&*+=\-[\]\\';,/{}|\\":<>?\s]/g.test(text);
 }
 
 export function checkIfFileExists(filePath: string) {
