@@ -38,7 +38,8 @@ if (interactive() &&
           command = command,
           ...
         )
-        jsonlite::write_json(obj, request_file, auto_unbox = TRUE, force = TRUE)
+        jsonlite::write_json(obj, request_file,
+          auto_unbox = TRUE, null = "null", force = TRUE)
         cat(get_timestamp(), file = request_lock_file)
       }
 
@@ -348,7 +349,8 @@ if (interactive() &&
             stop("Invalid object")
           }
         }
-        request("webview", file = url, title = title, viewer = viewer, ...)
+        file <- normalizePath(url, "/", mustWork = TRUE)
+        request("webview", file = file, title = title, viewer = viewer, ...)
       }
 
       viewer <- function(url, title = NULL, ...,
