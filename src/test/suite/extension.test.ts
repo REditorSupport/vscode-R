@@ -449,6 +449,36 @@ suite('Extension Tests', () => {
         assert.equal(extendSelection(9, f, doc.length).endLine, 9);
     });
 
+    test('Selecting single line with double quotes', () => {
+        const doc = `
+        "hello"
+        a + b
+        `.split('\n');
+        function f(i) { return (doc[i]); }
+        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
+        assert.equal(extendSelection(1, f, doc.length).endLine, 1);
+    });
+
+    test('Selecting single line with single quotes', () => {
+        const doc = `
+        'hello'
+        a + b
+        `.split('\n');
+        function f(i) { return (doc[i]); }
+        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
+        assert.equal(extendSelection(1, f, doc.length).endLine, 1);
+    });
+
+    test('Selecting single line with backticks', () => {
+        const doc = `
+        \`hello\`
+        a + b
+        `.split('\n');
+        function f(i) { return (doc[i]); }
+        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
+        assert.equal(extendSelection(1, f, doc.length).endLine, 1);
+    });
+
     test('Selecting multi-line bracket with unmatched brackets in string', () => {
         const doc = `
         lapply(1:5, function(i) {
