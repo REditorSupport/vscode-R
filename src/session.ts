@@ -5,7 +5,7 @@ import fs = require('fs-extra');
 import os = require('os');
 import path = require('path');
 import { URL } from 'url';
-import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace } from 'vscode';
+import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
 import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
@@ -22,6 +22,7 @@ let pid: string;
 let globalenvFile: string;
 let globalenvLockFile: string;
 let globalenvTimeStamp: number;
+let plotView: string;
 let plotFile: string;
 let plotLockFile: string;
 let plotTimeStamp: number;
@@ -64,7 +65,7 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
 export function attachActive() {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
-        chooseTerminalAndSendText('getOption(\'vscodeR\')$attach()');
+        chooseTerminalAndSendText('.vsc.attach()');
     } else {
         window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }
@@ -103,9 +104,15 @@ function updateSessionWatcher() {
     if (globalEnvWatcher !== undefined) {
         globalEnvWatcher.close();
     }
-    globalEnvWatcher = fs.watch(globalenvLockFile, {}, (event: string, filename: string) => {
+    if (fs.existsSync(globalenvLockFile)) {
+        globalEnvWatcher = fs.watch(globalenvLockFile, {}, (event: string, filename: string) => {
+            updateGlobalenv();
+        });
         updateGlobalenv();
-    });
+    } else {
+        console.info('[updateSessionWatcher] globalenvLockFile not found');
+    }
+    
     console.info('[updateSessionWatcher] Create plotWatcher');
     plotFile = path.join(sessionDir, 'plot.png');
     plotLockFile = path.join(sessionDir, 'plot.lock');
@@ -113,9 +120,14 @@ function updateSessionWatcher() {
     if (plotWatcher !== undefined) {
         plotWatcher.close();
     }
-    plotWatcher = fs.watch(plotLockFile, {}, (event: string, filename: string) => { 
+    if (fs.existsSync(plotLockFile)) {
+        plotWatcher = fs.watch(plotLockFile, {}, (event: string, filename: string) => {
+            updatePlot();
+        });
         updatePlot();
-    });
+    } else {
+        console.info('[updateSessionWatcher] plotLockFile not found');
+    }
     console.info('[updateSessionWatcher] Done');
 }
 
@@ -129,10 +141,12 @@ async function updatePlot() {
             commands.executeCommand('vscode.open', Uri.file(plotFile), {
                 preserveFocus: true,
                 preview: true,
-                viewColumn: ViewColumn.Two,
+                viewColumn: ViewColumn[plotView],
             });
             console.info('[updatePlot] Done');
-        }    
+        } else {
+            console.info('[updatePlot] File not found');
+        }
     }
 }
 
@@ -142,33 +156,41 @@ async function updateGlobalenv() {
     const newTimeStamp = Number.parseFloat(lockContent);
     if (newTimeStamp !== globalenvTimeStamp) {
         globalenvTimeStamp = newTimeStamp;
-        const content = await fs.readFile(globalenvFile, 'utf8');
-        globalenv = JSON.parse(content);
-        console.info('[updateGlobalenv] Done');
+        if (fs.existsSync(globalenvFile)) {
+            const content = await fs.readFile(globalenvFile, 'utf8');
+            globalenv = JSON.parse(content);
+            console.info('[updateGlobalenv] Done');
+        } else {
+            console.info('[updateGlobalenv] File not found');
+        }
     }
 }
 
-function showBrowser(url: string) {
-    console.info(`[showBrowser] uri: ${url}`);
-    const port = parseInt(new URL(url).port, 10);
-    const panel = window.createWebviewPanel(
-        'browser',
-        url,
-        {
-            preserveFocus: true,
-            viewColumn: ViewColumn.Active,
-        },
-        {
-            enableScripts: true,
-            retainContextWhenHidden: true,
-            portMapping: [
-                {
-                    extensionHostPort: port,
-                    webviewPort: port,
-                },
-            ],
-        });
-    panel.webview.html = getBrowserHtml(url);
+function showBrowser(url: string, title: string, viewer: string | boolean) {
+    console.info(`[showBrowser] uri: ${url}, viewer: ${viewer}`);
+    if (viewer === false) {
+        env.openExternal(Uri.parse(url));
+    } else {
+        const port = parseInt(new URL(url).port);
+        const panel = window.createWebviewPanel(
+            'browser',
+            title,
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn[String(viewer)],
+            },
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                portMapping: [
+                    {
+                        extensionHostPort: port,
+                        webviewPort: port,
+                    },
+                ],
+            });
+        panel.webview.html = getBrowserHtml(url);
+    }
     console.info('[showBrowser] Done');
 }
 
@@ -194,37 +216,41 @@ function getBrowserHtml(url: string) {
 `;
 }
 
-async function showWebView(file: string, viewColumn: ViewColumn) {
-    console.info(`[showWebView] file: ${file}`);
-    const dir = path.dirname(file);
-    const panel = window.createWebviewPanel('webview', 'WebView',
-                                            {
-            preserveFocus: true,
-            viewColumn,
-        },
-                                            {
-            enableScripts: true,
-            retainContextWhenHidden: true,
-            localResourceRoots: [Uri.file(dir)],
-        });
-    const content = await fs.readFile(file);
-    const html = content.toString()
-        .replace('<body>', '<body style="color: black;">')
-        .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
-                 `<$1 $2="${String(panel.webview.asWebviewUri(Uri.file(dir)))}/`);
-    panel.webview.html = html;
+async function showWebView(file: string, title: string, viewer: string | boolean) {
+    console.info(`[showWebView] file: ${file}, viewer: ${viewer}`);
+    if (viewer === false) {
+        env.openExternal(Uri.parse(file));
+    } else {
+        const dir = path.dirname(file);
+        const panel = window.createWebviewPanel('webview', title,
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn[String(viewer)],
+            },
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [Uri.file(dir)],
+            });
+        const content = await fs.readFile(file);
+        const html = content.toString()
+            .replace('<body>', '<body style="color: black;">')
+            .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
+                `<$1 $2="${String(panel.webview.asWebviewUri(Uri.file(dir)))}/`);
+        panel.webview.html = html;
+    }
     console.info('[showWebView] Done');
 }
 
-async function showDataView(source: string, type: string, title: string, file: string) {
-    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}`);
+async function showDataView(source: string, type: string, title: string, file: string, viewer: string) {
+    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}`);
     if (source === 'table') {
         const panel = window.createWebviewPanel('dataview', title,
-                                                {
+            {
                 preserveFocus: true,
-                viewColumn: ViewColumn.Two,
+                viewColumn: ViewColumn[viewer],
             },
-                                                {
+            {
                 enableScripts: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
@@ -233,11 +259,11 @@ async function showDataView(source: string, type: string, title: string, file: s
         panel.webview.html = content;
     } else if (source === 'list') {
         const panel = window.createWebviewPanel('dataview', title,
-                                                {
+            {
                 preserveFocus: true,
-                viewColumn: ViewColumn.Two,
+                viewColumn: ViewColumn[viewer],
             },
-                                                {
+            {
                 enableScripts: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
@@ -248,7 +274,7 @@ async function showDataView(source: string, type: string, title: string, file: s
         commands.executeCommand('vscode.open', Uri.file(file), {
             preserveFocus: true,
             preview: true,
-            viewColumn: ViewColumn.Active,
+            viewColumn: ViewColumn[viewer],
         });
     }
     console.info('[showDataView] Done');
@@ -357,7 +383,7 @@ export async function showPlotHistory() {
                 const panel = window.createWebviewPanel('plotHistory', 'Plot History',
                                                         {
                         preserveFocus: true,
-                        viewColumn: ViewColumn.Two,
+                        viewColumn: ViewColumn.Active,
                     },
                                                         {
                         retainContextWhenHidden: true,
@@ -428,36 +454,38 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         requestTimeStamp = newTimeStamp;
         const requestContent = await fs.readFile(requestFile, 'utf8');
         console.info(`[updateRequest] request: ${requestContent}`);
-        const parseResult = JSON.parse(requestContent);
-        if (isFromWorkspace(parseResult.wd)) {
-            switch (parseResult.command) {
-                case 'attach':
-                    pid = String(parseResult.pid);
-                    sessionDir = path.join(parseResult.tempdir, 'vscode-R');
+        const request = JSON.parse(requestContent);
+        if (isFromWorkspace(request.wd)) {
+            switch (request.command) {
+                case 'attach': {
+                    pid = String(request.pid);
+                    sessionDir = path.join(request.tempdir, 'vscode-R');
                     plotDir = path.join(sessionDir, 'images');
+                    plotView = String(request.plot);
                     console.info(`[updateRequest] attach PID: ${pid}`);
                     sessionStatusBarItem.text = `R: ${pid}`;
                     sessionStatusBarItem.show();
                     updateSessionWatcher();
-                    updateGlobalenv();
-                    updatePlot();
                     break;
-                case 'browser':
-                    showBrowser(parseResult.url);
+                }
+                case 'browser': {
+                    showBrowser(request.url, request.title, request.viewer);
                     break;
-                case 'webview':
-                    const viewColumn: string = parseResult.viewColumn;
-                    showWebView(parseResult.file, ViewColumn[viewColumn]);
+                }
+                case 'webview': {
+                    showWebView(request.file, request.title, request.viewer);
                     break;
-                case 'dataview':
-                    showDataView(parseResult.source,
-                        parseResult.type, parseResult.title, parseResult.file);
+                }
+                case 'dataview': {
+                    showDataView(request.source,
+                        request.type, request.title, request.file, request.viewer);
                     break;
+                }
                 default:
-                    console.error(`[updateRequest] Unsupported command: ${parseResult.command}`);
+                    console.error(`[updateRequest] Unsupported command: ${request.command}`);
             }
         } else {
-            console.info(`[updateRequest] Ignored request not from workspace`);
+            console.info(`[updateRequest] Ignored request outside workspace`);
         }
     }
 }
