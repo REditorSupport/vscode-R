@@ -2,12 +2,16 @@
 
 ## 1.4.2
 
-To work with existing self-managed, persistent R sessions as the extension is upgraded,
-source the `init.R` again before attaching.
+* New R options and functions to control session watcher behavior (#359)
 
-```
-source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"), ".vscode-R", "init.R"))
-```
+    To work with existing self-managed, persistent R sessions as the extension is upgraded,
+    source the `init.R` again before attaching.
+
+    ```r
+    source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"), ".vscode-R", "init.R"))
+    ```
+
+* Remove single quote from doesLineEndInOperator (Fix #356)
 
 ## 1.4.1
 
