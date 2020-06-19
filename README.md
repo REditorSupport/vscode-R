@@ -149,6 +149,7 @@ options(vsc.globalenv = TRUE | FALSE)
 options(vsc.plot = "Two" | "Active" | "Besides" | FALSE)
 
 # The arguments for the png device to replay user graphics to show in VSCode.
+# Ignored if options(vsc.plot = FALSE).
 options(vsc.dev.args = NULL | list(width = 800, height = 600))
 
 # Which view column to show the WebView triggered by browser (e.g. shiny apps)?
