@@ -115,7 +115,7 @@ The script only works with environment variable `TERM_PROGRAM=vscode`. the scrip
 
 ### Available functions and options
 
-When the session watcher is initialized on session startup, a local environment named `tools:vscode` is attached and the following functions are made available for user to manually interoperate with VSCode:
+When the session watcher is initialized on session startup, a local environment named `tools:vscode` is attached and the following functions are made available for user to interoperate with VSCode:
 
 ```r
 # Attach vscode-R with same workspace folder to current session.
