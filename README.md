@@ -140,11 +140,11 @@ The following options are available for user to customize the session watcher fu
 
 ```r
 # Watch global environemnt symbols to provide hover on session symbol.
-# Only specifiy in .Rprofile since it only takes effect on session startup.
+# Only specify in .Rprofile since it only takes effect on session startup.
 options(vsc.globalenv = TRUE | FALSE)
 
 # Which view column to show the plot file on graphics update (FALSE to diable plot watcher)?
-# Only specifiy in .Rprofile since it only takes effect on session startup.
+# Only specify in .Rprofile since it only takes effect on session startup.
 options(vsc.plot = "Two" | "Active" | "Besides" | FALSE)
 
 # The arguments for the png device to replay user graphics to show in VSCode.
