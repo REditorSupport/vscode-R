@@ -139,7 +139,7 @@ All WebView-related functions have a `viewer` argument which could be one of the
 The following options are available for user to customize the session watcher functionality and behavior:
 
 ```r
-# Watch global environemnt symbols to provide hover on session symbol.
+# Watch global environemnt symbols to provide hover on and completion after session symbol.
 # Only specify in .Rprofile since it only takes effect on session startup.
 options(vsc.globalenv = TRUE | FALSE)
 
