@@ -143,7 +143,8 @@ The following options are available for user to customize the session watcher fu
 # Only specify in .Rprofile since it only takes effect on session startup.
 options(vsc.globalenv = TRUE | FALSE)
 
-# Which view column to show the plot file on graphics update (FALSE to diable plot watcher)?
+# Which view column to show the plot file on graphics update
+# Use FALSE to diable plot watcher so that the default R plot device is used.
 # Only specify in .Rprofile since it only takes effect on session startup.
 options(vsc.plot = "Two" | "Active" | "Besides" | FALSE)
 
