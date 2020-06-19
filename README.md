@@ -134,10 +134,9 @@ When the session watcher is initialized on session startup, a local environment 
 .vsc.page_viewer(url, title, ..., viewer)
 ```
 
-The following options are used to customize the session watcher functionality and behavior:
+All WebView-related functions have a `viewer` argument which could be one of the values defined in [vscode-api#ViewColumn](https://code.visualstudio.com/api/references/vscode-api#ViewColumn), .e.g `"Active"` (current editor), `"Two"` (editor group 2), or `"Besides"` (always show besides the current editor).
 
-The first value is the default and all subsequent values after `|` are available choices.
-The `"Two" | "Active" | "Besides"` values are from [vscode-api#ViewColumn](https://code.visualstudio.com/api/references/vscode-api#ViewColumn) which specify which view column should the corresponding tab appears in VSCode.
+The following options are available for user to customize the session watcher functionality and behavior:
 
 ```r
 # Watch global environemnt symbols to provide hover on session symbol.
@@ -168,6 +167,9 @@ options(vsc.page_viewer = "Active" | "Besides" | "Two" | FALSE)
 #   since it only takes effect on session startup.
 options(vsc.view = "Two" | "Active" | "Besides" | FALSE)
 ```
+
+The first values are the default and all subsequent values after `|` are available choices.
+The `"Two" | "Active" | "Besides"` are popular values from `ViewColumn` to specify which view column should the corresponding tab appears in VSCode.
 
 ### How to disable it
 
