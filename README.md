@@ -134,7 +134,7 @@ When the session watcher is initialized on session startup, a local environment 
 .vsc.page_viewer(url, title, ..., viewer)
 ```
 
-All WebView-related functions have a `viewer` argument which could be one of the values defined in [vscode-api#ViewColumn](https://code.visualstudio.com/api/references/vscode-api#ViewColumn), .e.g. `"Active"` (current editor), `"Two"` (editor group 2), or `"Besides"` (always show besides the current editor).
+All WebView-related functions have a `viewer` argument which could be one of the values defined in [vscode-api#ViewColumn](https://code.visualstudio.com/api/references/vscode-api#ViewColumn), .e.g. `"Active"` (current editor), `"Two"` (editor group 2), or `"Beside"` (always show besides the current editor).
 
 The following options are available for user to customize the session watcher functionality and behavior:
 
@@ -146,7 +146,7 @@ options(vsc.globalenv = TRUE | FALSE)
 # Which view column to show the plot file on graphics update
 # Use FALSE to diable plot watcher so that the default R plot device is used.
 # Only specify in .Rprofile since it only takes effect on session startup.
-options(vsc.plot = "Two" | "Active" | "Besides" | FALSE)
+options(vsc.plot = "Two" | "Active" | "Beside" | FALSE)
 
 # The arguments for the png device to replay user graphics to show in VSCode.
 # Ignored if options(vsc.plot = FALSE).
@@ -154,24 +154,24 @@ options(vsc.dev.args = NULL | list(width = 800, height = 600))
 
 # Which view column to show the WebView triggered by browser (e.g. shiny apps)?
 # Use FALSE to open in external web browser.
-options(vsc.browser = "Active" | "Besides" | "Two" | FALSE)
+options(vsc.browser = "Active" | "Beside" | "Two" | FALSE)
 
 # Which view column to show the WebView triggered by viewer (e.g. htmlwidgets)?
 # Use FALSE to open in external web browser.
-options(vsc.viewer = "Two" | "Active" | "Besides" | FALSE)
+options(vsc.viewer = "Two" | "Active" | "Beside" | FALSE)
 
 # Which view column to show the WebView triggered by page_viewer (e.g. profvis)?
 # Use FALSE to open in external web browser.
-options(vsc.page_viewer = "Active" | "Besides" | "Two" | FALSE)
+options(vsc.page_viewer = "Active" | "Beside" | "Two" | FALSE)
 
 # Which view column to show the WebView triggered by View()?
 # Use FALSE for R's native View(), which should be specified in .Rprofile
 #   since it only takes effect on session startup.
-options(vsc.view = "Two" | "Active" | "Besides" | FALSE)
+options(vsc.view = "Two" | "Active" | "Beside" | FALSE)
 ```
 
 The first values are the default and all subsequent values after `|` are available choices.
-The `"Two" | "Active" | "Besides"` are popular values from `ViewColumn` to specify which view column should the corresponding tab appears in VSCode.
+The `"Two" | "Active" | "Beside"` are popular values from `ViewColumn` to specify which view column should the corresponding tab appears in VSCode.
 
 ### How to disable it
 
