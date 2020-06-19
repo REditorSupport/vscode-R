@@ -134,7 +134,7 @@ When the session watcher is initialized on session startup, a local environment 
 .vsc.page_viewer(url, title, ..., viewer)
 ```
 
-All WebView-related functions have a `viewer` argument which could be one of the values defined in [vscode-api#ViewColumn](https://code.visualstudio.com/api/references/vscode-api#ViewColumn), .e.g `"Active"` (current editor), `"Two"` (editor group 2), or `"Besides"` (always show besides the current editor).
+All WebView-related functions have a `viewer` argument which could be one of the values defined in [vscode-api#ViewColumn](https://code.visualstudio.com/api/references/vscode-api#ViewColumn), .e.g. `"Active"` (current editor), `"Two"` (editor group 2), or `"Besides"` (always show besides the current editor).
 
 The following options are available for user to customize the session watcher functionality and behavior:
 
