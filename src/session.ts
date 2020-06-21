@@ -437,7 +437,10 @@ function getPlotHistoryHtml(webview: Webview, files: string[]) {
 
 function isFromWorkspace(dir: string) {
     if (workspace.workspaceFolders === undefined) {
-        return true;
+        const rel = path.relative(os.homedir(), dir);
+        if (rel === '') {
+            return true;
+        }
     } else {
         for (const folder of workspace.workspaceFolders) {
             const rel = path.relative(folder.uri.fsPath, dir);
