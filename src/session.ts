@@ -436,12 +436,20 @@ function getPlotHistoryHtml(webview: Webview, files: string[]) {
 }
 
 function isFromWorkspace(dir: string) {
-    for (const folder of workspace.workspaceFolders) {
-        const rel = path.relative(folder.uri.fsPath, dir);
-        if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+    if (workspace.workspaceFolders === undefined) {
+        const rel = path.relative(os.homedir(), dir);
+        if (rel === '') {
             return true;
         }
+    } else {
+        for (const folder of workspace.workspaceFolders) {
+            const rel = path.relative(folder.uri.fsPath, dir);
+            if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+                return true;
+            }
+        }
     }
+    
     return false;
 }
 
