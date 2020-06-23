@@ -1,5 +1,14 @@
 # Change Log
 
+## 1.4.2
+
+To work with existing self-managed, persistent R sessions as the extension is upgraded,
+source the `init.R` again before attaching.
+
+```
+source(file.path(Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"), ".vscode-R", "init.R"))
+```
+
 ## 1.4.1
 
 * Fix View empty environment #350 (Fix #349)
