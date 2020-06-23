@@ -30,15 +30,15 @@ jobs:
         with:
           name: ${{ env.VSIX_FILE }}
           path: ${{ env.VSIX_FILE }}
-  eslint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: "13.x"
-      - run: npm install
-      - run: npm run lint
+  # eslint:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: actions/setup-node@v1
+  #       with:
+  #         node-version: "13.x"
+  #     - run: npm install
+  #     - run: npm run lint
   lintr:
     runs-on: ubuntu-latest
     container:
@@ -67,3 +67,27 @@ jobs:
       - run: npm ci
       - name: Run devreplay
         run: ./node_modules/.bin/devreplay --dir ./src devreplay.json
+  super-linter:
+    # Name the Job
+    name: Lint Code Base
+    # Set the agent to run on
+    runs-on: ubuntu-latest
+
+    ##################
+    # Load all steps #
+    ##################
+    steps:
+      ##########################
+      # Checkout the code base #
+      ##########################
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      ################################
+      # Run Linter against code base #
+      ################################
+      - name: Lint Code Base
+        uses: docker://github/super-linter:v2.1.0
+        env:
+          VALIDATE_TYPESCRIPT_STANDARD: false
+          VALIDATE_TYPESCRIPT_ES: false
