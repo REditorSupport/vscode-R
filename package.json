@@ -461,12 +461,12 @@
         },
         "r.rterm.mac": {
           "type": "string",
-          "default": "/usr/local/bin/R",
+          "default": "",
           "description": "R path for Mac OS X."
         },
         "r.rterm.linux": {
           "type": "string",
-          "default": "/usr/bin/R",
+          "default": "",
           "description": "R path for Linux."
         },
         "r.rterm.option": {
