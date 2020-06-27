@@ -457,12 +457,12 @@
         "r.rterm.windows": {
           "type": "string",
           "default": "",
-          "description": "R.exe path for windows."
+          "description": "R.exe path for Windows."
         },
         "r.rterm.mac": {
           "type": "string",
           "default": "",
-          "description": "R path for Mac OS X."
+          "description": "R path for macOS."
         },
         "r.rterm.linux": {
           "type": "string",
