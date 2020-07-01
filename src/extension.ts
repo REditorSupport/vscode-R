@@ -29,7 +29,7 @@ const roxygenTagCompletionItems = [
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
-export function activate(context: ExtensionContext) {
+export function activate(context: ExtensionContext): void {
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
 
@@ -39,14 +39,14 @@ export function activate(context: ExtensionContext) {
 
     async function saveDocument(document: TextDocument) {
         if (document.isUntitled) {
-            window.showErrorMessage('Document is unsaved. Please save and retry running R command.');
+            await window.showErrorMessage('Document is unsaved. Please save and retry running R command.');
 
             return false;
         }
 
         const isSaved: boolean = document.isDirty ? (await document.save()) : true;
         if (!isSaved) {
-            window.showErrorMessage('Cannot run R command: document could not be saved.');
+            await window.showErrorMessage('Cannot run R command: document could not be saved.');
 
             return false;
         }
@@ -65,7 +65,7 @@ export function activate(context: ExtensionContext) {
             if (echo) {
                 rPath = [rPath, 'echo = TRUE'].join(', ');
             }
-            chooseTerminalAndSendText(`source(${rPath})`);
+            void chooseTerminalAndSendText(`source(${rPath})`);
         }
     }
 
@@ -81,9 +81,9 @@ export function activate(context: ExtensionContext) {
                 rPath = [rPath, 'echo = TRUE'].join(', ');
             }
             if (outputFormat === undefined) {
-                chooseTerminalAndSendText(`rmarkdown::render(${rPath})`);
+                void chooseTerminalAndSendText(`rmarkdown::render(${rPath})`);
             } else {
-                chooseTerminalAndSendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
+                void chooseTerminalAndSendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
             }
         }
     }
@@ -96,8 +96,8 @@ export function activate(context: ExtensionContext) {
         runSelectionInTerm(callableTerminal, true);
     }
 
-    async function runSelectionInActiveTerm() {
-        window.showWarningMessage('This command has been removed. Enable setting "Always Use Active Terminal".');
+    function runSelectionInActiveTerm() {
+        void window.showWarningMessage('This command has been removed. Enable setting "Always Use Active Terminal".');
     }
 
     async function runSelectionRetainCursor() {
@@ -115,14 +115,14 @@ export function activate(context: ExtensionContext) {
         }
         const text = getWordOrSelection();
         const wrappedText = surroundSelection(text, rFunctionName);
-        runTextInTerm(callableTerminal, wrappedText);
+        void runTextInTerm(callableTerminal, wrappedText);
     }
 
     async function runCommandWithSelectionOrWord(rCommand: string) {
         const text = getWordOrSelection();
         const callableTerminal = await chooseTerminal();
         const call = rCommand.replace(/\$\$/g, text);
-        runTextInTerm(callableTerminal, call);
+        await runTextInTerm(callableTerminal, call);
     }
 
     async function runCommandWithEditorPath(rCommand: string) {
@@ -132,13 +132,13 @@ export function activate(context: ExtensionContext) {
             const callableTerminal = await chooseTerminal();
             const rPath = ToRStringLiteral(wad.fileName, '');
             const call = rCommand.replace(/\$\$/g, rPath);
-            runTextInTerm(callableTerminal, call);
+            await runTextInTerm(callableTerminal, call);
         }
     }
 
     async function runCommand(rCommand: string) {
         const callableTerminal = await chooseTerminal();
-        runTextInTerm(callableTerminal, rCommand);
+        await runTextInTerm(callableTerminal, rCommand);
     }
 
     async function runFromBeginningToLine() {
@@ -151,7 +151,7 @@ export function activate(context: ExtensionContext) {
         const endPos = new Position(endLine, charactersOnLine);
         const range = new Range(new Position(0, 0), endPos);
         const text = window.activeTextEditor.document.getText(range);
-        runTextInTerm(callableTerminal, text);
+        await runTextInTerm(callableTerminal, text);
     }
 
     languages.registerCompletionItemProvider('r', {
@@ -179,13 +179,13 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.head', () => runSelectionOrWord(['head'])),
         commands.registerCommand('r.thead', () => runSelectionOrWord(['t', 'head'])),
         commands.registerCommand('r.names', () => runSelectionOrWord(['names'])),
-        commands.registerCommand('r.runSource', () => { runSource(false); }),
-        commands.registerCommand('r.knitRmd', () => { knitRmd(false, undefined); }),
-        commands.registerCommand('r.knitRmdToPdf', () => { knitRmd(false, 'pdf_document'); }),
-        commands.registerCommand('r.knitRmdToHtml', () => { knitRmd(false, 'html_document'); }),
-        commands.registerCommand('r.knitRmdToAll', () => { knitRmd(false, 'all'); }),
+        commands.registerCommand('r.runSource', () => { void runSource(false); }),
+        commands.registerCommand('r.knitRmd', () => { void knitRmd(false, undefined); }),
+        commands.registerCommand('r.knitRmdToPdf', () => { void knitRmd(false, 'pdf_document'); }),
+        commands.registerCommand('r.knitRmdToHtml', () => { void knitRmd(false, 'html_document'); }),
+        commands.registerCommand('r.knitRmdToAll', () => { void knitRmd(false, 'all'); }),
         commands.registerCommand('r.createRTerm', createRTerm),
-        commands.registerCommand('r.runSourcewithEcho', () => { runSource(true); }),
+        commands.registerCommand('r.runSourcewithEcho', () => { void runSource(true); }),
         commands.registerCommand('r.runSelection', runSelection),
         commands.registerCommand('r.runSelectionInActiveTerm', runSelectionInActiveTerm),
         commands.registerCommand('r.runFromBeginningToLine', runFromBeginningToLine),
@@ -219,7 +219,7 @@ export function activate(context: ExtensionContext) {
 
         languages.registerCompletionItemProvider('r', {
             provideCompletionItems(document: TextDocument, position: Position, token: CancellationToken, completionContext: CompletionContext) {
-                const items = [];
+                const items: CompletionItem[] = [];
                 if (token.isCancellationRequested) { return items; }
 
                 if (completionContext.triggerCharacter === undefined) {
@@ -230,7 +230,7 @@ export function activate(context: ExtensionContext) {
                                CompletionItemKind.Function :
                                 CompletionItemKind.Field);
                         item.detail = '[session]';
-                        item.documentation = new MarkdownString('```r\n' + obj.str + '\n```');
+                        item.documentation = new MarkdownString(`\`\`\`r\n${obj.str}\n\`\`\``);
                         items.push(item);
                     });
                 } else if (completionContext.triggerCharacter === '$' || completionContext.triggerCharacter === '@') {

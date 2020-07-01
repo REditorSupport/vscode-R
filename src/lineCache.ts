@@ -14,29 +14,32 @@ export class LineCache {
         this.lineCache = new Map<number, string>();
         this.endsInOperatorCache = new Map<number, boolean>();
     }
-    public addLineToCache(line: number) {
+
+    public addLineToCache(line: number): void {
         const cleaned = cleanLine(this.getLine(line));
         const endsInOperator = doesLineEndInOperator(cleaned);
         this.lineCache.set(line, cleaned);
         this.endsInOperatorCache.set(line, endsInOperator);
     }
-    public getEndsInOperatorFromCache(line: number) {
+
+    public getEndsInOperatorFromCache(line: number): boolean {
         const lineInCache = this.lineCache.has(line);
         if (!lineInCache) {
             this.addLineToCache(line);
         }
         const s = this.endsInOperatorCache.get(line);
 
-        return (s);
+        return s;
     }
-    public getLineFromCache(line: number) {
+
+    public getLineFromCache(line: number): string {
         const lineInCache = this.lineCache.has(line);
         if (!lineInCache) {
             this.addLineToCache(line);
         }
         const s = this.lineCache.get(line);
 
-        return (s);
+        return s;
     }
 }
 

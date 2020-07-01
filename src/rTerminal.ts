@@ -38,13 +38,13 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
 
             return true;
         }
-        window.showErrorMessage('Cannot find R client.  Please check R path in preferences and reload.');
+        void window.showErrorMessage('Cannot find R client.  Please check R path in preferences and reload.');
 
         return false;
     });
 }
 
-export function deleteTerminal(term: Terminal) {
+export function deleteTerminal(term: Terminal): void {
     if (isDeepStrictEqual(term, rTerm)) {
         if (config().get<boolean>('sessionWatcher')) {
             removeSessionFiles();
@@ -53,12 +53,12 @@ export function deleteTerminal(term: Terminal) {
     }
 }
 
-export async function chooseTerminal(active = false) {
+export async function chooseTerminal(active = false): Promise<Terminal> {
     if (active || config().get('alwaysUseActiveTerminal')) {
         if (window.terminals.length < 1) {
-            window.showInformationMessage('There are no open terminals.');
+            await window.showInformationMessage('There are no open terminals.');
 
-            return undefined;
+            return;
         }
 
         return window.activeTerminal;
@@ -88,15 +88,15 @@ export async function chooseTerminal(active = false) {
                 }
             } else {
                 // tslint:disable-next-line: max-line-length
-                window.showInformationMessage('Error identifying terminal! This shouldn\'t happen, so please file an issue at https://github.com/Ikuyadeu/vscode-R/issues');
+                await window.showInformationMessage('Error identifying terminal! This shouldn\'t happen, so please file an issue at https://github.com/Ikuyadeu/vscode-R/issues');
 
-                return undefined;
+                return;
             }
         }
     }
 
     if (rTerm === undefined) {
-        const success = createRTerm(true);
+        const success = await createRTerm(true);
         await delay(200); // Let RTerm warm up
         if (!success) {
             return undefined;
@@ -106,16 +106,16 @@ export async function chooseTerminal(active = false) {
     return rTerm;
 }
 
-export function runSelectionInTerm(term: Terminal, moveCursor: boolean) {
+export function runSelectionInTerm(term: Terminal, moveCursor: boolean): void {
     const selection = getSelection();
     if (moveCursor && selection.linesDownToMoveCursor > 0) {
-        commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
-        commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
+        void commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
+        void commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
     }
-    runTextInTerm(term, selection.selectedText);
+    void runTextInTerm(term, selection.selectedText);
 }
 
-export async function runTextInTerm(term: Terminal, text: string) {
+export async function runTextInTerm(term: Terminal, text: string): Promise<void> {
     if (config().get<boolean>('bracketedPaste')) {
         if (process.platform !== 'win32') {
             // Surround with ANSI control characters for bracketed paste mode
@@ -132,7 +132,7 @@ export async function runTextInTerm(term: Terminal, text: string) {
     setFocus(term);
 }
 
-export async function chooseTerminalAndSendText(text: string) {
+export async function chooseTerminalAndSendText(text: string): Promise<void> {
     const callableTerminal = await chooseTerminal();
     if (callableTerminal === undefined) {
         return;

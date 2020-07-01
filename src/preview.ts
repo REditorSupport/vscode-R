@@ -7,7 +7,7 @@ import { chooseTerminalAndSendText } from './rTerminal';
 import { getWordOrSelection } from './selection';
 import { checkForSpecialCharacters, checkIfFileExists, delay } from './util';
 
-export async function previewEnvironment() {
+export async function previewEnvironment(): Promise<void> {
     if (!checkcsv()) {
         return;
     }
@@ -21,22 +21,22 @@ export async function previewEnvironment() {
                              + `${envClass},`
                              + `${envOut}), '`
                              + `${pathToTmpCsv}', row.names=FALSE, quote = TRUE)`;
-    chooseTerminalAndSendText(rWriteCsvCommand);
+    void chooseTerminalAndSendText(rWriteCsvCommand);
     await openTmpCSV(pathToTmpCsv, tmpDir);
 }
 
-export async function previewDataframe() {
+export async function previewDataframe(): Promise<void> {
     if (!checkcsv()) {
-        return undefined;
+        return;
     }
 
     const selectedTextArray = getWordOrSelection();
     const dataframeName = selectedTextArray[0];
 
     if (selectedTextArray.length !== 1 || !checkForSpecialCharacters(dataframeName)) {
-        window.showInformationMessage('This does not appear to be a dataframe.');
+        void window.showInformationMessage('This does not appear to be a dataframe.');
 
-        return false;
+        return;
     }
 
     const tmpDir = makeTmpDir();
@@ -45,7 +45,7 @@ export async function previewDataframe() {
     const pathToTmpCsv = `${tmpDir}/${dataframeName}.csv`;
     const rWriteCsvCommand = `write.csv(${dataframeName}, `
                             + `'${pathToTmpCsv}', row.names = FALSE, quote = FALSE)`;
-    chooseTerminalAndSendText(rWriteCsvCommand);
+    await chooseTerminalAndSendText(rWriteCsvCommand);
     await openTmpCSV(pathToTmpCsv, tmpDir);
 }
 
@@ -53,7 +53,7 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
     await delay(350); // Needed since file size has not yet changed
 
     if (!checkIfFileExists(pathToTmpCsv)) {
-        window.showErrorMessage('Dataframe failed to display.');
+        void window.showErrorMessage('Dataframe failed to display.');
         removeSync(tmpDir);
 
         return false;
@@ -62,7 +62,7 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
     // Async poll for R to complete writing CSV.
     const success = await waitForFileToFinish(pathToTmpCsv);
     if (!success) {
-        window.showWarningMessage('Visual Studio Code currently limits opening files to 20 MB.');
+        void window.showWarningMessage('Visual Studio Code currently limits opening files to 20 MB.');
         removeSync(tmpDir);
 
         return false;
@@ -74,7 +74,7 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
     }
 
     // Open CSV in Excel Viewer and clean up.
-    workspace.openTextDocument(pathToTmpCsv)
+    await workspace.openTextDocument(pathToTmpCsv)
              .then(async (file) => {
                 await commands.executeCommand('csv.preview', file.uri);
                 removeSync(tmpDir);
@@ -124,11 +124,11 @@ function checkcsv() {
     if (iscsv !== undefined && iscsv.isActive) {
         return true;
     }
-    window.showInformationMessage('This function need to install `GrapeCity.gc-excelviewer`, will you install?',
+    void window.showInformationMessage('This function need to install `GrapeCity.gc-excelviewer`, will you install?',
                                   'Yes', 'No')
           .then((select) => {
         if (select === 'Yes') {
-            commands.executeCommand('workbench.extensions.installExtension', 'GrapeCity.gc-excelviewer');
+            void commands.executeCommand('workbench.extensions.installExtension', 'GrapeCity.gc-excelviewer');
         }
     });
 

@@ -3,10 +3,10 @@
 import { existsSync } from 'fs-extra';
 import path = require('path');
 import fs = require('fs');
-import { window, workspace } from 'vscode';
+import { window, workspace, WorkspaceConfiguration } from 'vscode';
 import winreg = require('winreg');
 
-export function config() {
+export function config(): WorkspaceConfiguration {
     return workspace.getConfiguration('r');
 }
 
@@ -29,7 +29,7 @@ function getRfromEnvPath(platform: string) {
     return '';
 }
 
-export async function getRpath() {
+export async function getRpath(): Promise<string> {
     
     let rpath = '';
     const platform: string = process.platform;
@@ -62,11 +62,11 @@ export async function getRpath() {
     if (rpath !== '') {
         return rpath;
     }
-    window.showErrorMessage(`${process.platform} can't use R`);
+    await window.showErrorMessage(`${process.platform} can't use R`);
     return undefined;
 }
 
-export function ToRStringLiteral(s: string, quote: string) {
+export function ToRStringLiteral(s: string, quote: string): string {
     if (s === undefined) {
         return 'NULL';
     }
@@ -84,14 +84,14 @@ export function ToRStringLiteral(s: string, quote: string) {
         quote);
 }
 
-export async function delay(ms: number) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+export async function delay(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function checkForSpecialCharacters(text: string) {
+export function checkForSpecialCharacters(text: string): boolean {
     return !/[~`!#$%^&*+=\-[\]\\';,/{}|\\":<>?\s]/g.test(text);
 }
 
-export function checkIfFileExists(filePath: string) {
+export function checkIfFileExists(filePath: string): boolean {
     return existsSync(filePath);
 }
