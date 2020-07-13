@@ -457,16 +457,16 @@
         "r.rterm.windows": {
           "type": "string",
           "default": "",
-          "description": "R.exe path for windows."
+          "description": "R.exe path for Windows."
         },
         "r.rterm.mac": {
           "type": "string",
-          "default": "/usr/local/bin/R",
-          "description": "R path for Mac OS X."
+          "default": "",
+          "description": "R path for macOS."
         },
         "r.rterm.linux": {
           "type": "string",
-          "default": "/usr/bin/R",
+          "default": "",
           "description": "R path for Linux."
         },
         "r.rterm.option": {
