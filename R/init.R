@@ -108,7 +108,7 @@ if (interactive() &&
       }
 
       removeTaskCallback("vsc.plot")
-      show_plot <- !identical(getOption("vsc.plot", TRUE), FALSE)
+      show_plot <- !identical(getOption("vsc.plot", "Two"), FALSE)
       if (show_plot) {
         dir_plot_history <- file.path(dir_session, "images")
         dir.create(dir_plot_history, showWarnings = FALSE, recursive = TRUE)
@@ -181,7 +181,7 @@ if (interactive() &&
         addTaskCallback(update_plot, name = "vsc.plot")
       }
 
-      show_view <- !identical(getOption("vsc.view", TRUE), FALSE)
+      show_view <- !identical(getOption("vsc.view", "Two"), FALSE)
       if (show_view) {
         dataview_data_type <- function(x) {
           if (is.numeric(x)) {
@@ -257,7 +257,7 @@ if (interactive() &&
           list(columns = columns, data = data)
         }
 
-        dataview <- function(x, title, viewer = getOption("vsc.view")) {
+        dataview <- function(x, title, viewer = getOption("vsc.view", "Two")) {
           if (missing(title)) {
             sub <- substitute(x)
             title <- deparse(sub, nlines = 1)
@@ -326,7 +326,7 @@ if (interactive() &&
       attach <- function() {
         request("attach",
           tempdir = tempdir,
-          plot = show_plot)
+          plot = getOption("vsc.plot", "Two"))
       }
 
       browser <- function(url, title = url, ...,
