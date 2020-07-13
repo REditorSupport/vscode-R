@@ -39,7 +39,7 @@ const config = {
     ]
   },
   plugins: [
-    new CopyPlugin([
+    new CopyPlugin({patterns: [
       { from: './node_modules/jquery/dist/jquery.min.js', to: 'resources' },
       { from: './node_modules/jquery.json-viewer/json-viewer', to: 'resources' },
       { from: './node_modules/bootstrap/dist/js/bootstrap.min.js', to: 'resources' },
@@ -54,7 +54,7 @@ const config = {
       { from: './node_modules/fotorama/fotorama.css', to: 'resources' },
       { from: './node_modules/fotorama/fotorama.png', to: 'resources' },
       { from: './node_modules/fotorama/fotorama@2x.png', to: 'resources' },
-    ]),
+    ]}),
   ],
 };
-module.exports = config
+module.exports = config;
