@@ -1,5 +1,9 @@
 # Change Log
 
+## 1.4.4
+
+* Fix vulnerability issues
+
 ## 1.4.2
 
 * New R options and functions to control session watcher behavior #359
