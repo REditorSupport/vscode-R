@@ -1,97 +1,104 @@
-'use strict';
+'use strict'
 
-import { Position, Range, window } from 'vscode';
+import { Position, Range, window } from 'vscode'
 
-import { LineCache } from './lineCache';
+import { LineCache } from './lineCache'
 
-export function getWordOrSelection(): string {
-    const selection = window.activeTextEditor.selection;
-    const currentDocument = window.activeTextEditor.document;
-    let text: string;
-    if ((selection.start.line === selection.end.line) &&
+export function getWordOrSelection (): string {
+  const selection = window.activeTextEditor.selection
+  const currentDocument = window.activeTextEditor.document
+  let text: string
+  if ((selection.start.line === selection.end.line) &&
         (selection.start.character === selection.end.character)) {
-        const wordRange = currentDocument.getWordRangeAtPosition(selection.start);
-        text = currentDocument.getText(wordRange);
-    } else {
-        text = currentDocument.getText(window.activeTextEditor.selection);
-    }
+    const wordRange = currentDocument.getWordRangeAtPosition(selection.start)
+    text = currentDocument.getText(wordRange)
+  } else {
+    text = currentDocument.getText(window.activeTextEditor.selection)
+  }
 
-    return text;
+  return text
 }
 
-export function surroundSelection(text: string, rFunctionName: string[]): string {
-    if (rFunctionName && rFunctionName.length) {
-        let rFunctionCall = '';
-        for (const feature of rFunctionName) {
-            rFunctionCall += `${feature}(`;
-        }
-        text = rFunctionCall + text.trim() + ')'.repeat(rFunctionName.length);
+export function surroundSelection (text: string, rFunctionName: string[]): string {
+  if (rFunctionName.length > 0) {
+    let rFunctionCall = ''
+    for (const feature of rFunctionName) {
+      rFunctionCall += `${feature}(`
     }
+    text = rFunctionCall + text.trim() + ')'.repeat(rFunctionName.length)
+  }
 
-    return text;
+  return text
 }
 
-export function getSelection(): {
-    linesDownToMoveCursor: number;
-    selectedText: string;
+export function getSelection (): {
+  linesDownToMoveCursor: number
+  selectedText: string
 } {
-    const selection = { linesDownToMoveCursor: 0, selectedText: '' };
-    const { start, end } = window.activeTextEditor.selection;
-    const currentDocument = window.activeTextEditor.document;
-    const range = new Range(start, end);
+  const selection = { linesDownToMoveCursor: 0, selectedText: '' }
+  const { start, end } = window.activeTextEditor.selection
+  const currentDocument = window.activeTextEditor.document
+  const range = new Range(start, end)
 
-    let selectedLine = currentDocument.getText(range);
-    if (!selectedLine) {
-        const { startLine, endLine }
-        = extendSelection(start.line, (x) => currentDocument.lineAt(x).text, currentDocument.lineCount);
-        const charactersOnLine = window.activeTextEditor.document.lineAt(endLine).text.length;
-        const newStart = new Position(startLine, 0);
-        const newEnd = new Position(endLine, charactersOnLine);
-        selection.linesDownToMoveCursor = endLine + 1 - start.line;
-        selectedLine = currentDocument.getText(new Range(newStart, newEnd));
-    } else if (start.line === end.line) {
-        selection.linesDownToMoveCursor = 0;
-        selection.selectedText = currentDocument.getText(new Range(start, end));
+  let selectedLine = currentDocument.getText(range)
+  if (selectedLine === '') {
+    const { startLine, endLine } =
+        extendSelection(start.line, (x) => currentDocument.lineAt(x).text, currentDocument.lineCount)
+    const charactersOnLine = window.activeTextEditor.document.lineAt(endLine).text.length
+    const newStart = new Position(startLine, 0)
+    const newEnd = new Position(endLine, charactersOnLine)
+    selection.linesDownToMoveCursor = endLine + 1 - start.line
+    selectedLine = currentDocument.getText(new Range(newStart, newEnd))
+  } else if (start.line === end.line) {
+    selection.linesDownToMoveCursor = 0
+    selection.selectedText = currentDocument.getText(new Range(start, end))
 
-        return selection;
-    } else {
-        selectedLine = currentDocument.getText(new Range(start, end));
-    }
+    return selection
+  } else {
+    selectedLine = currentDocument.getText(new Range(start, end))
+  }
 
-    selection.selectedText = selectedLine.trim();
+  selection.selectedText = selectedLine.trim()
 
-    return selection;
+  return selection
 }
 
 /**
  * Like vscode's Position class, but allows negative values.
  */
 class PositionNeg {
-    public line: number;
-    public character: number;
-    public cter: number;
-    public constructor(line: number, character: number) {
-        this.line = line;
-        this.character = character;
-    }
+  public line: number
+  public character: number
+  public cter: number
+  public constructor (line: number, character: number) {
+    this.line = line
+    this.character = character
+  }
 }
 
-function doBracketsMatch(a: string, b: string): boolean {
-    const matches = { '(': ')', '[': ']', '{': '}', ')': '(', ']': '[', '}': '{' };
+function doBracketsMatch (a: string, b: string): boolean {
+  const matches = { '(': ')', '[': ']', '{': '}', ')': '(', ']': '[', '}': '{' }
 
-    return matches[a] === b;
+  return matches[a] === b
 }
 
-function isBracket(c: string, lookingForward: boolean) {
-    if (lookingForward) {
-        return ((c === '(') || (c === '[') || (c === '{'));
-    }
+function isBracket (c: string, lookingForward: boolean): boolean {
+  if (lookingForward) {
+    return ((c === '(') || (c === '[') || (c === '{'))
+  }
 
-    return ((c === ')') || (c === ']') || (c === '}'));
+  return ((c === ')') || (c === ']') || (c === '}'))
 }
 
-function isQuote(c: string) {
-    return c === '"' || c === '\'' || c === '`';
+function isQuote (c: string): boolean {
+  return c === '"' || c === '\'' || c === '`'
+}
+
+interface CharInfo {
+  nextChar: string
+  nextPos: PositionNeg
+  isEndOfCodeLine: boolean
+  isEndOfFile: boolean
 }
 
 /**
@@ -104,50 +111,50 @@ function isQuote(c: string) {
  * @param getEndsInOperator A function that returns whether the given line ends in an operator.
  * @param lineCount The number of lines in the document.
  */
-function getNextChar(p: PositionNeg,
-                     lookingForward: boolean,
-                     getLine: (x: number) => string,
-                     getEndsInOperator: (y: number) => boolean,
-                     lineCount: number) {
-    const s = getLine(p.line);
-    let nextPos: PositionNeg;
-    let isEndOfCodeLine = false;
-    let isEndOfFile = false;
-    if (lookingForward) {
-        if (p.character !== s.length) {
-            nextPos = new PositionNeg(p.line, p.character + 1);
-        } else if (p.line < (lineCount - 1)) {
-            nextPos = new PositionNeg(p.line + 1, -1);
-        } else {
-            // At end of document. Return same character.
-            isEndOfFile = true;
-            nextPos = new PositionNeg(p.line, p.character);
-        }
-        const nextLine: string = getLine(nextPos.line);
-        if (nextPos.character === nextLine.length) {
-            if ((nextPos.line === (lineCount - 1)) || !getEndsInOperator(nextPos.line)) {
-                isEndOfCodeLine = true;
-            }
-        }
+function getNextChar (p: PositionNeg,
+  lookingForward: boolean,
+  getLine: (x: number) => string,
+  getEndsInOperator: (y: number) => boolean,
+  lineCount: number): CharInfo {
+  const s = getLine(p.line)
+  let nextPos: PositionNeg
+  let isEndOfCodeLine = false
+  let isEndOfFile = false
+  if (lookingForward) {
+    if (p.character !== s.length) {
+      nextPos = new PositionNeg(p.line, p.character + 1)
+    } else if (p.line < (lineCount - 1)) {
+      nextPos = new PositionNeg(p.line + 1, -1)
     } else {
-        if (p.character !== -1) {
-            nextPos = new PositionNeg(p.line, p.character - 1);
-        } else if (p.line > 0) {
-            nextPos = new PositionNeg(p.line - 1, getLine(p.line - 1).length - 1);
-        } else {
-            // At start of document. Return same character.
-            isEndOfFile = true;
-            nextPos = new PositionNeg(p.line, p.character);
-        }
-        if (nextPos.character === -1) {
-            if ((nextPos.line <= 0) || !getEndsInOperator(nextPos.line - 1)) {
-                isEndOfCodeLine = true;
-            }
-        }
+      // At end of document. Return same character.
+      isEndOfFile = true
+      nextPos = new PositionNeg(p.line, p.character)
     }
-    const nextChar = getLine(nextPos.line)[nextPos.character];
+    const nextLine: string = getLine(nextPos.line)
+    if (nextPos.character === nextLine.length) {
+      if ((nextPos.line === (lineCount - 1)) || !getEndsInOperator(nextPos.line)) {
+        isEndOfCodeLine = true
+      }
+    }
+  } else {
+    if (p.character !== -1) {
+      nextPos = new PositionNeg(p.line, p.character - 1)
+    } else if (p.line > 0) {
+      nextPos = new PositionNeg(p.line - 1, getLine(p.line - 1).length - 1)
+    } else {
+      // At start of document. Return same character.
+      isEndOfFile = true
+      nextPos = new PositionNeg(p.line, p.character)
+    }
+    if (nextPos.character === -1) {
+      if ((nextPos.line <= 0) || !getEndsInOperator(nextPos.line - 1)) {
+        isEndOfCodeLine = true
+      }
+    }
+  }
+  const nextChar = getLine(nextPos.line)[nextPos.character]
 
-    return ({ nextChar, nextPos, isEndOfCodeLine, isEndOfFile });
+  return ({ nextChar, nextPos, isEndOfCodeLine, isEndOfFile })
 }
 
 /**
@@ -185,81 +192,81 @@ function getNextChar(p: PositionNeg,
  * @param getLine A function that returns the string at the given line of the document.
  * @param lineCount The number of lines in the document.
  */
-export function extendSelection(line: number, getLine: (line: number) => string, lineCount: number): {
-    startLine: number;
-    endLine: number;
+export function extendSelection (line: number, getLine: (line: number) => string, lineCount: number): {
+  startLine: number
+  endLine: number
 } {
-    const lc = new LineCache(getLine, lineCount);
-    const getLineFromCache = (x) => lc.getLineFromCache(x);
-    const getEndsInOperatorFromCache = (x) => lc.getEndsInOperatorFromCache(x);
-    let lookingForward = true;
-    /* poss[1] is the farthest point reached looking forward from line,
+  const lc = new LineCache(getLine, lineCount)
+  const getLineFromCache = (x) => lc.getLineFromCache(x)
+  const getEndsInOperatorFromCache = (x) => lc.getEndsInOperatorFromCache(x)
+  let lookingForward = true
+  /* poss[1] is the farthest point reached looking forward from line,
      and poss[0] is the farthest point reached looking backward from line. */
-    const poss = { 0: new PositionNeg(line, 0), 1: new PositionNeg(line, -1) };
-    const flagsFinish = { 0: false, 1: false }; // 1 represents looking forward, 0 represents looking back.
-    let flagAbort = false;
-    const unmatched = { 0: [] as string[], 1: [] as string[] };
-    let curChar = '';
-    let quoteChar = '';
-    while (!flagAbort && !(flagsFinish[0] && flagsFinish[1])) {
-        const { nextChar, nextPos, isEndOfCodeLine, isEndOfFile }
-        = getNextChar(poss[lookingForward ? 1 : 0],
-                      lookingForward,
-                      getLineFromCache,
-                      getEndsInOperatorFromCache,
-                      lineCount);
-        poss[Number(lookingForward)] = nextPos;
-        if (quoteChar === '') {
-            if (isQuote(nextChar)) {
-                quoteChar = nextChar;
-            } else {
-                if (isBracket(nextChar, lookingForward)) {
-                    unmatched[lookingForward ? 1 : 0].push(nextChar);
-                } else if (isBracket(nextChar, !lookingForward)) {
-                    if (unmatched[lookingForward ? 1 : 0].length === 0) {
-                        lookingForward = !lookingForward;
-                        unmatched[lookingForward ? 1 : 0].push(nextChar);
-                        flagsFinish[Number(lookingForward)] = false;
-                    } else if (!doBracketsMatch(nextChar, unmatched[lookingForward ? 1 : 0].pop())) {
-                        flagAbort = true;
-                    }
-                }
-            }
+  const poss = { 0: new PositionNeg(line, 0), 1: new PositionNeg(line, -1) }
+  const flagsFinish = { 0: false, 1: false } // 1 represents looking forward, 0 represents looking back.
+  let flagAbort = false
+  const unmatched = { 0: [] as string[], 1: [] as string[] }
+  let curChar = ''
+  let quoteChar = ''
+  while (!flagAbort && !(flagsFinish[0] && flagsFinish[1])) {
+    const { nextChar, nextPos, isEndOfCodeLine, isEndOfFile } =
+        getNextChar(poss[lookingForward ? 1 : 0],
+          lookingForward,
+          getLineFromCache,
+          getEndsInOperatorFromCache,
+          lineCount)
+    poss[Number(lookingForward)] = nextPos
+    if (quoteChar === '') {
+      if (isQuote(nextChar)) {
+        quoteChar = nextChar
+      } else {
+        if (isBracket(nextChar, lookingForward)) {
+          unmatched[lookingForward ? 1 : 0].push(nextChar)
+        } else if (isBracket(nextChar, !lookingForward)) {
+          if (unmatched[lookingForward ? 1 : 0].length === 0) {
+            lookingForward = !lookingForward
+            unmatched[lookingForward ? 1 : 0].push(nextChar)
+            flagsFinish[Number(lookingForward)] = false
+          } else if (!doBracketsMatch(nextChar, unmatched[lookingForward ? 1 : 0].pop())) {
+            flagAbort = true
+          }
+        }
+      }
+    } else {
+      if (nextChar === quoteChar) {
+        if (lookingForward) {
+          if (curChar !== '\\') {
+            quoteChar = ''
+          }
         } else {
-            if (nextChar === quoteChar) {
-                if (lookingForward) {
-                    if (curChar !== '\\') {
-                        quoteChar = '';
-                    }
-                } else {
-                    const next = getNextChar(poss[lookingForward ? 1 : 0],
-                        lookingForward,
-                        getLineFromCache,
-                        getEndsInOperatorFromCache,
-                        lineCount);
-                    if (next.nextChar !== '\\') {
-                        quoteChar = '';
-                    }
-                }
-            }
+          const next = getNextChar(poss[lookingForward ? 1 : 0],
+            lookingForward,
+            getLineFromCache,
+            getEndsInOperatorFromCache,
+            lineCount)
+          if (next.nextChar !== '\\') {
+            quoteChar = ''
+          }
         }
-
-        if (isEndOfCodeLine) {
-            if (unmatched[lookingForward ? 1 : 0].length === 0) {
-                // We have found everything we need to in this direction. Continue looking in the other direction.
-                flagsFinish[Number(lookingForward)] = true;
-                lookingForward = !lookingForward;
-            } else if (isEndOfFile) {
-                // Have hit the start or end of the file without finding the matching bracket.
-                flagAbort = true;
-            }
-        }
-        
-        curChar = nextChar;
-    }
-    if (flagAbort) {
-        return ({ startLine: line, endLine: line });
+      }
     }
 
-    return ({ startLine: poss[0].line, endLine: poss[1].line });
+    if (isEndOfCodeLine) {
+      if (unmatched[lookingForward ? 1 : 0].length === 0) {
+        // We have found everything we need to in this direction. Continue looking in the other direction.
+        flagsFinish[Number(lookingForward)] = true
+        lookingForward = !lookingForward
+      } else if (isEndOfFile) {
+        // Have hit the start or end of the file without finding the matching bracket.
+        flagAbort = true
+      }
+    }
+
+    curChar = nextChar
+  }
+  if (flagAbort) {
+    return ({ startLine: line, endLine: line })
+  }
+
+  return ({ startLine: poss[0].line, endLine: poss[1].line })
 }
