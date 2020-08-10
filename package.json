@@ -61,6 +61,7 @@
     "onCommand:r.helpPanel.back",
     "onCommand:r.helpPanel.forward"
   ],
+  "enableProposedApi": true,
   "main": "./dist/extension",
   "contributes": {
     "viewsContainers": {
