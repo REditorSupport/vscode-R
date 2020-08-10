@@ -16,6 +16,7 @@ import * as workspaceViewer from './workspaceViewer';
 import * as apiImplementation from './apiImplementation';
 import * as rHelp from './rHelp';
 import * as completions from './completions';
+import { RNotebookProvider } from './notebook';
 
 
 // global objects used in other files
@@ -36,7 +37,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // create R terminal
         'r.createRTerm': rTerminal.createRTerm,
 
-        // run code from editor in terminal 
+        // run code from editor in terminal
         'r.nrow': () => rTerminal.runSelectionOrWord(['nrow']),
         'r.length': () => rTerminal.runSelectionOrWord(['length']),
         'r.head': () => rTerminal.runSelectionOrWord(['head']),
@@ -168,6 +169,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         vscode.languages.registerCompletionItemProvider('r', new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
 
+    context.subscriptions.push(
+        vscode.notebook.registerNotebookContentProvider(
+          'r-notebook',
+          new RNotebookProvider()
+        )
+      );
+
     return rExtension;
 }
-

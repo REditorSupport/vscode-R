@@ -34,6 +34,7 @@
     "onLanguage:rmd",
     "onLanguage:debian-control.r",
     "workspaceContains:*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
+    "onNotebookEditor:r-notebook",
     "onCommand:r.createRTerm",
     "onCommand:r.runSource",
     "onCommand:r.knitRmd",
@@ -984,7 +985,18 @@
           "description": "Remove hidden items when clearing workspace."
         }
       }
-    }
+    },
+    "notebookProvider": [
+      {
+        "viewType": "r-notebook-provider",
+        "displayName": "R Notebook Provider",
+        "selector": [
+          {
+            "filenamePattern": "*.Rmd"
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "webpack --mode production",
