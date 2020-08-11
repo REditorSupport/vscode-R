@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import net = require('net');
 import { spawn } from 'child_process';
+import { dirname } from 'path';
 
 export class RNotebookProvider implements vscode.NotebookContentProvider {
   private kernalScript: string;
@@ -75,9 +76,8 @@ export class RNotebookProvider implements vscode.NotebookContentProvider {
     const env = Object.create(process.env);
     env.LANG = 'en_US.UTF-8';
 
-    const folder = vscode.workspace.getWorkspaceFolder(uri);
     const childProcess = spawn('R', ['--quite', '--slave', '-f', this.kernalScript],
-      { cwd: folder.uri.fsPath, env: env });
+      { cwd: dirname(uri.fsPath), env: env });
     childProcess.stderr.on('data', (chunk: Buffer) => {
       const str = chunk.toString();
       console.log(`R process (${childProcess.pid}): ${str}`);
