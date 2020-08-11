@@ -9,7 +9,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider {
     
     let line = 0;
     let cellType = 'markdown';
-    let cellStartLine = 1;
+    let cellStartLine = 0;
     while (line < lines.length) {
       if (cellType === 'markdown') {
         if (lines[line].startsWith('---')) {
@@ -25,6 +25,14 @@ export class RNotebookProvider implements vscode.NotebookContentProvider {
           });
           cellType = 'r';
           cellStartLine = line;
+        } else if (line == lines.length - 1) {
+          cells.push({
+            cellKind: vscode.CellKind.Markdown,
+            source: lines.slice(cellStartLine, line).join('\n'),
+            language: 'markdown',
+            outputs: [],
+            metadata: {},
+          });
         }
       } else if (cellType === 'yaml') {
         if (lines[line].startsWith('---')) {
@@ -50,14 +58,6 @@ export class RNotebookProvider implements vscode.NotebookContentProvider {
           cellType = 'markdown';
           cellStartLine = line + 1;
         }
-      } else if (line == lines.length - 1) {
-        cells.push({
-          cellKind: vscode.CellKind.Markdown,
-          source: lines.slice(cellStartLine, line).join('\n'),
-          language: 'markdown',
-          outputs: [],
-          metadata: {},
-        });
       }
       line++;
     }
