@@ -43,11 +43,13 @@ export class RNotebookProvider implements vscode.NotebookContentProvider {
       } else if (cellType === 'yaml') {
         if (lines[line].startsWith('---')) {
           cells.push({
-            cellKind: vscode.CellKind.Code,
+            cellKind: vscode.CellKind.Markdown,
             source: lines.slice(cellStartLine, line + 1).join('\n'),
             language: 'yaml',
             outputs: [],
-            metadata: {},
+            metadata: {
+              runnable: false,
+            },
           });
           cellType = 'markdown';
           cellStartLine = line + 1;
@@ -59,7 +61,9 @@ export class RNotebookProvider implements vscode.NotebookContentProvider {
             source: lines.slice(cellStartLine + 1, line).join('\n'),
             language: 'r',
             outputs: [],
-            metadata: {},
+            metadata: {
+              runnable: true,
+            },
           });
           cellType = 'markdown';
           cellStartLine = line + 1;
