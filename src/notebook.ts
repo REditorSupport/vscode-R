@@ -31,7 +31,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider {
           });
           cellType = 'r';
           cellStartLine = line;
-        } else if (line == lines.length - 1) {
+        } else if (line === lines.length - 1) {
           cells.push({
             cellKind: vscode.CellKind.Markdown,
             source: lines.slice(cellStartLine, line).join('\n'),
@@ -69,9 +69,9 @@ export class RNotebookProvider implements vscode.NotebookContentProvider {
     }
     
     const env = Object.create(process.env);
-    env.LANG = "en_US.UTF-8"
+    env.LANG = 'en_US.UTF-8';
 
-    const childProcess = spawn('R', ["--quite", "--slave", "-f", this.kernalScript],
+    const childProcess = spawn('R', ['--quite', '--slave', '-f', this.kernalScript],
       { cwd: vscode.workspace.workspaceFolders[0].uri.fsPath, env: env });
     childProcess.stderr.on('data', (chunk: Buffer) => {
       const str = chunk.toString();
