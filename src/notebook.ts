@@ -33,8 +33,8 @@ export class RNotebookProvider implements vscode.NotebookContentProvider {
             source: lines.slice(cellStartLine, line + 1).join('\n'),
             language: 'yaml',
             outputs: [],
-            metadata: { },
-          })
+            metadata: {},
+          });
           cellType = 'markdown';
           cellStartLine = line + 1;
         }
@@ -46,7 +46,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider {
             language: 'r',
             outputs: [],
             metadata: {},
-          })
+          });
           cellType = 'markdown';
           cellStartLine = line + 1;
         }
