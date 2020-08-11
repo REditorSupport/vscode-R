@@ -30,10 +30,9 @@ export async function previewDataframe() {
         return undefined;
     }
 
-    const selectedTextArray = getWordOrSelection();
-    const dataframeName = selectedTextArray[0];
+    const dataframeName = getWordOrSelection();
 
-    if (selectedTextArray.length !== 1 || !checkForSpecialCharacters(dataframeName)) {
+    if (!checkForSpecialCharacters(dataframeName)) {
         window.showInformationMessage('This does not appear to be a dataframe.');
 
         return false;
