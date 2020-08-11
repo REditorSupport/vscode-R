@@ -988,11 +988,11 @@
     },
     "notebookProvider": [
       {
-        "viewType": "r-notebook-provider",
-        "displayName": "R Notebook Provider",
+        "viewType": "r-notebook",
+        "displayName": "R Notebook",
         "selector": [
           {
-            "filenamePattern": "*.Rmd"
+            "filenamePattern": "*.rmd"
           }
         ]
       }
