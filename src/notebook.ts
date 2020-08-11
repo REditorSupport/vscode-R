@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import fs = require('fs-extra');
+import * as cp from 'child_process';
 
 export class RNotebookProvider implements vscode.NotebookContentProvider {
   async openNotebook(uri: vscode.Uri): Promise<vscode.NotebookData> {
