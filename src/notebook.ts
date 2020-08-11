@@ -7,44 +7,66 @@ export class RNotebookProvider implements vscode.NotebookContentProvider {
     const lines = content.split(/\r?\n/);
     const cells: vscode.NotebookCellData[] = [];
     
-    let cell: vscode.NotebookCellData;
     let line = 0;
+    let cellType = 'markdown';
+    let cellStartLine = 1;
     while (line < lines.length) {
-
+      if (cellType === 'markdown') {
+        if (lines[line].startsWith('---')) {
+          cellType = 'yaml';
+          cellStartLine = line;
+        } else if (lines[line].startsWith('```{r')) {
+          cells.push({
+            cellKind: vscode.CellKind.Markdown,
+            source: lines.slice(cellStartLine, line).join('\n'),
+            language: 'markdown',
+            outputs: [],
+            metadata: {},
+          });
+          cellType = 'r';
+          cellStartLine = line;
+        }
+      } else if (cellType === 'yaml') {
+        if (lines[line].startsWith('---')) {
+          cells.push({
+            cellKind: vscode.CellKind.Code,
+            source: lines.slice(cellStartLine, line + 1).join('\n'),
+            language: 'yaml',
+            outputs: [],
+            metadata: { },
+          })
+          cellType = 'markdown';
+          cellStartLine = line + 1;
+        }
+      } else if (cellType === 'r') {
+        if (lines[line].startsWith('```')) {
+          cells.push({
+            cellKind: vscode.CellKind.Code,
+            source: lines.slice(cellStartLine + 1, line).join('\n'),
+            language: 'r',
+            outputs: [],
+            metadata: {},
+          })
+          cellType = 'markdown';
+          cellStartLine = line + 1;
+        }
+      } else if (line == lines.length - 1) {
+        cells.push({
+          cellKind: vscode.CellKind.Markdown,
+          source: lines.slice(cellStartLine, line).join('\n'),
+          language: 'markdown',
+          outputs: [],
+          metadata: {},
+        });
+      }
       line++;
     }
 
     return {
-      languages: ['r'],
+      languages: ['r', 'yaml'],
       metadata: {},
       cells: cells,
     };
-
-    // return {
-    //   languages: [ 'r' ],
-    //   metadata: { custom: content.metadata },
-    //   cells: content.cells.map((cell: any) => {
-    //     if (cell.cell_type === 'markdown') {
-    //       return {
-    //         cellKind: vscode.CellKind.Markdown,
-    //         source: cell.source,
-    //         language: 'markdown',
-    //         outputs: [],
-    //         metadata: {}
-    //       };
-    //     } else if (cell.cell_type === 'code') {
-    //       return {
-    //         cellKind: vscode.CellKind.Code,
-    //         source: cell.source,
-    //         language: content.metadata?.language_info?.name || 'r',
-    //         outputs: [/* not implemented */],
-    //         metadata: {}
-    //       };
-    //     } else {
-    //       console.error('Unexpected cell:', cell);
-    //     }
-    //   })
-    // };
   }
 
   // The following are dummy implementations not relevant to this example.
