@@ -1,7 +1,13 @@
 import * as vscode from 'vscode';
-import * as cp from 'child_process';
+import net = require('net');
+import { spawn } from 'child_process';
 
 export class RNotebookProvider implements vscode.NotebookContentProvider {
+  private kernalScript: string;
+  constructor(kernelScript: string) {
+    this.kernalScript = kernelScript;
+  }
+
   async openNotebook(uri: vscode.Uri): Promise<vscode.NotebookData> {
     const content = (await vscode.workspace.fs.readFile(uri)).toString();
     const lines = content.split(/\r?\n/);
@@ -61,6 +67,32 @@ export class RNotebookProvider implements vscode.NotebookContentProvider {
       }
       line++;
     }
+    
+    const env = Object.create(process.env);
+    env.LANG = "en_US.UTF-8"
+
+    const childProcess = spawn('R', ["--quite", "--slave", "-f", this.kernalScript],
+      { cwd: vscode.workspace.workspaceFolders[0].uri.fsPath, env: env });
+    childProcess.stderr.on('data', (chunk: Buffer) => {
+      const str = chunk.toString();
+      console.log(`R process (${childProcess.pid}): ${str}`);
+    });
+    childProcess.on('exit', (code, signal) => {
+      console.log(`R process exited with code ${code}`);
+    });
+
+    const client = net.createConnection({
+      port: 8780,
+    }, () => {
+        console.log('connected to server!');
+    });
+    client.on('data', (data) => {
+      console.log(data.toString());
+      client.end();
+    });
+    client.on('end', () => {
+      console.log('disconnected from server');
+    });
 
     return {
       languages: ['r', 'yaml'],

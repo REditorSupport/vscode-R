@@ -18,7 +18,6 @@ import * as rHelp from './rHelp';
 import * as completions from './completions';
 import { RNotebookProvider } from './notebook';
 
-
 // global objects used in other files
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
