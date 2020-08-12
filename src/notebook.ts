@@ -55,26 +55,26 @@ class RKernel {
 
       const client = net.createConnection({ port: this.port }, () => {
         console.log('connected to server!');
-      });
+        client.on('data', (data) => {
+          const result = data.toString();
+          console.log(result);
+          outputBuffer += result;
+          client.end();
+        });
 
-      client.on('data', (data) => {
-        const result = data.toString();
-        console.log(result);
-        outputBuffer += result;
-        client.end();
-      });
+        client.on('end', () => {
+          console.log('disconnected from server');
+        });
 
-      client.on('end', () => {
-        console.log('disconnected from server');
+        const json = JSON.stringify({
+          time: Date.now(),
+          uri: cell.uri.toString(),
+          expr: '1+1',
+        });
+        
+        console.log(`Send: ${json}`);
+        client.write(json);
       });
-
-      const json = JSON.stringify({
-        time: Date.now(),
-        uri: cell.uri.toString(),
-        expr: '1+1',
-      });
-      console.log(`Send: ${json}`);
-      client.write(json);
 
       return Promise.resolve(outputBuffer);
     }
