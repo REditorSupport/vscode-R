@@ -56,9 +56,12 @@ class RKernel {
     if (this.process) {
       const client = net.createConnection({ port: this.port }, () => {
         console.log('connected to server!');
-        const json = `{"time":"${Date.now().toString()}","expr":"rnorm(3)"}\n`;
-        console.log(`Send: ${json}`);
-        client.write(json);
+        const request = JSON.stringify({
+          time: Date.now(),
+          expr: cell.document.getText(),
+        }).concat('\n');
+        console.log(`Send: ${request}`);
+        client.write(request);
       });
 
       client.on('end', () => {
@@ -67,10 +70,12 @@ class RKernel {
 
       return new Promise((resolve, reject) => {
         client.on('data', (data) => {
-          const result = data.toString();
-          console.log(result);
+          const response = data.toString();
+          console.log(response);
           client.end();
-          resolve(result);
+          const output = JSON.parse(response);
+          const result: string[] = output.result;
+          resolve(result.join('\n'));
         });
 
         client.on('error', (err) => {
