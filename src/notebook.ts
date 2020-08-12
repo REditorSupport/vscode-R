@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import net = require('net');
 import { spawn, ChildProcess } from 'child_process';
-import { dirname } from 'path';
+import { dirname, resolve } from 'path';
 import getPort = require('get-port');
 
 class RKernel {
@@ -24,14 +24,18 @@ class RKernel {
     env.LANG = 'en_US.UTF-8';
 
     this.port = await getPort();
-    const childProcess = spawn('R', ['--quite', '--slave', '-f', this.kernelScript, '--args', `port=${this.port}`],
+    const childProcess = spawn('R', ['--quiet', '--slave', '-f', this.kernelScript, '--args', `port=${this.port}`],
       { cwd: this.cwd, env: env });
     childProcess.stderr.on('data', (chunk: Buffer) => {
       const str = chunk.toString();
-      console.log(`R process (${childProcess.pid}): ${str}`);
+      console.log(`R stderr (${childProcess.pid}): ${str}`);
+    });
+    childProcess.stdout.on('data', (chunk: Buffer) => {
+      const str = chunk.toString();
+      console.log(`R stdout (${childProcess.pid}): ${str}`);
     });
     childProcess.on('exit', (code, signal) => {
-      console.log(`R process exited with code ${code}`);
+      console.log(`R exited with code ${code}`);
     });
     this.process = childProcess;
   }
@@ -50,33 +54,29 @@ class RKernel {
 
   public async eval(cell: vscode.NotebookCell): Promise<string> {
     if (this.process) {
-      let outputBuffer = '';
-      await new Promise(res => setTimeout(res, 1000));
-
       const client = net.createConnection({ port: this.port }, () => {
         console.log('connected to server!');
-        client.on('data', (data) => {
-          const result = data.toString();
-          console.log(result);
-          outputBuffer += result;
-          client.end();
-        });
-
-        client.on('end', () => {
-          console.log('disconnected from server');
-        });
-
-        const json = JSON.stringify({
-          time: Date.now(),
-          uri: cell.uri.toString(),
-          expr: '1+1',
-        });
-        
+        const json = `{"time":"${Date.now().toString()}","expr":"rnorm(3)"}\n`;
         console.log(`Send: ${json}`);
         client.write(json);
       });
 
-      return Promise.resolve(outputBuffer);
+      client.on('end', () => {
+        console.log('disconnected from server');
+      });
+
+      return new Promise((resolve, reject) => {
+        client.on('data', (data) => {
+          const result = data.toString();
+          console.log(result);
+          client.end();
+          resolve(result);
+        });
+
+        client.on('error', (err) => {
+          reject(err.message);
+        });
+      });
     }
   }
 }
@@ -118,7 +118,9 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       vscode.notebook.onDidOpenNotebookDocument(document => {
         const docKey = document.uri.toString();
         if (!this.notebooks.has(docKey)) {
-          this.notebooks.set(docKey, new RNotebook(this.kernelScript, document));
+          const notebook = new RNotebook(this.kernelScript, document);
+          notebook.restartKernel();
+          this.notebooks.set(docKey, notebook);
         }
       }),
       vscode.notebook.onDidCloseNotebookDocument(document => {

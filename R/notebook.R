@@ -7,8 +7,9 @@ local({
     eval(expr, env)
   }
 
-  print(ls.str(env))
+  ls.str(env)
   while (TRUE) {
+    cat("Waiting\n")
     con <- socketConnection(host = "127.0.0.1", port = env$port,
       blocking = TRUE, server = TRUE,
       open = "r+")
@@ -22,7 +23,7 @@ local({
       type = if (inherits(res, "try-error")) "error" else "output",
       result = utils::capture.output(print(res))
     )
-    result <- jsonlite::toJSON(str, force = TRUE)
+    result <- jsonlite::toJSON(str, auto_unbox = TRUE, force = TRUE)
     writeLines(result, con)
     close(con)
   }
