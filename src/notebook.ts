@@ -99,7 +99,7 @@ class RNotebook implements vscode.Disposable {
   }
 
   public async eval(cell: vscode.NotebookCell): Promise<string> {
-    this.kernel.start();
+    await this.kernel.start();
     return this.kernel.eval(cell);
   }
 }
