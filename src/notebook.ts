@@ -218,27 +218,37 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     };
   }
 
-  onDidChangeNotebook = new vscode.EventEmitter<vscode.NotebookDocumentEditEvent>().event;
-  async resolveNotebook(): Promise<void> { }
-  async saveNotebook(document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> {
+  async save(targetResource: vscode.Uri, document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> {
     let content = '';
     for (const cell of document.cells) {
+      if (cancellation.isCancellationRequested) {
+        return;
+      }
       if (cell.cellKind === vscode.CellKind.Markdown) {
-        content += '\n\n' + cell.document.getText() + '\n\n';
+        content += cell.document.getText();
       } else if (cell.cellKind === vscode.CellKind.Code) {
         if (cell.language === 'r') {
-          content += '\n\n```{r}\n' + cell.document.getText() + '\n```\n';
+          content += '```{r}\n' + cell.document.getText() + '\n```\n\n';
         } else if (cell.language === 'yaml') {
           content += '---\n' + cell.document.getText() + '\n---\n';
         } else {
-          content += '\n\n```{' + cell.language + '}\n' + cell.document.getText() + '\n```\n';
+          content += '```{' + cell.language + '}\n' + cell.document.getText() + '\n```\n\n';
         }
       }
     }
-    vscode.workspace.fs.writeFile(document.uri, Buffer.from(content));
+    await vscode.workspace.fs.writeFile(document.uri, Buffer.from(content));
   }
 
-  async saveNotebookAs(targetResource: vscode.Uri, document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> { }
+  onDidChangeNotebook = new vscode.EventEmitter<vscode.NotebookDocumentEditEvent>().event;
+  async resolveNotebook(): Promise<void> { }
+  async saveNotebook(document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> {
+    await this.save(document.uri, document, cancellation);
+  }
+
+  async saveNotebookAs(targetResource: vscode.Uri, document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> {
+    await this.save(targetResource, document, cancellation);
+  }
+
   async backupNotebook(document: vscode.NotebookDocument, context: vscode.NotebookDocumentBackupContext, cancellation: vscode.CancellationToken): Promise<vscode.NotebookDocumentBackup> { return { id: '', delete: () => { } }; }
   async executeCell(document: vscode.NotebookDocument, cell: vscode.NotebookCell) {
     const notebook = this.notebooks.get(document.uri.toString());
