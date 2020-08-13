@@ -117,6 +117,8 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
   private disposables: vscode.Disposable[] = [];
   private readonly notebooks = new Map<string, RNotebook>();
 
+  private runIndex: number = 0;
+
   constructor(kernelScript: string) {
     this.kernelScript = kernelScript;
     this.disposables.push(
@@ -276,29 +278,27 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       return;
     }
 
-    let output = '';
-    let error: Error;
-
     if (notebook) {
       try {
-        output = await notebook.eval(cell);
+        cell.metadata.runState = vscode.NotebookCellRunState.Running;
+        const start = +new Date();
+        cell.metadata.runStartTime = start;
+        cell.metadata.executionOrder = ++this.runIndex;
+        const output = await notebook.eval(cell);
+        cell.outputs = [{
+          outputKind: vscode.CellOutputKind.Text,
+          text: output,
+        }];
+        cell.metadata.runState = vscode.NotebookCellRunState.Success;
+        cell.metadata.lastRunDuration = +new Date() - start;
       } catch (e) {
-        error = e;
+        cell.outputs = [{
+          outputKind: vscode.CellOutputKind.Error,
+          evalue: e.toString(),
+          ename: '',
+          traceback: [],
+        }];
       }
-    }
-
-    if (error) {
-      cell.outputs = [{
-        outputKind: vscode.CellOutputKind.Error,
-        evalue: error.toString(),
-        ename: '',
-        traceback: [],
-      }];
-    } else {
-      cell.outputs = [{
-        outputKind: vscode.CellOutputKind.Text,
-        text: output,
-      }];
     }
   }
 
