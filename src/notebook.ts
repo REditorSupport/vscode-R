@@ -213,6 +213,10 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
             metadata: {
               editable: true,
               runnable: true,
+              custom: {
+                header: lines[cellStartLine],
+                footer: lines[line],
+              }
             },
           });
           cellType = 'markdown';
@@ -239,7 +243,13 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         content += cell.document.getText() + '\n\n';
       } else if (cell.cellKind === vscode.CellKind.Code) {
         if (cell.language === 'r') {
-          content += '```{r}\n' + cell.document.getText() + '\n```\n\n';
+          if (cell.metadata.custom === undefined) {
+            cell.metadata.custom = {
+              header: '```{r}',
+              footer: '```'
+            };
+          }
+          content += cell.metadata.custom.header + '\n' + cell.document.getText() + '\n' + cell.metadata.custom.footer + '\n\n';
         } else if (cell.language === 'yaml') {
           content += cell.document.getText() + '\n\n';
         } else {
