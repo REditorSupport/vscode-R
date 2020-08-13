@@ -225,12 +225,12 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         return;
       }
       if (cell.cellKind === vscode.CellKind.Markdown) {
-        content += cell.document.getText();
+        content += cell.document.getText() + '\n\n';
       } else if (cell.cellKind === vscode.CellKind.Code) {
         if (cell.language === 'r') {
           content += '```{r}\n' + cell.document.getText() + '\n```\n\n';
         } else if (cell.language === 'yaml') {
-          content += '---\n' + cell.document.getText() + '\n---\n';
+          content += cell.document.getText() + '\n\n';
         } else {
           content += '```{' + cell.language + '}\n' + cell.document.getText() + '\n```\n\n';
         }
