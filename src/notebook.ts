@@ -5,7 +5,7 @@ import { dirname } from 'path';
 import getPort = require('get-port');
 
 interface REvalOutput {
-  type: "output" | "error";
+  type: 'output' | 'error';
   result: string;
 }
 
@@ -84,7 +84,7 @@ class RKernel {
 
         client.on('error', (err) => {
           reject({
-            type: "error",
+            type: 'error',
             result: [
               err.message
             ],
@@ -304,7 +304,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         cell.metadata.runStartTime = start;
         cell.metadata.executionOrder = ++this.runIndex;
         const output = await notebook.eval(cell);
-        if (output.type === "error") {
+        if (output.type === 'error') {
           throw new Error(output.result);
         }
         cell.outputs = [{
