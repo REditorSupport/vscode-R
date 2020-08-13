@@ -180,7 +180,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       } else if (cellType === 'yaml') {
         if (lines[line].startsWith('---')) {
           cells.push({
-            cellKind: vscode.CellKind.Markdown,
+            cellKind: vscode.CellKind.Code,
             source: lines.slice(cellStartLine, line + 1).join('\n'),
             language: 'yaml',
             outputs: [],
@@ -218,10 +218,26 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     };
   }
 
-  // The following are dummy implementations not relevant to this example.
   onDidChangeNotebook = new vscode.EventEmitter<vscode.NotebookDocumentEditEvent>().event;
   async resolveNotebook(): Promise<void> { }
-  async saveNotebook(document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> { }
+  async saveNotebook(document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> {
+    let content = '';
+    for (const cell of document.cells) {
+      if (cell.cellKind === vscode.CellKind.Markdown) {
+        content += '\n\n' + cell.document.getText() + '\n\n';
+      } else if (cell.cellKind === vscode.CellKind.Code) {
+        if (cell.language === 'r') {
+          content += '\n\n```{r}\n' + cell.document.getText() + '\n```\n';
+        } else if (cell.language === 'yaml') {
+          content += '---\n' + cell.document.getText() + '\n---\n';
+        } else {
+          content += '\n\n```{' + cell.language + '}\n' + cell.document.getText() + '\n```\n';
+        }
+      }
+    }
+    vscode.workspace.fs.writeFile(document.uri, Buffer.from(content));
+  }
+
   async saveNotebookAs(targetResource: vscode.Uri, document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> { }
   async backupNotebook(document: vscode.NotebookDocument, context: vscode.NotebookDocumentBackupContext, cancellation: vscode.CancellationToken): Promise<vscode.NotebookDocumentBackup> { return { id: '', delete: () => { } }; }
   async executeCell(document: vscode.NotebookDocument, cell: vscode.NotebookCell) {
