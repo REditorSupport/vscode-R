@@ -212,13 +212,13 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     }
 
     return {
-      languages: ['r', 'yaml'],
+      languages: ['r'],
       metadata: { },
       cells: cells,
     };
   }
 
-  async save(targetResource: vscode.Uri, document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> {
+  async save(document: vscode.NotebookDocument, targetResource: vscode.Uri, cancellation: vscode.CancellationToken): Promise<void> {
     let content = '';
     for (const cell of document.cells) {
       if (cancellation.isCancellationRequested) {
@@ -236,20 +236,29 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         }
       }
     }
-    await vscode.workspace.fs.writeFile(document.uri, Buffer.from(content));
+    await vscode.workspace.fs.writeFile(targetResource, Buffer.from(content));
   }
 
   onDidChangeNotebook = new vscode.EventEmitter<vscode.NotebookDocumentEditEvent>().event;
+
   async resolveNotebook(): Promise<void> { }
+
   async saveNotebook(document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> {
-    await this.save(document.uri, document, cancellation);
+    await this.save(document, document.uri, cancellation);
   }
 
   async saveNotebookAs(targetResource: vscode.Uri, document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> {
-    await this.save(targetResource, document, cancellation);
+    await this.save(document, targetResource, cancellation);
   }
 
-  async backupNotebook(document: vscode.NotebookDocument, context: vscode.NotebookDocumentBackupContext, cancellation: vscode.CancellationToken): Promise<vscode.NotebookDocumentBackup> { return { id: '', delete: () => { } }; }
+  async backupNotebook(document: vscode.NotebookDocument, context: vscode.NotebookDocumentBackupContext, cancellation: vscode.CancellationToken): Promise<vscode.NotebookDocumentBackup> {
+    await this.save(document, context.destination, cancellation);
+    return {
+      id: context.destination.toString(),
+      delete: () => vscode.workspace.fs.delete(context.destination)
+    };
+  }
+
   async executeCell(document: vscode.NotebookDocument, cell: vscode.NotebookCell) {
     const notebook = this.notebooks.get(document.uri.toString());
 
