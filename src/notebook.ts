@@ -240,7 +240,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         return;
       }
       if (cell.cellKind === vscode.CellKind.Markdown) {
-        content += cell.document.getText() + '\n\n';
+        content += cell.document.getText() + '\n';
       } else if (cell.cellKind === vscode.CellKind.Code) {
         if (cell.language === 'r') {
           if (cell.metadata.custom === undefined) {
@@ -249,11 +249,11 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
               footer: '```'
             };
           }
-          content += cell.metadata.custom.header + '\n' + cell.document.getText() + '\n' + cell.metadata.custom.footer + '\n\n';
+          content += cell.metadata.custom.header + '\n' + cell.document.getText() + '\n' + cell.metadata.custom.footer + '\n';
         } else if (cell.language === 'yaml') {
           content += cell.document.getText() + '\n\n';
         } else {
-          content += '```{' + cell.language + '}\n' + cell.document.getText() + '\n```\n\n';
+          content += '```{' + cell.language + '}\n' + cell.document.getText() + '\n```\n';
         }
       }
     }
