@@ -18,16 +18,23 @@ local({
       tryCatch({
         line <- readLines(con, n = 1)
         request <- jsonlite::fromJSON(line)
-        cat(sprintf("[%s]\n%s\n",
-          request$time, request$expr))
-        expr <- parse(text = request$expr)
-        res <- try(eval(expr, globalenv()), silent = TRUE)
-        str <- list(
-          type = if (inherits(res, "try-error")) "error" else "output",
-          result = utils::capture.output(print(res))
+        cat(sprintf("[%s]\n%s\n", request$time, request$expr))
+        str <- tryCatch({
+          expr <- parse(text = request$expr)
+          out <- eval(expr, globalenv())
+          list(
+            type = "output",
+            result = paste0(utils::capture.output(print(out)), collapse = "\n")
+          )
+        }, error = function(e) {
+            list(
+              type = "error",
+              result = conditionMessage(e)
+            )
+          }
         )
-        result <- jsonlite::toJSON(str, auto_unbox = TRUE, force = TRUE)
-        writeLines(result, con)
+        response <- jsonlite::toJSON(str, auto_unbox = TRUE, force = TRUE)
+        writeLines(response, con)
       }, error = function(e) {
         message(e)
       }, finally = close(con))

@@ -4,6 +4,11 @@ import { spawn, ChildProcess } from 'child_process';
 import { dirname } from 'path';
 import getPort = require('get-port');
 
+interface REvalOutput {
+  type: "output" | "error";
+  result: string;
+}
+
 class RKernel {
   private kernelScript: string;
   private cwd: string;
@@ -52,7 +57,7 @@ class RKernel {
     await this.start();
   }
 
-  public async eval(cell: vscode.NotebookCell): Promise<string> {
+  public async eval(cell: vscode.NotebookCell): Promise<REvalOutput> {
     if (this.process) {
       const client = net.createConnection({ port: this.port }, () => {
         console.log('connected to server!');
@@ -73,13 +78,17 @@ class RKernel {
           const response = data.toString();
           console.log(response);
           client.end();
-          const output = JSON.parse(response);
-          const result: string[] = output.result;
-          resolve(result.join('\n'));
+          const output: REvalOutput = JSON.parse(response);
+          resolve(output);
         });
 
         client.on('error', (err) => {
-          reject(err.message);
+          reject({
+            type: "error",
+            result: [
+              err.message
+            ],
+          });
         });
       });
     }
@@ -103,7 +112,7 @@ class RNotebook implements vscode.Disposable {
     this.kernel.restart();
   }
 
-  public async eval(cell: vscode.NotebookCell): Promise<string> {
+  public async eval(cell: vscode.NotebookCell): Promise<REvalOutput> {
     await this.kernel.start();
     return this.kernel.eval(cell);
   }
@@ -285,9 +294,12 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         cell.metadata.runStartTime = start;
         cell.metadata.executionOrder = ++this.runIndex;
         const output = await notebook.eval(cell);
+        if (output.type === "error") {
+          throw new Error(output.result);
+        }
         cell.outputs = [{
           outputKind: vscode.CellOutputKind.Text,
-          text: output,
+          text: output.result,
         }];
         cell.metadata.runState = vscode.NotebookCellRunState.Success;
         cell.metadata.lastRunDuration = +new Date() - start;
@@ -298,6 +310,8 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
           ename: '',
           traceback: [],
         }];
+        cell.metadata.runState = vscode.NotebookCellRunState.Error;
+        cell.metadata.lastRunDuration = undefined;
       }
     }
   }
