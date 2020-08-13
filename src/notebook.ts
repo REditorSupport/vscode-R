@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import net = require('net');
 import { spawn, ChildProcess } from 'child_process';
-import { dirname, resolve } from 'path';
+import { dirname } from 'path';
 import getPort = require('get-port');
 
 class RKernel {
