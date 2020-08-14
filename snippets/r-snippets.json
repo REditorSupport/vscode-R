@@ -336,7 +336,7 @@
     },
     "Read CSV":{
         "prefix": "readc",
-        "body": "${1:dfname} <- read.csv(file = \"${2:file}\", header = ${3|TRUE,FALSE|},  sep = \"${4:\\,}\", row.names = ${5:NULL},  stringsAsFactors = ${6|FALSE,TRUE|}})",
+        "body": "${1:dfname} <- read.csv(file = \"${2:file}\", header = ${3|TRUE,FALSE|},  sep = \"${4|\\,,;|}\", row.names = ${5:NULL},  stringsAsFactors = ${6|FALSE,TRUE|})",
         "description": "Read a data table from a comma-separated file (CSV) and create a data frame"
     },
     "else": {
