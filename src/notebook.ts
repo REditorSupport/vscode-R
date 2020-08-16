@@ -313,12 +313,10 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
             }];
             break;
           case 'plot':
-            const plotData = fs.readFileSync(output.result);
-            const buffer = new Buffer(plotData).toString('base64');
             cell.outputs = [{
               outputKind: vscode.CellOutputKind.Rich,
               data: {
-                'image/png': buffer,
+                'image/png': fs.readFileSync(output.result).toString('base64'),
               }
             }];
             break;
