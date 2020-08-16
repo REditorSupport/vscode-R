@@ -7,6 +7,25 @@ local({
     eval(expr, env)
   }
 
+  plot_file <- file.path(tempdir(), "plot.png")
+  null_dev_id <- c(pdf = 2L)
+  null_dev_size <- c(7 + pi, 7 + pi)
+
+  options(
+    device = function(...) {
+      pdf(NULL,
+        width = null_dev_size[[1L]],
+        height = null_dev_size[[2L]],
+        bg = "white")
+      dev.control(displaylist = "enable")
+    }
+  )
+
+  check_null_dev <- function() {
+    identical(dev.cur(), null_dev_id) &&
+      identical(dev.size(), null_dev_size)
+  }
+
   ls.str(env)
   while (TRUE) {
     con <- try(socketConnection(host = "127.0.0.1", port = env$port,
@@ -22,7 +41,17 @@ local({
         str <- tryCatch({
           expr <- parse(text = request$expr)
           out <- withVisible(eval(expr, globalenv()))
-          if (out$visible) {
+          if (check_null_dev()) {
+            record <- recordPlot()
+            png(filename = plot_file)
+            replayPlot(record)
+            dev.off()
+            dev.off()
+            res <- list(
+              type = "plot",
+              result = plot_file
+            )
+          } else if (out$visible) {
             print_text <- utils::capture.output(print(out$value))
             res <- list(
               type = "text",

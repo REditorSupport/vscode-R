@@ -3,6 +3,7 @@ import net = require('net');
 import { spawn, ChildProcess } from 'child_process';
 import { dirname } from 'path';
 import getPort = require('get-port');
+import * as fs from 'fs';
 
 interface REvalOutput {
   type: 'text' | 'plot' | 'viewer' | 'browser' | 'error';
@@ -304,13 +305,26 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         cell.metadata.runStartTime = start;
         cell.metadata.executionOrder = ++this.runIndex;
         const output = await notebook.eval(cell);
-        if (output.type === 'error') {
-          throw new Error(output.result);
+        switch (output.type) {
+          case 'text':
+            cell.outputs = [{
+              outputKind: vscode.CellOutputKind.Text,
+              text: output.result,
+            }];
+            break;
+          case 'plot':
+            const plotData = fs.readFileSync(output.result);
+            const buffer = new Buffer(plotData).toString('base64');
+            cell.outputs = [{
+              outputKind: vscode.CellOutputKind.Rich,
+              data: {
+                'image/png': buffer,
+              }
+            }];
+            break;
+          case 'error': 
+            throw new Error(output.result);
         }
-        cell.outputs = [{
-          outputKind: vscode.CellOutputKind.Text,
-          text: output.result,
-        }];
         cell.metadata.runState = vscode.NotebookCellRunState.Success;
         cell.metadata.lastRunDuration = +new Date() - start;
       } catch (e) {
