@@ -21,11 +21,20 @@ local({
         cat(sprintf("[%s]\n%s\n", request$time, request$expr))
         str <- tryCatch({
           expr <- parse(text = request$expr)
-          out <- eval(expr, globalenv())
-          list(
-            type = "output",
-            result = paste0(utils::capture.output(print(out)), collapse = "\n")
-          )
+          out <- withVisible(eval(expr, globalenv()))
+          if (out$visible) {
+            print_text <- utils::capture.output(print(out$value))
+            res <- list(
+              type = "text",
+              result = paste0(print_text, collapse = "\n")
+            )
+          } else {
+            res <- list(
+              type = "text",
+              result = ""
+            )
+          }
+          res
         }, error = function(e) {
             list(
               type = "error",

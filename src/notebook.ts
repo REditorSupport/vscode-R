@@ -5,7 +5,7 @@ import { dirname } from 'path';
 import getPort = require('get-port');
 
 interface REvalOutput {
-  type: 'output' | 'error';
+  type: 'text' | 'plot' | 'viewer' | 'browser' | 'error';
   result: string;
 }
 
