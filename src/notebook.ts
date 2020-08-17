@@ -316,7 +316,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
             cell.outputs = [{
               outputKind: vscode.CellOutputKind.Rich,
               data: {
-                'image/png': fs.readFileSync(output.result, 'base64'),
+                'image/svg+xml': fs.readFileSync(output.result).toString(),
               }
             }];
             break;

@@ -7,7 +7,7 @@ local({
     eval(expr, env)
   }
 
-  plot_file <- file.path(tempdir(), "plot.png")
+  plot_file <- file.path(tempdir(), "plot")
   null_dev_id <- c(pdf = 2L)
   null_dev_size <- c(7 + pi, 7 + pi)
 
@@ -43,7 +43,7 @@ local({
           out <- withVisible(eval(expr, globalenv()))
           if (check_null_dev()) {
             record <- recordPlot()
-            png(filename = plot_file)
+            svglite::svglite(plot_file, width = 10, height = 6)
             replayPlot(record)
             dev.off()
             dev.off()
