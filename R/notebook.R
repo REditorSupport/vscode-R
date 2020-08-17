@@ -38,10 +38,10 @@ local({
         line <- readLines(con, n = 1)
         request <- jsonlite::fromJSON(line)
         cat(sprintf("[%s]\n%s\n", request$time, request$expr))
-        res <- list()
         str <- tryCatch({
           expr <- parse(text = request$expr)
           out <- withVisible(eval(expr, globalenv()))
+          text <- utils::capture.output(print(out$value))
           if (check_null_dev()) {
             record <- recordPlot()
             plot_file <- tempfile(fileext = ".svg")
@@ -53,10 +53,9 @@ local({
               result = plot_file
             )
           } else if (out$visible) {
-            print_text <- utils::capture.output(print(out$value))
             res <- list(
               type = "text",
-              result = paste0(print_text, collapse = "\n")
+              result = paste0(text, collapse = "\n")
             )
           } else {
             res <- list(
