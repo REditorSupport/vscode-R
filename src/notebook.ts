@@ -320,6 +320,22 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
               }
             }];
             break;
+          case 'viewer':
+            cell.outputs = [{
+              outputKind: vscode.CellOutputKind.Rich,
+              data: {
+                'application/json': output,
+              }
+            }];
+            break;
+          case 'browser':
+            cell.outputs = [{
+              outputKind: vscode.CellOutputKind.Rich,
+              data: {
+                'application/json': output,
+              }
+            }];
+            break;
           case 'error': 
             throw new Error(output.result);
         }

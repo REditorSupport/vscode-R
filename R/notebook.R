@@ -10,6 +10,8 @@ local({
 
   null_dev_id <- c(pdf = 2L)
   null_dev_size <- c(7 + pi, 7 + pi)
+  viewer_file <- NULL
+  browser_url <- NULL
 
   options(
     device = function(...) {
@@ -18,6 +20,18 @@ local({
         height = null_dev_size[[2L]],
         bg = "white")
       dev.control(displaylist = "enable")
+    },
+    viewer = function(url, ...) {
+      message("viewer: ", url)
+      viewer_file <<- url
+    },
+    page_viewer = function(url, ...) {
+      message("page_viewer: ", url)
+      viewer_file <<- url
+    },
+    browser = function(url, ...) {
+      message("browser: ", url)
+      browser_url <<- url
     }
   )
 
@@ -38,10 +52,12 @@ local({
         line <- readLines(con, n = 1)
         request <- jsonlite::fromJSON(line)
         cat(sprintf("[%s]\n%s\n", request$time, request$expr))
+        viewer_file <- NULL
+        browser_url <- NULL
         str <- tryCatch({
           expr <- parse(text = request$expr)
           out <- withVisible(eval(expr, globalenv()))
-          text <- utils::capture.output(print(out$value))
+          text <- utils::capture.output(print(out$value, view = TRUE))
           if (check_null_dev()) {
             record <- recordPlot()
             plot_file <- tempfile(fileext = ".svg")
@@ -51,6 +67,16 @@ local({
             res <- list(
               type = "plot",
               result = plot_file
+            )
+          } else if (!is.null(viewer_file)) {
+            res <- list(
+              type = "viewer",
+              result = viewer_file
+            )
+          } else if (!is.null(browser_url)) {
+            res <- list(
+              type = "browser",
+              result = browser_url
             )
           } else if (out$visible) {
             res <- list(
