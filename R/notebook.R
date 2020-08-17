@@ -1,5 +1,6 @@
 local({
   requireNamespace("jsonlite")
+  requireNamespace("svglite")
   args <- commandArgs(trailingOnly = TRUE)
   exprs <- parse(text = args, keep.source = FALSE)
   env <- new.env()
@@ -7,7 +8,6 @@ local({
     eval(expr, env)
   }
 
-  plot_file <- file.path(tempdir(), "plot")
   null_dev_id <- c(pdf = 2L)
   null_dev_size <- c(7 + pi, 7 + pi)
 
@@ -38,15 +38,16 @@ local({
         line <- readLines(con, n = 1)
         request <- jsonlite::fromJSON(line)
         cat(sprintf("[%s]\n%s\n", request$time, request$expr))
+        res <- list()
         str <- tryCatch({
           expr <- parse(text = request$expr)
           out <- withVisible(eval(expr, globalenv()))
           if (check_null_dev()) {
             record <- recordPlot()
-            svglite::svglite(plot_file, width = 10, height = 6)
+            plot_file <- tempfile(fileext = ".svg")
+            svglite::svglite(plot_file, width = 12, height = 8)
             replayPlot(record)
-            dev.off()
-            dev.off()
+            graphics.off()
             res <- list(
               type = "plot",
               result = plot_file
