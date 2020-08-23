@@ -46,10 +46,10 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
 
 export function deleteTerminal(term: Terminal) {
     if (isDeepStrictEqual(term, rTerm)) {
+        rTerm = undefined;
         if (config().get<boolean>('sessionWatcher')) {
             removeSessionFiles();
         }
-        rTerm = undefined;
     }
 }
 
