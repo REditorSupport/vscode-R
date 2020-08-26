@@ -67,7 +67,7 @@ class RKernel {
         const request = JSON.stringify({
           time: Date.now(),
           expr: cell.document.getText(),
-        });
+        }).concat('\n');
         console.log(`uri: ${cell.uri}, write: ${request}`);
         client.write(request);
       });
