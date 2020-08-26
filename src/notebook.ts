@@ -300,6 +300,10 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
 
     if (notebook) {
       try {
+        if (cell.metadata === undefined) {
+          cell.metadata = {};
+        }
+        
         cell.metadata.runState = vscode.NotebookCellRunState.Running;
         const start = +new Date();
         cell.metadata.runStartTime = start;
