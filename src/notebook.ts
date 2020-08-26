@@ -44,6 +44,8 @@ class RKernel {
       console.log(`R exited with code ${code}`);
     });
     this.process = childProcess;
+
+    return new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   public stop() {
@@ -60,30 +62,31 @@ class RKernel {
 
   public async eval(cell: vscode.NotebookCell): Promise<REvalOutput> {
     if (this.process) {
-      const client = net.createConnection({ port: this.port }, () => {
-        console.log('connected to server!');
+      const client = net.createConnection({ host: '127.0.0.1', port: this.port }, () => {
+        console.log(`uri: ${cell.uri}, connect`);
         const request = JSON.stringify({
           time: Date.now(),
           expr: cell.document.getText(),
-        }).concat('\n');
-        console.log(`Send: ${request}`);
+        });
+        console.log(`uri: ${cell.uri}, write: ${request}`);
         client.write(request);
       });
 
       client.on('end', () => {
-        console.log('disconnected from server');
+        console.log(`uri: ${cell.uri}, end`);
       });
 
       return new Promise((resolve, reject) => {
         client.on('data', (data) => {
           const response = data.toString();
-          console.log(response);
+          console.log(`uri: ${cell.uri}, data: ${response}`);
           client.end();
           const output: REvalOutput = JSON.parse(response);
           resolve(output);
         });
 
         client.on('error', (err) => {
+          console.log(`uri: ${cell.uri}, error: ${err.name}, ${err.message}`);
           reject({
             type: 'error',
             result: [
@@ -309,6 +312,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         cell.metadata.runStartTime = start;
         cell.metadata.executionOrder = ++this.runIndex;
         const output = await notebook.eval(cell);
+        console.log(`uri: ${cell.uri}, output.type: ${output.type}, output.result: ${output.result}`);
         switch (output.type) {
           case 'text':
             cell.outputs = [{
@@ -340,7 +344,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
               }
             }];
             break;
-          case 'error': 
+          case 'error':
             throw new Error(output.result);
         }
         cell.metadata.runState = vscode.NotebookCellRunState.Success;
