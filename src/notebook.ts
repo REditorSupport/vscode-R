@@ -124,7 +124,7 @@ class RNotebook implements vscode.Disposable {
 
 export class RNotebookProvider implements vscode.NotebookContentProvider, vscode.NotebookKernel {
   public label = 'R Kernel';
-  public kernel = this;
+  // public kernel = this;
 
   private kernelScript: string;
   private disposables: vscode.Disposable[] = [];
@@ -135,6 +135,13 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
   constructor(kernelScript: string) {
     this.kernelScript = kernelScript;
     this.disposables.push(
+      vscode.notebook.registerNotebookKernelProvider({
+        viewType: 'r'
+      }, {
+          provideKernels: () => {
+          return [this];
+        }
+      }),
       vscode.notebook.onDidOpenNotebookDocument(document => {
         const docKey = document.uri.toString();
         if (!this.notebooks.has(docKey)) {
