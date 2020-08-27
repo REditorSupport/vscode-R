@@ -9,6 +9,11 @@ local({
   }
 
   r_profile <- Sys.getenv("R_PROFILE_USER_OLD")
+  Sys.setenv(
+    R_PROFILE_USER_OLD = "",
+    R_PROFILE_USER = r_profile
+  )
+
   if (nzchar(r_profile)) {
     try_source(r_profile)
   } else {
