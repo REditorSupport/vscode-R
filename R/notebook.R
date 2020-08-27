@@ -13,6 +13,11 @@ local({
   viewer_file <- NULL
   browser_url <- NULL
 
+  write_log <- function(...) {
+    cat("[", format(Sys.time(), "%Y-%m-%d %H:%M:%OS3"), "] ",
+      ..., "\n", sep = "")
+  }
+
   options(
     device = function(...) {
       pdf(NULL,
@@ -22,15 +27,15 @@ local({
       dev.control(displaylist = "enable")
     },
     viewer = function(url, ...) {
-      message("viewer: ", url)
+      write_log("viewer: ", url)
       viewer_file <<- url
     },
     page_viewer = function(url, ...) {
-      message("page_viewer: ", url)
+      write_log("page_viewer: ", url)
       viewer_file <<- url
     },
     browser = function(url, ...) {
-      message("browser: ", url)
+      write_log("browser: ", url)
       browser_url <<- url
     }
   )
@@ -42,6 +47,7 @@ local({
 
   ls.str(env)
   while (TRUE) {
+    write_log("Listening on port: ", env$port)
     con <- try(socketConnection(host = "127.0.0.1", port = env$port,
       blocking = TRUE, server = TRUE,
       open = "r+"), silent = TRUE)
@@ -50,8 +56,8 @@ local({
     } else {
       tryCatch({
         line <- readLines(con, n = 1)
+        write_log(line)
         request <- jsonlite::fromJSON(line)
-        cat(sprintf("[%s]\n%s\n", request$time, request$expr))
         viewer_file <- NULL
         browser_url <- NULL
         str <- tryCatch({
