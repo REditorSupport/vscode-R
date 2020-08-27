@@ -136,7 +136,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     this.kernelScript = kernelScript;
     this.disposables.push(
       vscode.notebook.registerNotebookKernelProvider({
-        viewType: 'r'
+        viewType: 'r-notebook'
       }, {
           provideKernels: () => {
           return [this];
