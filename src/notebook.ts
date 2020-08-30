@@ -175,29 +175,33 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
           cellType = 'yaml';
           cellStartLine = line;
         } else if (lines[line].startsWith('```{r')) {
-          cells.push({
-            cellKind: vscode.CellKind.Markdown,
-            source: lines.slice(cellStartLine, line).join('\n'),
-            language: 'markdown',
-            outputs: [],
-            metadata: {
-              editable: true,
-              runnable: false,
-            },
-          });
+          if (line > cellStartLine) {
+            cells.push({
+              cellKind: vscode.CellKind.Markdown,
+              source: lines.slice(cellStartLine, line).join('\n'),
+              language: 'markdown',
+              outputs: [],
+              metadata: {
+                editable: true,
+                runnable: false,
+              },
+            });
+          }
           cellType = 'r';
           cellStartLine = line;
         } else if (line === lines.length - 1) {
-          cells.push({
-            cellKind: vscode.CellKind.Markdown,
-            source: lines.slice(cellStartLine, line).join('\n'),
-            language: 'markdown',
-            outputs: [],
-            metadata: {
-              editable: true,
-              runnable: false,
-            },
-          });
+          if (line > cellStartLine) {
+            cells.push({
+              cellKind: vscode.CellKind.Markdown,
+              source: lines.slice(cellStartLine, line).join('\n'),
+              language: 'markdown',
+              outputs: [],
+              metadata: {
+                editable: true,
+                runnable: false,
+              },
+            });
+          }
         }
       } else if (cellType === 'yaml') {
         if (lines[line].startsWith('---')) {
