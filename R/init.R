@@ -331,7 +331,23 @@ if (interactive() &&
 
       browser <- function(url, title = url, ...,
         viewer = getOption("vsc.browser", "Active")) {
-        request("browser", url = url, title = title, ..., viewer = viewer)
+        if (grepl("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:\\d+)?", url)) {
+          request("browser", url = url, title = title, ..., viewer = viewer)
+        } else if (grepl("^https?\\://", url)) {
+          message("VSCode WebView only supports showing local http content.")
+          message("Opening in external browser...")
+          request("browser", url = url, title = title, ..., viewer = FALSE)
+        } else if (file.exists(url)) {
+          url <- normalizePath(url)
+          if (grepl("\\.html?$", url, ignore.case = TRUE)) {
+            message("VSCode WebView has restricted access to local file.")
+            message("Opening in external browser...")
+            request("browser", url = url, title = title, ..., viewer = FALSE)
+          } else {
+            request("dataview", source = "object", type = "txt",
+              title = title, file = url, viewer = viewer)
+          }
+        }
       }
 
       webview <- function(url, title, ..., viewer) {
