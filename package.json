@@ -382,36 +382,6 @@
         "when": "editorTextFocus && editorLangId == 'r'"
       },
       {
-        "command": "r.nrow",
-        "key": "Ctrl+1",
-        "mac": "cmd+1",
-        "when": "editorTextFocus && editorLangId == 'r'"
-      },
-      {
-        "command": "r.length",
-        "key": "Ctrl+2",
-        "mac": "cmd+2",
-        "when": "editorTextFocus && editorLangId == 'r'"
-      },
-      {
-        "command": "r.head",
-        "key": "Ctrl+3",
-        "mac": "cmd+3",
-        "when": "editorTextFocus && editorLangId == 'r'"
-      },
-      {
-        "command": "r.thead",
-        "key": "Ctrl+4",
-        "mac": "cmd+4",
-        "when": "editorTextFocus && editorLangId == 'r'"
-      },
-      {
-        "command": "r.names",
-        "key": "Ctrl+5",
-        "mac": "cmd+5",
-        "when": "editorTextFocus && editorLangId == 'r'"
-      },
-      {
         "command": "r.runSource",
         "key": "shift+Ctrl+s",
         "mac": "shift+cmd+s",

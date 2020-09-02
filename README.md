@@ -13,9 +13,13 @@ Full document is on the [Wiki page](https://github.com/Ikuyadeu/vscode-R/wiki)
 
 ## Features
 
-* Run Source(`Ctrl+Shift+S` or Push icon![icon](images/FileDownload.png)) and Run Selected Line (`Ctrl+Enter`)
-* Run `nrow`, `length`, `head`, `thead`, `names` functions (`Ctrl` + `1`, `2`, `3`, `4`, `5`)
-  * If you are using Mac `Ctrl` to `⌘`
+* Run Source(`Ctrl+Shift+S` or Push icon![icon](images/FileDownload.png)) and Run Selected Line (`Ctrl+Enter`) (Mac: `Ctrl` to `⌘`)
+* Run functions:
+  * `nrow` (`Show number of rows for selected object`)
+  * `length` (`Show length for a selected object`)
+  * `head` (`Show first part of a selected object`)
+  * `thead` (`Show first part of a selected object (transposed)`)
+  * `names` (`Show names for a selected object`)
 
 ![use Run .R](images/feature.png)
 
