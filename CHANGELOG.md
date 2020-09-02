@@ -1,5 +1,11 @@
 # Change Log
 
+## 1.4.5
+
+* Remove shortcuts Ctrl + 1, 2, 3, 4, 5 #401 (Fix #368)
+
+    These conflicted with default Visual Studio Code keyboard shortcuts. If you would like to restore them, see the [instructions in the Wiki](https://github.com/Ikuyadeu/vscode-R/wiki/Keyboard-shortcuts#removed-keyboard-shortcuts).
+
 ## 1.4.4
 
 * Fix vulnerability issues
