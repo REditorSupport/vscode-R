@@ -422,22 +422,28 @@ if (interactive() &&
       RESPONSE_TIMEOUT <- 30
       response_lock_file <- file.path(dir_extension, "response.lock")
       response_file <- file.path(dir_extension, "response.log")
-      response_time_stamp <- ""
       
       get_response_timestamp <- function() {
-        if (!file.exists(response_lock_file)) NA
-        else read.lines(response_lock_file)
+        if (file.exists(response_lock_file))
+          readLines(response_lock_file)
+        else NA
       }
+      # initialise the reponse timestamp to NA or the value currently in the file
+      response_time_stamp <- get_response_timestamp()
 
       get_response_lock <- function() {
-        isTRUE(get_response_timestamp() != response_time_stamp)
+        lock_time_stamp <- get_response_timestamp()
+        if (isTRUE(lock_time_stamp != response_time_stamp)) {
+          response_time_stamp <<- lock_time_stamp
+          TRUE
+        } else FALSE
       }
 
       request_response <- function(command, ...) {
         request(command, ...)
         wait_start <- Sys.time()
-        while (!get_response_lock()){
-          if(wait_start - Sys.time() > RESPONSE_TIMEOUT) 
+        while (!get_response_lock()) {
+          if ((Sys.time() - wait_start) > RESPONSE_TIMEOUT) 
             stop("Did not receive a response from VSCode-R API within ", 
                   RESPONSE_TIMEOUT, " seconds.")
           Sys.sleep(0.1)
@@ -449,6 +455,8 @@ if (interactive() &&
         editor_context <- request_response("active_editor_context")
         
         ## TODO convert editor context to document context object.
+
+        editor_context
       }
 
       environment()
@@ -459,6 +467,7 @@ if (interactive() &&
     .vsc.browser <- .vsc$browser
     .vsc.viewer <- .vsc$viewer
     .vsc.page_viewer <- .vsc$page_viewer
+    .vsc.get_active_document_context <- .vsc$get_active_document_context
 
     attach(environment(), name = .vsc.name)
 
