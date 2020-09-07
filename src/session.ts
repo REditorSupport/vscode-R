@@ -10,13 +10,17 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
 import { FSWatcher } from 'fs-extra';
+import {activeEditorContext} from './vsc_r_api'
 
 export let globalenv: any;
 let resDir: string;
 let watcherDir: string;
 let requestFile: string;
+let responseFile: string;
 let requestLockFile: string;
+let responseLockFile: string;
 let requestTimeStamp: number;
+let responseTimeStamp: number;
 let sessionDir: string;
 let pid: string;
 let globalenvFile: string;
@@ -52,7 +56,10 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
     console.info('[startRequestWatcher] Starting');
     requestFile = path.join(watcherDir, 'request.log');
     requestLockFile = path.join(watcherDir, 'request.lock');
+    responseFile = path.join(watcherDir, 'response.log')
+    responseLockFile = path.join(watcherDir, 'response.lock');
     requestTimeStamp = 0;
+    responseTimeStamp = 0;
     if (!fs.existsSync(requestLockFile)) {
         fs.createFileSync(requestLockFile);
     }
@@ -453,6 +460,16 @@ function isFromWorkspace(dir: string) {
     return false;
 }
 
+async function writeResponse(responseData: object) {
+    const responseString = JSON.stringify(responseData);
+    console.info('[writeResponse] Started');
+    console.info(`[writeResponse] responseData ${responseString}`)
+    console.info(`[writeRespnse] responseFile: ${responseFile}`);
+    await fs.writeFile(responseFile, responseString);
+    responseTimeStamp = Date.now();
+    await fs.writeFile(responseLockFile, responseTimeStamp);
+}
+
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     console.info('[updateRequest] Started');
     console.info(`[updateRequest] requestFile: ${requestFile}`);
@@ -487,6 +504,10 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 case 'dataview': {
                     showDataView(request.source,
                         request.type, request.title, request.file, request.viewer);
+                    break;
+                }
+                case 'active_editor_context': {
+                    writeResponse(await activeEditorContext());
                     break;
                 }
                 default:
