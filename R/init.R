@@ -385,6 +385,39 @@ if (interactive() &&
         page_viewer = page_viewer
       )
 
+      #vsc-r-api
+      RESPONSE_TIMEOUT <- 30
+      response_lock_file <- file.path(dir_extension, "response.lock")
+      response_file <- file.path(dir_extension, "response.log")
+      response_time_stamp <- ""
+      
+      get_response_timestamp <- function() {
+        if (!file.exists(response_lock_file)) NA
+        else read.lines(response_lock_file)
+      }
+
+      get_response_lock <- function() {
+        isTRUE(get_response_timestamp() != response_time_stamp)
+      }
+
+      request_response <- function(command, ...) {
+        request(command, ...)
+        wait_start <- Sys.time()
+        while (!get_response_lock()){
+          if(wait_start - Sys.time() > RESPONSE_TIMEOUT) 
+            stop("Did not receive a response from VSCode-R API within ", 
+                  RESPONSE_TIMEOUT, " seconds.")
+          Sys.sleep(0.1)
+        }
+        jsonlite::read_json(response_file)
+      }
+
+      get_active_document_context <- function() {
+        editor_context <- request_response("active_editor_context")
+        
+        ## TODO convert editor context to document context object.
+      }
+
       environment()
     })
 
