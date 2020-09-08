@@ -467,7 +467,7 @@ async function writeResponse(responseData: object) {
     console.info(`[writeRespnse] responseFile: ${responseFile}`);
     await fs.writeFile(responseFile, responseString);
     responseTimeStamp = Date.now();
-    await fs.writeFile(responseLockFile, responseTimeStamp);
+    await fs.writeFile(responseLockFile, responseTimeStamp + "\n");
 }
 
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
