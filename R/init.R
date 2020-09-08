@@ -451,13 +451,18 @@ if (interactive() &&
         jsonlite::read_json(response_file)
       }
 
-      get_active_document_context <- function() {
-        editor_context <- request_response("active_editor_context")
-        
-        ## TODO convert editor context to document context object.
+     source(file.path(dir_extension, "vsc_r_api_util.R"),
+       local = TRUE
+     )
+     source(file.path(dir_extension, "vsc_r_api.R"),
+       local = TRUE
+     )
 
-        editor_context
-      }
+     setHook(
+       packageEvent("rstudioapi", "onLoad"),
+       rstudioapi_patch_hook
+     )
+
 
       environment()
     })
