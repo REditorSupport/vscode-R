@@ -6,6 +6,9 @@
 
     These conflicted with default Visual Studio Code keyboard shortcuts. If you would like to restore them, see the [instructions in the Wiki](https://github.com/Ikuyadeu/vscode-R/wiki/Keyboard-shortcuts#removed-keyboard-shortcuts).
 
+* Restore R_PROFILE_USER #392 (Fix #391)
+* Fix so rTerm is undefined when deleting terminal #403 (Fix #402)
+
 ## 1.4.4
 
 * Fix vulnerability issues
