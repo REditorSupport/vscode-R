@@ -142,7 +142,7 @@ export function activate(context: ExtensionContext) {
     }
 
     async function runFromBeginningToLine() {
-        const callableTerminal = await chooseTerminal(true);
+        const callableTerminal = await chooseTerminal();
         if (callableTerminal === undefined) {
             return;
         }
