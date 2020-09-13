@@ -71,7 +71,7 @@ export async function chooseTerminal() {
             if (rTermNameOptions.includes(activeTerminalName)) {
                 return window.activeTerminal;
             }
-            for (let i = window.terminals.length - 1; i >= 0; i--){ 
+            for (let i = window.terminals.length - 1; i >= 0; i--){
                 const terminal = window.terminals[i];
                 const terminalName = terminal.name;
                 if (rTermNameOptions.includes(terminalName)) {
