@@ -92,10 +92,6 @@ export function activate(context: ExtensionContext) {
         runSelectionInTerm(true);
     }
 
-    async function runSelectionInActiveTerm() {
-        window.showWarningMessage('This command has been removed. Enable setting "Always Use Active Terminal".');
-    }
-
     async function runSelectionRetainCursor() {
         runSelectionInTerm(false);
     }
@@ -168,7 +164,6 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.createRTerm', createRTerm),
         commands.registerCommand('r.runSourcewithEcho', () => { runSource(true); }),
         commands.registerCommand('r.runSelection', runSelection),
-        commands.registerCommand('r.runSelectionInActiveTerm', runSelectionInActiveTerm),
         commands.registerCommand('r.runFromBeginningToLine', runFromBeginningToLine),
         commands.registerCommand('r.runSelectionRetainCursor', runSelectionRetainCursor),
         commands.registerCommand('r.createGitignore', createGitignore),
