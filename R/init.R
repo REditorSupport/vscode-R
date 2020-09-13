@@ -329,9 +329,42 @@ if (interactive() &&
           plot = getOption("vsc.plot", "Two"))
       }
 
+      path_to_uri <- function(path) {
+        if (length(path) == 0) {
+          return(character())
+        }
+        path <- path.expand(path)
+        if (.Platform$OS.type == "windows") {
+          prefix <- "file:///"
+          path <- gsub("\\", "/", path, fixed = TRUE)
+        } else {
+          prefix <- "file://"
+        }
+        paste0(prefix, utils::URLencode(path))
+      }
+
       browser <- function(url, title = url, ...,
         viewer = getOption("vsc.browser", "Active")) {
-        request("browser", url = url, title = title, ..., viewer = viewer)
+        if (grepl("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:\\d+)?", url)) {
+          request("browser", url = url, title = title, ..., viewer = viewer)
+        } else if (grepl("^https?\\://", url)) {
+          message("VSCode WebView only supports showing local http content.")
+          message("Opening in external browser...")
+          request("browser", url = url, title = title, ..., viewer = FALSE)
+        } else if (file.exists(url)) {
+          url <- normalizePath(url, "/", mustWork = TRUE)
+          if (grepl("\\.html?$", url, ignore.case = TRUE)) {
+            message("VSCode WebView has restricted access to local file.")
+            message("Opening in external browser...")
+            request("browser", url = path_to_uri(url),
+              title = title, ..., viewer = FALSE)
+          } else {
+            request("dataview", source = "object", type = "txt",
+              title = title, file = url, viewer = viewer)
+          }
+        } else {
+          stop("File not exists")
+        }
       }
 
       webview <- function(url, title, ..., viewer) {
