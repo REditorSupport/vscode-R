@@ -136,15 +136,6 @@ export async function runTextInTerm(text: string) {
     setFocus(term);
 }
 
-export async function chooseTerminalAndSendText(text: string) {
-    const callableTerminal = await chooseTerminal();
-    if (callableTerminal === undefined) {
-        return;
-    }
-    callableTerminal.sendText(text);
-    setFocus(callableTerminal);
-}
-
 function setFocus(term: Terminal) {
     const focus: string = config().get('source.focus');
     term.show(focus !== 'terminal');

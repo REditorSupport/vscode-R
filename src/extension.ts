@@ -7,7 +7,7 @@ import { CancellationToken, commands, CompletionContext, CompletionItem, Complet
 
 import { previewDataframe, previewEnvironment } from './preview';
 import { createGitignore } from './rGitignore';
-import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
+import { chooseTerminal, createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
@@ -65,7 +65,7 @@ export function activate(context: ExtensionContext) {
             if (echo) {
                 rPath = [rPath, 'echo = TRUE'].join(', ');
             }
-            chooseTerminalAndSendText(`source(${rPath})`);
+            runTextInTerm(`source(${rPath})`);
         }
     }
 
@@ -81,9 +81,9 @@ export function activate(context: ExtensionContext) {
                 rPath = [rPath, 'echo = TRUE'].join(', ');
             }
             if (outputFormat === undefined) {
-                chooseTerminalAndSendText(`rmarkdown::render(${rPath})`);
+                runTextInTerm(`rmarkdown::render(${rPath})`);
             } else {
-                chooseTerminalAndSendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
+                runTextInTerm(`rmarkdown::render(${rPath}, "${outputFormat}")`);
             }
         }
     }
@@ -182,11 +182,11 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.previewDataframe', previewDataframe),
         commands.registerCommand('r.previewEnvironment', previewEnvironment),
-        commands.registerCommand('r.loadAll', () => chooseTerminalAndSendText('devtools::load_all()')),
-        commands.registerCommand('r.test', () => chooseTerminalAndSendText('devtools::test()')),
-        commands.registerCommand('r.install', () => chooseTerminalAndSendText('devtools::install()')),
-        commands.registerCommand('r.build', () => chooseTerminalAndSendText('devtools::build()')),
-        commands.registerCommand('r.document', () => chooseTerminalAndSendText('devtools::document()')),
+        commands.registerCommand('r.loadAll', () => runTextInTerm('devtools::load_all()')),
+        commands.registerCommand('r.test', () => runTextInTerm('devtools::test()')),
+        commands.registerCommand('r.install', () => runTextInTerm('devtools::install()')),
+        commands.registerCommand('r.build', () => runTextInTerm('devtools::build()')),
+        commands.registerCommand('r.document', () => runTextInTerm('devtools::document()')),
         commands.registerCommand('r.attachActive', attachActive),
         commands.registerCommand('r.showPlotHistory', showPlotHistory),
         commands.registerCommand('r.runCommandWithSelectionOrWord', runCommandWithSelectionOrWord),
