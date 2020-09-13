@@ -3,7 +3,7 @@
 import { existsSync, mkdirSync, removeSync, statSync } from 'fs-extra';
 import { commands, extensions, window, workspace } from 'vscode';
 
-import { chooseTerminalAndSendText } from './rTerminal';
+import { runTextInTerm } from './rTerminal';
 import { getWordOrSelection } from './selection';
 import { checkForSpecialCharacters, checkIfFileExists, delay } from './util';
 
@@ -21,7 +21,7 @@ export async function previewEnvironment() {
                              + `${envClass},`
                              + `${envOut}), '`
                              + `${pathToTmpCsv}', row.names=FALSE, quote = TRUE)`;
-    chooseTerminalAndSendText(rWriteCsvCommand);
+    runTextInTerm(rWriteCsvCommand);
     await openTmpCSV(pathToTmpCsv, tmpDir);
 }
 
@@ -44,7 +44,7 @@ export async function previewDataframe() {
     const pathToTmpCsv = `${tmpDir}/${dataframeName}.csv`;
     const rWriteCsvCommand = `write.csv(${dataframeName}, `
                             + `'${pathToTmpCsv}', row.names = FALSE, quote = FALSE)`;
-    chooseTerminalAndSendText(rWriteCsvCommand);
+    runTextInTerm(rWriteCsvCommand);
     await openTmpCSV(pathToTmpCsv, tmpDir);
 }
 
