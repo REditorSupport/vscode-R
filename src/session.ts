@@ -10,7 +10,7 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
 import { FSWatcher } from 'fs-extra';
-import {activeEditorContext, insertTextAtPosition} from './vsc_r_api'
+import { activeEditorContext, insertTextAtPosition } from './vsc_r_api'
 
 export let globalenv: any;
 let resDir: string;
@@ -60,7 +60,7 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
     console.info('[startRequestWatcher] Starting');
     requestFile = path.join(watcherDir, 'request.log');
     requestLockFile = path.join(watcherDir, 'request.lock');
-    responseFile = path.join(watcherDir, 'response.log')
+    responseFile = path.join(watcherDir, 'response.log');
     responseLockFile = path.join(watcherDir, 'response.lock');
     requestTimeStamp = 0;
     responseTimeStamp = 0;
@@ -467,11 +467,11 @@ function isFromWorkspace(dir: string) {
 async function writeResponse(responseData: object) {
     const responseString = JSON.stringify(responseData);
     console.info('[writeResponse] Started');
-    console.info(`[writeResponse] responseData ${responseString}`)
+    console.info(`[writeResponse] responseData ${responseString}`);
     console.info(`[writeRespnse] responseFile: ${responseFile}`);
     await fs.writeFile(responseFile, responseString);
     responseTimeStamp = Date.now();
-    await fs.writeFile(responseLockFile, responseTimeStamp + "\n");
+    await fs.writeFile(responseLockFile, responseTimeStamp + '\n');
 }
 
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
