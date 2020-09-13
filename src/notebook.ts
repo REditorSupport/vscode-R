@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import net = require('net');
 import { spawn, ChildProcess } from 'child_process';
 import { dirname } from 'path';
-import getPort = require('get-port');
 import * as fs from 'fs';
 
 interface REvalOutput {
@@ -12,13 +11,23 @@ interface REvalOutput {
 
 class RKernel {
   private kernelScript: string;
+  private doc: vscode.NotebookDocument;
   private cwd: string;
   private process: ChildProcess;
   private port: number;
+  private socket: net.Socket;
 
   constructor(kernelScript: string, doc: vscode.NotebookDocument) {
     this.kernelScript = kernelScript;
     this.cwd = dirname(doc.uri.fsPath);
+    this.doc = doc;
+  }
+
+  private request(obj: any) {
+    if (this.socket) {
+      const json = JSON.stringify(obj);
+      this.socket.write(`Content-Length: ${json.length}\n${json}\n`);
+    }
   }
 
   public async start() {
@@ -29,21 +38,38 @@ class RKernel {
     const env = Object.create(process.env);
     env.LANG = 'en_US.UTF-8';
 
-    this.port = await getPort();
-    const childProcess = spawn('R', ['--quiet', '--slave', '-f', this.kernelScript, '--args', `port=${this.port}`],
-      { cwd: this.cwd, env: env });
-    childProcess.stderr.on('data', (chunk: Buffer) => {
-      const str = chunk.toString();
-      console.log(`R stderr (${childProcess.pid}): ${str}`);
+    const server = net.createServer(socket => {
+      console.log('socket started');
+      this.socket = socket;
+      socket.on('data', (chunk: Buffer) => {
+        const str = chunk.toString();
+        console.log(`socket (${socket.localAddress}:${socket.localPort}): ${str}`);
+      });
+      socket.on('end', () => {
+        console.log('socket disconnected');
+        this.socket = undefined;
+      });
+      server.close();
     });
-    childProcess.stdout.on('data', (chunk: Buffer) => {
-      const str = chunk.toString();
-      console.log(`R stdout (${childProcess.pid}): ${str}`);
+
+    server.listen(0, '127.0.0.1', () => {
+      this.port = (server.address() as net.AddressInfo).port;
+      const childProcess = spawn('R', ['--quiet', '--slave', '-f', this.kernelScript, '--args', `port=${this.port}`],
+        { cwd: this.cwd, env: env });
+      childProcess.stderr.on('data', (chunk: Buffer) => {
+        const str = chunk.toString();
+        console.log(`R stderr (${childProcess.pid}): ${str}`);
+      });
+      childProcess.stdout.on('data', (chunk: Buffer) => {
+        const str = chunk.toString();
+        console.log(`R stdout (${childProcess.pid}): ${str}`);
+      });
+      childProcess.on('exit', (code, signal) => {
+        console.log(`R exited with code ${code}`);
+      });
+      this.process = childProcess;
+      return childProcess;
     });
-    childProcess.on('exit', (code, signal) => {
-      console.log(`R exited with code ${code}`);
-    });
-    this.process = childProcess;
 
     return new Promise((resolve) => setTimeout(resolve, 500));
   }
@@ -61,6 +87,13 @@ class RKernel {
   }
 
   public async eval(cell: vscode.NotebookCell): Promise<REvalOutput> {
+    if (this.socket) {
+      this.request({
+        uri: cell.uri,
+        time: Date.now(),
+        expr: cell.document.getText(),
+      });
+    }
     if (this.process) {
       const client = net.createConnection({ host: '127.0.0.1', port: this.port }, () => {
         console.log(`uri: ${cell.uri}, connect`);
