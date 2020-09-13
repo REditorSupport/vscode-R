@@ -7,7 +7,7 @@ import { CancellationToken, commands, CompletionContext, CompletionItem, Complet
 
 import { previewDataframe, previewEnvironment } from './preview';
 import { createGitignore } from './rGitignore';
-import { chooseTerminal, createRTerm, deleteTerminal,
+import { createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
@@ -89,11 +89,7 @@ export function activate(context: ExtensionContext) {
     }
 
     async function runSelection() {
-        const callableTerminal = await chooseTerminal();
-        if (callableTerminal === undefined) {
-            return;
-        }
-        runSelectionInTerm(callableTerminal, true);
+        runSelectionInTerm(true);
     }
 
     async function runSelectionInActiveTerm() {
@@ -101,11 +97,7 @@ export function activate(context: ExtensionContext) {
     }
 
     async function runSelectionRetainCursor() {
-        const callableTerminal = await chooseTerminal();
-        if (callableTerminal === undefined) {
-            return;
-        }
-        runSelectionInTerm(callableTerminal, false);
+        runSelectionInTerm(false);
     }
 
     async function runSelectionOrWord(rFunctionName: string[]) {

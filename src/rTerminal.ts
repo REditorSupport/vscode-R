@@ -106,7 +106,7 @@ export async function chooseTerminal() {
     return rTerm;
 }
 
-export function runSelectionInTerm(term: Terminal, moveCursor: boolean) {
+export function runSelectionInTerm(moveCursor: boolean) {
     const selection = getSelection();
     if (moveCursor && selection.linesDownToMoveCursor > 0) {
         commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
