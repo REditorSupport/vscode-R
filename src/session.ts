@@ -10,7 +10,7 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 import { runTextInTerm } from './rTerminal';
 import { config } from './util';
 import { FSWatcher } from 'fs-extra';
-import {activeEditorContext} from './vsc_r_api'
+import {activeEditorContext, insertTextAtPosition} from './vsc_r_api'
 
 export let globalenv: any;
 let resDir: string;
@@ -512,6 +512,10 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 }
                 case 'active_editor_context': {
                     writeResponse(await activeEditorContext());
+                    break;
+                }
+                case 'insert_text_at_position': {
+                    await insertTextAtPosition(request.position, request.text, request.id)
                     break;
                 }
                 default:
