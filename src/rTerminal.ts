@@ -112,10 +112,14 @@ export function runSelectionInTerm(term: Terminal, moveCursor: boolean) {
         commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
         commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
     }
-    runTextInTerm(term, selection.selectedText);
+    runTextInTerm(selection.selectedText);
 }
 
-export async function runTextInTerm(term: Terminal, text: string) {
+export async function runTextInTerm(text: string) {
+    const term = await chooseTerminal();
+    if (term === undefined) {
+        return;
+    }
     if (config().get<boolean>('bracketedPaste')) {
         if (process.platform !== 'win32') {
             // Surround with ANSI control characters for bracketed paste mode

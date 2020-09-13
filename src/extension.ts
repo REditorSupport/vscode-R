@@ -109,49 +109,38 @@ export function activate(context: ExtensionContext) {
     }
 
     async function runSelectionOrWord(rFunctionName: string[]) {
-        const callableTerminal = await chooseTerminal();
-        if (callableTerminal === undefined) {
-            return;
-        }
         const text = getWordOrSelection();
         const wrappedText = surroundSelection(text, rFunctionName);
-        runTextInTerm(callableTerminal, wrappedText);
+        runTextInTerm(wrappedText);
     }
 
     async function runCommandWithSelectionOrWord(rCommand: string) {
         const text = getWordOrSelection();
-        const callableTerminal = await chooseTerminal();
         const call = rCommand.replace(/\$\$/g, text);
-        runTextInTerm(callableTerminal, call);
+        runTextInTerm(call);
     }
 
     async function runCommandWithEditorPath(rCommand: string) {
         const wad: TextDocument = window.activeTextEditor.document;
         const isSaved = await saveDocument(wad);
         if (isSaved) {
-            const callableTerminal = await chooseTerminal();
             const rPath = ToRStringLiteral(wad.fileName, '');
             const call = rCommand.replace(/\$\$/g, rPath);
-            runTextInTerm(callableTerminal, call);
+            runTextInTerm(call);
         }
     }
 
     async function runCommand(rCommand: string) {
-        const callableTerminal = await chooseTerminal();
-        runTextInTerm(callableTerminal, rCommand);
+        runTextInTerm(rCommand);
     }
 
     async function runFromBeginningToLine() {
-        const callableTerminal = await chooseTerminal();
-        if (callableTerminal === undefined) {
-            return;
-        }
         const endLine = window.activeTextEditor.selection.end.line;
         const charactersOnLine = window.activeTextEditor.document.lineAt(endLine).text.length;
         const endPos = new Position(endLine, charactersOnLine);
         const range = new Range(new Position(0, 0), endPos);
         const text = window.activeTextEditor.document.getText(range);
-        runTextInTerm(callableTerminal, text);
+        runTextInTerm(text);
     }
 
     languages.registerCompletionItemProvider('r', {
