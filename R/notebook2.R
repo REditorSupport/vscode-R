@@ -14,30 +14,6 @@ r <- callr::r_session$new(
   wait = TRUE
 )
 
-r$call(function() {
-  for (i in 1:1000) {
-    x <- rnorm(1000000)
-    y <- rnorm(1000000)
-    m <- lm(y ~ x)
-    summary(m)
-  }
-})
-r$interrupt()
-
-while (TRUE) {
-  res <- r$read()
-  if (!is.null(res)) {
-    print(res)
-    break
-  }
-}
-
-
-r$call(function() print(1))
-r$read()
-r$get_state()
-r$get_status()
-
 r$run(function() {
   requireNamespace("jsonlite")
   requireNamespace("svglite")
@@ -128,6 +104,7 @@ r$run(function() {
 })
 
 con <- socketConnection(host = "127.0.0.1", port = env$port, open = "r+b")
+running_request <- NULL
 
 while (TRUE) {
   response <- NULL
@@ -143,7 +120,8 @@ while (TRUE) {
       response <- tryCatch({
         r$call(function(id, uri, expr) {
           .vscNotebook$evaluate(id, uri, expr)
-        }, request)
+        }, list(id = request$id, uri = request$uri, expr = request$expr))
+        running_request <- request
         NULL
       }, error = function(e) {
         list(
@@ -154,32 +132,43 @@ while (TRUE) {
         )
       })
     } else if (request$type == "cancel") {
-      if (r$interrupt()) {
-        response <- list(
-          id = request$id,
-          uri = request$uri,
-          type = "cancel",
-          result = "cancelled"
-        )
+      r$interrupt()
+    }
+  }
+
+  if (!is.null(running_request)) {
+    result <- r$read()
+    if (!is.null(result)) {
+      print(result)
+      if (is.list(result$result)) {
+        response <- result$result
       } else {
-
+        if (is.null(result$error)) {
+          response <- list(
+            id = running_request$id,
+            uri = running_request$uri,
+            type = "text",
+            result = result$message
+          )
+        } else {
+          response <- list(
+            id = running_request$id,
+            uri = running_request$uri,
+            type = "error",
+            result = conditionMessage(result$error)
+          )
+        }
       }
+      running_request <- NULL
+    }
+
+    if (!is.null(response)) {
+      response <- jsonlite::toJSON(response,
+        auto_unbox = TRUE, force = TRUE)
+      cat("response: ", response, "\n")
+      writeLines(response, con)
     }
   }
 
-  result <- r$read()
-  if (!is.null(result)) {
-    if (is.list(result$result)) {
-      response <- result$result
-    } else if (!is.null(result$error)) {
-      message(result$error)
-    }
-  }
-
-  if (!is.null(response)) {
-    response <- jsonlite::toJSON(result$result,
-      auto_unbox = TRUE, force = TRUE)
-    writeLines(response, con)
-  }
   Sys.sleep(0.1)
 }
