@@ -50,58 +50,6 @@ class RKernel {
         this.socket = socket;
         resolve(undefined);
 
-        socket.on('data', async (data) => {
-          const response: RSessionResponse = JSON.parse(data.toString());
-          const cell = this.doc.cells.find(cell => cell.metadata.executionOrder === response.id);
-          if (cell) {
-            cell.metadata.runState = vscode.NotebookCellRunState.Success;
-            cell.metadata.lastRunDuration = +new Date() - cell.metadata.runStartTime;
-
-            console.log(`uri: ${cell.uri}, id: ${response.id}, type: ${response.type}, result: ${response.result}`);
-            switch (response.type) {
-              case 'text':
-                cell.outputs = [{
-                  outputKind: vscode.CellOutputKind.Text,
-                  text: response.result,
-                }];
-                break;
-              case 'plot':
-                cell.outputs = [{
-                  outputKind: vscode.CellOutputKind.Rich,
-                  data: {
-                    'image/svg+xml': (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result))).toString(),
-                  },
-                }];
-                break;
-              case 'viewer':
-                cell.outputs = [{
-                  outputKind: vscode.CellOutputKind.Rich,
-                  data: {
-                    'application/json': response.result,
-                  },
-                }];
-                break;
-              case 'browser':
-                cell.outputs = [{
-                  outputKind: vscode.CellOutputKind.Rich,
-                  data: {
-                    'application/json': response.result,
-                  },
-                }];
-                break;
-              case 'error':
-                cell.metadata.runState = vscode.NotebookCellRunState.Error;
-                cell.outputs = [{
-                  outputKind: vscode.CellOutputKind.Error,
-                  evalue: response.result,
-                  ename: '',
-                  traceback: [],
-                }];
-                break;
-            }
-          }
-        });
-
         socket.on('end', () => {
           console.log('socket disconnected');
           this.socket = undefined;
@@ -136,6 +84,7 @@ class RKernel {
     if (this.process) {
       this.process.kill();
       this.process = undefined;
+      this.socket = undefined;
     }
   }
 
@@ -144,12 +93,22 @@ class RKernel {
     await this.start();
   }
 
-  public eval(cell: vscode.NotebookCell) {
+  public async eval(cell: vscode.NotebookCell): Promise<RSessionResponse> {
     if (this.socket) {
-      this.request({
-        id: cell.metadata.executionOrder,
-        type: 'eval',
-        expr: cell.document.getText(),
+      return new Promise((resolve, reject) => {
+        const handler = async (data: Buffer) => {
+          const response: RSessionResponse = JSON.parse(data.toString());
+          resolve(response);
+          this.socket.removeListener('data', handler);
+        };
+
+        this.socket.on('data', handler);
+
+        this.request({
+          id: cell.metadata.executionOrder,
+          type: 'eval',
+          expr: cell.document.getText(),
+        });
       });
     }
   }
@@ -157,7 +116,7 @@ class RKernel {
   public cancel(cell: vscode.NotebookCell) {
     if (this.socket) {
       this.request({
-        id: cell.metadata.executionOrder,
+        id: cell ? cell.metadata.executionOrder : 0,
         type: 'cancel',
       });
     }
@@ -181,7 +140,7 @@ class RNotebook implements vscode.Disposable {
     this.kernel.restart();
   }
 
-  public async eval(cell: vscode.NotebookCell): Promise<void> {
+  public async eval(cell: vscode.NotebookCell): Promise<RSessionResponse> {
     await this.kernel.start();
     return this.kernel.eval(cell);
   }
@@ -385,7 +344,51 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         const start = +new Date();
         cell.metadata.runStartTime = start;
         cell.metadata.executionOrder = ++this.runIndex;
-        await notebook.eval(cell);
+        const response = await notebook.eval(cell);
+        cell.metadata.runState = vscode.NotebookCellRunState.Success;
+        cell.metadata.lastRunDuration = +new Date() - cell.metadata.runStartTime;
+        console.log(`uri: ${cell.uri}, id: ${response.id}, type: ${response.type}, result: ${response.result}`);
+        switch (response.type) {
+          case 'text':
+            cell.outputs = [{
+              outputKind: vscode.CellOutputKind.Text,
+              text: response.result,
+            }];
+            break;
+          case 'plot':
+            cell.outputs = [{
+              outputKind: vscode.CellOutputKind.Rich,
+              data: {
+                'image/svg+xml': (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result))).toString(),
+              },
+            }];
+            break;
+          case 'viewer':
+            cell.outputs = [{
+              outputKind: vscode.CellOutputKind.Rich,
+              data: {
+                'application/json': response.result,
+              },
+            }];
+            break;
+          case 'browser':
+            cell.outputs = [{
+              outputKind: vscode.CellOutputKind.Rich,
+              data: {
+                'application/json': response.result,
+              },
+            }];
+            break;
+          case 'error':
+            cell.metadata.runState = vscode.NotebookCellRunState.Error;
+            cell.outputs = [{
+              outputKind: vscode.CellOutputKind.Error,
+              evalue: response.result,
+              ename: '',
+              traceback: [],
+            }];
+            break;
+        }
       } catch (e) {
         cell.outputs = [{
           outputKind: vscode.CellOutputKind.Error,
@@ -413,7 +416,8 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
   }
 
   async cancelAllCellsExecution(document: vscode.NotebookDocument) {
-
+    const notebook = this.notebooks.get(document.uri.toString());
+    await notebook.cancel(undefined);
   }
 
   public dispose() {

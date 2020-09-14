@@ -11,7 +11,7 @@ for (expr in exprs) {
 r <- callr::r_session$new(
   callr::r_session_options(
     system_profile = TRUE, user_profile = TRUE, supervise = TRUE),
-  wait = TRUE
+  wait = TRUE, wait_timeout = 3000
 )
 
 r$run(function() {
