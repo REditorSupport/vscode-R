@@ -48,7 +48,7 @@ r$run(function() {
         identical(dev.size(), null_dev_size)
     }
 
-    evaluate <- function(id, uri, expr) {
+    evaluate <- function(id, expr) {
       viewer_file <<- NULL
       browser_url <<- NULL
       res <- tryCatch({
@@ -62,38 +62,44 @@ r$run(function() {
           replayPlot(record)
           graphics.off()
           list(
+            id = id,
             type = "plot",
             result = plot_file
           )
         } else if (!is.null(viewer_file)) {
           list(
+            id = id,
             type = "viewer",
             result = viewer_file
           )
         } else if (!is.null(browser_url)) {
           list(
+            id = id,
             type = "browser",
             result = browser_url
           )
         } else if (out$visible) {
           list(
+            id = id,
             type = "text",
             result = paste0(text, collapse = "\n")
           )
         } else {
           list(
+            id = id,
             type = "text",
             result = ""
           )
         }
       }, error = function(e) {
         list(
+          id = id,
           type  = "error",
           result = conditionMessage(e)
         )
       })
 
-      c(id = id, uri = uri, res)
+      res
     }
 
     environment()
@@ -118,15 +124,14 @@ while (TRUE) {
     request <- jsonlite::fromJSON(content, simplifyVector = FALSE)
     if (request$type == "eval") {
       response <- tryCatch({
-        r$call(function(id, uri, expr) {
-          .vscNotebook$evaluate(id, uri, expr)
-        }, list(id = request$id, uri = request$uri, expr = request$expr))
+        r$call(function(id, expr) {
+          .vscNotebook$evaluate(id, expr)
+        }, list(id = request$id, expr = request$expr))
         running_request <- request
         NULL
       }, error = function(e) {
         list(
           id = request$id,
-          uri = request$uri,
           type = "error",
           result = conditionMessage(e)
         )
@@ -146,14 +151,12 @@ while (TRUE) {
         if (is.null(result$error)) {
           response <- list(
             id = running_request$id,
-            uri = running_request$uri,
             type = "text",
             result = result$message
           )
         } else {
           response <- list(
             id = running_request$id,
-            uri = running_request$uri,
             type = "error",
             result = conditionMessage(result$error)
           )

@@ -5,14 +5,12 @@ import { dirname } from 'path';
 
 interface RSessionRequest {
   id: number;
-  uri: string;
   type: 'eval' | 'cancel';
   expr?: any;
 }
 
 interface RSessionResponse {
   id: number;
-  uri: string;
   type: 'text' | 'plot' | 'viewer' | 'browser' | 'error';
   result: string;
 }
@@ -59,7 +57,7 @@ class RKernel {
             cell.metadata.runState = vscode.NotebookCellRunState.Success;
             cell.metadata.lastRunDuration = +new Date() - cell.metadata.runStartTime;
 
-            console.log(`id: ${response.id}, uri: ${response.uri}, type: ${response.type}, result: ${response.result}`);
+            console.log(`uri: ${cell.uri}, id: ${response.id}, type: ${response.type}, result: ${response.result}`);
             switch (response.type) {
               case 'text':
                 cell.outputs = [{
@@ -150,7 +148,6 @@ class RKernel {
     if (this.socket) {
       this.request({
         id: cell.metadata.executionOrder,
-        uri: cell.uri.toString(),
         type: 'eval',
         expr: cell.document.getText(),
       });
@@ -161,7 +158,6 @@ class RKernel {
     if (this.socket) {
       this.request({
         id: cell.metadata.executionOrder,
-        uri: cell.uri.toString(),
         type: 'cancel',
       });
     }
