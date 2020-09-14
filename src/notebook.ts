@@ -5,7 +5,9 @@ import { dirname } from 'path';
 import * as fs from 'fs';
 
 interface REvalOutput {
-  type: 'text' | 'plot' | 'viewer' | 'browser' | 'error';
+  id: number;
+  uri: string;
+  type: 'text' | 'plot' | 'viewer' | 'browser' | 'error' | 'cancelled';
   result: string;
 }
 
@@ -30,6 +32,57 @@ class RKernel {
     }
   }
 
+  private async handleResponse(response: REvalOutput) {
+    const cell = this.doc.cells.find((cell) => cell.metadata.executionOrder == response.id);
+    if (cell) {
+      cell.metadata.runnable = true;
+      cell.metadata.runState = vscode.NotebookCellRunState.Success;
+      cell.metadata.lastRunDuration = +new Date() - cell.metadata.runStartTime;
+
+      console.log(`uri: ${cell.uri}, response.type: ${response.type}, response.result: ${response.result}`);
+      switch (response.type) {
+        case 'text':
+          cell.outputs = [{
+            outputKind: vscode.CellOutputKind.Text,
+            text: response.result,
+          }];
+          break;
+        case 'plot':
+          cell.outputs = [{
+            outputKind: vscode.CellOutputKind.Rich,
+            data: {
+              'image/svg+xml': (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result))).toString(),
+            },
+          }];
+          break;
+        case 'viewer':
+          cell.outputs = [{
+            outputKind: vscode.CellOutputKind.Rich,
+            data: {
+              'application/json': response.result,
+            },
+          }];
+          break;
+        case 'browser':
+          cell.outputs = [{
+            outputKind: vscode.CellOutputKind.Rich,
+            data: {
+              'application/json': response.result,
+            },
+          }];
+          break;
+        case 'error':
+          cell.outputs = [{
+            outputKind: vscode.CellOutputKind.Error,
+            evalue: response.result,
+            ename: '',
+            traceback: [],
+          }];
+          break;
+      }
+    }
+  }
+
   public async start() {
     if (this.process) {
       return;
@@ -47,7 +100,10 @@ class RKernel {
         socket.on('data', (chunk: Buffer) => {
           const str = chunk.toString();
           console.log(`socket (${socket.localAddress}:${socket.localPort}): ${str}`);
+          const response: REvalOutput = JSON.parse(str);
+          this.handleResponse(response);
         });
+
         socket.on('end', () => {
           console.log('socket disconnected');
           this.socket = undefined;
@@ -89,53 +145,14 @@ class RKernel {
     await this.start();
   }
 
-  public async eval(cell: vscode.NotebookCell): Promise<REvalOutput> {
+  public async eval(cell: vscode.NotebookCell): Promise<void> {
     if (this.socket) {
       this.request({
+        id: cell.metadata.executionOrder,
         uri: cell.uri.toString(),
-        time: Date.now(),
         expr: cell.document.getText(),
       });
     }
-    return {
-      type: 'text',
-      result: 'test',
-    };
-    // if (this.process) {
-    //   const client = net.createConnection({ host: '127.0.0.1', port: this.port }, () => {
-    //     console.log(`uri: ${cell.uri}, connect`);
-    //     const request = JSON.stringify({
-    //       time: Date.now(),
-    //       expr: cell.document.getText(),
-    //     }).concat('\n');
-    //     console.log(`uri: ${cell.uri}, write: ${request}`);
-    //     client.write(request);
-    //   });
-
-    //   client.on('end', () => {
-    //     console.log(`uri: ${cell.uri}, end`);
-    //   });
-
-    //   return new Promise((resolve, reject) => {
-    //     client.on('data', (data) => {
-    //       const response = data.toString();
-    //       console.log(`uri: ${cell.uri}, data: ${response}`);
-    //       client.end();
-    //       const output: REvalOutput = JSON.parse(response);
-    //       resolve(output);
-    //     });
-
-    //     client.on('error', (err) => {
-    //       console.log(`uri: ${cell.uri}, error: ${err.name}, ${err.message}`);
-    //       reject({
-    //         type: 'error',
-    //         result: [
-    //           err.message
-    //         ],
-    //       });
-    //     });
-    //   });
-    // }
   }
 }
 
@@ -156,7 +173,7 @@ class RNotebook implements vscode.Disposable {
     this.kernel.restart();
   }
 
-  public async eval(cell: vscode.NotebookCell): Promise<REvalOutput> {
+  public async eval(cell: vscode.NotebookCell): Promise<void> {
     await this.kernel.start();
     return this.kernel.eval(cell);
   }
@@ -178,7 +195,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       vscode.notebook.registerNotebookKernelProvider({
         viewType: 'r-notebook'
       }, {
-          provideKernels: () => {
+        provideKernels: () => {
           return [this];
         }
       }),
@@ -205,7 +222,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     const content = (await vscode.workspace.fs.readFile(uri)).toString();
     const lines = content.split(/\r?\n/);
     const cells: vscode.NotebookCellData[] = [];
-    
+
     let line = 0;
     let cellType = 'markdown';
     let cellStartLine = 0;
@@ -283,7 +300,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
 
     return {
       languages: ['r'],
-      metadata: { },
+      metadata: {},
       cells: cells,
     };
   }
@@ -338,7 +355,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
   async executeCell(document: vscode.NotebookDocument, cell: vscode.NotebookCell) {
     const notebook = this.notebooks.get(document.uri.toString());
 
-    if (!cell) {  
+    if (!cell) {
       if (notebook) {
         notebook.restartKernel();
       }
@@ -354,52 +371,12 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
 
     if (notebook) {
       try {
-        if (cell.metadata === undefined) {
-          cell.metadata = {};
-        }
-        
+        cell.metadata.runnable = false;
         cell.metadata.runState = vscode.NotebookCellRunState.Running;
         const start = +new Date();
         cell.metadata.runStartTime = start;
         cell.metadata.executionOrder = ++this.runIndex;
-        const output = await notebook.eval(cell);
-        console.log(`uri: ${cell.uri}, output.type: ${output.type}, output.result: ${output.result}`);
-        switch (output.type) {
-          case 'text':
-            cell.outputs = [{
-              outputKind: vscode.CellOutputKind.Text,
-              text: output.result,
-            }];
-            break;
-          case 'plot':
-            cell.outputs = [{
-              outputKind: vscode.CellOutputKind.Rich,
-              data: {
-                'image/svg+xml': (await vscode.workspace.fs.readFile(vscode.Uri.parse(output.result))).toString(),
-              }
-            }];
-            break;
-          case 'viewer':
-            cell.outputs = [{
-              outputKind: vscode.CellOutputKind.Rich,
-              data: {
-                'application/json': output,
-              }
-            }];
-            break;
-          case 'browser':
-            cell.outputs = [{
-              outputKind: vscode.CellOutputKind.Rich,
-              data: {
-                'application/json': output,
-              }
-            }];
-            break;
-          case 'error':
-            throw new Error(output.result);
-        }
-        cell.metadata.runState = vscode.NotebookCellRunState.Success;
-        cell.metadata.lastRunDuration = +new Date() - start;
+        await notebook.eval(cell);
       } catch (e) {
         cell.outputs = [{
           outputKind: vscode.CellOutputKind.Error,
