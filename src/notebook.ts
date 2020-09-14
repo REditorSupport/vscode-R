@@ -38,40 +38,43 @@ class RKernel {
     const env = Object.create(process.env);
     env.LANG = 'en_US.UTF-8';
 
-    const server = net.createServer(socket => {
-      console.log('socket started');
-      this.socket = socket;
-      socket.on('data', (chunk: Buffer) => {
-        const str = chunk.toString();
-        console.log(`socket (${socket.localAddress}:${socket.localPort}): ${str}`);
-      });
-      socket.on('end', () => {
-        console.log('socket disconnected');
-        this.socket = undefined;
-      });
-      server.close();
-    });
+    return new Promise((resolve, reject) => {
+      const server = net.createServer(socket => {
+        console.log('socket connected');
+        this.socket = socket;
+        resolve(undefined);
 
-    server.listen(0, '127.0.0.1', () => {
-      this.port = (server.address() as net.AddressInfo).port;
-      const childProcess = spawn('R', ['--quiet', '--slave', '-f', this.kernelScript, '--args', `port=${this.port}`],
-        { cwd: this.cwd, env: env });
-      childProcess.stderr.on('data', (chunk: Buffer) => {
-        const str = chunk.toString();
-        console.log(`R stderr (${childProcess.pid}): ${str}`);
+        socket.on('data', (chunk: Buffer) => {
+          const str = chunk.toString();
+          console.log(`socket (${socket.localAddress}:${socket.localPort}): ${str}`);
+        });
+        socket.on('end', () => {
+          console.log('socket disconnected');
+          this.socket = undefined;
+          reject(undefined);
+        });
+        server.close();
       });
-      childProcess.stdout.on('data', (chunk: Buffer) => {
-        const str = chunk.toString();
-        console.log(`R stdout (${childProcess.pid}): ${str}`);
-      });
-      childProcess.on('exit', (code, signal) => {
-        console.log(`R exited with code ${code}`);
-      });
-      this.process = childProcess;
-      return childProcess;
-    });
 
-    return new Promise((resolve) => setTimeout(resolve, 500));
+      server.listen(0, '127.0.0.1', () => {
+        this.port = (server.address() as net.AddressInfo).port;
+        const childProcess = spawn('R', ['--quiet', '--slave', '-f', this.kernelScript, '--args', `port=${this.port}`],
+          { cwd: this.cwd, env: env });
+        childProcess.stderr.on('data', (chunk: Buffer) => {
+          const str = chunk.toString();
+          console.log(`R stderr (${childProcess.pid}): ${str}`);
+        });
+        childProcess.stdout.on('data', (chunk: Buffer) => {
+          const str = chunk.toString();
+          console.log(`R stdout (${childProcess.pid}): ${str}`);
+        });
+        childProcess.on('exit', (code, signal) => {
+          console.log(`R exited with code ${code}`);
+        });
+        this.process = childProcess;
+        return childProcess;
+      });
+    });
   }
 
   public stop() {
