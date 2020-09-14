@@ -14,6 +14,30 @@ r <- callr::r_session$new(
   wait = TRUE
 )
 
+r$call(function() {
+  for (i in 1:1000) {
+    x <- rnorm(1000000)
+    y <- rnorm(1000000)
+    m <- lm(y ~ x)
+    summary(m)
+  }
+})
+r$interrupt()
+
+while (TRUE) {
+  res <- r$read()
+  if (!is.null(res)) {
+    print(res)
+    break
+  }
+}
+
+
+r$call(function() print(1))
+r$read()
+r$get_state()
+r$get_status()
+
 r$run(function() {
   requireNamespace("jsonlite")
   requireNamespace("svglite")
@@ -115,19 +139,32 @@ while (TRUE) {
     cat(content, "\n", sep = "")
 
     request <- jsonlite::fromJSON(content, simplifyVector = FALSE)
-    response <- tryCatch({
-      r$call(function(id, uri, expr) {
-        .vscNotebook$evaluate(id, uri, expr)
-      }, request)
-      NULL
-    }, error = function(e) {
-      list(
-        id = request$id,
-        uri = request$uri,
-        type = "error",
-        result = conditionMessage(e)
-      )
-    })
+    if (request$type == "eval") {
+      response <- tryCatch({
+        r$call(function(id, uri, expr) {
+          .vscNotebook$evaluate(id, uri, expr)
+        }, request)
+        NULL
+      }, error = function(e) {
+        list(
+          id = request$id,
+          uri = request$uri,
+          type = "error",
+          result = conditionMessage(e)
+        )
+      })
+    } else if (request$type == "cancel") {
+      if (r$interrupt()) {
+        response <- list(
+          id = request$id,
+          uri = request$uri,
+          type = "cancel",
+          result = "cancelled"
+        )
+      } else {
+
+      }
+    }
   }
 
   result <- r$read()

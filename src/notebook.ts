@@ -4,10 +4,17 @@ import { spawn, ChildProcess } from 'child_process';
 import { dirname } from 'path';
 import * as fs from 'fs';
 
-interface REvalOutput {
+interface RSessionRequest {
   id: number;
   uri: string;
-  type: 'text' | 'plot' | 'viewer' | 'browser' | 'error' | 'cancelled';
+  type: 'eval' | 'cancel';
+  args: any;
+}
+
+interface RSessionResponse {
+  id: number;
+  uri: string;
+  type: 'text' | 'plot' | 'viewer' | 'browser' | 'error' | 'cancel';
   result: string;
 }
 
@@ -32,10 +39,9 @@ class RKernel {
     }
   }
 
-  private async handleResponse(response: REvalOutput) {
+  private async handleResponse(response: RSessionResponse) {
     const cell = this.doc.cells.find((cell) => cell.metadata.executionOrder == response.id);
     if (cell) {
-      cell.metadata.runnable = true;
       cell.metadata.runState = vscode.NotebookCellRunState.Success;
       cell.metadata.lastRunDuration = +new Date() - cell.metadata.runStartTime;
 
@@ -97,13 +103,6 @@ class RKernel {
         this.socket = socket;
         resolve(undefined);
 
-        socket.on('data', (chunk: Buffer) => {
-          const str = chunk.toString();
-          console.log(`socket (${socket.localAddress}:${socket.localPort}): ${str}`);
-          const response: REvalOutput = JSON.parse(str);
-          this.handleResponse(response);
-        });
-
         socket.on('end', () => {
           console.log('socket disconnected');
           this.socket = undefined;
@@ -150,8 +149,19 @@ class RKernel {
       this.request({
         id: cell.metadata.executionOrder,
         uri: cell.uri.toString(),
+        type: 'eval',
         expr: cell.document.getText(),
       });
+    }
+  }
+
+  public async cancel(cell: vscode.NotebookCell): Promise<void> {
+    if (this.socket && cell.metadata.runState === vscode.NotebookCellRunState.Running) {
+      this.request({
+        id: cell.metadata.executionOrder,
+        uri: cell.uri.toString(),
+        type: 'cancel',
+      })
     }
   }
 }
@@ -369,9 +379,8 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       return;
     }
 
-    if (notebook) {
+    if (notebook && cell.metadata.runState !== vscode.NotebookCellRunState.Running) {
       try {
-        cell.metadata.runnable = false;
         cell.metadata.runState = vscode.NotebookCellRunState.Running;
         const start = +new Date();
         cell.metadata.runStartTime = start;
