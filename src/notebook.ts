@@ -349,45 +349,51 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         cell.metadata.lastRunDuration = +new Date() - cell.metadata.runStartTime;
         console.log(`uri: ${cell.uri}, id: ${response.id}, type: ${response.type}, result: ${response.result}`);
         switch (response.type) {
-          case 'text':
+          case 'text': {
             cell.outputs = [{
               outputKind: vscode.CellOutputKind.Text,
               text: response.result,
             }];
             break;
-          case 'plot':
+          }
+          case 'plot': {
+            const content = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result))).toString();
             cell.outputs = [{
               outputKind: vscode.CellOutputKind.Rich,
               data: {
-                'image/svg+xml': (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result))).toString(),
+                'image/svg+xml': content,
               },
             }];
             break;
-          case 'viewer':
+          }
+          case 'viewer': {
             cell.outputs = [{
               outputKind: vscode.CellOutputKind.Rich,
               data: {
-                'application/json': response.result,
+                'text/plain': response.result,
               },
             }];
             break;
-          case 'browser':
+          }
+          case 'browser': {
             cell.outputs = [{
               outputKind: vscode.CellOutputKind.Rich,
               data: {
-                'application/json': response.result,
+                'text/plain': response.result,
               },
             }];
             break;
-          case 'error':
+          }
+          case 'error': {
             cell.metadata.runState = vscode.NotebookCellRunState.Error;
             cell.outputs = [{
               outputKind: vscode.CellOutputKind.Error,
               evalue: response.result,
-              ename: '',
+              ename: 'Error',
               traceback: [],
             }];
             break;
+          }
         }
       } catch (e) {
         cell.outputs = [{
