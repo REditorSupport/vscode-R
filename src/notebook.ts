@@ -26,7 +26,7 @@ class RKernel {
   private request(obj: any) {
     if (this.socket) {
       const json = JSON.stringify(obj);
-      this.socket.write(`Content-Length: ${json.length}\n${json}\n`);
+      this.socket.write(`Content-Length: ${json.length}\n${json}`);
     }
   }
 
@@ -89,46 +89,50 @@ class RKernel {
   public async eval(cell: vscode.NotebookCell): Promise<REvalOutput> {
     if (this.socket) {
       this.request({
-        uri: cell.uri,
+        uri: cell.uri.toString(),
         time: Date.now(),
         expr: cell.document.getText(),
       });
     }
-    if (this.process) {
-      const client = net.createConnection({ host: '127.0.0.1', port: this.port }, () => {
-        console.log(`uri: ${cell.uri}, connect`);
-        const request = JSON.stringify({
-          time: Date.now(),
-          expr: cell.document.getText(),
-        }).concat('\n');
-        console.log(`uri: ${cell.uri}, write: ${request}`);
-        client.write(request);
-      });
+    return {
+      type: 'text',
+      result: 'test',
+    };
+    // if (this.process) {
+    //   const client = net.createConnection({ host: '127.0.0.1', port: this.port }, () => {
+    //     console.log(`uri: ${cell.uri}, connect`);
+    //     const request = JSON.stringify({
+    //       time: Date.now(),
+    //       expr: cell.document.getText(),
+    //     }).concat('\n');
+    //     console.log(`uri: ${cell.uri}, write: ${request}`);
+    //     client.write(request);
+    //   });
 
-      client.on('end', () => {
-        console.log(`uri: ${cell.uri}, end`);
-      });
+    //   client.on('end', () => {
+    //     console.log(`uri: ${cell.uri}, end`);
+    //   });
 
-      return new Promise((resolve, reject) => {
-        client.on('data', (data) => {
-          const response = data.toString();
-          console.log(`uri: ${cell.uri}, data: ${response}`);
-          client.end();
-          const output: REvalOutput = JSON.parse(response);
-          resolve(output);
-        });
+    //   return new Promise((resolve, reject) => {
+    //     client.on('data', (data) => {
+    //       const response = data.toString();
+    //       console.log(`uri: ${cell.uri}, data: ${response}`);
+    //       client.end();
+    //       const output: REvalOutput = JSON.parse(response);
+    //       resolve(output);
+    //     });
 
-        client.on('error', (err) => {
-          console.log(`uri: ${cell.uri}, error: ${err.name}, ${err.message}`);
-          reject({
-            type: 'error',
-            result: [
-              err.message
-            ],
-          });
-        });
-      });
-    }
+    //     client.on('error', (err) => {
+    //       console.log(`uri: ${cell.uri}, error: ${err.name}, ${err.message}`);
+    //       reject({
+    //         type: 'error',
+    //         result: [
+    //           err.message
+    //         ],
+    //       });
+    //     });
+    //   });
+    // }
   }
 }
 

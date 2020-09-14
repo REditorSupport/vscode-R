@@ -100,13 +100,15 @@ for (expr in exprs) {
 
 con <- socketConnection(host = "127.0.0.1", port = env$port, open = "r+b")
 
+request_id <- 0L
 while (TRUE) {
   if (socketSelect(list(con), timeout = 0)) {
     header <- readLines(con, 1, encoding = "UTF-8")
-    n <- as.integer(gsub("^Content-Length: (\\d+)$", "\\1", header))
+    n <- as.integer(gsub("^Content-Length\\: (\\d+)$", "\\1", header))
     content <- readChar(con, n, useBytes = TRUE)
     Encoding(content) <- "UTF-8"
-    print(content)
+    cat("request ", request_id, ": ", content, "\n", sep = "")
+    request_id <- request_id + 1L
   }
   Sys.sleep(0.1)
 }
