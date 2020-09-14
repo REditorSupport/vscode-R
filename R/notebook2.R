@@ -33,15 +33,12 @@ r$run(function() {
         dev.control(displaylist = "enable")
       },
       viewer = function(url, ...) {
-        write_log("viewer: ", url)
         viewer_file <<- url
       },
       page_viewer = function(url, ...) {
-        write_log("page_viewer: ", url)
         viewer_file <<- url
       },
       browser = function(url, ...) {
-        write_log("browser: ", url)
         browser_url <<- url
       }
     )
@@ -52,7 +49,9 @@ r$run(function() {
     }
 
     evaluate <- function(id, uri, expr) {
-      tryCatch({
+      viewer_file <<- NULL
+      browser_url <<- NULL
+      res <- tryCatch({
         expr <- parse(text = expr)
         out <- withVisible(eval(expr, globalenv()))
         text <- utils::capture.output(print(out$value, view = TRUE))
@@ -62,33 +61,33 @@ r$run(function() {
           svglite::svglite(plot_file, width = 12, height = 8)
           replayPlot(record)
           graphics.off()
-          res <- list(
+          list(
             type = "plot",
             result = plot_file
           )
         } else if (!is.null(viewer_file)) {
-          res <- list(
+          list(
             type = "viewer",
             result = viewer_file
           )
         } else if (!is.null(browser_url)) {
-          res <- list(
+          list(
             type = "browser",
             result = browser_url
           )
         } else if (out$visible) {
-          res <- list(
+          list(
             type = "text",
             result = paste0(text, collapse = "\n")
           )
         } else {
-          res <- list(
+          list(
             type = "text",
             result = ""
           )
         }
       }, error = function(e) {
-        res <- list(
+        list(
           type  = "error",
           result = conditionMessage(e)
         )
