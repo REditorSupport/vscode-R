@@ -35,6 +35,7 @@
     "onLanguage:debian-control.r",
     "workspaceContains:*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
     "onNotebookEditor:r-notebook",
+    "onNotebook:r-notebook",
     "onCommand:r.createRTerm",
     "onCommand:r.runSource",
     "onCommand:r.knitRmd",
