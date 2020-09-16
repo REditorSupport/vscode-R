@@ -7,7 +7,7 @@ import { CancellationToken, commands, CompletionContext, CompletionItem, Complet
 
 import { previewDataframe, previewEnvironment } from './preview';
 import { createGitignore } from './rGitignore';
-import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
+import { createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
@@ -65,7 +65,7 @@ export function activate(context: ExtensionContext) {
             if (echo) {
                 rPath = [rPath, 'echo = TRUE'].join(', ');
             }
-            chooseTerminalAndSendText(`source(${rPath})`);
+            runTextInTerm(`source(${rPath})`);
         }
     }
 
@@ -81,77 +81,54 @@ export function activate(context: ExtensionContext) {
                 rPath = [rPath, 'echo = TRUE'].join(', ');
             }
             if (outputFormat === undefined) {
-                chooseTerminalAndSendText(`rmarkdown::render(${rPath})`);
+                runTextInTerm(`rmarkdown::render(${rPath})`);
             } else {
-                chooseTerminalAndSendText(`rmarkdown::render(${rPath}, "${outputFormat}")`);
+                runTextInTerm(`rmarkdown::render(${rPath}, "${outputFormat}")`);
             }
         }
     }
 
     async function runSelection() {
-        const callableTerminal = await chooseTerminal();
-        if (callableTerminal === undefined) {
-            return;
-        }
-        runSelectionInTerm(callableTerminal, true);
-    }
-
-    async function runSelectionInActiveTerm() {
-        window.showWarningMessage('This command has been removed. Enable setting "Always Use Active Terminal".');
+        runSelectionInTerm(true);
     }
 
     async function runSelectionRetainCursor() {
-        const callableTerminal = await chooseTerminal();
-        if (callableTerminal === undefined) {
-            return;
-        }
-        runSelectionInTerm(callableTerminal, false);
+        runSelectionInTerm(false);
     }
 
     async function runSelectionOrWord(rFunctionName: string[]) {
-        const callableTerminal = await chooseTerminal();
-        if (callableTerminal === undefined) {
-            return;
-        }
         const text = getWordOrSelection();
         const wrappedText = surroundSelection(text, rFunctionName);
-        runTextInTerm(callableTerminal, wrappedText);
+        runTextInTerm(wrappedText);
     }
 
     async function runCommandWithSelectionOrWord(rCommand: string) {
         const text = getWordOrSelection();
-        const callableTerminal = await chooseTerminal();
         const call = rCommand.replace(/\$\$/g, text);
-        runTextInTerm(callableTerminal, call);
+        runTextInTerm(call);
     }
 
     async function runCommandWithEditorPath(rCommand: string) {
         const wad: TextDocument = window.activeTextEditor.document;
         const isSaved = await saveDocument(wad);
         if (isSaved) {
-            const callableTerminal = await chooseTerminal();
             const rPath = ToRStringLiteral(wad.fileName, '');
             const call = rCommand.replace(/\$\$/g, rPath);
-            runTextInTerm(callableTerminal, call);
+            runTextInTerm(call);
         }
     }
 
     async function runCommand(rCommand: string) {
-        const callableTerminal = await chooseTerminal();
-        runTextInTerm(callableTerminal, rCommand);
+        runTextInTerm(rCommand);
     }
 
     async function runFromBeginningToLine() {
-        const callableTerminal = await chooseTerminal(true);
-        if (callableTerminal === undefined) {
-            return;
-        }
         const endLine = window.activeTextEditor.selection.end.line;
         const charactersOnLine = window.activeTextEditor.document.lineAt(endLine).text.length;
         const endPos = new Position(endLine, charactersOnLine);
         const range = new Range(new Position(0, 0), endPos);
         const text = window.activeTextEditor.document.getText(range);
-        runTextInTerm(callableTerminal, text);
+        runTextInTerm(text);
     }
 
     languages.registerCompletionItemProvider('r', {
@@ -187,17 +164,16 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.createRTerm', createRTerm),
         commands.registerCommand('r.runSourcewithEcho', () => { runSource(true); }),
         commands.registerCommand('r.runSelection', runSelection),
-        commands.registerCommand('r.runSelectionInActiveTerm', runSelectionInActiveTerm),
         commands.registerCommand('r.runFromBeginningToLine', runFromBeginningToLine),
         commands.registerCommand('r.runSelectionRetainCursor', runSelectionRetainCursor),
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.previewDataframe', previewDataframe),
         commands.registerCommand('r.previewEnvironment', previewEnvironment),
-        commands.registerCommand('r.loadAll', () => chooseTerminalAndSendText('devtools::load_all()')),
-        commands.registerCommand('r.test', () => chooseTerminalAndSendText('devtools::test()')),
-        commands.registerCommand('r.install', () => chooseTerminalAndSendText('devtools::install()')),
-        commands.registerCommand('r.build', () => chooseTerminalAndSendText('devtools::build()')),
-        commands.registerCommand('r.document', () => chooseTerminalAndSendText('devtools::document()')),
+        commands.registerCommand('r.loadAll', () => runTextInTerm('devtools::load_all()')),
+        commands.registerCommand('r.test', () => runTextInTerm('devtools::test()')),
+        commands.registerCommand('r.install', () => runTextInTerm('devtools::install()')),
+        commands.registerCommand('r.build', () => runTextInTerm('devtools::build()')),
+        commands.registerCommand('r.document', () => runTextInTerm('devtools::document()')),
         commands.registerCommand('r.attachActive', attachActive),
         commands.registerCommand('r.showPlotHistory', showPlotHistory),
         commands.registerCommand('r.runCommandWithSelectionOrWord', runCommandWithSelectionOrWord),

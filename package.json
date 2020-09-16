@@ -257,11 +257,6 @@
         "command": "r.runSelection"
       },
       {
-        "title": "Run Selection/Line in Active Terminal",
-        "category": "R",
-        "command": "r.runSelectionInActiveTerm"
-      },
-      {
         "title": "Show number of rows for selected object",
         "category": "R",
         "command": "r.nrow"

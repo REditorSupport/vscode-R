@@ -53,8 +53,8 @@ export function deleteTerminal(term: Terminal) {
     }
 }
 
-export async function chooseTerminal(active: boolean = false) {
-    if (active || config().get('alwaysUseActiveTerminal')) {
+export async function chooseTerminal() {
+    if (config().get('alwaysUseActiveTerminal')) {
         if (window.terminals.length < 1) {
             window.showInformationMessage('There are no open terminals.');
 
@@ -71,7 +71,7 @@ export async function chooseTerminal(active: boolean = false) {
             if (rTermNameOptions.includes(activeTerminalName)) {
                 return window.activeTerminal;
             }
-            for (let i = window.terminals.length - 1; i >= 0; i--){ 
+            for (let i = window.terminals.length - 1; i >= 0; i--){
                 const terminal = window.terminals[i];
                 const terminalName = terminal.name;
                 if (rTermNameOptions.includes(terminalName)) {
@@ -106,16 +106,20 @@ export async function chooseTerminal(active: boolean = false) {
     return rTerm;
 }
 
-export function runSelectionInTerm(term: Terminal, moveCursor: boolean) {
+export function runSelectionInTerm(moveCursor: boolean) {
     const selection = getSelection();
     if (moveCursor && selection.linesDownToMoveCursor > 0) {
         commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
         commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
     }
-    runTextInTerm(term, selection.selectedText);
+    runTextInTerm(selection.selectedText);
 }
 
-export async function runTextInTerm(term: Terminal, text: string) {
+export async function runTextInTerm(text: string) {
+    const term = await chooseTerminal();
+    if (term === undefined) {
+        return;
+    }
     if (config().get<boolean>('bracketedPaste')) {
         if (process.platform !== 'win32') {
             // Surround with ANSI control characters for bracketed paste mode
@@ -130,15 +134,6 @@ export async function runTextInTerm(term: Terminal, text: string) {
         }
     }
     setFocus(term);
-}
-
-export async function chooseTerminalAndSendText(text: string) {
-    const callableTerminal = await chooseTerminal();
-    if (callableTerminal === undefined) {
-        return;
-    }
-    callableTerminal.sendText(text);
-    setFocus(callableTerminal);
 }
 
 function setFocus(term: Terminal) {

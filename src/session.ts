@@ -7,7 +7,7 @@ import path = require('path');
 import { URL } from 'url';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
-import { chooseTerminalAndSendText } from './rTerminal';
+import { runTextInTerm } from './rTerminal';
 import { config } from './util';
 import { FSWatcher } from 'fs-extra';
 
@@ -65,7 +65,7 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
 export function attachActive() {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
-        chooseTerminalAndSendText('.vsc.attach()');
+        runTextInTerm('.vsc.attach()');
     } else {
         window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }
@@ -112,7 +112,7 @@ function updateSessionWatcher() {
     } else {
         console.info('[updateSessionWatcher] globalenvLockFile not found');
     }
-    
+
     console.info('[updateSessionWatcher] Create plotWatcher');
     plotFile = path.join(sessionDir, 'plot.png');
     plotLockFile = path.join(sessionDir, 'plot.lock');
@@ -449,7 +449,7 @@ function isFromWorkspace(dir: string) {
             }
         }
     }
-    
+
     return false;
 }
 
