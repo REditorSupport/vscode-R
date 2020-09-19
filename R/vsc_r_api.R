@@ -21,11 +21,11 @@ get_active_document_context <- function() {
 }
 
 
-verify_available <- function(version_needed) {
+verify_available <- function(version_needed = NULL) {
     if (is.null(version_needed)) TRUE else FALSE
 }
 
-is_available <- function(version_needed, child_ok) {
+is_available <- function(version_needed = NULL, child_ok) {
     verify_available(version_needed)
 }
 
