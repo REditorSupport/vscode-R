@@ -29,26 +29,37 @@ is_available <- function(version_needed, child_ok) {
     verify_available(version_needed)
 }
 
-insert_text <- function(location, text, id = NULL) {
-  if (rstudioapi::is.document_range(location))
-    return(modify_range(location, text, id))
-  if (rstudioapi::is.document_position(location))
-    return(insert_text_position(location, text, id))
-  stop("location must be of class document_position or document_range")
-}
+insert_or_modify_text <- function(location, text, id = NULL) {
 
-insert_text_position <- function(location, text, id) {
-  request("insert_text_at_position", text = text, id = id, position = location)
-}
-modify_range <- function(location, text, id = NULL) {
-  NULL
-}
+    ## ensure normalised_location is a list containing a possible mix of
+    ## document_position and document_range objects
+    normalised_location <- normalise_position_or_range_arg(location)
+    normalised_text <- normalise_text_arg(text, length(normalised_location))
+    ## Having normalised we are guaranteed these are the same length.
+    ## Package up all the edits in a query to send to VSCode in an object
+    ## This is done so the edits can be applied in a single edit object, which
+    ## is hopefull closest to RStudio behaviour.
+    query <-
+        mapply(function(location, text) {
+            list(
+                operation = if (rstudioapi::is.document_range(location)) "modifyRange" else "insertText",
+                location = location,
+                text = text
+            )
+        },
+        normalised_location,
+        normalised_text,
+        SIMPLIFY = FALSE
+        )
 
+    request("insert_or_modify_text", query = query, id = id)
+}
 
 rstudio_vsc_mapping <-
-  list(
-      getActiveDocumentContext = get_active_document_context,
-      isAvailable = is_available,
-      verifyAvailable = verify_available,
-      insertText = insert_text
-  )
+    list(
+        getActiveDocumentContext = get_active_document_context,
+        isAvailable = is_available,
+        verifyAvailable = verify_available,
+        insertText = insert_or_modify_text,
+        modifyRange = insert_or_modify_text
+    )
