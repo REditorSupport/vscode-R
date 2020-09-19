@@ -55,11 +55,19 @@ insert_or_modify_text <- function(location, text, id = NULL) {
     request("insert_or_modify_text", query = query, id = id)
 }
 
+read_preference <- function(name, default) {
+    ## in future we could map some rstudio preferences to vscode settings.
+    ## since the caller must provide a default this should work.
+    default
+}
+
 rstudio_vsc_mapping <-
     list(
         getActiveDocumentContext = get_active_document_context,
         isAvailable = is_available,
         verifyAvailable = verify_available,
         insertText = insert_or_modify_text,
-        modifyRange = insert_or_modify_text
+        modifyRange = insert_or_modify_text,
+        readPreference = read_preference,
+        readRStudioPreference = read_preference
     )
