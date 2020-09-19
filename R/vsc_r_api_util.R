@@ -90,3 +90,55 @@ make_rs_document_context <-
         class = "document_context"
         )
     }
+
+is_positionable <- function(p) is.numeric(p) && length(p) == 2
+
+is_rangable <- function(r) is.numeric(r) && length(r) == 4
+
+normalise_position_or_range_arg <- function(location) {
+    ## This is necessary due to the loose constraints of the location argument in
+    ## rstudioapi::insertText and rstudioapi::modifyRange.
+    ## These functions can take single vectors coerable to postition or range OR
+    ## a list where each element may be a location, range, or a vector coercable to such.
+    ## I prefer to normalise the argument to a list of either formal positions or ranges and
+    ## dispatch those to different API endpoints on the vscode side.
+
+    if (rstudioapi::is.document_position(location)) {
+        list(location)
+    } else if (is_positionable(location)) {
+        list(rstudioapi::as.document_position(location))
+    } else if (rstudioapi::is.document_range(location)) {
+        list(location)
+    } else if (is_rangable(location)) {
+        list(rstudioapi::as.document_range(location))
+    } else if (is.list(location)) {
+        lapply(
+            location,
+            function(a_location) {
+                if (rstudioapi::is.document_position(a_location) ||
+                    rstudioapi::is.document_range(a_location)) {
+                    a_location
+                } else if (is_positionable(a_location)) {
+                    rstudioapi::as.document_position(a_location)
+                } else if (is_rangable((a_location))) {
+                    rstudioapi::as.document_range(a_location)
+                } else {
+                    stop("object in location list was not a document_position or document_range")
+                }
+            }
+        )
+    } else {
+        stop("location object was not a document_position or document_range")
+    }
+}
+
+normalise_text_arg <- function(text, location_length) {
+    if (length(text) == location_length) {
+        text
+    }
+    else if (length(text) == 1 && location_length > 1) {
+        rep(text, location_length)
+    } else {
+        stop("text vector needs to be of length 1 or the same length as location list")
+    }
+}
