@@ -25,35 +25,30 @@ export async function insertOrModifyText(query: any[], id: string = null) {
 
   let target = id === null ? window.activeTextEditor.document.uri : Uri.parse(id);
   let targetDocument = await workspace.openTextDocument(target);
+  let nLines = targetDocument.lineCount;
   console.info(`[insertTextAtPosition] inserting text into: ${target}`);
+  let edit = new WorkspaceEdit();
 
-  await query.reduce((previousEdit: Promise<boolean>, op) => {
-    return (
-      previousEdit.then(() => {
-        let edit = new WorkspaceEdit();
-        assertSupportedEditOperation(op.operation);
-        let editOperation = op.operation == "insertText" ?
-          (uri: Uri, newText: string) => edit.insert(uri, parsePosition(op.location), newText) :
-          (uri: Uri, newText: string) => edit.replace(uri, parseRange(op.location), newText);
+  query.forEach((op) => {
+    assertSupportedEditOperation(op.operation);
 
-        // in a document with lines, does the line position extend past the existing lines in the document?
-        // rstudioapi adds a newline in this case, so must we.
-        // n_lines is a count, line is 0 indexed position hence + 1
-        let editLocation = op.operation == "insertText" ? parsePosition(op.location) : parseRange(op.location);
-        let editText = normaliseEditText(op.text, locationStart(editLocation), targetDocument);
+    let editOperation = op.operation == "insertText" ?
+      (uri: Uri, newText: string) => edit.insert(uri, parsePosition(op.location), newText) :
+      (uri: Uri, newText: string) => edit.replace(uri, parseRange(op.location), newText);
 
-        editOperation(target, editText);
-        console.info(`[insertTextAtPosition] inserting at: ${JSON.stringify(editLocation)}`);
-        console.info(`[insertTextAtPosition] inserting text: ${editText}`);
-        console.info(`[insertTextAtPosition] going with edit: ${JSON.stringify(edit)}`)
-        let outcome = workspace.applyEdit(edit);
-        return (outcome);
-      },
-      () => {
-        throw("A series of rstudioapi edits sent to VSCode could not be fulfilled.")
-      }))
-  }, Promise.resolve());
+    // in a document with lines, does the line position extend past the existing lines in the document?
+    // rstudioapi adds a newline in this case, so must we.
+    // n_lines is a count, line is 0 indexed position hence + 1
+    let editLocation = op.operation == "insertText" ? parsePosition(op.location) : parseRange(op.location);
+    let editText = normaliseEditText(op.text, locationStart(editLocation), nLines);
 
+    console.info(`[insertTextAtPosition] inserting at: ${JSON.stringify(editLocation)}`);
+    console.info(`[insertTextAtPosition] inserting text: ${editText}`);
+    console.info(`[insertTextAtPosition] going with edit: ${JSON.stringify(edit)}`)
+    return editOperation(target, editText);
+  });
+
+  workspace.applyEdit(edit);
 }
 
 //utils
@@ -81,8 +76,7 @@ function locationStart(location: Position | Range) {
   return (startPosition);
 }
 
-function normaliseEditText(text: string, editStart: Position, targetDocument: TextDocument) {
-  let nLines = targetDocument.lineCount;
+function normaliseEditText(text: string, editStart: Position, nLines: number) {
   let targetText = (nLines > 0 && nLines < editStart.line + 1) ? "\n" + text : text;
   return (targetText);
 }

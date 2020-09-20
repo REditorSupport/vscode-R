@@ -31,6 +31,9 @@ is_available <- function(version_needed = NULL, child_ok) {
 
 insert_or_modify_text <- function(location, text, id = NULL) {
 
+    ## insertText also supports insertText("text")
+    ## allowing the location parameter to be used for the text when text itself is null
+
     ## ensure normalised_location is a list containing a possible mix of
     ## document_position and document_range objects
     normalised_location <- normalise_position_or_range_arg(location)
