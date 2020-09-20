@@ -10,7 +10,7 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
 import { FSWatcher } from 'fs-extra';
-import { activeEditorContext, insertOrModifyText } from './vsc_r_api'
+import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection} from './vsc_r_api'
 
 export let globalenv: any;
 let resDir: string;
@@ -516,6 +516,10 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 }
                 case 'insert_or_modify_text': {
                       await insertOrModifyText(request.query, request.id);
+                    break;
+                }
+                case 'replace_text_in_current_selection': {
+                    await replaceTextInCurrentSelection(request.text);
                     break;
                 }
                 default:

@@ -1,6 +1,7 @@
 import { window, TextEdit, TextEditorCursorStyle, TextEditor, TextDocument, Uri, workspace, WorkspaceEdit, Position, Range } from 'vscode';
 import { kMaxLength } from 'buffer';
 import { Url } from 'url';
+import { ENGINE_METHOD_DIGESTS } from 'constants';
 
 
 //vsc-r-api
@@ -48,6 +49,16 @@ export async function insertOrModifyText(query: any[], id: string = null) {
     return editOperation(target, editText);
   });
 
+  workspace.applyEdit(edit);
+}
+
+export async function replaceTextInCurrentSelection(text: string) {
+  let edit = new WorkspaceEdit();
+  edit.replace(
+    window.activeTextEditor.document.uri,
+    window.activeTextEditor.selection,
+    text
+  );
   workspace.applyEdit(edit);
 }
 
