@@ -12,6 +12,7 @@ import { config } from './util';
 import { FSWatcher } from 'fs-extra';
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { activeEditorContext } from './vsc_r_api';
 =======
 import { activeEditorContext, insertOrModifyText } from './vsc_r_api'
@@ -19,6 +20,9 @@ import { activeEditorContext, insertOrModifyText } from './vsc_r_api'
 =======
 import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection} from './vsc_r_api'
 >>>>>>> support insertText("text") style call
+=======
+import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection } from './vsc_r_api';
+>>>>>>> fixes for eslint PR comments
 
 export let globalenv: any;
 let resDir: string;
