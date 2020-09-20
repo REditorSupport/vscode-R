@@ -10,7 +10,7 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
 import { FSWatcher } from 'fs-extra';
-import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection} from './vsc_r_api'
+import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection } from './vsc_r_api';
 
 export let globalenv: any;
 let resDir: string;
