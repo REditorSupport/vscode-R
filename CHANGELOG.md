@@ -1,5 +1,11 @@
 # Change Log
 
+## 1.4.6
+
+* Remove Run in Active Terminal from README #413 (Fix #412)
+* Remove command Run Selection/Line in Active Terminal #409 (Fix #306)
+* Check url in browser #406 (Fix #371)
+
 ## 1.4.5
 
 * Remove shortcuts Ctrl + 1, 2, 3, 4, 5 #401 (Fix #368)
