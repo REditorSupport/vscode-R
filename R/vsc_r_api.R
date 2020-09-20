@@ -32,8 +32,9 @@ is_available <- function(version_needed = NULL, child_ok) {
 insert_or_modify_text <- function(location, text, id = NULL) {
 
     ## insertText also supports insertText("text")
-    ## allowing the location parameter to be used for the text when text itself is null
-    ## this is dispatched as a separate request type
+    ## allowing the location parameter to be used for the text when
+    ## text itself is null.
+    ## This is dispatched as a separate request type
     if (missing(text) && missing(id) &&
         is.character(location) && length(location) == 1) {
         return(request("replace_text_in_current_selection", text = location))
@@ -50,7 +51,11 @@ insert_or_modify_text <- function(location, text, id = NULL) {
     query <-
         mapply(function(location, text) {
             list(
-                operation = if (rstudioapi::is.document_range(location)) "modifyRange" else "insertText",
+                operation = if (rstudioapi::is.document_range(location)) {
+                    "modifyRange"
+                } else {
+                    "insertText"
+                },
                 location = location,
                 text = text
             )

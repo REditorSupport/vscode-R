@@ -96,13 +96,12 @@ is_positionable <- function(p) is.numeric(p) && length(p) == 2
 is_rangable <- function(r) is.numeric(r) && length(r) == 4
 
 normalise_position_or_range_arg <- function(location) {
-    ## This is necessary due to the loose constraints of the location argument in
-    ## rstudioapi::insertText and rstudioapi::modifyRange.
-    ## These functions can take single vectors coerable to postition or range OR
-    ## a list where each element may be a location, range, or a vector coercable to such.
-    ## I prefer to normalise the argument to a list of either formal positions or ranges and
-    ## dispatch those to different API endpoints on the vscode side.
-
+    # This is necessary due to the loose constraints of the location argument
+    # in rstudioapi::insertText and rstudioapi::modifyRange. These
+    # functions can take single vectors coerable to postition or range OR a
+    # list where each element may be a location, range, or a vector coercable
+    # to such. I prefer to normalise the argument to a list of either formal
+    # positions or ranges.
     if (rstudioapi::is.document_position(location)) {
         list(location)
     } else if (is_positionable(location)) {
