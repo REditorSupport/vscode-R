@@ -45,7 +45,6 @@ export async function insertOrModifyText(query: any[], id: string = null) {
 
     console.info(`[insertTextAtPosition] inserting at: ${JSON.stringify(editLocation)}`);
     console.info(`[insertTextAtPosition] inserting text: ${editText}`);
-    console.info(`[insertTextAtPosition] going with edit: ${JSON.stringify(edit)}`)
     return editOperation(target, editText);
   });
 
@@ -53,7 +52,7 @@ export async function insertOrModifyText(query: any[], id: string = null) {
 }
 
 export async function replaceTextInCurrentSelection(text: string) {
-  let edit = new WorkspaceEdit();
+  const edit = new WorkspaceEdit();
   edit.replace(
     window.activeTextEditor.document.uri,
     window.activeTextEditor.selection,
@@ -64,7 +63,7 @@ export async function replaceTextInCurrentSelection(text: string) {
 
 //utils
 function parsePosition(rs_position: number[]) {
-  if (rs_position.length != 2) {
+  if (rs_position.length !== 2) {
     throw('an rstudioapi position must be an array of 2 numbers');
   }
   // positions in the rstudioapi are 1 indexed.
@@ -72,7 +71,7 @@ function parsePosition(rs_position: number[]) {
 }
 
 function parseRange(rs_range: any) {
-  if (rs_range.start.length != 2 || rs_range.end.length != 2) {
+  if (rs_range.start.length !== 2 || rs_range.end.length !== 2) {
     throw ('an rstudioapi range must be an object containing two numeric arrays');
   }
   return (new Range(new Position(rs_range.start[0] - 1, rs_range.start[1] - 1),
@@ -80,17 +79,17 @@ function parseRange(rs_range: any) {
 }
 
 function assertSupportedEditOperation(operation: string) {
-  if (operation != 'insertText' && operation != 'modifyRange') {
+  if (operation !== 'insertText' && operation !== 'modifyRange') {
     throw ('Operation: ' + operation + ' not supported by VSCode-R API');
   }
 }
 
 function locationStart(location: Position | Range) {
-  let startPosition = location instanceof Position ? location : location.start;
+  const startPosition = location instanceof Position ? location : location.start;
   return (startPosition);
 }
 
 function normaliseEditText(text: string, editStart: Position, nLines: number) {
-  let targetText = (nLines > 0 && nLines < editStart.line + 1) ? '\n' + text : text;
+  const targetText = (nLines > 0 && nLines < editStart.line + 1) ? '\n' + text : text;
   return (targetText);
 }
