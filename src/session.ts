@@ -531,7 +531,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     break;
                 }
                 case 'replace_text_in_current_selection': {
-                    await replaceTextInCurrentSelection(request.text);
+                    await replaceTextInCurrentSelection(request.text, request.id);
                     break;
                 }
                 default:
