@@ -51,10 +51,11 @@ export async function insertOrModifyText(query: any[], id: string = null) {
   workspace.applyEdit(edit);
 }
 
-export async function replaceTextInCurrentSelection(text: string) {
+export async function replaceTextInCurrentSelection(text: string, id: string) {
+  const target = id === null ? window.activeTextEditor.document.uri : Uri.parse(id);
   const edit = new WorkspaceEdit();
   edit.replace(
-    window.activeTextEditor.document.uri,
+    target,
     window.activeTextEditor.selection,
     text
   );

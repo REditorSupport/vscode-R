@@ -31,13 +31,19 @@ is_available <- function(version_needed = NULL, child_ok) {
 
 insert_or_modify_text <- function(location, text, id = NULL) {
 
-    ## insertText also supports insertText("text")
+    ## insertText also supports insertText("text"), insertText(text = "text"), 
     ## allowing the location parameter to be used for the text when
     ## text itself is null.
     ## This is dispatched as a separate request type
-    if (missing(text) && missing(id) &&
-        is.character(location) && length(location) == 1) {
-        return(request("replace_text_in_current_selection", text = location))
+    if (missing(text) && is.character(location) && length(location) == 1) {
+        ## handling insertText("text")
+        return(request("replace_text_in_current_selection", text = location, id = id))
+    } else if (missing(location)) {
+        ## handling insertText(text = "text")
+        return(request("replace_text_in_current_selection", text = text, id = id))
+    } else if (is.null(location) && missing(text)) {
+        ## handling insertText(NULL)
+        return(invisible(NULL))
     }
 
     ## ensure normalised_location is a list containing a possible mix of
