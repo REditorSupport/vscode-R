@@ -7,14 +7,35 @@ rstudioapi_patch_hook <- function(...) {
                 ns = "rstudioapi"
             )
         }
+    ## create mappings for functions with implementations
     mapply(
         patch_rstudioapi_fn,
         names(rstudio_vsc_mapping),
         rstudio_vsc_mapping
     )
+    ## create mapping to not implemented error functions without
+    ## implementations
+    lapply(
+        rstudio_vsc_no_map,
+        patch_rstudioapi_fn,
+        new = not_yet_implemented
+    )
+}
+
+not_yet_implemented <- function(...) {
+    stop("This {rstudioapi} function is not currently implemented for VSCode.")
 }
 
 get_active_document_context <- function() {
+    # In RStudio this returns either a document context for either the active
+    # source editor or active console. 
+    # In VSCode this only ever returns the active (or last active) text editor.
+    # This is because it is currently not possible to tell in VSCode whether
+    # a text editor or terminal has focus. The concept of active is different.
+    # It means currently using or most recently used, and applies to text
+    # editors and terminals separately.
+    # This shoudln't be much of a limitation as the only context returned for
+    # the console was the current selection, so it is not very useful.
     editor_context <- request_response("active_editor_context")
 
     make_rs_document_context(editor_context)
@@ -80,13 +101,33 @@ read_preference <- function(name, default) {
     default
 }
 
+has_fun <- function(name, version_needed = NULL, ...) {
+    if (!is.null(version_needed)) return(FALSE)
+
+    exists(x = name, envir = as.environment(rstudio_vsc_mapping), ...)
+}
+
+get_fun <- function(name, version_needed = NULL, ...) {
+    if (!is.null(version_needed)) return(FALSE)
+
+    get(x = name, envir = as.environment(rstudio_vsc_mapping), ...)
+}
+
 rstudio_vsc_mapping <-
     list(
         getActiveDocumentContext = get_active_document_context,
+        getSourceEditorContext = get_active_document_context,
         isAvailable = is_available,
         verifyAvailable = verify_available,
         insertText = insert_or_modify_text,
         modifyRange = insert_or_modify_text,
         readPreference = read_preference,
-        readRStudioPreference = read_preference
+        readRStudioPreference = read_preference,
+        hasFun = has_fun,
+        findFun = get_fun
+    )
+
+rstudio_vsc_no_map <- 
+    list(
+        "getConsoleEditorContext"
     )
