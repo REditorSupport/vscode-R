@@ -1,7 +1,8 @@
-import { window, TextEdit, TextEditorCursorStyle, TextEditor, TextDocument, Uri, workspace, WorkspaceEdit, Position, Range } from 'vscode';
+import { window, TextEdit, TextEditorCursorStyle, TextEditor, TextDocument, Uri, workspace, WorkspaceEdit, Position, Range, MessageOptions, MessageItem } from 'vscode';
 import { kMaxLength } from 'buffer';
 import { Url } from 'url';
 import { ENGINE_METHOD_DIGESTS } from 'constants';
+import { MessageChannel } from 'worker_threads';
 
 
 //vsc-r-api
@@ -60,6 +61,12 @@ export async function replaceTextInCurrentSelection(text: string, id: string) {
     text
   );
   workspace.applyEdit(edit);
+}
+
+export async function showDialog(message :string) {
+  
+  window.showInformationMessage(message);
+  
 }
 
 //utils
