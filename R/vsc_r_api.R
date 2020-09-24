@@ -113,6 +113,13 @@ get_fun <- function(name, version_needed = NULL, ...) {
     get(x = name, envir = as.environment(rstudio_vsc_mapping), ...)
 }
 
+show_dialog <- function(title, message, url = "") {
+
+    message <- sprintf("%s: %s \n%s", title, message, url)
+
+    request("show_dialog", message = message)
+}
+
 rstudio_vsc_mapping <-
     list(
         getActiveDocumentContext = get_active_document_context,
@@ -124,7 +131,8 @@ rstudio_vsc_mapping <-
         readPreference = read_preference,
         readRStudioPreference = read_preference,
         hasFun = has_fun,
-        findFun = get_fun
+        findFun = get_fun,
+        showDialog = show_dialog
     )
 
 rstudio_vsc_no_map <- 

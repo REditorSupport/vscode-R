@@ -13,6 +13,7 @@ import { FSWatcher } from 'fs-extra';
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { activeEditorContext } from './vsc_r_api';
 =======
 import { activeEditorContext, insertOrModifyText } from './vsc_r_api'
@@ -23,6 +24,9 @@ import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection}
 =======
 import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection } from './vsc_r_api';
 >>>>>>> fixes for eslint PR comments
+=======
+import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection, showDialog } from './vsc_r_api';
+>>>>>>> add showDialog
 
 export let globalenv: any;
 let resDir: string;
@@ -527,11 +531,15 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     break;
                 }
                 case 'insert_or_modify_text': {
-                      await insertOrModifyText(request.query, request.id);
+                    await insertOrModifyText(request.query, request.id);
                     break;
                 }
                 case 'replace_text_in_current_selection': {
                     await replaceTextInCurrentSelection(request.text, request.id);
+                    break;
+                }
+                case 'show_dialog': {
+                    showDialog(request.message);
                     break;
                 }
                 default:
