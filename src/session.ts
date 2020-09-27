@@ -34,8 +34,12 @@ import { activeEditorContext, insertOrModifyText, navigateToFile, replaceTextInC
 >>>>>>> add navigateToFile
 =======
 import { activeEditorContext, insertOrModifyText, navigateToFile, 
+<<<<<<< HEAD
     replaceTextInCurrentSelection, showDialog, setSelections } from './vsc_r_api';
 >>>>>>> add setSelectionRanges, setCursorPosition
+=======
+    replaceTextInCurrentSelection, showDialog, setSelections, documentSave } from './vsc_r_api';
+>>>>>>> add documentSave
 
 export let globalenv: any;
 let resDir: string;
@@ -557,6 +561,10 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 }
                 case 'set_selection_ranges': {
                     setSelections(request.ranges, request.id);
+                    break;
+                }
+                case 'document_save': {
+                    documentSave(request.id);
                     break;
                 }
                 default:

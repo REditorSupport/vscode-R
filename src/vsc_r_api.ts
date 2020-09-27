@@ -99,6 +99,12 @@ export async function setSelections(ranges :number[][], id :string) {
   editor.selections = selectionObjects;
 }
 
+export async function documentSave(id: string) {
+  const target = id === null ? window.activeTextEditor.document.uri : Uri.parse(id);
+  const targetDocument = await workspace.openTextDocument(target)
+  await targetDocument.save();
+}
+
 //utils
 function parsePosition(rs_position: number[]) {
   if (rs_position.length !== 2) {
