@@ -10,7 +10,8 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
 import { FSWatcher } from 'fs-extra';
-import { activeEditorContext, insertOrModifyText, navigateToFile, replaceTextInCurrentSelection, showDialog } from './vsc_r_api';
+import { activeEditorContext, insertOrModifyText, navigateToFile, 
+    replaceTextInCurrentSelection, showDialog, setSelections } from './vsc_r_api';
 
 export let globalenv: any;
 let resDir: string;
@@ -528,6 +529,10 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 }
                 case 'navigate_to_file': {
                     navigateToFile(request.file, request.line, request.column)
+                    break;
+                }
+                case 'set_selection_ranges': {
+                    setSelections(request.ranges, request.id);
                     break;
                 }
                 default:

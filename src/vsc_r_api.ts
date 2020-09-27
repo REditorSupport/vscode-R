@@ -79,6 +79,26 @@ export async function navigateToFile(file :string, line :number, column :number)
   }
 }
 
+export async function setSelections(ranges :number[][], id :string) {
+  // In VSCode it's not possible to get a list of the open text editors. it is
+  // not window.visibleTextEditors - this is only editors (tabs) with text
+  // showing. So we have to open the target document and and 'show' it, to get
+  // access to the editor object and manipulate its' selections. This is
+  // different from RStudio which can manipulate the selections and cursor
+  // positions in documents on open tabs, without showing those documents.
+  const target = id === null ? window.activeTextEditor.document.uri : Uri.parse(id);
+  const targetDocument = await workspace.openTextDocument(target);
+  const editor = await window.showTextDocument(targetDocument);
+
+  const selectionObjects = ranges.map(x => {
+    const newRange = parseRange(x);
+    const newSelection = new Selection(newRange.start, newRange.end);
+    return(newSelection)
+  });
+
+  editor.selections = selectionObjects;
+}
+
 //utils
 function parsePosition(rs_position: number[]) {
   if (rs_position.length !== 2) {
