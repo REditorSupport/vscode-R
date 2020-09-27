@@ -133,6 +133,34 @@ navigate_to_file <- function(file, line = -1L, column = -1L) {
     )
 }
 
+set_selection_ranges <- function(ranges, id = NULL) {
+    ranges <- normalise_position_or_range_arg(ranges)
+    are_ranges <- unlist(lapply(ranges, rstudioapi::is.document_range))
+    if (!all(are_ranges)) {
+        stop("Expecting only document_range objects. Got something else.")
+    }
+    request("set_selection_ranges", ranges = ranges, id = id)
+}
+
+set_cursor_position <- function(position, id = NULL) {
+    position <- normalise_position_or_range_arg(position)
+    if (length(position) > 1) {
+        stop("setCursorPosition takes a single document_position object")
+    }
+    if (!rstudioapi::is.document_position(position[[1]])) {
+        stop("Expecting a document_position object. Got something else.")
+    }
+
+    ## have to wrap in list() to make sure it's an array of arrays on the other end.
+    request("set_selection_ranges",
+        ranges = list(rstudioapi::document_range(
+            position[[1]],
+            position[[1]]
+        )),
+        id = id
+    )
+}
+
 rstudio_vsc_mapping <-
     list(
         getActiveDocumentContext = get_active_document_context,
@@ -146,7 +174,11 @@ rstudio_vsc_mapping <-
         hasFun = has_fun,
         findFun = get_fun,
         showDialog = show_dialog,
-        navigateToFile = navigate_to_file
+        navigateToFile = navigate_to_file,
+        setSelectionRanges = set_selection_ranges,
+        setCursorPosition = set_cursor_position
+
+
     )
 
 rstudio_vsc_no_map <-
