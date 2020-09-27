@@ -28,7 +28,7 @@ not_yet_implemented <- function(...) {
 
 get_active_document_context <- function() {
     # In RStudio this returns either a document context for either the active
-    # source editor or active console. 
+    # source editor or active console.
     # In VSCode this only ever returns the active (or last active) text editor.
     # This is because it is currently not possible to tell in VSCode whether
     # a text editor or terminal has focus. The concept of active is different.
@@ -52,7 +52,7 @@ is_available <- function(version_needed = NULL, child_ok) {
 
 insert_or_modify_text <- function(location, text, id = NULL) {
 
-    ## insertText also supports insertText("text"), insertText(text = "text"), 
+    ## insertText also supports insertText("text"), insertText(text = "text"),
     ## allowing the location parameter to be used for the text when
     ## text itself is null.
     ## This is dispatched as a separate request type
@@ -102,22 +102,35 @@ read_preference <- function(name, default) {
 }
 
 has_fun <- function(name, version_needed = NULL, ...) {
-    if (!is.null(version_needed)) return(FALSE)
+    if (!is.null(version_needed)) {
+        return(FALSE)
+    }
 
     exists(x = name, envir = as.environment(rstudio_vsc_mapping), ...)
 }
 
 get_fun <- function(name, version_needed = NULL, ...) {
-    if (!is.null(version_needed)) return(FALSE)
+    if (!is.null(version_needed)) {
+        return(FALSE)
+    }
 
     get(x = name, envir = as.environment(rstudio_vsc_mapping), ...)
 }
 
 show_dialog <- function(title, message, url = "") {
-
     message <- sprintf("%s: %s \n%s", title, message, url)
 
     request("show_dialog", message = message)
+}
+
+navigate_to_file <- function(file, line = -1L, column = -1L) {
+    # normalise path since relative paths don't work as URIs in VSC
+    request(
+        "navigate_to_file",
+        file = normalizePath(file),
+        line = line,
+        column = column
+    )
 }
 
 rstudio_vsc_mapping <-
@@ -132,10 +145,11 @@ rstudio_vsc_mapping <-
         readRStudioPreference = read_preference,
         hasFun = has_fun,
         findFun = get_fun,
-        showDialog = show_dialog
+        showDialog = show_dialog,
+        navigateToFile = navigate_to_file
     )
 
-rstudio_vsc_no_map <- 
+rstudio_vsc_no_map <-
     list(
         "getConsoleEditorContext"
     )

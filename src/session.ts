@@ -14,6 +14,7 @@ import { FSWatcher } from 'fs-extra';
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { activeEditorContext } from './vsc_r_api';
 =======
 import { activeEditorContext, insertOrModifyText } from './vsc_r_api'
@@ -27,6 +28,9 @@ import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection 
 =======
 import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection, showDialog } from './vsc_r_api';
 >>>>>>> add showDialog
+=======
+import { activeEditorContext, insertOrModifyText, navigateToFile, replaceTextInCurrentSelection, showDialog } from './vsc_r_api';
+>>>>>>> add navigateToFile
 
 export let globalenv: any;
 let resDir: string;
@@ -540,6 +544,10 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 }
                 case 'show_dialog': {
                     showDialog(request.message);
+                    break;
+                }
+                case 'navigate_to_file': {
+                    navigateToFile(request.file, request.line, request.column)
                     break;
                 }
                 default:

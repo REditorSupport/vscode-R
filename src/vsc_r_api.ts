@@ -1,4 +1,4 @@
-import { window, TextEdit, TextEditorCursorStyle, TextEditor, TextDocument, Uri, workspace, WorkspaceEdit, Position, Range, MessageOptions, MessageItem } from 'vscode';
+import { window, TextEdit, TextEditorCursorStyle, TextEditor, TextDocument, Uri, workspace, WorkspaceEdit, Position, Range, MessageOptions, MessageItem, Selection } from 'vscode';
 import { kMaxLength } from 'buffer';
 import { Url } from 'url';
 import { ENGINE_METHOD_DIGESTS } from 'constants';
@@ -67,6 +67,16 @@ export async function showDialog(message :string) {
   
   window.showInformationMessage(message);
   
+}
+
+export async function navigateToFile(file :string, line :number, column :number) {
+  
+  const targetDocument = await workspace.openTextDocument(Uri.file(file));
+  const editor = await window.showTextDocument(targetDocument);
+  if (line > 0 && column > 0) {
+    const targetPosition = parsePosition([line, column]);
+    editor.selection = new Selection(targetPosition, targetPosition);
+  }
 }
 
 //utils
