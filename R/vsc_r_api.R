@@ -161,6 +161,10 @@ set_cursor_position <- function(position, id = NULL) {
     )
 }
 
+document_save <- function(id = NULL) {
+  request("document_save", id = id)
+}
+
 rstudio_vsc_mapping <-
     list(
         getActiveDocumentContext = get_active_document_context,
@@ -176,12 +180,14 @@ rstudio_vsc_mapping <-
         showDialog = show_dialog,
         navigateToFile = navigate_to_file,
         setSelectionRanges = set_selection_ranges,
-        setCursorPosition = set_cursor_position
+        setCursorPosition = set_cursor_position,
+        documentSave = document_save
 
 
     )
 
 rstudio_vsc_no_map <-
     list(
-        "getConsoleEditorContext"
+        "getConsoleEditorContext",
+        "sourceMarkers"
     )
