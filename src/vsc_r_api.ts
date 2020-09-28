@@ -170,7 +170,7 @@ export async function launchAddinPicker() {
     await window.showQuickPick<AddinItem>(getAddinPickerItems(), addinPickerOptions);
 
     if (!(typeof addinSelection === 'undefined')) {
-      runTextInTerm(activeRTerm, addinSelection.package + '::' + addinSelection.binding + '()');
+      runTextInTerm(activeRTerm, addinSelection.package + ':::' + addinSelection.binding + '()');
     }
 }
 
