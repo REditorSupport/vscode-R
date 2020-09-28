@@ -349,8 +349,18 @@ if (interactive() &&
             stop("Invalid object")
           }
         }
-        file <- normalizePath(url, "/", mustWork = TRUE)
-        request("webview", file = file, title = title, viewer = viewer, ...)
+        if (grepl("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:\\d+)?", url)) {
+          request("browser", url = url, title = title, ..., viewer = viewer)
+        } else if (grepl("^https?\\://", url)) {
+          message("VSCode WebView only supports showing local http content.")
+          message("Opening in external browser...")
+          request("browser", url = url, title = title, ..., viewer = FALSE)
+        } else if (file.exists(url)) {
+          file <- normalizePath(url, "/", mustWork = TRUE)
+          request("webview", file = file, title = title, viewer = viewer, ...)
+        } else {
+          stop("File not exists")
+        }
       }
 
       viewer <- function(url, title = NULL, ...,
