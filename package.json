@@ -362,7 +362,7 @@
         "command": "r.runSelectionRetainCursor"
       },
       {
-        "title": "Launch RStudio Addin Picker",
+        "title": "Launch RStudio Addin",
         "category": "R",
         "command": "r.launchAddinPicker"
       }
