@@ -12,6 +12,7 @@ import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
 import { config, ToRStringLiteral } from './util';
+import { launchAddinPicker } from './vsc_r_api';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -203,6 +204,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.runCommandWithSelectionOrWord', runCommandWithSelectionOrWord),
         commands.registerCommand('r.runCommandWithEditorPath', runCommandWithEditorPath),
         commands.registerCommand('r.runCommand', runCommand),
+        commands.registerCommand('r.launchAddinPicker', launchAddinPicker),
         window.onDidCloseTerminal(deleteTerminal),
     );
 

@@ -5,7 +5,7 @@ import fs = require('fs-extra');
 import os = require('os');
 import path = require('path');
 import { URL } from 'url';
-import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
+import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, QuickPick } from 'vscode';
 
 import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
@@ -15,7 +15,7 @@ import { activeEditorContext, insertOrModifyText, navigateToFile,
 
 export let globalenv: any;
 let resDir: string;
-let watcherDir: string;
+export let watcherDir: string;
 let requestFile: string;
 let responseFile: string;
 let requestLockFile: string;
