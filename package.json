@@ -355,6 +355,11 @@
         "title": "Run Selection/Line (Retain Cursor)",
         "category": "R",
         "command": "r.runSelectionRetainCursor"
+      },
+      {
+        "title": "Launch RStudio Addin Picker",
+        "category": "R",
+        "command": "r.launchAddinPicker"
       }
     ],
     "keybindings": [

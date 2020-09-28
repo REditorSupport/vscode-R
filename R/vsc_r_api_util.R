@@ -17,7 +17,21 @@ extract_document_ranges <- function(vsc_selections) {
     lapply(vsc_selections, make_rs_range)
 }
 
-to_content_lines <- function(contents) strsplit(contents, "\n")[[1]]
+to_content_lines <- function(contents, ranges) {
+    
+    content_lines <- strsplit(contents, "\n")[[1]]
+
+    # edge case handling: The cursor is at the start of a new empty line,
+    # and that line is the final line.
+    range_end_row <- unlist(lapply(ranges, function(range) range$end["row"]))
+    last_row <- max(range_end_row)
+    if (last_row == length(content_lines) + 1) {
+        content_lines <- c(content_lines, "")
+    }
+
+    content_lines
+    }
+
 
 extract_range_text <- function(range, content_lines) {
     if (!range_has_text(range)) {
@@ -68,7 +82,7 @@ make_rs_document_context <-
     function(vsc_editor_context) {
         document_ranges <-
             extract_document_ranges(vsc_editor_context$selection)
-        content_lines <- to_content_lines(vsc_editor_context$contents)
+        content_lines <- to_content_lines(vsc_editor_context$contents, document_ranges)
         document_range_texts <-
             lapply(
                 document_ranges,
@@ -80,7 +94,7 @@ make_rs_document_context <-
                 document_ranges,
                 document_range_texts
             )
-
+        
         structure(list(
             id = vsc_editor_context$id$external,
             path = vsc_editor_context$path,
@@ -140,4 +154,35 @@ normalise_text_arg <- function(text, location_length) {
     } else {
         stop("text vector needs to be of length 1 or the same length as location list")
     }
+}
+
+update_addin_registry <- function(addin_registry) {
+    pkgs <- .packages(all.available = TRUE)
+    addin_files <- vapply(pkgs, function(pkg) {
+        system.file("rstudio/addins.dcf", package = pkg)
+    }, character(1L))
+    addin_files <- addin_files[file.exists(addin_files)]
+    addin_descriptions <-
+        mapply(
+            function(package, package_dcf) {
+                addin_description <-
+                    as.data.frame(read.dcf(package_dcf), stringsAsFactors = FALSE)
+                addin_description$package <- package
+                names(addin_description) <- c(
+                    "name",
+                    "description",
+                    "binding",
+                    "interactive",
+                    "package"
+                )
+                addin_description
+            },
+            names(addin_files),
+            addin_files,
+            SIMPLIFY = FALSE
+        )
+    addin_descriptions_flat <-
+        do.call(function(...) rbind(..., make.row.names = FALSE), addin_descriptions)
+
+    jsonlite::write_json(addin_descriptions_flat, addin_registry, pretty = TRUE)
 }
