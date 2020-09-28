@@ -43,7 +43,10 @@ extract_range_text <- function(range, content_lines) {
         substring(
             content_rows[length(content_rows)],
             1,
-            range$end["column"]
+            range$end["column"] - 1 
+            # it's a minus 1 here because the selection end point is the number
+            # of the first unselected column. I.e. range 1 - 2 is all of
+            # columns >= 1 and < 2, which is column 1.
         )
     content_rows[1] <-
         substring(
