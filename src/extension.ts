@@ -12,7 +12,7 @@ import { chooseTerminal, chooseTerminalAndSendText, createRTerm, deleteTerminal,
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
 import { config, ToRStringLiteral } from './util';
-import { launchAddinPicker } from './vsc_r_api';
+import { launchAddinPicker, trackLastActiveTextEditor } from './vsc_r_api';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -323,6 +323,8 @@ export function activate(context: ExtensionContext) {
 
         deploySessionWatcher(context.extensionPath);
         startRequestWatcher(sessionStatusBarItem);
+        trackLastActiveTextEditor(window.activeTextEditor);
+        window.onDidChangeActiveTextEditor(trackLastActiveTextEditor);
     }
 }
 

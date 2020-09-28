@@ -36,7 +36,6 @@ let requestWatcher: FSWatcher;
 let globalEnvWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
 
-
 export function deploySessionWatcher(extensionPath: string) {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
