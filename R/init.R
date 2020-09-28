@@ -399,7 +399,7 @@ if (interactive() &&
       RESPONSE_TIMEOUT <- 30
       response_lock_file <- file.path(dir_extension, "response.lock")
       response_file <- file.path(dir_extension, "response.log")
-      addin_registry <- file.path(dir_extension, "addins.json")
+      addin_registry <- file.path(dir_session, "addins.json")
       
       get_response_timestamp <- function() {
         if (file.exists(response_lock_file))
