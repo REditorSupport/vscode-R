@@ -401,13 +401,14 @@ if (interactive() &&
       response_lock_file <- file.path(dir_extension, "response.lock")
       response_file <- file.path(dir_extension, "response.log")
       addin_registry <- file.path(dir_session, "addins.json")
-      
+
       get_response_timestamp <- function() {
         if (file.exists(response_lock_file))
           readLines(response_lock_file)
         else NA
       }
-      # initialise the reponse timestamp to NA or the value currently in the file
+      # initialise the reponse timestamp to NA or the value currently in the
+      # file
       response_time_stamp <- get_response_timestamp()
 
       get_response_lock <- function() {
@@ -422,8 +423,8 @@ if (interactive() &&
         request(command, ...)
         wait_start <- Sys.time()
         while (!get_response_lock()) {
-          if ((Sys.time() - wait_start) > RESPONSE_TIMEOUT) 
-            stop("Did not receive a response from VSCode-R API within ", 
+          if ((Sys.time() - wait_start) > RESPONSE_TIMEOUT)
+            stop("Did not receive a response from VSCode-R API within ",
                   RESPONSE_TIMEOUT, " seconds.")
           Sys.sleep(0.1)
         }
@@ -451,7 +452,6 @@ if (interactive() &&
     .vsc.browser <- .vsc$browser
     .vsc.viewer <- .vsc$viewer
     .vsc.page_viewer <- .vsc$page_viewer
-    .vsc.get_active_document_context <- .vsc$get_active_document_context
 
     attach(environment(), name = .vsc.name)
 

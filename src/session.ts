@@ -527,7 +527,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     break;
                 }
                 case 'navigate_to_file': {
-                    navigateToFile(request.file, request.line, request.column)
+                    navigateToFile(request.file, request.line, request.column);
                     break;
                 }
                 case 'set_selection_ranges': {

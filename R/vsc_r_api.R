@@ -58,10 +58,16 @@ insert_or_modify_text <- function(location, text, id = NULL) {
     ## This is dispatched as a separate request type
     if (missing(text) && is.character(location) && length(location) == 1) {
         ## handling insertText("text")
-        return(request("replace_text_in_current_selection", text = location, id = id))
+        return(request("replace_text_in_current_selection",
+            text = location,
+            id = id
+        ))
     } else if (missing(location)) {
         ## handling insertText(text = "text")
-        return(request("replace_text_in_current_selection", text = text, id = id))
+        return(request("replace_text_in_current_selection",
+            text = text,
+            id = id
+        ))
     } else if (is.null(location) && missing(text)) {
         ## handling insertText(NULL)
         return(invisible(NULL))
@@ -151,7 +157,8 @@ set_cursor_position <- function(position, id = NULL) {
         stop("Expecting a document_position object. Got something else.")
     }
 
-    ## have to wrap in list() to make sure it's an array of arrays on the other end.
+    ## have to wrap in list() to make sure it's an array of arrays on the
+    #other end.
     request("set_selection_ranges",
         ranges = list(rstudioapi::document_range(
             position[[1]],
@@ -162,7 +169,7 @@ set_cursor_position <- function(position, id = NULL) {
 }
 
 document_save <- function(id = NULL) {
-  request("document_save", id = id)
+    request("document_save", id = id)
 }
 
 rstudio_vsc_mapping <-
@@ -182,8 +189,6 @@ rstudio_vsc_mapping <-
         setSelectionRanges = set_selection_ranges,
         setCursorPosition = set_cursor_position,
         documentSave = document_save
-
-
     )
 
 rstudio_vsc_no_map <-

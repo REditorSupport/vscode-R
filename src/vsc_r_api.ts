@@ -104,7 +104,7 @@ export async function setSelections(ranges: number[][], id: string) {
   const selectionObjects = ranges.map(x => {
     const newRange = parseRange(x);
     const newSelection = new Selection(newRange.start, newRange.end);
-    return (newSelection)
+    return (newSelection);
   });
 
   editor.selections = selectionObjects;
@@ -132,7 +132,7 @@ export const getAddinPickerItems = (() => {
 
   return async () => {
     if (typeof addinQuickPicks === 'undefined') {
-      const addins: any[] = await fs.readJSON(path.join(sessionDir, "addins.json"));
+      const addins: any[] = await fs.readJSON(path.join(sessionDir, 'addins.json'));
       const addinItems = addins.map((x) => {
         return {
           alwaysShow: true,
@@ -142,21 +142,21 @@ export const getAddinPickerItems = (() => {
           picked: false,
           binding: x.binding,
           package: x.package,
-        }
+        };
       });
       addinQuickPicks = addinItems;
     }
     return addinQuickPicks;
-  }
+  };
 })();
 
 export async function launchAddinPicker() {
 
   if (!config().get<boolean>('sessionWatcher')) {
-    throw ("{rstudioapi} emulation requires session watcher to be enabled in extension config.");
+    throw ('{rstudioapi} emulation requires session watcher to be enabled in extension config.');
   }
   if (typeof rTerm === 'undefined') {
-    throw ('No active R terminal session, attach one to use RStudio addins.')
+    throw ('No active R terminal session, attach one to use RStudio addins.');
   }
 
   const activeRTerm = await chooseTerminal();
@@ -168,7 +168,7 @@ export async function launchAddinPicker() {
     ignoreFocusOut: false,
     placeHolder: '',
     onDidSelectItem: undefined
-  }
+  };
   const addinSelection: AddinItem =
     await window.showQuickPick<AddinItem>(getAddinPickerItems(), addinPickerOptions);
 

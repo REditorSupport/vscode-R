@@ -29,7 +29,7 @@ to_content_lines <- function(contents, ranges) {
     }
 
     content_lines
-    }
+}
 
 
 extract_range_text <- function(range, content_lines) {
@@ -81,7 +81,8 @@ make_rs_document_context <-
     function(vsc_editor_context) {
         document_ranges <-
             extract_document_ranges(vsc_editor_context$selection)
-        content_lines <- to_content_lines(vsc_editor_context$contents, document_ranges)
+        content_lines <-
+            to_content_lines(vsc_editor_context$contents, document_ranges)
         document_range_texts <-
             lapply(
                 document_ranges,
@@ -93,7 +94,7 @@ make_rs_document_context <-
                 document_ranges,
                 document_range_texts
             )
-        
+
         structure(list(
             id = vsc_editor_context$id$external,
             path = vsc_editor_context$path,
@@ -135,7 +136,10 @@ normalise_position_or_range_arg <- function(location) {
                 } else if (is_rangable((a_location))) {
                     rstudioapi::as.document_range(a_location)
                 } else {
-                    stop("object in location list was not a document_position or document_range")
+                    stop(
+                        "object in location list was not a",
+                        " document_position or document_range"
+                    )
                 }
             }
         )
@@ -151,7 +155,10 @@ normalise_text_arg <- function(text, location_length) {
     else if (length(text) == 1 && location_length > 1) {
         rep(text, location_length)
     } else {
-        stop("text vector needs to be of length 1 or the same length as location list")
+        stop(
+            "text vector needs to be of length 1 or",
+            " the same length as location list"
+        )
     }
 }
 
@@ -165,7 +172,9 @@ update_addin_registry <- function(addin_registry) {
         mapply(
             function(package, package_dcf) {
                 addin_description <-
-                    as.data.frame(read.dcf(package_dcf), stringsAsFactors = FALSE)
+                    as.data.frame(read.dcf(package_dcf),
+                        stringsAsFactors = FALSE
+                    )
                 addin_description$package <- package
                 names(addin_description) <- c(
                     "name",
@@ -181,7 +190,10 @@ update_addin_registry <- function(addin_registry) {
             SIMPLIFY = FALSE
         )
     addin_descriptions_flat <-
-        do.call(function(...) rbind(..., make.row.names = FALSE), addin_descriptions)
+        do.call(
+            function(...) rbind(..., make.row.names = FALSE),
+            addin_descriptions
+        )
 
     jsonlite::write_json(addin_descriptions_flat, addin_registry, pretty = TRUE)
 }
