@@ -13,6 +13,7 @@ import path = require('path');
 import { chooseTerminal, rTerm, runTextInTerm } from './rTerminal';
 import { config } from './util';
 
+let lastActiveTextEditor: TextEditor;
 
 
 //vsc-r-api
@@ -23,19 +24,19 @@ export async function activeEditorContext() {
   // path
   // contents
   // selection - a list of selections
-  const currentDocument = window.activeTextEditor.document;
+  const currentDocument = getLastActiveTextEditor().document;
   return {
     id: currentDocument.uri,
     contents: currentDocument.getText(),
     path: currentDocument.fileName,
-    selection: window.activeTextEditor.selections
+    selection: getLastActiveTextEditor().selections
   };
 }
 
 
 export async function insertOrModifyText(query: any[], id: string = null) {
 
-  const target = id === null ? window.activeTextEditor.document.uri : Uri.parse(id);
+  const target = findTargetUri(id);
   const targetDocument = await workspace.openTextDocument(target);
   const nLines = targetDocument.lineCount;
   console.info(`[insertTextAtPosition] inserting text into: ${target}`);
@@ -63,11 +64,11 @@ export async function insertOrModifyText(query: any[], id: string = null) {
 }
 
 export async function replaceTextInCurrentSelection(text: string, id: string) {
-  const target = id === null ? window.activeTextEditor.document.uri : Uri.parse(id);
+  const target = findTargetUri(id);
   const edit = new WorkspaceEdit();
   edit.replace(
     target,
-    window.activeTextEditor.selection,
+    getLastActiveTextEditor().selection,
     text
   );
   workspace.applyEdit(edit);
@@ -96,7 +97,7 @@ export async function setSelections(ranges: number[][], id: string) {
   // access to the editor object and manipulate its' selections. This is
   // different from RStudio which can manipulate the selections and cursor
   // positions in documents on open tabs, without showing those documents.
-  const target = id === null ? window.activeTextEditor.document.uri : Uri.parse(id);
+  const target = findTargetUri(id);
   const targetDocument = await workspace.openTextDocument(target);
   const editor = await window.showTextDocument(targetDocument);
 
@@ -110,7 +111,7 @@ export async function setSelections(ranges: number[][], id: string) {
 }
 
 export async function documentSave(id: string) {
-  const target = id === null ? window.activeTextEditor.document.uri : Uri.parse(id);
+  const target = findTargetUri(id);
   const targetDocument = await workspace.openTextDocument(target);
   await targetDocument.save();
 }
@@ -119,8 +120,8 @@ export async function documentSave(id: string) {
 
 // represents addins in a QuickPick menu
 interface AddinItem extends QuickPickItem {
-  binding :string;
-  package :string;
+  binding: string;
+  package: string;
 }
 
 // This a memoised style function that only generates the list of addins for the 
@@ -149,18 +150,15 @@ export const getAddinPickerItems = (() => {
   }
 })();
 
-
-
-
 export async function launchAddinPicker() {
 
   if (!config().get<boolean>('sessionWatcher')) {
-    throw("{rstudioapi} emulation requires session watcher to be enabled in extension config.");
+    throw ("{rstudioapi} emulation requires session watcher to be enabled in extension config.");
   }
   if (typeof rTerm === 'undefined') {
-    throw('No active R terminal session, attach one to use RStudio addins.')
+    throw ('No active R terminal session, attach one to use RStudio addins.')
   }
-  
+
   const activeRTerm = await chooseTerminal();
 
   const addinPickerOptions: QuickPickOptions = {
@@ -171,12 +169,12 @@ export async function launchAddinPicker() {
     placeHolder: '',
     onDidSelectItem: undefined
   }
-  const addinSelection :AddinItem = 
+  const addinSelection: AddinItem =
     await window.showQuickPick<AddinItem>(getAddinPickerItems(), addinPickerOptions);
 
-    if (!(typeof addinSelection === 'undefined')) {
-      runTextInTerm(activeRTerm, addinSelection.package + ':::' + addinSelection.binding + '()');
-    }
+  if (!(typeof addinSelection === 'undefined')) {
+    runTextInTerm(activeRTerm, addinSelection.package + ':::' + addinSelection.binding + '()');
+  }
 }
 
 //utils
@@ -210,4 +208,21 @@ function locationStart(location: Position | Range) {
 function normaliseEditText(text: string, editStart: Position, nLines: number) {
   const targetText = (nLines > 0 && nLines < editStart.line + 1) ? '\n' + text : text;
   return (targetText);
+}
+
+// window.onActiveTextEditorDidChange handler
+export function trackLastActiveTextEditor(editor: TextEditor) {
+  if (typeof editor !== 'undefined') {
+    lastActiveTextEditor = editor;
+  }
+}
+
+function getLastActiveTextEditor() {
+  return (typeof window.activeTextEditor === 'undefined' ?
+    lastActiveTextEditor : window.activeTextEditor);
+}
+
+function findTargetUri(id: string) {
+  return (id === null ?
+    getLastActiveTextEditor().document.uri : Uri.parse(id));
 }
