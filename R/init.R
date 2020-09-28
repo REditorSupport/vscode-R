@@ -324,6 +324,7 @@ if (interactive() &&
       }
 
       attach <- function() {
+        update_addin_registry(addin_registry)
         request("attach",
           tempdir = tempdir,
           plot = getOption("vsc.plot", "Two"))
@@ -435,7 +436,6 @@ if (interactive() &&
      source(file.path(dir_extension, "vsc_r_api.R"),
        local = TRUE
      )
-     update_addin_registry(addin_registry)
 
      setHook(
        packageEvent("rstudioapi", "onLoad"),
