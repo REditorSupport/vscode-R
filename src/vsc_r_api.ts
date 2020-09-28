@@ -10,7 +10,8 @@ import { MessageChannel } from 'worker_threads';
 import { sessionDir } from './session';
 import fs = require('fs-extra');
 import path = require('path');
-import { chooseTerminal, runTextInTerm } from './rTerminal';
+import { chooseTerminal, rTerm, runTextInTerm } from './rTerminal';
+import { config } from './util';
 
 
 
@@ -153,9 +154,13 @@ export const getAddinPickerItems = (() => {
 
 export async function launchAddinPicker() {
 
-  // This is important to do before we build the quick pick item list, since if
-  // no terminal is active it will create a new one and initialise the addin
-  // registry from the latest state of the user's library as part of init.R
+  if (!config().get<boolean>('sessionWatcher')) {
+    throw("{rstudioapi} emulation requires session watcher to be enabled in extension config.");
+  }
+  if (typeof rTerm === 'undefined') {
+    throw('No active R terminal session, attach one to use RStudio addins.')
+  }
+  
   const activeRTerm = await chooseTerminal();
 
   const addinPickerOptions: QuickPickOptions = {

@@ -97,7 +97,7 @@ export async function chooseTerminal() {
 
     if (rTerm === undefined) {
         const success = createRTerm(true);
-        await delay(1000); // Let RTerm warm up
+        await delay(200); // Let RTerm warm up
         if (!success) {
             return undefined;
         }
