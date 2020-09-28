@@ -7,7 +7,7 @@ import { kMaxLength } from 'buffer';
 import { fileURLToPath, Url } from 'url';
 import { ENGINE_METHOD_DIGESTS } from 'constants';
 import { MessageChannel } from 'worker_threads';
-import { watcherDir } from './session';
+import { sessionDir } from './session';
 import fs = require('fs-extra');
 import path = require('path');
 import { chooseTerminal, runTextInTerm } from './rTerminal';
@@ -110,7 +110,7 @@ export async function setSelections(ranges: number[][], id: string) {
 
 export async function documentSave(id: string) {
   const target = id === null ? window.activeTextEditor.document.uri : Uri.parse(id);
-  const targetDocument = await workspace.openTextDocument(target)
+  const targetDocument = await workspace.openTextDocument(target);
   await targetDocument.save();
 }
 
@@ -130,7 +130,7 @@ export const getAddinPickerItems = (() => {
 
   return async () => {
     if (typeof addinQuickPicks === 'undefined') {
-      const addins: any[] = await fs.readJSON(path.join(watcherDir, "addins.json"));
+      const addins: any[] = await fs.readJSON(path.join(sessionDir, "addins.json"));
       const addinItems = addins.map((x) => {
         return {
           alwaysShow: true,
@@ -141,7 +141,7 @@ export const getAddinPickerItems = (() => {
           binding: x.binding,
           package: x.package,
         }
-      })
+      });
       addinQuickPicks = addinItems;
     }
     return addinQuickPicks;
