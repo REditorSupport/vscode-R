@@ -200,3 +200,8 @@ update_addin_registry <- function(addin_registry) {
 
     jsonlite::write_json(addin_descriptions_flat, addin_registry, pretty = TRUE)
 }
+
+namespace_has <- function(obj, namespace) {
+    attempt <- try(getFromNamespace(obj, namespace), silent = TRUE)
+    !inherits(attempt, "try-error")
+}

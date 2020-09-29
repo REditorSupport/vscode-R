@@ -1,11 +1,13 @@
 rstudioapi_patch_hook <- function(...) {
     patch_rstudioapi_fn <-
         function(old, new) {
-            assignInNamespace(
-                x = old,
-                value = new,
-                ns = "rstudioapi"
-            )
+            if (namespace_has(old, "rstudioapi")) {
+                assignInNamespace(
+                    x = old,
+                    value = new,
+                    ns = "rstudioapi"
+                )
+            }
         }
     ## create mappings for functions with implementations
     mapply(
@@ -158,7 +160,7 @@ set_cursor_position <- function(position, id = NULL) {
     }
 
     ## have to wrap in list() to make sure it's an array of arrays on the
-    #other end.
+    # other end.
     request("set_selection_ranges",
         ranges = list(rstudioapi::document_range(
             position[[1]],
@@ -170,6 +172,24 @@ set_cursor_position <- function(position, id = NULL) {
 
 document_save <- function(id = NULL) {
     request("document_save", id = id)
+}
+
+get_active_project <- function() {
+    path_object <- request_response("get_project_path")
+    path_object$path
+}
+
+document_context <- function(id = NULL) {
+    doc_context <- request_response("document_context", id = id)
+    doc_context
+}
+
+document_id <- function(allowConsole = TRUE) document_context()$id$external
+
+document_path <- function(id = NULL) document_context(id)$id$path
+
+document_save_all <- function() {
+    request("document_save_all")
 }
 
 rstudio_vsc_mapping <-
@@ -188,11 +208,17 @@ rstudio_vsc_mapping <-
         navigateToFile = navigate_to_file,
         setSelectionRanges = set_selection_ranges,
         setCursorPosition = set_cursor_position,
-        documentSave = document_save
+        documentSave = document_save,
+        documentId = document_id,
+        documentPath = document_path,
+        documentSaveAll = document_save_all,
+        getActiveProject = get_active_project
     )
 
 rstudio_vsc_no_map <-
     list(
         "getConsoleEditorContext",
-        "sourceMarkers"
+        "sourceMarkers",
+        "versionInfo",
+        "documentClose"
     )

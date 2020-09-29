@@ -33,6 +33,14 @@ export async function activeEditorContext() {
   };
 }
 
+export async function documentContext(id :string) {
+  const target = findTargetUri(id);
+  const targetDocument = await workspace.openTextDocument(target);
+  console.info(`[documentContext] getting context for: ${target}`);
+  return {
+    id: targetDocument.uri
+  };
+}
 
 export async function insertOrModifyText(query: any[], id: string = null) {
 
@@ -114,6 +122,19 @@ export async function documentSave(id: string) {
   const target = findTargetUri(id);
   const targetDocument = await workspace.openTextDocument(target);
   await targetDocument.save();
+}
+
+export async function documentSaveAll() {
+  await workspace.saveAll();
+}
+
+export function projectPath() {
+  const path = typeof workspace.workspaceFolders !== 'undefined' ? 
+    workspace.workspaceFolders[0] : undefined;
+
+  return {
+    path: path
+  };
 }
 
 // interface

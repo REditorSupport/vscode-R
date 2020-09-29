@@ -11,7 +11,8 @@ import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
 import { FSWatcher } from 'fs-extra';
 import { activeEditorContext, insertOrModifyText, navigateToFile, 
-    replaceTextInCurrentSelection, showDialog, setSelections, documentSave } from './vsc_r_api';
+    replaceTextInCurrentSelection, showDialog, setSelections, documentSave,
+    documentSaveAll, projectPath, documentContext } from './vsc_r_api';
 
 export let globalenv: any;
 let resDir: string;
@@ -536,6 +537,17 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 }
                 case 'document_save': {
                     documentSave(request.id);
+                    break;
+                }
+                case 'document_save_all': {
+                    documentSaveAll();
+                }
+                case 'get_project_path': {
+                    writeResponse(projectPath());
+                    break;
+                }
+                case 'document_context': {
+                    writeResponse(await documentContext(request.id));
                     break;
                 }
                 default:
