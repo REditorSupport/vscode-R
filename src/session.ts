@@ -35,11 +35,16 @@ import { activeEditorContext, insertOrModifyText, navigateToFile, replaceTextInC
 =======
 import { activeEditorContext, insertOrModifyText, navigateToFile, 
 <<<<<<< HEAD
+<<<<<<< HEAD
     replaceTextInCurrentSelection, showDialog, setSelections } from './vsc_r_api';
 >>>>>>> add setSelectionRanges, setCursorPosition
 =======
     replaceTextInCurrentSelection, showDialog, setSelections, documentSave } from './vsc_r_api';
 >>>>>>> add documentSave
+=======
+    replaceTextInCurrentSelection, showDialog, setSelections, documentSave,
+    documentSaveAll, projectPath, documentContext } from './vsc_r_api';
+>>>>>>> allow for old api versions, new document stuff
 
 export let globalenv: any;
 let resDir: string;
@@ -564,6 +569,17 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 }
                 case 'document_save': {
                     documentSave(request.id);
+                    break;
+                }
+                case 'document_save_all': {
+                    documentSaveAll();
+                }
+                case 'get_project_path': {
+                    writeResponse(projectPath());
+                    break;
+                }
+                case 'document_context': {
+                    writeResponse(await documentContext(request.id));
                     break;
                 }
                 default:
