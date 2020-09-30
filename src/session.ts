@@ -12,7 +12,7 @@ import { config } from './util';
 import { FSWatcher } from 'fs-extra';
 import { activeEditorContext, insertOrModifyText, navigateToFile, 
     replaceTextInCurrentSelection, showDialog, setSelections, documentSave,
-    documentSaveAll, projectPath, documentContext } from './vsc_r_api';
+    documentSaveAll, projectPath, documentContext, documentNew } from './vsc_r_api';
 
 export let globalenv: any;
 let resDir: string;
@@ -549,6 +549,9 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 case 'document_context': {
                     writeResponse(await documentContext(request.id));
                     break;
+                }
+                case 'document_new': {
+                  documentNew(request.text, request.type, request.position);
                 }
                 default:
                     console.error(`[updateRequest] Unsupported command: ${request.command}`);

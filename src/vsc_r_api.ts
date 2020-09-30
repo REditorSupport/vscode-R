@@ -33,7 +33,7 @@ export async function activeEditorContext() {
   };
 }
 
-export async function documentContext(id :string) {
+export async function documentContext(id: string) {
   const target = findTargetUri(id);
   const targetDocument = await workspace.openTextDocument(target);
   console.info(`[documentContext] getting context for: ${target}`);
@@ -162,8 +162,25 @@ export function projectPath() {
   };
 }
 
-// interface
+export async function documentNew(text: string, type: string, position: number[]) {
+  const documentUri = Uri.parse('untitled:' + path.join(projectPath().path, 'new_document.' + type));
+  const targetDocument = await workspace.openTextDocument(documentUri);
+  const edit = new WorkspaceEdit();
+  const docLines = targetDocument.lineCount;
+  edit.replace(documentUri,
+    targetDocument.validateRange(new Range(
+      new Position(0, 0),
+      new Position(docLines + 1, 0)
+    )),
+    text);
+  
+  workspace.applyEdit(edit).then(async () => {
+    const editor = await window.showTextDocument(targetDocument);
+    editor.selections = [new Selection(parsePosition(position), parsePosition(position))];
+  });
+}
 
+// interface
 // represents addins in a QuickPick menu
 interface AddinItem extends QuickPickItem {
   binding: string;
