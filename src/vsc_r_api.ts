@@ -129,11 +129,36 @@ export async function documentSaveAll() {
 }
 
 export function projectPath() {
-  const rootUri = typeof workspace.workspaceFolders !== 'undefined' ? 
-    workspace.getWorkspaceFolder(getLastActiveTextEditor().document.uri) : undefined;
 
+  if (typeof workspace.workspaceFolders !== 'undefined') {
+    // Is there a root folder open?
+
+    if (workspace.workspaceFolders.length === 1) {
+      // In single root common case, this will always work.
+      return {
+        path: workspace.workspaceFolders[0].uri.path
+      };
+    } else if (workspace.workspaceFolders.length > 1) {
+      // In less common multi-root folder case is a bit tricky. If the active
+      // text editor has scheme 'untitled:' (is unsaved), then
+      // workspace.getWorkspaceFolder() won't be able to find its Uri in any
+      // folder and will return undefined.
+      const currentDocument = getLastActiveTextEditor().document;
+      const currentDocFolder = workspace.getWorkspaceFolder(currentDocument.uri);
+      if (typeof currentDocFolder !== 'undefined') {
+        return {
+          path: currentDocFolder.uri.path
+        };
+      }
+    }
+  }
+
+  // if we got to here either: 
+  //   - the workspaceFolders array was undefined (no folder open)
+  //   - the activeText editor was an unsaved document, which has undefined workspace folder.
+  // return undefined and handle with a message in R.
   return {
-    path: rootUri.uri.path
+    path: undefined
   };
 }
 

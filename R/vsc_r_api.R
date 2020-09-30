@@ -176,6 +176,9 @@ document_save <- function(id = NULL) {
 
 get_active_project <- function() {
     path_object <- request_response("get_project_path")
+    if (is.null(path_object$path)) {
+        stop("No folder for active document. Is it unsaved? Try saving and run addin again.")
+    }
     path_object$path
 }
 
