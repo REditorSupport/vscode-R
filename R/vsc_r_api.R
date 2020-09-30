@@ -195,6 +195,23 @@ document_save_all <- function() {
     request("document_save_all")
 }
 
+document_new <- function(text,
+                         type = c("r", "rmarkdown", "sql"),
+                         position = rstudioapi::document_position(0, 0),
+                         execute = FALSE) {
+    if (!rstudioapi::is.document_position((position))) {
+        stop("DocumentNew requires a document_position object")
+    }
+    if (length(text) != 1 || !is.character(text)) {
+        stop("text for DocumentNew must be a length one character vector.")
+    }
+    if (execute) {
+        message("VSCode {rstudioapi} emulation does not support executing documents upon creation")
+    }
+
+    request("document_new", text = text, type = type, position = position)
+}
+
 rstudio_vsc_mapping <-
     list(
         getActiveDocumentContext = get_active_document_context,
@@ -215,6 +232,7 @@ rstudio_vsc_mapping <-
         documentId = document_id,
         documentPath = document_path,
         documentSaveAll = document_save_all,
+        documentNew = document_new,
         getActiveProject = get_active_project
     )
 

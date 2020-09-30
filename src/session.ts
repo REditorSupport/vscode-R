@@ -43,8 +43,12 @@ import { activeEditorContext, insertOrModifyText, navigateToFile,
 >>>>>>> add documentSave
 =======
     replaceTextInCurrentSelection, showDialog, setSelections, documentSave,
+<<<<<<< HEAD
     documentSaveAll, projectPath, documentContext } from './vsc_r_api';
 >>>>>>> allow for old api versions, new document stuff
+=======
+    documentSaveAll, projectPath, documentContext, documentNew } from './vsc_r_api';
+>>>>>>> documentNew
 
 export let globalenv: any;
 let resDir: string;
@@ -581,6 +585,9 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 case 'document_context': {
                     writeResponse(await documentContext(request.id));
                     break;
+                }
+                case 'document_new': {
+                  documentNew(request.text, request.type, request.position);
                 }
                 default:
                     console.error(`[updateRequest] Unsupported command: ${request.command}`);
