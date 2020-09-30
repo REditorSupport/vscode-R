@@ -129,11 +129,11 @@ export async function documentSaveAll() {
 }
 
 export function projectPath() {
-  const path = typeof workspace.workspaceFolders !== 'undefined' ? 
-    workspace.workspaceFolders[0] : undefined;
+  const rootUri = typeof workspace.workspaceFolders !== 'undefined' ? 
+    workspace.getWorkspaceFolder(getLastActiveTextEditor().document.uri) : undefined;
 
   return {
-    path: path
+    path: rootUri.uri.path
   };
 }
 
