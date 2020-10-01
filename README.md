@@ -259,6 +259,12 @@ Here are some example entries from `keybindings.json`:
     }
 ]
 ```
+## Launching RStudio Addins
+
+The extension provides the command `r.launchAddinPicker` which opens a filterable list of addins that can be launched. Bind this to a key, or access it from the command palette as `R: Launch RStudio Addin`
+
+Alternatively, individual addin functions can be bound to keys using `r.runRCommand` as described above.
+
 
 ## TODO
 
