@@ -237,6 +237,8 @@ rstudio_vsc_mapping <-
         documentNew = document_new,
         getActiveProject = get_active_project,
         restartSession = restart_r_session
+        restartSession = restart_r_session,
+        viewer = .vsc.viewer
     )
 
 rstudio_vsc_no_map <-
