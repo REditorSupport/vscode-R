@@ -552,6 +552,8 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 }
                 case 'document_new': {
                   documentNew(request.text, request.type, request.position);
+                    documentNew(request.text, request.type, request.position);
+                    break;
                 }
                 default:
                     console.error(`[updateRequest] Unsupported command: ${request.command}`);
