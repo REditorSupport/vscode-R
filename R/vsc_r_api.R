@@ -212,6 +212,8 @@ document_new <- function(text,
     request("document_new", text = text, type = type, position = position)
 }
 
+restart_r_session <- function() request("restart_r")
+
 rstudio_vsc_mapping <-
     list(
         getActiveDocumentContext = get_active_document_context,
@@ -233,7 +235,8 @@ rstudio_vsc_mapping <-
         documentPath = document_path,
         documentSaveAll = document_save_all,
         documentNew = document_new,
-        getActiveProject = get_active_project
+        getActiveProject = get_active_project,
+        restartSession = restart_r_session
     )
 
 rstudio_vsc_no_map <-
