@@ -7,7 +7,7 @@ import path = require('path');
 import { URL } from 'url';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
-import { chooseTerminalAndSendText } from './rTerminal';
+import { chooseTerminalAndSendText, restartRTerminal } from './rTerminal';
 import { config } from './util';
 import { FSWatcher } from 'fs-extra';
 import { activeEditorContext, insertOrModifyText, navigateToFile, 
@@ -551,8 +551,11 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     break;
                 }
                 case 'document_new': {
-                  documentNew(request.text, request.type, request.position);
                     documentNew(request.text, request.type, request.position);
+                    break;
+                }
+                case 'restart_r': {
+                    await restartRTerminal();
                     break;
                 }
                 default:
