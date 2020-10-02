@@ -53,21 +53,22 @@ export async function insertOrModifyText(query: any[], id: string = null) {
   query.forEach((op) => {
     assertSupportedEditOperation(op.operation);
 
-    const editOperation = op.operation === 'insertText' ?
-      (uri: Uri, newText: string) => edit.insert(uri, parsePosition(op.location), newText) :
-      (uri: Uri, newText: string) => edit.replace(uri, parseRange(op.location), newText);
-
-    // in a document with lines, does the line position extend past the existing lines in the document?
-    // rstudioapi adds a newline in this case, so must we.
-    // n_lines is a count, line is 0 indexed position hence + 1
-    const editLocation = op.operation === 'insertText' ? parsePosition(op.location) : parseRange(op.location);
-    const editText = normaliseEditText(op.text, locationStart(editLocation), nLines);
-
-    console.info(`[insertTextAtPosition] inserting at: ${JSON.stringify(editLocation)}`);
-    console.info(`[insertTextAtPosition] inserting text: ${editText}`);
-    return editOperation(target, editText);
+    let editLocation: any;
+    const editText = normaliseEditText(op.text, op.location, op.operation, targetDocument);
+    
+    if (op.operation === 'insertText') {
+      editLocation = parsePosition(op.location, targetDocument);
+      console.info(`[insertTextAtPosition] inserting at: ${JSON.stringify(editLocation)}`);
+      console.info(`[insertTextAtPosition] inserting text: ${editText}`);
+      edit.insert(target, editLocation, editText);
+    } else {
+      editLocation = parseRange(op.location, targetDocument);
+      console.info(`[insertTextAtPosition] replacing at: ${JSON.stringify(editLocation)}`);
+      console.info(`[insertTextAtPosition] replacing with text: ${editText}`);
+      edit.replace(target, editLocation, editText);
+    }
   });
-
+  
   workspace.applyEdit(edit);
 }
 
@@ -93,7 +94,7 @@ export async function navigateToFile(file: string, line: number, column: number)
   const targetDocument = await workspace.openTextDocument(Uri.file(file));
   const editor = await window.showTextDocument(targetDocument);
   if (line > 0 && column > 0) {
-    const targetPosition = parsePosition([line, column]);
+    const targetPosition = parsePosition([toVSCCoord(line), toVSCCoord(column)], targetDocument);
     editor.selection = new Selection(targetPosition, targetPosition);
   }
 }
@@ -110,7 +111,7 @@ export async function setSelections(ranges: number[][], id: string) {
   const editor = await window.showTextDocument(targetDocument);
 
   const selectionObjects = ranges.map(x => {
-    const newRange = parseRange(x);
+    const newRange = parseRange(x, targetDocument);
     const newSelection = new Selection(newRange.start, newRange.end);
     return (newSelection);
   });
@@ -176,7 +177,10 @@ export async function documentNew(text: string, type: string, position: number[]
 
   workspace.applyEdit(edit).then(async () => {
     const editor = await window.showTextDocument(targetDocument);
-    editor.selections = [new Selection(parsePosition(position), parsePosition(position))];
+    editor.selections = [new Selection(
+      parsePosition(position, targetDocument),
+      parsePosition(position, targetDocument)
+    )];
   });
 }
 
@@ -241,20 +245,49 @@ export async function launchAddinPicker() {
 }
 
 //utils
-function parsePosition(rs_position: number[]) {
+function toVSCCoord(coord: any) {
+  // this is necessary because RStudio will accept negative or infinite values,
+  // replacing them with the min or max or the document.
+  // These must be clamped non-negative integers accepted by VSCode.
+  // For Inf, we set the value to a very large integer, relying on the
+  // parsing functions to revise this down using the validatePosition/Range functions.
+  let coord_value: number;
+  if (coord === 'Inf') {
+    coord_value = 10000000;
+  } else if (coord === '-Inf') {
+    coord_value = 0;
+  } else if (coord < 0) {
+    coord_value = 0;
+  }
+  else {
+    coord_value = coord - 1; // positions in the rstudioapi are 1 indexed.
+  }
+
+  return coord_value;
+
+}
+
+function parsePosition(rs_position: any[], targetDocument: TextDocument) {
   if (rs_position.length !== 2) {
     throw ('an rstudioapi position must be an array of 2 numbers');
   }
-  // positions in the rstudioapi are 1 indexed.
-  return (new Position(rs_position[0] - 1, rs_position[1] - 1));
+  return (
+    targetDocument.validatePosition(
+      new Position(toVSCCoord(rs_position[0]), toVSCCoord(rs_position[1]))
+    ));
 }
 
-function parseRange(rs_range: any) {
+function parseRange(rs_range: any, targetDocument: TextDocument) {
   if (rs_range.start.length !== 2 || rs_range.end.length !== 2) {
     throw ('an rstudioapi range must be an object containing two numeric arrays');
   }
-  return (new Range(new Position(rs_range.start[0] - 1, rs_range.start[1] - 1),
-    new Position(rs_range.end[0] - 1, rs_range.end[1] - 1)));
+  return (
+    targetDocument.validateRange(
+      new Range(
+        new Position(toVSCCoord(rs_range.start[0]), toVSCCoord(rs_range.start[1])),
+        new Position(toVSCCoord(rs_range.end[0]), toVSCCoord(rs_range.end[1]))
+      )
+    ));
 }
 
 function assertSupportedEditOperation(operation: string) {
@@ -268,9 +301,20 @@ function locationStart(location: Position | Range) {
   return (startPosition);
 }
 
-function normaliseEditText(text: string, editStart: Position, nLines: number) {
-  const targetText = (nLines > 0 && nLines < editStart.line + 1) ? '\n' + text : text;
-  return (targetText);
+function normaliseEditText(text: string, editLocation: any,
+  operation: string, targetDocument: TextDocument) {
+  // in a document with lines, does the line position extend past the existing
+  // lines in the document? rstudioapi adds a newline in this case, so must we.
+  // n_lines is a count, line is 0 indexed position hence + 1
+  const editStartLine = operation === 'insertText' ?
+    editLocation[0] :
+    editLocation.start[0];
+  if (editStartLine === 'Inf' ||
+    (editStartLine + 1 > targetDocument.lineCount && targetDocument.lineCount > 0)) {
+    return (text + '\n');
+  } else {
+    return text;
+  }
 }
 
 // window.onActiveTextEditorDidChange handler
