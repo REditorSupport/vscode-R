@@ -173,7 +173,7 @@ export async function documentNew(text: string, type: string, position: number[]
       new Position(docLines + 1, 0)
     )),
     text);
-  
+
   workspace.applyEdit(edit).then(async () => {
     const editor = await window.showTextDocument(targetDocument);
     editor.selections = [new Selection(parsePosition(position), parsePosition(position))];
@@ -187,31 +187,31 @@ interface AddinItem extends QuickPickItem {
   package: string;
 }
 
-// This a memoised style function that only generates the list of addins for the 
-// quick pick menu once, returning the generated array on every subsequent call. 
-export const getAddinPickerItems = (() => {
+let addinQuickPicks: AddinItem[] = undefined;
 
-  let addinQuickPicks: AddinItem[] = undefined;
+export async function getAddinPickerItems() {
 
-  return async () => {
-    if (typeof addinQuickPicks === 'undefined') {
-      const addins: any[] = await fs.readJSON(path.join(sessionDir, 'addins.json'));
-      const addinItems = addins.map((x) => {
-        return {
-          alwaysShow: true,
-          description: x.description,
-          label: x.name,
-          detail: x.package,
-          picked: false,
-          binding: x.binding,
-          package: x.package,
-        };
-      });
-      addinQuickPicks = addinItems;
-    }
-    return addinQuickPicks;
-  };
-})();
+  if (typeof addinQuickPicks === 'undefined') {
+    const addins: any[] = await fs.readJSON(path.join(sessionDir, 'addins.json'));
+    const addinItems = addins.map((x) => {
+      return {
+        alwaysShow: true,
+        description: x.description,
+        label: x.name,
+        detail: x.package,
+        picked: false,
+        binding: x.binding,
+        package: x.package,
+      };
+    });
+    addinQuickPicks = addinItems;
+  }
+  return addinQuickPicks;
+}
+
+export function purgeAddinPickerItems() {
+  addinQuickPicks = undefined;
+}
 
 export async function launchAddinPicker() {
 
