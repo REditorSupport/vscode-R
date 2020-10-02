@@ -100,7 +100,9 @@ insert_or_modify_text <- function(location, text, id = NULL) {
         SIMPLIFY = FALSE
         )
 
-    request("insert_or_modify_text", query = query, id = id)
+    invisible(
+        request_response("insert_or_modify_text", query = query, id = id)
+    )
 }
 
 read_preference <- function(name, default) {
@@ -127,17 +129,20 @@ get_fun <- function(name, version_needed = NULL, ...) {
 
 show_dialog <- function(title, message, url = "") {
     message <- sprintf("%s: %s \n%s", title, message, url)
-
-    request("show_dialog", message = message)
+    invisible(
+        request_response("show_dialog", message = message)
+    )
 }
 
 navigate_to_file <- function(file, line = -1L, column = -1L) {
     # normalise path since relative paths don't work as URIs in VSC
-    request(
-        "navigate_to_file",
-        file = normalizePath(file),
-        line = line,
-        column = column
+    invisible(
+        request_response(
+            "navigate_to_file",
+            file = normalizePath(file),
+            line = line,
+            column = column
+        )
     )
 }
 
@@ -147,7 +152,9 @@ set_selection_ranges <- function(ranges, id = NULL) {
     if (!all(are_ranges)) {
         stop("Expecting only document_range objects. Got something else.")
     }
-    request("set_selection_ranges", ranges = ranges, id = id)
+    invisible(
+        request_response("set_selection_ranges", ranges = ranges, id = id)
+    )
 }
 
 set_cursor_position <- function(position, id = NULL) {
@@ -159,19 +166,23 @@ set_cursor_position <- function(position, id = NULL) {
         stop("Expecting a document_position object. Got something else.")
     }
 
-    ## have to wrap in list() to make sure it's an array of arrays on the
-    # other end.
-    request("set_selection_ranges",
-        ranges = list(rstudioapi::document_range(
-            position[[1]],
-            position[[1]]
-        )),
-        id = id
+    invisible(
+        ## have to wrap in list() to make sure it's an array of arrays on the
+        # other end.
+        request_response("set_selection_ranges",
+            ranges = list(rstudioapi::document_range(
+                position[[1]],
+                position[[1]]
+            )),
+            id = id
+        )
     )
 }
 
 document_save <- function(id = NULL) {
-    request("document_save", id = id)
+    invisible(
+        request_response("document_save", id = id)
+    )
 }
 
 get_active_project <- function() {
@@ -192,7 +203,9 @@ document_id <- function(allowConsole = TRUE) document_context()$id$external
 document_path <- function(id = NULL) document_context(id)$id$path
 
 document_save_all <- function() {
-    request("document_save_all")
+    invisible(
+        request_response("document_save_all")
+    )
 }
 
 document_new <- function(text,
@@ -209,10 +222,16 @@ document_new <- function(text,
         message("VSCode {rstudioapi} emulation does not support executing documents upon creation")
     }
 
-    request("document_new", text = text, type = type, position = position)
+    invisible(
+        request_response("document_new", text = text, type = type, position = position)
+        )
 }
 
-restart_r_session <- function() request("restart_r")
+restart_r_session <- function() {
+    invisible(
+        request_response("restart_r")
+        )
+}
 
 rstudio_vsc_mapping <-
     list(

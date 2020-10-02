@@ -475,6 +475,10 @@ async function writeResponse(responseData: object) {
     await fs.writeFile(responseLockFile, responseTimeStamp + '\n');
 }
 
+async function writeSuccessResponse() {
+    writeResponse({result: true});
+}
+
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     console.info('[updateRequest] Started');
     console.info(`[updateRequest] requestFile: ${requestFile}`);
@@ -512,50 +516,60 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     break;
                 }
                 case 'active_editor_context': {
-                    writeResponse(await activeEditorContext());
+                    await writeResponse(await activeEditorContext());
                     break;
                 }
                 case 'insert_or_modify_text': {
                     await insertOrModifyText(request.query, request.id);
+                    await writeSuccessResponse();
                     break;
                 }
                 case 'replace_text_in_current_selection': {
                     await replaceTextInCurrentSelection(request.text, request.id);
+                    await writeSuccessResponse();
                     break;
                 }
                 case 'show_dialog': {
-                    showDialog(request.message);
+                    await showDialog(request.message);
+                    await writeSuccessResponse();
                     break;
                 }
                 case 'navigate_to_file': {
-                    navigateToFile(request.file, request.line, request.column);
+                    await navigateToFile(request.file, request.line, request.column);
+                    await writeSuccessResponse();
                     break;
                 }
                 case 'set_selection_ranges': {
-                    setSelections(request.ranges, request.id);
+                    await setSelections(request.ranges, request.id);
+                    await writeSuccessResponse();
                     break;
                 }
                 case 'document_save': {
-                    documentSave(request.id);
+                    await documentSave(request.id);
+                    await writeSuccessResponse();
                     break;
                 }
                 case 'document_save_all': {
-                    documentSaveAll();
+                    await documentSaveAll();
+                    await writeSuccessResponse();
+                    break;
                 }
                 case 'get_project_path': {
-                    writeResponse(projectPath());
+                    await writeResponse(await projectPath());
                     break;
                 }
                 case 'document_context': {
-                    writeResponse(await documentContext(request.id));
+                    await writeResponse(await documentContext(request.id));
                     break;
                 }
                 case 'document_new': {
-                    documentNew(request.text, request.type, request.position);
+                    await documentNew(request.text, request.type, request.position);
+                    await writeSuccessResponse();
                     break;
                 }
                 case 'restart_r': {
                     await restartRTerminal();
+                    await writeSuccessResponse();
                     break;
                 }
                 default:
