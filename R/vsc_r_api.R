@@ -233,6 +233,11 @@ restart_r_session <- function() {
         )
 }
 
+vsc_viewer <- function(url, height = NULL) {
+  # cant bind to this directly because it's not created when the bidning is made.
+  .vsc.viewer(url)
+}
+
 rstudio_vsc_mapping <-
     list(
         getActiveDocumentContext = get_active_document_context,
@@ -255,7 +260,8 @@ rstudio_vsc_mapping <-
         documentSaveAll = document_save_all,
         documentNew = document_new,
         getActiveProject = get_active_project,
-        restartSession = restart_r_session
+        restartSession = restart_r_session,
+        viewer = vsc_viewer
     )
 
 rstudio_vsc_no_map <-
