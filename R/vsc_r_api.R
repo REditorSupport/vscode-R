@@ -121,7 +121,7 @@ has_fun <- function(name, version_needed = NULL, ...) {
 
 get_fun <- function(name, version_needed = NULL, ...) {
     if (!is.null(version_needed)) {
-        return(FALSE)
+        stop("VSCode does not support used of 'version_needed'.")
     }
 
     get(x = name, envir = as.environment(rstudio_vsc_mapping), ...)
