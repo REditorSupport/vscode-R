@@ -48,7 +48,8 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
 export async function restartRTerminal(){
     if (typeof rTerm !== 'undefined'){
         rTerm.dispose();
-        rTerm = undefined;
+        deleteTerminal(rTerm);
+        purgeAddinPickerItems();
         await createRTerm(true);
     }
 }
@@ -56,7 +57,6 @@ export async function restartRTerminal(){
 export function deleteTerminal(term: Terminal) {
     if (isDeepStrictEqual(term, rTerm)) {
         rTerm = undefined;
-        purgeAddinPickerItems();
         if (config().get<boolean>('sessionWatcher')) {
             removeSessionFiles();
         }
