@@ -43,7 +43,7 @@ extract_range_text <- function(range, content_lines) {
         substring(
             content_rows[length(content_rows)],
             1,
-            range$end["column"] - 1 
+            range$end["column"] - 1
             # it's a minus 1 here because the selection end point is the number
             # of the first unselected column. I.e. range 1 - 2 is all of
             # columns >= 1 and < 2, which is column 1.
@@ -112,7 +112,7 @@ is_positionable <- function(p) is.numeric(p) && length(p) == 2
 
 is_rangable <- function(r) is.numeric(r) && length(r) == 4
 
-normalise_position_or_range_arg <- function(location) {
+normalise_pos_or_range_arg <- function(location) {
     # This is necessary due to the loose constraints of the location argument
     # in rstudioapi::insertText and rstudioapi::modifyRange. These
     # functions can take single vectors coerable to postition or range OR a
