@@ -77,7 +77,7 @@ insert_or_modify_text <- function(location, text, id = NULL) {
 
     ## ensure normalised_location is a list containing a possible mix of
     ## document_position and document_range objects
-    normalised_location <- normalise_position_or_range_arg(location)
+    normalised_location <- normalise_pos_or_range_arg(location)
     normalised_text <- normalise_text_arg(text, length(normalised_location))
     ## Having normalised we are guaranteed these are the same length.
     ## Package up all the edits in a query to send to VSCode in an object
@@ -147,7 +147,7 @@ navigate_to_file <- function(file, line = -1L, column = -1L) {
 }
 
 set_selection_ranges <- function(ranges, id = NULL) {
-    ranges <- normalise_position_or_range_arg(ranges)
+    ranges <- normalise_pos_or_range_arg(ranges)
     are_ranges <- unlist(lapply(ranges, rstudioapi::is.document_range))
     if (!all(are_ranges)) {
         stop("Expecting only document_range objects. Got something else.")
@@ -158,7 +158,7 @@ set_selection_ranges <- function(ranges, id = NULL) {
 }
 
 set_cursor_position <- function(position, id = NULL) {
-    position <- normalise_position_or_range_arg(position)
+    position <- normalise_pos_or_range_arg(position)
     if (length(position) > 1) {
         stop("setCursorPosition takes a single document_position object")
     }
@@ -188,7 +188,10 @@ document_save <- function(id = NULL) {
 get_active_project <- function() {
     path_object <- request_response("get_project_path")
     if (is.null(path_object$path)) {
-        stop("No folder for active document. Is it unsaved? Try saving and run addin again.")
+        stop(
+            "No folder for active document. ",
+            "Is it unsaved? Try saving and run addin again."
+        )
     }
     path_object$path
 }
@@ -219,23 +222,30 @@ document_new <- function(text,
         stop("text for DocumentNew must be a length one character vector.")
     }
     if (execute) {
-        message("VSCode {rstudioapi} emulation does not support executing documents upon creation")
+        message("VSCode {rstudioapi} emulation does not support ",
+                " executing documents upon creation")
     }
 
     invisible(
-        request_response("document_new", text = text, type = type, position = position)
+        request_response(
+            "document_new",
+            text = text,
+            type = type,
+            position = position
         )
+    )
 }
 
 restart_r_session <- function() {
     invisible(
         request_response("restart_r")
-        )
+    )
 }
 
 vsc_viewer <- function(url, height = NULL) {
-  # cant bind to this directly because it's not created when the bidning is made.
-  .vsc.viewer(url)
+    # cant bind to this directly because it's not created when the bidning is
+    # made.
+    .vsc.viewer(url)
 }
 
 rstudio_vsc_mapping <-
