@@ -1,7 +1,7 @@
 import {
   window, TextEdit, TextEditorCursorStyle, TextEditor, TextDocument, Uri,
   workspace, WorkspaceEdit, Position, Range, MessageOptions, MessageItem, Selection,
-  QuickPick, QuickPickItem, QuickPickOptions
+  QuickPick, QuickPickItem, QuickPickOptions, ViewColumn
 } from 'vscode';
 import { kMaxLength } from 'buffer';
 import { fileURLToPath, Url } from 'url';
@@ -12,6 +12,7 @@ import fs = require('fs-extra');
 import path = require('path');
 import { chooseTerminal, rTerm, runTextInTerm } from './rTerminal';
 import { config } from './util';
+import { isDate } from 'util';
 
 let lastActiveTextEditor: TextEditor;
 
@@ -44,9 +45,9 @@ export async function documentContext(id: string) {
 
 export async function insertOrModifyText(query: any[], id: string = null) {
 
+
   const target = findTargetUri(id);
   const targetDocument = await workspace.openTextDocument(target);
-  const nLines = targetDocument.lineCount;
   console.info(`[insertTextAtPosition] inserting text into: ${target}`);
   const edit = new WorkspaceEdit();
 
@@ -55,7 +56,7 @@ export async function insertOrModifyText(query: any[], id: string = null) {
 
     let editLocation: any;
     const editText = normaliseEditText(op.text, op.location, op.operation, targetDocument);
-    
+
     if (op.operation === 'insertText') {
       editLocation = parsePosition(op.location, targetDocument);
       console.info(`[insertTextAtPosition] inserting at: ${JSON.stringify(editLocation)}`);
@@ -68,11 +69,12 @@ export async function insertOrModifyText(query: any[], id: string = null) {
       edit.replace(target, editLocation, editText);
     }
   });
-  
+
   workspace.applyEdit(edit);
 }
 
 export async function replaceTextInCurrentSelection(text: string, id: string) {
+  console.info(`[replaceTextInCurrentSelection] inserting: ${text} into ${id}`);
   const target = findTargetUri(id);
   const edit = new WorkspaceEdit();
   edit.replace(
@@ -80,7 +82,7 @@ export async function replaceTextInCurrentSelection(text: string, id: string) {
     getLastActiveTextEditor().selection,
     text
   );
-  workspace.applyEdit(edit);
+  await workspace.applyEdit(edit);
 }
 
 export async function showDialog(message: string) {
@@ -100,15 +102,30 @@ export async function navigateToFile(file: string, line: number, column: number)
 }
 
 export async function setSelections(ranges: number[][], id: string) {
-  // In VSCode it's not possible to get a list of the open text editors. it is
-  // not window.visibleTextEditors - this is only editors (tabs) with text
-  // showing. So we have to open the target document and and 'show' it, to get
-  // access to the editor object and manipulate its' selections. This is
-  // different from RStudio which can manipulate the selections and cursor
-  // positions in documents on open tabs, without showing those documents.
+  // Setting selections can only be done on TextEditors not TextDocuments, but
+  // it is the latter which are the things actually referred to by `id`. In
+  // VSCode it's not possible to get a list of the open text editors. it is not
+  // window.visibleTextEditors - this is only editors (tabs) with text showing.
+  // The only editors we know about are those that are visible and the last
+  // active (which may not be visible if it was overtaken by a WebViewPanel).
+  // This function looks to see if a text editor for the document id is amongst
+  // those known, and if not, it opens and shows that document, but in a
+  // texteditor 'beside' the current one.
+  // The rationale for this is:
+  // If an addin is trying to set selections in an editor that is not the active
+  // one it is most likely that it was active before the addin ran, but the addin
+  // opened a something that overtook its' focus. The most likely culprit for
+  // this is a shiny app. In the case that the target window is visible
+  // alongside the shiny app, it will be found and used. If it is not visible,
+  // there's a change it may be the last active, if the shiny app over took it.
+  // If it is neither of these things a new one needs to be opened to set
+  // selections and the question is whether open it in the same window as the
+  // shiny app, or the one 'beside'. 'beside' is preferred since it allows shiny
+  // apps that work interactively with an open document to behave more smoothly.
+  // {prefixer} is an example of one of these.
   const target = findTargetUri(id);
   const targetDocument = await workspace.openTextDocument(target);
-  const editor = await window.showTextDocument(targetDocument);
+  const editor = await reuseOrCreateEditor(targetDocument);
 
   const selectionObjects = ranges.map(x => {
     const newRange = parseRange(x, targetDocument);
@@ -296,11 +313,6 @@ function assertSupportedEditOperation(operation: string) {
   }
 }
 
-function locationStart(location: Position | Range) {
-  const startPosition = location instanceof Position ? location : location.start;
-  return (startPosition);
-}
-
 function normaliseEditText(text: string, editLocation: any,
   operation: string, targetDocument: TextDocument) {
   // in a document with lines, does the line position extend past the existing
@@ -332,4 +344,31 @@ function getLastActiveTextEditor() {
 function findTargetUri(id: string) {
   return (id === null ?
     getLastActiveTextEditor().document.uri : Uri.parse(id));
+}
+
+async function reuseOrCreateEditor(targetDocument: TextDocument) {
+  // if there's a known text editor for a Uri, use it. if not, open a new one
+  // 'beside' the current one. We know about the last active, and all visible.
+  // Sometimes the last active is not visible in the case it was overtaken by a
+  // WebViewPanel.
+
+  const KnownEditors: TextEditor[] = [];
+
+  KnownEditors.push(lastActiveTextEditor);
+  KnownEditors.push(...window.visibleTextEditors);
+
+
+  const matchingTextEditors = KnownEditors.filter((editor) =>
+      editor.document.uri.toString === targetDocument.uri.toString);
+
+  if (matchingTextEditors.length === 0) {
+    const newEditor = await window.showTextDocument(
+      targetDocument,
+      ViewColumn.Beside
+    );
+    return (newEditor);
+  }
+  else {
+    return (matchingTextEditors[0]);
+  }
 }
