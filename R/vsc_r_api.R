@@ -243,7 +243,7 @@ restart_r_session <- function() {
 }
 
 vsc_viewer <- function(url, height = NULL) {
-    # cant bind to this directly because it's not created when the bidning is
+    # cant bind to this directly because it's not created when the binding is
     # made.
     .vsc.viewer(url)
 }
