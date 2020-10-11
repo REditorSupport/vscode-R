@@ -425,7 +425,7 @@ if (interactive() &&
         while (!get_response_lock()) {
           if ((Sys.time() - wait_start) > response_timeout)
             stop("Did not receive a response from VSCode-R API within ",
-                  RESPONSE_TIMEOUT, " seconds.")
+                  response_timeout, " seconds.")
           Sys.sleep(0.1)
         }
         jsonlite::read_json(response_file)
