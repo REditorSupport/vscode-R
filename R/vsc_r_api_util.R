@@ -1,3 +1,24 @@
+rstudioapi_patch_hook <- function(api_env) {
+    patch_rstudioapi_fn <-
+        function(old, new) {
+            if (namespace_has(old, "rstudioapi")) {
+                assignInNamespace(
+                    x = old,
+                    value = new,
+                    ns = "rstudioapi"
+                )
+            }
+        }
+    ## make assignments to functions found in api_env namespace
+    ## that have function with the same name in {rstudioapi} namespace
+    api_list <- as.list(api_env)
+    mapply(
+        patch_rstudioapi_fn,
+        names(api_list),
+        api_list
+    )
+}
+
 make_rs_range <- function(vsc_selection) {
     # vscode positions are zero indexed
     # rstudioapi is one indexed

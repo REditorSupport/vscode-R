@@ -1,34 +1,4 @@
-rstudioapi_patch_hook <- function(...) {
-    patch_rstudioapi_fn <-
-        function(old, new) {
-            if (namespace_has(old, "rstudioapi")) {
-                assignInNamespace(
-                    x = old,
-                    value = new,
-                    ns = "rstudioapi"
-                )
-            }
-        }
-    ## create mappings for functions with implementations
-    mapply(
-        patch_rstudioapi_fn,
-        names(rstudio_vsc_mapping),
-        rstudio_vsc_mapping
-    )
-    ## create mapping to not implemented error functions without
-    ## implementations
-    lapply(
-        rstudio_vsc_no_map,
-        patch_rstudioapi_fn,
-        new = not_yet_implemented
-    )
-}
-
-not_yet_implemented <- function(...) {
-    stop("This {rstudioapi} function is not currently implemented for VSCode.")
-}
-
-get_active_document_context <- function() {
+getActiveDocumentContext <- function() {
     # In RStudio this returns either a document context for either the active
     # source editor or active console.
     # In VSCode this only ever returns the active (or last active) text editor.
@@ -43,16 +13,17 @@ get_active_document_context <- function() {
     make_rs_document_context(editor_context)
 }
 
+getSourceEditorContext <- getActiveDocumentContext
 
-verify_available <- function(version_needed = NULL) {
+verifyAvailable <- function(version_needed = NULL) {
     if (is.null(version_needed)) TRUE else FALSE
 }
 
-is_available <- function(version_needed = NULL, child_ok) {
+isAvailable <- function(version_needed = NULL, child_ok) {
     verify_available(version_needed)
 }
 
-insert_or_modify_text <- function(location, text, id = NULL) {
+insertText <- function(location, text, id = NULL) {
 
     ## insertText also supports insertText("text"), insertText(text = "text"),
     ## allowing the location parameter to be used for the text when
@@ -107,13 +78,17 @@ insert_or_modify_text <- function(location, text, id = NULL) {
     )
 }
 
-read_preference <- function(name, default) {
+modifyRange <- insertText
+
+readPreference <- function(name, default) {
     ## in future we could map some rstudio preferences to vscode settings.
     ## since the caller must provide a default this should work.
     default
 }
 
-has_fun <- function(name, version_needed = NULL, ...) {
+readRStudioPreference <- readPreference
+
+hasFun <- function(name, version_needed = NULL, ...) {
     if (!is.null(version_needed)) {
         return(FALSE)
     }
@@ -121,7 +96,7 @@ has_fun <- function(name, version_needed = NULL, ...) {
     exists(x = name, envir = as.environment(rstudio_vsc_mapping), ...)
 }
 
-get_fun <- function(name, version_needed = NULL, ...) {
+getFun <- function(name, version_needed = NULL, ...) {
     if (!is.null(version_needed)) {
         stop("VSCode does not support used of 'version_needed'.")
     }
@@ -129,14 +104,14 @@ get_fun <- function(name, version_needed = NULL, ...) {
     get(x = name, envir = as.environment(rstudio_vsc_mapping), ...)
 }
 
-show_dialog <- function(title, message, url = "") {
+showDialog <- function(title, message, url = "") {
     message <- sprintf("%s: %s \n%s", title, message, url)
     invisible(
         request_response("show_dialog", message = message)
     )
 }
 
-navigate_to_file <- function(file, line = -1L, column = -1L) {
+navigateToFile <- function(file, line = -1L, column = -1L) {
     # normalise path since relative paths don't work as URIs in VSC
     invisible(
         request_response(
@@ -148,7 +123,7 @@ navigate_to_file <- function(file, line = -1L, column = -1L) {
     )
 }
 
-set_selection_ranges <- function(ranges, id = NULL) {
+setSelectionRanges <- function(ranges, id = NULL) {
     ranges <- normalise_pos_or_range_arg(ranges)
     are_ranges <- unlist(lapply(ranges, rstudioapi::is.document_range))
     if (!all(are_ranges)) {
@@ -159,7 +134,7 @@ set_selection_ranges <- function(ranges, id = NULL) {
     )
 }
 
-set_cursor_position <- function(position, id = NULL) {
+setCursorPosition <- function(position, id = NULL) {
     position <- normalise_pos_or_range_arg(position)
     if (length(position) > 1) {
         stop("setCursorPosition takes a single document_position object")
@@ -181,13 +156,13 @@ set_cursor_position <- function(position, id = NULL) {
     )
 }
 
-document_save <- function(id = NULL) {
+documentSave <- function(id = NULL) {
     invisible(
         request_response("document_save", id = id)
     )
 }
 
-get_active_project <- function() {
+getActiveProject <- function() {
     path_object <- request_response("get_project_path")
     if (is.null(path_object$path)) {
         stop(
@@ -198,25 +173,25 @@ get_active_project <- function() {
     path_object$path
 }
 
-document_context <- function(id = NULL) {
+.vsc_document_context <- function(id = NULL) {
     doc_context <- request_response("document_context", id = id)
     doc_context
 }
 
-document_id <- function(allowConsole = TRUE) document_context()$id$external
+documentId <- function(allowConsole = TRUE) document_context()$id$external
 
-document_path <- function(id = NULL) document_context(id)$id$path
+documentPath <- function(id = NULL) document_context(id)$id$path
 
-document_save_all <- function() {
+documentSaveAll <- function() {
     invisible(
         request_response("document_save_all")
     )
 }
 
-document_new <- function(text,
-                         type = c("r", "rmarkdown", "sql"),
-                         position = rstudioapi::document_position(0, 0),
-                         execute = FALSE) {
+documentNew <- function(text,
+                        type = c("r", "rmarkdown", "sql"),
+                        position = rstudioapi::document_position(0, 0),
+                        execute = FALSE) {
     if (!rstudioapi::is.document_position((position))) {
         stop("DocumentNew requires a document_position object")
     }
@@ -224,8 +199,10 @@ document_new <- function(text,
         stop("text for DocumentNew must be a length one character vector.")
     }
     if (execute) {
-        message("VSCode {rstudioapi} emulation does not support ",
-                " executing documents upon creation")
+        message(
+            "VSCode {rstudioapi} emulation does not support ",
+            " executing documents upon creation"
+        )
     }
 
     invisible(
@@ -238,99 +215,76 @@ document_new <- function(text,
     )
 }
 
-restart_r_session <- function() {
+restartSession <- function() {
     invisible(
         request_response("restart_r")
     )
 }
 
-vsc_viewer <- function(url, height = NULL) {
+viewer <- function(url, height = NULL) {
     # cant bind to this directly because it's not created when the binding is
     # made.
     .vsc.viewer(url)
 }
 
-rstudio_vsc_mapping <-
-    list(
-        getActiveDocumentContext = get_active_document_context,
-        getSourceEditorContext = get_active_document_context,
-        isAvailable = is_available,
-        verifyAvailable = verify_available,
-        insertText = insert_or_modify_text,
-        modifyRange = insert_or_modify_text,
-        readPreference = read_preference,
-        readRStudioPreference = read_preference,
-        hasFun = has_fun,
-        findFun = get_fun,
-        showDialog = show_dialog,
-        navigateToFile = navigate_to_file,
-        setSelectionRanges = set_selection_ranges,
-        setCursorPosition = set_cursor_position,
-        documentSave = document_save,
-        documentId = document_id,
-        documentPath = document_path,
-        documentSaveAll = document_save_all,
-        documentNew = document_new,
-        getActiveProject = get_active_project,
-        restartSession = restart_r_session,
-        viewer = vsc_viewer
-    )
+# Unimplemented API calls that will error if called.
 
-rstudio_vsc_no_map <-
-    list(
-        "getConsoleEditorContext",
-        "sourceMarkers",
-        "versionInfo",
-        "getVersion",
-        "documentClose",
-        "sendToConsole",
-        "showPrompt",
-        "showQuestion",
-        "updateDialog",
-        "openProject",
-        "initializeProject",
-        "addTheme",
-        "applyTheme",
-        "convertTheme",
-        "getThemeInfo",
-        "getThemes",
-        "removeTheme",
-        "jobAdd",
-        "jobAddOutput",
-        "jobAddProgress",
-        "jobRemove",
-        "jobRunScript",
-        "jobSetProgress",
-        "jobSetState",
-        "jobSetStatus",
-        "launcherGetInfo",
-        "launcherAvailable",
-        "launcherGetJobs",
-        "launcherConfig",
-        "launcherContainer",
-        "launcherControlJob",
-        "launcherGetJob",
-        "launcherHostMount",
-        "launcherNfsMount",
-        "launcherPlacementConstraint",
-        "launcherResourceLimit",
-        "launcherSubmitJob",
-        "launcherSubmitR",
-        "previewRd",
-        "previewSql",
-        "writePreference",
-        "writeRStudioPreference",
-        "getPersistentValue",
-        "setPersistentValue",
-        "savePlotAsImage",
-        "createProjectTemplate",
-        "hasColourConsole",
-        "bugReport",
-        "buildToolsCheck",
-        "buildToolsInstall",
-        "buildToolsExec",
-        "dictionariesPath",
-        "userDictionariesPath",
-        "executeCommand",
-        "translateLocalUrl"
-    )
+.vsc_not_yet_implemented <- function(...) {
+    stop("This {rstudioapi} function is not currently implemented for VSCode.")
+}
+
+getConsoleEditorContext <- .vsc_not_yet_implemented
+sourceMarkers <- .vsc_not_yet_implemented
+versionInfo <- .vsc_not_yet_implemented
+getVersion <- .vsc_not_yet_implemented
+documentClose <- .vsc_not_yet_implemented
+sendToConsole <- .vsc_not_yet_implemented
+showPrompt <- .vsc_not_yet_implemented
+showQuestion <- .vsc_not_yet_implemented
+updateDialog <- .vsc_not_yet_implemented
+openProject <- .vsc_not_yet_implemented
+initializeProject <- .vsc_not_yet_implemented
+addTheme <- .vsc_not_yet_implemented
+applyTheme <- .vsc_not_yet_implemented
+convertTheme <- .vsc_not_yet_implemented
+getThemeInfo <- .vsc_not_yet_implemented
+getThemes <- .vsc_not_yet_implemented
+removeTheme <- .vsc_not_yet_implemented
+jobAdd <- .vsc_not_yet_implemented
+jobAddOutput <- .vsc_not_yet_implemented
+jobAddProgress <- .vsc_not_yet_implemented
+jobRemove <- .vsc_not_yet_implemented
+jobRunScript <- .vsc_not_yet_implemented
+jobSetProgress <- .vsc_not_yet_implemented
+jobSetState <- .vsc_not_yet_implemented
+jobSetStatus <- .vsc_not_yet_implemented
+launcherGetInfo <- .vsc_not_yet_implemented
+launcherAvailable <- .vsc_not_yet_implemented
+launcherGetJobs <- .vsc_not_yet_implemented
+launcherConfig <- .vsc_not_yet_implemented
+launcherContainer <- .vsc_not_yet_implemented
+launcherControlJob <- .vsc_not_yet_implemented
+launcherGetJob <- .vsc_not_yet_implemented
+launcherHostMount <- .vsc_not_yet_implemented
+launcherNfsMount <- .vsc_not_yet_implemented
+launcherPlacementConstraint <- .vsc_not_yet_implemented
+launcherResourceLimit <- .vsc_not_yet_implemented
+launcherSubmitJob <- .vsc_not_yet_implemented
+launcherSubmitR <- .vsc_not_yet_implemented
+previewRd <- .vsc_not_yet_implemented
+previewSql <- .vsc_not_yet_implemented
+writePreference <- .vsc_not_yet_implemented
+writeRStudioPreference <- .vsc_not_yet_implemented
+getPersistentValue <- .vsc_not_yet_implemented
+setPersistentValue <- .vsc_not_yet_implemented
+savePlotAsImage <- .vsc_not_yet_implemented
+createProjectTemplate <- .vsc_not_yet_implemented
+hasColourConsole <- .vsc_not_yet_implemented
+bugReport <- .vsc_not_yet_implemented
+buildToolsCheck <- .vsc_not_yet_implemented
+buildToolsInstall <- .vsc_not_yet_implemented
+buildToolsExec <- .vsc_not_yet_implemented
+dictionariesPath <- .vsc_not_yet_implemented
+userDictionariesPath <- .vsc_not_yet_implemented
+executeCommand <- .vsc_not_yet_implemented
+translateLocalUr <- .vsc_not_yet_implemented
