@@ -48,11 +48,15 @@ import { activeEditorContext, insertOrModifyText, navigateToFile,
 =======
     replaceTextInCurrentSelection, showDialog, setSelections, documentSave,
 <<<<<<< HEAD
+<<<<<<< HEAD
     documentSaveAll, projectPath, documentContext } from './vsc_r_api';
 >>>>>>> allow for old api versions, new document stuff
 =======
     documentSaveAll, projectPath, documentContext, documentNew } from './vsc_r_api';
 >>>>>>> documentNew
+=======
+    documentSaveAll, projectPath, documentContext, documentNew, purgeAddinPickerItems } from './vsc_r_api';
+>>>>>>> move addin picker items purge to attach handler
 
 export let globalenv: any;
 let resDir: string;
@@ -540,6 +544,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     sessionStatusBarItem.text = `R: ${pid}`;
                     sessionStatusBarItem.show();
                     updateSessionWatcher();
+                    purgeAddinPickerItems();
                     break;
                 }
                 case 'browser': {
