@@ -104,6 +104,7 @@ export function removeSessionFiles() {
     if (fs.existsSync(sessionDir)) {
         removeDirectory(sessionDir);
     }
+    sessionDir = undefined;
     console.info('[removeSessionFiles] Done');
 }
 

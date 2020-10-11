@@ -10,7 +10,7 @@ import { MessageChannel } from 'worker_threads';
 import { sessionDir } from './session';
 import fs = require('fs-extra');
 import path = require('path');
-import { chooseTerminal, rTerm, runTextInTerm } from './rTerminal';
+import { chooseTerminal, runTextInTerm } from './rTerminal';
 import { config } from './util';
 import { isDate } from 'util';
 
@@ -239,7 +239,7 @@ export async function launchAddinPicker() {
   if (!config().get<boolean>('sessionWatcher')) {
     throw ('{rstudioapi} emulation requires session watcher to be enabled in extension config.');
   }
-  if (typeof rTerm === 'undefined') {
+  if (typeof sessionDir === 'undefined') {
     throw ('No active R terminal session, attach one to use RStudio addins.');
   }
 
