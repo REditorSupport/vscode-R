@@ -2,6 +2,8 @@
 
 Requires [R](https://www.r-project.org/).
 
+We recommend using this extension with [radian](https://github.com/randy3k/radian), an alternative R console with multiline editing and rich syntax highlighting.
+
 ## Usage
 
 Full document is on the [Wiki page](https://github.com/Ikuyadeu/vscode-R/wiki)
