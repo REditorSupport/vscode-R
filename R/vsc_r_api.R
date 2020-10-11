@@ -60,16 +60,18 @@ insert_or_modify_text <- function(location, text, id = NULL) {
     ## This is dispatched as a separate request type
     if (missing(text) && is.character(location) && length(location) == 1) {
         ## handling insertText("text")
-        return(request("replace_text_in_current_selection",
-            text = location,
-            id = id
+        return(invisible(
+            request_response("replace_text_in_current_selection",
+                text = location,
+                id = id
+            )
         ))
     } else if (missing(location)) {
         ## handling insertText(text = "text")
-        return(request("replace_text_in_current_selection",
+        return(invisible(request_response("replace_text_in_current_selection",
             text = text,
             id = id
-        ))
+        )))
     } else if (is.null(location) && missing(text)) {
         ## handling insertText(NULL)
         return(invisible(NULL))
