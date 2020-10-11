@@ -49,7 +49,6 @@ export async function restartRTerminal(){
     if (typeof rTerm !== 'undefined'){
         rTerm.dispose();
         deleteTerminal(rTerm);
-        purgeAddinPickerItems();
         await createRTerm(true);
     }
 }

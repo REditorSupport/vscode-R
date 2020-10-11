@@ -12,7 +12,7 @@ import { config } from './util';
 import { FSWatcher } from 'fs-extra';
 import { activeEditorContext, insertOrModifyText, navigateToFile, 
     replaceTextInCurrentSelection, showDialog, setSelections, documentSave,
-    documentSaveAll, projectPath, documentContext, documentNew } from './vsc_r_api';
+    documentSaveAll, projectPath, documentContext, documentNew, purgeAddinPickerItems } from './vsc_r_api';
 
 export let globalenv: any;
 let resDir: string;
@@ -500,6 +500,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     sessionStatusBarItem.text = `R: ${pid}`;
                     sessionStatusBarItem.show();
                     updateSessionWatcher();
+                    purgeAddinPickerItems();
                     break;
                 }
                 case 'browser': {
