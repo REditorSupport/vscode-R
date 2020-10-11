@@ -74,8 +74,8 @@ export async function insertOrModifyText(query: any[], id: string = null) {
 }
 
 export async function replaceTextInCurrentSelection(text: string, id: string) {
-  console.info(`[replaceTextInCurrentSelection] inserting: ${text} into ${id}`);
   const target = findTargetUri(id);
+  console.info(`[replaceTextInCurrentSelection] inserting: ${text} into ${target}`);
   const edit = new WorkspaceEdit();
   edit.replace(
     target,
