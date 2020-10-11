@@ -324,7 +324,7 @@ if (interactive() &&
       }
 
       attach <- function() {
-        update_addin_registry(addin_registry)
+        vsc_r_api_env$update_addin_registry(addin_registry)
         request("attach",
           tempdir = tempdir,
           plot = getOption("vsc.plot", "Two"))
@@ -464,16 +464,17 @@ if (interactive() &&
         jsonlite::read_json(response_file)
       }
 
+     vsc_r_api_env <- new.env()
+     rstudioapi_env <- new.env(parent = vsc_r_api_env)
      source(file.path(dir_extension, "vsc_r_api_util.R"),
-       local = TRUE
+       local = vsc_r_api_env,
      )
      source(file.path(dir_extension, "vsc_r_api.R"),
-       local = TRUE
+       local = rstudioapi_env
      )
-
      setHook(
        packageEvent("rstudioapi", "onLoad"),
-       rstudioapi_patch_hook
+       function(...) vsc_r_api_env$rstudioapi_patch_hook(rstudioapi_env)
      )
 
 
