@@ -198,6 +198,14 @@ documentNew <- function(text,
     )
 }
 
+setDocumentContents <- function(text, id = NULL) {
+    whole_document_range <- 
+    rstudioapi::document_range(
+        rstudioapi::document_position(0,0),
+        rstudioapi::document_position(Inf, Inf))
+    insertText(whole_document_range, text, id)
+}
+
 restartSession <- function() {
     invisible(
         request_response("restart_r")
