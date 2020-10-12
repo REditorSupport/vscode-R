@@ -273,10 +273,10 @@ function toVSCCoord(coord: any) {
     coord_value = 10000000;
   } else if (coord === '-Inf') {
     coord_value = 0;
-  } else if (coord < 0) {
+  } else if (coord <= 0) {
     coord_value = 0;
   }
-  else {
+  else { // coord > 0
     coord_value = coord - 1; // positions in the rstudioapi are 1 indexed.
   }
 
