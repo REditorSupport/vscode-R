@@ -99,12 +99,15 @@ function removeDirectory(dir: string) {
     console.info('[removeDirectory] Done');
 }
 
+export function sessionDirectoryExists() {
+   return(fs.existsSync(sessionDir));
+}
+
 export function removeSessionFiles() {
     console.info('[removeSessionFiles] ', sessionDir);
-    if (fs.existsSync(sessionDir)) {
+    if (sessionDirectoryExists()) {
         removeDirectory(sessionDir);
     }
-    sessionDir = undefined;
     console.info('[removeSessionFiles] Done');
 }
 

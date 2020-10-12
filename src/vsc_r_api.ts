@@ -7,7 +7,7 @@ import { kMaxLength } from 'buffer';
 import { fileURLToPath, Url } from 'url';
 import { ENGINE_METHOD_DIGESTS } from 'constants';
 import { MessageChannel } from 'worker_threads';
-import { sessionDir } from './session';
+import { sessionDir, sessionDirectoryExists } from './session';
 import fs = require('fs-extra');
 import path = require('path');
 import { chooseTerminal, runTextInTerm } from './rTerminal';
@@ -239,7 +239,7 @@ export async function launchAddinPicker() {
   if (!config().get<boolean>('sessionWatcher')) {
     throw ('{rstudioapi} emulation requires session watcher to be enabled in extension config.');
   }
-  if (typeof sessionDir === 'undefined') {
+  if (!sessionDirectoryExists()) {
     throw ('No active R terminal session, attach one to use RStudio addins.');
   }
 
