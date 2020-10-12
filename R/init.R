@@ -431,18 +431,18 @@ if (interactive() &&
 
       #vsc-r-api
       response_timeout <- 5
-      response_lock_file <- file.path(dir_extension, "response.lock")
-      response_file <- file.path(dir_extension, "response.log")
+      response_lock_file <- file.path(dir_session, "response.lock")
+      response_file <- file.path(dir_session, "response.log")
+      file.create(response_lock_file, showWarnings = FALSE)
+      file.create(response_file, showWarnings = FALSE)
       addin_registry <- file.path(dir_session, "addins.json")
+      # This is created in attach()
 
       get_response_timestamp <- function() {
-        if (file.exists(response_lock_file))
           readLines(response_lock_file)
-        else NA
       }
-      # initialise the reponse timestamp to NA or the value currently in the
-      # file
-      response_time_stamp <- get_response_timestamp()
+      # initialise the reponse timestamp to empty string 
+      response_time_stamp <- ""
 
       get_response_lock <- function() {
         lock_time_stamp <- get_response_timestamp()
@@ -453,7 +453,7 @@ if (interactive() &&
       }
 
       request_response <- function(command, ...) {
-        request(command, ...)
+        request(command, ..., sd__ = dir_session)
         wait_start <- Sys.time()
         while (!get_response_lock()) {
           if ((Sys.time() - wait_start) > response_timeout)
