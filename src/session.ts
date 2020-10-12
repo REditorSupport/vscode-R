@@ -18,9 +18,7 @@ export let globalenv: any;
 let resDir: string;
 let watcherDir: string;
 let requestFile: string;
-let responseFile: string;
 let requestLockFile: string;
-let responseLockFile: string;
 let requestTimeStamp: number;
 let responseTimeStamp: number;
 export let sessionDir: string;
@@ -61,8 +59,6 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
     console.info('[startRequestWatcher] Starting');
     requestFile = path.join(watcherDir, 'request.log');
     requestLockFile = path.join(watcherDir, 'request.lock');
-    responseFile = path.join(watcherDir, 'response.log');
-    responseLockFile = path.join(watcherDir, 'response.lock');
     requestTimeStamp = 0;
     responseTimeStamp = 0;
     if (!fs.existsSync(requestLockFile)) {
@@ -469,7 +465,15 @@ function isFromWorkspace(dir: string) {
     return false;
 }
 
-async function writeResponse(responseData: object) {
+async function writeResponse(responseData: object, responseSessionDir: string) {
+
+    const responseFile = path.join(responseSessionDir, 'response.log');
+    const responseLockFile = path.join(responseSessionDir, 'response.lock');
+    if (!fs.existsSync(responseFile) || !fs.existsSync(responseLockFile)) {
+        throw('Received a request from R for response' +
+              'to a session directiory that does not contain response.log or response.lock: ' + 
+              responseSessionDir);
+    }
     const responseString = JSON.stringify(responseData);
     console.info('[writeResponse] Started');
     console.info(`[writeResponse] responseData ${responseString}`);
@@ -479,8 +483,8 @@ async function writeResponse(responseData: object) {
     await fs.writeFile(responseLockFile, responseTimeStamp + '\n');
 }
 
-async function writeSuccessResponse() {
-    writeResponse({result: true});
+async function writeSuccessResponse(responseSessionDir: string) {
+    writeResponse({result: true}, responseSessionDir);
 }
 
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
@@ -521,60 +525,60 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     break;
                 }
                 case 'active_editor_context': {
-                    await writeResponse(await activeEditorContext());
+                    await writeResponse(await activeEditorContext(), request.sd__);
                     break;
                 }
                 case 'insert_or_modify_text': {
                     await insertOrModifyText(request.query, request.id);
-                    await writeSuccessResponse();
+                    await writeSuccessResponse(request.sd__);
                     break;
                 }
                 case 'replace_text_in_current_selection': {
                     await replaceTextInCurrentSelection(request.text, request.id);
-                    await writeSuccessResponse();
+                    await writeSuccessResponse(request.sd__);
                     break;
                 }
                 case 'show_dialog': {
                     await showDialog(request.message);
-                    await writeSuccessResponse();
+                    await writeSuccessResponse(request.sd__);
                     break;
                 }
                 case 'navigate_to_file': {
                     await navigateToFile(request.file, request.line, request.column);
-                    await writeSuccessResponse();
+                    await writeSuccessResponse(request.sd__);
                     break;
                 }
                 case 'set_selection_ranges': {
                     await setSelections(request.ranges, request.id);
-                    await writeSuccessResponse();
+                    await writeSuccessResponse(request.sd__);
                     break;
                 }
                 case 'document_save': {
                     await documentSave(request.id);
-                    await writeSuccessResponse();
+                    await writeSuccessResponse(request.sd__);
                     break;
                 }
                 case 'document_save_all': {
                     await documentSaveAll();
-                    await writeSuccessResponse();
+                    await writeSuccessResponse(request.sd__);
                     break;
                 }
                 case 'get_project_path': {
-                    await writeResponse(await projectPath());
+                    await writeResponse(await projectPath(), request.sd__);
                     break;
                 }
                 case 'document_context': {
-                    await writeResponse(await documentContext(request.id));
+                    await writeResponse(await documentContext(request.id), request.sd__);
                     break;
                 }
                 case 'document_new': {
                     await documentNew(request.text, request.type, request.position);
-                    await writeSuccessResponse();
+                    await writeSuccessResponse(request.sd__);
                     break;
                 }
                 case 'restart_r': {
                     await restartRTerminal();
-                    await writeSuccessResponse();
+                    await writeSuccessResponse(request.sd__);
                     break;
                 }
                 default:
