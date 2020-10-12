@@ -137,7 +137,7 @@ setSelectionRanges <- function(ranges, id = NULL) {
     )
 }
 
-seteCursorPosition <- setSelectionRanges
+setCursorPosition <- setSelectionRanges
 
 documentSave <- function(id = NULL) {
     invisible(
