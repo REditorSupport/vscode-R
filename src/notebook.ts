@@ -3,13 +3,13 @@ import net = require('net');
 import { spawn, ChildProcess } from 'child_process';
 import { dirname } from 'path';
 
-interface RSessionRequest {
+interface RKernelRequest {
   id: number;
   type: 'eval' | 'cancel';
   expr?: any;
 }
 
-interface RSessionResponse {
+interface RKernelResponse {
   id: number;
   type: 'text' | 'plot' | 'viewer' | 'browser' | 'error';
   result: string;
@@ -29,7 +29,7 @@ class RKernel {
     this.doc = doc;
   }
 
-  private request(request: RSessionRequest) {
+  private request(request: RKernelRequest) {
     if (this.socket) {
       const json = JSON.stringify(request);
       this.socket.write(`Content-Length: ${json.length}\n${json}`);
@@ -93,11 +93,11 @@ class RKernel {
     await this.start();
   }
 
-  public async eval(cell: vscode.NotebookCell): Promise<RSessionResponse> {
+  public async eval(cell: vscode.NotebookCell): Promise<RKernelResponse> {
     if (this.socket) {
       return new Promise((resolve, reject) => {
         const handler = async (data: Buffer) => {
-          const response: RSessionResponse = JSON.parse(data.toString());
+          const response: RKernelResponse = JSON.parse(data.toString());
           resolve(response);
           this.socket.removeListener('data', handler);
         };
@@ -140,7 +140,7 @@ class RNotebook implements vscode.Disposable {
     this.kernel.restart();
   }
 
-  public async eval(cell: vscode.NotebookCell): Promise<RSessionResponse> {
+  public async eval(cell: vscode.NotebookCell): Promise<RKernelResponse> {
     await this.kernel.start();
     return this.kernel.eval(cell);
   }
