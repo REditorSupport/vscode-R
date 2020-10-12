@@ -20,7 +20,7 @@ verifyAvailable <- function(version_needed = NULL) {
 }
 
 isAvailable <- function(version_needed = NULL, child_ok) {
-    verify_available(version_needed)
+    verifyAvailable(version_needed)
 }
 
 insertText <- function(location, text, id = NULL) {
@@ -88,20 +88,27 @@ readPreference <- function(name, default) {
 
 readRStudioPreference <- readPreference
 
+.vsc_rstudioapi_env <- environment()
+
 hasFun <- function(name, version_needed = NULL, ...) {
     if (!is.null(version_needed)) {
         return(FALSE)
     }
 
-    exists(x = name, envir = as.environment(rstudio_vsc_mapping), ...)
+    obj <- .vsc_rstudioapi_env[[name]]
+    is.function(obj) && !identical(obj, .vsc_not_yet_implemented)
 }
 
-getFun <- function(name, version_needed = NULL, ...) {
+findFun <- function(name, version_needed = NULL, ...) {
     if (!is.null(version_needed)) {
         stop("VSCode does not support used of 'version_needed'.")
     }
 
-    get(x = name, envir = as.environment(rstudio_vsc_mapping), ...)
+    if (hasFun(name, version_needed = version_needed, ...)) {
+        .vsc_rstudioapi_env[[name]]
+    } else {
+        stop("Cannot find function '", name, "'")
+    }
 }
 
 showDialog <- function(title, message, url = "") {
@@ -125,36 +132,12 @@ navigateToFile <- function(file, line = -1L, column = -1L) {
 
 setSelectionRanges <- function(ranges, id = NULL) {
     ranges <- normalise_pos_or_range_arg(ranges)
-    are_ranges <- unlist(lapply(ranges, rstudioapi::is.document_range))
-    if (!all(are_ranges)) {
-        stop("Expecting only document_range objects. Got something else.")
-    }
     invisible(
         request_response("set_selection_ranges", ranges = ranges, id = id)
     )
 }
 
-setCursorPosition <- function(position, id = NULL) {
-    position <- normalise_pos_or_range_arg(position)
-    if (length(position) > 1) {
-        stop("setCursorPosition takes a single document_position object")
-    }
-    if (!rstudioapi::is.document_position(position[[1]])) {
-        stop("Expecting a document_position object. Got something else.")
-    }
-
-    invisible(
-        ## have to wrap in list() to make sure it's an array of arrays on the
-        # other end.
-        request_response("set_selection_ranges",
-            ranges = list(rstudioapi::document_range(
-                position[[1]],
-                position[[1]]
-            )),
-            id = id
-        )
-    )
-}
+seteCursorPosition <- setSelectionRanges
 
 documentSave <- function(id = NULL) {
     invisible(
