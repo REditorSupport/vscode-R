@@ -8,6 +8,7 @@ import { URL } from 'url';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 import { runTextInTerm } from './rTerminal';
 =======
 import { chooseTerminalAndSendText, restartRTerminal } from './rTerminal';
@@ -65,6 +66,12 @@ import {
     documentSaveAll, projectPath, documentContext, documentNew, purgeAddinPickerItems
 } from './vsc_r_api';
 >>>>>>> lint fix and style files
+=======
+import { chooseTerminalAndSendText } from './rTerminal';
+import { config } from './util';
+import { FSWatcher } from 'fs-extra';
+import { purgeAddinPickerItems, dispatchRStudioAPICall } from './vsc_r_api';
+>>>>>>> refactor rstuioapi call design
 
 export let globalenv: any;
 let resDir: string;
@@ -517,7 +524,7 @@ function isFromWorkspace(dir: string) {
     return false;
 }
 
-async function writeResponse(responseData: object, responseSessionDir: string) {
+export async function writeResponse(responseData: object, responseSessionDir: string) {
 
     const responseFile = path.join(responseSessionDir, 'response.log');
     const responseLockFile = path.join(responseSessionDir, 'response.lock');
@@ -535,7 +542,7 @@ async function writeResponse(responseData: object, responseSessionDir: string) {
     await fs.writeFile(responseLockFile, responseTimeStamp + '\n');
 }
 
-async function writeSuccessResponse(responseSessionDir: string) {
+export async function writeSuccessResponse(responseSessionDir: string) {
     writeResponse({ result: true }, responseSessionDir);
 }
 
@@ -576,61 +583,8 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         request.type, request.title, request.file, request.viewer);
                     break;
                 }
-                case 'active_editor_context': {
-                    await writeResponse(await activeEditorContext(), request.sd);
-                    break;
-                }
-                case 'insert_or_modify_text': {
-                    await insertOrModifyText(request.args.query, request.args.id);
-                    await writeSuccessResponse(request.sd);
-                    break;
-                }
-                case 'replace_text_in_current_selection': {
-                    await replaceTextInCurrentSelection(request.args.text, request.args.id);
-                    await writeSuccessResponse(request.sd);
-                    break;
-                }
-                case 'show_dialog': {
-                    await showDialog(request.args.message);
-                    await writeSuccessResponse(request.sd);
-                    break;
-                }
-                case 'navigate_to_file': {
-                    await navigateToFile(request.args.file, request.args.line, request.args.column);
-                    await writeSuccessResponse(request.sd);
-                    break;
-                }
-                case 'set_selection_ranges': {
-                    await setSelections(request.args.ranges, request.args.id);
-                    await writeSuccessResponse(request.sd);
-                    break;
-                }
-                case 'document_save': {
-                    await documentSave(request.args.id);
-                    await writeSuccessResponse(request.sd);
-                    break;
-                }
-                case 'document_save_all': {
-                    await documentSaveAll();
-                    await writeSuccessResponse(request.sd);
-                    break;
-                }
-                case 'get_project_path': {
-                    await writeResponse(await projectPath(), request.sd);
-                    break;
-                }
-                case 'document_context': {
-                    await writeResponse(await documentContext(request.args.id), request.sd);
-                    break;
-                }
-                case 'document_new': {
-                    await documentNew(request.args.text, request.args.type, request.args.position);
-                    await writeSuccessResponse(request.sd);
-                    break;
-                }
-                case 'restart_r': {
-                    await restartRTerminal();
-                    await writeSuccessResponse(request.sd);
+                case 'rstudioapi': {
+                    await dispatchRStudioAPICall(request.action, request.args, request.sd);
                     break;
                 }
                 default:
