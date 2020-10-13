@@ -10,7 +10,7 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
 import { FSWatcher } from 'fs-extra';
-import { purgeAddinPickerItems, dispatchRStudioAPICall } from './vsc_r_api';
+import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 export let globalenv: any;
 let resDir: string;
@@ -46,10 +46,10 @@ export function deploySessionWatcher(extensionPath: string) {
     fs.copySync(path.join(extensionPath, 'R', 'init.R'), path.join(watcherDir, 'init.R'));
     console.info('[deploySessionWatcher] Deploy .Rprofile');
     fs.copySync(path.join(extensionPath, 'R', '.Rprofile'), path.join(watcherDir, '.Rprofile'));
-    console.info('[deploySessionWatcher] Deploy vsc_r_api_util.R');
-    fs.copySync(path.join(extensionPath, 'R', 'vsc_r_api_util.R'), path.join(watcherDir, 'vsc_r_api_util.R'));
-    console.info('[deploySessionWatcher] Deploy vsc_r_api.R');
-    fs.copySync(path.join(extensionPath, 'R', 'vsc_r_api.R'), path.join(watcherDir, 'vsc_r_api.R'));
+    console.info('[deploySessionWatcher] Deploy rstudioapi_util.R');
+    fs.copySync(path.join(extensionPath, 'R', 'rstudioapi_util.R'), path.join(watcherDir, 'rstudioapi_util.R'));
+    console.info('[deploySessionWatcher] Deploy rstudioapi.R');
+    fs.copySync(path.join(extensionPath, 'R', 'rstudioapi.R'), path.join(watcherDir, 'rstudioapi.R'));
     console.info('[deploySessionWatcher] Done');
 }
 
