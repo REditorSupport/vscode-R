@@ -131,7 +131,16 @@ navigateToFile <- function(file, line = -1L, column = -1L) {
 }
 
 setSelectionRanges <- function(ranges, id = NULL) {
-    ranges <- normalise_pos_or_range_arg(ranges)
+    ranges_or_positions <- normalise_pos_or_range_arg(ranges)
+
+    ranges <- lapply(ranges_or_positions, function(location) {
+        if (rstudioapi::is.document_position(location)) {
+            rstudioapi::document_range(location, location)
+        } else {
+            location
+        }
+    })
+
     invisible(
         request_response("set_selection_ranges", ranges = ranges, id = id)
     )
