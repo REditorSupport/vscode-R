@@ -8,7 +8,7 @@ getActiveDocumentContext <- function() {
     # editors and terminals separately.
     # This shoudln't be much of a limitation as the only context returned for
     # the console was the current selection, so it is not very useful.
-    editor_context <- request_response("active_editor_context")
+    editor_context <- rstudioapi_call("active_editor_context")
 
     make_rs_document_context(editor_context)
 }
@@ -32,14 +32,14 @@ insertText <- function(location, text, id = NULL) {
     if (missing(text) && is.character(location) && length(location) == 1) {
         ## handling insertText("text")
         return(invisible(
-            request_response("replace_text_in_current_selection",
+            rstudioapi_call("replace_text_in_current_selection",
                 text = location,
                 id = id
             )
         ))
     } else if (missing(location)) {
         ## handling insertText(text = "text")
-        return(invisible(request_response("replace_text_in_current_selection",
+        return(invisible(rstudioapi_call("replace_text_in_current_selection",
             text = text,
             id = id
         )))
@@ -74,7 +74,7 @@ insertText <- function(location, text, id = NULL) {
         )
 
     invisible(
-        request_response("insert_or_modify_text", query = query, id = id)
+        rstudioapi_call("insert_or_modify_text", query = query, id = id)
     )
 }
 
@@ -114,14 +114,14 @@ findFun <- function(name, version_needed = NULL, ...) {
 showDialog <- function(title, message, url = "") {
     message <- sprintf("%s: %s \n%s", title, message, url)
     invisible(
-        request_response("show_dialog", message = message)
+        rstudioapi_call("show_dialog", message = message)
     )
 }
 
 navigateToFile <- function(file, line = -1L, column = -1L) {
     # normalise path since relative paths don't work as URIs in VSC
     invisible(
-        request_response(
+        rstudioapi_call(
             "navigate_to_file",
             file = normalizePath(file),
             line = line,
@@ -142,7 +142,7 @@ setSelectionRanges <- function(ranges, id = NULL) {
     })
 
     invisible(
-        request_response("set_selection_ranges", ranges = ranges, id = id)
+        rstudioapi_call("set_selection_ranges", ranges = ranges, id = id)
     )
 }
 
@@ -150,12 +150,12 @@ setCursorPosition <- setSelectionRanges
 
 documentSave <- function(id = NULL) {
     invisible(
-        request_response("document_save", id = id)
+        rstudioapi_call("document_save", id = id)
     )
 }
 
 getActiveProject <- function() {
-    path_object <- request_response("get_project_path")
+    path_object <- rstudioapi_call("get_project_path")
     if (is.null(path_object$path)) {
         stop(
             "No folder for active document. ",
@@ -166,7 +166,7 @@ getActiveProject <- function() {
 }
 
 .vsc_document_context <- function(id = NULL) {
-    doc_context <- request_response("document_context", id = id)
+    doc_context <- rstudioapi_call("document_context", id = id)
     doc_context
 }
 
@@ -176,7 +176,7 @@ documentPath <- function(id = NULL) document_context(id)$id$path
 
 documentSaveAll <- function() {
     invisible(
-        request_response("document_save_all")
+        rstudioapi_call("document_save_all")
     )
 }
 
@@ -198,7 +198,7 @@ documentNew <- function(text,
     }
 
     invisible(
-        request_response(
+        rstudioapi_call(
             "document_new",
             text = text,
             type = type,
@@ -218,7 +218,7 @@ setDocumentContents <- function(text, id = NULL) {
 
 restartSession <- function() {
     invisible(
-        request_response("restart_r")
+        rstudioapi_call("restart_r")
     )
 }
 
