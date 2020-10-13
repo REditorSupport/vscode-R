@@ -420,7 +420,7 @@ if (interactive() &&
       }
 
       request_response <- function(command, ...) {
-        request(command, ..., sd__ = dir_session)
+        request(command, args = list(...), sd = dir_session)
         wait_start <- Sys.time()
         while (!get_response_lock()) {
           if ((Sys.time() - wait_start) > response_timeout)
