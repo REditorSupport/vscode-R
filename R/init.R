@@ -408,7 +408,7 @@ if (interactive() &&
       get_response_timestamp <- function() {
           readLines(response_lock_file)
       }
-      # initialise the reponse timestamp to empty string 
+      # initialise the reponse timestamp to empty string
       response_time_stamp <- ""
 
       get_response_lock <- function() {

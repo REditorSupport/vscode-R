@@ -10,9 +10,11 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 import { chooseTerminalAndSendText, restartRTerminal } from './rTerminal';
 import { config } from './util';
 import { FSWatcher } from 'fs-extra';
-import { activeEditorContext, insertOrModifyText, navigateToFile, 
+import {
+    activeEditorContext, insertOrModifyText, navigateToFile,
     replaceTextInCurrentSelection, showDialog, setSelections, documentSave,
-    documentSaveAll, projectPath, documentContext, documentNew, purgeAddinPickerItems } from './vsc_r_api';
+    documentSaveAll, projectPath, documentContext, documentNew, purgeAddinPickerItems
+} from './vsc_r_api';
 
 export let globalenv: any;
 let resDir: string;
@@ -84,11 +86,11 @@ function removeDirectory(dir: string) {
     if (fs.existsSync(dir)) {
         console.info('[removeDirectory] dir exists');
         fs.readdirSync(dir)
-          .forEach((file) => {
-              const curPath = path.join(dir, file);
-              console.info(`[removeDirectory] Remove ${curPath}`);
-              fs.unlinkSync(curPath);
-        });
+            .forEach((file) => {
+                const curPath = path.join(dir, file);
+                console.info(`[removeDirectory] Remove ${curPath}`);
+                fs.unlinkSync(curPath);
+            });
         console.info(`[removeDirectory] Remove dir ${dir}`);
         fs.rmdirSync(dir);
     }
@@ -96,7 +98,7 @@ function removeDirectory(dir: string) {
 }
 
 export function sessionDirectoryExists() {
-   return(fs.existsSync(sessionDir));
+    return (fs.existsSync(sessionDir));
 }
 
 export function removeSessionFiles() {
@@ -124,7 +126,7 @@ function updateSessionWatcher() {
     } else {
         console.info('[updateSessionWatcher] globalenvLockFile not found');
     }
-    
+
     console.info('[updateSessionWatcher] Create plotWatcher');
     plotFile = path.join(sessionDir, 'plot.png');
     plotLockFile = path.join(sessionDir, 'plot.lock');
@@ -393,11 +395,11 @@ export async function showPlotHistory() {
             const files = await fs.readdir(plotDir);
             if (files.length > 0) {
                 const panel = window.createWebviewPanel('plotHistory', 'Plot History',
-                                                        {
+                    {
                         preserveFocus: true,
                         viewColumn: ViewColumn.Active,
                     },
-                                                        {
+                    {
                         retainContextWhenHidden: true,
                         enableScripts: true,
                         localResourceRoots: [Uri.file(resDir), Uri.file(plotDir)],
@@ -461,7 +463,7 @@ function isFromWorkspace(dir: string) {
             }
         }
     }
-    
+
     return false;
 }
 
@@ -470,9 +472,9 @@ async function writeResponse(responseData: object, responseSessionDir: string) {
     const responseFile = path.join(responseSessionDir, 'response.log');
     const responseLockFile = path.join(responseSessionDir, 'response.lock');
     if (!fs.existsSync(responseFile) || !fs.existsSync(responseLockFile)) {
-        throw('Received a request from R for response' +
-              'to a session directiory that does not contain response.log or response.lock: ' + 
-              responseSessionDir);
+        throw ('Received a request from R for response' +
+            'to a session directiory that does not contain response.log or response.lock: ' +
+            responseSessionDir);
     }
     const responseString = JSON.stringify(responseData);
     console.info('[writeResponse] Started');
@@ -484,7 +486,7 @@ async function writeResponse(responseData: object, responseSessionDir: string) {
 }
 
 async function writeSuccessResponse(responseSessionDir: string) {
-    writeResponse({result: true}, responseSessionDir);
+    writeResponse({ result: true }, responseSessionDir);
 }
 
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
