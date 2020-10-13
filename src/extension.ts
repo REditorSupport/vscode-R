@@ -12,7 +12,7 @@ import { createRTerm, deleteTerminal,
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
 import { config, ToRStringLiteral } from './util';
-import { launchAddinPicker, trackLastActiveTextEditor } from './vsc_r_api';
+import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 

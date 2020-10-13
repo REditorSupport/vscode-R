@@ -77,7 +77,7 @@ case 'active_editor_context': {
 
 }
 
-//vsc-r-api
+//rstudioapi
 export async function activeEditorContext() {
   // info returned from RStudio:
   // list with:
