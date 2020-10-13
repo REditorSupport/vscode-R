@@ -569,60 +569,60 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     break;
                 }
                 case 'active_editor_context': {
-                    await writeResponse(await activeEditorContext(), request.sd__);
+                    await writeResponse(await activeEditorContext(), request.sd);
                     break;
                 }
                 case 'insert_or_modify_text': {
-                    await insertOrModifyText(request.query, request.id);
-                    await writeSuccessResponse(request.sd__);
+                    await insertOrModifyText(request.args.query, request.args.id);
+                    await writeSuccessResponse(request.sd);
                     break;
                 }
                 case 'replace_text_in_current_selection': {
-                    await replaceTextInCurrentSelection(request.text, request.id);
-                    await writeSuccessResponse(request.sd__);
+                    await replaceTextInCurrentSelection(request.args.text, request.args.id);
+                    await writeSuccessResponse(request.sd);
                     break;
                 }
                 case 'show_dialog': {
-                    await showDialog(request.message);
-                    await writeSuccessResponse(request.sd__);
+                    await showDialog(request.args.message);
+                    await writeSuccessResponse(request.sd);
                     break;
                 }
                 case 'navigate_to_file': {
-                    await navigateToFile(request.file, request.line, request.column);
-                    await writeSuccessResponse(request.sd__);
+                    await navigateToFile(request.args.file, request.args.line, request.args.column);
+                    await writeSuccessResponse(request.sd);
                     break;
                 }
                 case 'set_selection_ranges': {
-                    await setSelections(request.ranges, request.id);
-                    await writeSuccessResponse(request.sd__);
+                    await setSelections(request.args.ranges, request.args.id);
+                    await writeSuccessResponse(request.sd);
                     break;
                 }
                 case 'document_save': {
-                    await documentSave(request.id);
-                    await writeSuccessResponse(request.sd__);
+                    await documentSave(request.args.id);
+                    await writeSuccessResponse(request.sd);
                     break;
                 }
                 case 'document_save_all': {
                     await documentSaveAll();
-                    await writeSuccessResponse(request.sd__);
+                    await writeSuccessResponse(request.sd);
                     break;
                 }
                 case 'get_project_path': {
-                    await writeResponse(await projectPath(), request.sd__);
+                    await writeResponse(await projectPath(), request.sd);
                     break;
                 }
                 case 'document_context': {
-                    await writeResponse(await documentContext(request.id), request.sd__);
+                    await writeResponse(await documentContext(request.args.id), request.sd);
                     break;
                 }
                 case 'document_new': {
-                    await documentNew(request.text, request.type, request.position);
-                    await writeSuccessResponse(request.sd__);
+                    await documentNew(request.args.text, request.args.type, request.args.position);
+                    await writeSuccessResponse(request.sd);
                     break;
                 }
                 case 'restart_r': {
                     await restartRTerminal();
-                    await writeSuccessResponse(request.sd__);
+                    await writeSuccessResponse(request.sd);
                     break;
                 }
                 default:
