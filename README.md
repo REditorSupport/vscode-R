@@ -50,7 +50,7 @@ Full document is on the [Wiki page](https://github.com/Ikuyadeu/vscode-R/wiki)
 
 * RStudio Addins - a subset of the `{rstudiopi}` is supported
 
-![](images/vscode_addins.png)
+![RStudio addin launcher](images/vscode_addins.png)
 
 ## Requirements
 
@@ -87,6 +87,7 @@ An opt-in experimental R session watcher is implemented to support the following
 * `View()` any objects including data frames and list objects
 * Show plot output on update and plot history
 * Show htmlwidgets, documentation and shiny apps in WebView
+* Execute RStudio addins
 
 ### Basic usage
 
@@ -183,6 +184,17 @@ options(vsc.view = "Two" | "Active" | "Beside" | FALSE)
 The first values are the default and all subsequent values after `|` are available choices.
 The `"Two" | "Active" | "Beside"` are popular values from `ViewColumn` to specify which view column should the corresponding tab appears in VSCode.
 
+## RStudio addin support
+
+The session watcher allows RStudio addins to be executed via an `{rstudioapi}` emulation layer.
+
+The extension provides the command `r.launchAddinPicker` which opens a filterable list of installed addins that can be launched. Bind this to a key, or access it from the command palette as `R: Launch RStudio Addin`.
+
+Alternatively, individual addin functions can be bound to keys using `r.runRCommand` as described in _Creating keybindings for R commands_ below.
+
+See the wiki for [lists of supported `{rstudioapi}` commands, and verified compatible addin packages]().
+
+
 ### How to disable it
 
 For the case of basic usage, turning off `r.sessionWatcher` in VSCode settings is sufficient
@@ -259,12 +271,6 @@ Here are some example entries from `keybindings.json`:
     }
 ]
 ```
-## Launching RStudio Addins
-
-The extension provides the command `r.launchAddinPicker` which opens a filterable list of addins that can be launched. Bind this to a key, or access it from the command palette as `R: Launch RStudio Addin`
-
-Alternatively, individual addin functions can be bound to keys using `r.runRCommand` as described above.
-
 
 ## TODO
 
