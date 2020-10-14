@@ -72,7 +72,7 @@ case 'active_editor_context': {
                     break;
                 }
                 default:
-                    console.error(`[handleRStudioAPICall] Unsupported action: ${action}`);
+                    console.error(`[dispatchRStudioAPICall] Unsupported action: ${action}`);
   }
 
 }
