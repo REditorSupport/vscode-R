@@ -7,20 +7,16 @@ import path = require('path');
 import { URL } from 'url';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
-import { chooseTerminalAndSendText, restartRTerminal } from './rTerminal';
+import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
 import { FSWatcher } from 'fs-extra';
-import { activeEditorContext, insertOrModifyText, navigateToFile, 
-    replaceTextInCurrentSelection, showDialog, setSelections, documentSave,
-    documentSaveAll, projectPath, documentContext, documentNew, purgeAddinPickerItems } from './vsc_r_api';
+import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 export let globalenv: any;
 let resDir: string;
 let watcherDir: string;
 let requestFile: string;
-let responseFile: string;
 let requestLockFile: string;
-let responseLockFile: string;
 let requestTimeStamp: number;
 let responseTimeStamp: number;
 export let sessionDir: string;
@@ -50,10 +46,10 @@ export function deploySessionWatcher(extensionPath: string) {
     fs.copySync(path.join(extensionPath, 'R', 'init.R'), path.join(watcherDir, 'init.R'));
     console.info('[deploySessionWatcher] Deploy .Rprofile');
     fs.copySync(path.join(extensionPath, 'R', '.Rprofile'), path.join(watcherDir, '.Rprofile'));
-    console.info('[deploySessionWatcher] Deploy vsc_r_api_util.R');
-    fs.copySync(path.join(extensionPath, 'R', 'vsc_r_api_util.R'), path.join(watcherDir, 'vsc_r_api_util.R'));
-    console.info('[deploySessionWatcher] Deploy vsc_r_api.R');
-    fs.copySync(path.join(extensionPath, 'R', 'vsc_r_api.R'), path.join(watcherDir, 'vsc_r_api.R'));
+    console.info('[deploySessionWatcher] Deploy rstudioapi_util.R');
+    fs.copySync(path.join(extensionPath, 'R', 'rstudioapi_util.R'), path.join(watcherDir, 'rstudioapi_util.R'));
+    console.info('[deploySessionWatcher] Deploy rstudioapi.R');
+    fs.copySync(path.join(extensionPath, 'R', 'rstudioapi.R'), path.join(watcherDir, 'rstudioapi.R'));
     console.info('[deploySessionWatcher] Done');
 }
 
@@ -61,8 +57,6 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
     console.info('[startRequestWatcher] Starting');
     requestFile = path.join(watcherDir, 'request.log');
     requestLockFile = path.join(watcherDir, 'request.lock');
-    responseFile = path.join(watcherDir, 'response.log');
-    responseLockFile = path.join(watcherDir, 'response.lock');
     requestTimeStamp = 0;
     responseTimeStamp = 0;
     if (!fs.existsSync(requestLockFile)) {
@@ -88,11 +82,11 @@ function removeDirectory(dir: string) {
     if (fs.existsSync(dir)) {
         console.info('[removeDirectory] dir exists');
         fs.readdirSync(dir)
-          .forEach((file) => {
-              const curPath = path.join(dir, file);
-              console.info(`[removeDirectory] Remove ${curPath}`);
-              fs.unlinkSync(curPath);
-        });
+            .forEach((file) => {
+                const curPath = path.join(dir, file);
+                console.info(`[removeDirectory] Remove ${curPath}`);
+                fs.unlinkSync(curPath);
+            });
         console.info(`[removeDirectory] Remove dir ${dir}`);
         fs.rmdirSync(dir);
     }
@@ -100,7 +94,7 @@ function removeDirectory(dir: string) {
 }
 
 export function sessionDirectoryExists() {
-   return(fs.existsSync(sessionDir));
+    return (fs.existsSync(sessionDir));
 }
 
 export function removeSessionFiles() {
@@ -128,7 +122,7 @@ function updateSessionWatcher() {
     } else {
         console.info('[updateSessionWatcher] globalenvLockFile not found');
     }
-    
+
     console.info('[updateSessionWatcher] Create plotWatcher');
     plotFile = path.join(sessionDir, 'plot.png');
     plotLockFile = path.join(sessionDir, 'plot.lock');
@@ -397,11 +391,11 @@ export async function showPlotHistory() {
             const files = await fs.readdir(plotDir);
             if (files.length > 0) {
                 const panel = window.createWebviewPanel('plotHistory', 'Plot History',
-                                                        {
+                    {
                         preserveFocus: true,
                         viewColumn: ViewColumn.Active,
                     },
-                                                        {
+                    {
                         retainContextWhenHidden: true,
                         enableScripts: true,
                         localResourceRoots: [Uri.file(resDir), Uri.file(plotDir)],
@@ -465,11 +459,19 @@ function isFromWorkspace(dir: string) {
             }
         }
     }
-    
+
     return false;
 }
 
-async function writeResponse(responseData: object) {
+export async function writeResponse(responseData: object, responseSessionDir: string) {
+
+    const responseFile = path.join(responseSessionDir, 'response.log');
+    const responseLockFile = path.join(responseSessionDir, 'response.lock');
+    if (!fs.existsSync(responseFile) || !fs.existsSync(responseLockFile)) {
+        throw ('Received a request from R for response' +
+            'to a session directiory that does not contain response.log or response.lock: ' +
+            responseSessionDir);
+    }
     const responseString = JSON.stringify(responseData);
     console.info('[writeResponse] Started');
     console.info(`[writeResponse] responseData ${responseString}`);
@@ -479,8 +481,8 @@ async function writeResponse(responseData: object) {
     await fs.writeFile(responseLockFile, responseTimeStamp + '\n');
 }
 
-async function writeSuccessResponse() {
-    writeResponse({result: true});
+export async function writeSuccessResponse(responseSessionDir: string) {
+    writeResponse({ result: true }, responseSessionDir);
 }
 
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
@@ -520,61 +522,8 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         request.type, request.title, request.file, request.viewer);
                     break;
                 }
-                case 'active_editor_context': {
-                    await writeResponse(await activeEditorContext());
-                    break;
-                }
-                case 'insert_or_modify_text': {
-                    await insertOrModifyText(request.query, request.id);
-                    await writeSuccessResponse();
-                    break;
-                }
-                case 'replace_text_in_current_selection': {
-                    await replaceTextInCurrentSelection(request.text, request.id);
-                    await writeSuccessResponse();
-                    break;
-                }
-                case 'show_dialog': {
-                    await showDialog(request.message);
-                    await writeSuccessResponse();
-                    break;
-                }
-                case 'navigate_to_file': {
-                    await navigateToFile(request.file, request.line, request.column);
-                    await writeSuccessResponse();
-                    break;
-                }
-                case 'set_selection_ranges': {
-                    await setSelections(request.ranges, request.id);
-                    await writeSuccessResponse();
-                    break;
-                }
-                case 'document_save': {
-                    await documentSave(request.id);
-                    await writeSuccessResponse();
-                    break;
-                }
-                case 'document_save_all': {
-                    await documentSaveAll();
-                    await writeSuccessResponse();
-                    break;
-                }
-                case 'get_project_path': {
-                    await writeResponse(await projectPath());
-                    break;
-                }
-                case 'document_context': {
-                    await writeResponse(await documentContext(request.id));
-                    break;
-                }
-                case 'document_new': {
-                    await documentNew(request.text, request.type, request.position);
-                    await writeSuccessResponse();
-                    break;
-                }
-                case 'restart_r': {
-                    await restartRTerminal();
-                    await writeSuccessResponse();
+                case 'rstudioapi': {
+                    await dispatchRStudioAPICall(request.action, request.args, request.sd);
                     break;
                 }
                 default:

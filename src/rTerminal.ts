@@ -10,7 +10,6 @@ import { commands, Terminal, TerminalOptions, window } from 'vscode';
 import { getSelection } from './selection';
 import { removeSessionFiles } from './session';
 import { config, delay, getRpath } from './util';
-import { purgeAddinPickerItems } from './vsc_r_api';
 export let rTerm: Terminal;
 
 export async function createRTerm(preserveshow?: boolean): Promise<boolean> {

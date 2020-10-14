@@ -324,7 +324,7 @@ if (interactive() &&
       }
 
       attach <- function() {
-        vsc_r_api_env$update_addin_registry(addin_registry)
+        rstudioapi_util_env$update_addin_registry(addin_registry)
         request("attach",
           tempdir = tempdir,
           plot = getOption("vsc.plot", "Two"))
@@ -396,20 +396,20 @@ if (interactive() &&
         page_viewer = page_viewer
       )
 
-      #vsc-r-api
+      # rstudioapi
       response_timeout <- 5
-      response_lock_file <- file.path(dir_extension, "response.lock")
-      response_file <- file.path(dir_extension, "response.log")
+      response_lock_file <- file.path(dir_session, "response.lock")
+      response_file <- file.path(dir_session, "response.log")
+      file.create(response_lock_file, showWarnings = FALSE)
+      file.create(response_file, showWarnings = FALSE)
       addin_registry <- file.path(dir_session, "addins.json")
+      # This is created in attach()
 
       get_response_timestamp <- function() {
-        if (file.exists(response_lock_file))
           readLines(response_lock_file)
-        else NA
       }
-      # initialise the reponse timestamp to NA or the value currently in the
-      # file
-      response_time_stamp <- get_response_timestamp()
+      # initialise the reponse timestamp to empty string
+      response_time_stamp <- ""
 
       get_response_lock <- function() {
         lock_time_stamp <- get_response_timestamp()
@@ -420,7 +420,7 @@ if (interactive() &&
       }
 
       request_response <- function(command, ...) {
-        request(command, ...)
+        request(command, ..., sd = dir_session)
         wait_start <- Sys.time()
         while (!get_response_lock()) {
           if ((Sys.time() - wait_start) > response_timeout)
@@ -431,17 +431,17 @@ if (interactive() &&
         jsonlite::read_json(response_file)
       }
 
-     vsc_r_api_env <- new.env()
-     rstudioapi_env <- new.env(parent = vsc_r_api_env)
-     source(file.path(dir_extension, "vsc_r_api_util.R"),
-       local = vsc_r_api_env,
+     rstudioapi_util_env <- new.env()
+     rstudioapi_env <- new.env(parent = rstudioapi_util_env)
+     source(file.path(dir_extension, "rstudioapi_util.R"),
+       local = rstudioapi_util_env,
      )
-     source(file.path(dir_extension, "vsc_r_api.R"),
+     source(file.path(dir_extension, "rstudioapi.R"),
        local = rstudioapi_env
      )
      setHook(
        packageEvent("rstudioapi", "onLoad"),
-       function(...) vsc_r_api_env$rstudioapi_patch_hook(rstudioapi_env)
+       function(...) rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
      )
 
 

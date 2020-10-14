@@ -1,23 +1,83 @@
 import {
-  window, TextEdit, TextEditorCursorStyle, TextEditor, TextDocument, Uri,
-  workspace, WorkspaceEdit, Position, Range, MessageOptions, MessageItem, Selection,
-  QuickPick, QuickPickItem, QuickPickOptions, ViewColumn
+  window, TextEditor, TextDocument, Uri,
+  workspace, WorkspaceEdit, Position, Range, Selection,
+  QuickPickItem, QuickPickOptions, ViewColumn
 } from 'vscode';
-import { kMaxLength } from 'buffer';
-import { fileURLToPath, Url } from 'url';
-import { ENGINE_METHOD_DIGESTS } from 'constants';
-import { MessageChannel } from 'worker_threads';
-import { sessionDir, sessionDirectoryExists } from './session';
+import { sessionDir, sessionDirectoryExists, writeResponse, writeSuccessResponse } from './session';
 import fs = require('fs-extra');
 import path = require('path');
-import { chooseTerminal, runTextInTerm } from './rTerminal';
+import { chooseTerminal, runTextInTerm, restartRTerminal } from './rTerminal';
 import { config } from './util';
-import { isDate } from 'util';
 
 let lastActiveTextEditor: TextEditor;
 
+export async function dispatchRStudioAPICall(action: string, args: any, sd: string) {
 
-//vsc-r-api
+  switch (action) {
+case 'active_editor_context': {
+                    await writeResponse(await activeEditorContext(), sd);
+                    break;
+                }
+                case 'insert_or_modify_text': {
+                    await insertOrModifyText(args.query, args.id);
+                    await writeSuccessResponse(sd);
+                    break;
+                }
+                case 'replace_text_in_current_selection': {
+                    await replaceTextInCurrentSelection(args.text, args.id);
+                    await writeSuccessResponse(sd);
+                    break;
+                }
+                case 'show_dialog': {
+                    await showDialog(args.message);
+                    await writeSuccessResponse(sd);
+                    break;
+                }
+                case 'navigate_to_file': {
+                    await navigateToFile(args.file, args.line, args.column);
+                    await writeSuccessResponse(sd);
+                    break;
+                }
+                case 'set_selection_ranges': {
+                    await setSelections(args.ranges, args.id);
+                    await writeSuccessResponse(sd);
+                    break;
+                }
+                case 'document_save': {
+                    await documentSave(args.id);
+                    await writeSuccessResponse(sd);
+                    break;
+                }
+                case 'document_save_all': {
+                    await documentSaveAll();
+                    await writeSuccessResponse(sd);
+                    break;
+                }
+                case 'get_project_path': {
+                    await writeResponse(await projectPath(), sd);
+                    break;
+                }
+                case 'document_context': {
+                    await writeResponse(await documentContext(args.id), sd);
+                    break;
+                }
+                case 'document_new': {
+                    await documentNew(args.text, args.type, args.position);
+                    await writeSuccessResponse(sd);
+                    break;
+                }
+                case 'restart_r': {
+                    await restartRTerminal();
+                    await writeSuccessResponse(sd);
+                    break;
+                }
+                default:
+                    console.error(`[handleRStudioAPICall] Unsupported action: ${action}`);
+  }
+
+}
+
+//rstudioapi
 export async function activeEditorContext() {
   // info returned from RStudio:
   // list with:
