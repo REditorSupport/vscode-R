@@ -183,7 +183,7 @@ options(vsc.view = "Two" | "Active" | "Beside" | FALSE)
 The first values are the default and all subsequent values after `|` are available choices.
 The `"Two" | "Active" | "Beside"` are popular values from `ViewColumn` to specify which view column should the corresponding tab appears in VSCode.
 
-## RStudio addin support
+### RStudio addin support
 
 The session watcher allows RStudio addins to be executed via an `{rstudioapi}` emulation layer.
 
