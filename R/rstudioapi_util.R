@@ -7,10 +7,6 @@ rstudioapi_enabled <- function() {
 }
 
 rstudioapi_patch_hook <- function(api_env) {
-    if (!rstudioapi_enabled()) {
-        return(NULL)
-    }
-
     patch_rstudioapi_fn <-
         function(old, new) {
             if (namespace_has(old, "rstudioapi")) {
@@ -199,10 +195,6 @@ normalise_text_arg <- function(text, location_length) {
 }
 
 update_addin_registry <- function(addin_registry) {
-    if (!rstudioapi_enabled()) {
-        return(NULL)
-    }
-
     pkgs <- .packages(all.available = TRUE)
     addin_files <- vapply(pkgs, function(pkg) {
         system.file("rstudio/addins.dcf", package = pkg)

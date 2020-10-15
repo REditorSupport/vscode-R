@@ -324,7 +324,9 @@ if (interactive() &&
       }
 
       attach <- function() {
-        rstudioapi_util_env$update_addin_registry(addin_registry)
+        if (rstudioapi_enabled()) {
+          rstudioapi_util_env$update_addin_registry(addin_registry)
+        }
         request("attach",
           tempdir = tempdir,
           plot = getOption("vsc.plot", "Two"))
@@ -430,52 +432,59 @@ if (interactive() &&
       )
 
       # rstudioapi
-      response_timeout <- 5
-      response_lock_file <- file.path(dir_session, "response.lock")
-      response_file <- file.path(dir_session, "response.log")
-      file.create(response_lock_file, showWarnings = FALSE)
-      file.create(response_file, showWarnings = FALSE)
-      addin_registry <- file.path(dir_session, "addins.json")
-      # This is created in attach()
-
-      get_response_timestamp <- function() {
+      if (rstudioapi_enabled()) {
+        response_timeout <- 5
+        response_lock_file <- file.path(dir_session, "response.lock")
+        response_file <- file.path(dir_session, "response.log")
+        file.create(response_lock_file, showWarnings = FALSE)
+        file.create(response_file, showWarnings = FALSE)
+        addin_registry <- file.path(dir_session, "addins.json")
+        # This is created in attach()
+      
+        get_response_timestamp <- function() {
           readLines(response_lock_file)
-      }
-      # initialise the reponse timestamp to empty string
-      response_time_stamp <- ""
-
-      get_response_lock <- function() {
-        lock_time_stamp <- get_response_timestamp()
-        if (isTRUE(lock_time_stamp != response_time_stamp)) {
-          response_time_stamp <<- lock_time_stamp
-          TRUE
-        } else FALSE
-      }
-
-      request_response <- function(command, ...) {
-        request(command, ..., sd = dir_session)
-        wait_start <- Sys.time()
-        while (!get_response_lock()) {
-          if ((Sys.time() - wait_start) > response_timeout)
-            stop("Did not receive a response from VSCode-R API within ",
-                  response_timeout, " seconds.")
-          Sys.sleep(0.1)
         }
-        jsonlite::read_json(response_file)
+        # initialise the reponse timestamp to empty string
+        response_time_stamp <- ""
+      
+        get_response_lock <- function() {
+          lock_time_stamp <- get_response_timestamp()
+          if (isTRUE(lock_time_stamp != response_time_stamp)) {
+            response_time_stamp <<- lock_time_stamp
+            TRUE
+          } else {
+            FALSE
+          }
+        }
+      
+        request_response <- function(command, ...) {
+          request(command, ..., sd = dir_session)
+          wait_start <- Sys.time()
+          while (!get_response_lock()) {
+            if ((Sys.time() - wait_start) > response_timeout) {
+              stop(
+                "Did not receive a response from VSCode-R API within ",
+                response_timeout, " seconds."
+              )
+            }
+            Sys.sleep(0.1)
+          }
+          jsonlite::read_json(response_file)
+        }
+      
+        rstudioapi_util_env <- new.env()
+        rstudioapi_env <- new.env(parent = rstudioapi_util_env)
+        source(file.path(dir_extension, "rstudioapi_util.R"),
+          local = rstudioapi_util_env,
+        )
+        source(file.path(dir_extension, "rstudioapi.R"),
+          local = rstudioapi_env
+        )
+        setHook(
+          packageEvent("rstudioapi", "onLoad"),
+          function(...) rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
+        )
       }
-
-     rstudioapi_util_env <- new.env()
-     rstudioapi_env <- new.env(parent = rstudioapi_util_env)
-     source(file.path(dir_extension, "rstudioapi_util.R"),
-       local = rstudioapi_util_env,
-     )
-     source(file.path(dir_extension, "rstudioapi.R"),
-       local = rstudioapi_env
-     )
-     setHook(
-       packageEvent("rstudioapi", "onLoad"),
-       function(...) rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
-     )
 
 
       environment()
