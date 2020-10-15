@@ -317,7 +317,7 @@ export async function launchAddinPicker() {
     await window.showQuickPick<AddinItem>(getAddinPickerItems(), addinPickerOptions);
 
   if (!(typeof addinSelection === 'undefined')) {
-    await runTextInTerm(activeRTerm, addinSelection.package + ':::' + addinSelection.binding + '()');
+    await runTextInTerm(addinSelection.package + ':::' + addinSelection.binding + '()');
   }
 }
 
