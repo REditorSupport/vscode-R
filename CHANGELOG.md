@@ -1,5 +1,13 @@
 # Change Log
 
+## 1.5.0
+
+* RStudio Addin Support #408 (Implemented by the new collabolator @MilesMcBain)
+  * The usage is added on the [wiki page](https://github.com/Ikuyadeu/vscode-R/wiki/RStudio-addin-support)
+
+* Recommend radian in README #420
+
+
 ## 1.4.6
 
 * Remove Run in Active Terminal from README #413 (Fix #412)

@@ -47,7 +47,7 @@ Full document is on the [Wiki page](https://github.com/Ikuyadeu/vscode-R/wiki)
 
 * Bind keys to custom R commands using command runner functions (`r.runCommand`, `r.runCommandWithEditorPath`, `r.runCommandWithSelectionOrWord`)
 
-* RStudio Addins - a subset of the `{rstudiopi}` is supported
+* RStudio Addins - a subset of the `{rstudiopi}` is supported (detail is [here](https://github.com/Ikuyadeu/vscode-R/wiki/RStudio-addin-support))
 
 ![RStudio addin launcher](images/vscode_addins.png)
 
@@ -295,6 +295,7 @@ I hope you will join us.
 * [@andycraig](https://github.com/andycraig)
 * [@Ladvien](https://github.com/Ladvien)
 * [@renkun-ken](https://github.com/renkun-ken)
+* [@MilesMcBain](https://github.com/MilesMcBain)
 
 ## FAQ
 
