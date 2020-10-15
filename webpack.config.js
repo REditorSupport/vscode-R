@@ -5,8 +5,7 @@
 const path = require('path');
 const CopyPlugin = require('copy-webpack-plugin');
 
-/**@type {import('webpack').Configuration}*/
-const config = {
+module.exports = {
   target: 'node', // vscode extensions run in a Node.js-context 📖 -> https://webpack.js.org/configuration/node/
 
   entry: './src/extension.ts', // the entry point of this extension, 📖 -> https://webpack.js.org/configuration/entry-context/
@@ -39,7 +38,8 @@ const config = {
     ]
   },
   plugins: [
-    new CopyPlugin({patterns: [
+    new CopyPlugin({
+      patterns: [
       { from: './node_modules/jquery/dist/jquery.min.js', to: 'resources' },
       { from: './node_modules/jquery.json-viewer/json-viewer', to: 'resources' },
       { from: './node_modules/bootstrap/dist/js/bootstrap.min.js', to: 'resources' },
@@ -54,7 +54,7 @@ const config = {
       { from: './node_modules/fotorama/fotorama.css', to: 'resources' },
       { from: './node_modules/fotorama/fotorama.png', to: 'resources' },
       { from: './node_modules/fotorama/fotorama@2x.png', to: 'resources' },
-    ]}),
+    ]
+  }),
   ],
 };
-module.exports = config;
