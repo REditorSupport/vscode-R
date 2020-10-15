@@ -192,7 +192,7 @@ The extension provides the command `r.launchAddinPicker` which opens a filterabl
 
 Alternatively, individual addin functions can be bound to keys using `r.runRCommand` as described in _Creating keybindings for R commands_ below.
 
-See the wiki for [lists of supported `{rstudioapi}` commands, and verified compatible addin packages]().
+See the wiki for [lists of supported `{rstudioapi}` commands, and verified compatible addin packages](https://github.com/Ikuyadeu/vscode-R/wiki/RStudio-addin-support).
 
 
 ### How to disable it
