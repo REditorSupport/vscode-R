@@ -2,7 +2,13 @@ rstudioapi_call <- function(action, ...) {
     request_response("rstudioapi", action = action, args = list(...))
 }
 
+rstudioapi_enabled <- function() {
+    isTRUE(getOption("vsc.rstudioapi"))
+}
+
 rstudioapi_patch_hook <- function(api_env) {
+    if (!rstudioapi_enabled()) return(NULL)
+
     patch_rstudioapi_fn <-
         function(old, new) {
             if (namespace_has(old, "rstudioapi")) {
@@ -237,6 +243,8 @@ update_addin_registry <- function(addin_registry) {
 }
 
 update_addin_registry_safely <- function(addin_registry) {
+    if (!rstudioapi_enabled()) return(NULL)
+
     tryCatch(update_addin_registry(addin_registry),
         error = function(cond) {
             message(
