@@ -67,11 +67,6 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
         return false;
     }
 
-    if (process.platform === 'win32') {
-        const winattr = require('winattr');
-        winattr.setSync(tmpDir, {hidden: true});
-    }
-
     // Open CSV in Excel Viewer and clean up.
     workspace.openTextDocument(pathToTmpCsv)
              .then(async (file) => {
