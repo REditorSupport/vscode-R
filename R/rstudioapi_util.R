@@ -212,10 +212,10 @@ update_addin_registry <- function(addin_registry) {
                         stringsAsFactors = FALSE
                     )
 
-                if (ncol(addin_description) < 5) {
-                    return(NULL)
+                if (ncol(addin_description) < 4) {
+                    NULL
                 }
-                ## if less than 5 columns it's malformed
+                ## if less than 4 columns it's malformed
                 ## a NULL will be ignored in the rbind
 
                 addin_description$package <- package
@@ -241,8 +241,8 @@ update_addin_registry_safely <- function(addin_registry) {
         error = function(cond) {
             message(
                 "List of installed addins could not",
-                "be read from R library.",
-                "Possibly due to malformed addins.dcf files.",
+                "be read from R library. ",
+                "Possibly due to malformed addins.dcf files. ",
                 "The RStudio addin picker will not function."
             )
         }
