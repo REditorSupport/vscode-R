@@ -7,75 +7,10 @@ import path = require('path');
 import { URL } from 'url';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 import { runTextInTerm } from './rTerminal';
-=======
-import { chooseTerminalAndSendText, restartRTerminal } from './rTerminal';
->>>>>>> add restartSession
-import { config } from './util';
 import { FSWatcher } from 'fs-extra';
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-import { activeEditorContext } from './vsc_r_api';
-=======
-import { activeEditorContext, insertOrModifyText } from './vsc_r_api'
->>>>>>> big refactor of insertText, add modifyRange
-=======
-import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection} from './vsc_r_api'
->>>>>>> support insertText("text") style call
-=======
-import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection } from './vsc_r_api';
->>>>>>> fixes for eslint PR comments
-=======
-import { activeEditorContext, insertOrModifyText, replaceTextInCurrentSelection, showDialog } from './vsc_r_api';
->>>>>>> add showDialog
-=======
-import { activeEditorContext, insertOrModifyText, navigateToFile, replaceTextInCurrentSelection, showDialog } from './vsc_r_api';
->>>>>>> add navigateToFile
-=======
-import { activeEditorContext, insertOrModifyText, navigateToFile, 
-<<<<<<< HEAD
-<<<<<<< HEAD
-    replaceTextInCurrentSelection, showDialog, setSelections } from './vsc_r_api';
->>>>>>> add setSelectionRanges, setCursorPosition
-=======
-    replaceTextInCurrentSelection, showDialog, setSelections, documentSave } from './vsc_r_api';
->>>>>>> add documentSave
-=======
-    replaceTextInCurrentSelection, showDialog, setSelections, documentSave,
-<<<<<<< HEAD
-<<<<<<< HEAD
-    documentSaveAll, projectPath, documentContext } from './vsc_r_api';
->>>>>>> allow for old api versions, new document stuff
-=======
-    documentSaveAll, projectPath, documentContext, documentNew } from './vsc_r_api';
->>>>>>> documentNew
-=======
-    documentSaveAll, projectPath, documentContext, documentNew, purgeAddinPickerItems } from './vsc_r_api';
->>>>>>> move addin picker items purge to attach handler
-=======
-import {
-    activeEditorContext, insertOrModifyText, navigateToFile,
-    replaceTextInCurrentSelection, showDialog, setSelections, documentSave,
-    documentSaveAll, projectPath, documentContext, documentNew, purgeAddinPickerItems
-} from './vsc_r_api';
->>>>>>> lint fix and style files
-=======
-import { chooseTerminalAndSendText } from './rTerminal';
 import { config } from './util';
-import { FSWatcher } from 'fs-extra';
-<<<<<<< HEAD
-import { purgeAddinPickerItems, dispatchRStudioAPICall } from './vsc_r_api';
->>>>>>> refactor rstuioapi call design
-=======
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
->>>>>>> rename vsc_r_api files to rstudioapi
 
 export let globalenv: any;
 let resDir: string;
