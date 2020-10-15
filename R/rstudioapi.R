@@ -288,4 +288,4 @@ buildToolsExec <- .vsc_not_yet_implemented
 dictionariesPath <- .vsc_not_yet_implemented
 userDictionariesPath <- .vsc_not_yet_implemented
 executeCommand <- .vsc_not_yet_implemented
-translateLocalUr <- .vsc_not_yet_implemented
+translateLocalUrl <- .vsc_not_yet_implemented
