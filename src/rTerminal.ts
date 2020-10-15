@@ -44,6 +44,14 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     });
 }
 
+export async function restartRTerminal(){
+    if (typeof rTerm !== 'undefined'){
+        rTerm.dispose();
+        deleteTerminal(rTerm);
+        await createRTerm(true);
+    }
+}
+
 export function deleteTerminal(term: Terminal) {
     if (isDeepStrictEqual(term, rTerm)) {
         rTerm = undefined;

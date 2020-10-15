@@ -8,8 +8,9 @@ import { URL } from 'url';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
 import { runTextInTerm } from './rTerminal';
-import { config } from './util';
 import { FSWatcher } from 'fs-extra';
+import { config } from './util';
+import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 export let globalenv: any;
 let resDir: string;
@@ -17,7 +18,8 @@ let watcherDir: string;
 let requestFile: string;
 let requestLockFile: string;
 let requestTimeStamp: number;
-let sessionDir: string;
+let responseTimeStamp: number;
+export let sessionDir: string;
 let pid: string;
 let globalenvFile: string;
 let globalenvLockFile: string;
@@ -30,7 +32,6 @@ let plotDir: string;
 let requestWatcher: FSWatcher;
 let globalEnvWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
-
 
 export function deploySessionWatcher(extensionPath: string) {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
@@ -45,6 +46,10 @@ export function deploySessionWatcher(extensionPath: string) {
     fs.copySync(path.join(extensionPath, 'R', 'init.R'), path.join(watcherDir, 'init.R'));
     console.info('[deploySessionWatcher] Deploy .Rprofile');
     fs.copySync(path.join(extensionPath, 'R', '.Rprofile'), path.join(watcherDir, '.Rprofile'));
+    console.info('[deploySessionWatcher] Deploy rstudioapi_util.R');
+    fs.copySync(path.join(extensionPath, 'R', 'rstudioapi_util.R'), path.join(watcherDir, 'rstudioapi_util.R'));
+    console.info('[deploySessionWatcher] Deploy rstudioapi.R');
+    fs.copySync(path.join(extensionPath, 'R', 'rstudioapi.R'), path.join(watcherDir, 'rstudioapi.R'));
     console.info('[deploySessionWatcher] Done');
 }
 
@@ -53,6 +58,7 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
     requestFile = path.join(watcherDir, 'request.log');
     requestLockFile = path.join(watcherDir, 'request.lock');
     requestTimeStamp = 0;
+    responseTimeStamp = 0;
     if (!fs.existsSync(requestLockFile)) {
         fs.createFileSync(requestLockFile);
     }
@@ -76,20 +82,24 @@ function removeDirectory(dir: string) {
     if (fs.existsSync(dir)) {
         console.info('[removeDirectory] dir exists');
         fs.readdirSync(dir)
-          .forEach((file) => {
-              const curPath = path.join(dir, file);
-              console.info(`[removeDirectory] Remove ${curPath}`);
-              fs.unlinkSync(curPath);
-        });
+            .forEach((file) => {
+                const curPath = path.join(dir, file);
+                console.info(`[removeDirectory] Remove ${curPath}`);
+                fs.unlinkSync(curPath);
+            });
         console.info(`[removeDirectory] Remove dir ${dir}`);
         fs.rmdirSync(dir);
     }
     console.info('[removeDirectory] Done');
 }
 
+export function sessionDirectoryExists() {
+    return (fs.existsSync(sessionDir));
+}
+
 export function removeSessionFiles() {
     console.info('[removeSessionFiles] ', sessionDir);
-    if (fs.existsSync(sessionDir)) {
+    if (sessionDirectoryExists()) {
         removeDirectory(sessionDir);
     }
     console.info('[removeSessionFiles] Done');
@@ -381,11 +391,11 @@ export async function showPlotHistory() {
             const files = await fs.readdir(plotDir);
             if (files.length > 0) {
                 const panel = window.createWebviewPanel('plotHistory', 'Plot History',
-                                                        {
+                    {
                         preserveFocus: true,
                         viewColumn: ViewColumn.Active,
                     },
-                                                        {
+                    {
                         retainContextWhenHidden: true,
                         enableScripts: true,
                         localResourceRoots: [Uri.file(resDir), Uri.file(plotDir)],
@@ -453,6 +463,28 @@ function isFromWorkspace(dir: string) {
     return false;
 }
 
+export async function writeResponse(responseData: object, responseSessionDir: string) {
+
+    const responseFile = path.join(responseSessionDir, 'response.log');
+    const responseLockFile = path.join(responseSessionDir, 'response.lock');
+    if (!fs.existsSync(responseFile) || !fs.existsSync(responseLockFile)) {
+        throw ('Received a request from R for response' +
+            'to a session directiory that does not contain response.log or response.lock: ' +
+            responseSessionDir);
+    }
+    const responseString = JSON.stringify(responseData);
+    console.info('[writeResponse] Started');
+    console.info(`[writeResponse] responseData ${responseString}`);
+    console.info(`[writeRespnse] responseFile: ${responseFile}`);
+    await fs.writeFile(responseFile, responseString);
+    responseTimeStamp = Date.now();
+    await fs.writeFile(responseLockFile, responseTimeStamp + '\n');
+}
+
+export async function writeSuccessResponse(responseSessionDir: string) {
+    writeResponse({ result: true }, responseSessionDir);
+}
+
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     console.info('[updateRequest] Started');
     console.info(`[updateRequest] requestFile: ${requestFile}`);
@@ -474,6 +506,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     sessionStatusBarItem.text = `R: ${pid}`;
                     sessionStatusBarItem.show();
                     updateSessionWatcher();
+                    purgeAddinPickerItems();
                     break;
                 }
                 case 'browser': {
@@ -487,6 +520,10 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 case 'dataview': {
                     showDataView(request.source,
                         request.type, request.title, request.file, request.viewer);
+                    break;
+                }
+                case 'rstudioapi': {
+                    await dispatchRStudioAPICall(request.action, request.args, request.sd);
                     break;
                 }
                 default:
