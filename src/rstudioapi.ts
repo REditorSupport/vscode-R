@@ -54,7 +54,7 @@ case 'active_editor_context': {
                     break;
                 }
                 case 'get_project_path': {
-                    await writeResponse(await projectPath(), sd);
+                    await writeResponse(projectPath(), sd);
                     break;
                 }
                 case 'document_context': {
