@@ -199,19 +199,29 @@ update_addin_registry <- function(addin_registry) {
     addin_descriptions <-
         mapply(
             function(package, package_dcf) {
+                addin_description_names <-
+                    c(
+                        "name",
+                        "description",
+                        "binding",
+                        "interactive",
+                        "package"
+                    )
                 addin_description <-
                     as.data.frame(read.dcf(package_dcf),
                         stringsAsFactors = FALSE
                     )
+
+                if (ncol(addin_description) < 5) {
+                    return(NULL)
+                }
+                ## if less than 5 columns it's malformed
+                ## a NULL will be ignored in the rbind
+
                 addin_description$package <- package
-                names(addin_description) <- c(
-                    "name",
-                    "description",
-                    "binding",
-                    "interactive",
-                    "package"
-                )
-                addin_description
+                names(addin_description) <- addin_description_names
+                addin_description[, addin_description_names]
+                ## this filters out any extra columns
             },
             names(addin_files),
             addin_files,
@@ -224,6 +234,19 @@ update_addin_registry <- function(addin_registry) {
         )
 
     jsonlite::write_json(addin_descriptions_flat, addin_registry, pretty = TRUE)
+}
+
+update_addin_registry_safely <- function(addin_registry) {
+    tryCatch(update_addin_registry(addin_registry),
+        error = function(cond) {
+            message(
+                "List of installed addins could not",
+                "be read from R library.",
+                "Possibly due to malformed addins.dcf files.",
+                "The RStudio addin picker will not function."
+            )
+        }
+    )
 }
 
 namespace_has <- function(obj, namespace) {

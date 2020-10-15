@@ -324,7 +324,7 @@ if (interactive() &&
       }
 
       attach <- function() {
-        rstudioapi_util_env$update_addin_registry(addin_registry)
+        rstudioapi_util_env$update_addin_registry_safely(addin_registry)
         request("attach",
           tempdir = tempdir,
           plot = getOption("vsc.plot", "Two"))
