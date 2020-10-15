@@ -7,7 +7,9 @@ rstudioapi_enabled <- function() {
 }
 
 rstudioapi_patch_hook <- function(api_env) {
-    if (!rstudioapi_enabled()) return(NULL)
+    if (!rstudioapi_enabled()) {
+        return(NULL)
+    }
 
     patch_rstudioapi_fn <-
         function(old, new) {
@@ -197,6 +199,10 @@ normalise_text_arg <- function(text, location_length) {
 }
 
 update_addin_registry <- function(addin_registry) {
+    if (!rstudioapi_enabled()) {
+        return(NULL)
+    }
+
     pkgs <- .packages(all.available = TRUE)
     addin_files <- vapply(pkgs, function(pkg) {
         system.file("rstudio/addins.dcf", package = pkg)
@@ -213,21 +219,38 @@ update_addin_registry <- function(addin_registry) {
                         "interactive",
                         "package"
                     )
-                addin_description <-
-                    as.data.frame(read.dcf(package_dcf),
-                        stringsAsFactors = FALSE
+                description_result <-
+                    tryCatch(
+                        {
+                            addin_description <-
+                                as.data.frame(read.dcf(package_dcf),
+                                    stringsAsFactors = FALSE
+                                )
+
+                            if (ncol(addin_description) < 4) {
+                                NULL
+                            }
+                            ## if less than 4 columns it's malformed
+                            ## a NULL will be ignored in the rbind
+
+                            addin_description$package <- package
+                            names(addin_description) <- addin_description_names
+
+                            addin_description[, addin_description_names]
+                            ## this filters out any extra columns
+                        },
+                        error = function(cond) {
+                            message(
+                                "addins.dcf file for ", package,
+                                " could not be read from R library. ",
+                                "The RStudio addin picker will not contain it's addins"
+                            )
+
+                            NULL
+                        }
                     )
 
-                if (ncol(addin_description) < 4) {
-                    NULL
-                }
-                ## if less than 4 columns it's malformed
-                ## a NULL will be ignored in the rbind
-
-                addin_description$package <- package
-                names(addin_description) <- addin_description_names
-                addin_description[, addin_description_names]
-                ## this filters out any extra columns
+                description_result
             },
             names(addin_files),
             addin_files,
@@ -240,21 +263,6 @@ update_addin_registry <- function(addin_registry) {
         )
 
     jsonlite::write_json(addin_descriptions_flat, addin_registry, pretty = TRUE)
-}
-
-update_addin_registry_safely <- function(addin_registry) {
-    if (!rstudioapi_enabled()) return(NULL)
-
-    tryCatch(update_addin_registry(addin_registry),
-        error = function(cond) {
-            message(
-                "List of installed addins could not",
-                "be read from R library. ",
-                "Possibly due to malformed addins.dcf files. ",
-                "The RStudio addin picker will not function."
-            )
-        }
-    )
 }
 
 namespace_has <- function(obj, namespace) {
