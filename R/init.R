@@ -432,6 +432,10 @@ if (interactive() &&
       )
 
       # rstudioapi
+      rstudioapi_enabled <- function() {
+        isTRUE(getOption("vsc.rstudioapi"))
+      }
+
       if (rstudioapi_enabled()) {
         response_timeout <- 5
         response_lock_file <- file.path(dir_session, "response.lock")

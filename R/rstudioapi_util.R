@@ -2,10 +2,6 @@ rstudioapi_call <- function(action, ...) {
     request_response("rstudioapi", action = action, args = list(...))
 }
 
-rstudioapi_enabled <- function() {
-    isTRUE(getOption("vsc.rstudioapi"))
-}
-
 rstudioapi_patch_hook <- function(api_env) {
     patch_rstudioapi_fn <-
         function(old, new) {
