@@ -187,6 +187,8 @@ The `"Two" | "Active" | "Beside"` are popular values from `ViewColumn` to specif
 
 The session watcher allows RStudio addins to be executed via an `{rstudioapi}` emulation layer.
 
+To enable this feature, set `options(vsc.rstudioapi = TRUE)` in your .Rprofile. 
+
 The extension provides the command `r.launchAddinPicker` which opens a filterable list of installed addins that can be launched. Bind this to a key, or access it from the command palette as `R: Launch RStudio Addin`.
 
 Alternatively, individual addin functions can be bound to keys using `r.runRCommand` as described in _Creating keybindings for R commands_ below.
