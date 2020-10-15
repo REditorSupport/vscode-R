@@ -228,16 +228,27 @@ viewer <- function(url, height = NULL) {
     .vsc.viewer(url)
 }
 
+getVersion <- function() {
+    numeric_version(0)
+}
+
+versionInfo <- function() {
+    list(
+        citation = "",
+        mode = "vscode",
+        version = numeric_version(0),
+        release_name = "vscode"
+    )
+}
 # Unimplemented API calls that will error if called.
 
 .vsc_not_yet_implemented <- function(...) {
     stop("This {rstudioapi} function is not currently implemented for VSCode.")
 }
 
+
 getConsoleEditorContext <- .vsc_not_yet_implemented
 sourceMarkers <- .vsc_not_yet_implemented
-versionInfo <- .vsc_not_yet_implemented
-getVersion <- .vsc_not_yet_implemented
 documentClose <- .vsc_not_yet_implemented
 sendToConsole <- .vsc_not_yet_implemented
 showPrompt <- .vsc_not_yet_implemented
