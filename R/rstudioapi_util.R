@@ -208,8 +208,7 @@ update_addin_registry <- function(addin_registry) {
                         "package"
                     )
                 description_result <-
-                    tryCatch(
-                        {
+                    tryCatch({
                             addin_description <-
                                 as.data.frame(read.dcf(package_dcf),
                                     stringsAsFactors = FALSE
@@ -231,7 +230,8 @@ update_addin_registry <- function(addin_registry) {
                             message(
                                 "addins.dcf file for ", package,
                                 " could not be read from R library. ",
-                                "The RStudio addin picker will not contain it's addins"
+                                "The RStudio addin picker will not ",
+                                "contain it's addins"
                             )
 
                             NULL

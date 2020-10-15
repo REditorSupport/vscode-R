@@ -444,13 +444,13 @@ if (interactive() &&
         file.create(response_file, showWarnings = FALSE)
         addin_registry <- file.path(dir_session, "addins.json")
         # This is created in attach()
-      
+
         get_response_timestamp <- function() {
           readLines(response_lock_file)
         }
         # initialise the reponse timestamp to empty string
         response_time_stamp <- ""
-      
+
         get_response_lock <- function() {
           lock_time_stamp <- get_response_timestamp()
           if (isTRUE(lock_time_stamp != response_time_stamp)) {
@@ -460,7 +460,7 @@ if (interactive() &&
             FALSE
           }
         }
-      
+
         request_response <- function(command, ...) {
           request(command, ..., sd = dir_session)
           wait_start <- Sys.time()
@@ -475,7 +475,7 @@ if (interactive() &&
           }
           jsonlite::read_json(response_file)
         }
-      
+
         rstudioapi_util_env <- new.env()
         rstudioapi_env <- new.env(parent = rstudioapi_util_env)
         source(file.path(dir_extension, "rstudioapi_util.R"),
@@ -486,7 +486,9 @@ if (interactive() &&
         )
         setHook(
           packageEvent("rstudioapi", "onLoad"),
-          function(...) rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
+          function(...) {
+            rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
+          }
         )
       }
 
