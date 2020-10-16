@@ -199,19 +199,46 @@ update_addin_registry <- function(addin_registry) {
     addin_descriptions <-
         mapply(
             function(package, package_dcf) {
-                addin_description <-
-                    as.data.frame(read.dcf(package_dcf),
-                        stringsAsFactors = FALSE
+                addin_description_names <-
+                    c(
+                        "name",
+                        "description",
+                        "binding",
+                        "interactive",
+                        "package"
                     )
-                addin_description$package <- package
-                names(addin_description) <- c(
-                    "name",
-                    "description",
-                    "binding",
-                    "interactive",
-                    "package"
-                )
-                addin_description
+                description_result <-
+                    tryCatch({
+                            addin_description <-
+                                as.data.frame(read.dcf(package_dcf),
+                                    stringsAsFactors = FALSE
+                                )
+
+                            if (ncol(addin_description) < 4) {
+                                NULL
+                            }
+                            ## if less than 4 columns it's malformed
+                            ## a NULL will be ignored in the rbind
+
+                            addin_description$package <- package
+                            names(addin_description) <- addin_description_names
+
+                            addin_description[, addin_description_names]
+                            ## this filters out any extra columns
+                        },
+                        error = function(cond) {
+                            message(
+                                "addins.dcf file for ", package,
+                                " could not be read from R library. ",
+                                "The RStudio addin picker will not ",
+                                "contain it's addins"
+                            )
+
+                            NULL
+                        }
+                    )
+
+                description_result
             },
             names(addin_files),
             addin_files,

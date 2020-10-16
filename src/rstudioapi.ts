@@ -303,8 +303,6 @@ export async function launchAddinPicker() {
     throw ('No active R terminal session, attach one to use RStudio addins.');
   }
 
-  const activeRTerm = await chooseTerminal();
-
   const addinPickerOptions: QuickPickOptions = {
     matchOnDescription: true,
     matchOnDetail: true,
