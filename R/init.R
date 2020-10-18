@@ -257,7 +257,8 @@ if (interactive() &&
           list(columns = columns, data = data)
         }
 
-        dataview <- function(x, title, viewer = getOption("vsc.view", "Two")) {
+        show_dataview <- function(x, title,
+          viewer = getOption("vsc.view", "Two")) {
           if (missing(title)) {
             sub <- substitute(x)
             title <- deparse(sub, nlines = 1)
@@ -320,7 +321,7 @@ if (interactive() &&
           }
         }
 
-        rebind("View", dataview, "utils")
+        rebind("View", show_dataview, "utils")
       }
 
       attach <- function() {
@@ -346,19 +347,23 @@ if (interactive() &&
         paste0(prefix, utils::URLencode(path))
       }
 
-      browser <- function(url, title = url, ...,
+      show_browser <- function(url, title = url, ...,
         viewer = getOption("vsc.browser", "Active")) {
         if (grepl("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:\\d+)?", url)) {
           request("browser", url = url, title = title, ..., viewer = viewer)
         } else if (grepl("^https?\\://", url)) {
-          message("VSCode WebView only supports showing local http content.")
-          message("Opening in external browser...")
+          message(
+            "VSCode WebView only supports showing local http content.\n",
+            "Opening in external browser..."
+          )
           request("browser", url = url, title = title, ..., viewer = FALSE)
         } else if (file.exists(url)) {
           url <- normalizePath(url, "/", mustWork = TRUE)
           if (grepl("\\.html?$", url, ignore.case = TRUE)) {
-            message("VSCode WebView has restricted access to local file.")
-            message("Opening in external browser...")
+            message(
+              "VSCode WebView has restricted access to local file.\n",
+              "Opening in external browser..."
+            )
             request("browser", url = path_to_uri(url),
               title = title, ..., viewer = FALSE)
           } else {
@@ -370,7 +375,7 @@ if (interactive() &&
         }
       }
 
-      webview <- function(url, title, ..., viewer) {
+      show_webview <- function(url, title, ..., viewer) {
         if (!is.character(url)) {
           real_url <- NULL
           temp_viewer <- function(url, ...) {
@@ -388,8 +393,10 @@ if (interactive() &&
         if (grepl("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:\\d+)?", url)) {
           request("browser", url = url, title = title, ..., viewer = viewer)
         } else if (grepl("^https?\\://", url)) {
-          message("VSCode WebView only supports showing local http content.")
-          message("Opening in external browser...")
+          message(
+            "VSCode WebView only supports showing local http content.\n",
+            "Opening in external browser..."
+          )
           request("browser", url = url, title = title, ..., viewer = FALSE)
         } else if (file.exists(url)) {
           file <- normalizePath(url, "/", mustWork = TRUE)
@@ -399,7 +406,7 @@ if (interactive() &&
         }
       }
 
-      viewer <- function(url, title = NULL, ...,
+      show_viewer <- function(url, title = NULL, ...,
         viewer = getOption("vsc.viewer", "Two")) {
         if (is.null(title)) {
           expr <- substitute(url)
@@ -409,10 +416,10 @@ if (interactive() &&
             title <- deparse(expr, nlines = 1)
           }
         }
-        webview(url = url, title = title, ..., viewer = viewer)
+        show_webview(url = url, title = title, ..., viewer = viewer)
       }
 
-      page_viewer <- function(url, title = NULL, ...,
+      show_page_viewer <- function(url, title = NULL, ...,
         viewer = getOption("vsc.page_viewer", "Active")) {
         if (is.null(title)) {
           expr <- substitute(url)
@@ -422,13 +429,13 @@ if (interactive() &&
             title <- deparse(expr, nlines = 1)
           }
         }
-        webview(url = url, title = title, ..., viewer = viewer)
+        show_webview(url = url, title = title, ..., viewer = viewer)
       }
 
       options(
-        browser = browser,
-        viewer = viewer,
-        page_viewer = page_viewer
+        browser = show_browser,
+        viewer = show_viewer,
+        page_viewer = show_page_viewer
       )
 
       # rstudioapi
@@ -492,21 +499,22 @@ if (interactive() &&
         )
       }
 
-
       environment()
     })
 
     .vsc.attach <- .vsc$attach
-    .vsc.view <- .vsc$dataview
-    .vsc.browser <- .vsc$browser
-    .vsc.viewer <- .vsc$viewer
-    .vsc.page_viewer <- .vsc$page_viewer
+    .vsc.view <- .vsc$show_dataview
+    .vsc.browser <- .vsc$show_browser
+    .vsc.viewer <- .vsc$show_viewer
+    .vsc.page_viewer <- .vsc$show_page_viewer
 
     attach(environment(), name = .vsc.name)
 
     .vsc.attach()
   }) else {
-    message("VSCode R Session Watcher requires jsonlite.")
-    message("Please install it with install.packages(\"jsonlite\").")
+    message(
+      "VSCode R Session Watcher requires jsonlite.\n",
+      "Please install it with install.packages(\"jsonlite\")."
+    )
   }
 }
