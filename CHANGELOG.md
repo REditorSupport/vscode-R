@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.5.1
+
+* Rename init functions #425 (Fix #424)
+* Fix issues in rstudioapi emulation #422 (Fix #421)
+
 ## 1.5.0
 
 * RStudio Addin Support #408 (Implemented by the new collabolator @MilesMcBain)
