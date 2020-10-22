@@ -22,7 +22,9 @@ if (interactive() &&
       request_file <- file.path(dir_extension, "request.log")
       request_lock_file <- file.path(dir_extension, "request.lock")
 
-      options(help_type = "html")
+      if (is.null(getOption("help_type"))) {
+        options(help_type = "html")
+      }
 
       get_timestamp <- function() {
         format.default(Sys.time(), nsmall = 6)
