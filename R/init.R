@@ -350,7 +350,8 @@ if (interactive() &&
       }
 
       request_browser <- function(url, title, ..., viewer) {
-        # Printing URL with specific port triggers auto port-forwarding under remote development
+        # Printing URL with specific port triggers
+        # auto port-forwarding under remote development
         message("Browsing ", url)
         request("browser", url = url, title = title, ..., viewer = viewer)
       }
