@@ -3,9 +3,14 @@ import * as vscode from 'vscode';
 export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
   private codeLenses: vscode.CodeLens[] = [];
   private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
+  private readonly decoration: vscode.TextEditorDecorationType;
   public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
 
   constructor() {
+    this.decoration = vscode.window.createTextEditorDecorationType({
+      isWholeLine: true,
+      backgroundColor: 'rgba(128, 128, 128, 0.05)',
+    });
   }
 
   public provideCodeLenses(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.CodeLens[] | Thenable<vscode.CodeLens[]> {
@@ -13,9 +18,13 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
     const lines = document.getText().split(/\r?\n/);
     let line = 0;
     let chunkHeaderLine = undefined;
+    const chunkRanges: vscode.Range[] = [];
     const codeRanges: vscode.Range[] = [];
 
     while (line < lines.length) {
+      if (token.isCancellationRequested) {
+        break;
+      }
       if (chunkHeaderLine === undefined) {
         if (lines[line].startsWith('```{r')) {
           chunkHeaderLine = line;
@@ -30,6 +39,7 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
             new vscode.Position(chunkHeaderLine + 1, 0),
             new vscode.Position(line - 1, lines[line-1].length)
           );
+          chunkRanges.push(chunkRange);
           codeRanges.push(codeRange);
           this.codeLenses.push(new vscode.CodeLens(chunkRange, {
             title: 'Run Chunk',
@@ -53,6 +63,12 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
       }
       line++;
     }
+
+    const editor = vscode.window.visibleTextEditors.find((e) => e.document === document);
+    if (editor) {
+      editor.setDecorations(this.decoration, chunkRanges);
+    }
+    
     return this.codeLenses;
   }
 
