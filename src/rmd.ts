@@ -2,37 +2,52 @@ import * as vscode from 'vscode';
 
 export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
   private codeLenses: vscode.CodeLens[] = [];
-  private regex: RegExp;
   private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
   public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
 
   constructor() {
-    this.regex = /\`\`\`\{r/g;
   }
 
   public provideCodeLenses(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.CodeLens[] | Thenable<vscode.CodeLens[]> {
     this.codeLenses = [];
-    const regex = new RegExp(this.regex);
-    const text = document.getText();
-    let matches;
-    while ((matches = regex.exec(text)) !== null) {
-      const line = document.lineAt(document.positionAt(matches.index).line);
-      const indexOf = line.text.indexOf(matches[0]);
-      const position = new vscode.Position(line.lineNumber, indexOf);
-      const range = document.getWordRangeAtPosition(position, new RegExp(this.regex));
-      if (range) {
-        this.codeLenses.push(new vscode.CodeLens(range, {
-          title: 'Run Chunk',
-          tooltip: '',
-          command: 'r.rmdRunChunk',
-          arguments: ['Argument 1', false],
-        }), new vscode.CodeLens(range, {
-          title: 'Run Above',
-          tooltip: '',
-          command: 'r.rmdRunAbove',
-          arguments: ['Argument 1', false],
-        }));
+    const lines = document.getText().split(/\r?\n/);
+    let line = 0;
+    let chunkHeaderLine = undefined;
+    while (line < lines.length) {
+      if (chunkHeaderLine === undefined) {
+        if (lines[line].startsWith('```{r')) {
+          chunkHeaderLine = line;
+        }
+      } else {
+        if (lines[line].startsWith('```')) {
+          const range = new vscode.Range(new vscode.Position(chunkHeaderLine, 0), new vscode.Position(line, lines[line].length));
+          this.codeLenses.push(new vscode.CodeLens(range, {
+            title: 'Run Chunk',
+            tooltip: '',
+            command: 'r.rmdRunChunk',
+            arguments: [
+              {
+                type: 'RunChunk',
+                chunkStart: chunkHeaderLine + 1,
+                chunkEnd: line - 1,
+              }
+            ]
+          }), new vscode.CodeLens(range, {
+            title: 'Run Above',
+            tooltip: '',
+            command: 'r.rmdRunAbove',
+            arguments: [
+              {
+                type: 'RunAbove',
+                chunkStart: chunkHeaderLine + 1,
+                chunkEnd: line - 1,
+              }
+            ]
+          }));
+          chunkHeaderLine = undefined;
+        }
       }
+      line++;
     }
     return this.codeLenses;
   }
