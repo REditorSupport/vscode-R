@@ -22,7 +22,9 @@ if (interactive() &&
       request_file <- file.path(dir_extension, "request.log")
       request_lock_file <- file.path(dir_extension, "request.lock")
 
-      options(help_type = "html")
+      if (is.null(getOption("help_type"))) {
+        options(help_type = "html")
+      }
 
       get_timestamp <- function() {
         format.default(Sys.time(), nsmall = 6)
@@ -347,16 +349,23 @@ if (interactive() &&
         paste0(prefix, utils::URLencode(path))
       }
 
+      request_browser <- function(url, title, ..., viewer) {
+        # Printing URL with specific port triggers
+        # auto port-forwarding under remote development
+        message("Browsing ", url)
+        request("browser", url = url, title = title, ..., viewer = viewer)
+      }
+
       show_browser <- function(url, title = url, ...,
         viewer = getOption("vsc.browser", "Active")) {
         if (grepl("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:\\d+)?", url)) {
-          request("browser", url = url, title = title, ..., viewer = viewer)
+          request_browser(url = url, title = title, ..., viewer = viewer)
         } else if (grepl("^https?\\://", url)) {
           message(
             "VSCode WebView only supports showing local http content.\n",
             "Opening in external browser..."
           )
-          request("browser", url = url, title = title, ..., viewer = FALSE)
+          request_browser(url = url, title = title, ..., viewer = FALSE)
         } else if (file.exists(url)) {
           url <- normalizePath(url, "/", mustWork = TRUE)
           if (grepl("\\.html?$", url, ignore.case = TRUE)) {
@@ -364,7 +373,7 @@ if (interactive() &&
               "VSCode WebView has restricted access to local file.\n",
               "Opening in external browser..."
             )
-            request("browser", url = path_to_uri(url),
+            request_browser(url = path_to_uri(url),
               title = title, ..., viewer = FALSE)
           } else {
             request("dataview", source = "object", type = "txt",
@@ -391,13 +400,13 @@ if (interactive() &&
           }
         }
         if (grepl("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:\\d+)?", url)) {
-          request("browser", url = url, title = title, ..., viewer = viewer)
+          request_browser(url = url, title = title, ..., viewer = viewer)
         } else if (grepl("^https?\\://", url)) {
           message(
             "VSCode WebView only supports showing local http content.\n",
             "Opening in external browser..."
           )
-          request("browser", url = url, title = title, ..., viewer = FALSE)
+          request_browser(url = url, title = title, ..., viewer = FALSE)
         } else if (file.exists(url)) {
           file <- normalizePath(url, "/", mustWork = TRUE)
           request("webview", file = file, title = title, viewer = viewer, ...)
