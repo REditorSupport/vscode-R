@@ -13,6 +13,8 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
     const lines = document.getText().split(/\r?\n/);
     let line = 0;
     let chunkHeaderLine = undefined;
+    const codeRanges: vscode.Range[] = [];
+
     while (line < lines.length) {
       if (chunkHeaderLine === undefined) {
         if (lines[line].startsWith('```{r')) {
@@ -20,28 +22,30 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
         }
       } else {
         if (lines[line].startsWith('```')) {
-          const range = new vscode.Range(new vscode.Position(chunkHeaderLine, 0), new vscode.Position(line, lines[line].length));
-          this.codeLenses.push(new vscode.CodeLens(range, {
+          const chunkRange = new vscode.Range(
+            new vscode.Position(chunkHeaderLine, 0),
+            new vscode.Position(line, lines[line].length)
+          );
+          const codeRange = new vscode.Range(
+            new vscode.Position(chunkHeaderLine + 1, 0),
+            new vscode.Position(line - 1, lines[line-1].length)
+          );
+          codeRanges.push(codeRange);
+          this.codeLenses.push(new vscode.CodeLens(chunkRange, {
             title: 'Run Chunk',
-            tooltip: '',
-            command: 'r.rmdRunChunk',
+            tooltip: 'Run current chunk',
+            command: 'r.runChunks',
             arguments: [
-              {
-                type: 'RunChunk',
-                chunkStart: chunkHeaderLine + 1,
-                chunkEnd: line - 1,
-              }
+              [
+                codeRange
+              ]
             ]
-          }), new vscode.CodeLens(range, {
+          }), new vscode.CodeLens(chunkRange, {
             title: 'Run Above',
-            tooltip: '',
-            command: 'r.rmdRunAbove',
+            tooltip: 'Run all chunks above',
+            command: 'r.runChunks',
             arguments: [
-              {
-                type: 'RunAbove',
-                chunkStart: chunkHeaderLine + 1,
-                chunkEnd: line - 1,
-              }
+              codeRanges.slice(0, codeRanges.length - 1)
             ]
           }));
           chunkHeaderLine = undefined;

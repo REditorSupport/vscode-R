@@ -8,6 +8,7 @@ import { CancellationToken, commands, CompletionContext, CompletionItem, Complet
 import { previewDataframe, previewEnvironment } from './preview';
 import { createGitignore } from './rGitignore';
 import { createRTerm, deleteTerminal,
+    runChunksInTerm,
          runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
@@ -168,6 +169,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.runSelection', runSelection),
         commands.registerCommand('r.runFromBeginningToLine', runFromBeginningToLine),
         commands.registerCommand('r.runSelectionRetainCursor', runSelectionRetainCursor),
+        commands.registerCommand('r.runChunks', runChunksInTerm),
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.previewDataframe', previewDataframe),
         commands.registerCommand('r.previewEnvironment', previewEnvironment),

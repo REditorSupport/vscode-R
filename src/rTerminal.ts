@@ -5,7 +5,7 @@ import path = require('path');
 
 import { pathExists } from 'fs-extra';
 import { isDeepStrictEqual } from 'util';
-import { commands, Terminal, TerminalOptions, window } from 'vscode';
+import { commands, Range, Terminal, TerminalOptions, window, workspace } from 'vscode';
 
 import { getSelection } from './selection';
 import { removeSessionFiles } from './session';
@@ -121,6 +121,11 @@ export function runSelectionInTerm(moveCursor: boolean) {
         commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
     }
     runTextInTerm(selection.selectedText);
+}
+
+export async function runChunksInTerm(chunks: Range[]) {
+    const text = chunks.map((chunk) => window.activeTextEditor.document.getText(chunk)).join('\n');
+    return runTextInTerm(text);
 }
 
 export async function runTextInTerm(text: string) {
