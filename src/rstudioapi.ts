@@ -416,7 +416,7 @@ async function reuseOrCreateEditor(targetDocument: TextDocument) {
 
 
   const matchingTextEditors = KnownEditors.filter((editor) =>
-    editor.document.uri.toString === targetDocument.uri.toString);
+    editor.document.uri.toString() === targetDocument.uri.toString());
 
   if (matchingTextEditors.length === 0) {
     const newEditor = await window.showTextDocument(
