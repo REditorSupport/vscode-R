@@ -1,25 +1,28 @@
-import * as vscode from 'vscode';
+import {
+  CancellationToken, CodeLens, CodeLensProvider,
+  Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window
+} from 'vscode';
 
-export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
-  private codeLenses: vscode.CodeLens[] = [];
-  private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
-  private readonly decoration: vscode.TextEditorDecorationType;
-  public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
+export class RMarkdownCodeLensProvider implements CodeLensProvider {
+  private codeLenses: CodeLens[] = [];
+  private _onDidChangeCodeLenses: EventEmitter<void> = new EventEmitter<void>();
+  private readonly decoration: TextEditorDecorationType;
+  public readonly onDidChangeCodeLenses: Event<void> = this._onDidChangeCodeLenses.event;
 
   constructor() {
-    this.decoration = vscode.window.createTextEditorDecorationType({
+    this.decoration = window.createTextEditorDecorationType({
       isWholeLine: true,
       backgroundColor: 'rgba(128, 128, 128, 0.05)',
     });
   }
 
-  public provideCodeLenses(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.CodeLens[] | Thenable<vscode.CodeLens[]> {
+  public provideCodeLenses(document: TextDocument, token: CancellationToken): CodeLens[] | Thenable<CodeLens[]> {
     this.codeLenses = [];
     const lines = document.getText().split(/\r?\n/);
     let line = 0;
     let chunkHeaderLine = undefined;
-    const chunkRanges: vscode.Range[] = [];
-    const codeRanges: vscode.Range[] = [];
+    const chunkRanges: Range[] = [];
+    const codeRanges: Range[] = [];
 
     while (line < lines.length) {
       if (token.isCancellationRequested) {
@@ -31,17 +34,17 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
         }
       } else {
         if (lines[line].startsWith('```')) {
-          const chunkRange = new vscode.Range(
-            new vscode.Position(chunkHeaderLine, 0),
-            new vscode.Position(line, lines[line].length)
+          const chunkRange = new Range(
+            new Position(chunkHeaderLine, 0),
+            new Position(line, lines[line].length)
           );
-          const codeRange = new vscode.Range(
-            new vscode.Position(chunkHeaderLine + 1, 0),
-            new vscode.Position(line - 1, lines[line-1].length)
+          const codeRange = new Range(
+            new Position(chunkHeaderLine + 1, 0),
+            new Position(line - 1, lines[line - 1].length)
           );
           chunkRanges.push(chunkRange);
           codeRanges.push(codeRange);
-          this.codeLenses.push(new vscode.CodeLens(chunkRange, {
+          this.codeLenses.push(new CodeLens(chunkRange, {
             title: 'Run Chunk',
             tooltip: 'Run current chunk',
             command: 'r.runChunks',
@@ -50,7 +53,7 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
                 codeRange
               ]
             ]
-          }), new vscode.CodeLens(chunkRange, {
+          }), new CodeLens(chunkRange, {
             title: 'Run Above',
             tooltip: 'Run all chunks above',
             command: 'r.runChunks',
@@ -64,15 +67,16 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
       line++;
     }
 
-    const editor = vscode.window.visibleTextEditors.find((e) => e.document === document);
-    if (editor) {
-      editor.setDecorations(this.decoration, chunkRanges);
+    for (const editor of window.visibleTextEditors) {
+      if (editor.document.uri.toString() === document.uri.toString()) {
+        editor.setDecorations(this.decoration, chunkRanges);
+      }
     }
-    
+
     return this.codeLenses;
   }
 
-  public resolveCodeLens(codeLens: vscode.CodeLens, token: vscode.CancellationToken) {
+  public resolveCodeLens(codeLens: CodeLens, token: CancellationToken) {
     return codeLens;
   }
 }
