@@ -14,65 +14,65 @@ let lastActiveTextEditor: TextEditor;
 export async function dispatchRStudioAPICall(action: string, args: any, sd: string) {
 
   switch (action) {
-case 'active_editor_context': {
-                    await writeResponse(await activeEditorContext(), sd);
-                    break;
-                }
-                case 'insert_or_modify_text': {
-                    await insertOrModifyText(args.query, args.id);
-                    await writeSuccessResponse(sd);
-                    break;
-                }
-                case 'replace_text_in_current_selection': {
-                    await replaceTextInCurrentSelection(args.text, args.id);
-                    await writeSuccessResponse(sd);
-                    break;
-                }
-                case 'show_dialog': {
-                    await showDialog(args.message);
-                    await writeSuccessResponse(sd);
-                    break;
-                }
-                case 'navigate_to_file': {
-                    await navigateToFile(args.file, args.line, args.column);
-                    await writeSuccessResponse(sd);
-                    break;
-                }
-                case 'set_selection_ranges': {
-                    await setSelections(args.ranges, args.id);
-                    await writeSuccessResponse(sd);
-                    break;
-                }
-                case 'document_save': {
-                    await documentSave(args.id);
-                    await writeSuccessResponse(sd);
-                    break;
-                }
-                case 'document_save_all': {
-                    await documentSaveAll();
-                    await writeSuccessResponse(sd);
-                    break;
-                }
-                case 'get_project_path': {
-                    await writeResponse(projectPath(), sd);
-                    break;
-                }
-                case 'document_context': {
-                    await writeResponse(await documentContext(args.id), sd);
-                    break;
-                }
-                case 'document_new': {
-                    await documentNew(args.text, args.type, args.position);
-                    await writeSuccessResponse(sd);
-                    break;
-                }
-                case 'restart_r': {
-                    await restartRTerminal();
-                    await writeSuccessResponse(sd);
-                    break;
-                }
-                default:
-                    console.error(`[dispatchRStudioAPICall] Unsupported action: ${action}`);
+    case 'active_editor_context': {
+      await writeResponse(await activeEditorContext(), sd);
+      break;
+    }
+    case 'insert_or_modify_text': {
+      await insertOrModifyText(args.query, args.id);
+      await writeSuccessResponse(sd);
+      break;
+    }
+    case 'replace_text_in_current_selection': {
+      await replaceTextInCurrentSelection(args.text, args.id);
+      await writeSuccessResponse(sd);
+      break;
+    }
+    case 'show_dialog': {
+      await showDialog(args.message);
+      await writeSuccessResponse(sd);
+      break;
+    }
+    case 'navigate_to_file': {
+      await navigateToFile(args.file, args.line, args.column);
+      await writeSuccessResponse(sd);
+      break;
+    }
+    case 'set_selection_ranges': {
+      await setSelections(args.ranges, args.id);
+      await writeSuccessResponse(sd);
+      break;
+    }
+    case 'document_save': {
+      await documentSave(args.id);
+      await writeSuccessResponse(sd);
+      break;
+    }
+    case 'document_save_all': {
+      await documentSaveAll();
+      await writeSuccessResponse(sd);
+      break;
+    }
+    case 'get_project_path': {
+      await writeResponse(projectPath(), sd);
+      break;
+    }
+    case 'document_context': {
+      await writeResponse(await documentContext(args.id), sd);
+      break;
+    }
+    case 'document_new': {
+      await documentNew(args.text, args.type, args.position);
+      await writeSuccessResponse(sd);
+      break;
+    }
+    case 'restart_r': {
+      await restartRTerminal();
+      await writeSuccessResponse(sd);
+      break;
+    }
+    default:
+      console.error(`[dispatchRStudioAPICall] Unsupported action: ${action}`);
   }
 
 }
@@ -155,10 +155,9 @@ export async function navigateToFile(file: string, line: number, column: number)
 
   const targetDocument = await workspace.openTextDocument(Uri.file(file));
   const editor = await window.showTextDocument(targetDocument);
-  if (line > 0 && column > 0) {
-    const targetPosition = parsePosition([toVSCCoord(line), toVSCCoord(column)], targetDocument);
-    editor.selection = new Selection(targetPosition, targetPosition);
-  }
+  const targetPosition = parsePosition([line, column], targetDocument);
+  editor.selection = new Selection(targetPosition, targetPosition);
+  editor.revealRange(new Range(targetPosition, targetPosition));
 }
 
 export async function setSelections(ranges: number[][], id: string) {
@@ -417,7 +416,7 @@ async function reuseOrCreateEditor(targetDocument: TextDocument) {
 
 
   const matchingTextEditors = KnownEditors.filter((editor) =>
-      editor.document.uri.toString === targetDocument.uri.toString);
+    editor.document.uri.toString() === targetDocument.uri.toString());
 
   if (matchingTextEditors.length === 0) {
     const newEditor = await window.showTextDocument(
