@@ -21,6 +21,7 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
     const lines = document.getText().split(/\r?\n/);
     let line = 0;
     let chunkHeaderLine = undefined;
+    let chunkOptions: string = undefined;
     const chunkRanges: Range[] = [];
     const codeRanges: Range[] = [];
 
@@ -29,11 +30,12 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
         break;
       }
       if (chunkHeaderLine === undefined) {
-        if (lines[line].startsWith('```{r')) {
+        if (lines[line].match(/^\s*```+\s*\{[Rr]\s*.*$/g)) {
           chunkHeaderLine = line;
+          chunkOptions = lines[line].replace(/^\s*```+\s*\{[Rr]\s*,?\s*(.*)\s*\}\s*$/g, '$1');
         }
       } else {
-        if (lines[line].startsWith('```')) {
+        if (lines[line].match(/^\s*```+\s*$/g)) {
           const chunkRange = new Range(
             new Position(chunkHeaderLine, 0),
             new Position(line, lines[line].length)
@@ -43,7 +45,9 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
             new Position(line - 1, lines[line - 1].length)
           );
           chunkRanges.push(chunkRange);
-          codeRanges.push(codeRange);
+          if (!chunkOptions.match(/eval\s*=\s*(F|FALSE)/g)) {
+            codeRanges.push(codeRange);
+          }
           this.codeLenses.push(new CodeLens(chunkRange, {
             title: 'Run Chunk',
             tooltip: 'Run current chunk',
