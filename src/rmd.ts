@@ -12,7 +12,7 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
   constructor() {
     this.decoration = window.createTextEditorDecorationType({
       isWholeLine: true,
-      backgroundColor: 'rgba(128, 128, 128, 0.05)',
+      backgroundColor: 'rgba(128, 128, 128, 0.1)',
     });
   }
 
