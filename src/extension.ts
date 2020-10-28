@@ -14,7 +14,7 @@ import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
 import { config, ToRStringLiteral } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
-import { RMarkdownCodeLensProvider } from './rmarkdown';
+import { RMarkdownCodeLensProvider, runCurrentChunk } from './rmarkdown';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -169,6 +169,7 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.runSelection', runSelection),
         commands.registerCommand('r.runFromBeginningToLine', runFromBeginningToLine),
         commands.registerCommand('r.runSelectionRetainCursor', runSelectionRetainCursor),
+        commands.registerCommand('r.runCurrentChunk', runCurrentChunk),
         commands.registerCommand('r.runChunks', runChunksInTerm),
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.previewDataframe', previewDataframe),

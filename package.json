@@ -43,6 +43,7 @@
     "onCommand:r.runSourcewithEcho",
     "onCommand:r.runSelection",
     "onCommand:r.runSelectionInActiveTerm",
+    "onCommand:r.runCurrentChunk",
     "onCommand:r.createGitignore",
     "onCommand:r.runCommandWithSelectionOrWord",
     "onCommand:r.runCommandWithEditorPath",
@@ -357,6 +358,11 @@
         "command": "r.runSelectionRetainCursor"
       },
       {
+        "title": "Run Current Chunk",
+        "category": "R",
+        "command": "r.runCurrentChunk"
+      },
+      {
         "title": "Launch RStudio Addin",
         "category": "R",
         "command": "r.launchAddinPicker"
@@ -380,6 +386,12 @@
         "key": "alt+enter",
         "mac": "option+enter",
         "when": "editorTextFocus && editorLangId == 'r'"
+      },
+      {
+        "command": "r.runCurrentChunk",
+        "key": "Ctrl+shift+enter",
+        "mac": "cmd+shift+enter",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
         "command": "r.runSource",

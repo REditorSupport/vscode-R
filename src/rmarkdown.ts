@@ -2,6 +2,25 @@ import {
   CancellationToken, CodeLens, CodeLensProvider,
   Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window
 } from 'vscode';
+import { runChunksInTerm } from './rTerminal';
+
+function isChunkStartLine(text: string) {
+  if (text.match(/^\s*```+\s*\{[Rr]\s*.*$/g)) {
+    return true;
+  }
+  return false;
+}
+
+function isChunkEndLine(text: string) {
+  if (text.match(/^\s*```+\s*$/g)) {
+    return true;
+  }
+  return false;
+}
+
+function getChunkOptions(text: string) {
+  return text.replace(/^\s*```+\s*\{[Rr]\s*,?\s*(.*)\s*\}\s*$/g, '$1');
+}
 
 export class RMarkdownCodeLensProvider implements CodeLensProvider {
   private codeLenses: CodeLens[] = [];
@@ -20,7 +39,7 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
     this.codeLenses = [];
     const lines = document.getText().split(/\r?\n/);
     let line = 0;
-    let chunkHeaderLine = undefined;
+    let chunkStartLine: number = undefined;
     let chunkOptions: string = undefined;
     const chunkRanges: Range[] = [];
     const codeRanges: Range[] = [];
@@ -29,19 +48,19 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
       if (token.isCancellationRequested) {
         break;
       }
-      if (chunkHeaderLine === undefined) {
-        if (lines[line].match(/^\s*```+\s*\{[Rr]\s*.*$/g)) {
-          chunkHeaderLine = line;
-          chunkOptions = lines[line].replace(/^\s*```+\s*\{[Rr]\s*,?\s*(.*)\s*\}\s*$/g, '$1');
+      if (chunkStartLine === undefined) {
+        if (isChunkStartLine(lines[line])) {
+          chunkStartLine = line;
+          chunkOptions = getChunkOptions(lines[line]);
         }
       } else {
-        if (lines[line].match(/^\s*```+\s*$/g)) {
+        if (isChunkEndLine(lines[line])) {
           const chunkRange = new Range(
-            new Position(chunkHeaderLine, 0),
+            new Position(chunkStartLine, 0),
             new Position(line, lines[line].length)
           );
           const codeRange = new Range(
-            new Position(chunkHeaderLine + 1, 0),
+            new Position(chunkStartLine + 1, 0),
             new Position(line - 1, lines[line - 1].length)
           );
           chunkRanges.push(chunkRange);
@@ -65,7 +84,7 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
               codeRanges.slice(0, codeRanges.length - 1)
             ]
           }));
-          chunkHeaderLine = undefined;
+          chunkStartLine = undefined;
         }
       }
       line++;
@@ -82,5 +101,39 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
 
   public resolveCodeLens(codeLens: CodeLens, token: CancellationToken) {
     return codeLens;
+  }
+}
+
+export async function runCurrentChunk() {
+  const selection = window.activeTextEditor.selection;
+  const currentDocument = window.activeTextEditor.document;
+  const lines = currentDocument.getText().split(/\r?\n/);
+
+  let line = 0;
+  let chunkStartLine: number = undefined;
+  
+  while (line < lines.length) {
+    if (chunkStartLine === undefined) {
+      if (line > selection.end.line) {
+        break;
+      }
+      if (isChunkStartLine(lines[line])) {
+        chunkStartLine = line;
+      }
+    } else {
+      if (isChunkEndLine(lines[line])) {
+        if (line >= selection.end.line) {
+          const codeRange = new Range(
+            new Position(chunkStartLine + 1, 0),
+            new Position(line - 1, lines[line - 1].length)
+          );
+
+          return runChunksInTerm([codeRange]);
+        }
+
+        chunkStartLine = undefined;
+      }
+    }
+    line++;
   }
 }
