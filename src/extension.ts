@@ -14,7 +14,7 @@ import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
 import { config, ToRStringLiteral } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
-import { RMarkdownCodeLensProvider } from './rmd';
+import { RMarkdownCodeLensProvider } from './rmarkdown';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
