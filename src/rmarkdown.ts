@@ -1,5 +1,6 @@
 import {
   CancellationToken, CodeLens, CodeLensProvider,
+  CompletionItem, CompletionItemProvider,
   Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window
 } from 'vscode';
 import { runChunksInTerm } from './rTerminal';
@@ -111,7 +112,7 @@ export async function runCurrentChunk() {
 
   let line = 0;
   let chunkStartLine: number = undefined;
-  
+
   while (line < lines.length) {
     if (chunkStartLine === undefined) {
       if (line > selection.end.line) {
@@ -135,5 +136,35 @@ export async function runCurrentChunk() {
       }
     }
     line++;
+  }
+}
+
+export class RMarkdownCompletionItemProvider implements CompletionItemProvider {
+  public readonly chunkOptions = ['eval', 'echo', 'results', 'tidy', 'tidy.opts', 'collapse',
+    'prompt', 'comment', 'highlight', 'strip.white', 'size', 'background',
+    'cache', 'cache.path', 'cache.vars', 'cache.lazy', 'dependson',
+    'autodep', 'cache.rebuild', 'fig.keep', 'fig.show', 'fig.align',
+    'fig.path', 'dev', 'dev.args', 'dpi', 'fig.ext', 'fig.width',
+    'fig.height', 'fig.env', 'fig.cap', 'fig.scap', 'fig.lp', 'fig.subcap',
+    'fig.pos', 'out.width', 'out.height', 'out.extra', 'fig.retina',
+    'external', 'sanitize', 'interval', 'aniopts', 'warning', 'error',
+    'message', 'render', 'ref.label', 'child', 'engine', 'split',
+    'include', 'purl'];
+  public readonly chunkOptionCompletionItems: CompletionItem[];
+
+  constructor() {
+    this.chunkOptionCompletionItems = this.chunkOptions.map((x: string) => {
+      const item = new CompletionItem(`${x}`);
+      item.insertText = `${x}=`;
+      return item;
+    });
+  }
+
+  public provideCompletionItems(document: TextDocument, position: Position) {
+    if (isChunkStartLine(document.lineAt(position).text)) {
+      return this.chunkOptionCompletionItems;
+    }
+
+    return undefined;
   }
 }

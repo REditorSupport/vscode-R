@@ -14,7 +14,7 @@ import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
 import { config, ToRStringLiteral } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
-import { RMarkdownCodeLensProvider, runCurrentChunk } from './rmarkdown';
+import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, runCurrentChunk } from './rmarkdown';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -190,6 +190,9 @@ export function activate(context: ExtensionContext) {
 
     const rmdCodeLensProvider = new RMarkdownCodeLensProvider();
     languages.registerCodeLensProvider('rmd', rmdCodeLensProvider);
+
+    const rmdCompletionProvider = new RMarkdownCompletionItemProvider();
+    languages.registerCompletionItemProvider('rmd', rmdCompletionProvider, ' ', ',');
 
     if (config().get<boolean>('sessionWatcher')) {
         console.info('Initialize session watcher');
