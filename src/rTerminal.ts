@@ -5,7 +5,7 @@ import path = require('path');
 
 import { pathExists } from 'fs-extra';
 import { isDeepStrictEqual } from 'util';
-import { commands, Range, Terminal, TerminalOptions, window, workspace } from 'vscode';
+import { commands, Range, Terminal, TerminalOptions, window } from 'vscode';
 
 import { getSelection } from './selection';
 import { removeSessionFiles } from './session';
