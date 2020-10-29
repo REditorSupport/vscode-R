@@ -114,7 +114,7 @@
       },
       {
         "language": "rmd",
-        "path": "./snippets/markdown.json"
+        "path": "./snippets/rmarkdown.json"
       }
     ],
     "grammars": [
@@ -141,7 +141,6 @@
         "scopeName": "text.html.rmarkdown",
         "path": "./syntax/RMarkdown.json",
         "embeddedLanguages": {
-          "text.html.rmarkdown": "markdown",
           "meta.embedded.block.html": "html",
           "source.js": "javascript",
           "source.css": "css",

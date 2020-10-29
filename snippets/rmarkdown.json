@@ -67,5 +67,23 @@
 		"prefix": "image",
 		"body": "![${1:alt}](http://${2:link})$0",
 		"description": "Insert image"
+	},
+	"Insert code chunk": {
+		"prefix": "chunk",
+		"body": [
+			"```{${1:language}}",
+			"$0",
+			"```"
+		],
+		"description": "Insert code chunk"
+	},
+	"Insert R code chunk": {
+		"prefix": "r chunk",
+		"body": [
+			"```{r}",
+			"$0",
+			"```"
+		],
+		"description": "Insert R code chunk"
 	}
 }
