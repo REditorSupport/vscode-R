@@ -1,5 +1,11 @@
 # Change Log
 
+## 1.5.2
+
+* Enhance R markdown support #429 (Fix #428, #49, #261)
+* Fix and enhance navigateToFile #430
+* Improve handling html help #427 (Fix #426, #380)
+
 ## 1.5.1
 
 * Rename init functions #425 (Fix #424)
