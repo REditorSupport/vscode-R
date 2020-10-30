@@ -43,6 +43,7 @@
     "onCommand:r.runSourcewithEcho",
     "onCommand:r.runSelection",
     "onCommand:r.runSelectionInActiveTerm",
+    "onCommand:r.runCurrentChunk",
     "onCommand:r.createGitignore",
     "onCommand:r.runCommandWithSelectionOrWord",
     "onCommand:r.runCommandWithEditorPath",
@@ -113,7 +114,7 @@
       },
       {
         "language": "rmd",
-        "path": "./snippets/markdown.json"
+        "path": "./snippets/rmarkdown.json"
       }
     ],
     "grammars": [
@@ -140,7 +141,6 @@
         "scopeName": "text.html.rmarkdown",
         "path": "./syntax/RMarkdown.json",
         "embeddedLanguages": {
-          "text.html.rmarkdown": "markdown",
           "meta.embedded.block.html": "html",
           "source.js": "javascript",
           "source.css": "css",
@@ -357,6 +357,11 @@
         "command": "r.runSelectionRetainCursor"
       },
       {
+        "title": "Run Current Chunk",
+        "category": "R",
+        "command": "r.runCurrentChunk"
+      },
+      {
         "title": "Launch RStudio Addin",
         "category": "R",
         "command": "r.launchAddinPicker"
@@ -380,6 +385,12 @@
         "key": "alt+enter",
         "mac": "option+enter",
         "when": "editorTextFocus && editorLangId == 'r'"
+      },
+      {
+        "command": "r.runCurrentChunk",
+        "key": "Ctrl+shift+enter",
+        "mac": "cmd+shift+enter",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
         "command": "r.runSource",

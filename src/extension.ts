@@ -8,11 +8,13 @@ import { CancellationToken, commands, CompletionContext, CompletionItem, Complet
 import { previewDataframe, previewEnvironment } from './preview';
 import { createGitignore } from './rGitignore';
 import { createRTerm, deleteTerminal,
+    runChunksInTerm,
          runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
 import { config, ToRStringLiteral } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
+import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, runCurrentChunk } from './rmarkdown';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -167,6 +169,8 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.runSelection', runSelection),
         commands.registerCommand('r.runFromBeginningToLine', runFromBeginningToLine),
         commands.registerCommand('r.runSelectionRetainCursor', runSelectionRetainCursor),
+        commands.registerCommand('r.runCurrentChunk', runCurrentChunk),
+        commands.registerCommand('r.runChunks', runChunksInTerm),
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.previewDataframe', previewDataframe),
         commands.registerCommand('r.previewEnvironment', previewEnvironment),
@@ -183,6 +187,12 @@ export function activate(context: ExtensionContext) {
         commands.registerCommand('r.launchAddinPicker', launchAddinPicker),
         window.onDidCloseTerminal(deleteTerminal),
     );
+
+    const rmdCodeLensProvider = new RMarkdownCodeLensProvider();
+    languages.registerCodeLensProvider('rmd', rmdCodeLensProvider);
+
+    const rmdCompletionProvider = new RMarkdownCompletionItemProvider();
+    languages.registerCompletionItemProvider('rmd', rmdCompletionProvider, ' ', ',');
 
     if (config().get<boolean>('sessionWatcher')) {
         console.info('Initialize session watcher');
