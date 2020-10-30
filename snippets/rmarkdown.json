@@ -69,7 +69,7 @@
 		"description": "Insert image"
 	},
 	"Insert code chunk": {
-		"prefix": "chunk",
+		"prefix": "code chunk",
 		"body": [
 			"```{${1:language}}",
 			"$0",
@@ -78,7 +78,7 @@
 		"description": "Insert code chunk"
 	},
 	"Insert R code chunk": {
-		"prefix": "r chunk",
+		"prefix": "r code chunk",
 		"body": [
 			"```{r}",
 			"$0",
