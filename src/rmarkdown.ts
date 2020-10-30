@@ -141,7 +141,8 @@ export async function runCurrentChunk() {
 
 export class RMarkdownCompletionItemProvider implements CompletionItemProvider {
 
-  // obtained from jsonlite::toJSON(names(knitr::opts_chunk$merge(NULL)))
+  // obtained from R code
+  // paste0("[", paste0(paste0("'", names(knitr:: opts_chunk$merge(NULL)), "'"), collapse = ", "), "]")
   public readonly chunkOptions = ['eval', 'echo', 'results', 'tidy', 'tidy.opts', 'collapse',
     'prompt', 'comment', 'highlight', 'strip.white', 'size', 'background',
     'cache', 'cache.path', 'cache.vars', 'cache.lazy', 'dependson',
