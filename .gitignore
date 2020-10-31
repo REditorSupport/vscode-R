@@ -4,5 +4,6 @@ node_modules
 *.xlsx
 *.xls
 *.DS_Store
+*.vsix
 dist
 .vscode-test
