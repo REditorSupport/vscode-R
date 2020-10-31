@@ -508,6 +508,22 @@ if (interactive() &&
         )
       }
 
+
+      help <- function(...){
+        h <- utils::help(...)
+        if(length(h)==0 || !is.character(h)){
+          return(h)
+        }
+        file <- h[1]
+        path <- dirname(file)
+        dirpath <- dirname(path)
+        pkgname <- basename(dirpath)
+        requestPath <- paste0("/library/", pkgname, "/html/", basename(file), ".html")
+        request(command = 'help', requestPath = requestPath)
+        invisible(h)
+      }
+
+
       environment()
     })
 
@@ -516,6 +532,8 @@ if (interactive() &&
     .vsc.browser <- .vsc$show_browser
     .vsc.viewer <- .vsc$show_viewer
     .vsc.page_viewer <- .vsc$show_page_viewer
+    .vsc.help <- .vsc$help
+    assign('help', .vsc.help, envir = globalenv())
 
     attach(environment(), name = .vsc.name)
 

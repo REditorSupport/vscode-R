@@ -12,6 +12,8 @@ import { FSWatcher } from 'fs-extra';
 import { config } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
+import { globalRHelpPanel } from './extension';
+
 export let globalenv: any;
 let resDir: string;
 let watcherDir: string;
@@ -497,6 +499,13 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         const request = JSON.parse(requestContent);
         if (isFromWorkspace(request.wd)) {
             switch (request.command) {
+                case 'help': {
+                    if(globalRHelpPanel){
+                        console.log(request.requestPath);
+                        globalRHelpPanel.showHelpForPath(request.requestPath);
+                    }
+                    break;
+                }
                 case 'attach': {
                     pid = String(request.pid);
                     sessionDir = path.join(request.tempdir, 'vscode-R');

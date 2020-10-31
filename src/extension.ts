@@ -12,9 +12,15 @@ import { createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
-import { config, ToRStringLiteral } from './util';
+import { config, ToRStringLiteral, getRpath } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
 import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, runCurrentChunk } from './rmarkdown';
+
+import * as path from 'path';
+
+import { HelpPanel, HelpPanelOptions, HelpProvider } from './rHelpPanel';
+import { RHelpClient } from './rHelpProviderBuiltin';
+import { RHelp } from './rHelpProviderCustom';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -30,9 +36,54 @@ const roxygenTagCompletionItems = [
     'section', 'seealso', 'slot', 'source', 'template', 'templateVar',
     'title', 'usage'].map((x: string) => new CompletionItem(`${x} `));
 
+
+export let globalRHelpPanel: HelpPanel | null = null;
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
-export function activate(context: ExtensionContext) {
+export async function activate(context: ExtensionContext) {
+
+
+    // might be different for different implementations of HelpProvider
+    let rPath = await getRpath();
+    if(rPath.match(/^[^'"].* .*[^'"]$/)){
+        rPath = `"${rPath}"`;
+    }
+	const rHelpProviderOptions = {
+		rPath: rPath
+	};
+	let helpProvider: HelpProvider;
+
+	// which helpProvider to use. currently hardcoded.
+	const helpProviderType: 'custom' | 'RServer' = 'custom';
+
+	// @ts-ignore 
+	if(helpProviderType === 'custom'){
+		helpProvider = new RHelp(rHelpProviderOptions);
+	} else {
+		helpProvider = new RHelpClient(rHelpProviderOptions);
+	}
+
+	const rHelpPanelOptions: HelpPanelOptions = {
+		webviewScriptPath: path.join(context.extensionPath, path.normalize('/html/script.js')),
+		webviewStylePath: path.join(context.extensionPath, path.normalize('/html/theme.css'))
+	};
+
+    const rHelpPanel = new HelpPanel(helpProvider, rHelpPanelOptions);
+    globalRHelpPanel = rHelpPanel;
+
+	context.subscriptions.push(rHelpPanel);
+
+	commands.registerCommand('r.showHelp', () => {
+		rHelpPanel.showHelpForInput();
+		// rHelpPanel.showHelp('help', 'utils'); // for debugging
+	});
+
+	commands.registerCommand('r.showDoc', () => {
+		rHelpPanel.showHelpForFunctionName('index.html', 'doc');
+		// rHelpPanel.show
+	});
+
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
 
