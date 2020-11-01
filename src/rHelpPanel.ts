@@ -30,7 +30,10 @@ export interface HelpFile {
 	// path as used by help server. Uses '/' as separator!
 	requestPath: string;
     // if the file is a real file
-    isRealFile?: boolean;
+	isRealFile?: boolean;
+	// can be used to scroll the document to a certain position when loading
+	// useful to remember scroll position when going back/forward
+	scrollY?: number;
 }
 
 // currently dummy
@@ -40,7 +43,6 @@ export interface RHelpProviderOptions {}
 // internal interface used to store history of help panel
 interface HistoryEntry {
 	helpFile: HelpFile;
-	scrollStatus?: number; // currently a dummy
 }
 
 
@@ -76,6 +78,7 @@ export class HelpPanel {
 
 	constructor(rHelp: HelpProvider, options: HelpPanelOptions){
 		this.helpProvider = rHelp;
+		console.log(options.webviewScriptPath);
 		this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
 		this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
 	}
@@ -150,7 +153,7 @@ export class HelpPanel {
 	}
 
 	// shows (internal) help file object in webview
-	private async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, updateHistory: boolean = true): Promise<void>{
+	private async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, updateHistory: boolean = true, currentScrollY: number = 0): Promise<void>{
 
 		// get or create webview:
 		const webview = this.getWebview();
@@ -158,38 +161,23 @@ export class HelpPanel {
 		// make sure helpFile is not a promise:
 		helpFile = await helpFile;
 
-		let html: string = helpFile.html;
+		helpFile.scrollY = helpFile.scrollY || 0;
 
-		if(!helpFile.isModified){
-			// remove filename
-			const parts = helpFile.requestPath.split('/');
-			parts.pop();
-			const relPath = parts.join('/');
-
-			// modify html
-			html = pimpMyHelp(helpFile.html, relPath);
-
-			// add custom stylesheet and javascript
-			html += `\n<link rel="stylesheet" href="${this.webviewStyleUri}"></link>`;
-			html += `\n<script src=${this.webviewScriptUri}></script>`;
-
-			// store modified version
-			helpFile.html = html;
-			helpFile.isModified = true;
-		}
+		// modify html
+		helpFile = this.pimpMyHelp(helpFile);
 
 		// actually show the hel page
-		webview.html = html;
+		webview.html = helpFile.html;
 
 		// update history to enable back/forward
 		if(updateHistory){
 			if(this.currentEntry){
+				this.currentEntry.helpFile.scrollY = currentScrollY;
 				this.history.push(this.currentEntry);
 			}
 			this.forwardHistory = [];
 		}
 		this.currentEntry = {
-			scrollStatus: 0,
 			helpFile: helpFile
 		};
 	}
@@ -224,19 +212,21 @@ export class HelpPanel {
 	}
 
 	// go back/forward in the history of the webview:
-	private goBack(){
+	private goBack(currentScrollY: number = 0){
 		const entry = this.history.pop();
 		if(entry){
 			if(this.currentEntry){ // should always be true
+				this.currentEntry.helpFile.scrollY = currentScrollY;
 				this.forwardHistory.push(this.currentEntry);
 			}
 			this.showHistoryEntry(entry);
 		}
 	}
-	private goForward(){
+	private goForward(currentScrollY: number = 0){
 		const entry = this.forwardHistory.pop();
 		if(entry){
 			if(this.currentEntry){ // should always be true
+				this.currentEntry.helpFile.scrollY = currentScrollY;
 				this.history.push(this.currentEntry);
 			}
 			this.showHistoryEntry(entry);
@@ -253,19 +243,16 @@ export class HelpPanel {
 			// handle hyperlinks clicked in the webview
 			// normal navigation does not work in webviews (even on localhost)
 			const href: string = msg.href || '';
+			const currentScrollY: number = Number(msg.scrollY) || 0;
 			console.log('Link clicked: ' + href);
-
-			console.log('changes....');
 
 			// remove first to path entries (if these are webview internal stuff):
 			const uri = vscode.Uri.parse(href);
 			const parts = uri.path.split('/');
-			if(parts[0] !== 'library' && parts[0] !== 'docs'){
-				console.log('shift...');
+			if(parts[0] !== 'library' && parts[0] !== 'doc'){
 				parts.shift();
 			}
-			if(parts[0] !== 'library' && parts[0] !== 'docs'){
-				console.log('shift...');
+			if(parts[0] !== 'library' && parts[0] !== 'doc'){
 				parts.shift();
 			}
 
@@ -277,15 +264,16 @@ export class HelpPanel {
 
 			// if successful, show helpfile:
 			if(helpFile){
-				this.showHelpFile(helpFile);
+				this.showHelpFile(helpFile, true, currentScrollY);
 			}
 		} else if(msg.message === 'mouseClick'){
 			// use the additional mouse buttons to go forward/backwards
+			const currentScrollY = Number(msg.scrollY) || 0;
 			const button: number = msg.button || 0;
 			if(button === 3){
-				this.goBack();
+				this.goBack(currentScrollY);
 			} else if(button === 4){
-				this.goForward();
+				this.goForward(currentScrollY);
 			}
 		} else if(msg.message === 'text'){
 			// used for logging/debugging
@@ -294,49 +282,49 @@ export class HelpPanel {
 			console.log('Unknown message:', msg);
 		}
 	}
-}
 
 
+	// improves the help display by applying syntax highlighting and adjusting hyperlinks:
+	private pimpMyHelp(helpFile: HelpFile): HelpFile {
 
-// improves the help display by applying syntax highlighting and adjusting hyperlinks:
-function pimpMyHelp(html: string, relPath: string = ''): string {
+		// get requestpath of helpfile
+		const parts = helpFile.requestPath.split('/');
+		parts.pop(); // remove filename
+		const relPath = parts.join('/');
 
-	// parse the html string
-	const dom = new jsdom.JSDOM(html);
+		// parse the html string
+		const dom = new jsdom.JSDOM(helpFile.html);
 
-	// find all code sections (indicated by 'pre' tags)
-	const codeSections = dom.window.document.body.getElementsByTagName('pre');
+		// set relPath attribute. Used by js inside the page to adjust hyperlinks
+		dom.window.document.body.setAttribute('relPath', relPath);
+		dom.window.document.body.setAttribute('scrollYTo', helpFile.scrollY || 0);
 
-	// check length here, to be sure it doesn't change during the loop:
-	const nSec = codeSections.length; 
+		if(!helpFile.isModified){
+			// find all code sections (indicated by 'pre' tags)
+			const codeSections = dom.window.document.body.getElementsByTagName('pre');
 
-	// apply syntax highlighting to each code section:
-	for(let i=0; i<nSec; i++){
-		const section = codeSections[i].textContent || '';
-		const highlightedHtml = hljs.highlight('r', section);
-		codeSections[i].innerHTML = highlightedHtml.value;
-	}
+			// check length here, to be sure it doesn't change during the loop:
+			const nSec = codeSections.length; 
 
-	// adjust hyperlinks to be relative to the specified path:
-	if(relPath){
-		relPath = relPath.replace(/\\/g, '/'); // in case relPath is a windows path
-		const links = dom.window.document.getElementsByTagName('a');
-		const nLinks = links.length;
-
-		// adjust each hyperlink to be relative to the specified relPath
-		// is very costly for many links!
-		for(let i=0; i<nLinks; i++){
-			let href = links[i].getAttribute('href');
-			if(href){
-				const uri = vscode.Uri.parse(href);
-				if(!uri.authority){
-					href = [relPath, href].join('/');
-				}
-				links[i].setAttribute('href', href);
+			// apply syntax highlighting to each code section:
+			for(let i=0; i<nSec; i++){
+				const section = codeSections[i].textContent || '';
+				const highlightedHtml = hljs.highlight('r', section);
+				codeSections[i].innerHTML = highlightedHtml.value;
 			}
-		}
-	}
 
-	// return the html of the modified page:
-	return dom.serialize();
+			// add custom stylesheet and javascript
+			dom.window.document.body.innerHTML += `\n<link rel="stylesheet" href="${this.webviewStyleUri}"></link>`;
+			dom.window.document.body.innerHTML += `\n<script src=${this.webviewScriptUri}></script>`;
+
+			// flag modified body
+			helpFile.isModified = true;
+		}
+
+		helpFile.html = dom.serialize();
+
+		// return the html of the modified page:
+		return helpFile;
+	}
 }
+
