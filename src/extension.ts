@@ -21,6 +21,7 @@ import * as path from 'path';
 import { HelpPanel, HelpPanelOptions, HelpProvider } from './rHelpPanel';
 import { RHelpClient } from './rHelpProviderBuiltin';
 import { RHelp } from './rHelpProviderCustom';
+import { RExtensionImplementation as RExtension } from './apiImplementation';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -43,6 +44,9 @@ export let globalRHelpPanel: HelpPanel | null = null;
 // Your extension is activated the very first time the command is executed
 export async function activate(context: ExtensionContext) {
 
+    console.log('activating vscode-R (2)...');
+
+    const rExtension = new RExtension();
 
     // might be different for different implementations of HelpProvider
     let rPath = await getRpath();
@@ -72,6 +76,8 @@ export async function activate(context: ExtensionContext) {
     const rHelpPanel = new HelpPanel(helpProvider, rHelpPanelOptions);
     globalRHelpPanel = rHelpPanel;
 
+    rExtension.helpPanel = rHelpPanel;
+
 	context.subscriptions.push(rHelpPanel);
 
 	commands.registerCommand('r.showHelp', () => {
@@ -82,7 +88,9 @@ export async function activate(context: ExtensionContext) {
 	commands.registerCommand('r.showDoc', () => {
 		rHelpPanel.showHelpForFunctionName('index.html', 'doc');
 		// rHelpPanel.show
-	});
+    });
+    
+    console.log('vscode-r: registered help panel');
 
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
@@ -363,6 +371,9 @@ export async function activate(context: ExtensionContext) {
         trackLastActiveTextEditor(window.activeTextEditor);
         window.onDidChangeActiveTextEditor(trackLastActiveTextEditor);
     }
+
+    console.log('vscode-r: returning R extension...');
+    return rExtension;
 }
 
 // This method is called when your extension is deactivated

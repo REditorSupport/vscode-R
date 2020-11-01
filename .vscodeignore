@@ -11,8 +11,6 @@ vsc-extension-quickstart.md
 .xlsx
 .xls
 .vscode
-node_modules
-out/
 src/
 tsconfig.json
 webpack.config.json
