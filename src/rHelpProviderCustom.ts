@@ -33,13 +33,13 @@ interface HelpFileLocation {
 	fileName: string;
 }
 
-// helper to quickly create an instance of the itnerface above
+// helper to quickly create an instance of the interface above
 class HelpFileLocation implements HelpFileLocation {
 	constructor(
 		public truncPath: string='',
 		public relPath: string='',
 		public fileName: string=''
-	){};
+	){}
 }
 
 // include flag if file is real and (if applicable) file location on disk
@@ -80,7 +80,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
 			const cmd = `${this.rPath} --silent --vanilla --no-echo -e "cat(R.home())"`;
 			this.homePath = cp.execSync(cmd).toString();
 		} else {
-			this.homePath = "";
+			this.homePath = '';
 		}
 
 		// read liPaths from options or query R
@@ -151,13 +151,13 @@ export class RHelp implements rHelpPanel.HelpProvider {
 			parts.shift();
 			const relPath2 = path.join(...parts);
 
-			for(let libPath of this.libPaths){
+			for(const libPath of this.libPaths){
 				locs.push(new HelpFileLocation(libPath, relPath2, fileName));
 			}
 		}
 
 		// actually check each possible location for a file
-		for(let loc of locs){
+		for(const loc of locs){
 			const fullPath = path.normalize(path.join(loc.truncPath, loc.relPath, loc.fileName));
 			if(fs.existsSync(fullPath)){
 				const html = fs.readFileSync(fullPath, 'utf-8');
