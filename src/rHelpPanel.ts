@@ -95,15 +95,17 @@ export class HelpPanel {
 
 	// prompts user for a package and function name to show:
 	public async showHelpForInput(){
+		const defaultPkg = 'doc';
 		const pkgName = await vscode.window.showInputBox({
-			value: 'utils',
+			value: defaultPkg,
 			prompt: 'Please enter the package name'
 		});
 		if(!pkgName){
 			return false;
 		}
+		const defaultFnc = (pkgName==='doc' ? 'index.html' : '00index');
 		let fncName = await vscode.window.showInputBox({
-			value: 'help',
+			value: defaultFnc,
 			prompt: 'Please enter the function name'
 		});
 		if(!fncName){
