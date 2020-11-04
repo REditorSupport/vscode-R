@@ -43,7 +43,8 @@ extract_document_ranges <- function(vsc_selections) {
 }
 
 to_content_lines <- function(contents, ranges) {
-    content_lines <- strsplit(contents, "\n")[[1]]
+    content_lines <- strsplit(contents, "\n|\r\n|\r$")[[1]]
+
 
     # edge case handling: The cursor is at the start of a new empty line,
     # and that line is the final line.
