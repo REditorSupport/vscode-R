@@ -508,25 +508,42 @@ if (interactive() &&
         )
       }
 
-
-      help <- function(...){
-        h <- utils::help(...)
-        if(length(h)==0 || !is.character(h)){
-          return(h)
+      print.help_files_with_topic = function(h, ...){
+        if(length(h)>=1 && is.character(h)){
+          file <- h[1]
+          path <- dirname(file)
+          dirpath <- dirname(path)
+          pkgname <- basename(dirpath)
+          requestPath <- paste0("/library/", pkgname, "/html/", basename(file), ".html")
+          request(command = 'help', requestPath = requestPath)
         }
-        file <- h[1]
-        path <- dirname(file)
-        dirpath <- dirname(path)
-        pkgname <- basename(dirpath)
-        requestPath <- paste0("/library/", pkgname, "/html/", basename(file), ".html")
-        request(command = 'help', requestPath = requestPath)
         invisible(h)
       }
-
 
       environment()
     })
 
+    .First.sys <- function(){
+      # first load utils in order to overwrite its print method for help files
+      base::.First.sys()
+
+      # a copy of .S3method(), since this function is new in R 4.0
+      .S3method <- function(generic, class, method) {
+        if (missing(method)) {
+          method <- paste(generic, class, sep = ".")
+        }
+        method <- match.fun(method)
+        registerS3method(generic, class, method, envir = parent.frame())
+        invisible(NULL)
+      }
+
+      suppressWarnings(
+        .S3method('print', 'help_files_with_topic', .vsc$print.help_files_with_topic)
+      )
+
+      rm('.First.sys', envir = parent.env(environment()))
+    }
+    
     .vsc.attach <- .vsc$attach
     .vsc.view <- .vsc$show_dataview
     .vsc.browser <- .vsc$show_browser
@@ -535,7 +552,7 @@ if (interactive() &&
     .vsc.help <- .vsc$help
     assign('help', .vsc.help, envir = globalenv())
 
-    attach(environment(), name = .vsc.name)
+    attach(environment(), name = .vsc.name, warn.conflicts = FALSE)
 
     .vsc.attach()
   }) else {
