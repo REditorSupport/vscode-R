@@ -318,6 +318,10 @@ export class HelpPanel {
 				section.childNodes = newChildNodes;
 			});
 
+			// append stylesheet and javascript file
+			$('body').append(`\n<link rel="stylesheet" href="${this.webviewStyleUri}"></link>`);
+			$('body').append(`\n<script src=${this.webviewScriptUri}></script>`);
+
 			// flag modified body (improve performance when going back/forth between pages)
 			helpFile.isModified = true;
 		}
@@ -328,9 +332,6 @@ export class HelpPanel {
 		$('body').attr('scrollyto', `${helpFile.scrollY || 0}`);
 
 
-		// append stylesheet and javascript file
-		$('body').append(`\n<link rel="stylesheet" href="${this.webviewStyleUri}"></link>`);
-		$('body').append(`\n<script src=${this.webviewScriptUri}></script>`);
 
 		// convert to string
 		helpFile.html = $.html();
