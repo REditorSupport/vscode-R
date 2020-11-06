@@ -34,29 +34,29 @@ window.document.body.onload = () => {
         const href = hyperLinks[i].href;
         const title = hyperLinks[i].title;
         if(href && href.startsWith('vscode-webview://')){
-            // split urls into parts
-            const hrefParts = href.split('/');
-            const linkParts = title.split('/');
-
-            // combine urls
-            const newParts = hrefParts.slice(0, 3).concat(...relParts, ...linkParts);
-
-            // resolve '..', '.'
-            const finalParts = [];
-            for(const newPart of newParts){
-                if(newPart === '..'){
-                    finalParts.pop();
-                } else if(newPart==='.'){
-                    // do nothing
-                } else{
-                    finalParts.push(newPart);
-                }
-            }
-
-            const finalHref = finalParts.join('/');
-            
-            hyperLinks[i].setAttribute('href', finalHref);
             hyperLinks[i].onclick = () => { 
+
+                // split urls into parts
+                const hrefParts = href.split('/');
+                const linkParts = title.split('/');
+
+                // combine urls
+                const newParts = hrefParts.slice(0, 3).concat(...relParts, ...linkParts);
+
+                // resolve '..', '.'
+                const finalParts = [];
+                for(const newPart of newParts){
+                    if(newPart === '..'){
+                        finalParts.pop();
+                    } else if(newPart==='.'){
+                        // do nothing
+                    } else{
+                        finalParts.push(newPart);
+                    }
+                }
+
+                const finalHref = finalParts.join('/');
+                
                 vscode.postMessage({
                     message: 'linkClicked',
                     href: finalHref,
