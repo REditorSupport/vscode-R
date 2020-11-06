@@ -508,14 +508,20 @@ if (interactive() &&
         )
       }
 
-      print.help_files_with_topic = function(h, ...){
-        if(length(h)>=1 && is.character(h)){
+      print.help_files_with_topic <- function(h, ...) {
+        if (length(h) >= 1 && is.character(h)) {
           file <- h[1]
           path <- dirname(file)
           dirpath <- dirname(path)
           pkgname <- basename(dirpath)
-          requestPath <- paste0("/library/", pkgname, "/html/", basename(file), ".html")
-          request(command = 'help', requestPath = requestPath)
+          requestPath <- paste0(
+            "/library/",
+            pkgname,
+            "/html/",
+            basename(file),
+            ".html"
+          )
+          request(command = "help", requestPath = requestPath)
         }
         invisible(h)
       }
@@ -523,7 +529,7 @@ if (interactive() &&
       environment()
     })
 
-    .First.sys <- function(){
+    .First.sys <- function() {
       # first load utils in order to overwrite its print method for help files
       base::.First.sys()
 
@@ -537,20 +543,22 @@ if (interactive() &&
         invisible(NULL)
       }
 
-      suppressWarnings(
-        .S3method('print', 'help_files_with_topic', .vsc$print.help_files_with_topic)
-      )
+      suppressWarnings(.S3method(
+        "print",
+        "help_files_with_topic",
+        .vsc$print.help_files_with_topic
+      ))
 
-      rm('.First.sys', envir = parent.env(environment()))
+      rm(".First.sys", envir = parent.env(environment()))
     }
-    
+
     .vsc.attach <- .vsc$attach
     .vsc.view <- .vsc$show_dataview
     .vsc.browser <- .vsc$show_browser
     .vsc.viewer <- .vsc$show_viewer
     .vsc.page_viewer <- .vsc$show_page_viewer
     .vsc.help <- .vsc$help
-    assign('help', .vsc.help, envir = globalenv())
+    assign("help", .vsc.help, envir = globalenv())
 
     attach(environment(), name = .vsc.name, warn.conflicts = FALSE)
 
