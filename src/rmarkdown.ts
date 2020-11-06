@@ -23,6 +23,13 @@ function getChunkOptions(text: string) {
   return text.replace(/^\s*```+\s*\{[Rr]\s*,?\s*(.*)\s*\}\s*$/g, '$1');
 }
 
+function getChunkEval(chunkOptions: string) {
+  if (chunkOptions.match(/eval\s*=\s*(F|FALSE)/g)) {
+    return false;
+  }
+  return true;
+}
+
 export class RMarkdownCodeLensProvider implements CodeLensProvider {
   private codeLenses: CodeLens[] = [];
   private _onDidChangeCodeLenses: EventEmitter<void> = new EventEmitter<void>();
@@ -65,7 +72,7 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
             new Position(line - 1, lines[line - 1].length)
           );
           chunkRanges.push(chunkRange);
-          if (!chunkOptions.match(/eval\s*=\s*(F|FALSE)/g)) {
+          if (getChunkEval(chunkOptions)) {
             codeRanges.push(codeRange);
           }
           this.codeLenses.push(new CodeLens(chunkRange, {
@@ -130,6 +137,47 @@ export async function runCurrentChunk() {
           );
 
           return runChunksInTerm([codeRange]);
+        }
+
+        chunkStartLine = undefined;
+      }
+    }
+    line++;
+  }
+}
+
+export async function runAboveChunks() {
+  const selection = window.activeTextEditor.selection;
+  const currentDocument = window.activeTextEditor.document;
+  const lines = currentDocument.getText().split(/\r?\n/);
+  const codeRanges: Range[] = [];
+
+  let line = 0;
+  let chunkStartLine: number = undefined;
+  let chunkOptions: string = undefined;
+
+  while (line < lines.length) {
+    if (chunkStartLine === undefined) {
+      if (line > selection.end.line) {
+        break;
+      }
+      if (isChunkStartLine(lines[line])) {
+        chunkStartLine = line;
+        chunkOptions = getChunkOptions(lines[line]);
+      }
+    } else {
+      if (isChunkEndLine(lines[line])) {
+        if (line >= selection.end.line) {
+          return runChunksInTerm(codeRanges);
+        }
+
+        if (getChunkEval(chunkOptions)) {
+          const codeRange = new Range(
+            new Position(chunkStartLine + 1, 0),
+            new Position(line - 1, lines[line - 1].length)
+          );
+
+          codeRanges.push(codeRange);
         }
 
         chunkStartLine = undefined;

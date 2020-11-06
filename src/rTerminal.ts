@@ -124,8 +124,13 @@ export function runSelectionInTerm(moveCursor: boolean) {
 }
 
 export async function runChunksInTerm(chunks: Range[]) {
-    const text = chunks.map((chunk) => window.activeTextEditor.document.getText(chunk)).join('\n');
-    return runTextInTerm(text);
+    const text = chunks
+        .map((chunk) => window.activeTextEditor.document.getText(chunk).trim())
+        .filter((chunk) => chunk.length > 0)
+        .join('\n');
+    if (text.length > 0) {
+        return runTextInTerm(text);
+    }
 }
 
 export async function runTextInTerm(text: string) {
