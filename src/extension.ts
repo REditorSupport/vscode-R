@@ -44,53 +44,50 @@ export let globalRHelpPanel: HelpPanel | null = null;
 // Your extension is activated the very first time the command is executed
 export async function activate(context: ExtensionContext) {
 
-    console.log('activating vscode-R (2)...');
-
+    // used to export an interface to the help panel
+    // used e.g. by vscode-r-debugger to show the help panel from within debug sessions
     const rExtension = new RExtension();
 
-    // might be different for different implementations of HelpProvider
-    let rPath = await getRpath();
+    // get the "vanilla" R path from config
+    let rPath = config().get('helpPanel.rPath', '') || await getRpath();
     if(rPath.match(/^[^'"].* .*[^'"]$/)){
         rPath = `"${rPath}"`;
     }
-	const rHelpProviderOptions = {
-		rPath: rPath
-	};
-	let helpProvider: HelpProvider;
+    const rHelpProviderOptions = {
+        rPath: rPath
+    };
 
-	// which helpProvider to use. currently hardcoded.
-	const helpProviderType: 'custom' | 'RServer' = 'custom';
+    // which helpProvider to use.
+    const helpProviderType = config().get<'custom'|'builtin'>('helpPanel.helpProvider');
 
-	// @ts-ignore 
-	if(helpProviderType === 'custom'){
-		helpProvider = new RHelp(rHelpProviderOptions);
-	} else {
-		helpProvider = new RHelpClient(rHelpProviderOptions);
-	}
+    // launch help provider (provides the html for requested entries)
+    let helpProvider: HelpProvider;
+    if(helpProviderType === 'custom'){
+        helpProvider = new RHelp(rHelpProviderOptions);
+    } else {
+        helpProvider = new RHelpClient(rHelpProviderOptions);
+    }
 
-	const rHelpPanelOptions: HelpPanelOptions = {
-		webviewScriptPath: path.join(context.extensionPath, path.normalize('/html/script.js')),
-		webviewStylePath: path.join(context.extensionPath, path.normalize('/html/theme.css'))
-	};
-
+    // launch the help panel (displays the html provided by helpProvider)
+    const rHelpPanelOptions: HelpPanelOptions = {
+        webviewScriptPath: path.join(context.extensionPath, path.normalize('/html/script.js')),
+        webviewStylePath: path.join(context.extensionPath, path.normalize('/html/theme.css'))
+    };
     const rHelpPanel = new HelpPanel(helpProvider, rHelpPanelOptions);
     globalRHelpPanel = rHelpPanel;
 
     rExtension.helpPanel = rHelpPanel;
 
-	context.subscriptions.push(rHelpPanel);
+    context.subscriptions.push(rHelpPanel);
 
-	commands.registerCommand('r.showHelp', () => {
-		rHelpPanel.showHelpForInput();
-		// rHelpPanel.showHelp('help', 'utils'); // for debugging
-	});
+    context.subscriptions.push(commands.registerCommand('r.showHelp', () => {
+        rHelpPanel.showHelpForInput();
+    }));
 
-	commands.registerCommand('r.showDoc', () => {
-		rHelpPanel.showHelpForFunctionName('index.html', 'doc');
-		// rHelpPanel.show
-    });
+    context.subscriptions.push(commands.registerCommand('r.showDoc', () => {
+        rHelpPanel.showHelpForFunctionName('index.html', 'doc');
+    }));
     
-    console.log('vscode-r: registered help panel');
 
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated

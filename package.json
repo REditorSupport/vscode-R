@@ -469,6 +469,28 @@
             "type": "string"
           }
         },
+        "r.helpPanel.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable an integrated help panel to view the result of calls to `help()` or `?`."
+        },
+        "r.helpPanel.rpath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to an R executable. Defaults to `r.rterm.XXX`. Must be \"vanilla\" R, not radian etc.! "
+        },
+        "r.helpPanel.helpProvider": {
+          "type": "string",
+          "default": "custom",
+          "enum": [
+            "custom",
+            "Rserver"
+          ],
+          "enumDescriptions": [
+            "A custom implementation of the R help server.",
+            "R's builtin help server"
+          ]
+        },
         "r.source.encoding": {
           "type": "string",
           "default": "UTF-8",
