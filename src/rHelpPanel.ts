@@ -1,7 +1,8 @@
 
 import * as vscode from 'vscode';
 
-import * as jsdom from 'jsdom';
+
+import * as cheerio from 'cheerio';
 
 import * as hljs from 'highlight.js';
 
@@ -295,38 +296,44 @@ export class HelpPanel {
 		const relPath = parts.join('/');
 
 		// parse the html string
-		const dom = new jsdom.JSDOM(helpFile.html);
+		const $ = cheerio.load(helpFile.html);
 
-		// set relPath attribute. Used by js inside the page to adjust hyperlinks
-		dom.window.document.body.setAttribute('relPath', relPath);
-		// scroll to top (=0) or last viewed position (if the page is from history)
-		dom.window.document.body.setAttribute('scrollYTo', helpFile.scrollY || 0);
-
-		// modify the help page to include syntax hightlighting
 		if(!helpFile.isModified){
-			// find all code sections (indicated by 'pre' tags)
-			const codeSections = dom.window.document.body.getElementsByTagName('pre');
-
-			// check length here, to be sure it doesn't change during the loop:
-			const nSec = codeSections.length; 
+			// find all code sections, enclosed by <pre>...</pre>
+			const codeSections = $('pre');
 
 			// apply syntax highlighting to each code section:
-			for(let i=0; i<nSec; i++){
-				const section = codeSections[i].textContent || '';
-				const highlightedHtml = hljs.highlight('r', section);
-				codeSections[i].innerHTML = highlightedHtml.value;
-			}
+			codeSections.each((i, section) => {
+				const newChildNodes = [];
+				section.children.forEach((subSection, j) => {
+					if(subSection.type === 'text'){
+						const styledCode = hljs.highlight('r', subSection.data);
+						const newChildren = cheerio.parseHTML(styledCode.value);
 
-			// add custom stylesheet and javascript
-			dom.window.document.body.innerHTML += `\n<link rel="stylesheet" href="${this.webviewStyleUri}"></link>`;
-			dom.window.document.body.innerHTML += `\n<script src=${this.webviewScriptUri}></script>`;
+						for(const [i, newChild] of newChildren.entries()){
+							newChildNodes.push(newChild);
+						}
+					}
+				});
+				section.childNodes = newChildNodes;
+			});
 
 			// flag modified body (improve performance when going back/forth between pages)
 			helpFile.isModified = true;
 		}
 
+		// set relPath attribute. Used by js inside the page to adjust hyperlinks
+		// scroll to top (=0) or last viewed position (if the page is from history)
+		$('body').attr('relpath', relPath);
+		$('body').attr('scrollyto', `${helpFile.scrollY || 0}`);
+
+
+		// append stylesheet and javascript file
+		$('body').append(`\n<link rel="stylesheet" href="${this.webviewStyleUri}"></link>`);
+		$('body').append(`\n<script src=${this.webviewScriptUri}></script>`);
+
 		// convert to string
-		helpFile.html = dom.serialize();
+		helpFile.html = $.html();
 
 		// return the html of the modified page:
 		return helpFile;

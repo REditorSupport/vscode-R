@@ -549,6 +549,7 @@
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {
+    "@types/cheerio": "^0.22.22",
     "@types/fs-extra": "^9.0.2",
     "@types/mocha": "^8.0.3",
     "@types/node": "^14.14.6",
@@ -573,6 +574,7 @@
   },
   "dependencies": {
     "bootstrap": "^4.5.3",
+    "cheerio": "^1.0.0-rc.3",
     "datatables.net": "^1.10.22",
     "datatables.net-bs4": "^1.10.22",
     "datatables.net-fixedheader-jqui": "^3.1.7",
@@ -581,7 +583,6 @@
     "highlight.js": "^10.3.1",
     "jquery": "^3.5.1",
     "jquery.json-viewer": "^1.4.0",
-    "jsdom": "^16.4.0",
     "popper.js": "^1.16.1",
     "showdown": "^1.9.1",
     "winreg": "^1.2.4"
