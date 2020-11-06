@@ -299,8 +299,10 @@ export class HelpPanel {
 
 		// set relPath attribute. Used by js inside the page to adjust hyperlinks
 		dom.window.document.body.setAttribute('relPath', relPath);
+		// scroll to top (=0) or last viewed position (if the page is from history)
 		dom.window.document.body.setAttribute('scrollYTo', helpFile.scrollY || 0);
 
+		// modify the help page to include syntax hightlighting
 		if(!helpFile.isModified){
 			// find all code sections (indicated by 'pre' tags)
 			const codeSections = dom.window.document.body.getElementsByTagName('pre');
@@ -319,10 +321,11 @@ export class HelpPanel {
 			dom.window.document.body.innerHTML += `\n<link rel="stylesheet" href="${this.webviewStyleUri}"></link>`;
 			dom.window.document.body.innerHTML += `\n<script src=${this.webviewScriptUri}></script>`;
 
-			// flag modified body
+			// flag modified body (improve performance when going back/forth between pages)
 			helpFile.isModified = true;
 		}
 
+		// convert to string
 		helpFile.html = dom.serialize();
 
 		// return the html of the modified page:
