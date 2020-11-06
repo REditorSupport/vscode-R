@@ -50,7 +50,7 @@
     "onCommand:r.runCommandWithEditorPath",
     "onCommand:r.runCommand"
   ],
-  "main": "./out/extension",
+  "main": "./dist/extension",
   "contributes": {
     "languages": [
       {

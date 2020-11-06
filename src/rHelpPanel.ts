@@ -9,7 +9,7 @@ import * as hljs from 'highlight.js';
 
 
 
-// This interface needs to be implemented by  separate class that actually provides the R help pages
+// This interface needs to be implemented by a separate class that actually provides the R help pages
 export interface HelpProvider {
 	// is called to get help for a request path
 	// the request path is the part of the help url after http://localhost:PORT/... when using R's help
