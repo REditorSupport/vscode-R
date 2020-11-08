@@ -272,7 +272,16 @@ let addinQuickPicks: AddinItem[] = undefined;
 export async function getAddinPickerItems() {
 
   if (typeof addinQuickPicks === 'undefined') {
-    const addins: any[] = await fs.readJSON(path.join(sessionDir, 'addins.json'));
+    const addins: any[] = await fs.readJSON(path.join(sessionDir, 'addins.json')).
+      then(
+        (result) => result,
+        (reason) => {
+          throw ('Could not find list of installed addins.' +
+            ' options(vsc.rstudioapi = TRUE) must be set in your .Rprofile to use.' +
+            ' RStudio Addins');
+        }
+      );
+
     const addinItems = addins.map((x) => {
       return {
         alwaysShow: true,
