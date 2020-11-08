@@ -277,7 +277,7 @@ export async function getAddinPickerItems() {
         (result) => result,
         (reason) => {
           throw ('Could not find list of installed addins.' +
-            ' options(vsc.rstudioapi = TRUE) must be set in your .Rprofile to use.' +
+            ' options(vsc.rstudioapi = TRUE) must be set in your .Rprofile to use ' +
             ' RStudio Addins');
         }
       );
