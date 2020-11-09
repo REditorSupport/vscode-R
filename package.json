@@ -493,7 +493,7 @@
         },
         "r.helpPanel.helpProvider": {
           "type": "string",
-          "default": "custom",
+          "default": "Rserver",
           "enum": [
             "custom",
             "Rserver"
