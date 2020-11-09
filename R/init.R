@@ -557,8 +557,6 @@ if (interactive() &&
     .vsc.browser <- .vsc$show_browser
     .vsc.viewer <- .vsc$show_viewer
     .vsc.page_viewer <- .vsc$show_page_viewer
-    .vsc.help <- .vsc$help
-    assign("help", .vsc.help, envir = globalenv())
 
     attach(environment(), name = .vsc.name, warn.conflicts = FALSE)
 
