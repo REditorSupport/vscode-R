@@ -522,6 +522,8 @@ if (interactive() &&
             ".html"
           )
           request(command = "help", requestPath = requestPath)
+        } else{
+          utils:::print.help_files_with_topic(h, ...)
         }
         invisible(h)
       }
