@@ -228,7 +228,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
 		const cmd1a = `"invisible(lazyLoad('${pkgName}'))"`;
 
 		// prints the content of the .Rd file belonging to the requested function
-		const cmd1b = `"cat(paste0(tools:::as.character.Rd(\`${fncName}\`),collapse=''))"`;
+		const cmd1b = `"cat(paste0(tools:::as.character.Rd(get('${fncName}')),collapse=''))"`;
 
 		// output file (supposed to be temporary)
 		const rdFileName = path.join(os.tmpdir(), fncName + '.Rd');
@@ -242,15 +242,26 @@ export class RHelp implements rHelpPanel.HelpProvider {
             return null;
         }
 
+        // // convert the .Rd file to .html
+        // const cmd2 = `${this.rPath} CMD Rdconv --type=html ${rdFileName}`;
+        // let htmlContent: string = '';
+        // try{
+        //     htmlContent = cp.execSync(cmd2, options);
+        // } catch(e){
+        //     console.log('Failed to convert .Rd to .html');
+        //     return null;
+		// }
+		
         // convert the .Rd file to .html
-        const cmd2 = `${this.rPath} CMD Rdconv --type=html ${rdFileName}`;
+		const cmd3a = `"tools::Rd2HTML('${rdFileName}', Links=tools::findHTMLlinks())"`
+		const cmd3 = `${this.rPath} -e ${cmd3a} --vanilla --silent --no-echo`;
         let htmlContent: string = '';
         try{
-            htmlContent = cp.execSync(cmd2, options);
+            htmlContent = cp.execSync(cmd3, options);
         } catch(e){
             console.log('Failed to convert .Rd to .html');
             return null;
-        }
+		}
 
 
 		// try to remove temporary .Rd file

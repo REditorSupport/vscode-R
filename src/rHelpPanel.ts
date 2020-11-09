@@ -259,6 +259,11 @@ export class HelpPanel {
 				parts.shift();
 			}
 
+			if(parts.length >= 4 && parts[2] === 'help'){
+				parts[2] = 'html';
+				parts[3] += '.html';
+			}
+
 			// actual request path as used by R:
 			const requestPath = parts.join('/');
 

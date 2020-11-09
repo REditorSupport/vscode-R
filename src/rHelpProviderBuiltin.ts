@@ -27,7 +27,7 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
     public async launchRHelpServer(){
         // starts the background help server and waits forever to keep the R process running
         const cmd = (
-            `${this.rPath} -e --silent --no-echo --vanilla ` +
+            `${this.rPath} --silent --no-echo --vanilla -e ` +
             `"cat(tools::startDynamicHelp(),'\\n'); while(TRUE) Sys.sleep(1)" ` 
         );
         this.cp = cp.exec(cmd);
