@@ -253,7 +253,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
 		// }
 		
         // convert the .Rd file to .html
-		const cmd3a = `"tools::Rd2HTML('${rdFileName}', Links=tools::findHTMLlinks())"`
+		const cmd3a = `"tools::Rd2HTML('${rdFileName}', Links=tools::findHTMLlinks())"`;
 		const cmd3 = `${this.rPath} -e ${cmd3a} --vanilla --silent --no-echo`;
         let htmlContent: string = '';
         try{
