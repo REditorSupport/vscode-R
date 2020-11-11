@@ -32,8 +32,6 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
         );
         this.cp = cp.exec(cmd);
 
-        console.log(cmd);
-
         // promise containing the first output of the r process (contains only the port number)
         const outputPromise = new Promise<string>((resolve, reject) => {
             this.cp.stdout.on('data', (data) => {
@@ -56,8 +54,6 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
     public async getHelpFileFromRequestPath(requestPath: string){
         // make sure the server is actually running
         this.port = await this.port;
-
-        console.log(`requesting help for: ${requestPath}`);
 
         // remove leading '/'
         while(requestPath.startsWith('/')){
