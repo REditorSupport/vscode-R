@@ -66,14 +66,13 @@
 /* .hljs {
 } */
 
-pre {
-    font-family: Consolas, 'Courier New', monospace;
-    font-size: 14px;
+body {
+    font-size: var(--vscode-editor-font-size);
 }
 
-code {
-    font-family: Consolas, 'Courier New', monospace;
-    font-size: 14px;
+pre, code {
+    font-family: var(--vscode-editor-font-family);
+    font-size: var(--vscode-editor-font-size);
 }
 /* 
 a {
