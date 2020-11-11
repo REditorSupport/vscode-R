@@ -5,7 +5,7 @@ import path = require('path');
 
 import { pathExists } from 'fs-extra';
 import { isDeepStrictEqual } from 'util';
-import { commands, Range, Terminal, TerminalOptions, window } from 'vscode';
+import { commands, Position, Range, Terminal, TerminalOptions, window } from 'vscode';
 
 import { getSelection } from './selection';
 import { removeSessionFiles } from './session';
@@ -117,6 +117,11 @@ export async function chooseTerminal() {
 export function runSelectionInTerm(moveCursor: boolean) {
     const selection = getSelection();
     if (moveCursor && selection.linesDownToMoveCursor > 0) {
+        const lineCount = window.activeTextEditor.document.lineCount;
+        if (selection.linesDownToMoveCursor + window.activeTextEditor.selection.end.line === lineCount) {
+            const endPos = new Position(lineCount, window.activeTextEditor.document.lineAt(lineCount - 1).text.length);
+            window.activeTextEditor.edit(e => e.insert(endPos, '\n'));
+        }
         commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
         commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
     }
