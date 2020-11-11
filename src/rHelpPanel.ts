@@ -114,6 +114,8 @@ export class HelpPanel {
 		}
 		// changes e.g. ".vsc.print" to "dot-vsc.print"
 		fncName = fncName.replace(/^\./, 'dot-');
+
+		console.log(`pkg: ${pkgName} - fnc: ${fncName}`);
 		this.showHelpForFunctionName(fncName, pkgName);
 		return true;
 	}
