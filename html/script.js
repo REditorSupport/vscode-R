@@ -29,35 +29,34 @@ window.document.body.onload = function () {
     // notify vscode when links are clicked:
     var hyperLinks = document.getElementsByTagName('a');
     var _loop_1 = function (i) {
-        var _a;
         var href = hyperLinks[i].href;
         var title = hyperLinks[i].title;
         if (href && href.startsWith('vscode-webview://')) {
-            // split urls into parts
-            var hrefParts = href.split('/');
-            var linkParts = title.split('/');
-            // combine urls
-            var newParts = (_a = hrefParts.slice(0, 3)).concat.apply(_a, __spreadArrays(relParts, linkParts));
-            // resolve '..', '.'
-            var finalParts = [];
-            for (var _i = 0, newParts_1 = newParts; _i < newParts_1.length; _i++) {
-                var newPart = newParts_1[_i];
-                if (newPart === '..') {
-                    finalParts.pop();
-                }
-                else if (newPart === '.') {
-                    // do nothing
-                }
-                else {
-                    finalParts.push(newPart);
-                }
-            }
-            var finalHref_1 = finalParts.join('/');
-            hyperLinks[i].setAttribute('href', finalHref_1);
             hyperLinks[i].onclick = function () {
+                var _a;
+                // split urls into parts
+                var hrefParts = href.split('/');
+                var linkParts = title.split('/');
+                // combine urls
+                var newParts = (_a = hrefParts.slice(0, 3)).concat.apply(_a, __spreadArrays(relParts, linkParts));
+                // resolve '..', '.'
+                var finalParts = [];
+                for (var _i = 0, newParts_1 = newParts; _i < newParts_1.length; _i++) {
+                    var newPart = newParts_1[_i];
+                    if (newPart === '..') {
+                        finalParts.pop();
+                    }
+                    else if (newPart === '.') {
+                        // do nothing
+                    }
+                    else {
+                        finalParts.push(newPart);
+                    }
+                }
+                var finalHref = finalParts.join('/');
                 vscode.postMessage({
                     message: 'linkClicked',
-                    href: finalHref_1,
+                    href: finalHref,
                     scrollY: window.scrollY
                 });
             };

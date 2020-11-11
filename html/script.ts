@@ -44,7 +44,7 @@ window.document.body.onload = () => {
                 const newParts = hrefParts.slice(0, 3).concat(...relParts, ...linkParts);
 
                 // resolve '..', '.'
-                const finalParts = [];
+                const finalParts: string[] = [];
                 for(const newPart of newParts){
                     if(newPart === '..'){
                         finalParts.pop();
