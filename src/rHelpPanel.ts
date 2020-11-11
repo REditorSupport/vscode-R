@@ -104,7 +104,7 @@ export class HelpPanel {
 		if(!pkgName){
 			return false;
 		}
-		const defaultFnc = (pkgName==='doc' ? 'index.html' : '00index');
+		const defaultFnc = (pkgName==='doc' ? 'index.html' : '00Index');
 		let fncName = await vscode.window.showInputBox({
 			value: defaultFnc,
 			prompt: 'Please enter the function name'
