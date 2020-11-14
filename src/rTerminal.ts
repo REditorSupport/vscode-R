@@ -95,8 +95,12 @@ export async function chooseTerminal() {
                     return window.terminals[0];
                 }
             } else {
+                let msg = `There are ${window.terminals.length} terminals: `;
+                for (let i = 0; i < window.terminals.length; i++){
+                    msg += `Terminal ${i}: ${window.terminals[i].name} `;
+                }
                 // tslint:disable-next-line: max-line-length
-                window.showInformationMessage('Error identifying terminal! This shouldn\'t happen, so please file an issue at https://github.com/Ikuyadeu/vscode-R/issues');
+                window.showErrorMessage(`Error identifying terminal! Please copy this message to https://github.com/Ikuyadeu/vscode-R/issues: ${msg}`);
 
                 return undefined;
             }
