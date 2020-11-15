@@ -7,7 +7,7 @@
 			"label": "Package and install Extension",
 			"type": "shell",
 			"problemMatcher": [],
-			"command": "vsce package -o vscode-r.vsix && code --install-extension vscode-r.vsix --force",
+			"command": "vsce package -o ${workspaceFolderBasename}.vsix && code --install-extension ${workspaceFolderBasename}.vsix --force",
 			"group": {
 				"kind": "build",
 				"isDefault": true
