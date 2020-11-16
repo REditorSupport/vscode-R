@@ -72,6 +72,11 @@ export async function chooseTerminal() {
         return window.activeTerminal;
     }
 
+    let msg = '[chooseTerminal] ';
+    msg += `A. There are ${window.terminals.length} terminals: `;
+    for (let i = 0; i < window.terminals.length; i++){
+        msg += `Terminal ${i}: ${window.terminals[i].name} `;
+    }
     if (window.terminals.length > 0) {
         const rTermNameOptions = ['R', 'R Interactive'];
         if (window.activeTerminal !== undefined) {
@@ -88,6 +93,10 @@ export async function chooseTerminal() {
                 }
             }
         } else {
+            msg += `B. There are ${window.terminals.length} terminals: `;
+            for (let i = 0; i < window.terminals.length; i++){
+                msg += `Terminal ${i}: ${window.terminals[i].name} `;
+            }
             // Creating a terminal when there aren't any already does not seem to set activeTerminal
             if (window.terminals.length === 1) {
                 const activeTerminalName = window.terminals[0].name;
@@ -95,8 +104,13 @@ export async function chooseTerminal() {
                     return window.terminals[0];
                 }
             } else {
+                msg += `C. There are ${window.terminals.length} terminals: `;
+                for (let i = 0; i < window.terminals.length; i++){
+                    msg += `Terminal ${i}: ${window.terminals[i].name} `;
+                }
+                console.info(msg);
                 // tslint:disable-next-line: max-line-length
-                window.showInformationMessage('Error identifying terminal! This shouldn\'t happen, so please file an issue at https://github.com/Ikuyadeu/vscode-R/issues');
+                window.showErrorMessage('Error identifying terminal! Please run command "Developer: Toggle Developer Tools", find the message starting with "[chooseTerminal]", and copy the message to https://github.com/Ikuyadeu/vscode-R/issues');
 
                 return undefined;
             }
