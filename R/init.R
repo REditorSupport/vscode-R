@@ -532,7 +532,7 @@ if (interactive() &&
       environment()
     })
 
-    if (getOption("vsc.helpPanel", "Two") != FALSE) {
+    if (!identical(getOption("vsc.helpPanel", "Two"), FALSE)) {
       .First.sys <- function() {
         # first load utils in order to overwrite its print method for help files
         base::.First.sys()
