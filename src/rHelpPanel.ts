@@ -61,6 +61,7 @@ export class HelpPanel {
 
 	// the webview panel where the help is shown
 	private panel?: vscode.WebviewPanel;
+	private viewColumn?: vscode.ViewColumn = vscode.ViewColumn.Two;
 
 	// locations on disk, only changed on construction
 	readonly webviewScriptFile: vscode.Uri; // the javascript added to help pages
@@ -143,8 +144,11 @@ export class HelpPanel {
 	}
 
 	// shows help for request path as used by R's internal help server
-	public showHelpForPath(requestPath: string){
+	public showHelpForPath(requestPath: string, viewer?: string|any){
 
+		if(typeof viewer === 'string'){
+			this.viewColumn = vscode.ViewColumn[String(viewer)];
+		}
 		const helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 
 		if(helpFile){
@@ -191,7 +195,7 @@ export class HelpPanel {
 			const webViewOptions: vscode.WebviewOptions = {
 				enableScripts: true,
 			};
-			this.panel = vscode.window.createWebviewPanel('rhelp', 'R Help', vscode.ViewColumn.Two, webViewOptions);
+			this.panel = vscode.window.createWebviewPanel('rhelp', 'R Help', this.viewColumn, webViewOptions);
 
 			// virtual uris used to access local files
 			this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);

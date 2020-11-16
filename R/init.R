@@ -509,7 +509,8 @@ if (interactive() &&
       }
 
       print.help_files_with_topic <- function(h, ...) {
-        if (length(h) >= 1 && is.character(h)) {
+        viewer = getOption("vsc.helpPanel", "Two")
+        if (!isFALSE(viewer) && length(h) >= 1 && is.character(h)) {
           file <- h[1]
           path <- dirname(file)
           dirpath <- dirname(path)
@@ -521,7 +522,7 @@ if (interactive() &&
             basename(file),
             ".html"
           )
-          request(command = "help", requestPath = requestPath)
+          request(command = "help", requestPath = requestPath, viewer = viewer)
         } else{
           utils:::print.help_files_with_topic(h, ...)
         }
@@ -531,27 +532,29 @@ if (interactive() &&
       environment()
     })
 
-    .First.sys <- function() {
-      # first load utils in order to overwrite its print method for help files
-      base::.First.sys()
+    if(!isFALSE(getOption("vsc.helpPanel", "Two"))){
+      .First.sys <- function() {
+        # first load utils in order to overwrite its print method for help files
+        base::.First.sys()
 
-      # a copy of .S3method(), since this function is new in R 4.0
-      .S3method <- function(generic, class, method) {
-        if (missing(method)) {
-          method <- paste(generic, class, sep = ".")
+        # a copy of .S3method(), since this function is new in R 4.0
+        .S3method <- function(generic, class, method) {
+          if (missing(method)) {
+            method <- paste(generic, class, sep = ".")
+          }
+          method <- match.fun(method)
+          registerS3method(generic, class, method, envir = parent.frame())
+          invisible(NULL)
         }
-        method <- match.fun(method)
-        registerS3method(generic, class, method, envir = parent.frame())
-        invisible(NULL)
+
+        suppressWarnings(.S3method(
+          "print",
+          "help_files_with_topic",
+          .vsc$print.help_files_with_topic
+        ))
+
+        rm(".First.sys", envir = parent.env(environment()))
       }
-
-      suppressWarnings(.S3method(
-        "print",
-        "help_files_with_topic",
-        .vsc$print.help_files_with_topic
-      ))
-
-      rm(".First.sys", envir = parent.env(environment()))
     }
 
     .vsc.attach <- .vsc$attach
