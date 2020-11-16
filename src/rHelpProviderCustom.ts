@@ -72,13 +72,20 @@ export class RHelp implements rHelpPanel.HelpProvider {
 		this.tempDir = path.join(os.tmpdir(), 'vscode-R-Help-' + randomBytes(10).toString('hex'));
 		fs.mkdirSync(this.tempDir);
 
+		const lim = '---vsc---';
+		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
+
+		const cpOptions = {
+			cwd: options.cwd
+		};
+
 		// read homePath from options or query R
 		if(options.homePath){
 			this.homePath = options.homePath;
 		} else if(this.rPath){
 			// use R.home() in R
-			const cmd = `${this.rPath} --silent --vanilla --no-echo -e "cat(R.home())"`;
-			this.homePath = cp.execSync(cmd).toString();
+			const cmd = `${this.rPath} --silent --no-save --no-restore  --no-echo -e "cat('${lim}', R.home(), '${lim}', sep='')"`;
+			this.homePath = cp.execSync(cmd, cpOptions).toString().replace(re, '$1');
 		} else {
 			this.homePath = '';
 		}
@@ -89,8 +96,8 @@ export class RHelp implements rHelpPanel.HelpProvider {
 			this.libPaths = options.libPaths;
 		} else if (this.rPath) {
 			// use .libPaths() in R
-			const cmd = `${this.rPath} --silent --vanilla --no-echo -e "cat(paste(.libPaths(), collapse='\\n'))"`;
-			const libPathString = cp.execSync(cmd).toString();
+			const cmd = `${this.rPath} --silent --no-save --no-restore  --no-echo -e "cat('${lim}', paste(.libPaths(), collapse='\\n'), '${lim}', sep='')"`;
+			const libPathString = cp.execSync(cmd, cpOptions).toString().replace(re, '$1');
 			this.libPaths = libPathString.replace('\r', '').split('\n');
 		} else {
 			// not good... throw error?

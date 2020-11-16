@@ -13,7 +13,7 @@ import * as hljs from 'highlight.js';
 export interface HelpProvider {
 	// is called to get help for a request path
 	// the request path is the part of the help url after http://localhost:PORT/... when using R's help
-	getHelpFileFromRequestPath(requestPath: string, options?: RHelpProviderOptions): null|HelpFile|Promise<HelpFile>;
+	getHelpFileFromRequestPath(requestPath: string): null|HelpFile|Promise<HelpFile>;
 
 	// optional functions to get help for doc file or functions from packages
 	getHelpFileForDoc?(fncName: string): null|HelpFile|Promise<HelpFile>;
@@ -38,7 +38,12 @@ export interface HelpFile {
 }
 
 // currently dummy
-export interface RHelpProviderOptions {}
+export interface RHelpProviderOptions {
+	// path to R executable
+	rPath?: string;
+	// directory in which to launch R processes
+	cwd?: string;
+}
 
 
 // internal interface used to store history of help panel

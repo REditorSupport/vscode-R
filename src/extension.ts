@@ -3,7 +3,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import { CancellationToken, commands, CompletionContext, CompletionItem, CompletionItemKind,
          ExtensionContext, Hover, IndentAction, languages, MarkdownString, Position, Range,
-         StatusBarAlignment, TextDocument, window } from 'vscode';
+         StatusBarAlignment, TextDocument, window, workspace } from 'vscode';
 
 import { previewDataframe, previewEnvironment } from './preview';
 import { createGitignore } from './rGitignore';
@@ -18,10 +18,11 @@ import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, runCurrentC
 
 import * as path from 'path';
 
-import { HelpPanel, HelpPanelOptions, HelpProvider } from './rHelpPanel';
+import { HelpPanel, HelpPanelOptions, HelpProvider, RHelpProviderOptions } from './rHelpPanel';
 import { RHelpClient } from './rHelpProviderBuiltin';
 import { RHelp } from './rHelpProviderCustom';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
+import { resolveCliPathFromVSCodeExecutablePath } from 'vscode-test';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -54,7 +55,8 @@ export async function activate(context: ExtensionContext) {
         rPath = `"${rPath}"`;
     }
     const rHelpProviderOptions = {
-        rPath: rPath
+        rPath: rPath,
+        cwd: (workspace.workspaceFolders.length > 0 ? workspace.workspaceFolders[0].uri.fsPath : undefined)
     };
 
     // which helpProvider to use.

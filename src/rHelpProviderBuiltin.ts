@@ -4,6 +4,7 @@
 import * as cp from 'child_process';
 
 import * as http from 'http';
+import { downloadAndUnzipVSCode } from 'vscode-test';
 
 import * as rHelpPanel from './rHelpPanel';
 
@@ -21,21 +22,31 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
 
     public constructor(options: RHelpClientOptions){
         this.rPath = options.rPath || 'R';
-        this.port = this.launchRHelpServer(); // is a promise for now!
+        this.port = this.launchRHelpServer(options.cwd); // is a promise for now!
     }
 
-    public async launchRHelpServer(){
+    public async launchRHelpServer(cwd?: string){
+		const lim = '---vsc---';
+		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
+
         // starts the background help server and waits forever to keep the R process running
         const cmd = (
-            `${this.rPath} --silent --slave --vanilla -e ` +
-            `"cat(tools::startDynamicHelp(),'\\n'); while(TRUE) Sys.sleep(1)" ` 
+            `${this.rPath} --silent --slave --no-save --no-restore -e ` +
+            `"cat('${lim}', tools::startDynamicHelp(), '${lim}', sep=''); while(TRUE) Sys.sleep(1)" ` 
         );
-        this.cp = cp.exec(cmd);
+        const cpOptions = {
+            cwd: cwd
+        };
+        this.cp = cp.exec(cmd, cpOptions);
 
+        let str = '';
         // promise containing the first output of the r process (contains only the port number)
         const outputPromise = new Promise<string>((resolve, reject) => {
             this.cp.stdout.on('data', (data) => {
-                resolve(data.toString());
+                str += data.toString();
+                if(str.match(re)){
+                    resolve(str.replace(re, '$1'));
+                }
             });
             this.cp.on('close', (code) => {
                 console.log('R process closed with code ' + code);
