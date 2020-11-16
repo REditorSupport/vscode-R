@@ -509,7 +509,7 @@ if (interactive() &&
       }
 
       print.help_files_with_topic <- function(h, ...) {
-        viewer = getOption("vsc.helpPanel", "Two")
+        viewer <- getOption("vsc.helpPanel", "Two")
         if (!isFALSE(viewer) && length(h) >= 1 && is.character(h)) {
           file <- h[1]
           path <- dirname(file)
@@ -532,7 +532,7 @@ if (interactive() &&
       environment()
     })
 
-    if(!isFALSE(getOption("vsc.helpPanel", "Two"))){
+    if (!isFALSE(getOption("vsc.helpPanel", "Two"))) {
       .First.sys <- function() {
         # first load utils in order to overwrite its print method for help files
         base::.First.sys()
