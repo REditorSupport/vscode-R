@@ -219,6 +219,12 @@ export class HelpPanel {
 			this.panel.webview.onDidReceiveMessage((e: any) => {
 				this.handleMessage(e);
 			});
+
+			// set context variable to show forward/backward buttons
+			this.panel.onDidChangeViewState((e: vscode.WebviewPanelOnDidChangeViewStateEvent) => {
+				vscode.commands.executeCommand('setContext', 'r.helpPanel.active', e.webviewPanel.active);
+			});
+
 		}
 
 		this.panel.reveal();
@@ -227,7 +233,7 @@ export class HelpPanel {
 	}
 
 	// go back/forward in the history of the webview:
-	private goBack(currentScrollY: number = 0){
+	public goBack(currentScrollY: number = 0){
 		const entry = this.history.pop();
 		if(entry){
 			if(this.currentEntry){ // should always be true
@@ -237,7 +243,7 @@ export class HelpPanel {
 			this.showHistoryEntry(entry);
 		}
 	}
-	private goForward(currentScrollY: number = 0){
+	public goForward(currentScrollY: number = 0){
 		const entry = this.forwardHistory.pop();
 		if(entry){
 			if(this.currentEntry){ // should always be true

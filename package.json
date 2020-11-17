@@ -48,7 +48,10 @@
     "onCommand:r.createGitignore",
     "onCommand:r.runCommandWithSelectionOrWord",
     "onCommand:r.runCommandWithEditorPath",
-    "onCommand:r.runCommand"
+    "onCommand:r.runCommand",
+    "onCommand:r.showHelp",
+    "onCommand:r.helpPanel.back",
+    "onCommand:r.helpPanel.forward"
   ],
   "main": "./dist/extension",
   "contributes": {
@@ -214,8 +217,14 @@
         "title": "R: Show help"
       },
       {
-        "command": "r.showDoc",
-        "title": "R: Show R docs"
+        "command": "r.helpPanel.back",
+        "title": "R Help Panel: Go Back",
+        "icon": "$(arrow-left)"
+      },
+      {
+        "command": "r.helpPanel.forward",
+        "title": "R Help Panel: Go Forward",
+        "icon": "$(arrow-right)"
       },
       {
         "title": "Create R terminal",
@@ -447,6 +456,16 @@
         {
           "when": "editorLangId == rmd",
           "command": "r.knitRmd",
+          "group": "navigation"
+        },
+        {
+          "command": "r.helpPanel.back",
+          "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
+          "group": "navigation"
+        },
+        {
+          "command": "r.helpPanel.forward",
+          "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
         }
       ]

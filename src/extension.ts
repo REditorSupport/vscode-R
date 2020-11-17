@@ -89,6 +89,16 @@ export async function activate(context: ExtensionContext) {
     context.subscriptions.push(commands.registerCommand('r.showDoc', () => {
         rHelpPanel.showHelpForFunctionName('index.html', 'doc');
     }));
+
+    context.subscriptions.push(commands.registerCommand('r.helpPanel.back', () =>{
+        rHelpPanel.goBack();
+    }));
+
+    context.subscriptions.push(commands.registerCommand('r.helpPanel.forward', () =>{
+        rHelpPanel.goForward();
+    }));
+    
+
     
 
     // Use the console to output diagnostic information (console.log) and errors (console.error)
