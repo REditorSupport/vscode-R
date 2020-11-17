@@ -271,11 +271,6 @@ export class HelpPanel {
 				parts.shift();
 			}
 
-			if(parts.length >= 4 && parts[2] === 'help'){
-				parts[2] = 'html';
-				parts[3] += '.html';
-			}
-
 			// actual request path as used by R:
 			const requestPath = parts.join('/');
 
@@ -350,7 +345,7 @@ export class HelpPanel {
 		// set relPath attribute. Used by js inside the page to adjust hyperlinks
 		// scroll to top (=0) or last viewed position (if the page is from history)
 		$('body').attr('relpath', relPath);
-		$('body').attr('scrollyto', `${helpFile.scrollY || -1}`);
+		$('body').attr('scrollyto', `${helpFile.scrollY ?? -1}`);
 
 
 
