@@ -137,7 +137,7 @@ export function activate(context: ExtensionContext) {
     async function runFromLineToEnd() {
         const startLine = window.activeTextEditor.selection.start.line;
         const startPos = new Position(startLine, 0);
-        const endLine = window.activeTextEditor.document.lineCount
+        const endLine = window.activeTextEditor.document.lineCount;
         const range = new Range(startPos, new Position(endLine, 0));
         const text = window.activeTextEditor.document.getText(range);
         runTextInTerm(text);
