@@ -70,26 +70,44 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
         while(requestPath.startsWith('/')){
             requestPath = requestPath.substr(1);
         }
+
+        interface HtmlResult {
+            content?: string,
+            redirect?: string
+        }
     
         // forward request to R instance
         // below is just a complicated way of getting a http response from the help server
-        const url = `http://localhost:${this.port}/${requestPath}`;
-        const htmlPromise = new Promise<string>((resolve, reject) => {
-            let content: string = '';
-            http.get(url, (res: http.IncomingMessage) => {
-                res.on('data', (chunk) => {
-                    content += chunk.toString();
-                });
-                res.on('close', () => {
-                    resolve(content);
-                });
-                res.on('error', () => {
-                    reject();
+        let url = `http://localhost:${this.port}/${requestPath}`;
+        let html = '';
+        const maxForwards = 3;
+        for (let index = 0; index < maxForwards; index++) {
+            const htmlPromise = new Promise<HtmlResult>((resolve, reject) => {
+                let content: string = '';
+                http.get(url, (res: http.IncomingMessage) => {
+                    if(res.statusCode === 302){
+                        resolve({redirect: res.headers.location});
+                    }
+                    res.on('data', (chunk) => {
+                        content += chunk.toString();
+                    });
+                    res.on('close', () => {
+                        resolve({content: content});
+                    });
+                    res.on('error', () => {
+                        reject();
+                    });
                 });
             });
-        });
-
-        const html = await htmlPromise;
+            const htmlResult = await htmlPromise;
+            if(htmlResult.redirect){
+                const newUrl = new URL(htmlResult.redirect, url);
+                url = newUrl.toString();
+            } else{
+                html = htmlResult.content || '';
+                break;
+            }
+        }
 
         // return help file
         const ret: rHelpPanel.HelpFile = {
