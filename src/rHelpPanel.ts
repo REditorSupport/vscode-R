@@ -311,6 +311,12 @@ export class HelpPanel {
 		// get requestpath of helpfile
 		const relPath = helpFile.requestPath + (helpFile.hash || '');
 
+		// check if file is html
+		const re = new RegExp('<html[^\n]*>.*</html>', 'ms');
+		if(!helpFile.html.match(re)){
+			helpFile.html = `<html><head></head><body><pre>${helpFile.html}</pre></body></html>`;
+		}
+
 		// parse the html string
 		const $ = cheerio.load(helpFile.html);
 
