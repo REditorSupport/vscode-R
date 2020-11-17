@@ -284,6 +284,8 @@ export class HelpPanel {
 
 			if(uri.fragment){
 				helpFile.hash = '#' + uri.fragment;
+			} else{
+				helpFile.scrollY = 0;
 			}
 
 			// if successful, show helpfile:
