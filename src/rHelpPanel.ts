@@ -221,6 +221,8 @@ export class HelpPanel {
 			});
 		}
 
+		this.panel.reveal();
+
 		return this.panel.webview;
 	}
 
