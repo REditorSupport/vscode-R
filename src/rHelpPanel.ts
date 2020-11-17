@@ -30,6 +30,8 @@ export interface HelpFile {
 	isModified?: boolean;
 	// path as used by help server. Uses '/' as separator!
 	requestPath: string;
+	// hash-part of the requested URL
+	hash?: string;
     // if the file is a real file
 	isRealFile?: boolean;
 	// can be used to scroll the document to a certain position when loading
@@ -249,7 +251,7 @@ export class HelpPanel {
 	}
 
 	// handle message produced by javascript inside the help page
-	private handleMessage(msg: any){
+	private async handleMessage(msg: any){
 		if(msg.message === 'linkClicked'){
 			// handle hyperlinks clicked in the webview
 			// normal navigation does not work in webviews (even on localhost)
@@ -276,7 +278,11 @@ export class HelpPanel {
 			const requestPath = parts.join('/');
 
 			// retrieve helpfile for path:
-			const helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
+			const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
+
+			if(uri.fragment){
+				helpFile.hash = '#' + uri.fragment;
+			}
 
 			// if successful, show helpfile:
 			if(helpFile){
@@ -304,9 +310,7 @@ export class HelpPanel {
 	private pimpMyHelp(helpFile: HelpFile): HelpFile {
 
 		// get requestpath of helpfile
-		const parts = helpFile.requestPath.split('/');
-		parts.pop(); // remove filename
-		const relPath = parts.join('/');
+		const relPath = helpFile.requestPath + (helpFile.hash || '');
 
 		// parse the html string
 		const $ = cheerio.load(helpFile.html);
@@ -342,7 +346,7 @@ export class HelpPanel {
 		// set relPath attribute. Used by js inside the page to adjust hyperlinks
 		// scroll to top (=0) or last viewed position (if the page is from history)
 		$('body').attr('relpath', relPath);
-		$('body').attr('scrollyto', `${helpFile.scrollY || 0}`);
+		$('body').attr('scrollyto', `${helpFile.scrollY || -1}`);
 
 
 
