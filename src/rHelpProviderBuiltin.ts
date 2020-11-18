@@ -101,6 +101,7 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
             const htmlResult = await htmlPromise;
             if(htmlResult.redirect){
                 const newUrl = new URL(htmlResult.redirect, url);
+                requestPath = newUrl.pathname;
                 url = newUrl.toString();
             } else{
                 html = htmlResult.content || '';
