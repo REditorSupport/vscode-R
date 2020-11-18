@@ -238,7 +238,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
 		const cmd1b = `"cat(paste0(tools:::as.character.Rd(get('${fncName}')),collapse=''))"`;
 
 		// output file (supposed to be temporary)
-		const rdFileName = path.join(os.tmpdir(), fncName + '.Rd');
+		const rdFileName = path.join(os.tmpdir(), fncName + '.Rd').replace(/\\/g, '/');
 
         // produce the .Rd file of a function:
 		const cmd1 = `${this.rPath} -e ${cmd1a} -e ${cmd1b} --vanilla --silent --no-echo > ${rdFileName}`;

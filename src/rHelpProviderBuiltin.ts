@@ -4,7 +4,6 @@
 import * as cp from 'child_process';
 
 import * as http from 'http';
-import { downloadAndUnzipVSCode } from 'vscode-test';
 
 import * as rHelpPanel from './rHelpPanel';
 

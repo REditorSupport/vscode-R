@@ -60,7 +60,7 @@ export async function activate(context: ExtensionContext) {
     };
 
     // which helpProvider to use.
-    const helpProviderType = config().get<'custom'|'builtin'>('helpPanel.helpProvider');
+    const helpProviderType = config().get<'custom'|'Rserver'>('helpPanel.helpProvider');
 
     // launch help provider (provides the html for requested entries)
     let helpProvider: HelpProvider;
