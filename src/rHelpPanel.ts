@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 
 import * as hljs from 'highlight.js';
+import { config } from './util';
 
 
 
@@ -327,24 +328,27 @@ export class HelpPanel {
 		const $ = cheerio.load(helpFile.html);
 
 		if(!helpFile.isModified){
-			// find all code sections, enclosed by <pre>...</pre>
-			const codeSections = $('pre');
 
-			// apply syntax highlighting to each code section:
-			codeSections.each((i, section) => {
-				const newChildNodes = [];
-				section.children.forEach((subSection, j) => {
-					if(subSection.type === 'text'){
-						const styledCode = hljs.highlight('r', subSection.data);
-						const newChildren = cheerio.parseHTML(styledCode.value);
+			if(config().get<boolean>('helpPanel.enableSyntaxHighlighting')){
+				// find all code sections, enclosed by <pre>...</pre>
+				const codeSections = $('pre');
 
-						for(const [i, newChild] of newChildren.entries()){
-							newChildNodes.push(newChild);
+				// apply syntax highlighting to each code section:
+				codeSections.each((i, section) => {
+					const newChildNodes = [];
+					section.children.forEach((subSection, j) => {
+						if(subSection.type === 'text'){
+							const styledCode = hljs.highlight('r', subSection.data);
+							const newChildren = cheerio.parseHTML(styledCode.value);
+
+							for(const [i, newChild] of newChildren.entries()){
+								newChildNodes.push(newChild);
+							}
 						}
-					}
+					});
+					section.childNodes = newChildNodes;
 				});
-				section.childNodes = newChildNodes;
-			});
+			}
 
 			// append stylesheet and javascript file
 			$('body').append(`\n<link rel="stylesheet" href="${this.webviewStyleUri}"></link>`);

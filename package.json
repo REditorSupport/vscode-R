@@ -500,10 +500,10 @@
             "type": "string"
           }
         },
-        "r.helpPanel.enable": {
+        "r.helpPanel.enableSyntaxHighlighting": {
           "type": "boolean",
           "default": true,
-          "description": "Enable an integrated help panel to view the result of calls to `help()` or `?`."
+          "description": "Enable syntax highlighting in the help panel."
         },
         "r.helpPanel.rpath": {
           "type": "string",
