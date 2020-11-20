@@ -1,0 +1,88 @@
+
+
+
+/* I tried to mimic VS Code's Dark+ theme with these colors: */
+
+.hljs-literal,
+.hljs-keyword {
+    color: #569cd6
+}
+
+/* .hljs-type, */
+.hljs-number {
+    color: #b5cea8
+}
+
+.hljs-regexp,
+.hljs-bullet,
+.hljs-string {
+    color: #CE9178
+}
+/* .hljs-subst, */
+.hljs-symbol,
+.hljs-class {
+    color: #4EC9B0
+}
+
+.hljs-built_in,
+.hljs-function {
+    color: #DCDCAA
+}
+/* .hljs-title,
+.hljs-params, */
+.hljs-quote,
+.hljs-comment {
+    color: #6A9955
+}
+/* .hljs-doctag,
+.hljs-meta,
+.hljs-meta-keyword,
+.hljs-meta-string,
+.hljs-code,
+.hljs-emphasis,
+.hljs-strong,
+.hljs-formula, */
+
+.hljs-link {
+    color: #D9E577
+}
+
+
+/* .hljs-selector-id,
+.hljs-selector-class,
+.hljs-selector-attr,
+.hljs-selector-pseudo,
+.hljs-Templat,
+.hljs-template-variable,
+.hljs-deletion,
+.hljs-Reason,
+.hljs-pattern-match,
+.hljs-typing,
+.hljs-constructor,
+.hljs-module-access {
+    color: #000000
+} */
+
+/* .hljs {
+} */
+
+body {
+    font-size: var(--vscode-editor-font-size);
+}
+
+pre, code {
+    font-family: var(--vscode-editor-font-family);
+    font-size: var(--vscode-editor-font-size);
+}
+/* 
+a {
+    text-decoration: none;
+} */
+
+/* td {
+    font-size: 14px;
+} */
+
+/* p {
+    font-size: 16px;
+} */

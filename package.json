@@ -48,7 +48,10 @@
     "onCommand:r.createGitignore",
     "onCommand:r.runCommandWithSelectionOrWord",
     "onCommand:r.runCommandWithEditorPath",
-    "onCommand:r.runCommand"
+    "onCommand:r.runCommand",
+    "onCommand:r.showHelp",
+    "onCommand:r.helpPanel.back",
+    "onCommand:r.helpPanel.forward"
   ],
   "main": "./dist/extension",
   "contributes": {
@@ -209,6 +212,20 @@
       }
     ],
     "commands": [
+      {
+        "command": "r.showHelp",
+        "title": "R: Show help"
+      },
+      {
+        "command": "r.helpPanel.back",
+        "title": "R Help Panel: Go Back",
+        "icon": "$(arrow-left)"
+      },
+      {
+        "command": "r.helpPanel.forward",
+        "title": "R Help Panel: Go Forward",
+        "icon": "$(arrow-right)"
+      },
       {
         "title": "Create R terminal",
         "category": "R",
@@ -440,6 +457,16 @@
           "when": "editorLangId == rmd",
           "command": "r.knitRmd",
           "group": "navigation"
+        },
+        {
+          "command": "r.helpPanel.back",
+          "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
+          "group": "navigation"
+        },
+        {
+          "command": "r.helpPanel.forward",
+          "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
+          "group": "navigation"
         }
       ]
     },
@@ -472,6 +499,28 @@
           "items": {
             "type": "string"
           }
+        },
+        "r.helpPanel.enableSyntaxHighlighting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable syntax highlighting in the help panel."
+        },
+        "r.helpPanel.rpath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to an R executable. Defaults to `r.rterm.XXX`. Must be \"vanilla\" R, not radian etc.! "
+        },
+        "r.helpPanel.helpProvider": {
+          "type": "string",
+          "default": "Rserver",
+          "enum": [
+            "custom",
+            "Rserver"
+          ],
+          "enumDescriptions": [
+            "A custom implementation of the R help server.",
+            "R's builtin help server"
+          ]
         },
         "r.source.encoding": {
           "type": "string",
@@ -519,9 +568,13 @@
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {
+    "@types/cheerio": "^0.22.22",
+    "@types/express": "^4.17.8",
     "@types/fs-extra": "^9.0.2",
+    "@types/highlight.js": "^9.12.4",
     "@types/mocha": "^8.0.3",
     "@types/node": "^14.14.6",
+    "@types/showdown": "^1.9.3",
     "@types/vscode": "^1.50.0",
     "@types/winreg": "^1.2.30",
     "@typescript-eslint/eslint-plugin": "^4.6.0",
@@ -540,14 +593,17 @@
   },
   "dependencies": {
     "bootstrap": "^4.5.3",
+    "cheerio": "^1.0.0-rc.3",
     "datatables.net": "^1.10.22",
     "datatables.net-bs4": "^1.10.22",
     "datatables.net-fixedheader-jqui": "^3.1.7",
     "fotorama": "^4.6.4",
     "fs-extra": "^9.0.1",
+    "highlight.js": "^10.3.1",
     "jquery": "^3.5.1",
     "jquery.json-viewer": "^1.4.0",
     "popper.js": "^1.16.1",
+    "showdown": "^1.9.1",
     "winreg": "^1.2.4"
   }
 }

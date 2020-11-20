@@ -3,7 +3,7 @@
 // Import the module and reference it with the alias vscode in your code below
 import { CancellationToken, commands, CompletionContext, CompletionItem, CompletionItemKind,
          ExtensionContext, Hover, IndentAction, languages, MarkdownString, Position, Range,
-         StatusBarAlignment, TextDocument, window } from 'vscode';
+         StatusBarAlignment, TextDocument, window, workspace } from 'vscode';
 
 import { previewDataframe, previewEnvironment } from './preview';
 import { createGitignore } from './rGitignore';
@@ -12,9 +12,17 @@ import { createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
-import { config, ToRStringLiteral } from './util';
+import { config, ToRStringLiteral, getRpath } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
 import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, runCurrentChunk, runAboveChunks } from './rmarkdown';
+
+import * as path from 'path';
+
+import { HelpPanel, HelpPanelOptions, HelpProvider, RHelpProviderOptions } from './rHelpPanel';
+import { RHelpClient } from './rHelpProviderBuiltin';
+import { RHelp } from './rHelpProviderCustom';
+import { RExtensionImplementation as RExtension } from './apiImplementation';
+import { resolveCliPathFromVSCodeExecutablePath } from 'vscode-test';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -30,9 +38,69 @@ const roxygenTagCompletionItems = [
     'section', 'seealso', 'slot', 'source', 'template', 'templateVar',
     'title', 'usage'].map((x: string) => new CompletionItem(`${x} `));
 
+
+export let globalRHelpPanel: HelpPanel | null = null;
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
-export function activate(context: ExtensionContext) {
+export async function activate(context: ExtensionContext) {
+
+    // used to export an interface to the help panel
+    // used e.g. by vscode-r-debugger to show the help panel from within debug sessions
+    const rExtension = new RExtension();
+
+    // get the "vanilla" R path from config
+    let rPath = config().get('helpPanel.rPath', '') || await getRpath();
+    if(rPath.match(/^[^'"].* .*[^'"]$/)){
+        rPath = `"${rPath}"`;
+    }
+    const rHelpProviderOptions = {
+        rPath: rPath,
+        cwd: (workspace.workspaceFolders.length > 0 ? workspace.workspaceFolders[0].uri.fsPath : undefined)
+    };
+
+    // which helpProvider to use.
+    const helpProviderType = config().get<'custom'|'Rserver'>('helpPanel.helpProvider');
+
+    // launch help provider (provides the html for requested entries)
+    let helpProvider: HelpProvider;
+    if(helpProviderType === 'custom'){
+        helpProvider = new RHelp(rHelpProviderOptions);
+    } else {
+        helpProvider = new RHelpClient(rHelpProviderOptions);
+    }
+
+    // launch the help panel (displays the html provided by helpProvider)
+    const rHelpPanelOptions: HelpPanelOptions = {
+        webviewScriptPath: path.join(context.extensionPath, path.normalize('/html/script.js')),
+        webviewStylePath: path.join(context.extensionPath, path.normalize('/html/theme.css'))
+    };
+    const rHelpPanel = new HelpPanel(helpProvider, rHelpPanelOptions);
+    globalRHelpPanel = rHelpPanel;
+
+    rExtension.helpPanel = rHelpPanel;
+
+    context.subscriptions.push(rHelpPanel);
+
+    context.subscriptions.push(commands.registerCommand('r.showHelp', () => {
+        rHelpPanel.showHelpForInput();
+    }));
+
+    context.subscriptions.push(commands.registerCommand('r.showDoc', () => {
+        rHelpPanel.showHelpForFunctionName('index.html', 'doc');
+    }));
+
+    context.subscriptions.push(commands.registerCommand('r.helpPanel.back', () =>{
+        rHelpPanel.goBack();
+    }));
+
+    context.subscriptions.push(commands.registerCommand('r.helpPanel.forward', () =>{
+        rHelpPanel.goForward();
+    }));
+    
+
+    
+
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
 
@@ -313,6 +381,9 @@ export function activate(context: ExtensionContext) {
         trackLastActiveTextEditor(window.activeTextEditor);
         window.onDidChangeActiveTextEditor(trackLastActiveTextEditor);
     }
+
+    console.log('vscode-r: returning R extension...');
+    return rExtension;
 }
 
 // This method is called when your extension is deactivated
