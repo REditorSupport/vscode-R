@@ -1,5 +1,14 @@
 # Change Log
 
+## 1.6.0
+
+* Integrate help view from vscode-R-help #433 (Implemented by the new collabolator @ManuelHentschel)
+* Add terminal information to chooseTerminal error #447
+* Send code at EOF appends new line #444
+* Friendly error message when trying to launch addin picker and vsc.rstudioapi = FALSE #441
+* platform independent content string splitting #436
+* Add runAboveChunks command #434
+
 ## 1.5.2
 
 * Enhance R markdown support #429 (Fix #428, #49, #261)
