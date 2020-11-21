@@ -6,7 +6,7 @@ import {
 import { runChunksInTerm } from './rTerminal';
 
 function isChunkStartLine(text: string) {
-  if (text.match(/^\s*```+\s*\{[Rr]\s*.*$/g)) {
+  if (text.match(/^\s*```+\s*\{\w+\s*.*$/g)) {
     return true;
   }
   return false;
@@ -19,8 +19,12 @@ function isChunkEndLine(text: string) {
   return false;
 }
 
+function getChunkLanguage(text: string) {
+  return text.replace(/^\s*```+\s*\{(\w+)\s*.*\}\s*$/g, '$1').toLowerCase();
+}
+
 function getChunkOptions(text: string) {
-  return text.replace(/^\s*```+\s*\{[Rr]\s*,?\s*(.*)\s*\}\s*$/g, '$1');
+  return text.replace(/^\s*```+\s*\{\w+\s*,?\s*(.*)\s*\}\s*$/g, '$1');
 }
 
 function getChunkEval(chunkOptions: string) {
@@ -48,6 +52,7 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
     const lines = document.getText().split(/\r?\n/);
     let line = 0;
     let chunkStartLine: number = undefined;
+    let chunkLanguage: string = undefined;
     let chunkOptions: string = undefined;
     const chunkRanges: Range[] = [];
     const codeRanges: Range[] = [];
@@ -59,6 +64,7 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
       if (chunkStartLine === undefined) {
         if (isChunkStartLine(lines[line])) {
           chunkStartLine = line;
+          chunkLanguage = getChunkLanguage(lines[line]);
           chunkOptions = getChunkOptions(lines[line]);
         }
       } else {
@@ -72,26 +78,28 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
             new Position(line - 1, lines[line - 1].length)
           );
           chunkRanges.push(chunkRange);
-          if (getChunkEval(chunkOptions)) {
-            codeRanges.push(codeRange);
-          }
-          this.codeLenses.push(new CodeLens(chunkRange, {
-            title: 'Run Chunk',
-            tooltip: 'Run current chunk',
-            command: 'r.runChunks',
-            arguments: [
-              [
-                codeRange
+          if (chunkLanguage === 'r') {
+            this.codeLenses.push(new CodeLens(chunkRange, {
+              title: 'Run Chunk',
+              tooltip: 'Run current chunk',
+              command: 'r.runChunks',
+              arguments: [
+                [
+                  codeRange
+                ]
               ]
-            ]
-          }), new CodeLens(chunkRange, {
-            title: 'Run Above',
-            tooltip: 'Run all chunks above',
-            command: 'r.runChunks',
-            arguments: [
-              codeRanges.slice(0, codeRanges.length - 1)
-            ]
-          }));
+            }), new CodeLens(chunkRange, {
+              title: 'Run Above',
+              tooltip: 'Run all chunks above',
+              command: 'r.runChunks',
+              arguments: [
+                codeRanges.slice()
+              ]
+            }));
+            if (getChunkEval(chunkOptions)) {
+              codeRanges.push(codeRange);
+            }
+          }
           chunkStartLine = undefined;
         }
       }
@@ -119,6 +127,7 @@ export async function runCurrentChunk() {
 
   let line = 0;
   let chunkStartLine: number = undefined;
+  let chunkLanguage: string = undefined;
 
   while (line < lines.length) {
     if (chunkStartLine === undefined) {
@@ -127,16 +136,19 @@ export async function runCurrentChunk() {
       }
       if (isChunkStartLine(lines[line])) {
         chunkStartLine = line;
+        chunkLanguage = getChunkLanguage(lines[line]);
       }
     } else {
       if (isChunkEndLine(lines[line])) {
         if (line >= selection.end.line) {
-          const codeRange = new Range(
-            new Position(chunkStartLine + 1, 0),
-            new Position(line - 1, lines[line - 1].length)
-          );
+          if (chunkLanguage === 'r') {
+            const codeRange = new Range(
+              new Position(chunkStartLine + 1, 0),
+              new Position(line - 1, lines[line - 1].length)
+            );
 
-          return runChunksInTerm([codeRange]);
+            return runChunksInTerm([codeRange]);
+          }
         }
 
         chunkStartLine = undefined;
@@ -154,6 +166,7 @@ export async function runAboveChunks() {
 
   let line = 0;
   let chunkStartLine: number = undefined;
+  let chunkLanguage: string = undefined;
   let chunkOptions: string = undefined;
 
   while (line < lines.length) {
@@ -163,6 +176,7 @@ export async function runAboveChunks() {
       }
       if (isChunkStartLine(lines[line])) {
         chunkStartLine = line;
+        chunkLanguage = getChunkLanguage(lines[line]);
         chunkOptions = getChunkOptions(lines[line]);
       }
     } else {
@@ -171,13 +185,15 @@ export async function runAboveChunks() {
           return runChunksInTerm(codeRanges);
         }
 
-        if (getChunkEval(chunkOptions)) {
-          const codeRange = new Range(
-            new Position(chunkStartLine + 1, 0),
-            new Position(line - 1, lines[line - 1].length)
-          );
+        if (chunkLanguage === 'r') {
+          if (getChunkEval(chunkOptions)) {
+            const codeRange = new Range(
+              new Position(chunkStartLine + 1, 0),
+              new Position(line - 1, lines[line - 1].length)
+            );
 
-          codeRanges.push(codeRange);
+            codeRanges.push(codeRange);
+          }
         }
 
         chunkStartLine = undefined;
@@ -212,7 +228,8 @@ export class RMarkdownCompletionItemProvider implements CompletionItemProvider {
   }
 
   public provideCompletionItems(document: TextDocument, position: Position) {
-    if (isChunkStartLine(document.lineAt(position).text)) {
+    const line = document.lineAt(position).text;
+    if (isChunkStartLine(line) && getChunkLanguage(line) === 'r') {
       return this.chunkOptionCompletionItems;
     }
 
