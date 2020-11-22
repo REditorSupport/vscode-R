@@ -202,6 +202,15 @@ export async function activate(context: ExtensionContext) {
         runTextInTerm(text);
     }
 
+    async function runFromLineToEnd() {
+        const startLine = window.activeTextEditor.selection.start.line;
+        const startPos = new Position(startLine, 0);
+        const endLine = window.activeTextEditor.document.lineCount;
+        const range = new Range(startPos, new Position(endLine, 0));
+        const text = window.activeTextEditor.document.getText(range);
+        runTextInTerm(text);
+    }
+
     languages.registerCompletionItemProvider('r', {
         provideCompletionItems(document: TextDocument, position: Position) {
             if (document.lineAt(position).text
@@ -236,6 +245,7 @@ export async function activate(context: ExtensionContext) {
         commands.registerCommand('r.runSourcewithEcho', () => { runSource(true); }),
         commands.registerCommand('r.runSelection', runSelection),
         commands.registerCommand('r.runFromBeginningToLine', runFromBeginningToLine),
+        commands.registerCommand('r.runFromLineToEnd', runFromLineToEnd),
         commands.registerCommand('r.runSelectionRetainCursor', runSelectionRetainCursor),
         commands.registerCommand('r.runCurrentChunk', runCurrentChunk),
         commands.registerCommand('r.runAboveChunks', runAboveChunks),

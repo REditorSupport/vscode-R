@@ -370,6 +370,11 @@
         "command": "r.runFromBeginningToLine"
       },
       {
+        "title": "Run from Line to End",
+        "category": "R",
+        "command": "r.runFromLineToEnd"
+      },
+      {
         "title": "Run Selection/Line (Retain Cursor)",
         "category": "R",
         "command": "r.runSelectionRetainCursor"
@@ -443,6 +448,12 @@
         "command": "r.runFromBeginningToLine",
         "key": "Ctrl+alt+b",
         "mac": "cmd+alt+b",
+        "when": "editorTextFocus && editorLangId == 'r'"
+      },
+      {
+        "command": "r.runFromLineToEnd",
+        "key": "Ctrl+alt+e",
+        "mac": "cmd+alt+e",
         "when": "editorTextFocus && editorLangId == 'r'"
       }
     ],
