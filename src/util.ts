@@ -29,6 +29,31 @@ function getRfromEnvPath(platform: string) {
     return '';
 }
 
+export async function getRpathFromSystem() {
+    
+    let rpath: string = '';
+    const platform: string = process.platform;
+    
+    if ( platform === 'win32') {
+        // Find path from registry
+        try {
+            const key = new winreg({
+                hive: winreg.HKLM,
+                key: '\\Software\\R-Core\\R',
+            });
+            const item: winreg.RegistryItem = await new Promise((c, e) =>
+                key.get('InstallPath', (err, result) => err === null ? c(result) : e(err)));
+            rpath = path.join(item.value, 'bin', 'R.exe');
+        } catch (e) {
+            rpath = '';
+        }
+    }
+
+    rpath ||= getRfromEnvPath(platform);
+
+    return rpath;
+}
+
 export async function getRpath() {
     
     let rpath: string = '';
@@ -36,35 +61,22 @@ export async function getRpath() {
     
     if ( platform === 'win32') {
         rpath = config().get<string>('rterm.windows');
-        if (rpath === '') {
-            // Find path from registry
-            try {
-                const key = new winreg({
-                    hive: winreg.HKLM,
-                    key: '\\Software\\R-Core\\R',
-                });
-                const item: winreg.RegistryItem = await new Promise((c, e) =>
-                    key.get('InstallPath', (err, result) => err === null ? c(result) : e(err)));
-                rpath = path.join(item.value, 'bin', 'R.exe');
-            } catch (e) {
-                rpath = '';
-            }
-        }
     } else if (platform === 'darwin') {
         rpath = config().get<string>('rterm.mac');
     } else if (platform === 'linux') {
         rpath = config().get<string>('rterm.linux');
     }
+
+    rpath ||= await getRpathFromSystem();
     
-    if (rpath === '') {
-        rpath = getRfromEnvPath(platform);
-    }
     if (rpath !== '') {
         return rpath;
     }
+
     window.showErrorMessage(`${process.platform} can't use R`);
     return undefined;
 }
+
 
 export function ToRStringLiteral(s: string, quote: string) {
     if (s === undefined) {

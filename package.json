@@ -508,7 +508,7 @@
         "r.helpPanel.rpath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to an R executable. Defaults to `r.rterm.XXX`. Must be \"vanilla\" R, not radian etc.! "
+          "markdownDescription": "Path to an R executable. Must be \"vanilla\" R, not radian etc.! Will be read from registry or path if not set."
         },
         "r.helpPanel.helpProvider": {
           "type": "string",
