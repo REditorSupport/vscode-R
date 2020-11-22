@@ -56,7 +56,7 @@ export async function activate(context: ExtensionContext) {
     }
     const rHelpProviderOptions = {
         rPath: rPath,
-        cwd: (workspace.workspaceFolders.length > 0 ? workspace.workspaceFolders[0].uri.fsPath : undefined)
+        cwd: ((workspace.workspaceFolders !== undefined && workspace.workspaceFolders.length > 0) ? workspace.workspaceFolders[0].uri.fsPath : undefined)
     };
 
     // which helpProvider to use.
