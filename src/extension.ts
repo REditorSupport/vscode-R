@@ -50,7 +50,7 @@ export async function activate(context: ExtensionContext) {
     const rExtension = new RExtension();
 
     // get the "vanilla" R path from config
-    let rPath = config().get('helpPanel.rPath', '') || await getRpath();
+    let rPath = config().get<string>('helpPanel.rpath', '') || await getRpath();
     if(rPath.match(/^[^'"].* .*[^'"]$/)){
         rPath = `"${rPath}"`;
     }
