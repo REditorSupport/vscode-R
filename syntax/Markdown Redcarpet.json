@@ -13,6 +13,13 @@
                 {"include" : "#fenced_block_cpp"},
                 {"include" : "#fenced_block_yaml"},
                 {"include" : "#fenced_block"},
+                {"include" : "#fenced_block_julia"},
+                {"include" : "#fenced_block_stan"},
+                {"include" : "#fenced_block_python"},
+                {"include" : "#fenced_block_sql"},
+                {"include" : "#fenced_block_css"},
+                {"include" : "#fenced_block_scss"},
+                {"include" : "#fenced_block_js"},
                 {"include" : "#link-def"},
                 {"include" : "#html"},
                 {"include" : "#paragraph"}
@@ -48,6 +55,62 @@
                     "name" : "meta.embedded.block.yaml",
                     "patterns" : [
                         {"include" : "source.yaml"}
+                    ]
+                },
+                "fenced_block_julia" : {
+                    "begin" : "(^|\\G)([`]{3})\\{*[ ]*(?:julia).*\\}*$",
+                    "end" : "(^|\\G)([`]{3})($|\\z)",
+                    "name" : "meta.embedded.block.julia",
+                    "patterns" : [
+                        {"include" : "source.julia"}
+                    ]
+                },
+                "fenced_block_stan" : {
+                    "begin" : "(^|\\G)([`]{3})\\{*[ ]*(?:stan).*\\}*$",
+                    "end" : "(^|\\G)([`]{3})($|\\z)",
+                    "name" : "meta.embedded.block.stan",
+                    "patterns" : [
+                        {"include" : "source.stan"}
+                    ]
+                },
+                "fenced_block_python" : {
+                    "begin" : "(^|\\G)([`]{3})\\{*[ ]*(?:python).*\\}*$",
+                    "end" : "(^|\\G)([`]{3})($|\\z)",
+                    "name" : "meta.embedded.block.python",
+                    "patterns" : [
+                        {"include" : "source.python"}
+                    ]
+                },
+                "fenced_block_sql" : {
+                    "begin" : "(^|\\G)([`]{3})\\{*[ ]*(?:sql).*\\}*$",
+                    "end" : "(^|\\G)([`]{3})($|\\z)",
+                    "name" : "meta.embedded.block.sql",
+                    "patterns" : [
+                        {"include" : "source.sql"}
+                    ]
+                },
+                "fenced_block_css" : {
+                    "begin" : "(^|\\G)([`]{3})\\{*[ ]*(?:css).*\\}*$",
+                    "end" : "(^|\\G)([`]{3})($|\\z)",
+                    "name" : "meta.embedded.block.css",
+                    "patterns" : [
+                        {"include" : "source.css"}
+                    ]
+                },
+                "fenced_block_scss" : {
+                    "begin" : "(^|\\G)([`]{3})\\{*[ ]*(?:scss).*\\}*$",
+                    "end" : "(^|\\G)([`]{3})($|\\z)",
+                    "name" : "meta.embedded.block.css.scss",
+                    "patterns" : [
+                        {"include" : "source.css.scss"}
+                    ]
+                },
+                "fenced_block_js" : {
+                    "begin" : "(^|\\G)([`]{3})\\{*[ ]*(?:js).*\\}*$",
+                    "end" : "(^|\\G)([`]{3})($|\\z)",
+                    "name" : "meta.embedded.block.js",
+                    "patterns" : [
+                        {"include" : "source.js"}
                     ]
                 }
             }
