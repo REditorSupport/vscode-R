@@ -269,6 +269,58 @@ export async function runFromCurrentToBelowChunks() {
   }
   runChunksInTerm(codeRanges);
 }
+
+export async function runBelowChunks() {
+  const selection = window.activeTextEditor.selection;
+  const currentDocument = window.activeTextEditor.document;
+  const lines = currentDocument.getText().split(/\r?\n/);
+  const codeRanges: Range[] = [];
+
+  let chunkStartLine: number = undefined;
+  let chunkLanguage: string = undefined;
+  let chunkOptions: string = undefined;
+
+  // Find 'chunk start line' from next chunk onwards (excluding the chunk where the cursor is positioned), covering cases for within and outside of chunk.
+
+  let line = selection.start.line;
+  let chunkStartLineBelow = line + 1 ;
+
+  while (!isChunkStartLine(lines[chunkStartLineBelow])) {
+    chunkStartLineBelow++;
+  }
+
+  line = chunkStartLineBelow;
+
+  // Start finding and run codes from the one chunk below to all the chunks below it
+
+  while (line < lines.length) {
+    if (chunkStartLine === undefined) {
+      if (isChunkStartLine(lines[line])) {
+        chunkStartLine = line;
+        chunkLanguage = getChunkLanguage(lines[line]);
+        chunkOptions = getChunkOptions(lines[line]);
+      }
+    } else {
+      if (isChunkEndLine(lines[line])) {
+        if (chunkLanguage === 'r') {
+          if (getChunkEval(chunkOptions)) {
+            const codeRange = new Range(
+              new Position(chunkStartLine + 1, 0),
+              new Position(line - 1, lines[line - 1].length)
+            );
+
+            codeRanges.push(codeRange);
+          }
+        }
+
+        chunkStartLine = undefined;
+      }
+    }
+    line++;
+  }
+  runChunksInTerm(codeRanges);
+}
+
 export class RMarkdownCompletionItemProvider implements CompletionItemProvider {
 
   // obtained from R code
