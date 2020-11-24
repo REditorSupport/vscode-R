@@ -14,7 +14,7 @@ import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
 import { config, ToRStringLiteral, getRpath, getRpathFromSystem } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
-import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, runCurrentChunk, runAboveChunks } from './rmarkdown';
+import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, runCurrentChunk, runAboveChunks, runFromCurrentToBelowChunks } from './rmarkdown';
 
 import * as path from 'path';
 
@@ -97,9 +97,9 @@ export async function activate(context: ExtensionContext) {
     context.subscriptions.push(commands.registerCommand('r.helpPanel.forward', () =>{
         rHelpPanel.goForward();
     }));
-    
 
-    
+
+
 
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
@@ -249,6 +249,7 @@ export async function activate(context: ExtensionContext) {
         commands.registerCommand('r.runSelectionRetainCursor', runSelectionRetainCursor),
         commands.registerCommand('r.runCurrentChunk', runCurrentChunk),
         commands.registerCommand('r.runAboveChunks', runAboveChunks),
+        commands.registerCommand('r.runFromCurrentToBelowChunks', runFromCurrentToBelowChunks),
         commands.registerCommand('r.runChunks', runChunksInTerm),
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.previewDataframe', previewDataframe),

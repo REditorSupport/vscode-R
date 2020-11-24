@@ -203,6 +203,49 @@ export async function runAboveChunks() {
   }
 }
 
+export async function runFromCurrentToBelowChunks() {
+  const selection = window.activeTextEditor.selection;
+  const currentDocument = window.activeTextEditor.document;
+  const lines = currentDocument.getText().split(/\r?\n/);
+  const codeRanges: Range[] = [];
+
+  let chunkStartLine: number = undefined;
+  let chunkLanguage: string = undefined;
+  let chunkOptions: string = undefined;
+
+  // Find the chunk start line of the current chunk
+  let line: number = selection.start.line;
+  while (!isChunkStartLine(lines[line])) {
+    line--;
+  }
+
+  while (line < lines.length) {
+    if (chunkStartLine === undefined) {
+      if (isChunkStartLine(lines[line])) {
+        chunkStartLine = line;
+        chunkLanguage = getChunkLanguage(lines[line]);
+        chunkOptions = getChunkOptions(lines[line]);
+      }
+    } else {
+      if (isChunkEndLine(lines[line])) {
+        if (chunkLanguage === 'r') {
+          if (getChunkEval(chunkOptions)) {
+            const codeRange = new Range(
+              new Position(chunkStartLine + 1, 0),
+              new Position(line - 1, lines[line - 1].length)
+            );
+
+            codeRanges.push(codeRange);
+          }
+        }
+
+        chunkStartLine = undefined;
+      }
+    }
+    line++;
+  }
+  runChunksInTerm(codeRanges);
+}
 export class RMarkdownCompletionItemProvider implements CompletionItemProvider {
 
   // obtained from R code
