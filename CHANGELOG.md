@@ -1,5 +1,20 @@
 # Change Log
 
+## 1.6.1
+
+This version includes minor fix to stable new functions
+
+* Add GitHub Action for release #449
+* Highlight all chunks #453
+* Fix checking workspaceFolders in rHelpProviderOptions #456
+* Fix typo in help panel path config #457
+
+* @kar9222 Thank you for contribution
+  * Update README: Add options(vsc.helpPanel = ...) #461
+  * Rmd fenced block syntax highlighting for julia, python, etc #460
+
+* New feature r.runFromLineToEnd #448 (Thank you @Dave-cruzz)
+
 ## 1.6.0
 
 * Integrate help view from vscode-R-help #433 (Implemented by the new collabolator @ManuelHentschel)
