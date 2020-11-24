@@ -12,7 +12,7 @@ import { createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
-import { config, ToRStringLiteral, getRpath, getRpathFromSystem } from './util';
+import { config, ToRStringLiteral, getRterm, getRpathFromSystem, getRpath } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
 import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, runCurrentChunk, runAboveChunks } from './rmarkdown';
 
@@ -50,10 +50,7 @@ export async function activate(context: ExtensionContext) {
     const rExtension = new RExtension();
 
     // get the "vanilla" R path from config
-    let rPath = config().get<string>('helpPanel.rpath', '') || await getRpathFromSystem();
-    if(rPath.match(/^[^'"].* .*[^'"]$/)){
-        rPath = `"${rPath}"`;
-    }
+    const rPath = await getRpath(true, 'helpPanel.rpath');
     const rHelpProviderOptions = {
         rPath: rPath,
         cwd: ((workspace.workspaceFolders !== undefined && workspace.workspaceFolders.length > 0) ? workspace.workspaceFolders[0].uri.fsPath : undefined)

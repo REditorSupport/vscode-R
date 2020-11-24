@@ -54,7 +54,44 @@ export async function getRpathFromSystem() {
     return rpath;
 }
 
-export async function getRpath() {
+export async function getRpath(quote: boolean=false, overwriteConfig?: string): Promise<string> {
+    let rpath: string = '';
+    
+    const configEntry = (
+        process.platform === 'win32' ? 'rpath.windows' :
+        process.platform === 'darwin' ? 'rpath.mac' :
+        'rpath.linux'
+    );
+
+    // try the config entry specified in the function arg:
+    if(overwriteConfig){
+        rpath = config().get<string>(overwriteConfig);
+    }
+
+    // try the os-specific config entry for the rpath:
+    rpath ||= config().get<string>(configEntry);
+
+    // read from path/registry:
+    rpath ||= await getRpathFromSystem();
+
+    // represent all invalid paths (undefined, '', null) as undefined:
+    rpath ||= undefined;
+
+    if(!rpath){
+        // inform user about missing R path:
+        window.showErrorMessage(`${process.platform} can't use R`);
+    } else if(quote && rpath.match(/^[^'"].* .*[^'"]$/)){
+        // if requested and rpath contains spaces, add quotes:
+        rpath = `"${rpath}"`;
+    } else if(process.platform === 'win32' && rpath.match(/^'.* .*'$/)){
+        // replace single quotes with double quotes on windows
+        rpath = rpath.replace(/^'(.*)'$/, '"$1"');
+    }
+
+    return rpath;
+}
+
+export async function getRterm() {
     
     let rpath: string = '';
     const platform: string = process.platform;

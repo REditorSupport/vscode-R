@@ -485,20 +485,35 @@
       "type": "object",
       "title": "R",
       "properties": {
+        "r.rpath.windows": {
+          "type": "string",
+          "default": "",
+          "description": "Path to an R executable for Windows. Must be \"vanilla\" R, not radian etc.!"
+        },
+        "r.rpath.mac": {
+          "type": "string",
+          "default": "",
+          "description": "Path to an R executable for macOS. Must be \"vanilla\" R, not radian etc.!"
+        },
+        "r.rpath.linux": {
+          "type": "string",
+          "default": "",
+          "description": "Path to an R executable for Linux. Must be \"vanilla\" R, not radian etc.!"
+        },
         "r.rterm.windows": {
           "type": "string",
           "default": "",
-          "description": "R.exe path for Windows."
+          "description": "R path for Windows. Can also be radian etc."
         },
         "r.rterm.mac": {
           "type": "string",
           "default": "",
-          "description": "R path for macOS."
+          "description": "R path for macOS. Can also be radian etc."
         },
         "r.rterm.linux": {
           "type": "string",
           "default": "",
-          "description": "R path for Linux."
+          "description": "R path for Linux. Can also be radian etc."
         },
         "r.rterm.option": {
           "type": "array",
@@ -519,7 +534,9 @@
         "r.helpPanel.rpath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to an R executable. Must be \"vanilla\" R, not radian etc.! Will be read from registry or path if not set."
+          "markdownDescription": "Path to an R executable. Must be \"vanilla\" R, not radian etc.! Will be read from registry or path if not set.",
+          "markdownDeprecationMessage": "Will be deprecated. Use `#r.rpath.windows#`, `#r.rpath.mac#`, or `#r.rpath.linux#` instead.",
+          "deprecationMessage": "Will be deprecated. Use r.rpath.windows, r.rpath.mac, or r.rpath.linux instead."
         },
         "r.helpPanel.helpProvider": {
           "type": "string",
