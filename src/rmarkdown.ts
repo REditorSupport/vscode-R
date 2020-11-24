@@ -217,7 +217,8 @@ export async function runFromCurrentToBelowChunks() {
 
   let line = selection.start.line;
   let chunkStartLineAtOrAbove = line;
-  let chunkEndLineAbove = line;
+  // `- 1` to cover edge case when cursor is at 'chunk end line'
+  let chunkEndLineAbove = line - 1;
 
   while (chunkStartLineAtOrAbove >= 0 && !isChunkStartLine(lines[chunkStartLineAtOrAbove])) {
     chunkStartLineAtOrAbove--;
