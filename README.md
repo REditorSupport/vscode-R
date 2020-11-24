@@ -178,6 +178,11 @@ options(vsc.page_viewer = "Active" | "Beside" | "Two" | FALSE)
 # Use FALSE for R's native View(), which should be specified in .Rprofile
 #   since it only takes effect on session startup.
 options(vsc.view = "Two" | "Active" | "Beside" | FALSE)
+
+# Which view column to show the WebView triggered by help panel
+# (e.g. after sending `?mean` to terminal)?
+# Use FALSE to disable help panel and revert to old behaviour.
+options(vsc.helpPanel = "Two" | "Active" | "Beside" | FALSE)
 ```
 
 The first values are the default and all subsequent values after `|` are available choices.
@@ -187,7 +192,7 @@ The `"Two" | "Active" | "Beside"` are popular values from `ViewColumn` to specif
 
 The session watcher allows RStudio addins to be executed via an `{rstudioapi}` emulation layer.
 
-To enable this feature, set `options(vsc.rstudioapi = TRUE)` in your .Rprofile. 
+To enable this feature, set `options(vsc.rstudioapi = TRUE)` in your .Rprofile.
 
 The extension provides the command `r.launchAddinPicker` which opens a filterable list of installed addins that can be launched. Bind this to a key, or access it from the command palette as `R: Launch RStudio Addin`.
 
