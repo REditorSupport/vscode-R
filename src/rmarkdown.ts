@@ -213,11 +213,33 @@ export async function runFromCurrentToBelowChunks() {
   let chunkLanguage: string = undefined;
   let chunkOptions: string = undefined;
 
-  // Find the chunk start line of the current chunk
-  let line: number = selection.start.line;
-  while (!isChunkStartLine(lines[line])) {
-    line--;
+  // Find 'chunk start line' of the 'current' chunk, covering cases for within and outside of chunk. When the cursor is outside the chunk, the 'current' chunk is next chunk below the cursor.
+
+  let line = selection.start.line;
+  let chunkStartLineAtOrAbove = line;
+  let chunkEndLineAbove = line;
+
+  while (chunkStartLineAtOrAbove >= 0 && !isChunkStartLine(lines[chunkStartLineAtOrAbove])) {
+    chunkStartLineAtOrAbove--;
   }
+
+  while (chunkEndLineAbove >= 0 && !isChunkEndLine(lines[chunkEndLineAbove])) {
+    chunkEndLineAbove--;
+  }
+
+  // Case: Cursor is within chunk
+  if (chunkEndLineAbove < chunkStartLineAtOrAbove) {
+    line = chunkStartLineAtOrAbove;
+  } else {
+  // Cases: Cursor is above the first chunk, at the first chunk or outside of chunk. Find the 'chunk start line' of the next chunk below the cursor.
+    let chunkStartLineBelow = line;
+    while (!isChunkStartLine(lines[chunkStartLineBelow])) {
+      chunkStartLineBelow++;
+    }
+    line = chunkStartLineBelow;
+  }
+
+  // Start finding and run codes from the current to all the chunks below
 
   while (line < lines.length) {
     if (chunkStartLine === undefined) {
