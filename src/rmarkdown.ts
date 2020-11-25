@@ -158,6 +158,60 @@ export async function runCurrentChunk() {
   }
 }
 
+export async function runPreviousChunk() {
+  const selection = window.activeTextEditor.selection;
+  const currentDocument = window.activeTextEditor.document;
+  const lines = currentDocument.getText().split(/\r?\n/);
+
+  let chunkStartLine: number = undefined;
+  let chunkLanguage: string = undefined;
+  let chunkOptions: string = undefined;
+
+  // Find 'chunk start line' of the 'current' chunk, covering cases for within and outside of chunk. When the cursor is outside the chunk, the 'current' chunk is next chunk below the cursor.
+
+  let line = selection.start.line;
+  let chunkStartLineAtOrAbove = line;
+  // `- 1` to cover edge case when cursor is at 'chunk end line'
+  let chunkEndLineAbove = line - 1;
+
+  while (chunkStartLineAtOrAbove >= 0 && !isChunkStartLine(lines[chunkStartLineAtOrAbove])) {
+    chunkStartLineAtOrAbove--;
+  }
+
+  while (chunkEndLineAbove >= 0 && !isChunkEndLine(lines[chunkEndLineAbove])) {
+    chunkEndLineAbove--;
+  }
+
+  // Case: Cursor is within chunk
+  if (chunkEndLineAbove < chunkStartLineAtOrAbove) {
+    // Find the prev 'chunk start line'
+    chunkStartLineAtOrAbove--;
+    while (chunkStartLineAtOrAbove >= 0 && !isChunkStartLine(lines[chunkStartLineAtOrAbove])) {
+      chunkStartLineAtOrAbove--;
+    }
+    line = chunkStartLineAtOrAbove;
+  } else {
+  // Case: Cursor is outside of chunk
+    line = chunkStartLineAtOrAbove;
+  }
+
+  // Find and run codes from the previous chunk
+
+  chunkStartLine = line;
+  chunkLanguage = getChunkLanguage(lines[line]);
+  chunkOptions = getChunkOptions(lines[line]);
+
+  if (chunkLanguage === 'r') {
+    if (getChunkEval(chunkOptions)) {
+      const codeRange = new Range(
+        new Position(chunkStartLine + 1, 0),
+        new Position(chunkEndLineAbove - 1, lines[chunkEndLineAbove - 1].length)
+      );
+      return runChunksInTerm([codeRange]);
+    }
+  }
+}
+
 export async function runAboveChunks() {
   const selection = window.activeTextEditor.selection;
   const currentDocument = window.activeTextEditor.document;
