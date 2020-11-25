@@ -45,6 +45,7 @@
     "onCommand:r.runSelectionInActiveTerm",
     "onCommand:r.runCurrentChunk",
     "onCommand:r.runPreviousChunk",
+    "onCommand:r.runNextChunk",
     "onCommand:r.runAboveChunks",
     "onCommand:r.runFromCurrentToBelowChunks",
     "onCommand:r.runBelowChunks",
@@ -394,6 +395,11 @@
         "command": "r.runPreviousChunk"
       },
       {
+        "title": "Run Next Chunk",
+        "category": "R",
+        "command": "r.runNextChunk"
+      },
+      {
         "title": "Run Above Chunks",
         "category": "R",
         "command": "r.runAboveChunks"
@@ -448,6 +454,12 @@
         "command": "r.runPreviousChunk",
         "key": "Ctrl+alt+shift+p",
         "mac": "cmd+alt+shift+p",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
+        "command": "r.runNextChunk",
+        "key": "Ctrl+alt+n",
+        "mac": "cmd+alt+n",
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {

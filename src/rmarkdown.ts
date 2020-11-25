@@ -212,6 +212,66 @@ export async function runPreviousChunk() {
   }
 }
 
+export async function runNextChunk() {
+  const selection = window.activeTextEditor.selection;
+  const currentDocument = window.activeTextEditor.document;
+  const lines = currentDocument.getText().split(/\r?\n/);
+
+  let chunkStartLine: number = undefined;
+  let chunkLanguage: string = undefined;
+  let chunkOptions: string = undefined;
+
+  // Find 'chunk start line' of the 'current' chunk, covering cases for within and outside of chunk. When the cursor is outside the chunk, the 'current' chunk is next chunk below the cursor.
+
+  let line = selection.start.line;
+  // TODO `+ 1` to cover edge case when cursor is at 'chunk start line'
+  let chunkStartLineBelow = line + 1;
+  let chunkEndLineAtOrBelow = line;
+
+  while (chunkStartLineBelow <= lines.length && !isChunkStartLine(lines[chunkStartLineBelow])) {
+    chunkStartLineBelow++;
+  }
+
+  while (chunkEndLineAtOrBelow <= lines.length && !isChunkEndLine(lines[chunkEndLineAtOrBelow])) {
+    chunkEndLineAtOrBelow++;
+  }
+
+  // Case: Cursor is within chunk
+  if (chunkEndLineAtOrBelow < chunkStartLineBelow) {
+    line = chunkStartLineBelow;
+  } else {
+  // Case: Cursor is outside of chunk
+    // Find the next 'chunk start line'
+    chunkStartLineBelow++;
+    while (chunkStartLineBelow <= lines.length && !isChunkStartLine(lines[chunkStartLineBelow])) {
+      chunkStartLineBelow++;
+    }
+    line = chunkStartLineBelow;
+  }
+
+  // Find the next 'chunk end line'
+  chunkEndLineAtOrBelow++;
+  while (chunkEndLineAtOrBelow <= lines.length && !isChunkEndLine(lines[chunkEndLineAtOrBelow])) {
+    chunkEndLineAtOrBelow++;
+  }
+
+  // Find and run codes of next chunk
+
+  chunkStartLine = line;
+  chunkLanguage = getChunkLanguage(lines[line]);
+  chunkOptions = getChunkOptions(lines[line]);
+
+  if (chunkLanguage === 'r') {
+    if (getChunkEval(chunkOptions)) {
+      const codeRange = new Range(
+        new Position(chunkStartLine + 1, 0),
+        new Position(chunkEndLineAtOrBelow - 1, lines[chunkEndLineAtOrBelow - 1].length)
+      );
+      return runChunksInTerm([codeRange]);
+    }
+  }
+}
+
 export async function runAboveChunks() {
   const selection = window.activeTextEditor.selection;
   const currentDocument = window.activeTextEditor.document;
@@ -374,7 +434,6 @@ export async function runBelowChunks() {
   }
   runChunksInTerm(codeRanges);
 }
-
 
 export async function runAllChunks() {
   const currentDocument = window.activeTextEditor.document;
