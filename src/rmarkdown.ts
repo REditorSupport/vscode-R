@@ -4,6 +4,7 @@ import {
   Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window
 } from 'vscode';
 import { runChunksInTerm } from './rTerminal';
+import * as vscode from 'vscode';
 
 function isChunkStartLine(text: string) {
   if (text.match(/^\s*```+\s*\{\w+\s*.*$/g)) {
@@ -471,6 +472,46 @@ export async function runAllChunks() {
     line++;
   }
   runChunksInTerm(codeRanges);
+}
+
+export async function goToPreviousChunk() {
+  const selection = window.activeTextEditor.selection;
+  const currentDocument = window.activeTextEditor.document;
+  const lines = currentDocument.getText().split(/\r?\n/);
+
+  // Find 'chunk start line' of the 'current' chunk, covering cases for within and outside of chunk. When the cursor is outside the chunk, the 'current' chunk is next chunk below the cursor.
+
+  let line = selection.start.line;
+  let chunkStartLineAtOrAbove = line;
+  // `- 1` to cover edge case when cursor is at 'chunk end line'
+  let chunkEndLineAbove = line - 1;
+
+  while (chunkStartLineAtOrAbove >= 0 && !isChunkStartLine(lines[chunkStartLineAtOrAbove])) {
+    chunkStartLineAtOrAbove--;
+  }
+
+  while (chunkEndLineAbove >= 0 && !isChunkEndLine(lines[chunkEndLineAbove])) {
+    chunkEndLineAbove--;
+  }
+
+  // Case: Cursor is within chunk
+  if (chunkEndLineAbove < chunkStartLineAtOrAbove) {
+    // Find the prev 'chunk start line'
+    chunkStartLineAtOrAbove--;
+    while (chunkStartLineAtOrAbove >= 0 && !isChunkStartLine(lines[chunkStartLineAtOrAbove])) {
+      chunkStartLineAtOrAbove--;
+    }
+    line = chunkStartLineAtOrAbove;
+  } else {
+  // Case: Cursor is outside of chunk
+    line = chunkStartLineAtOrAbove;
+  }
+
+  line++;  // Move cursor 1 line below 'chunk start line'
+  window.activeTextEditor.selection = new vscode.Selection(line, 0, line, 0);
+}
+  line++;  // Move cursor 1 line below 'chunk start line'
+  window.activeTextEditor.selection = new vscode.Selection(line, 0, line, 0);
 }
 export class RMarkdownCompletionItemProvider implements CompletionItemProvider {
 

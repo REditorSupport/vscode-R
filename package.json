@@ -50,6 +50,7 @@
     "onCommand:r.runFromCurrentToBelowChunks",
     "onCommand:r.runBelowChunks",
     "onCommand:r.runAllChunks",
+    "onCommand:r.goToPreviousChunk",
     "onCommand:r.createGitignore",
     "onCommand:r.runCommandWithSelectionOrWord",
     "onCommand:r.runCommandWithEditorPath",
@@ -420,6 +421,11 @@
         "command": "r.runAllChunks"
       },
       {
+        "title": "Go To Previous Chunk",
+        "category": "R",
+        "command": "r.goToPreviousChunk"
+      },
+      {
         "title": "Launch RStudio Addin",
         "category": "R",
         "command": "r.launchAddinPicker"
@@ -484,6 +490,12 @@
         "command": "r.runAllChunks",
         "key": "Ctrl+alt+r",
         "mac": "cmd+alt+r",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
+        "command": "r.goToPreviousChunk",
+        "key": "Ctrl+shift+alt+p",
+        "mac": "cmd+shift+alt+p",
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
