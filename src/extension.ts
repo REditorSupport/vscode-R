@@ -14,7 +14,7 @@ import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
 import { config, ToRStringLiteral, getRpath, getRpathFromSystem } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
-import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, runCurrentChunk, runAboveChunks, runFromCurrentToBelowChunks, runBelowChunks } from './rmarkdown';
+import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, runCurrentChunk, runAboveChunks, runFromCurrentToBelowChunks, runBelowChunks, runAllChunks } from './rmarkdown';
 
 import * as path from 'path';
 
@@ -251,6 +251,7 @@ export async function activate(context: ExtensionContext) {
         commands.registerCommand('r.runAboveChunks', runAboveChunks),
         commands.registerCommand('r.runFromCurrentToBelowChunks', runFromCurrentToBelowChunks),
         commands.registerCommand('r.runBelowChunks', runBelowChunks),
+        commands.registerCommand('r.runAllChunks', runAllChunks),
         commands.registerCommand('r.runChunks', runChunksInTerm),
         commands.registerCommand('r.createGitignore', createGitignore),
         commands.registerCommand('r.previewDataframe', previewDataframe),
