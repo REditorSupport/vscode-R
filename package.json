@@ -47,11 +47,13 @@
     "onCommand:r.runPreviousChunk",
     "onCommand:r.runNextChunk",
     "onCommand:r.runAboveChunks",
-    "onCommand:r.runFromCurrentToBelowChunks",
+    "onCommand:r.runCurrentAndBelowChunks",
     "onCommand:r.runBelowChunks",
     "onCommand:r.runAllChunks",
     "onCommand:r.goToPreviousChunk",
     "onCommand:r.goToNextChunk",
+    "onCommand:r.goToFirstChunk",
+    "onCommand:r.goToLastChunk",
     "onCommand:r.createGitignore",
     "onCommand:r.runCommandWithSelectionOrWord",
     "onCommand:r.runCommandWithEditorPath",
@@ -407,9 +409,9 @@
         "command": "r.runAboveChunks"
       },
       {
-        "title": "Run From Current to Below Chunks",
+        "title": "Run Current and Below Chunks",
         "category": "R",
-        "command": "r.runFromCurrentToBelowChunks"
+        "command": "r.runCurrentAndBelowChunks"
       },
       {
         "title": "Run Below Chunks",
@@ -422,14 +424,24 @@
         "command": "r.runAllChunks"
       },
       {
-        "title": "Go To Previous Chunk",
+        "title": "Go to Previous Chunk",
         "category": "R",
         "command": "r.goToPreviousChunk"
       },
       {
-        "title": "Go To Next Chunk",
+        "title": "Go to Next Chunk",
         "category": "R",
         "command": "r.goToNextChunk"
+      },
+      {
+        "title": "Go to First Chunk",
+        "category": "R",
+        "command": "r.goToFirstChunk"
+      },
+      {
+        "title": "Go to Last Chunk",
+        "category": "R",
+        "command": "r.goToLastChunk"
       },
       {
         "title": "Launch RStudio Addin",
@@ -464,14 +476,14 @@
       },
       {
         "command": "r.runPreviousChunk",
-        "key": "Ctrl+alt+shift+p",
-        "mac": "cmd+alt+shift+p",
+        "key": "Ctrl+shift+alt+p",
+        "mac": "cmd+shift+alt+p",
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
         "command": "r.runNextChunk",
-        "key": "Ctrl+alt+n",
-        "mac": "cmd+alt+n",
+        "key": "Ctrl+shift+alt+n",
+        "mac": "cmd+shift+alt+n",
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
@@ -481,15 +493,15 @@
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
-        "command": "r.runFromCurrentToBelowChunks",
-        "key": "Ctrl+alt+e",
-        "mac": "cmd+alt+e",
+        "command": "r.runCurrentAndBelowChunks",
+        "key": "Ctrl+alt+n",
+        "mac": "cmd+alt+n",
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
         "command": "r.runBelowChunks",
-        "key": "Ctrl+alt+shift+e",
-        "mac": "cmd+alt+shift+e",
+        "key": "Ctrl+alt+e",
+        "mac": "cmd+alt+e",
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
@@ -500,14 +512,26 @@
       },
       {
         "command": "r.goToPreviousChunk",
-        "key": "Ctrl+shift+alt+p",
-        "mac": "cmd+shift+alt+p",
+        "key": "Shift+alt+p",
+        "mac": "Shift+alt+p",
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
         "command": "r.goToNextChunk",
-        "key": "Ctrl+shift+alt+n",
-        "mac": "cmd+shift+alt+n",
+        "key": "Shift+alt+n",
+        "mac": "Shift+alt+n",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
+        "command": "r.goToFirstChunk",
+        "key": "Shift+alt+f",
+        "mac": "Shift+alt+f",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
+        "command": "r.goToLastChunk",
+        "key": "Shift+alt+l",
+        "mac": "Shift+alt+l",
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
@@ -594,6 +618,21 @@
           "items": {
             "type": "string"
           }
+        },
+        "r.rMarkdownCodeLens.option": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "r.runCurrentChunk",
+            "r.runAboveChunks",
+            "r.runCurrentAndBelowChunks",
+            "r.runAllChunks",
+            "r.goToPreviousChunk",
+            "r.goToNextChunk"
+          ],
+          "description": "Available options:\n\nr.runCurrentChunk\nr.runAboveChunks\nr.runCurrentAndBelowChunks\nr.runBelowChunks\nr.runAllChunks\nr.runPreviousChunk\nr.runNextChunk\nr.goToPreviousChunk\nr.goToNextChunk\nr.goToFirstChunk\nr.goToLastChunk\n\n----------------------------------\nSpecify options:"
         },
         "r.helpPanel.enableSyntaxHighlighting": {
           "type": "boolean",
