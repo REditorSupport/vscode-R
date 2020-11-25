@@ -510,6 +510,40 @@ export async function goToPreviousChunk() {
   line++;  // Move cursor 1 line below 'chunk start line'
   window.activeTextEditor.selection = new vscode.Selection(line, 0, line, 0);
 }
+
+export async function goToNextChunk() {
+  const selection = window.activeTextEditor.selection;
+  const currentDocument = window.activeTextEditor.document;
+  const lines = currentDocument.getText().split(/\r?\n/);
+
+  // Find 'chunk start line' of the 'current' chunk, covering cases for within and outside of chunk. When the cursor is outside the chunk, the 'current' chunk is next chunk below the cursor.
+
+  let line = selection.start.line;
+  let chunkStartLineBelow = line + 1;
+  // TODO `+ 1` to cover edge case when cursor is at 'chunk start line'
+  let chunkEndLineAtOrBelow = line;
+
+  while (chunkStartLineBelow <= lines.length && !isChunkStartLine(lines[chunkStartLineBelow])) {
+    chunkStartLineBelow++;
+  }
+
+  while (chunkEndLineAtOrBelow <= lines.length && !isChunkEndLine(lines[chunkEndLineAtOrBelow])) {
+    chunkEndLineAtOrBelow++;
+  }
+
+  // Case: Cursor is within chunk
+  if (chunkEndLineAtOrBelow < chunkStartLineBelow) {
+    line = chunkStartLineBelow;
+  } else {
+  // Case: Cursor is outside of chunk
+    // Find the next 'chunk start line'
+    chunkStartLineBelow++;
+    while (chunkStartLineBelow <= lines.length && !isChunkStartLine(lines[chunkStartLineBelow])) {
+      chunkStartLineBelow++;
+    }
+    line = chunkStartLineBelow;
+  }
+
   line++;  // Move cursor 1 line below 'chunk start line'
   window.activeTextEditor.selection = new vscode.Selection(line, 0, line, 0);
 }
