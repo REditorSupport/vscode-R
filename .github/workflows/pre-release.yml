@@ -1,0 +1,48 @@
+name: pre-release
+
+# creates a pre-release with the .vsix 
+
+on:
+  push:
+    branches: ["master"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: npm install
+      - uses: lannonbr/vsce-action@master
+        with:
+          args: "package"
+      - name: Identify output file # can be retrieved as steps.filenames.outputs.file_out
+        id: filenames
+        run: echo "::set-output name=file_out::$(ls | grep "^.*\.vsix$" | head -1)"
+      - uses: actions/upload-artifact@v1
+        with:
+          name: ${{ steps.filenames.outputs.file_out }}
+          path: ${{ steps.filenames.outputs.file_out }}
+
+  pre-release:
+    name: Pre-Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: "artifacts/"
+      - name: Get version from tag
+        id: get_version
+        run: echo ::set-output name=version::${GITHUB_REF/refs\/tags\/v/}
+      - name: Create release
+        uses: marvinpinto/action-automatic-releases@latest
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          title: "Development Build"
+          automatic_release_tag: "latest"
+          files: "artifacts/*/*"
+          prerelease: true
+          draft: false 
+
