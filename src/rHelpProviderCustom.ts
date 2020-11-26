@@ -64,6 +64,8 @@ export class RHelp implements rHelpPanel.HelpProvider {
 	readonly homePath: string;
 	// temp directory used to extract .Rd file to
 	readonly tempDir: string;
+	// list of installed packages
+	readonly installedPackges?: string[];
 
 	constructor(options: RHelpOptions = {}) {
 		this.rPath = options.rPath || 'R';
@@ -103,6 +105,12 @@ export class RHelp implements rHelpPanel.HelpProvider {
 			// not good... throw error?
 			this.libPaths = [];
 		}
+
+		if(this.rPath){
+			const cmd = `${this.rPath} --silent --no-save --no-restore  --no-echo -e "cat('${lim}', paste(installed.packages(), collapse='\\n'), '${lim}', sep='')"`;
+			const packagesString = cp.execSync(cmd, cpOptions).toString().replace(re, '$1');
+			this.installedPackges = packagesString.replace(/\r/g, '').split('\n');
+		}
 	}
 
 	public dispose() {
@@ -111,7 +119,13 @@ export class RHelp implements rHelpPanel.HelpProvider {
 			recursive: true
 		};
 		fs.rmdir(this.tempDir, options, () => null);
-    }
+	}
+	
+	public getInstalledPackages() {
+		return this.installedPackges.map(pkg => {
+			return {label: pkg};
+		});
+	}
 
 	// main public interface
     public getHelpFileFromRequestPath(requestPath: string, prevFileLocation?: HelpFileLocation): HelpFile|null {

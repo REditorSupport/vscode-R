@@ -9,6 +9,10 @@ import { config } from './util';
 
 
 
+interface Href {
+	href?: string
+}
+interface DocumentedItem extends vscode.QuickPickItem, Href {}
 
 // This interface needs to be implemented by a separate class that actually provides the R help pages
 export interface HelpProvider {
@@ -19,6 +23,9 @@ export interface HelpProvider {
 	// optional functions to get help for doc file or functions from packages
 	getHelpFileForDoc?(fncName: string): null|HelpFile|Promise<HelpFile>;
 	getHelpFileForFunction?(pkgName: string, fncName: string): null|HelpFile|Promise<HelpFile>;
+
+	// optional function that list installed packages and documented items from package
+	getInstalledPackages?(): vscode.QuickPickItem[] | undefined;
 
 	// called to e.g. close servers, delete files
 	dispose?(): void;
@@ -104,22 +111,55 @@ export class HelpPanel {
 
 	// prompts user for a package and function name to show:
 	public async showHelpForInput(){
-		const defaultPkg = 'doc';
-		const pkgName = await vscode.window.showInputBox({
-			value: defaultPkg,
-			prompt: 'Please enter the package name'
-		});
+		this.checkHelpProvider();
+
+		const qpOptions: vscode.QuickPickOptions = {
+			matchOnDescription: true
+		};
+
+		const packages = (
+			this.helpProvider.getInstalledPackages ? this.helpProvider.getInstalledPackages() : undefined
+		);
+
+		let pkgName: string = undefined;
+
+		if(packages && packages.length>0){
+			const qp = await vscode.window.showQuickPick(packages, qpOptions);
+			pkgName = qp.label;
+		} else{
+			const defaultPkg = 'doc';
+			pkgName = await vscode.window.showInputBox({
+				value: defaultPkg,
+				prompt: 'Please enter the package name'
+			});
+		}
+
 		if(!pkgName){
 			return false;
 		}
-		const defaultFnc = (pkgName==='doc' ? 'index.html' : '00Index');
-		let fncName = await vscode.window.showInputBox({
-			value: defaultFnc,
-			prompt: 'Please enter the function name'
-		});
+
+		let fncName: string = undefined;
+
+		if(pkgName === 'doc'){
+			fncName = 'index.html';
+		} else{
+			const functions = this.getDocumentedItems(pkgName);
+			if(functions){
+				const qp = await vscode.window.showQuickPick(functions, qpOptions);
+				fncName = qp.href.replace(/\.html$/, '') || qp.label;
+			} else{
+				const defaultFnc = (pkgName==='doc' ? 'index.html' : '00Index');
+				fncName = await vscode.window.showInputBox({
+					value: defaultFnc,
+					prompt: 'Please enter the function name'
+				});
+			}
+		}
+
 		if(!fncName){
 			return false;
 		}
+
 		// changes e.g. ".vsc.print" to "dot-vsc.print"
 		fncName = fncName.replace(/^\./, 'dot-');
 
@@ -373,6 +413,52 @@ export class HelpPanel {
 		// return the html of the modified page:
 		return helpFile;
 	}
+
+	private async getDocumentedItems(pkgName: string): Promise<DocumentedItem[]> {
+		const requestPath = `/library/${pkgName}/html/00Index.html`;
+		const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
+
+		if(!helpFile || !helpFile.html){
+			return undefined;
+		}
+
+		const html = helpFile.html;
+		const documentedItems = this.parseIndexFile(html);
+		return documentedItems;
+	}
+
+	private parseIndexFile(html: string): DocumentedItem[] {
+
+		const $ = cheerio.load(html);
+
+		const tables = $('table');
+
+		const ret: DocumentedItem[] = [{
+			label: 'Index',
+			href: '00Index',
+			description: 'Package Index'
+		}];
+
+		tables.each((tableIndex, table) => {
+			const rows = $('tr', table);
+			rows.each((rowIndex, row) => {
+				const elements = $('td', row);
+				if(elements.length === 2){
+					const href = elements[0].firstChild.attribs['href'];
+					const fncName = elements[0].firstChild.firstChild.data || '';
+					const description = elements[1].firstChild.data || '';
+					ret.push({
+						href: href,
+						label: fncName,
+						description: description
+					});
+				}
+			});
+		});
+
+		return ret;
+	}
+
 
 	// Helper function that rhwos an error if no vvalid help provider is available
 	private checkHelpProvider(){
