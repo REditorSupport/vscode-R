@@ -133,6 +133,10 @@ export class HelpPanel {
 				label: `$(search)`,
 				description: 'Search the help system using `??`',
 				pkgName: '??'
+			},{
+				label:`$(refresh)`,
+				description: 'Clear cached index files',
+				pkgName: '__refresh'
 			});
 			const qp = await vscode.window.showQuickPick(packages, qpOptions);
 			pkgName = (qp.pkgName || '').replace(/\.html$/, '') || qp.label;
@@ -145,6 +149,9 @@ export class HelpPanel {
 		}
 
 		if(!pkgName){
+			return false;
+		} else if(pkgName === '__refresh'){
+			this.cachedIndexFiles.clear();
 			return false;
 		}
 
