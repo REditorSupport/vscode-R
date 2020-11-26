@@ -169,6 +169,13 @@ export class HelpPanel {
 					href: '00Index',
 					description: 'Package Index'
 				});
+
+				if(functions.length>1 && functions[1].label === `${pkgName}-package`){
+					functions[1].href ||= functions[1].label;
+					functions[1].label = `$(home)`;
+					[functions[0], functions[1]] = [functions[1], functions[0]];
+				}
+
 				const qp = await vscode.window.showQuickPick(functions, qpOptions);
 				fncName = (qp.href || '').replace(/\.html$/, '') || qp.label;
 			} else{
