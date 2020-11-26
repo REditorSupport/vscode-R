@@ -9,10 +9,11 @@ import { config } from './util';
 
 
 
-interface Href {
-	href?: string
+interface AdditionalInfo {
+	href?: string,
+	pkgName?: string
 }
-interface DocumentedItem extends vscode.QuickPickItem, Href {}
+interface DocumentedItem extends vscode.QuickPickItem, AdditionalInfo {}
 
 // This interface needs to be implemented by a separate class that actually provides the R help pages
 export interface HelpProvider {
@@ -91,6 +92,8 @@ export class HelpPanel {
 	private history: HistoryEntry[] = [];
 	private forwardHistory: HistoryEntry[] = [];
 
+	// cache parsed index files (list of installed packages, functions in packages)
+	private cachedIndexFiles: Map<string, DocumentedItem[]> = new Map();
 
 
 	constructor(rHelp: HelpProvider, options: HelpPanelOptions){
@@ -117,15 +120,22 @@ export class HelpPanel {
 			matchOnDescription: true
 		};
 
-		const packages = (
-			this.helpProvider.getInstalledPackages ? this.helpProvider.getInstalledPackages() : undefined
-		);
+		const packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
 
 		let pkgName: string = undefined;
 
 		if(packages && packages.length>0){
+			packages.unshift({
+				label: `$(home)`,
+				description: 'Help Index',
+				pkgName: 'doc'
+			},{
+				label: `$(search)`,
+				description: 'Search the help system using `??`',
+				pkgName: '??'
+			});
 			const qp = await vscode.window.showQuickPick(packages, qpOptions);
-			pkgName = qp.label;
+			pkgName = (qp.pkgName || '').replace(/\.html$/, '') || qp.label;
 		} else{
 			const defaultPkg = 'doc';
 			pkgName = await vscode.window.showInputBox({
@@ -142,11 +152,18 @@ export class HelpPanel {
 
 		if(pkgName === 'doc'){
 			fncName = 'index.html';
+		} else if(pkgName === '??'){
+			return this.searchHelp();
 		} else{
-			const functions = this.getDocumentedItems(pkgName);
+			const functions = await this.getParsedIndexFile(`/library/${pkgName}/html/00Index.html`);
 			if(functions){
+				functions.unshift({
+					label: `$(list-unordered)`,
+					href: '00Index',
+					description: 'Package Index'
+				});
 				const qp = await vscode.window.showQuickPick(functions, qpOptions);
-				fncName = qp.href.replace(/\.html$/, '') || qp.label;
+				fncName = (qp.href || '').replace(/\.html$/, '') || qp.label;
 			} else{
 				const defaultFnc = (pkgName==='doc' ? 'index.html' : '00Index');
 				fncName = await vscode.window.showInputBox({
@@ -158,12 +175,27 @@ export class HelpPanel {
 
 		if(!fncName){
 			return false;
+		} else{
+			// changes e.g. ".vsc.print" to "dot-vsc.print"
+			fncName = fncName.replace(/^\./, 'dot-');
+			this.showHelpForFunctionName(fncName, pkgName);
+		}
+		return true;
+	}
+
+	public async searchHelp(){
+
+		const searchTerm = await vscode.window.showInputBox({
+			value: '',
+			prompt: 'Please enter a search term'
+		});
+
+		if(searchTerm === undefined){
+			return false;
 		}
 
-		// changes e.g. ".vsc.print" to "dot-vsc.print"
-		fncName = fncName.replace(/^\./, 'dot-');
-
-		this.showHelpForFunctionName(fncName, pkgName);
+		const requestPath = `/doc/html/Search?pattern=${searchTerm}`;
+		this.showHelpForPath(requestPath);
 		return true;
 	}
 
@@ -414,17 +446,21 @@ export class HelpPanel {
 		return helpFile;
 	}
 
-	private async getDocumentedItems(pkgName: string): Promise<DocumentedItem[]> {
-		const requestPath = `/library/${pkgName}/html/00Index.html`;
-		const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
-
-		if(!helpFile || !helpFile.html){
-			return undefined;
+	private async getParsedIndexFile(requestPath: string): Promise<DocumentedItem[]> {
+		if(!this.cachedIndexFiles.has(requestPath)){
+			const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
+			if(!helpFile || !helpFile.html){
+				this.cachedIndexFiles.set(requestPath, null);
+			} else{
+				const documentedItems = this.parseIndexFile(helpFile.html);
+				this.cachedIndexFiles.set(requestPath, documentedItems);
+			}
 		}
 
-		const html = helpFile.html;
-		const documentedItems = this.parseIndexFile(html);
-		return documentedItems;
+		const cache = this.cachedIndexFiles.get(requestPath);
+		const ret = [];
+		ret.push(...cache);
+		return ret;
 	}
 
 	private parseIndexFile(html: string): DocumentedItem[] {
@@ -433,11 +469,7 @@ export class HelpPanel {
 
 		const tables = $('table');
 
-		const ret: DocumentedItem[] = [{
-			label: 'Index',
-			href: '00Index',
-			description: 'Package Index'
-		}];
+		const ret: DocumentedItem[] = [];
 
 		tables.each((tableIndex, table) => {
 			const rows = $('tr', table);

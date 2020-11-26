@@ -89,6 +89,10 @@ export async function activate(context: ExtensionContext) {
         rHelpPanel.showHelpForInput();
     }));
 
+    context.subscriptions.push(commands.registerCommand('r.searchHelp', () => {
+        rHelpPanel.searchHelp();
+    }));
+
     context.subscriptions.push(commands.registerCommand('r.showDoc', () => {
         rHelpPanel.showHelpForFunctionName('index.html', 'doc');
     }));
