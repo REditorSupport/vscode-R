@@ -152,7 +152,7 @@ export class HelpPanel {
 			return false;
 		} else if(pkgName === '__refresh'){
 			this.cachedIndexFiles.clear();
-			return false;
+			return this.showHelpForInput();
 		}
 
 		let fncName: string = undefined;
