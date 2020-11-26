@@ -88,7 +88,6 @@ export class HelpPanel {
 
 	constructor(rHelp: HelpProvider, options: HelpPanelOptions){
 		this.helpProvider = rHelp;
-		console.log(options.webviewScriptPath);
 		this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
 		this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
 	}
@@ -130,20 +129,22 @@ export class HelpPanel {
 
 	// shows help for package and function name
 	public showHelpForFunctionName(fncName: string, pkgName: string){
+		this.checkHelpProvider();
+
 		let helpFile: HelpFile|Promise<HelpFile>;
 
 		if(pkgName === 'doc'){
 			if(this.helpProvider.getHelpFileForDoc){
 				helpFile = this.helpProvider.getHelpFileForDoc(fncName);
 			} else{
-				const requestPath = `doc/html/${fncName}`;
+				const requestPath = `/doc/html/${fncName}`;
 				helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 			}
 		} else{
 			if(this.helpProvider.getHelpFileForFunction){
 				helpFile = this.helpProvider.getHelpFileForFunction(pkgName, fncName);
 			} else{
-				const requestPath = `library/${pkgName}/html/${fncName}.html`;
+				const requestPath = `/library/${pkgName}/html/${fncName}.html`;
 				helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 			}
 		}
@@ -153,6 +154,7 @@ export class HelpPanel {
 
 	// shows help for request path as used by R's internal help server
 	public showHelpForPath(requestPath: string, viewer?: string|any){
+		this.checkHelpProvider();
 
 		if(typeof viewer === 'string'){
 			this.viewColumn = vscode.ViewColumn[String(viewer)];
@@ -370,6 +372,14 @@ export class HelpPanel {
 
 		// return the html of the modified page:
 		return helpFile;
+	}
+
+	// Helper function that rhwos an error if no vvalid help provider is available
+	private checkHelpProvider(){
+		if(!this.helpProvider){
+			vscode.window.showErrorMessage('Help provider not available!');
+			throw new Error('Help provider not available!');
+		}
 	}
 }
 

@@ -98,7 +98,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
 			// use .libPaths() in R
 			const cmd = `${this.rPath} --silent --no-save --no-restore  --no-echo -e "cat('${lim}', paste(.libPaths(), collapse='\\n'), '${lim}', sep='')"`;
 			const libPathString = cp.execSync(cmd, cpOptions).toString().replace(re, '$1');
-			this.libPaths = libPathString.replace('\r', '').split('\n');
+			this.libPaths = libPathString.replace(/\r/g, '').split('\n');
 		} else {
 			// not good... throw error?
 			this.libPaths = [];

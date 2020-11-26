@@ -22,7 +22,6 @@ import { HelpPanel, HelpPanelOptions, HelpProvider, RHelpProviderOptions } from 
 import { RHelpClient } from './rHelpProviderBuiltin';
 import { RHelp } from './rHelpProviderCustom';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
-import { resolveCliPathFromVSCodeExecutablePath } from 'vscode-test';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
 
@@ -63,11 +62,15 @@ export async function activate(context: ExtensionContext) {
     const helpProviderType = config().get<'custom'|'Rserver'>('helpPanel.helpProvider');
 
     // launch help provider (provides the html for requested entries)
-    let helpProvider: HelpProvider;
-    if(helpProviderType === 'custom'){
-        helpProvider = new RHelp(rHelpProviderOptions);
-    } else {
-        helpProvider = new RHelpClient(rHelpProviderOptions);
+    let helpProvider: HelpProvider = undefined;
+    try{
+        if(helpProviderType === 'custom'){
+            helpProvider = new RHelp(rHelpProviderOptions);
+        } else {
+            helpProvider = new RHelpClient(rHelpProviderOptions);
+        }
+    } catch(e) {
+        window.showErrorMessage(`Help Panel not available: ${e.message}`);
     }
 
     // launch the help panel (displays the html provided by helpProvider)
