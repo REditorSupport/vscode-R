@@ -171,6 +171,7 @@ export class HelpPanel {
 				});
 
 				if(functions.length>1 && functions[1].label === `${pkgName}-package`){
+					functions[1] = {...functions[1]};
 					functions[1].href ||= functions[1].label;
 					functions[1].label = `$(home)`;
 					[functions[0], functions[1]] = [functions[1], functions[0]];
