@@ -110,6 +110,18 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
             arguments: [chunks]
           }),
           new CodeLens(chunkRange, {
+            title: 'Go Beginning',
+            tooltip: 'Go to beginning of chunk',
+            command: 'r.goToBeginningOfChunk',
+            arguments: [chunks, line]
+          }),
+          new CodeLens(chunkRange, {
+            title: 'Go End',
+            tooltip: 'Go to end of chunk',
+            command: 'r.goToEndOfChunk',
+            arguments: [chunks, line]
+          }),
+          new CodeLens(chunkRange, {
             title: 'Go Previous',
             tooltip: 'Go to previous chunk',
             command: 'r.goToPreviousChunk',
@@ -132,6 +144,12 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
             tooltip: 'Go to last chunk',
             command: 'r.goToLastChunk',
             arguments: [chunks]
+          }),
+          new CodeLens(chunkRange, {
+            title: 'Select Chunk',
+            tooltip: 'Select current chunk',
+            command: 'r.selectCurrentChunk',
+            arguments: [chunks, line]
           }),
         );
       }
@@ -246,6 +264,24 @@ function getCurrentChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk
   return currentChunk;
 }
 
+// Alternative `getCurrentChunk` for cases:
+// - commands (e.g. `goToBeginningOfChunk`) only make sense when cursor is within chunk
+// - when cursor is outside of chunk, no response is triggered for chunk navigation commands (e.g. `goToPreviousChunk`) and chunk running commands (e.g. `runAboveChunks`)
+function getCurrentChunk__CursorWithinChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
+  let id = 0;
+
+  while (id <= chunks.length - 1) {
+    const chunk = chunks[id];
+    const chunkStartLine = chunk.startLine;
+    const chunkEndLine = chunk.endLine;
+
+    if (chunkStartLine <= line && line <= chunkEndLine) {
+      return chunk;
+    }
+    id++;
+  }
+}
+
 function getPreviousChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
   const currentChunk = getCurrentChunk(chunks, line);
   const previousChunkId = currentChunk.id - 1;
@@ -356,6 +392,24 @@ function goToChunk(chunk: RMarkdownChunk) {
   window.activeTextEditor.selection = new vscode.Selection(line, 0, line, 0);
 }
 
+export async function goToBeginningOfChunk(
+  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
+  line: number = window.activeTextEditor.selection.start.line) {
+
+  const currentChunk = getCurrentChunk__CursorWithinChunk(chunks, line);
+  goToChunk(currentChunk);
+}
+
+export async function goToEndOfChunk(
+  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
+  line: number = window.activeTextEditor.selection.start.line) {
+
+  const currentChunk = getCurrentChunk__CursorWithinChunk(chunks, line);
+  // Move cursor 1 line above 'chunk end line'
+  line = currentChunk.endLine - 1;
+  window.activeTextEditor.selection = new vscode.Selection(line, 0, line, 0);
+}
+
 export async function goToPreviousChunk(
   chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
   line: number = window.activeTextEditor.selection.start.line) {
@@ -384,6 +438,19 @@ export async function goToLastChunk(
 
   const lastChunk = chunks[chunks.length - 1];
   goToChunk(lastChunk);
+}
+
+export async function selectCurrentChunk(
+  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
+  line: number = window.activeTextEditor.selection.start.line) {
+
+  const currentChunk = getCurrentChunk__CursorWithinChunk(chunks, line);
+  const lines = window.activeTextEditor.document.getText().split(/\r?\n/);
+
+  window.activeTextEditor.selection = new vscode.Selection(
+    currentChunk.startLine, 0,
+    currentChunk.endLine, lines[currentChunk.endLine].length
+  );
 }
 
 export class RMarkdownCompletionItemProvider implements CompletionItemProvider {
@@ -419,25 +486,3 @@ export class RMarkdownCompletionItemProvider implements CompletionItemProvider {
     return undefined;
   }
 }
-
-
-
-
-// Backup ---------------------------------------------------------------------
-
-// Backup `getCurrentChunk` for cases: when cursor is outside of chunk, no response is triggered for chunk navigation commands (e.g. `goToPreviousChunk`) and chunk running commands (e.g. `runAboveChunks`)
-
-// function getCurrentChunk__CursorWithinChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
-//   let id = 0;
-
-//   while (id <= chunks.length - 1) {
-//     const chunk = chunks[id];
-//     const chunkStartLine = chunk.startLine;
-//     const chunkEndLine = chunk.endLine;
-
-//     if (chunkStartLine <= line && line <= chunkEndLine) {
-//       return chunk;
-//     }
-//     id++;
-//   }
-// }

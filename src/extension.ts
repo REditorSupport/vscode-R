@@ -14,7 +14,7 @@ import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
 import { config, ToRStringLiteral, getRpath, getRpathFromSystem } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
-import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, runCurrentChunk, runAboveChunks, runCurrentAndBelowChunks, runBelowChunks, runPreviousChunk, runNextChunk, runAllChunks, goToPreviousChunk, goToNextChunk, goToFirstChunk, goToLastChunk } from './rmarkdown';
+import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, selectCurrentChunk, runCurrentChunk, runAboveChunks, runCurrentAndBelowChunks, runBelowChunks, runPreviousChunk, runNextChunk, runAllChunks, goToBeginningOfChunk, goToEndOfChunk, goToPreviousChunk, goToNextChunk, goToFirstChunk, goToLastChunk } from './rmarkdown';
 
 import * as path from 'path';
 
@@ -247,6 +247,7 @@ export async function activate(context: ExtensionContext) {
         commands.registerCommand('r.runFromBeginningToLine', runFromBeginningToLine),
         commands.registerCommand('r.runFromLineToEnd', runFromLineToEnd),
         commands.registerCommand('r.runSelectionRetainCursor', runSelectionRetainCursor),
+        commands.registerCommand('r.selectCurrentChunk', selectCurrentChunk),
         commands.registerCommand('r.runCurrentChunk', runCurrentChunk),
         commands.registerCommand('r.runPreviousChunk', runPreviousChunk),
         commands.registerCommand('r.runNextChunk', runNextChunk),
@@ -254,6 +255,8 @@ export async function activate(context: ExtensionContext) {
         commands.registerCommand('r.runCurrentAndBelowChunks', runCurrentAndBelowChunks),
         commands.registerCommand('r.runBelowChunks', runBelowChunks),
         commands.registerCommand('r.runAllChunks', runAllChunks),
+        commands.registerCommand('r.goToBeginningOfChunk', goToBeginningOfChunk),
+        commands.registerCommand('r.goToEndOfChunk', goToEndOfChunk),
         commands.registerCommand('r.goToPreviousChunk', goToPreviousChunk),
         commands.registerCommand('r.goToNextChunk', goToNextChunk),
         commands.registerCommand('r.goToFirstChunk', goToFirstChunk),

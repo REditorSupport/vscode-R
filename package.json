@@ -43,6 +43,7 @@
     "onCommand:r.runSourcewithEcho",
     "onCommand:r.runSelection",
     "onCommand:r.runSelectionInActiveTerm",
+    "onCommand:r.selectCurrentChunk",
     "onCommand:r.runCurrentChunk",
     "onCommand:r.runPreviousChunk",
     "onCommand:r.runNextChunk",
@@ -50,6 +51,8 @@
     "onCommand:r.runCurrentAndBelowChunks",
     "onCommand:r.runBelowChunks",
     "onCommand:r.runAllChunks",
+    "onCommand:r.goToBeginningOfChunk",
+    "onCommand:r.goToEndOfChunk",
     "onCommand:r.goToPreviousChunk",
     "onCommand:r.goToNextChunk",
     "onCommand:r.goToFirstChunk",
@@ -389,6 +392,11 @@
         "command": "r.runSelectionRetainCursor"
       },
       {
+        "title": "Select Current Chunk",
+        "category": "R",
+        "command": "r.selectCurrentChunk"
+      },
+      {
         "title": "Run Current Chunk",
         "category": "R",
         "command": "r.runCurrentChunk"
@@ -422,6 +430,16 @@
         "title": "Run All Chunks",
         "category": "R",
         "command": "r.runAllChunks"
+      },
+      {
+        "title": "Go to Beginning of Chunk",
+        "category": "R",
+        "command": "r.goToBeginningOfChunk"
+      },
+      {
+        "title": "Go to End of Chunk",
+        "category": "R",
+        "command": "r.goToEndOfChunk"
       },
       {
         "title": "Go to Previous Chunk",
@@ -469,6 +487,12 @@
         "when": "editorTextFocus && editorLangId == 'r'"
       },
       {
+        "command": "r.selectCurrentChunk",
+        "key": "Shift+alt+s",
+        "mac": "Shift+alt+s",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
         "command": "r.runCurrentChunk",
         "key": "Ctrl+shift+enter",
         "mac": "cmd+shift+enter",
@@ -508,6 +532,18 @@
         "command": "r.runAllChunks",
         "key": "Ctrl+alt+r",
         "mac": "cmd+alt+r",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
+        "command": "r.goToBeginningOfChunk",
+        "key": "Shift+alt+b",
+        "mac": "Shift+alt+b",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
+        "command": "r.goToEndOfChunk",
+        "key": "Shift+alt+e",
+        "mac": "Shift+alt+e",
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
@@ -632,7 +668,7 @@
             "r.goToPreviousChunk",
             "r.goToNextChunk"
           ],
-          "description": "Available options:\n\nr.runCurrentChunk\nr.runAboveChunks\nr.runCurrentAndBelowChunks\nr.runBelowChunks\nr.runAllChunks\nr.runPreviousChunk\nr.runNextChunk\nr.goToPreviousChunk\nr.goToNextChunk\nr.goToFirstChunk\nr.goToLastChunk\n\n----------------------------------\nSpecify options:"
+          "description": "Available options:\n\nr.selectCurrentChunk\nr.runCurrentChunk\nr.runAboveChunks\nr.runCurrentAndBelowChunks\nr.runBelowChunks\nr.runAllChunks\nr.goToBeginningOfChunk\nr.goToEndOfChunk\nr.runPreviousChunk\nr.runNextChunk\nr.goToPreviousChunk\nr.goToNextChunk\nr.goToFirstChunk\nr.goToLastChunk\n\n----------------------------------\nSpecify options:"
         },
         "r.helpPanel.enableSyntaxHighlighting": {
           "type": "boolean",
