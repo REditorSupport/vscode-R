@@ -7,6 +7,8 @@ import * as http from 'http';
 
 import * as rHelpPanel from './rHelpPanel';
 
+const kill = require('tree-kill');
+
 export interface RHelpClientOptions extends rHelpPanel.RHelpProviderOptions {
 	// path of the R executable. Could be left out (with limited functionality)
     rPath: string;
@@ -18,13 +20,20 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
     private cp: cp.ChildProcess;
     private port: number|Promise<number>;
     private readonly rPath: string;
+    private readonly cwd?: string;
 
     public constructor(options: RHelpClientOptions){
         this.rPath = options.rPath || 'R';
-        this.port = this.launchRHelpServer(options.cwd); // is a promise for now!
+        this.cwd = options.cwd;
+        this.port = this.launchRHelpServer(); // is a promise for now!
     }
 
-    public async launchRHelpServer(cwd?: string){
+    public refresh(){
+        kill(this.cp.pid); // more reliable than cp.kill (?)
+        this.port = this.launchRHelpServer();
+    }
+
+    public async launchRHelpServer(){
 		const lim = '---vsc---';
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
 
@@ -34,7 +43,7 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
             `"cat('${lim}', tools::startDynamicHelp(), '${lim}', sep=''); while(TRUE) Sys.sleep(1)" ` 
         );
         const cpOptions = {
-            cwd: cwd
+            cwd: this.cwd
         };
         this.cp = cp.exec(cmd, cpOptions);
 

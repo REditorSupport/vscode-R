@@ -25,6 +25,9 @@ export interface HelpProvider {
 	getHelpFileForDoc?(fncName: string): null|HelpFile|Promise<HelpFile>;
 	getHelpFileForFunction?(pkgName: string, fncName: string): null|HelpFile|Promise<HelpFile>;
 
+	// called to refresh (cached) underlying package info
+	refresh?(): void;
+
 	// called to e.g. close servers, delete files
 	dispose?(): void;
 }
@@ -148,6 +151,9 @@ export class HelpPanel {
 		if(!pkgName){
 			return false;
 		} else if(pkgName === '__refresh'){
+			if(this.helpProvider.refresh){
+				this.helpProvider.refresh();
+			}
 			this.cachedIndexFiles.clear();
 			return this.showHelpForInput();
 		}
