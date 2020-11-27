@@ -19,11 +19,7 @@ interface DocumentedItem extends vscode.QuickPickItem, AdditionalInfo {}
 export interface HelpProvider {
 	// is called to get help for a request path
 	// the request path is the part of the help url after http://localhost:PORT/... when using R's help
-	getHelpFileFromRequestPath(requestPath: string): null|HelpFile|Promise<HelpFile>;
-
-	// optional functions to get help for doc file or functions from packages
-	getHelpFileForDoc?(fncName: string): null|HelpFile|Promise<HelpFile>;
-	getHelpFileForFunction?(pkgName: string, fncName: string): null|HelpFile|Promise<HelpFile>;
+	getHelpFileFromRequestPath(requestPath: string): null|Promise<null>|HelpFile|Promise<HelpFile>;
 
 	// called to refresh (cached) underlying package info
 	refresh?(): void;
@@ -114,17 +110,21 @@ export class HelpPanel {
 
 	// prompts user for a package and function name to show:
 	public async showHelpForInput(){
-		this.checkHelpProvider();
+		// get list of installed packages for the user to pick from
+		let packages: DocumentedItem[];
+		try {
+			packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
+		} catch (error) {}
 
-		const qpOptions: vscode.QuickPickOptions = {
-			matchOnDescription: true,
-		};
-
-		const packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
+		if(!packages){
+			vscode.window.showErrorMessage('Help provider not available!');
+			return false;
+		}
 
 		let pkgName: string = undefined;
 
 		if(packages && packages.length>0){
+			// add "meta" entries to top of list
 			packages.unshift({
 				label: '$(home)',
 				description: 'Help Index',
@@ -138,14 +138,20 @@ export class HelpPanel {
 				description: 'Clear cached index files',
 				pkgName: '__refresh'
 			});
+
+			// let user choose from found packages
 			const qp = await vscode.window.showQuickPick(packages, {
 				matchOnDescription: true,
 				placeHolder: 'Please select a package'
 			});
+
+			// if user chose something, fill pkgName from qp info
+			// qp.pkgName is prefered (without .html), fallback is (mandatory) qp.label
 			if(qp){
 				pkgName = (qp.pkgName || '').replace(/\.html$/, '') || qp.label;
 			}
 		} else{
+			// no packages found -> let user type
 			const defaultPkg = 'doc';
 			pkgName = await vscode.window.showInputBox({
 				value: defaultPkg,
@@ -154,8 +160,10 @@ export class HelpPanel {
 		}
 
 		if(!pkgName){
+			// happens e.g. if the user pressed ESC 
 			return false;
 		} else if(pkgName === '__refresh'){
+			// reload list of packages and prompt again
 			if(this.helpProvider.refresh){
 				this.helpProvider.refresh();
 			}
@@ -166,18 +174,23 @@ export class HelpPanel {
 		let fncName: string = undefined;
 
 		if(pkgName === 'doc'){
+			// no further selection sensible, show index page of docs
 			fncName = 'index.html';
 		} else if(pkgName === '??'){
+			// free text search
 			return this.searchHelp();
 		} else{
+			// parse documented functions/items and let user pick
 			const functions = await this.getParsedIndexFile(`/library/${pkgName}/html/00Index.html`);
 			if(functions){
+				// add package index file to top of list
 				functions.unshift({
 					label: '$(list-unordered)',
 					href: '00Index',
 					description: 'Package Index'
 				});
 
+				// if there is a package doc entry, move to top and highlight with home-symbol
 				if(functions.length>1 && functions[1].label === `${pkgName}-package`){
 					functions[1] = {...functions[1]};
 					functions[1].href ||= functions[1].label;
@@ -185,14 +198,18 @@ export class HelpPanel {
 					[functions[0], functions[1]] = [functions[1], functions[0]];
 				}
 
+				// let user pick function/item
 				const qp = await vscode.window.showQuickPick(functions, {
 					matchOnDescription: true,
 					placeHolder: 'Please select a documentation entry'
 				});
+
+				// prefer to use href as function name, fall back to qp.label
 				if(qp){
 					fncName = (qp.href || '').replace(/\.html$/, '') || qp.label;
 				}
 			} else{
+				// if no functions/items were found, let user type
 				const defaultFnc = (pkgName==='doc' ? 'index.html' : '00Index');
 				fncName = await vscode.window.showInputBox({
 					value: defaultFnc,
@@ -202,6 +219,7 @@ export class HelpPanel {
 		}
 
 		if(!fncName){
+			// happens e.g. if the user pressed ESC
 			return false;
 		} else{
 			// changes e.g. ".vsc.print" to "dot-vsc.print"
@@ -211,8 +229,8 @@ export class HelpPanel {
 		return true;
 	}
 
+	// search function, similar to typing `?? ...` in R
 	public async searchHelp(){
-
 		const searchTerm = await vscode.window.showInputBox({
 			value: '',
 			prompt: 'Please enter a search term'
@@ -229,24 +247,15 @@ export class HelpPanel {
 
 	// shows help for package and function name
 	public showHelpForFunctionName(fncName: string, pkgName: string){
-		this.checkHelpProvider();
 
 		let helpFile: HelpFile|Promise<HelpFile>;
 
 		if(pkgName === 'doc'){
-			if(this.helpProvider.getHelpFileForDoc){
-				helpFile = this.helpProvider.getHelpFileForDoc(fncName);
-			} else{
-				const requestPath = `/doc/html/${fncName}`;
-				helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
-			}
+			const requestPath = `/doc/html/${fncName}`;
+			helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 		} else{
-			if(this.helpProvider.getHelpFileForFunction){
-				helpFile = this.helpProvider.getHelpFileForFunction(pkgName, fncName);
-			} else{
-				const requestPath = `/library/${pkgName}/html/${fncName}.html`;
-				helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
-			}
+			const requestPath = `/library/${pkgName}/html/${fncName}.html`;
+			helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 		}
 
 		this.showHelpFile(helpFile);
@@ -254,7 +263,6 @@ export class HelpPanel {
 
 	// shows help for request path as used by R's internal help server
 	public showHelpForPath(requestPath: string, viewer?: string|any){
-		this.checkHelpProvider();
 
 		if(typeof viewer === 'string'){
 			this.viewColumn = vscode.ViewColumn[String(viewer)];
@@ -264,7 +272,7 @@ export class HelpPanel {
 		if(helpFile){
 			this.showHelpFile(helpFile);
 		} else{
-			console.error(`Couldnt handle path:\n${requestPath}\n`);
+			console.error(`Couldn't handle path:\n${requestPath}\n`);
 		}
 	}
 
@@ -474,17 +482,23 @@ export class HelpPanel {
 		return helpFile;
 	}
 
+	// retrieve and parse an index file
+	// (either list of all packages, or documentation entries of a package)
 	private async getParsedIndexFile(requestPath: string): Promise<DocumentedItem[]> {
+		// only read and parse file if not cached yet
 		if(!this.cachedIndexFiles.has(requestPath)){
 			const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
 			if(!helpFile || !helpFile.html){
+				// set missing files to null
 				this.cachedIndexFiles.set(requestPath, null);
 			} else{
+				// parse and cache file
 				const documentedItems = this.parseIndexFile(helpFile.html);
 				this.cachedIndexFiles.set(requestPath, documentedItems);
 			}
 		}
 
+		// return cache entry. make new array to avoid messing with the cache
 		const cache = this.cachedIndexFiles.get(requestPath);
 		const ret = [];
 		ret.push(...cache);
@@ -499,6 +513,8 @@ export class HelpPanel {
 
 		const ret: DocumentedItem[] = [];
 
+		// loop over all tables on document and each row as one index entry
+		// assumes that the provided html is from a valid index file
 		tables.each((tableIndex, table) => {
 			const rows = $('tr', table);
 			rows.each((rowIndex, row) => {
@@ -519,13 +535,5 @@ export class HelpPanel {
 		return ret;
 	}
 
-
-	// Helper function that rhwos an error if no vvalid help provider is available
-	private checkHelpProvider(){
-		if(!this.helpProvider){
-			vscode.window.showErrorMessage('Help provider not available!');
-			throw new Error('Help provider not available!');
-		}
-	}
 }
 

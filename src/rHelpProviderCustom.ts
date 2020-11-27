@@ -249,16 +249,6 @@ export class RHelp implements rHelpPanel.HelpProvider {
             return null;
         }
 
-        // // convert the .Rd file to .html
-        // const cmd2 = `${this.rPath} CMD Rdconv --type=html ${rdFileName}`;
-        // let htmlContent: string = '';
-        // try{
-        //     htmlContent = cp.execSync(cmd2, options);
-        // } catch(e){
-        //     console.log('Failed to convert .Rd to .html');
-        //     return null;
-		// }
-		
         // convert the .Rd file to .html
 		const cmd3a = `"tools::Rd2HTML('${rdFileName}', Links=tools::findHTMLlinks())"`;
 		const cmd3 = `${this.rPath} -e ${cmd3a} --vanilla --silent --slave`;
@@ -270,13 +260,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
             return null;
 		}
 
-
-		// try to remove temporary .Rd file
-		try {
-			fs.rmdirSync(rdFileName);
-		} catch (e) {
-			console.log('Failed to remove temp file. (Still working though)');
-		}
+		fs.unlink(rdFileName, (e) => {});
 
 		return htmlContent;
 	}

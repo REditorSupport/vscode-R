@@ -10,7 +10,7 @@ import * as rHelpPanel from './rHelpPanel';
 const kill = require('tree-kill');
 
 export interface RHelpClientOptions extends rHelpPanel.RHelpProviderOptions {
-	// path of the R executable. Could be left out (with limited functionality)
+	// path of the R executable
     rPath: string;
 }
 
@@ -70,9 +70,13 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
         return port;
     }
 
-    public async getHelpFileFromRequestPath(requestPath: string){
+	public async getHelpFileFromRequestPath(requestPath: string): Promise<null|rHelpPanel.HelpFile> {
         // make sure the server is actually running
         this.port = await this.port;
+
+        if(!this.port || typeof this.port !== 'number'){
+            return null;
+        }
 
         // remove leading '/'
         while(requestPath.startsWith('/')){
