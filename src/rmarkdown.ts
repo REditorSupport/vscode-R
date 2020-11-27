@@ -452,10 +452,11 @@ export async function selectCurrentChunk(
   chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
   line: number = window.activeTextEditor.selection.start.line) {
 
+  const editor = window.activeTextEditor;
   const currentChunk = getCurrentChunk__CursorWithinChunk(chunks, line);
-  const lines = window.activeTextEditor.document.getText().split(/\r?\n/);
+  const lines = editor.document.getText().split(/\r?\n/);
 
-  window.activeTextEditor.selection = new vscode.Selection(
+  editor.selection = new vscode.Selection(
     currentChunk.startLine, 0,
     currentChunk.endLine, lines[currentChunk.endLine].length
   );
