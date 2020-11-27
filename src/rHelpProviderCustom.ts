@@ -86,7 +86,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
 			this.homePath = options.homePath;
 		} else if(this.rPath){
 			// use R.home() in R
-			const cmd = `${this.rPath} --silent --no-save --no-restore  --no-echo -e "cat('${lim}', R.home(), '${lim}', sep='')"`;
+			const cmd = `${this.rPath} --silent --no-save --no-restore  --slave -e "cat('${lim}', R.home(), '${lim}', sep='')"`;
 			this.homePath = cp.execSync(cmd, cpOptions).toString().replace(re, '$1');
 		} else {
 			this.homePath = '';
@@ -98,7 +98,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
 			this.libPaths = options.libPaths;
 		} else if (this.rPath) {
 			// use .libPaths() in R
-			const cmd = `${this.rPath} --silent --no-save --no-restore  --no-echo -e "cat('${lim}', paste(.libPaths(), collapse='\\n'), '${lim}', sep='')"`;
+			const cmd = `${this.rPath} --silent --no-save --no-restore  --slave -e "cat('${lim}', paste(.libPaths(), collapse='\\n'), '${lim}', sep='')"`;
 			const libPathString = cp.execSync(cmd, cpOptions).toString().replace(re, '$1');
 			this.libPaths = libPathString.replace(/\r/g, '').split('\n');
 		} else {
@@ -107,7 +107,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
 		}
 
 		if(this.rPath){
-			const cmd = `${this.rPath} --silent --no-save --no-restore  --no-echo -e "cat('${lim}', paste(installed.packages(), collapse='\\n'), '${lim}', sep='')"`;
+			const cmd = `${this.rPath} --silent --no-save --no-restore  --slave -e "cat('${lim}', paste(installed.packages(), collapse='\\n'), '${lim}', sep='')"`;
 			const packagesString = cp.execSync(cmd, cpOptions).toString().replace(re, '$1');
 			this.installedPackges = packagesString.replace(/\r/g, '').split('\n');
 		}
@@ -255,7 +255,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
 		const rdFileName = path.join(os.tmpdir(), fncName + '.Rd').replace(/\\/g, '/');
 
         // produce the .Rd file of a function:
-		const cmd1 = `${this.rPath} -e ${cmd1a} -e ${cmd1b} --vanilla --silent --no-echo > ${rdFileName}`;
+		const cmd1 = `${this.rPath} -e ${cmd1a} -e ${cmd1b} --vanilla --silent --slave > ${rdFileName}`;
         try{
             const out1 = cp.execSync(cmd1, options);
         } catch(e){
@@ -275,7 +275,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
 		
         // convert the .Rd file to .html
 		const cmd3a = `"tools::Rd2HTML('${rdFileName}', Links=tools::findHTMLlinks())"`;
-		const cmd3 = `${this.rPath} -e ${cmd3a} --vanilla --silent --no-echo`;
+		const cmd3 = `${this.rPath} -e ${cmd3a} --vanilla --silent --slave`;
         let htmlContent: string = '';
         try{
             htmlContent = cp.execSync(cmd3, options);
