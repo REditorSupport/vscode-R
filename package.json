@@ -668,7 +668,7 @@
             "r.goToPreviousChunk",
             "r.goToNextChunk"
           ],
-          "description": "Available options:\n\nr.selectCurrentChunk\nr.runCurrentChunk\nr.runAboveChunks\nr.runCurrentAndBelowChunks\nr.runBelowChunks\nr.runAllChunks\nr.goToBeginningOfChunk\nr.goToEndOfChunk\nr.runPreviousChunk\nr.runNextChunk\nr.goToPreviousChunk\nr.goToNextChunk\nr.goToFirstChunk\nr.goToLastChunk\n\n----------------------------------\nSpecify options:"
+          "description": "Available options:\n\nr.selectCurrentChunk\nr.runCurrentChunk\nr.runAboveChunks\nr.runCurrentAndBelowChunks\nr.runBelowChunks\nr.runAllChunks\nr.runPreviousChunk\nr.runNextChunk\nr.goToBeginningOfChunk\nr.goToEndOfChunk\nr.goToPreviousChunk\nr.goToNextChunk\nr.goToFirstChunk\nr.goToLastChunk\n\n----------------------------------\nCustomize both the options AND its orders (that is, code lens respect user-specified orders):"
         },
         "r.helpPanel.enableSyntaxHighlighting": {
           "type": "boolean",

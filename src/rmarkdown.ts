@@ -161,7 +161,15 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
       }
     }
 
-    return this.codeLenses.filter(e => rmdCodeLensOpt.includes(e.command.command));
+    // For default options, both options and sort order are based on options specified in package.json.
+    // For user-specified options, both options and sort order are based on options specified in settings UI or settings.json.
+    return this.codeLenses.
+      filter(e => rmdCodeLensOpt.includes(e.command.command)).
+      sort(function(a, b) {
+        const sorted = rmdCodeLensOpt.indexOf(a.command.command) -
+                       rmdCodeLensOpt.indexOf(b.command.command);
+        return sorted;
+      });
   }
   public resolveCodeLens(codeLens: CodeLens, token: CancellationToken) {
     return codeLens;
