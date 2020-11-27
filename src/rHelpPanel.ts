@@ -117,7 +117,7 @@ export class HelpPanel {
 		this.checkHelpProvider();
 
 		const qpOptions: vscode.QuickPickOptions = {
-			matchOnDescription: true
+			matchOnDescription: true,
 		};
 
 		const packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
@@ -126,20 +126,25 @@ export class HelpPanel {
 
 		if(packages && packages.length>0){
 			packages.unshift({
-				label: `$(home)`,
+				label: '$(home)',
 				description: 'Help Index',
 				pkgName: 'doc'
 			},{
-				label: `$(search)`,
+				label: '$(search)',
 				description: 'Search the help system using `??`',
 				pkgName: '??'
 			},{
-				label:`$(refresh)`,
+				label:'$(refresh)',
 				description: 'Clear cached index files',
 				pkgName: '__refresh'
 			});
-			const qp = await vscode.window.showQuickPick(packages, qpOptions);
-			pkgName = (qp.pkgName || '').replace(/\.html$/, '') || qp.label;
+			const qp = await vscode.window.showQuickPick(packages, {
+				matchOnDescription: true,
+				placeHolder: 'Please select a package'
+			});
+			if(qp){
+				pkgName = (qp.pkgName || '').replace(/\.html$/, '') || qp.label;
+			}
 		} else{
 			const defaultPkg = 'doc';
 			pkgName = await vscode.window.showInputBox({
@@ -168,7 +173,7 @@ export class HelpPanel {
 			const functions = await this.getParsedIndexFile(`/library/${pkgName}/html/00Index.html`);
 			if(functions){
 				functions.unshift({
-					label: `$(list-unordered)`,
+					label: '$(list-unordered)',
 					href: '00Index',
 					description: 'Package Index'
 				});
@@ -180,8 +185,13 @@ export class HelpPanel {
 					[functions[0], functions[1]] = [functions[1], functions[0]];
 				}
 
-				const qp = await vscode.window.showQuickPick(functions, qpOptions);
-				fncName = (qp.href || '').replace(/\.html$/, '') || qp.label;
+				const qp = await vscode.window.showQuickPick(functions, {
+					matchOnDescription: true,
+					placeHolder: 'Please select a documentation entry'
+				});
+				if(qp){
+					fncName = (qp.href || '').replace(/\.html$/, '') || qp.label;
+				}
 			} else{
 				const defaultFnc = (pkgName==='doc' ? 'index.html' : '00Index');
 				fncName = await vscode.window.showInputBox({
