@@ -25,9 +25,6 @@ export interface HelpProvider {
 	getHelpFileForDoc?(fncName: string): null|HelpFile|Promise<HelpFile>;
 	getHelpFileForFunction?(pkgName: string, fncName: string): null|HelpFile|Promise<HelpFile>;
 
-	// optional function that list installed packages and documented items from package
-	getInstalledPackages?(): vscode.QuickPickItem[] | undefined;
-
 	// called to e.g. close servers, delete files
 	dispose?(): void;
 }
