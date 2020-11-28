@@ -7,3 +7,10 @@ node_modules
 *.vsix
 dist
 .vscode-test
+
+*.temp
+*.tmp
+tmp.*
+temp.*
+tmp
+temp

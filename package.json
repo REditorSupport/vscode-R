@@ -217,6 +217,10 @@
         "title": "R: Show help"
       },
       {
+        "command": "r.searchHelp",
+        "title": "R: Search help"
+      },
+      {
         "command": "r.helpPanel.back",
         "title": "R Help Panel: Go Back",
         "icon": "$(arrow-left)"
@@ -615,6 +619,7 @@
     "jquery.json-viewer": "^1.4.0",
     "popper.js": "^1.16.1",
     "showdown": "^1.9.1",
+    "tree-kill": "^1.2.2",
     "winreg": "^1.2.4"
   }
 }

@@ -9,16 +9,20 @@ import { config } from './util';
 
 
 
+interface AdditionalInfo {
+	href?: string,
+	pkgName?: string
+}
+interface DocumentedItem extends vscode.QuickPickItem, AdditionalInfo {}
 
 // This interface needs to be implemented by a separate class that actually provides the R help pages
 export interface HelpProvider {
 	// is called to get help for a request path
 	// the request path is the part of the help url after http://localhost:PORT/... when using R's help
-	getHelpFileFromRequestPath(requestPath: string): null|HelpFile|Promise<HelpFile>;
+	getHelpFileFromRequestPath(requestPath: string): null|Promise<null>|HelpFile|Promise<HelpFile>;
 
-	// optional functions to get help for doc file or functions from packages
-	getHelpFileForDoc?(fncName: string): null|HelpFile|Promise<HelpFile>;
-	getHelpFileForFunction?(pkgName: string, fncName: string): null|HelpFile|Promise<HelpFile>;
+	// called to refresh (cached) underlying package info
+	refresh?(): void;
 
 	// called to e.g. close servers, delete files
 	dispose?(): void;
@@ -84,11 +88,12 @@ export class HelpPanel {
 	private history: HistoryEntry[] = [];
 	private forwardHistory: HistoryEntry[] = [];
 
+	// cache parsed index files (list of installed packages, functions in packages)
+	private cachedIndexFiles: Map<string, DocumentedItem[]> = new Map();
 
 
 	constructor(rHelp: HelpProvider, options: HelpPanelOptions){
 		this.helpProvider = rHelp;
-		console.log(options.webviewScriptPath);
 		this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
 		this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
 	}
@@ -105,47 +110,152 @@ export class HelpPanel {
 
 	// prompts user for a package and function name to show:
 	public async showHelpForInput(){
-		const defaultPkg = 'doc';
-		const pkgName = await vscode.window.showInputBox({
-			value: defaultPkg,
-			prompt: 'Please enter the package name'
-		});
-		if(!pkgName){
-			return false;
-		}
-		const defaultFnc = (pkgName==='doc' ? 'index.html' : '00Index');
-		let fncName = await vscode.window.showInputBox({
-			value: defaultFnc,
-			prompt: 'Please enter the function name'
-		});
-		if(!fncName){
-			return false;
-		}
-		// changes e.g. ".vsc.print" to "dot-vsc.print"
-		fncName = fncName.replace(/^\./, 'dot-');
+		// get list of installed packages for the user to pick from
+		let packages: DocumentedItem[];
+		try {
+			packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
+		} catch (error) {}
 
-		this.showHelpForFunctionName(fncName, pkgName);
+		if(!packages){
+			vscode.window.showErrorMessage('Help provider not available!');
+			return false;
+		}
+
+		let pkgName: string = undefined;
+
+		if(packages && packages.length>0){
+			// add "meta" entries to top of list
+			packages.unshift({
+				label: '$(home)',
+				description: 'Help Index',
+				pkgName: 'doc'
+			},{
+				label: '$(search)',
+				description: 'Search the help system using `??`',
+				pkgName: '??'
+			},{
+				label:'$(refresh)',
+				description: 'Clear cached index files',
+				pkgName: '__refresh'
+			});
+
+			// let user choose from found packages
+			const qp = await vscode.window.showQuickPick(packages, {
+				matchOnDescription: true,
+				placeHolder: 'Please select a package'
+			});
+
+			// if user chose something, fill pkgName from qp info
+			// qp.pkgName is prefered (without .html), fallback is (mandatory) qp.label
+			if(qp){
+				pkgName = (qp.pkgName || '').replace(/\.html$/, '') || qp.label;
+			}
+		} else{
+			// no packages found -> let user type
+			const defaultPkg = 'doc';
+			pkgName = await vscode.window.showInputBox({
+				value: defaultPkg,
+				prompt: 'Please enter the package name'
+			});
+		}
+
+		if(!pkgName){
+			// happens e.g. if the user pressed ESC 
+			return false;
+		} else if(pkgName === '__refresh'){
+			// reload list of packages and prompt again
+			if(this.helpProvider.refresh){
+				this.helpProvider.refresh();
+			}
+			this.cachedIndexFiles.clear();
+			return this.showHelpForInput();
+		}
+
+		let fncName: string = undefined;
+
+		if(pkgName === 'doc'){
+			// no further selection sensible, show index page of docs
+			fncName = 'index.html';
+		} else if(pkgName === '??'){
+			// free text search
+			return this.searchHelp();
+		} else{
+			// parse documented functions/items and let user pick
+			const functions = await this.getParsedIndexFile(`/library/${pkgName}/html/00Index.html`);
+			if(functions){
+				// add package index file to top of list
+				functions.unshift({
+					label: '$(list-unordered)',
+					href: '00Index',
+					description: 'Package Index'
+				});
+
+				// if there is a package doc entry, move to top and highlight with home-symbol
+				if(functions.length>1 && functions[1].label === `${pkgName}-package`){
+					functions[1] = {...functions[1]};
+					functions[1].href ||= functions[1].label;
+					functions[1].label = `$(home)`;
+					[functions[0], functions[1]] = [functions[1], functions[0]];
+				}
+
+				// let user pick function/item
+				const qp = await vscode.window.showQuickPick(functions, {
+					matchOnDescription: true,
+					placeHolder: 'Please select a documentation entry'
+				});
+
+				// prefer to use href as function name, fall back to qp.label
+				if(qp){
+					fncName = (qp.href || '').replace(/\.html$/, '') || qp.label;
+				}
+			} else{
+				// if no functions/items were found, let user type
+				const defaultFnc = (pkgName==='doc' ? 'index.html' : '00Index');
+				fncName = await vscode.window.showInputBox({
+					value: defaultFnc,
+					prompt: 'Please enter the function name'
+				});
+			}
+		}
+
+		if(!fncName){
+			// happens e.g. if the user pressed ESC
+			return false;
+		} else{
+			// changes e.g. ".vsc.print" to "dot-vsc.print"
+			fncName = fncName.replace(/^\./, 'dot-');
+			this.showHelpForFunctionName(fncName, pkgName);
+		}
+		return true;
+	}
+
+	// search function, similar to typing `?? ...` in R
+	public async searchHelp(){
+		const searchTerm = await vscode.window.showInputBox({
+			value: '',
+			prompt: 'Please enter a search term'
+		});
+
+		if(searchTerm === undefined){
+			return false;
+		}
+
+		const requestPath = `/doc/html/Search?pattern=${searchTerm}`;
+		this.showHelpForPath(requestPath);
 		return true;
 	}
 
 	// shows help for package and function name
 	public showHelpForFunctionName(fncName: string, pkgName: string){
+
 		let helpFile: HelpFile|Promise<HelpFile>;
 
 		if(pkgName === 'doc'){
-			if(this.helpProvider.getHelpFileForDoc){
-				helpFile = this.helpProvider.getHelpFileForDoc(fncName);
-			} else{
-				const requestPath = `doc/html/${fncName}`;
-				helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
-			}
+			const requestPath = `/doc/html/${fncName}`;
+			helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 		} else{
-			if(this.helpProvider.getHelpFileForFunction){
-				helpFile = this.helpProvider.getHelpFileForFunction(pkgName, fncName);
-			} else{
-				const requestPath = `library/${pkgName}/html/${fncName}.html`;
-				helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
-			}
+			const requestPath = `/library/${pkgName}/html/${fncName}.html`;
+			helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 		}
 
 		this.showHelpFile(helpFile);
@@ -162,7 +272,7 @@ export class HelpPanel {
 		if(helpFile){
 			this.showHelpFile(helpFile);
 		} else{
-			console.error(`Couldnt handle path:\n${requestPath}\n`);
+			console.error(`Couldn't handle path:\n${requestPath}\n`);
 		}
 	}
 
@@ -371,5 +481,59 @@ export class HelpPanel {
 		// return the html of the modified page:
 		return helpFile;
 	}
+
+	// retrieve and parse an index file
+	// (either list of all packages, or documentation entries of a package)
+	private async getParsedIndexFile(requestPath: string): Promise<DocumentedItem[]> {
+		// only read and parse file if not cached yet
+		if(!this.cachedIndexFiles.has(requestPath)){
+			const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
+			if(!helpFile || !helpFile.html){
+				// set missing files to null
+				this.cachedIndexFiles.set(requestPath, null);
+			} else{
+				// parse and cache file
+				const documentedItems = this.parseIndexFile(helpFile.html);
+				this.cachedIndexFiles.set(requestPath, documentedItems);
+			}
+		}
+
+		// return cache entry. make new array to avoid messing with the cache
+		const cache = this.cachedIndexFiles.get(requestPath);
+		const ret = [];
+		ret.push(...cache);
+		return ret;
+	}
+
+	private parseIndexFile(html: string): DocumentedItem[] {
+
+		const $ = cheerio.load(html);
+
+		const tables = $('table');
+
+		const ret: DocumentedItem[] = [];
+
+		// loop over all tables on document and each row as one index entry
+		// assumes that the provided html is from a valid index file
+		tables.each((tableIndex, table) => {
+			const rows = $('tr', table);
+			rows.each((rowIndex, row) => {
+				const elements = $('td', row);
+				if(elements.length === 2){
+					const href = elements[0].firstChild.attribs['href'];
+					const fncName = elements[0].firstChild.firstChild.data || '';
+					const description = elements[1].firstChild.data || '';
+					ret.push({
+						href: href,
+						label: fncName,
+						description: description
+					});
+				}
+			});
+		});
+
+		return ret;
+	}
+
 }
 
