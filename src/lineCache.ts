@@ -40,10 +40,30 @@ export class LineCache {
     }
 }
 
-function cleanLine(text: string) {
-    const cleaned = text.replace(/\s*\#.*/, '');
+function isQuote(c: string) {
+    return c === '"' || c === '\'' || c === '`';
+}
 
-    return (cleaned);
+function isComment(c: string) {
+    return c === '#';
+}
+
+function cleanLine(text: string) {
+    let cleaned = '';
+    let withinQuotes = null;
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (isQuote(c)) {
+            withinQuotes = (withinQuotes === c) ? null : c;
+        }
+        if (isComment(c) && !withinQuotes) {
+            break;
+        }
+
+        cleaned += c;
+    }
+
+    return (cleaned.trimEnd());
 }
 
 function doesLineEndInOperator(text: string) {

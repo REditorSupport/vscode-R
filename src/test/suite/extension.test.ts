@@ -600,4 +600,19 @@ suite('Extension Tests', () => {
         assert.equal(extendSelection(2, f, doc.length).endLine, 2);
     });
 
+    test('Selecting multi-line expression with comment char in quotes', () => {
+        const doc = `
+        "a" %>%
+        paste("#") %>%
+        paste("'#") %>%
+        paste("'") %>%
+        print() # } #
+        `.split('\n');
+        function f(i) { return (doc[i]); }
+        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
+        assert.equal(extendSelection(1, f, doc.length).endLine, 5);
+        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
+        assert.equal(extendSelection(2, f, doc.length).endLine, 5);
+    });
+
 });
