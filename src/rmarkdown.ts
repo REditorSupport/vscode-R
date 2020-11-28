@@ -112,18 +112,6 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
               arguments: [chunks]
             }),
             new CodeLens(chunkRange, {
-              title: 'Go Beginning',
-              tooltip: 'Go to beginning of chunk',
-              command: 'r.goToBeginningOfChunk',
-              arguments: [chunks, line]
-            }),
-            new CodeLens(chunkRange, {
-              title: 'Go End',
-              tooltip: 'Go to end of chunk',
-              command: 'r.goToEndOfChunk',
-              arguments: [chunks, line]
-            }),
-            new CodeLens(chunkRange, {
               title: 'Go Previous',
               tooltip: 'Go to previous chunk',
               command: 'r.goToPreviousChunk',
@@ -134,18 +122,6 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
               tooltip: 'Go to next chunk',
               command: 'r.goToNextChunk',
               arguments: [chunks, line]
-            }),
-            new CodeLens(chunkRange, {
-              title: 'Go First',
-              tooltip: 'Go to first chunk',
-              command: 'r.goToFirstChunk',
-              arguments: [chunks]
-            }),
-            new CodeLens(chunkRange, {
-              title: 'Go Last',
-              tooltip: 'Go to last chunk',
-              command: 'r.goToLastChunk',
-              arguments: [chunks]
             }),
             new CodeLens(chunkRange, {
               title: 'Select Chunk',
@@ -405,24 +381,6 @@ function goToChunk(chunk: RMarkdownChunk) {
   window.activeTextEditor.selection = new vscode.Selection(line, 0, line, 0);
 }
 
-export async function goToBeginningOfChunk(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
-  line: number = window.activeTextEditor.selection.start.line) {
-
-  const currentChunk = getCurrentChunk__CursorWithinChunk(chunks, line);
-  goToChunk(currentChunk);
-}
-
-export async function goToEndOfChunk(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
-  line: number = window.activeTextEditor.selection.start.line) {
-
-  const currentChunk = getCurrentChunk__CursorWithinChunk(chunks, line);
-  // Move cursor 1 line above 'chunk end line'
-  line = currentChunk.endLine - 1;
-  window.activeTextEditor.selection = new vscode.Selection(line, 0, line, 0);
-}
-
 export async function goToPreviousChunk(
   chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
   line: number = window.activeTextEditor.selection.start.line) {
@@ -437,20 +395,6 @@ export async function goToNextChunk(
 
   const nextChunk = getNextChunk(chunks, line);
   goToChunk(nextChunk);
-}
-
-export async function goToFirstChunk(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document)) {
-
-  const firstChunk = chunks[0];
-  goToChunk(firstChunk);
-}
-
-export async function goToLastChunk(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document)) {
-
-  const lastChunk = chunks[chunks.length - 1];
-  goToChunk(lastChunk);
 }
 
 export async function selectCurrentChunk(

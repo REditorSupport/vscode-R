@@ -51,12 +51,8 @@
     "onCommand:r.runCurrentAndBelowChunks",
     "onCommand:r.runBelowChunks",
     "onCommand:r.runAllChunks",
-    "onCommand:r.goToBeginningOfChunk",
-    "onCommand:r.goToEndOfChunk",
     "onCommand:r.goToPreviousChunk",
     "onCommand:r.goToNextChunk",
-    "onCommand:r.goToFirstChunk",
-    "onCommand:r.goToLastChunk",
     "onCommand:r.createGitignore",
     "onCommand:r.runCommandWithSelectionOrWord",
     "onCommand:r.runCommandWithEditorPath",
@@ -432,16 +428,6 @@
         "command": "r.runAllChunks"
       },
       {
-        "title": "Go to Beginning of Chunk",
-        "category": "R",
-        "command": "r.goToBeginningOfChunk"
-      },
-      {
-        "title": "Go to End of Chunk",
-        "category": "R",
-        "command": "r.goToEndOfChunk"
-      },
-      {
         "title": "Go to Previous Chunk",
         "category": "R",
         "command": "r.goToPreviousChunk"
@@ -450,16 +436,6 @@
         "title": "Go to Next Chunk",
         "category": "R",
         "command": "r.goToNextChunk"
-      },
-      {
-        "title": "Go to First Chunk",
-        "category": "R",
-        "command": "r.goToFirstChunk"
-      },
-      {
-        "title": "Go to Last Chunk",
-        "category": "R",
-        "command": "r.goToLastChunk"
       },
       {
         "title": "Launch RStudio Addin",
@@ -487,87 +463,15 @@
         "when": "editorTextFocus && editorLangId == 'r'"
       },
       {
-        "command": "r.selectCurrentChunk",
-        "key": "Shift+alt+s",
-        "mac": "Shift+alt+s",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
-      },
-      {
         "command": "r.runCurrentChunk",
         "key": "Ctrl+shift+enter",
         "mac": "cmd+shift+enter",
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
-        "command": "r.runPreviousChunk",
-        "key": "Ctrl+shift+alt+p",
-        "mac": "cmd+shift+alt+p",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
-      },
-      {
-        "command": "r.runNextChunk",
-        "key": "Ctrl+shift+alt+n",
-        "mac": "cmd+shift+alt+n",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
-      },
-      {
         "command": "r.runAboveChunks",
         "key": "Ctrl+alt+p",
         "mac": "cmd+alt+p",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
-      },
-      {
-        "command": "r.runCurrentAndBelowChunks",
-        "key": "Ctrl+alt+n",
-        "mac": "cmd+alt+n",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
-      },
-      {
-        "command": "r.runBelowChunks",
-        "key": "Ctrl+alt+e",
-        "mac": "cmd+alt+e",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
-      },
-      {
-        "command": "r.runAllChunks",
-        "key": "Ctrl+alt+r",
-        "mac": "cmd+alt+r",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
-      },
-      {
-        "command": "r.goToBeginningOfChunk",
-        "key": "Shift+alt+b",
-        "mac": "Shift+alt+b",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
-      },
-      {
-        "command": "r.goToEndOfChunk",
-        "key": "Shift+alt+e",
-        "mac": "Shift+alt+e",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
-      },
-      {
-        "command": "r.goToPreviousChunk",
-        "key": "Shift+alt+p",
-        "mac": "Shift+alt+p",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
-      },
-      {
-        "command": "r.goToNextChunk",
-        "key": "Shift+alt+n",
-        "mac": "Shift+alt+n",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
-      },
-      {
-        "command": "r.goToFirstChunk",
-        "key": "Shift+alt+f",
-        "mac": "Shift+alt+f",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
-      },
-      {
-        "command": "r.goToLastChunk",
-        "key": "Shift+alt+l",
-        "mac": "Shift+alt+l",
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
@@ -662,13 +566,9 @@
           },
           "default": [
             "r.runCurrentChunk",
-            "r.runAboveChunks",
-            "r.runCurrentAndBelowChunks",
-            "r.runAllChunks",
-            "r.goToPreviousChunk",
-            "r.goToNextChunk"
+            "r.runAboveChunks"
           ],
-          "description": "Customize RMarkdown CodeLens, which are inline commands/buttons e.g. 'Run Chunk' shown on the first line of each code chunk. Available commands:\n\nr.selectCurrentChunk\nr.runCurrentChunk\nr.runAboveChunks\nr.runCurrentAndBelowChunks\nr.runBelowChunks\nr.runAllChunks\nr.runPreviousChunk\nr.runNextChunk\nr.goToBeginningOfChunk\nr.goToEndOfChunk\nr.goToPreviousChunk\nr.goToNextChunk\nr.goToFirstChunk\nr.goToLastChunk\n\n----------------------------------\nCustomize both the commands AND its orders (that is, CodeLens respect user-specified orders):"
+          "description": "Customize RMarkdown CodeLens, which are inline commands/buttons e.g. 'Run Chunk' shown on the first line of each code chunk. Available commands:\n\nr.selectCurrentChunk\nr.runCurrentChunk\nr.runAboveChunks\nr.runCurrentAndBelowChunks\nr.runBelowChunks\nr.runAllChunks\nr.runPreviousChunk\nr.runNextChunk\nr.goToPreviousChunk\nr.goToNextChunk\n\n----------------------------------\nCustomize both the commands AND its orders (that is, CodeLens respect user-specified orders):"
         },
         "r.rmarkdown.enableCodeLens": {
           "type": "boolean",
