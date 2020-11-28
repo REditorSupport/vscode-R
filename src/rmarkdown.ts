@@ -284,34 +284,34 @@ function getNextChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
   return nextChunk;
 }
 
-export async function runCurrentChunk(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
-  line: number = window.activeTextEditor.selection.start.line) {
+// Helpers
+function _getChunks() {
+  return getChunks(window.activeTextEditor.document);
+}
+function _getStartLine() {
+  return window.activeTextEditor.selection.start.line;
+}
 
+export async function runCurrentChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                      line: number = _getStartLine()) {
   const currentChunk = getCurrentChunk(chunks, line);
   runChunksInTerm([currentChunk.codeRange]);
 }
 
-export async function runPreviousChunk(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
-  line: number = window.activeTextEditor.selection.start.line) {
-
+export async function runPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                       line: number = _getStartLine()) {
   const previousChunk = getPreviousChunk(chunks, line);
   runChunksInTerm([previousChunk.codeRange]);
 }
 
-export async function runNextChunk(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
-  line: number = window.activeTextEditor.selection.start.line) {
-
+export async function runNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                   line: number = _getStartLine()) {
   const nextChunk = getNextChunk(chunks, line);
   runChunksInTerm([nextChunk.codeRange]);
 }
 
-export async function runAboveChunks(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
-  line: number = window.activeTextEditor.selection.start.line) {
-
+export async function runAboveChunks(chunks: RMarkdownChunk[] = _getChunks(),
+                                     line: number = _getStartLine()) {
   const previousChunk = getPreviousChunk(chunks, line);
   const firstChunkId = 1;
   const previousChunkId = previousChunk.id;
@@ -325,9 +325,8 @@ export async function runAboveChunks(
   runChunksInTerm(codeRanges);
 }
 
-export async function runBelowChunks(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
-  line: number = window.activeTextEditor.selection.start.line) {
+export async function runBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
+                                     line: number = _getStartLine()) {
 
   const nextChunk = getNextChunk(chunks, line);
   const nextChunkId = nextChunk.id;
@@ -343,9 +342,7 @@ export async function runBelowChunks(
 }
 
 export async function runCurrentAndBelowChunks(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
-  line: number = window.activeTextEditor.selection.start.line) {
-
+  chunks: RMarkdownChunk[] = _getChunks(), line: number = _getStartLine()) {
   const currentChunk = getCurrentChunk(chunks, line);
   const currentChunkId = currentChunk.id;
   const lastChunkId = chunks.length;
@@ -359,8 +356,7 @@ export async function runCurrentAndBelowChunks(
   runChunksInTerm(codeRanges);
 }
 
-export async function runAllChunks(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document)) {
+export async function runAllChunks(chunks: RMarkdownChunk[] = _getChunks()) {
 
   const firstChunkId = 1;
   const lastChunkId = chunks.length;
@@ -380,26 +376,20 @@ function goToChunk(chunk: RMarkdownChunk) {
   window.activeTextEditor.selection = new Selection(line, 0, line, 0);
 }
 
-export async function goToPreviousChunk(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
-  line: number = window.activeTextEditor.selection.start.line) {
-
+export async function goToPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                        line: number = _getStartLine()) {
   const previousChunk = getPreviousChunk(chunks, line);
   goToChunk(previousChunk);
 }
 
-export async function goToNextChunk(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
-  line: number = window.activeTextEditor.selection.start.line) {
-
+export async function goToNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                    line: number = _getStartLine()) {
   const nextChunk = getNextChunk(chunks, line);
   goToChunk(nextChunk);
 }
 
 export async function selectCurrentChunk(
-  chunks: RMarkdownChunk[] = getChunks(window.activeTextEditor.document),
-  line: number = window.activeTextEditor.selection.start.line) {
-
+  chunks: RMarkdownChunk[] = _getChunks(), line: number = _getStartLine()) {
   const editor = window.activeTextEditor;
   const currentChunk = getCurrentChunk__CursorWithinChunk(chunks, line);
   const lines = editor.document.getText().split(/\r?\n/);
