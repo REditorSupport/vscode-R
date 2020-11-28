@@ -670,6 +670,16 @@
           ],
           "description": "Available options:\n\nr.selectCurrentChunk\nr.runCurrentChunk\nr.runAboveChunks\nr.runCurrentAndBelowChunks\nr.runBelowChunks\nr.runAllChunks\nr.runPreviousChunk\nr.runNextChunk\nr.goToBeginningOfChunk\nr.goToEndOfChunk\nr.goToPreviousChunk\nr.goToNextChunk\nr.goToFirstChunk\nr.goToLastChunk\n\n----------------------------------\nCustomize both the options AND its orders (that is, code lens respect user-specified orders):"
         },
+        "r.rMarkdownCodeLens.enableCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable RMarkdown code lens"
+        },
+        "r.rMarkdownCodeLens.chunkBackgroundColor": {
+          "type": "string",
+          "default": "rgba(128, 128, 128, 0.1)",
+          "description": "RMarkdown code lens chunk background color in RGBA or RGB value. Defaults to rgba(128, 128, 128, 0.1). Reload VS Code after changing settings. Only works when option `rMarkdownCodeLens.enableCodeLens` is set to true (default).\n\nLearn how to set colors: https://www.w3schools.com/css/css_colors_rgb.asp.\n\nExamples for syntax rgba(<red>, <green>, <blue>, <alpha>):\nrgba(128, 128, 128, 0.1)\nrgba(128, 128, 128, 0.3)\nrgba(255, 165, 0, 0.1)\n\n"
+        },
         "r.helpPanel.enableSyntaxHighlighting": {
           "type": "boolean",
           "default": true,

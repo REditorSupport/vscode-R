@@ -45,7 +45,7 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
   constructor() {
     this.decoration = window.createTextEditorDecorationType({
       isWholeLine: true,
-      backgroundColor: 'rgba(128, 128, 128, 0.1)',
+      backgroundColor: config().get('rMarkdownCodeLens.chunkBackgroundColor'),
     });
   }
 
@@ -55,6 +55,10 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
     const chunkRanges: Range[] = [];
     const rmdCodeLensOpt: string[] = config().get('rMarkdownCodeLens.option');
 
+    // Enable/disable both code lens and chunk background color (set by `editor.setDecorations`)
+    if (!config().get<boolean>('rMarkdownCodeLens.enableCodeLens')) {
+      return null;
+    }
 
     for (let i = 1 ; i <= chunks.length ; i++) {
       const chunk = chunks.filter(e => e.id === i)[0];
