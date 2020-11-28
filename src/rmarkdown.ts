@@ -251,20 +251,16 @@ function getCurrentChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk
 }
 
 // Alternative `getCurrentChunk` for cases:
-// - commands (e.g. `goToBeginningOfChunk`) only make sense when cursor is within chunk
+// - commands (e.g. `selectCurrentChunk`) only make sense when cursor is within chunk
 // - when cursor is outside of chunk, no response is triggered for chunk navigation commands (e.g. `goToPreviousChunk`) and chunk running commands (e.g. `runAboveChunks`)
 function getCurrentChunk__CursorWithinChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
-  let id = 0;
+  const ids = chunks.map(e => e.id);
 
-  while (id <= chunks.length - 1) {
-    const chunk = chunks[id];
-    const chunkStartLine = chunk.startLine;
-    const chunkEndLine = chunk.endLine;
-
-    if (chunkStartLine <= line && line <= chunkEndLine) {
+  for (const id of ids) {
+    const chunk = chunks.filter(e => e.id === id)[0];
+    if (chunk.startLine <= line && line <= chunk.endLine) {
       return chunk;
     }
-    id++;
   }
 }
 
