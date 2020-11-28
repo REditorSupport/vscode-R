@@ -295,14 +295,16 @@ function getCurrentChunk__CursorWithinChunk(chunks: RMarkdownChunk[], line: numb
 
 function getPreviousChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
   const currentChunk = getCurrentChunk(chunks, line);
-  const previousChunkId = currentChunk.id - 1;
+  // When cursor is below the last 'chunk end line', the definition of the previous chunk is the last chunk
+  const previousChunkId = currentChunk.endLine < line ? currentChunk.id : currentChunk.id - 1;
   const previousChunk = chunks.filter(i => i.id === previousChunkId)[0];
   return previousChunk;
 }
 
 function getNextChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
   const currentChunk = getCurrentChunk(chunks, line);
-  const nextChunkId = currentChunk.id + 1;
+  // When cursor is above the first 'chunk start line', the definition of the next chunk is the first chunk
+  const nextChunkId = line < currentChunk.startLine ? currentChunk.id : currentChunk.id + 1;
   const nextChunk = chunks.filter(i => i.id === nextChunkId)[0];
   return nextChunk;
 }
