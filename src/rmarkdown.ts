@@ -1,10 +1,9 @@
 import {
   CancellationToken, CodeLens, CodeLensProvider,
   CompletionItem, CompletionItemProvider,
-  Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window
+  Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window, Selection
 } from 'vscode';
 import { runChunksInTerm } from './rTerminal';
-import * as vscode from 'vscode';
 import { config } from './util';
 
 function isChunkStartLine(text: string) {
@@ -378,7 +377,7 @@ export async function runAllChunks(
 function goToChunk(chunk: RMarkdownChunk) {
   // Move cursor 1 line below 'chunk start line'
   const line = chunk.startLine + 1;
-  window.activeTextEditor.selection = new vscode.Selection(line, 0, line, 0);
+  window.activeTextEditor.selection = new Selection(line, 0, line, 0);
 }
 
 export async function goToPreviousChunk(
@@ -405,7 +404,7 @@ export async function selectCurrentChunk(
   const currentChunk = getCurrentChunk__CursorWithinChunk(chunks, line);
   const lines = editor.document.getText().split(/\r?\n/);
 
-  editor.selection = new vscode.Selection(
+  editor.selection = new Selection(
     currentChunk.startLine, 0,
     currentChunk.endLine, lines[currentChunk.endLine].length
   );
