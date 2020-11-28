@@ -538,7 +538,7 @@
         "r.helpPanel.rpath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to an R executable. Must be \"vanilla\" R, not radian etc.! Will be read from registry or path if not set.",
+          "markdownDescription": "DEPRECATED! Path to an R executable. Must be \"vanilla\" R, not radian etc.! Will be read from registry or path if not set.",
           "markdownDeprecationMessage": "Will be deprecated. Use `#r.rpath.windows#`, `#r.rpath.mac#`, or `#r.rpath.linux#` instead.",
           "deprecationMessage": "Will be deprecated. Use r.rpath.windows, r.rpath.mac, or r.rpath.linux instead."
         },
