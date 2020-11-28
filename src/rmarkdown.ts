@@ -45,7 +45,7 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
   constructor() {
     this.decoration = window.createTextEditorDecorationType({
       isWholeLine: true,
-      backgroundColor: config().get('rMarkdownCodeLens.chunkBackgroundColor'),
+      backgroundColor: config().get('rmarkdown.chunkBackgroundColor'),
     });
   }
 
@@ -53,109 +53,108 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
     this.codeLenses = [];
     const chunks = getChunks(document);
     const chunkRanges: Range[] = [];
-    const rmdCodeLensOpt: string[] = config().get('rMarkdownCodeLens.option');
+    const rmdCodeLensCommands: string[] = config().get('rmarkdown.codeLensCommands');
 
-    // Enable/disable both code lens and chunk background color (set by `editor.setDecorations`)
-    if (!config().get<boolean>('rMarkdownCodeLens.enableCodeLens')) {
-      return null;
-    }
-
+    // Iterate through all code chunks for getting chunk information for both CodeLens and chunk background color (set by `editor.setDecorations`)
     for (let i = 1 ; i <= chunks.length ; i++) {
       const chunk = chunks.filter(e => e.id === i)[0];
       const chunkRange = chunk.chunkRange;
       const line = chunk.startLine;
       chunkRanges.push(chunkRange);
 
-      if (chunk.language === 'r') {
-        if (token.isCancellationRequested) {
-          break;
+      // Enable/disable only CodeLens, without affecting chunk background color.
+      if (config().get<boolean>('rmarkdown.enableCodeLens')) {
+        if (chunk.language === 'r') {
+          if (token.isCancellationRequested) {
+            break;
+          }
+          this.codeLenses.push(
+            new CodeLens(chunkRange, {
+              title: 'Run Chunk',
+              tooltip: 'Run current chunk',
+              command: 'r.runCurrentChunk',
+              arguments: [chunks, line]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Run Above',
+              tooltip: 'Run all chunks above',
+              command: 'r.runAboveChunks',
+              arguments: [chunks, line]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Run Current & Below',
+              tooltip: 'Run current and all chunks below',
+              command: 'r.runCurrentAndBelowChunks',
+              arguments: [chunks, line]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Run Below',
+              tooltip: 'Run all chunks below',
+              command: 'r.runBelowChunks',
+              arguments: [chunks, line]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Run Previous',
+              tooltip: 'Run previous chunk',
+              command: 'r.runPreviousChunk',
+              arguments: [chunks, line]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Run Next',
+              tooltip: 'Run next chunk',
+              command: 'r.runNextChunk',
+              arguments: [chunks, line]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Run All',
+              tooltip: 'Run all chunks',
+              command: 'r.runAllChunks',
+              arguments: [chunks]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Go Beginning',
+              tooltip: 'Go to beginning of chunk',
+              command: 'r.goToBeginningOfChunk',
+              arguments: [chunks, line]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Go End',
+              tooltip: 'Go to end of chunk',
+              command: 'r.goToEndOfChunk',
+              arguments: [chunks, line]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Go Previous',
+              tooltip: 'Go to previous chunk',
+              command: 'r.goToPreviousChunk',
+              arguments: [chunks, line]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Go Next',
+              tooltip: 'Go to next chunk',
+              command: 'r.goToNextChunk',
+              arguments: [chunks, line]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Go First',
+              tooltip: 'Go to first chunk',
+              command: 'r.goToFirstChunk',
+              arguments: [chunks]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Go Last',
+              tooltip: 'Go to last chunk',
+              command: 'r.goToLastChunk',
+              arguments: [chunks]
+            }),
+            new CodeLens(chunkRange, {
+              title: 'Select Chunk',
+              tooltip: 'Select current chunk',
+              command: 'r.selectCurrentChunk',
+              arguments: [chunks, line]
+            }),
+          );
         }
-        this.codeLenses.push(
-          new CodeLens(chunkRange, {
-            title: 'Run Chunk',
-            tooltip: 'Run current chunk',
-            command: 'r.runCurrentChunk',
-            arguments: [chunks, line]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Run Above',
-            tooltip: 'Run all chunks above',
-            command: 'r.runAboveChunks',
-            arguments: [chunks, line]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Run Current & Below',
-            tooltip: 'Run current and all chunks below',
-            command: 'r.runCurrentAndBelowChunks',
-            arguments: [chunks, line]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Run Below',
-            tooltip: 'Run all chunks below',
-            command: 'r.runBelowChunks',
-            arguments: [chunks, line]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Run Previous',
-            tooltip: 'Run previous chunk',
-            command: 'r.runPreviousChunk',
-            arguments: [chunks, line]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Run Next',
-            tooltip: 'Run next chunk',
-            command: 'r.runNextChunk',
-            arguments: [chunks, line]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Run All',
-            tooltip: 'Run all chunks',
-            command: 'r.runAllChunks',
-            arguments: [chunks]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Go Beginning',
-            tooltip: 'Go to beginning of chunk',
-            command: 'r.goToBeginningOfChunk',
-            arguments: [chunks, line]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Go End',
-            tooltip: 'Go to end of chunk',
-            command: 'r.goToEndOfChunk',
-            arguments: [chunks, line]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Go Previous',
-            tooltip: 'Go to previous chunk',
-            command: 'r.goToPreviousChunk',
-            arguments: [chunks, line]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Go Next',
-            tooltip: 'Go to next chunk',
-            command: 'r.goToNextChunk',
-            arguments: [chunks, line]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Go First',
-            tooltip: 'Go to first chunk',
-            command: 'r.goToFirstChunk',
-            arguments: [chunks]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Go Last',
-            tooltip: 'Go to last chunk',
-            command: 'r.goToLastChunk',
-            arguments: [chunks]
-          }),
-          new CodeLens(chunkRange, {
-            title: 'Select Chunk',
-            tooltip: 'Select current chunk',
-            command: 'r.selectCurrentChunk',
-            arguments: [chunks, line]
-          }),
-        );
       }
     }
 
@@ -168,10 +167,10 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
     // For default options, both options and sort order are based on options specified in package.json.
     // For user-specified options, both options and sort order are based on options specified in settings UI or settings.json.
     return this.codeLenses.
-      filter(e => rmdCodeLensOpt.includes(e.command.command)).
+      filter(e => rmdCodeLensCommands.includes(e.command.command)).
       sort(function(a, b) {
-        const sorted = rmdCodeLensOpt.indexOf(a.command.command) -
-                       rmdCodeLensOpt.indexOf(b.command.command);
+        const sorted = rmdCodeLensCommands.indexOf(a.command.command) -
+                       rmdCodeLensCommands.indexOf(b.command.command);
         return sorted;
       });
   }

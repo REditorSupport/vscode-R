@@ -655,7 +655,7 @@
             "type": "string"
           }
         },
-        "r.rMarkdownCodeLens.option": {
+        "r.rmarkdown.codeLensCommands": {
           "type": "array",
           "items": {
             "type": "string"
@@ -668,17 +668,17 @@
             "r.goToPreviousChunk",
             "r.goToNextChunk"
           ],
-          "description": "Available options:\n\nr.selectCurrentChunk\nr.runCurrentChunk\nr.runAboveChunks\nr.runCurrentAndBelowChunks\nr.runBelowChunks\nr.runAllChunks\nr.runPreviousChunk\nr.runNextChunk\nr.goToBeginningOfChunk\nr.goToEndOfChunk\nr.goToPreviousChunk\nr.goToNextChunk\nr.goToFirstChunk\nr.goToLastChunk\n\n----------------------------------\nCustomize both the options AND its orders (that is, code lens respect user-specified orders):"
+          "description": "Customize RMarkdown CodeLens, which are inline commands/buttons e.g. 'Run Chunk' shown on the first line of each code chunk. Available commands:\n\nr.selectCurrentChunk\nr.runCurrentChunk\nr.runAboveChunks\nr.runCurrentAndBelowChunks\nr.runBelowChunks\nr.runAllChunks\nr.runPreviousChunk\nr.runNextChunk\nr.goToBeginningOfChunk\nr.goToEndOfChunk\nr.goToPreviousChunk\nr.goToNextChunk\nr.goToFirstChunk\nr.goToLastChunk\n\n----------------------------------\nCustomize both the commands AND its orders (that is, CodeLens respect user-specified orders):"
         },
-        "r.rMarkdownCodeLens.enableCodeLens": {
+        "r.rmarkdown.enableCodeLens": {
           "type": "boolean",
           "default": true,
-          "description": "Enable RMarkdown code lens"
+          "description": "Enable RMarkdown CodeLens, which are inline commands/buttons e.g. 'Run Chunk | Run Above' shown on the first line of each code chunk.\n\n- Click the buttons to run commands.\n- Hover on the buttons to show tooltips.\n- CodeLens commands are customizable via settings UI (Rmarkdown: Code Lens commands) or settings.json `r.rmarkdown.codeLensCommands`"
         },
-        "r.rMarkdownCodeLens.chunkBackgroundColor": {
+        "r.rmarkdown.chunkBackgroundColor": {
           "type": "string",
           "default": "rgba(128, 128, 128, 0.1)",
-          "description": "RMarkdown code lens chunk background color in RGBA or RGB value. Defaults to rgba(128, 128, 128, 0.1). Reload VS Code after changing settings. Only works when option `rMarkdownCodeLens.enableCodeLens` is set to true (default).\n\nLearn how to set colors: https://www.w3schools.com/css/css_colors_rgb.asp.\n\nExamples for syntax rgba(<red>, <green>, <blue>, <alpha>):\nrgba(128, 128, 128, 0.1)\nrgba(128, 128, 128, 0.3)\nrgba(255, 165, 0, 0.1)\n\n"
+          "description": "RMarkdown chunk background color in RGBA or RGB value. Defaults to rgba(128, 128, 128, 0.1). Leave it empty to disable it (use default editor background color). Reload VS Code after changing settings.\n\nLearn how to set colors: https://www.w3schools.com/css/css_colors_rgb.asp.\n\nExamples for syntax rgba(<red>, <green>, <blue>, <alpha>):\nrgba(128, 128, 128, 0.1)\nrgba(128, 128, 128, 0.3)\nrgba(255, 165, 0, 0.1)\n\n"
         },
         "r.helpPanel.enableSyntaxHighlighting": {
           "type": "boolean",
