@@ -20,7 +20,7 @@ suite('Extension Tests', () => {
             y
         }
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 4);
         assert.equal(extendSelection(2, f, doc.length).startLine, 2);
@@ -36,7 +36,7 @@ suite('Extension Tests', () => {
         a = list(x = 1,
             y = 2)
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 2);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -49,7 +49,7 @@ suite('Extension Tests', () => {
             y = 2,
             z = 3)
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 3);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -63,7 +63,7 @@ suite('Extension Tests', () => {
         1 + 1 %>%
             print()
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 2);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -76,7 +76,7 @@ suite('Extension Tests', () => {
 
             print()
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 3);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -91,7 +91,7 @@ suite('Extension Tests', () => {
             sum() %>%
             print()
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 3);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -108,7 +108,7 @@ suite('Extension Tests', () => {
             )
         )
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 5);
         assert.equal(extendSelection(2, f, doc.length).startLine, 2);
@@ -128,7 +128,7 @@ suite('Extension Tests', () => {
                 2
             )}
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 4);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -148,7 +148,7 @@ suite('Extension Tests', () => {
                 2
             )
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 6);
         assert.equal(extendSelection(2, f, doc.length).startLine, 2);
@@ -171,7 +171,7 @@ suite('Extension Tests', () => {
                 2
             )
         `.split('\n');
-        function f2(i) {return (doc2[i]); }
+        function f2(i: number) {return (doc2[i]); }
         assert.equal(extendSelection(1, f2, doc2.length).startLine, 0);
         assert.equal(extendSelection(1, f2, doc2.length).endLine, 7);
         assert.equal(extendSelection(2, f2, doc2.length).startLine, 2);
@@ -208,7 +208,7 @@ suite('Extension Tests', () => {
                                  # 16. RStudio sends lines 16-17; vscode-R sends 1-17
         }                        # 17. RStudio sends lines 1-17; vscode-R sends 1-17
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 17);
         assert.equal(extendSelection(2, f, doc.length).startLine, 2);
@@ -253,7 +253,7 @@ suite('Extension Tests', () => {
                 2
             )
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 1);
         assert.equal(extendSelection(2, f, doc.length).startLine, 2);
@@ -271,7 +271,7 @@ suite('Extension Tests', () => {
             c(
                 2
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 1);
         assert.equal(extendSelection(1, f, doc.length).endLine, 1);
         assert.equal(extendSelection(2, f, doc.length).startLine, 2);
@@ -284,7 +284,7 @@ suite('Extension Tests', () => {
                 2
 
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 1);
         assert.equal(extendSelection(1, f, doc.length).endLine, 1);
         assert.equal(extendSelection(2, f, doc.length).startLine, 2);
@@ -298,7 +298,7 @@ suite('Extension Tests', () => {
                 2
             )
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 1);
         assert.equal(extendSelection(2, f, doc.length).startLine, 2);
@@ -311,7 +311,7 @@ suite('Extension Tests', () => {
                 2
             )
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 2);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -327,7 +327,7 @@ suite('Extension Tests', () => {
             )
 
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 2);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -351,7 +351,7 @@ suite('Extension Tests', () => {
                     ), ID = '2'))
                 )), data = data.frame(id = c(1,2))
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 1);
         assert.equal(extendSelection(1, f, doc.length).endLine, 1);
     });
@@ -363,7 +363,7 @@ suite('Extension Tests', () => {
                 # }
             }
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 4);
         assert.equal(extendSelection(2, f, doc.length).startLine, 2);
@@ -379,7 +379,7 @@ suite('Extension Tests', () => {
         a[1
             ]
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 2);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -391,7 +391,7 @@ suite('Extension Tests', () => {
         ggplot(aes(speed, dist), data = cars) +
             geom_point()
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 2);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -405,7 +405,7 @@ suite('Extension Tests', () => {
             z = 3) %>%
             print()
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 4);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -428,7 +428,7 @@ suite('Extension Tests', () => {
             }                 # 8. RStudio sends lines 1-9; vscode-R sends lines 2-8
         )                     # 9. RStudio and vscode-R send lines 1-9
         `.split('\n');
-        function f(i) {return (doc[i]); }
+        function f(i: number) {return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 9);
         assert.equal(extendSelection(2, f, doc.length).startLine, 2);
@@ -454,7 +454,7 @@ suite('Extension Tests', () => {
         "hello"
         a + b
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 1);
     });
@@ -464,7 +464,7 @@ suite('Extension Tests', () => {
         'hello'
         a + b
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 1);
     });
@@ -474,7 +474,7 @@ suite('Extension Tests', () => {
         \`hello\`
         a + b
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 1);
     });
@@ -485,7 +485,7 @@ suite('Extension Tests', () => {
             paste0("[[", i)
         })
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 3);
         assert.equal(extendSelection(3, f, doc.length).startLine, 0);
@@ -499,7 +499,7 @@ suite('Extension Tests', () => {
         3
         )
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 4);
         assert.equal(extendSelection(4, f, doc.length).startLine, 0);
@@ -512,7 +512,7 @@ suite('Extension Tests', () => {
             x[i]
         }
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 3);
         assert.equal(extendSelection(3, f, doc.length).startLine, 0);
@@ -525,7 +525,7 @@ suite('Extension Tests', () => {
             paste0('"', i)
         })
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 3);
         assert.equal(extendSelection(3, f, doc.length).startLine, 0);
@@ -538,7 +538,7 @@ suite('Extension Tests', () => {
             y = "[") %>%
             print()
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 3);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -553,7 +553,7 @@ suite('Extension Tests', () => {
             paste0("\\"", i)
         })
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 3);
         assert.equal(extendSelection(3, f, doc.length).startLine, 0);
@@ -566,7 +566,7 @@ suite('Extension Tests', () => {
         hello\\""
         )
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 3);
         assert.equal(extendSelection(3, f, doc.length).startLine, 0);
@@ -581,7 +581,7 @@ suite('Extension Tests', () => {
             \`[[\` is also a function"
         )
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 5);
         assert.equal(extendSelection(5, f, doc.length).startLine, 0);
@@ -593,7 +593,7 @@ suite('Extension Tests', () => {
         \`hello\\\`\` +
             1
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 2);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
@@ -608,7 +608,7 @@ suite('Extension Tests', () => {
         paste("'") %>%
         print() # } #
         `.split('\n');
-        function f(i) { return (doc[i]); }
+        function f(i: number) { return (doc[i]); }
         assert.equal(extendSelection(1, f, doc.length).startLine, 0);
         assert.equal(extendSelection(1, f, doc.length).endLine, 5);
         assert.equal(extendSelection(2, f, doc.length).startLine, 0);
