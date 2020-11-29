@@ -18,9 +18,10 @@ import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, selectCurre
 
 import * as path from 'path';
 
-import { HelpPanel, HelpPanelOptions, HelpProvider, RHelpProviderOptions } from './rHelpPanel';
+import { HelpPanel, HelpPanelOptions, HelpProvider, AliasProviderArgs, HelpSubMenu } from './rHelpPanel';
 import { RHelpClient } from './rHelpProviderBuiltin';
 import { RHelp } from './rHelpProviderCustom';
+import { AliasProvider } from './rHelpAliases';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -73,28 +74,27 @@ export async function activate(context: ExtensionContext) {
         window.showErrorMessage(`Help Panel not available: ${e.message}`);
     }
 
+    // launch alias-provider. Is used to implement `?`
+    const aliasProviderArgs: AliasProviderArgs = {
+        rPath: rPath,
+        rScriptFile: context.asAbsolutePath('R/getAliases.R')
+    };
+    const aliasProvider = new AliasProvider(aliasProviderArgs);
+
     // launch the help panel (displays the html provided by helpProvider)
     const rHelpPanelOptions: HelpPanelOptions = {
         webviewScriptPath: path.join(context.extensionPath, path.normalize('/html/script.js')),
         webviewStylePath: path.join(context.extensionPath, path.normalize('/html/theme.css'))
     };
-    const rHelpPanel = new HelpPanel(helpProvider, rHelpPanelOptions);
+    const rHelpPanel = new HelpPanel(helpProvider, rHelpPanelOptions, aliasProvider);
     globalRHelpPanel = rHelpPanel;
 
     rExtension.helpPanel = rHelpPanel;
 
     context.subscriptions.push(rHelpPanel);
 
-    context.subscriptions.push(commands.registerCommand('r.showHelp', () => {
-        rHelpPanel.showHelpForInput();
-    }));
-
-    context.subscriptions.push(commands.registerCommand('r.searchHelp', () => {
-        rHelpPanel.searchHelp();
-    }));
-
-    context.subscriptions.push(commands.registerCommand('r.showDoc', () => {
-        rHelpPanel.showHelpForFunctionName('index.html', 'doc');
+    context.subscriptions.push(commands.registerCommand('r.showHelp', (subMenu?: HelpSubMenu) => {
+        rHelpPanel.showHelpMenu(subMenu);
     }));
 
     context.subscriptions.push(commands.registerCommand('r.helpPanel.back', () =>{
