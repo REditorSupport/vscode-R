@@ -63,6 +63,31 @@
   ],
   "main": "./dist/extension",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "workspaceViewer",
+          "title": "R Workspace",
+          "icon": "./images/Rlogo.svg"
+        }
+      ]
+    },
+    "views": {
+      "workspaceViewer": [
+        {
+          "id": "workspaceViewer",
+          "name": "R Workspace",
+          "icon": "./images/Rlogo.svg",
+          "contextualTitle": "R Workspace"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "workspaceViewer",
+        "contents": "R workspace is empty."
+      }
+    ],
     "languages": [
       {
         "id": "r",
@@ -220,6 +245,21 @@
       }
     ],
     "commands": [
+       {
+        "command": "r.workspaceViewer.refreshEntry",
+        "title": "Manual Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "r.workspaceViewer.view",
+        "title": "View",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "r.workspaceViewer.clear",
+        "title": "Clear environment",
+        "icon": "$(clear-all)"
+      },
       {
         "command": "r.showHelp",
         "title": "R: Show help"
@@ -529,6 +569,22 @@
         {
           "command": "r.helpPanel.forward",
           "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "r.workspaceViewer.view",
+          "group": "inline"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "r.workspaceViewer.clear",
+          "group": "navigation"
+        },
+        {
+          "command": "r.workspaceViewer.refreshEntry",
           "group": "navigation"
         }
       ]

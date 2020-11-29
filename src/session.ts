@@ -13,6 +13,7 @@ import { config } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { globalRHelpPanel } from './extension';
+import { rWorkspace } from './extension';
 
 export let globalenv: any;
 let resDir: string;
@@ -171,6 +172,7 @@ async function updateGlobalenv() {
         if (fs.existsSync(globalenvFile)) {
             const content = await fs.readFile(globalenvFile, 'utf8');
             globalenv = JSON.parse(content);
+            rWorkspace.refresh();
             console.info('[updateGlobalenv] Done');
         } else {
             console.info('[updateGlobalenv] File not found');

@@ -21,6 +21,7 @@ import * as path from 'path';
 import { HelpPanel, HelpPanelOptions, HelpProvider, RHelpProviderOptions } from './rHelpPanel';
 import { RHelpClient } from './rHelpProviderBuiltin';
 import { RHelp } from './rHelpProviderCustom';
+import { WorkspaceDataProvider, WorkspaceItem } from './workspace';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -39,10 +40,17 @@ const roxygenTagCompletionItems = [
 
 
 export let globalRHelpPanel: HelpPanel | null = null;
+export const rWorkspace = new WorkspaceDataProvider();
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export async function activate(context: ExtensionContext) {
+
+    // register the R Workspace tree view
+    window.registerTreeDataProvider(
+        'workspaceViewer',
+        rWorkspace
+    );
 
     // used to export an interface to the help panel
     // used e.g. by vscode-r-debugger to show the help panel from within debug sessions
@@ -279,6 +287,9 @@ export async function activate(context: ExtensionContext) {
         commands.registerCommand('r.runCommandWithEditorPath', runCommandWithEditorPath),
         commands.registerCommand('r.runCommand', runCommand),
         commands.registerCommand('r.launchAddinPicker', launchAddinPicker),
+        commands.registerCommand('r.workspaceViewer.refreshEntry', () => rWorkspace.refresh()),
+        commands.registerCommand('r.workspaceViewer.view', (node: WorkspaceItem) => runTextInTerm(`View(${node.label})`)),
+        commands.registerCommand('r.workspaceViewer.clear', () => runTextInTerm(`rm(list = ls())`)),
         window.onDidCloseTerminal(deleteTerminal),
     );
 
