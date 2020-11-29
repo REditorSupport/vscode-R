@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 import * as path from 'path';
 import * as Mocha from 'mocha';
 import * as glob from 'glob';

@@ -38,13 +38,13 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
 
             return true;
         }
-        window.showErrorMessage('Cannot find R client.  Please check R path in preferences and reload.');
+        void window.showErrorMessage('Cannot find R client.  Please check R path in preferences and reload.');
 
         return false;
     });
 }
 
-export async function restartRTerminal(){
+export async function restartRTerminal(): Promise<void>{
     if (typeof rTerm !== 'undefined'){
         rTerm.dispose();
         deleteTerminal(rTerm);
@@ -52,7 +52,7 @@ export async function restartRTerminal(){
     }
 }
 
-export function deleteTerminal(term: Terminal) {
+export function deleteTerminal(term: Terminal): void {
     if (isDeepStrictEqual(term, rTerm)) {
         rTerm = undefined;
         if (config().get<boolean>('sessionWatcher')) {
@@ -61,10 +61,10 @@ export function deleteTerminal(term: Terminal) {
     }
 }
 
-export async function chooseTerminal() {
+export async function chooseTerminal(): Promise<Terminal> {
     if (config().get('alwaysUseActiveTerminal')) {
         if (window.terminals.length < 1) {
-            window.showInformationMessage('There are no open terminals.');
+            void window.showInformationMessage('There are no open terminals.');
 
             return undefined;
         }
@@ -110,7 +110,7 @@ export async function chooseTerminal() {
                 }
                 console.info(msg);
                 // tslint:disable-next-line: max-line-length
-                window.showErrorMessage('Error identifying terminal! Please run command "Developer: Toggle Developer Tools", find the message starting with "[chooseTerminal]", and copy the message to https://github.com/Ikuyadeu/vscode-R/issues');
+                void window.showErrorMessage('Error identifying terminal! Please run command "Developer: Toggle Developer Tools", find the message starting with "[chooseTerminal]", and copy the message to https://github.com/Ikuyadeu/vscode-R/issues');
 
                 return undefined;
             }
@@ -118,7 +118,7 @@ export async function chooseTerminal() {
     }
 
     if (rTerm === undefined) {
-        const success = createRTerm(true);
+        const success = await createRTerm(true);
         await delay(200); // Let RTerm warm up
         if (!success) {
             return undefined;
@@ -128,21 +128,21 @@ export async function chooseTerminal() {
     return rTerm;
 }
 
-export function runSelectionInTerm(moveCursor: boolean) {
+export async function runSelectionInTerm(moveCursor: boolean): Promise<void> {
     const selection = getSelection();
     if (moveCursor && selection.linesDownToMoveCursor > 0) {
         const lineCount = window.activeTextEditor.document.lineCount;
         if (selection.linesDownToMoveCursor + window.activeTextEditor.selection.end.line === lineCount) {
             const endPos = new Position(lineCount, window.activeTextEditor.document.lineAt(lineCount - 1).text.length);
-            window.activeTextEditor.edit(e => e.insert(endPos, '\n'));
+            await window.activeTextEditor.edit(e => e.insert(endPos, '\n'));
         }
-        commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
-        commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
+        await commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
+        await commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
     }
-    runTextInTerm(selection.selectedText);
+    await runTextInTerm(selection.selectedText);
 }
 
-export async function runChunksInTerm(chunks: Range[]) {
+export async function runChunksInTerm(chunks: Range[]): Promise<void> {
     const text = chunks
         .map((chunk) => window.activeTextEditor.document.getText(chunk).trim())
         .filter((chunk) => chunk.length > 0)
@@ -152,7 +152,7 @@ export async function runChunksInTerm(chunks: Range[]) {
     }
 }
 
-export async function runTextInTerm(text: string) {
+export async function runTextInTerm(text: string): Promise<void> {
     const term = await chooseTerminal();
     if (term === undefined) {
         return;
