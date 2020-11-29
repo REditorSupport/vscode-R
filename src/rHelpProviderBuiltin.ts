@@ -133,7 +133,7 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
 
     dispose(){
         if(this.cp){
-            this.cp.kill();
+            kill(this.cp.pid);
         }
     }
 }
