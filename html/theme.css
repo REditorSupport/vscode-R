@@ -86,3 +86,19 @@ a {
 /* p {
     font-size: 16px;
 } */
+
+body table:nth-child(1)[width="100%"] {
+    display: none;
+}
+
+h1, h2 {
+    text-align: center;
+}
+
+img {
+    display: none;
+}
+
+a ~ div.header {
+    display: none;
+}

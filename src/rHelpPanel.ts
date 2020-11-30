@@ -524,6 +524,8 @@ export class HelpPanel implements api.HelpPanel {
 
 		if(!helpFile.isModified){
 
+			$('head style').remove();
+
 			if(config().get<boolean>('helpPanel.enableSyntaxHighlighting')){
 				// find all code sections, enclosed by <pre>...</pre>
 				const codeSections = $('pre');
