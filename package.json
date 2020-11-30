@@ -67,7 +67,7 @@
       "activitybar": [
         {
           "id": "workspaceViewer",
-          "title": "R Workspace",
+          "title": "R",
           "icon": "./images/Rlogo.svg"
         }
       ]
@@ -76,9 +76,9 @@
       "workspaceViewer": [
         {
           "id": "workspaceViewer",
-          "name": "R Workspace",
+          "name": "Workspace",
           "icon": "./images/Rlogo.svg",
-          "contextualTitle": "R Workspace"
+          "contextualTitle": "R"
         }
       ]
     },
@@ -259,6 +259,11 @@
         "command": "r.workspaceViewer.clear",
         "title": "Clear environment",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "r.workspaceViewer.remove",
+        "title": "Remove",
+        "icon": "$(close)"
       },
       {
         "command": "r.showHelp",
@@ -575,6 +580,10 @@
       "view/item/context": [
         {
           "command": "r.workspaceViewer.view",
+          "group": "inline"
+        },
+        {
+          "command": "r.workspaceViewer.remove",
           "group": "inline"
         }
       ],

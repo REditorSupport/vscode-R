@@ -289,6 +289,7 @@ export async function activate(context: ExtensionContext) {
         commands.registerCommand('r.launchAddinPicker', launchAddinPicker),
         commands.registerCommand('r.workspaceViewer.refreshEntry', () => rWorkspace.refresh()),
         commands.registerCommand('r.workspaceViewer.view', (node: WorkspaceItem) => runTextInTerm(`View(${node.label})`)),
+        commands.registerCommand('r.workspaceViewer.remove', (node: WorkspaceItem) => runTextInTerm(`rm(${node.label})`)),
         commands.registerCommand('r.workspaceViewer.clear', () => runTextInTerm(`rm(list = ls())`)),
         window.onDidCloseTerminal(deleteTerminal),
     );

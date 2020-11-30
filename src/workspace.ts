@@ -11,10 +11,8 @@ export interface WorkspaceAttr {
 }
 
 export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
-	private _onDidChangeTreeData: EventEmitter<WorkspaceItem | undefined | null | void>
-		= new EventEmitter<WorkspaceItem | undefined | null | void>();
-	readonly onDidChangeTreeData: Event<WorkspaceItem | undefined | null | void>
-		= this._onDidChangeTreeData.event;
+	private _onDidChangeTreeData: EventEmitter<void> = new EventEmitter();
+	readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
 
 	refresh(): void {
 		this.data = globalenv;
@@ -25,13 +23,12 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 
 	constructor() {}
 
-	getTreeItem(element: WorkspaceItem): TreeItem | Thenable<TreeItem> {
+	getTreeItem(element: WorkspaceItem): TreeItem {
 		return element;
 	}
 
-	getChildren(element?: WorkspaceItem): ProviderResult<WorkspaceItem[]> {
-		return Promise.resolve(
-			this.getWorkspaceItems(this.data));
+	getChildren(): WorkspaceItem[] {
+		return this.getWorkspaceItems(this.data);
 	}
 
 	private getWorkspaceItems(data: any): WorkspaceItem[] {
