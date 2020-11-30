@@ -109,7 +109,6 @@ export async function chooseTerminal(): Promise<Terminal> {
                     msg += `Terminal ${i}: ${window.terminals[i].name} `;
                 }
                 console.info(msg);
-                // tslint:disable-next-line: max-line-length
                 void window.showErrorMessage('Error identifying terminal! Please run command "Developer: Toggle Developer Tools", find the message starting with "[chooseTerminal]", and copy the message to https://github.com/Ikuyadeu/vscode-R/issues');
 
                 return undefined;

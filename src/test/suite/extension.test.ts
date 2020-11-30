@@ -21,14 +21,14 @@ suite('Extension Tests', () => {
         }
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(4, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(4, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 4);
     });
 
     test('Selecting two-line () bracketed expression', () => {
@@ -37,10 +37,10 @@ suite('Extension Tests', () => {
             y = 2)
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
     });
 
     test('Selecting three-line () bracketed expression', () => {
@@ -50,12 +50,12 @@ suite('Extension Tests', () => {
             z = 3)
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
 
     test('Selecting two-line piped expression', () => {
@@ -64,10 +64,10 @@ suite('Extension Tests', () => {
             print()
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
     });
 
     test('Selecting two-line piped expression with gap', () => {
@@ -77,12 +77,12 @@ suite('Extension Tests', () => {
             print()
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
 
     test('Selecting three-line piped expression', () => {
@@ -92,12 +92,12 @@ suite('Extension Tests', () => {
             print()
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
 
     test('Selecting nested bracketed expression with brackets on different lines', () => {
@@ -109,16 +109,16 @@ suite('Extension Tests', () => {
         )
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 5);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(4, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(4, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(5, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(5, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(5, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(5, f, doc.length).endLine, 5);
     });
 
     test('Selecting nested bracketed expression with brackets on same line', () => {
@@ -129,14 +129,14 @@ suite('Extension Tests', () => {
             )}
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(4, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(4, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 4);
     });
 
     test('Selecting brackets and pipes', () => {
@@ -149,18 +149,18 @@ suite('Extension Tests', () => {
             )
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 6);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 6);
-        assert.equal(extendSelection(4, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(4, f, doc.length).endLine, 6);
-        assert.equal(extendSelection(5, f, doc.length).startLine, 5);
-        assert.equal(extendSelection(5, f, doc.length).endLine, 5);
-        assert.equal(extendSelection(6, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(6, f, doc.length).endLine, 6);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 6);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 6);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 6);
+        assert.strictEqual(extendSelection(5, f, doc.length).startLine, 5);
+        assert.strictEqual(extendSelection(5, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(6, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(6, f, doc.length).endLine, 6);
 
         const doc2 = `
         {
@@ -172,20 +172,20 @@ suite('Extension Tests', () => {
             )
         `.split('\n');
         function f2(i: number) {return (doc2[i]); }
-        assert.equal(extendSelection(1, f2, doc2.length).startLine, 0);
-        assert.equal(extendSelection(1, f2, doc2.length).endLine, 7);
-        assert.equal(extendSelection(2, f2, doc2.length).startLine, 2);
-        assert.equal(extendSelection(2, f2, doc2.length).endLine, 2);
-        assert.equal(extendSelection(3, f2, doc2.length).startLine, 0);
-        assert.equal(extendSelection(3, f2, doc2.length).endLine, 7);
-        assert.equal(extendSelection(4, f2, doc2.length).startLine, 0);
-        assert.equal(extendSelection(4, f2, doc2.length).endLine, 7);
-        assert.equal(extendSelection(5, f2, doc2.length).startLine, 0);
-        assert.equal(extendSelection(5, f2, doc2.length).endLine, 7);
-        assert.equal(extendSelection(6, f2, doc2.length).startLine, 6);
-        assert.equal(extendSelection(6, f2, doc2.length).endLine, 6);
-        assert.equal(extendSelection(7, f2, doc2.length).startLine, 0);
-        assert.equal(extendSelection(7, f2, doc2.length).endLine, 7);
+        assert.strictEqual(extendSelection(1, f2, doc2.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f2, doc2.length).endLine, 7);
+        assert.strictEqual(extendSelection(2, f2, doc2.length).startLine, 2);
+        assert.strictEqual(extendSelection(2, f2, doc2.length).endLine, 2);
+        assert.strictEqual(extendSelection(3, f2, doc2.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f2, doc2.length).endLine, 7);
+        assert.strictEqual(extendSelection(4, f2, doc2.length).startLine, 0);
+        assert.strictEqual(extendSelection(4, f2, doc2.length).endLine, 7);
+        assert.strictEqual(extendSelection(5, f2, doc2.length).startLine, 0);
+        assert.strictEqual(extendSelection(5, f2, doc2.length).endLine, 7);
+        assert.strictEqual(extendSelection(6, f2, doc2.length).startLine, 6);
+        assert.strictEqual(extendSelection(6, f2, doc2.length).endLine, 6);
+        assert.strictEqual(extendSelection(7, f2, doc2.length).startLine, 0);
+        assert.strictEqual(extendSelection(7, f2, doc2.length).endLine, 7);
     });
 
     test('Selecting large RStudio comparison', () => {
@@ -209,40 +209,40 @@ suite('Extension Tests', () => {
         }                        # 17. RStudio sends lines 1-17; vscode-R sends 1-17
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 17);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(4, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(4, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(5, f, doc.length).startLine, 5);
-        assert.equal(extendSelection(5, f, doc.length).endLine, 15);
-        assert.equal(extendSelection(6, f, doc.length).startLine, 6);
-        assert.equal(extendSelection(6, f, doc.length).endLine, 14);
-        assert.equal(extendSelection(7, f, doc.length).startLine, 7);
-        assert.equal(extendSelection(7, f, doc.length).endLine, 13);
-        assert.equal(extendSelection(8, f, doc.length).startLine, 8);
-        assert.equal(extendSelection(8, f, doc.length).endLine, 12);
-        assert.equal(extendSelection(9, f, doc.length).startLine, 9);
-        assert.equal(extendSelection(9, f, doc.length).endLine, 11);
-        assert.equal(extendSelection(10, f, doc.length).startLine, 10);
-        assert.equal(extendSelection(10, f, doc.length).endLine, 10);
-        assert.equal(extendSelection(11, f, doc.length).startLine, 9);
-        assert.equal(extendSelection(11, f, doc.length).endLine, 11);
-        assert.equal(extendSelection(12, f, doc.length).startLine, 8);
-        assert.equal(extendSelection(12, f, doc.length).endLine, 12);
-        assert.equal(extendSelection(13, f, doc.length).startLine, 7);
-        assert.equal(extendSelection(13, f, doc.length).endLine, 13);
-        assert.equal(extendSelection(14, f, doc.length).startLine, 6);
-        assert.equal(extendSelection(14, f, doc.length).endLine, 14);
-        assert.equal(extendSelection(15, f, doc.length).startLine, 5);
-        assert.equal(extendSelection(15, f, doc.length).endLine, 15);
-        assert.equal(extendSelection(16, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(16, f, doc.length).endLine, 17);
-        assert.equal(extendSelection(17, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(17, f, doc.length).endLine, 17);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 17);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(5, f, doc.length).startLine, 5);
+        assert.strictEqual(extendSelection(5, f, doc.length).endLine, 15);
+        assert.strictEqual(extendSelection(6, f, doc.length).startLine, 6);
+        assert.strictEqual(extendSelection(6, f, doc.length).endLine, 14);
+        assert.strictEqual(extendSelection(7, f, doc.length).startLine, 7);
+        assert.strictEqual(extendSelection(7, f, doc.length).endLine, 13);
+        assert.strictEqual(extendSelection(8, f, doc.length).startLine, 8);
+        assert.strictEqual(extendSelection(8, f, doc.length).endLine, 12);
+        assert.strictEqual(extendSelection(9, f, doc.length).startLine, 9);
+        assert.strictEqual(extendSelection(9, f, doc.length).endLine, 11);
+        assert.strictEqual(extendSelection(10, f, doc.length).startLine, 10);
+        assert.strictEqual(extendSelection(10, f, doc.length).endLine, 10);
+        assert.strictEqual(extendSelection(11, f, doc.length).startLine, 9);
+        assert.strictEqual(extendSelection(11, f, doc.length).endLine, 11);
+        assert.strictEqual(extendSelection(12, f, doc.length).startLine, 8);
+        assert.strictEqual(extendSelection(12, f, doc.length).endLine, 12);
+        assert.strictEqual(extendSelection(13, f, doc.length).startLine, 7);
+        assert.strictEqual(extendSelection(13, f, doc.length).endLine, 13);
+        assert.strictEqual(extendSelection(14, f, doc.length).startLine, 6);
+        assert.strictEqual(extendSelection(14, f, doc.length).endLine, 14);
+        assert.strictEqual(extendSelection(15, f, doc.length).startLine, 5);
+        assert.strictEqual(extendSelection(15, f, doc.length).endLine, 15);
+        assert.strictEqual(extendSelection(16, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(16, f, doc.length).endLine, 17);
+        assert.strictEqual(extendSelection(17, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(17, f, doc.length).endLine, 17);
     });
 
     test('Selecting block with missing opening bracket', () => {
@@ -254,16 +254,16 @@ suite('Extension Tests', () => {
             )
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 1);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(4, f, doc.length).startLine, 4);
-        assert.equal(extendSelection(4, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(5, f, doc.length).startLine, 5);
-        assert.equal(extendSelection(5, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 4);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(5, f, doc.length).startLine, 5);
+        assert.strictEqual(extendSelection(5, f, doc.length).endLine, 5);
     });
 
     test('Selecting block with missing closing bracket', () => {
@@ -272,10 +272,10 @@ suite('Extension Tests', () => {
                 2
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 1);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 1);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 1);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
     });
 
     test('Selecting block with missing closing bracket and gap', () => {
@@ -285,12 +285,12 @@ suite('Extension Tests', () => {
 
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 1);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 1);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 1);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 4);
     });
 
     test('Selecting block with missing opening bracket 2', () => {
@@ -299,10 +299,10 @@ suite('Extension Tests', () => {
             )
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 1);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
     });
 
     test('Selecting block with missing opening bracket and gap', () => {
@@ -312,12 +312,12 @@ suite('Extension Tests', () => {
             )
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
 
     test('Selecting block with missing opening bracket and gap after', () => {
@@ -328,14 +328,14 @@ suite('Extension Tests', () => {
 
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(4, f, doc.length).startLine, 4);
-        assert.equal(extendSelection(4, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 4);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 5);
     });
 
     test('Selecting longer badly-formed block', () => {
@@ -352,8 +352,8 @@ suite('Extension Tests', () => {
                 )), data = data.frame(id = c(1,2))
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 1);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 1);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 1);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
     });
 
     test('Selecting with comments', () => {
@@ -364,14 +364,14 @@ suite('Extension Tests', () => {
             }
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(4, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(4, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 4);
     });
 
     test('Selecting multi-line square bracket', () => {
@@ -380,10 +380,10 @@ suite('Extension Tests', () => {
             ]
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
     });
 
     test('Selecting ggplot plot', () => {
@@ -392,10 +392,10 @@ suite('Extension Tests', () => {
             geom_point()
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
     });
 
     test('Selecting multi-line bracket with pipe', () => {
@@ -406,14 +406,14 @@ suite('Extension Tests', () => {
             print()
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(4, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(4, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 4);
     });
 
     test('Selecting shorter RStudio comparison', () => {
@@ -429,24 +429,24 @@ suite('Extension Tests', () => {
         )                     # 9. RStudio and vscode-R send lines 1-9
         `.split('\n');
         function f(i: number) {return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 9);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 8);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 7);
-        assert.equal(extendSelection(4, f, doc.length).startLine, 4);
-        assert.equal(extendSelection(4, f, doc.length).endLine, 6);
-        assert.equal(extendSelection(5, f, doc.length).startLine, 5);
-        assert.equal(extendSelection(5, f, doc.length).endLine, 5);
-        assert.equal(extendSelection(6, f, doc.length).startLine, 4);
-        assert.equal(extendSelection(6, f, doc.length).endLine, 6);
-        assert.equal(extendSelection(7, f, doc.length).startLine, 3);
-        assert.equal(extendSelection(7, f, doc.length).endLine, 7);
-        assert.equal(extendSelection(8, f, doc.length).startLine, 2);
-        assert.equal(extendSelection(8, f, doc.length).endLine, 8);
-        assert.equal(extendSelection(9, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(9, f, doc.length).endLine, 9);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 9);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 8);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 7);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 4);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 6);
+        assert.strictEqual(extendSelection(5, f, doc.length).startLine, 5);
+        assert.strictEqual(extendSelection(5, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(6, f, doc.length).startLine, 4);
+        assert.strictEqual(extendSelection(6, f, doc.length).endLine, 6);
+        assert.strictEqual(extendSelection(7, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(7, f, doc.length).endLine, 7);
+        assert.strictEqual(extendSelection(8, f, doc.length).startLine, 2);
+        assert.strictEqual(extendSelection(8, f, doc.length).endLine, 8);
+        assert.strictEqual(extendSelection(9, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(9, f, doc.length).endLine, 9);
     });
 
     test('Selecting single line with double quotes', () => {
@@ -455,8 +455,8 @@ suite('Extension Tests', () => {
         a + b
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 1);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
     });
 
     test('Selecting single line with single quotes', () => {
@@ -465,8 +465,8 @@ suite('Extension Tests', () => {
         a + b
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 1);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
     });
 
     test('Selecting single line with backticks', () => {
@@ -475,8 +475,8 @@ suite('Extension Tests', () => {
         a + b
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 1);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
     });
 
     test('Selecting multi-line bracket with unmatched brackets in string', () => {
@@ -486,10 +486,10 @@ suite('Extension Tests', () => {
         })
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
 
     test('Selecting multi-line call with square bracket function', () => {
@@ -500,10 +500,10 @@ suite('Extension Tests', () => {
         )
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 4);
-        assert.equal(extendSelection(4, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(4, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 4);
     });
 
     test('Selecting multi-line function definition with unmatched bracket', () => {
@@ -513,10 +513,10 @@ suite('Extension Tests', () => {
         }
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
 
     test('Selecting multi-line brackets with mixed quotes', () => {
@@ -526,10 +526,10 @@ suite('Extension Tests', () => {
         })
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
 
     test('Selecting multi-line brackets with pipe and unmatched bracket in string', () => {
@@ -539,12 +539,12 @@ suite('Extension Tests', () => {
             print()
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
 
     test('Selecting multi-line brackets with escaped quote', () => {
@@ -554,10 +554,10 @@ suite('Extension Tests', () => {
         })
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
 
     test('Selecting multi-line brackets with escaped quotes in multi-line string', () => {
@@ -567,10 +567,10 @@ suite('Extension Tests', () => {
         )
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 3);
-        assert.equal(extendSelection(3, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
 
     test('Selecting multi-line brackets with multi-line string and unmatched brackets', () => {
@@ -582,10 +582,10 @@ suite('Extension Tests', () => {
         )
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 5);
-        assert.equal(extendSelection(5, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(5, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(5, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(5, f, doc.length).endLine, 5);
     });
 
     test('Selecting multi-line expression with escaped backtick and ending operator', () => {
@@ -594,10 +594,10 @@ suite('Extension Tests', () => {
             1
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 2);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
     });
 
     test('Selecting multi-line expression with comment char in quotes', () => {
@@ -609,10 +609,10 @@ suite('Extension Tests', () => {
         print() # } #
         `.split('\n');
         function f(i: number) { return (doc[i]); }
-        assert.equal(extendSelection(1, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(1, f, doc.length).endLine, 5);
-        assert.equal(extendSelection(2, f, doc.length).startLine, 0);
-        assert.equal(extendSelection(2, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 5);
     });
 
 });
