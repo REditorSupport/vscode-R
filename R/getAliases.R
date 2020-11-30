@@ -5,8 +5,6 @@ ip <- installed.packages()
 ord <- order(ip[, "Priority"])
 ip <- ip[ord, ]
 
-ret <- list()
-
 ret <- lapply(rownames(ip), function(row) {
     libPath <- ip[row, "LibPath"]
     pkg <- ip[row, "Package"]
