@@ -7,20 +7,22 @@ ip <- ip[ord, ]
 
 ret <- list()
 
-for (row in rownames(ip)) {
+ret <- lapply(rownames(ip), function(row) {
     libPath <- ip[row, "LibPath"]
     pkg <- ip[row, "Package"]
     filename <- file.path(libPath, pkg, "help", "aliases.rds")
-    tmp <- list(
+    info <- list(
         package = pkg,
         libPath = libPath,
-        aliasFile = filename
+        aliasFile = filename,
+        aliases = NULL
     )
     if (file.exists(filename)) {
-        tmp[["aliases"]] <- as.list(readRDS(filename))
+        info[["aliases"]] <- as.list(readRDS(filename))
     }
-    ret[[row]] <- tmp
-}
+    info
+})
+names(ret) <- rownames(ip)
 
 json <- jsonlite::toJSON(ret, auto_unbox = TRUE)
 
