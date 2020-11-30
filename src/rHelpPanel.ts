@@ -1,5 +1,10 @@
+/* eslint-disable @typescript-eslint/restrict-template-expressions */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 
-import * as vscode from 'vscode';
+import { commands, window, QuickPickItem, Uri, Webview, WebviewPanel, WebviewOptions, WebviewPanelOnDidChangeViewStateEvent, ViewColumn } from 'vscode';
 
 import * as cheerio from 'cheerio';
 
@@ -82,7 +87,7 @@ export interface HelpPanelOptions {
 }
 
 // returned when parsing R documentation's index files
-interface IndexFileEntry extends vscode.QuickPickItem {
+interface IndexFileEntry extends QuickPickItem {
 	href?: string
 }
 
@@ -98,16 +103,16 @@ export class HelpPanel implements api.HelpPanel {
 	readonly aliasProvider: AliasProvider;
 
 	// the webview panel where the help is shown
-	private panel?: vscode.WebviewPanel;
-	private viewColumn?: vscode.ViewColumn = vscode.ViewColumn.Two;
+	private panel?: WebviewPanel;
+	private viewColumn?: ViewColumn = ViewColumn.Two;
 
 	// locations on disk, only changed on construction
-	readonly webviewScriptFile: vscode.Uri; // the javascript added to help pages
-	readonly webviewStyleFile: vscode.Uri; // the css file applied to help pages
+	readonly webviewScriptFile: Uri; // the javascript added to help pages
+	readonly webviewStyleFile: Uri; // the css file applied to help pages
 
 	// virtual locations used by webview, changed each time a new webview is created
-	private webviewScriptUri?: vscode.Uri;
-	private webviewStyleUri?: vscode.Uri;
+	private webviewScriptUri?: Uri;
+	private webviewStyleUri?: Uri;
 
 	// keep track of history to go back/forward:
 	private currentEntry: HistoryEntry|null = null;
@@ -120,8 +125,8 @@ export class HelpPanel implements api.HelpPanel {
 
 	constructor(rHelp: HelpProvider, options: HelpPanelOptions, aliasProvider: AliasProvider){
 		this.helpProvider = rHelp;
-		this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
-		this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
+		this.webviewScriptFile = Uri.file(options.webviewScriptPath);
+		this.webviewStyleFile = Uri.file(options.webviewStylePath);
 		this.aliasProvider = aliasProvider;
 	}
 
@@ -141,7 +146,7 @@ export class HelpPanel implements api.HelpPanel {
 		// if not specified, ask the user which subMenu to show
 		if(!subMenu){
 			// list of possible submenus
-			const subMenus: (vscode.QuickPickItem & {subMenu: api.HelpSubMenu})[] = [{
+			const subMenus: (QuickPickItem & {subMenu: api.HelpSubMenu})[] = [{
 				label: '$(home)',
 				description: 'Help Index',
 				subMenu: 'doc'
@@ -164,7 +169,7 @@ export class HelpPanel implements api.HelpPanel {
 			}];
 
 			// let user choose from help functionalities
-			const qp = await vscode.window.showQuickPick(subMenus, {
+			const qp = await window.showQuickPick(subMenus, {
 				matchOnDescription: true,
 				placeHolder: 'Please select a help function'
 			});
@@ -211,7 +216,7 @@ export class HelpPanel implements api.HelpPanel {
 		} catch (error) {}
 
 		if(!packages || packages.length === 0){
-			vscode.window.showErrorMessage('Help provider not available!');
+			window.showErrorMessage('Help provider not available!');
 			return false;
 		}
 
@@ -219,7 +224,7 @@ export class HelpPanel implements api.HelpPanel {
 			matchOnDescription: true,
 			placeHolder: 'Please select a package'
 		};
-		const qp = await vscode.window.showQuickPick(packages, qpOptions);
+		const qp = await window.showQuickPick(packages, qpOptions);
 		const pkgName = (qp ? qp.label : undefined);
 
 		if(pkgName){
@@ -252,7 +257,7 @@ export class HelpPanel implements api.HelpPanel {
 			}
 
 			// let user pick function/item
-			const qp = await vscode.window.showQuickPick(functions, {
+			const qp = await window.showQuickPick(functions, {
 				matchOnDescription: true,
 				placeHolder: 'Please select a documentation entry'
 			});
@@ -264,7 +269,7 @@ export class HelpPanel implements api.HelpPanel {
 		} else{
 			// if no functions/items were found, let user type
 			const defaultFnc = (pkgName==='doc' ? 'index.html' : '00Index');
-			fncName = await vscode.window.showInputBox({
+			fncName = await window.showInputBox({
 				value: defaultFnc,
 				prompt: 'Please enter the function name'
 			});
@@ -279,7 +284,7 @@ export class HelpPanel implements api.HelpPanel {
 
 	// search function, similar to typing `?? ...` in R
 	private async searchHelpByText(){
-		const searchTerm = await vscode.window.showInputBox({
+		const searchTerm = await window.showInputBox({
 			value: '',
 			prompt: 'Please enter a search term'
 		});
@@ -295,7 +300,7 @@ export class HelpPanel implements api.HelpPanel {
 	// search function, similar to calling `?` in R
 	private async searchHelpByAlias(){
 		const aliases = this.aliasProvider.getAllAliases();
-		const qpItems: (vscode.QuickPickItem & Alias)[] = aliases.map(v => Object({
+		const qpItems: (QuickPickItem & Alias)[] = aliases.map(v => Object({
 			...v,
 			label: v.name,
 			description: `(${v.package}::${v.name})`,
@@ -304,7 +309,7 @@ export class HelpPanel implements api.HelpPanel {
 			matchOnDescription: true,
 			placeHolder: 'Please type a function name/documentation entry'
 		};
-		const qp = await vscode.window.showQuickPick(
+		const qp = await window.showQuickPick(
 			qpItems,
 			{matchOnDescription: true}
 		);
@@ -336,7 +341,7 @@ export class HelpPanel implements api.HelpPanel {
 
 		// update this.viewColumn if a valid viewer argument was supplied
 		if(typeof viewer === 'string'){
-			this.viewColumn = vscode.ViewColumn[String(viewer)];
+			this.viewColumn = ViewColumn[String(viewer)];
 		}
 
 		// get and show helpFile
@@ -382,13 +387,13 @@ export class HelpPanel implements api.HelpPanel {
 	}
 
 	// retrieves the stored webview or creates a new one if the webview was closed
-	private getWebview(): vscode.Webview {
+	private getWebview(): Webview {
 		// create webview if necessary
 		if(!this.panel){
-			const webViewOptions: vscode.WebviewOptions = {
+			const webViewOptions: WebviewOptions = {
 				enableScripts: true,
 			};
-			this.panel = vscode.window.createWebviewPanel('rhelp', 'R Help', this.viewColumn, webViewOptions);
+			this.panel = window.createWebviewPanel('rhelp', 'R Help', this.viewColumn, webViewOptions);
 
 			// virtual uris used to access local files
 			this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);
@@ -407,8 +412,8 @@ export class HelpPanel implements api.HelpPanel {
 			});
 
 			// set context variable to show forward/backward buttons
-			this.panel.onDidChangeViewState((e: vscode.WebviewPanelOnDidChangeViewStateEvent) => {
-				vscode.commands.executeCommand('setContext', 'r.helpPanel.active', e.webviewPanel.active);
+			this.panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
+				commands.executeCommand('setContext', 'r.helpPanel.active', e.webviewPanel.active);
 			});
 
 		}
@@ -454,7 +459,7 @@ export class HelpPanel implements api.HelpPanel {
 			console.log('Link clicked: ' + href);
 
 			// remove first to path entries (if these are webview internal stuff):
-			const uri = vscode.Uri.parse(href);
+			const uri = Uri.parse(href);
 			const parts = uri.path.split('/');
 			if(parts[0] !== 'library' && parts[0] !== 'doc'){
 				parts.shift();
