@@ -301,6 +301,10 @@ export class HelpPanel implements api.HelpPanel {
 	// search function, similar to calling `?` in R
 	private async searchHelpByAlias(): Promise<boolean> {
 		const aliases = this.aliasProvider.getAllAliases();
+		if(!aliases){
+			void window.showErrorMessage('Failed to get list of R functions. Make sure that `jsonlite` is installed and r.helpPanel.rpath points to a valid R executable.');
+			return false;
+		}
 		const qpItems: (QuickPickItem & Alias)[] = aliases.map(v => Object({
 			...v,
 			label: v.name,
