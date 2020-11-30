@@ -30,7 +30,7 @@ export class AliasProvider implements rHelpPanel.AliasProvider {
     }
 
     // delete stored aliases, will be generated on next request
-    public refresh(){
+    public refresh(): void {
         this.aliases = null;
         this.allPackageAliases = null;
     }
@@ -42,7 +42,7 @@ export class AliasProvider implements rHelpPanel.AliasProvider {
     }
 
     // get a list of all aliases
-    public getAllAliases() {
+    public getAllAliases(): rHelpPanel.Alias[] {
         if(!this.aliases){
             this.makeAllAliases();
         }
@@ -109,6 +109,6 @@ export class AliasProvider implements rHelpPanel.AliasProvider {
         const cmd = `${this.rPath} --silent --no-save --no-restore --slave -f ${this.rScriptFile}`;
         const txt = cp.execSync(cmd, {encoding: 'utf-8'});
         const json = txt.replace(re, '$1');
-        this.allPackageAliases = JSON.parse(json) || {};
+        this.allPackageAliases = <{[key: string]: PackageAliases}> JSON.parse(json) || {};
     }
 }

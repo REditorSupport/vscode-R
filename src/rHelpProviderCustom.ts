@@ -113,7 +113,9 @@ export class RHelp implements rHelpPanel.HelpProvider {
 		fs.rmdir(this.tempDir, options, () => null);
 	}
 
-	public refresh(){}
+	public refresh(): void {
+		// do nothing
+	}
 
 	// main public interface
     public getHelpFileFromRequestPath(requestPath: string, prevFileLocation?: HelpFileLocation): HelpFile|null {
