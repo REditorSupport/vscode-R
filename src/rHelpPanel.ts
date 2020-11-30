@@ -198,6 +198,7 @@ export class HelpPanel implements api.HelpPanel {
 
 	// refresh list of packages that are cached by helpProvder & aliasProvider
 	public refresh(): boolean {
+		this.cachedIndexFiles.clear();
 		if(this.helpProvider.refresh){
 			this.helpProvider.refresh();
 		}
