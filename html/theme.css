@@ -87,9 +87,14 @@ a {
     font-size: 16px;
 } */
 
-body table:nth-child(1)[width="100%"] {
+body table:nth-child(1)[width="100%"] td:nth-child(2){
     display: none;
 }
+
+body table:nth-child(1)[width="100%"] td:nth-child(1){
+    text-align: right;
+}
+
 
 h1, h2 {
     text-align: center;
