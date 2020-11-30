@@ -14,13 +14,13 @@ export class LineCache {
         this.lineCache = new Map<number, string>();
         this.endsInOperatorCache = new Map<number, boolean>();
     }
-    public addLineToCache(line: number) {
+    public addLineToCache(line: number): void {
         const cleaned = cleanLine(this.getLine(line));
         const endsInOperator = doesLineEndInOperator(cleaned);
         this.lineCache.set(line, cleaned);
         this.endsInOperatorCache.set(line, endsInOperator);
     }
-    public getEndsInOperatorFromCache(line: number) {
+    public getEndsInOperatorFromCache(line: number): boolean {
         const lineInCache = this.lineCache.has(line);
         if (!lineInCache) {
             this.addLineToCache(line);
@@ -29,7 +29,7 @@ export class LineCache {
 
         return (s);
     }
-    public getLineFromCache(line: number) {
+    public getLineFromCache(line: number): string {
         const lineInCache = this.lineCache.has(line);
         if (!lineInCache) {
             this.addLineToCache(line);
@@ -40,14 +40,34 @@ export class LineCache {
     }
 }
 
-function cleanLine(text: string) {
-    const cleaned = text.replace(/\s*\#.*/, '');
+function isQuote(c: string) {
+    return c === '"' || c === '\'' || c === '`';
+}
 
-    return (cleaned);
+function isComment(c: string) {
+    return c === '#';
+}
+
+function cleanLine(text: string) {
+    let cleaned = '';
+    let withinQuotes = null;
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (isQuote(c)) {
+            withinQuotes = (withinQuotes === c) ? null : c;
+        }
+        if (isComment(c) && !withinQuotes) {
+            break;
+        }
+
+        cleaned += c;
+    }
+
+    return (cleaned.trimEnd());
 }
 
 function doesLineEndInOperator(text: string) {
-    const endingOperatorIndex = text.search(/(,|\+|!|\$|\^|&|\*|-|=|:|~|\||\/|\?|%.*%)(\s*|\s*\#.*)$/);
+    const endingOperatorIndex = text.search(/(,|\+|!|\$|\^|&|\*|-|=|:|~|\||\/|\?|%.*%)(\s*|\s*#.*)$/);
     const spacesOnlyIndex = text.search(/^\s*$/);
 
     return ((endingOperatorIndex >= 0) || (spacesOnlyIndex >= 0));

@@ -1,9 +1,10 @@
 import {
   CancellationToken, CodeLens, CodeLensProvider,
   CompletionItem, CompletionItemProvider,
-  Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window
+  Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window, Selection
 } from 'vscode';
 import { runChunksInTerm } from './rTerminal';
+import { config } from './util';
 
 function isChunkStartLine(text: string) {
   if (text.match(/^\s*```+\s*\{\w+\s*.*$/g)) {
@@ -43,67 +44,91 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
   constructor() {
     this.decoration = window.createTextEditorDecorationType({
       isWholeLine: true,
-      backgroundColor: 'rgba(128, 128, 128, 0.1)',
+      backgroundColor: config().get('rmarkdown.chunkBackgroundColor'),
     });
   }
 
   public provideCodeLenses(document: TextDocument, token: CancellationToken): CodeLens[] | Thenable<CodeLens[]> {
     this.codeLenses = [];
-    const lines = document.getText().split(/\r?\n/);
-    let line = 0;
-    let chunkStartLine: number = undefined;
-    let chunkLanguage: string = undefined;
-    let chunkOptions: string = undefined;
+    const chunks = getChunks(document);
     const chunkRanges: Range[] = [];
-    const codeRanges: Range[] = [];
+    const rmdCodeLensCommands: string[] = config().get('rmarkdown.codeLensCommands');
 
-    while (line < lines.length) {
-      if (token.isCancellationRequested) {
-        break;
-      }
-      if (chunkStartLine === undefined) {
-        if (isChunkStartLine(lines[line])) {
-          chunkStartLine = line;
-          chunkLanguage = getChunkLanguage(lines[line]);
-          chunkOptions = getChunkOptions(lines[line]);
+    // Iterate through all code chunks for getting chunk information for both CodeLens and chunk background color (set by `editor.setDecorations`)
+    for (let i = 1 ; i <= chunks.length ; i++) {
+      const chunk = chunks.filter(e => e.id === i)[0];
+      const chunkRange = chunk.chunkRange;
+      const line = chunk.startLine;
+      chunkRanges.push(chunkRange);
+
+      // Enable/disable only CodeLens, without affecting chunk background color.
+      if (config().get<boolean>('rmarkdown.enableCodeLens') && chunk.language === 'r') {
+        if (token.isCancellationRequested) {
+          break;
         }
-      } else {
-        if (isChunkEndLine(lines[line])) {
-          const chunkRange = new Range(
-            new Position(chunkStartLine, 0),
-            new Position(line, lines[line].length)
-          );
-          const codeRange = new Range(
-            new Position(chunkStartLine + 1, 0),
-            new Position(line - 1, lines[line - 1].length)
-          );
-          chunkRanges.push(chunkRange);
-          if (chunkLanguage === 'r') {
-            this.codeLenses.push(new CodeLens(chunkRange, {
-              title: 'Run Chunk',
-              tooltip: 'Run current chunk',
-              command: 'r.runChunks',
-              arguments: [
-                [
-                  codeRange
-                ]
-              ]
-            }), new CodeLens(chunkRange, {
-              title: 'Run Above',
-              tooltip: 'Run all chunks above',
-              command: 'r.runChunks',
-              arguments: [
-                codeRanges.slice()
-              ]
-            }));
-            if (getChunkEval(chunkOptions)) {
-              codeRanges.push(codeRange);
-            }
-          }
-          chunkStartLine = undefined;
-        }
+        this.codeLenses.push(
+          new CodeLens(chunkRange, {
+            title: 'Run Chunk',
+            tooltip: 'Run current chunk',
+            command: 'r.runCurrentChunk',
+            arguments: [chunks, line]
+          }),
+          new CodeLens(chunkRange, {
+            title: 'Run Above',
+            tooltip: 'Run all chunks above',
+            command: 'r.runAboveChunks',
+            arguments: [chunks, line]
+          }),
+          new CodeLens(chunkRange, {
+            title: 'Run Current & Below',
+            tooltip: 'Run current and all chunks below',
+            command: 'r.runCurrentAndBelowChunks',
+            arguments: [chunks, line]
+          }),
+          new CodeLens(chunkRange, {
+            title: 'Run Below',
+            tooltip: 'Run all chunks below',
+            command: 'r.runBelowChunks',
+            arguments: [chunks, line]
+          }),
+          new CodeLens(chunkRange, {
+            title: 'Run Previous',
+            tooltip: 'Run previous chunk',
+            command: 'r.runPreviousChunk',
+            arguments: [chunks, line]
+          }),
+          new CodeLens(chunkRange, {
+            title: 'Run Next',
+            tooltip: 'Run next chunk',
+            command: 'r.runNextChunk',
+            arguments: [chunks, line]
+          }),
+          new CodeLens(chunkRange, {
+            title: 'Run All',
+            tooltip: 'Run all chunks',
+            command: 'r.runAllChunks',
+            arguments: [chunks]
+          }),
+          new CodeLens(chunkRange, {
+            title: 'Go Previous',
+            tooltip: 'Go to previous chunk',
+            command: 'r.goToPreviousChunk',
+            arguments: [chunks, line]
+          }),
+          new CodeLens(chunkRange, {
+            title: 'Go Next',
+            tooltip: 'Go to next chunk',
+            command: 'r.goToNextChunk',
+            arguments: [chunks, line]
+          }),
+          new CodeLens(chunkRange, {
+            title: 'Select Chunk',
+            tooltip: 'Select current chunk',
+            command: 'r.selectCurrentChunk',
+            arguments: [chunks, line]
+          }),
+        );
       }
-      line++;
     }
 
     for (const editor of window.visibleTextEditors) {
@@ -112,95 +137,261 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
       }
     }
 
-    return this.codeLenses;
+    // For default options, both options and sort order are based on options specified in package.json.
+    // For user-specified options, both options and sort order are based on options specified in settings UI or settings.json.
+    return this.codeLenses.
+      filter(e => rmdCodeLensCommands.includes(e.command.command)).
+      sort(function(a, b) {
+        const sorted = rmdCodeLensCommands.indexOf(a.command.command) -
+                       rmdCodeLensCommands.indexOf(b.command.command);
+        return sorted;
+      });
   }
-
-  public resolveCodeLens(codeLens: CodeLens, token: CancellationToken) {
+  public resolveCodeLens(codeLens: CodeLens): CodeLens {
     return codeLens;
   }
 }
 
-export async function runCurrentChunk() {
-  const selection = window.activeTextEditor.selection;
-  const currentDocument = window.activeTextEditor.document;
-  const lines = currentDocument.getText().split(/\r?\n/);
-
-  let line = 0;
-  let chunkStartLine: number = undefined;
-  let chunkLanguage: string = undefined;
-
-  while (line < lines.length) {
-    if (chunkStartLine === undefined) {
-      if (line > selection.end.line) {
-        break;
-      }
-      if (isChunkStartLine(lines[line])) {
-        chunkStartLine = line;
-        chunkLanguage = getChunkLanguage(lines[line]);
-      }
-    } else {
-      if (isChunkEndLine(lines[line])) {
-        if (line >= selection.end.line) {
-          if (chunkLanguage === 'r') {
-            const codeRange = new Range(
-              new Position(chunkStartLine + 1, 0),
-              new Position(line - 1, lines[line - 1].length)
-            );
-
-            return runChunksInTerm([codeRange]);
-          }
-        }
-
-        chunkStartLine = undefined;
-      }
-    }
-    line++;
-  }
+interface RMarkdownChunk {
+  id: number;
+  startLine: number;
+  endLine: number;
+  language: string;
+  options: string;
+  eval: boolean;
+  chunkRange: Range;
+  codeRange: Range;
 }
 
-export async function runAboveChunks() {
-  const selection = window.activeTextEditor.selection;
-  const currentDocument = window.activeTextEditor.document;
-  const lines = currentDocument.getText().split(/\r?\n/);
-  const codeRanges: Range[] = [];
+// Scan document and return chunk info (e.g. ID, chunk range) from all chunks
+function getChunks(document: TextDocument): RMarkdownChunk[] {
+  const lines = document.getText().split(/\r?\n/);
+  const chunks: RMarkdownChunk[] = [];
 
   let line = 0;
+
+  let chunkId = 0;  // One-based index
   let chunkStartLine: number = undefined;
+  let chunkEndLine: number = undefined;
   let chunkLanguage: string = undefined;
   let chunkOptions: string = undefined;
+  let chunkEval: boolean = undefined;
 
   while (line < lines.length) {
     if (chunkStartLine === undefined) {
-      if (line > selection.end.line) {
-        break;
-      }
       if (isChunkStartLine(lines[line])) {
+        chunkId++;
         chunkStartLine = line;
         chunkLanguage = getChunkLanguage(lines[line]);
         chunkOptions = getChunkOptions(lines[line]);
+        chunkEval = getChunkEval(chunkOptions);
       }
     } else {
       if (isChunkEndLine(lines[line])) {
-        if (line >= selection.end.line) {
-          return runChunksInTerm(codeRanges);
-        }
+        chunkEndLine = line;
 
-        if (chunkLanguage === 'r') {
-          if (getChunkEval(chunkOptions)) {
-            const codeRange = new Range(
-              new Position(chunkStartLine + 1, 0),
-              new Position(line - 1, lines[line - 1].length)
-            );
+        const chunkRange = new Range(
+          new Position(chunkStartLine, 0),
+          new Position(line, lines[line].length)
+        );
+        const codeRange = new Range(
+          new Position(chunkStartLine + 1, 0),
+          new Position(line - 1, lines[line - 1].length)
+        );
 
-            codeRanges.push(codeRange);
-          }
-        }
+        chunks.push({
+          id: chunkId, // One-based index
+          startLine: chunkStartLine,
+          endLine: chunkEndLine,
+          language: chunkLanguage,
+          options: chunkOptions,
+          eval: chunkEval,
+          chunkRange: chunkRange,
+          codeRange: codeRange
+        });
 
         chunkStartLine = undefined;
+        }
       }
+      line++;
     }
-    line++;
+  return chunks;
+}
+
+function getCurrentChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
+  const lines = window.activeTextEditor.document.getText().split(/\r?\n/);
+
+  let chunkStartLineAtOrAbove = line;
+  // `- 1` to cover edge case when cursor is at 'chunk end line'
+  let chunkEndLineAbove = line - 1;
+
+  while (chunkStartLineAtOrAbove >= 0 && !isChunkStartLine(lines[chunkStartLineAtOrAbove])) {
+    chunkStartLineAtOrAbove--;
   }
+
+  while (chunkEndLineAbove >= 0 && !isChunkEndLine(lines[chunkEndLineAbove])) {
+    chunkEndLineAbove--;
+  }
+
+  // Case: Cursor is within chunk
+  if (chunkEndLineAbove < chunkStartLineAtOrAbove) {
+    line = chunkStartLineAtOrAbove;
+  } else {
+  // Cases: Cursor is above the first chunk, at the first chunk or outside of chunk. Find the 'chunk start line' of the next chunk below the cursor.
+    let chunkStartLineBelow = line + 1;
+    while (!isChunkStartLine(lines[chunkStartLineBelow])) {
+      chunkStartLineBelow++;
+    }
+    line = chunkStartLineBelow;
+  }
+  const currentChunk = chunks.filter(i => i.startLine === line)[0];
+  return currentChunk;
+}
+
+// Alternative `getCurrentChunk` for cases:
+// - commands (e.g. `selectCurrentChunk`) only make sense when cursor is within chunk
+// - when cursor is outside of chunk, no response is triggered for chunk navigation commands (e.g. `goToPreviousChunk`) and chunk running commands (e.g. `runAboveChunks`)
+function getCurrentChunk__CursorWithinChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
+  const ids = chunks.map(e => e.id);
+
+  for (const id of ids) {
+    const chunk = chunks.filter(e => e.id === id)[0];
+    if (chunk.startLine <= line && line <= chunk.endLine) {
+      return chunk;
+    }
+  }
+}
+
+function getPreviousChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
+  const currentChunk = getCurrentChunk(chunks, line);
+  // When cursor is below the last 'chunk end line', the definition of the previous chunk is the last chunk
+  const previousChunkId = currentChunk.endLine < line ? currentChunk.id : currentChunk.id - 1;
+  const previousChunk = chunks.filter(i => i.id === previousChunkId)[0];
+  return previousChunk;
+}
+
+function getNextChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
+  const currentChunk = getCurrentChunk(chunks, line);
+  // When cursor is above the first 'chunk start line', the definition of the next chunk is the first chunk
+  const nextChunkId = line < currentChunk.startLine ? currentChunk.id : currentChunk.id + 1;
+  const nextChunk = chunks.filter(i => i.id === nextChunkId)[0];
+  return nextChunk;
+}
+
+// Helpers
+function _getChunks() {
+  return getChunks(window.activeTextEditor.document);
+}
+function _getStartLine() {
+  return window.activeTextEditor.selection.start.line;
+}
+
+export async function runCurrentChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                      line: number = _getStartLine()): Promise<void> {
+  const currentChunk = getCurrentChunk(chunks, line);
+  await runChunksInTerm([currentChunk.codeRange]);
+}
+
+export async function runPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                       line: number = _getStartLine()): Promise<void> {
+  const previousChunk = getPreviousChunk(chunks, line);
+  await runChunksInTerm([previousChunk.codeRange]);
+}
+
+export async function runNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                   line: number = _getStartLine()): Promise<void> {
+  const nextChunk = getNextChunk(chunks, line);
+  await runChunksInTerm([nextChunk.codeRange]);
+}
+
+export async function runAboveChunks(chunks: RMarkdownChunk[] = _getChunks(),
+                                     line: number = _getStartLine()): Promise<void> {
+  const previousChunk = getPreviousChunk(chunks, line);
+  const firstChunkId = 1;
+  const previousChunkId = previousChunk.id;
+
+  const codeRanges: Range[] = [];
+
+  for (let i = firstChunkId ; i <= previousChunkId ; i++) {
+    const chunk = chunks.filter(e => e.id === i)[0];
+    codeRanges.push(chunk.codeRange);
+  }
+  await runChunksInTerm(codeRanges);
+}
+
+export async function runBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
+                                     line: number = _getStartLine()): Promise<void> {
+
+  const nextChunk = getNextChunk(chunks, line);
+  const nextChunkId = nextChunk.id;
+  const lastChunkId = chunks.length;
+
+  const codeRanges: Range[] = [];
+
+  for (let i = nextChunkId ; i <= lastChunkId ; i++) {
+    const chunk = chunks.filter(e => e.id === i)[0];
+    codeRanges.push(chunk.codeRange);
+  }
+  await runChunksInTerm(codeRanges);
+}
+
+export async function runCurrentAndBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
+                                               line: number = _getStartLine()): Promise<void> {
+  const currentChunk = getCurrentChunk(chunks, line);
+  const currentChunkId = currentChunk.id;
+  const lastChunkId = chunks.length;
+
+  const codeRanges: Range[] = [];
+
+  for (let i = currentChunkId ; i <= lastChunkId ; i++) {
+    const chunk = chunks.filter(e => e.id === i)[0];
+    codeRanges.push(chunk.codeRange);
+  }
+  await runChunksInTerm(codeRanges);
+}
+
+export async function runAllChunks(chunks: RMarkdownChunk[] = _getChunks()): Promise<void> {
+
+  const firstChunkId = 1;
+  const lastChunkId = chunks.length;
+
+  const codeRanges: Range[] = [];
+
+  for (let i = firstChunkId ; i <= lastChunkId ; i++) {
+    const chunk = chunks.filter(e => e.id === i)[0];
+    codeRanges.push(chunk.codeRange);
+  }
+  await runChunksInTerm(codeRanges);
+}
+
+function goToChunk(chunk: RMarkdownChunk) {
+  // Move cursor 1 line below 'chunk start line'
+  const line = chunk.startLine + 1;
+  window.activeTextEditor.selection = new Selection(line, 0, line, 0);
+}
+
+export function goToPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                        line: number = _getStartLine()): void {
+  const previousChunk = getPreviousChunk(chunks, line);
+  goToChunk(previousChunk);
+}
+
+export function goToNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                    line: number = _getStartLine()): void {
+  const nextChunk = getNextChunk(chunks, line);
+  goToChunk(nextChunk);
+}
+
+export function selectCurrentChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                         line: number = _getStartLine()): void {
+  const editor = window.activeTextEditor;
+  const currentChunk = getCurrentChunk__CursorWithinChunk(chunks, line);
+  const lines = editor.document.getText().split(/\r?\n/);
+
+  editor.selection = new Selection(
+    currentChunk.startLine, 0,
+    currentChunk.endLine, lines[currentChunk.endLine].length
+  );
 }
 
 export class RMarkdownCompletionItemProvider implements CompletionItemProvider {
@@ -227,7 +418,7 @@ export class RMarkdownCompletionItemProvider implements CompletionItemProvider {
     });
   }
 
-  public provideCompletionItems(document: TextDocument, position: Position) {
+  public provideCompletionItems(document: TextDocument, position: Position): CompletionItem[] {
     const line = document.lineAt(position).text;
     if (isChunkStartLine(line) && getChunkLanguage(line) === 'r') {
       return this.chunkOptionCompletionItems;

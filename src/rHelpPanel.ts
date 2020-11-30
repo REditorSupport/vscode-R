@@ -1,5 +1,10 @@
+/* eslint-disable @typescript-eslint/restrict-template-expressions */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 
-import * as vscode from 'vscode';
+import { commands, window, QuickPickItem, Uri, Webview, WebviewPanel, WebviewOptions, WebviewPanelOnDidChangeViewStateEvent, ViewColumn } from 'vscode';
 
 
 import * as cheerio from 'cheerio';
@@ -13,7 +18,7 @@ interface AdditionalInfo {
 	href?: string,
 	pkgName?: string
 }
-interface DocumentedItem extends vscode.QuickPickItem, AdditionalInfo {}
+interface DocumentedItem extends QuickPickItem, AdditionalInfo {}
 
 // This interface needs to be implemented by a separate class that actually provides the R help pages
 export interface HelpProvider {
@@ -72,16 +77,16 @@ export class HelpPanel {
 	readonly helpProvider: HelpProvider;
 
 	// the webview panel where the help is shown
-	private panel?: vscode.WebviewPanel;
-	private viewColumn?: vscode.ViewColumn = vscode.ViewColumn.Two;
+	private panel?: WebviewPanel;
+	private viewColumn?: ViewColumn = ViewColumn.Two;
 
 	// locations on disk, only changed on construction
-	readonly webviewScriptFile: vscode.Uri; // the javascript added to help pages
-	readonly webviewStyleFile: vscode.Uri; // the css file applied to help pages
+	readonly webviewScriptFile: Uri; // the javascript added to help pages
+	readonly webviewStyleFile: Uri; // the css file applied to help pages
 
 	// virtual locations used by webview, changed each time a new webview is created
-	private webviewScriptUri?: vscode.Uri;
-	private webviewStyleUri?: vscode.Uri;
+	private webviewScriptUri?: Uri;
+	private webviewStyleUri?: Uri;
 	
 	// keep track of history to go back/forward:
 	private currentEntry: HistoryEntry|null = null;
@@ -89,17 +94,17 @@ export class HelpPanel {
 	private forwardHistory: HistoryEntry[] = [];
 
 	// cache parsed index files (list of installed packages, functions in packages)
-	private cachedIndexFiles: Map<string, DocumentedItem[]> = new Map();
+	private cachedIndexFiles: Map<string, DocumentedItem[]> = new Map<string, DocumentedItem[]>();
 
 
 	constructor(rHelp: HelpProvider, options: HelpPanelOptions){
 		this.helpProvider = rHelp;
-		this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
-		this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
+		this.webviewScriptFile = Uri.file(options.webviewScriptPath);
+		this.webviewStyleFile = Uri.file(options.webviewStylePath);
 	}
 
 	// used to close files etc.
-	public dispose(){
+	public dispose(): void{
 		if(this.helpProvider.dispose){
 			this.helpProvider.dispose();
 		}
@@ -109,15 +114,17 @@ export class HelpPanel {
 	}
 
 	// prompts user for a package and function name to show:
-	public async showHelpForInput(){
+	public async showHelpForInput(): Promise<any> {
 		// get list of installed packages for the user to pick from
 		let packages: DocumentedItem[];
 		try {
 			packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
-		} catch (error) {}
+		} catch (error) {
+			// continue even failed making package 
+		}
 
 		if(!packages){
-			vscode.window.showErrorMessage('Help provider not available!');
+			void window.showErrorMessage('Help provider not available!');
 			return false;
 		}
 
@@ -140,7 +147,7 @@ export class HelpPanel {
 			});
 
 			// let user choose from found packages
-			const qp = await vscode.window.showQuickPick(packages, {
+			const qp = await window.showQuickPick(packages, {
 				matchOnDescription: true,
 				placeHolder: 'Please select a package'
 			});
@@ -153,7 +160,7 @@ export class HelpPanel {
 		} else{
 			// no packages found -> let user type
 			const defaultPkg = 'doc';
-			pkgName = await vscode.window.showInputBox({
+			pkgName = await window.showInputBox({
 				value: defaultPkg,
 				prompt: 'Please enter the package name'
 			});
@@ -199,7 +206,7 @@ export class HelpPanel {
 				}
 
 				// let user pick function/item
-				const qp = await vscode.window.showQuickPick(functions, {
+				const qp = await window.showQuickPick(functions, {
 					matchOnDescription: true,
 					placeHolder: 'Please select a documentation entry'
 				});
@@ -211,7 +218,7 @@ export class HelpPanel {
 			} else{
 				// if no functions/items were found, let user type
 				const defaultFnc = (pkgName==='doc' ? 'index.html' : '00Index');
-				fncName = await vscode.window.showInputBox({
+				fncName = await window.showInputBox({
 					value: defaultFnc,
 					prompt: 'Please enter the function name'
 				});
@@ -230,8 +237,8 @@ export class HelpPanel {
 	}
 
 	// search function, similar to typing `?? ...` in R
-	public async searchHelp(){
-		const searchTerm = await vscode.window.showInputBox({
+	public async searchHelp(): Promise<boolean>{
+		const searchTerm = await window.showInputBox({
 			value: '',
 			prompt: 'Please enter a search term'
 		});
@@ -246,7 +253,7 @@ export class HelpPanel {
 	}
 
 	// shows help for package and function name
-	public showHelpForFunctionName(fncName: string, pkgName: string){
+	public showHelpForFunctionName(fncName: string, pkgName: string): void {
 
 		let helpFile: HelpFile|Promise<HelpFile>;
 
@@ -258,26 +265,26 @@ export class HelpPanel {
 			helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 		}
 
-		this.showHelpFile(helpFile);
+		void this.showHelpFile(helpFile);
 	}
 
 	// shows help for request path as used by R's internal help server
-	public showHelpForPath(requestPath: string, viewer?: string|any){
+	public showHelpForPath(requestPath: string, viewer?: string|any): void{
 
 		if(typeof viewer === 'string'){
-			this.viewColumn = vscode.ViewColumn[String(viewer)];
+			this.viewColumn = ViewColumn[String(viewer)];
 		}
 		const helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 
 		if(helpFile){
-			this.showHelpFile(helpFile);
+			void this.showHelpFile(helpFile);
 		} else{
 			console.error(`Couldn't handle path:\n${requestPath}\n`);
 		}
 	}
 
 	// shows (internal) help file object in webview
-	private async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, updateHistory: boolean = true, currentScrollY: number = 0): Promise<void>{
+	private async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, updateHistory = true, currentScrollY = 0): Promise<void>{
 
 		// get or create webview:
 		const webview = this.getWebview();
@@ -307,20 +314,20 @@ export class HelpPanel {
 	}
 
 	// retrieves the stored webview or creates a new one if the webview was closed
-	private getWebview(): vscode.Webview {
+	private getWebview(): Webview {
 		// create webview if necessary
 		if(!this.panel){
-			const webViewOptions: vscode.WebviewOptions = {
+			const webViewOptions: WebviewOptions = {
 				enableScripts: true,
 			};
-			this.panel = vscode.window.createWebviewPanel('rhelp', 'R Help', this.viewColumn, webViewOptions);
+			this.panel = window.createWebviewPanel('rhelp', 'R Help', this.viewColumn, webViewOptions);
 
 			// virtual uris used to access local files
 			this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);
 			this.webviewStyleUri = this.panel.webview.asWebviewUri(this.webviewStyleFile);
 
 			// called e.g. when the webview panel is closed by the user
-			this.panel.onDidDispose((e: void) => {
+			this.panel.onDidDispose(() => {
 				this.panel = undefined;
 				this.webviewScriptUri = undefined;
 				this.webviewStyleUri = undefined;
@@ -328,12 +335,12 @@ export class HelpPanel {
 
 			// sent by javascript added to the help pages, e.g. when a link or mouse button is clicked
 			this.panel.webview.onDidReceiveMessage((e: any) => {
-				this.handleMessage(e);
+				void this.handleMessage(e);
 			});
 
 			// set context variable to show forward/backward buttons
-			this.panel.onDidChangeViewState((e: vscode.WebviewPanelOnDidChangeViewStateEvent) => {
-				vscode.commands.executeCommand('setContext', 'r.helpPanel.active', e.webviewPanel.active);
+			this.panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
+				void commands.executeCommand('setContext', 'r.helpPanel.active', e.webviewPanel.active);
 			});
 
 		}
@@ -344,7 +351,7 @@ export class HelpPanel {
 	}
 
 	// go back/forward in the history of the webview:
-	public goBack(currentScrollY: number = 0){
+	public goBack(currentScrollY = 0): void{
 		const entry = this.history.pop();
 		if(entry){
 			if(this.currentEntry){ // should always be true
@@ -354,7 +361,7 @@ export class HelpPanel {
 			this.showHistoryEntry(entry);
 		}
 	}
-	public goForward(currentScrollY: number = 0){
+	public goForward(currentScrollY = 0): void{
 		const entry = this.forwardHistory.pop();
 		if(entry){
 			if(this.currentEntry){ // should always be true
@@ -366,7 +373,7 @@ export class HelpPanel {
 	}
 	private showHistoryEntry(entry: HistoryEntry){
 		const helpFile = entry.helpFile;
-		this.showHelpFile(helpFile, false);
+		void this.showHelpFile(helpFile, false);
 	}
 
 	// handle message produced by javascript inside the help page
@@ -379,7 +386,7 @@ export class HelpPanel {
 			console.log('Link clicked: ' + href);
 
 			// remove first to path entries (if these are webview internal stuff):
-			const uri = vscode.Uri.parse(href);
+			const uri = Uri.parse(href);
 			const parts = uri.path.split('/');
 			if(parts[0] !== 'library' && parts[0] !== 'doc'){
 				parts.shift();
@@ -402,7 +409,7 @@ export class HelpPanel {
 
 			// if successful, show helpfile:
 			if(helpFile){
-				this.showHelpFile(helpFile, true, currentScrollY);
+				void this.showHelpFile(helpFile, true, currentScrollY);
 			}
 		} else if(msg.message === 'mouseClick'){
 			// use the additional mouse buttons to go forward/backwards
@@ -415,7 +422,7 @@ export class HelpPanel {
 			}
 		} else if(msg.message === 'text'){
 			// used for logging/debugging
-			console.log('Message (text): ' + msg.text);
+			console.log(`Message (text): ${msg.text}`);
 		} else{
 			console.log('Unknown message:', msg);
 		}
@@ -429,8 +436,8 @@ export class HelpPanel {
 		const relPath = helpFile.requestPath + (helpFile.hash || '');
 
 		// check if file is html
-		const re = new RegExp('<html[^\n]*>.*</html>', 'ms');
-		if(!helpFile.html.match(re)){
+		const re = new RegExp('<html[^\\n]*>.*</html>', 'ms');
+		if(!re.exec(helpFile.html)){
 			helpFile.html = `<html><head></head><body><pre>${helpFile.html}</pre></body></html>`;
 		}
 
@@ -446,12 +453,12 @@ export class HelpPanel {
 				// apply syntax highlighting to each code section:
 				codeSections.each((i, section) => {
 					const newChildNodes = [];
-					section.children.forEach((subSection, j) => {
+					section.children.forEach((subSection,) => {
 						if(subSection.type === 'text'){
 							const styledCode = hljs.highlight('r', subSection.data);
 							const newChildren = cheerio.parseHTML(styledCode.value);
 
-							for(const [i, newChild] of newChildren.entries()){
+							for(const [, newChild] of newChildren.entries()){
 								newChildNodes.push(newChild);
 							}
 						}

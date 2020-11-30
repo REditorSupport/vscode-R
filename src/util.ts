@@ -3,16 +3,16 @@
 import { existsSync } from 'fs-extra';
 import path = require('path');
 import fs = require('fs');
-import { window, workspace } from 'vscode';
+import { window, workspace, WorkspaceConfiguration } from 'vscode';
 import winreg = require('winreg');
 
-export function config() {
+export function config(): WorkspaceConfiguration {
     return workspace.getConfiguration('r');
 }
 
 function getRfromEnvPath(platform: string) {
-    let splitChar: string = ':';
-    let fileExtension: string = '';
+    let splitChar = ':';
+    let fileExtension = '';
     
     if (platform === 'win32') {
         splitChar = ';';
@@ -29,9 +29,9 @@ function getRfromEnvPath(platform: string) {
     return '';
 }
 
-export async function getRpathFromSystem() {
+export async function getRpathFromSystem(): Promise<string> {
     
-    let rpath: string = '';
+    let rpath = '';
     const platform: string = process.platform;
     
     if ( platform === 'win32') {
@@ -54,8 +54,8 @@ export async function getRpathFromSystem() {
     return rpath;
 }
 
-export async function getRpath(quote: boolean=false, overwriteConfig?: string): Promise<string> {
-    let rpath: string = '';
+export async function getRpath(quote=false, overwriteConfig?: string): Promise<string> {
+    let rpath = '';
     
     const configEntry = (
         process.platform === 'win32' ? 'rpath.windows' :
@@ -79,11 +79,11 @@ export async function getRpath(quote: boolean=false, overwriteConfig?: string): 
 
     if(!rpath){
         // inform user about missing R path:
-        window.showErrorMessage(`${process.platform} can't use R`);
-    } else if(quote && rpath.match(/^[^'"].* .*[^'"]$/)){
+        void window.showErrorMessage(`${process.platform} can't use R`);
+    } else if(quote && /^[^'"].* .*[^'"]$/.exec(rpath)){
         // if requested and rpath contains spaces, add quotes:
         rpath = `"${rpath}"`;
-    } else if(process.platform === 'win32' && rpath.match(/^'.* .*'$/)){
+    } else if(process.platform === 'win32' && /^'.* .*'$/.exec(rpath)){
         // replace single quotes with double quotes on windows
         rpath = rpath.replace(/^'(.*)'$/, '"$1"');
     }
@@ -91,9 +91,9 @@ export async function getRpath(quote: boolean=false, overwriteConfig?: string): 
     return rpath;
 }
 
-export async function getRterm() {
+export async function getRterm(): Promise<string|undefined> {
     
-    let rpath: string = '';
+    let rpath = '';
     const platform: string = process.platform;
     
     if ( platform === 'win32') {
@@ -110,12 +110,12 @@ export async function getRterm() {
         return rpath;
     }
 
-    window.showErrorMessage(`${process.platform} can't use R`);
+    void window.showErrorMessage(`${process.platform} can't use R`);
     return undefined;
 }
 
 
-export function ToRStringLiteral(s: string, quote: string) {
+export function ToRStringLiteral(s: string, quote: string): string {
     if (s === undefined) {
         return 'NULL';
     }
@@ -133,14 +133,14 @@ export function ToRStringLiteral(s: string, quote: string) {
         quote);
 }
 
-export async function delay(ms: number) {
+export async function delay(ms: number): Promise<unknown> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function checkForSpecialCharacters(text: string) {
-    return !/[~`!#$%\^&*+=\-\[\]\\';,/{}|\\":<>\?\s]/g.test(text);
+export function checkForSpecialCharacters(text: string): boolean {
+    return !/[~`!#$%^&*+=\-[\]\\';,/{}|\\":<>?\s]/g.test(text);
 }
 
-export function checkIfFileExists(filePath: string) {
+export function checkIfFileExists(filePath: string): boolean {
     return existsSync(filePath);
 }
