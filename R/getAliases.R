@@ -2,8 +2,8 @@
 # get installed packages, making sure that high priority packages are on top
 ip <- installed.packages()
 
-ord <- order(ip[,'Priority'])
-ip <- ip[ord,]
+ord <- order(ip[, "Priority"])
+ip <- ip[ord, ]
 
 ret <- list()
 
@@ -21,7 +21,6 @@ for (row in rownames(ip)) {
     }
     ret[[row]] <- tmp
 }
-
 
 json <- jsonlite::toJSON(ret, auto_unbox = TRUE)
 
