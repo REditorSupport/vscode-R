@@ -113,14 +113,13 @@ export class HelpPanel implements api.HelpPanel {
 	// virtual locations used by webview, changed each time a new webview is created
 	private webviewScriptUri?: Uri;
 	private webviewStyleUri?: Uri;
-
 	// keep track of history to go back/forward:
 	private currentEntry: HistoryEntry|null = null;
 	private history: HistoryEntry[] = [];
 	private forwardHistory: HistoryEntry[] = [];
 
 	// cache parsed index files (list of installed packages, functions in packages)
-	private cachedIndexFiles: Map<string, IndexFileEntry[]> = new Map();
+	private cachedIndexFiles: Map<string, IndexFileEntry[]> = new Map<string, IndexFileEntry[]>();
 
 
 	constructor(rHelp: HelpProvider, options: HelpPanelOptions, aliasProvider: AliasProvider){
@@ -131,7 +130,7 @@ export class HelpPanel implements api.HelpPanel {
 	}
 
 	// used to close files, stop servers etc.
-	public dispose(){
+	public dispose(): void {
 		if(this.helpProvider.dispose){
 			this.helpProvider.dispose();
 		}
@@ -213,10 +212,12 @@ export class HelpPanel implements api.HelpPanel {
 		let packages: IndexFileEntry[];
 		try {
 			packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
-		} catch (error) {}
+		} catch (error) {
+			// handle together with packages===undefined etc.
+		}
 
 		if(!packages || packages.length === 0){
-			window.showErrorMessage('Help provider not available!');
+			void window.showErrorMessage('Help provider not available!');
 			return false;
 		}
 
@@ -283,7 +284,7 @@ export class HelpPanel implements api.HelpPanel {
 	}
 
 	// search function, similar to typing `?? ...` in R
-	private async searchHelpByText(){
+	private async searchHelpByText(): Promise<boolean>{
 		const searchTerm = await window.showInputBox({
 			value: '',
 			prompt: 'Please enter a search term'
@@ -292,13 +293,12 @@ export class HelpPanel implements api.HelpPanel {
 		if(searchTerm === undefined){
 			return false;
 		} else{
-			this.showHelpForPath(`/doc/html/Search?pattern=${searchTerm}`);
-			return true;
+			return this.showHelpForPath(`/doc/html/Search?pattern=${searchTerm}`);
 		}
 	}
 
 	// search function, similar to calling `?` in R
-	private async searchHelpByAlias(){
+	private async searchHelpByAlias(): Promise<boolean> {
 		const aliases = this.aliasProvider.getAllAliases();
 		const qpItems: (QuickPickItem & Alias)[] = aliases.map(v => Object({
 			...v,
@@ -311,7 +311,7 @@ export class HelpPanel implements api.HelpPanel {
 		};
 		const qp = await window.showQuickPick(
 			qpItems,
-			{matchOnDescription: true}
+			qpOptions
 		);
 		if(qp){
 			return this.showHelpForFunctionName(qp.package, qp.alias);
@@ -321,7 +321,7 @@ export class HelpPanel implements api.HelpPanel {
 	}
 
 	// shows help for package and function name
-	private showHelpForFunctionName(pkgName: string, fncName: string){
+	private showHelpForFunctionName(pkgName: string, fncName: string): Promise<boolean> {
 
 		let helpFile: HelpFile|Promise<HelpFile>;
 
@@ -355,7 +355,7 @@ export class HelpPanel implements api.HelpPanel {
 	}
 
 	// shows (internal) help file object in webview
-	private async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, updateHistory: boolean = true, currentScrollY: number = 0): Promise<boolean>{
+	private async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, updateHistory = true, currentScrollY = 0): Promise<boolean>{
 
 		// get or create webview:
 		const webview = this.getWebview();
@@ -400,7 +400,7 @@ export class HelpPanel implements api.HelpPanel {
 			this.webviewStyleUri = this.panel.webview.asWebviewUri(this.webviewStyleFile);
 
 			// called e.g. when the webview panel is closed by the user
-			this.panel.onDidDispose((e: void) => {
+			this.panel.onDidDispose(() => {
 				this.panel = undefined;
 				this.webviewScriptUri = undefined;
 				this.webviewStyleUri = undefined;
@@ -408,12 +408,12 @@ export class HelpPanel implements api.HelpPanel {
 
 			// sent by javascript added to the help pages, e.g. when a link or mouse button is clicked
 			this.panel.webview.onDidReceiveMessage((e: any) => {
-				this.handleMessage(e);
+				void this.handleMessage(e);
 			});
 
 			// set context variable to show forward/backward buttons
 			this.panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
-				commands.executeCommand('setContext', 'r.helpPanel.active', e.webviewPanel.active);
+				void commands.executeCommand('setContext', 'r.helpPanel.active', e.webviewPanel.active);
 			});
 
 		}
@@ -424,7 +424,7 @@ export class HelpPanel implements api.HelpPanel {
 	}
 
 	// go back/forward in the history of the webview:
-	public goBack(currentScrollY: number = 0){
+	public goBack(currentScrollY = 0): void{
 		const entry = this.history.pop();
 		if(entry){
 			if(this.currentEntry){ // should always be true
@@ -434,7 +434,7 @@ export class HelpPanel implements api.HelpPanel {
 			this.showHistoryEntry(entry);
 		}
 	}
-	public goForward(currentScrollY: number = 0){
+	public goForward(currentScrollY = 0): void{
 		const entry = this.forwardHistory.pop();
 		if(entry){
 			if(this.currentEntry){ // should always be true
@@ -446,7 +446,7 @@ export class HelpPanel implements api.HelpPanel {
 	}
 	private showHistoryEntry(entry: HistoryEntry){
 		const helpFile = entry.helpFile;
-		this.showHelpFile(helpFile, false);
+		void this.showHelpFile(helpFile, false);
 	}
 
 	// handle message produced by javascript inside the help page
@@ -482,7 +482,7 @@ export class HelpPanel implements api.HelpPanel {
 
 			// if successful, show helpfile:
 			if(helpFile){
-				this.showHelpFile(helpFile, true, currentScrollY);
+				void this.showHelpFile(helpFile, true, currentScrollY);
 			}
 		} else if(msg.message === 'mouseClick'){
 			// use the additional mouse buttons to go forward/backwards
@@ -495,7 +495,7 @@ export class HelpPanel implements api.HelpPanel {
 			}
 		} else if(msg.message === 'text'){
 			// used for logging/debugging
-			console.log('Message (text): ' + msg.text);
+			console.log(`Message (text): ${msg.text}`);
 		} else{
 			console.log('Unknown message:', msg);
 		}
@@ -509,8 +509,8 @@ export class HelpPanel implements api.HelpPanel {
 		const relPath = helpFile.requestPath + (helpFile.hash || '');
 
 		// check if file is html
-		const re = new RegExp('<html[^\n]*>.*</html>', 'ms');
-		if(!helpFile.html.match(re)){
+		const re = new RegExp('<html[^\\n]*>.*</html>', 'ms');
+		if(!re.exec(helpFile.html)){
 			helpFile.html = `<html><head></head><body><pre>${helpFile.html}</pre></body></html>`;
 		}
 
@@ -526,12 +526,12 @@ export class HelpPanel implements api.HelpPanel {
 				// apply syntax highlighting to each code section:
 				codeSections.each((i, section) => {
 					const newChildNodes = [];
-					section.children.forEach((subSection, j) => {
+					section.children.forEach((subSection,) => {
 						if(subSection.type === 'text'){
 							const styledCode = hljs.highlight('r', subSection.data);
 							const newChildren = cheerio.parseHTML(styledCode.value);
 
-							for(const [i, newChild] of newChildren.entries()){
+							for(const [, newChild] of newChildren.entries()){
 								newChildNodes.push(newChild);
 							}
 						}

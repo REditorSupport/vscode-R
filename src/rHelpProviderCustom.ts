@@ -105,7 +105,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
 		}
 	}
 
-	public dispose() {
+	public dispose(): void {
 		// remove temp directory
 		const options: fs.RmDirOptions = {
 			recursive: true
@@ -245,7 +245,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
         // produce the .Rd file of a function:
 		const cmd1 = `${this.rPath} -e ${cmd1a} -e ${cmd1b} --vanilla --silent --slave > ${rdFileName}`;
         try{
-            const out1 = cp.execSync(cmd1, options);
+            cp.execSync(cmd1, options);
         } catch(e){
             console.log('Failed to extract .Rd file');
             return null;
@@ -254,7 +254,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
         // convert the .Rd file to .html
 		const cmd3a = `"tools::Rd2HTML('${rdFileName}', Links=tools::findHTMLlinks())"`;
 		const cmd3 = `${this.rPath} -e ${cmd3a} --vanilla --silent --slave`;
-        let htmlContent: string = '';
+        let htmlContent = '';
         try{
             htmlContent = cp.execSync(cmd3, options);
         } catch(e){
@@ -262,7 +262,7 @@ export class RHelp implements rHelpPanel.HelpProvider {
             return null;
 		}
 
-		fs.unlink(rdFileName, (e) => {});
+		fs.unlink(rdFileName, () => { /* no process */ });
 
 		return htmlContent;
 	}

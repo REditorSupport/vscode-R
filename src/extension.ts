@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/restrict-template-expressions */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 'use strict';
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
@@ -12,7 +17,7 @@ import { createRTerm, deleteTerminal,
          runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
-import { config, ToRStringLiteral, getRpath, getRpathFromSystem } from './util';
+import { config, ToRStringLiteral, getRpathFromSystem } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
 import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, selectCurrentChunk, runCurrentChunk, runAboveChunks, runCurrentAndBelowChunks, runBelowChunks, runPreviousChunk, runNextChunk, runAllChunks, goToPreviousChunk, goToNextChunk } from './rmarkdown';
 
@@ -24,7 +29,7 @@ import { RHelp } from './rHelpProviderCustom';
 import { AliasProvider } from './rHelpAliases';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
 
-const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
+const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
 
 // Get with names(roxygen2:::default_tags())
 const roxygenTagCompletionItems = [
@@ -43,7 +48,7 @@ export let globalRHelpPanel: HelpPanel | null = null;
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
-export async function activate(context: ExtensionContext) {
+export async function activate(context: ExtensionContext): Promise<RExtension> {
 
     // used to export an interface to the help panel
     // used e.g. by vscode-r-debugger to show the help panel from within debug sessions
@@ -51,7 +56,7 @@ export async function activate(context: ExtensionContext) {
 
     // get the "vanilla" R path from config
     let rPath = config().get<string>('helpPanel.rpath', '') || await getRpathFromSystem();
-    if(rPath.match(/^[^'"].* .*[^'"]$/)){
+    if(/^[^'"].* .*[^'"]$/.exec(rPath)){
         rPath = `"${rPath}"`;
     }
     const rHelpProviderOptions = {
@@ -71,7 +76,7 @@ export async function activate(context: ExtensionContext) {
             helpProvider = new RHelpClient(rHelpProviderOptions);
         }
     } catch(e) {
-        window.showErrorMessage(`Help Panel not available: ${e.message}`);
+        void window.showErrorMessage(`Help Panel not available`);
     }
 
     // launch alias-provider. Is used to implement `?`
@@ -94,7 +99,7 @@ export async function activate(context: ExtensionContext) {
     context.subscriptions.push(rHelpPanel);
 
     context.subscriptions.push(commands.registerCommand('r.showHelp', (subMenu?: HelpSubMenu) => {
-        rHelpPanel.showHelpMenu(subMenu);
+        void rHelpPanel.showHelpMenu(subMenu);
     }));
 
     context.subscriptions.push(commands.registerCommand('r.helpPanel.back', () =>{
@@ -117,14 +122,14 @@ export async function activate(context: ExtensionContext) {
 
     async function saveDocument(document: TextDocument) {
         if (document.isUntitled) {
-            window.showErrorMessage('Document is unsaved. Please save and retry running R command.');
+            void window.showErrorMessage('Document is unsaved. Please save and retry running R command.');
 
             return false;
         }
 
         const isSaved: boolean = document.isDirty ? (await document.save()) : true;
         if (!isSaved) {
-            window.showErrorMessage('Cannot run R command: document could not be saved.');
+            void window.showErrorMessage('Cannot run R command: document could not be saved.');
 
             return false;
         }
@@ -143,7 +148,7 @@ export async function activate(context: ExtensionContext) {
             if (echo) {
                 rPath = [rPath, 'echo = TRUE'].join(', ');
             }
-            runTextInTerm(`source(${rPath})`);
+            void runTextInTerm(`source(${rPath})`);
         }
     }
 
@@ -159,31 +164,31 @@ export async function activate(context: ExtensionContext) {
                 rPath = [rPath, 'echo = TRUE'].join(', ');
             }
             if (outputFormat === undefined) {
-                runTextInTerm(`rmarkdown::render(${rPath})`);
+                void runTextInTerm(`rmarkdown::render(${rPath})`);
             } else {
-                runTextInTerm(`rmarkdown::render(${rPath}, "${outputFormat}")`);
+                void runTextInTerm(`rmarkdown::render(${rPath}, "${outputFormat}")`);
             }
         }
     }
 
     async function runSelection() {
-        runSelectionInTerm(true);
+        await runSelectionInTerm(true);
     }
 
     async function runSelectionRetainCursor() {
-        runSelectionInTerm(false);
+        await runSelectionInTerm(false);
     }
 
     async function runSelectionOrWord(rFunctionName: string[]) {
         const text = getWordOrSelection();
         const wrappedText = surroundSelection(text, rFunctionName);
-        runTextInTerm(wrappedText);
+        await runTextInTerm(wrappedText);
     }
 
     async function runCommandWithSelectionOrWord(rCommand: string) {
         const text = getWordOrSelection();
         const call = rCommand.replace(/\$\$/g, text);
-        runTextInTerm(call);
+        await runTextInTerm(call);
     }
 
     async function runCommandWithEditorPath(rCommand: string) {
@@ -192,12 +197,12 @@ export async function activate(context: ExtensionContext) {
         if (isSaved) {
             const rPath = ToRStringLiteral(wad.fileName, '');
             const call = rCommand.replace(/\$\$/g, rPath);
-            runTextInTerm(call);
+            await runTextInTerm(call);
         }
     }
 
     async function runCommand(rCommand: string) {
-        runTextInTerm(rCommand);
+        await runTextInTerm(rCommand);
     }
 
     async function runFromBeginningToLine() {
@@ -206,7 +211,7 @@ export async function activate(context: ExtensionContext) {
         const endPos = new Position(endLine, charactersOnLine);
         const range = new Range(new Position(0, 0), endPos);
         const text = window.activeTextEditor.document.getText(range);
-        runTextInTerm(text);
+        await runTextInTerm(text);
     }
 
     async function runFromLineToEnd() {
@@ -215,7 +220,7 @@ export async function activate(context: ExtensionContext) {
         const endLine = window.activeTextEditor.document.lineCount;
         const range = new Range(startPos, new Position(endLine, 0));
         const text = window.activeTextEditor.document.getText(range);
-        runTextInTerm(text);
+        await runTextInTerm(text);
     }
 
     languages.registerCompletionItemProvider('r', {
@@ -243,13 +248,13 @@ export async function activate(context: ExtensionContext) {
         commands.registerCommand('r.head', () => runSelectionOrWord(['head'])),
         commands.registerCommand('r.thead', () => runSelectionOrWord(['t', 'head'])),
         commands.registerCommand('r.names', () => runSelectionOrWord(['names'])),
-        commands.registerCommand('r.runSource', () => { runSource(false); }),
-        commands.registerCommand('r.knitRmd', () => { knitRmd(false, undefined); }),
-        commands.registerCommand('r.knitRmdToPdf', () => { knitRmd(false, 'pdf_document'); }),
-        commands.registerCommand('r.knitRmdToHtml', () => { knitRmd(false, 'html_document'); }),
-        commands.registerCommand('r.knitRmdToAll', () => { knitRmd(false, 'all'); }),
+        commands.registerCommand('r.runSource', () => { void runSource(false); }),
+        commands.registerCommand('r.knitRmd', () => { void knitRmd(false, undefined); }),
+        commands.registerCommand('r.knitRmdToPdf', () => { void knitRmd(false, 'pdf_document'); }),
+        commands.registerCommand('r.knitRmdToHtml', () => { void knitRmd(false, 'html_document'); }),
+        commands.registerCommand('r.knitRmdToAll', () => { void knitRmd(false, 'all'); }),
         commands.registerCommand('r.createRTerm', createRTerm),
-        commands.registerCommand('r.runSourcewithEcho', () => { runSource(true); }),
+        commands.registerCommand('r.runSourcewithEcho', () => { void runSource(true); }),
         commands.registerCommand('r.runSelection', runSelection),
         commands.registerCommand('r.runFromBeginningToLine', runFromBeginningToLine),
         commands.registerCommand('r.runFromLineToEnd', runFromLineToEnd),
@@ -291,59 +296,13 @@ export async function activate(context: ExtensionContext) {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('Initialize session watcher');
         languages.registerHoverProvider('r', {
-            provideHover(document, position, token) {
+            provideHover(document, position, ) {
                 const wordRange = document.getWordRangeAtPosition(position);
                 const text = document.getText(wordRange);
 
                 return new Hover(`\`\`\`\n${globalenv[text].str}\n\`\`\``);
             },
         });
-
-        function getBracketCompletionItems(document: TextDocument, position: Position, token: CancellationToken, items: CompletionItem[]) {
-            let range = new Range(new Position(position.line, 0), position);
-            let expectOpenBrackets = 0;
-            let symbol: string;
-
-            loop1:
-            while (range.start.line >= 0) {
-                if (token.isCancellationRequested) { return; }
-                const text = document.getText(range);
-                for (let i = text.length - 1; i >= 0; i -= 1) {
-                    const chr = text.charAt(i);
-                    if (chr === ']') {
-                        expectOpenBrackets += 1;
-                    // tslint:disable-next-line: triple-equals
-                    } else if (chr === '[') {
-                        if (expectOpenBrackets === 0) {
-                            const symbolPosition = new Position(range.start.line, i - 1);
-                            const symbolRange = document.getWordRangeAtPosition(symbolPosition);
-                            symbol = document.getText(symbolRange);
-                            break loop1;
-                        } else {
-                            expectOpenBrackets -= 1;
-                        }
-                    }
-                }
-                if (range.start.line > 0) {
-                    range = document.lineAt(range.start.line - 1).range;
-                } else {
-                    break;
-                }
-            }
-
-            if (!token.isCancellationRequested && symbol !== undefined) {
-                const obj = globalenv[symbol];
-                if (obj !== undefined && obj.names !== undefined) {
-                    const doc = new MarkdownString('Element of `' + symbol + '`');
-                    obj.names.map((name: string) => {
-                        const item = new CompletionItem(name, CompletionItemKind.Field);
-                        item.detail = '[session]';
-                        item.documentation = doc;
-                        items.push(item);
-                    });
-                }
-            }
-        }
 
         languages.registerCompletionItemProvider('r', {
             provideCompletionItems(document: TextDocument, position: Position, token: CancellationToken, completionContext: CompletionContext) {
@@ -358,7 +317,8 @@ export async function activate(context: ExtensionContext) {
                                 CompletionItemKind.Function :
                                 CompletionItemKind.Field);
                         item.detail = '[session]';
-                        item.documentation = new MarkdownString('```r\n' + obj.str + '\n```');
+                        // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
+                        item.documentation = new MarkdownString(`\`\`\`r\n${obj.str}\n\`\`\``);
                         items.push(item);
                     });
                 } else if (completionContext.triggerCharacter === '$' || completionContext.triggerCharacter === '@') {
@@ -409,6 +369,52 @@ export async function activate(context: ExtensionContext) {
 
     console.log('vscode-r: returning R extension...');
     return rExtension;
+}
+
+function getBracketCompletionItems(document: TextDocument, position: Position, token: CancellationToken, items: CompletionItem[]) {
+    let range = new Range(new Position(position.line, 0), position);
+    let expectOpenBrackets = 0;
+    let symbol: string;
+
+    loop1:
+    while (range.start.line >= 0) {
+        if (token.isCancellationRequested) { return; }
+        const text = document.getText(range);
+        for (let i = text.length - 1; i >= 0; i -= 1) {
+            const chr = text.charAt(i);
+            if (chr === ']') {
+                expectOpenBrackets += 1;
+            // tslint:disable-next-line: triple-equals
+            } else if (chr === '[') {
+                if (expectOpenBrackets === 0) {
+                    const symbolPosition = new Position(range.start.line, i - 1);
+                    const symbolRange = document.getWordRangeAtPosition(symbolPosition);
+                    symbol = document.getText(symbolRange);
+                    break loop1;
+                } else {
+                    expectOpenBrackets -= 1;
+                }
+            }
+        }
+        if (range.start.line > 0) {
+            range = document.lineAt(range.start.line - 1).range;
+        } else {
+            break;
+        }
+    }
+
+    if (!token.isCancellationRequested && symbol !== undefined) {
+        const obj = globalenv[symbol];
+        if (obj !== undefined && obj.names !== undefined) {
+            const doc = new MarkdownString('Element of `' + symbol + '`');
+            obj.names.map((name: string) => {
+                const item = new CompletionItem(name, CompletionItemKind.Field);
+                item.detail = '[session]';
+                item.documentation = doc;
+                items.push(item);
+            });
+        }
+    }
 }
 
 // This method is called when your extension is deactivated

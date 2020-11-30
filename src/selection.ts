@@ -31,7 +31,10 @@ export function surroundSelection(text: string, rFunctionName: string[]): string
     return text;
 }
 
-export function getSelection() {
+export function getSelection(): {
+    linesDownToMoveCursor: number;
+    selectedText: string;
+} {
     const selection = { linesDownToMoveCursor: 0, selectedText: '' };
     const { start, end } = window.activeTextEditor.selection;
     const currentDocument = window.activeTextEditor.document;
@@ -182,7 +185,10 @@ function getNextChar(p: PositionNeg,
  * @param getLine A function that returns the string at the given line of the document.
  * @param lineCount The number of lines in the document.
  */
-export function extendSelection(line: number, getLine: (line: number) => string, lineCount: number) {
+export function extendSelection(line: number, getLine: (line: number) => string, lineCount: number): {
+    startLine: number;
+    endLine: number;
+} {
     const lc = new LineCache(getLine, lineCount);
     const getLineFromCache = (x) => lc.getLineFromCache(x);
     const getEndsInOperatorFromCache = (x) => lc.getEndsInOperatorFromCache(x);
