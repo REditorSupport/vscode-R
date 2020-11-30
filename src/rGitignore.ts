@@ -20,9 +20,9 @@ const ignoreFiles = ['.Rhistory',
                      '*.knit.md',
                      'rsconnect/'].join('\n');
 
-export function createGitignore() {
+export function createGitignore(): void {
     if (workspace.workspaceFolders[0].uri.path === undefined) {
-        window.showWarningMessage('Please open workspace to create .gitignore');
+        void window.showWarningMessage('Please open workspace to create .gitignore');
 
         return;
     }
@@ -30,10 +30,10 @@ export function createGitignore() {
     writeFile(ignorePath, ignoreFiles, (err) => {
         try {
             if (err) {
-                window.showErrorMessage(err.name);
+                void window.showErrorMessage(err.name);
             }
         } catch (e) {
-            window.showErrorMessage(e.message);
+            void window.showErrorMessage(e);
         }
     });
 }
