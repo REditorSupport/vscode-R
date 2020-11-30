@@ -6,20 +6,16 @@
 
 import { commands, window, QuickPickItem, Uri, Webview, WebviewPanel, WebviewOptions, WebviewPanelOnDidChangeViewStateEvent, ViewColumn } from 'vscode';
 
-
 import * as cheerio from 'cheerio';
 
 import * as hljs from 'highlight.js';
+
 import { config } from './util';
 
+import * as api from './api';
+export { HelpSubMenu } from './api';
 
-
-interface AdditionalInfo {
-	href?: string,
-	pkgName?: string
-}
-interface DocumentedItem extends QuickPickItem, AdditionalInfo {}
-
+//// Declaration of HelpProvider used by the Help Panel
 // This interface needs to be implemented by a separate class that actually provides the R help pages
 export interface HelpProvider {
 	// is called to get help for a request path
@@ -27,12 +23,11 @@ export interface HelpProvider {
 	getHelpFileFromRequestPath(requestPath: string): null|Promise<null>|HelpFile|Promise<HelpFile>;
 
 	// called to refresh (cached) underlying package info
-	refresh?(): void;
+	refresh(): void;
 
 	// called to e.g. close servers, delete files
 	dispose?(): void;
 }
-
 export interface HelpFile {
 	// content of the file
 	html: string;
@@ -48,8 +43,6 @@ export interface HelpFile {
 	// useful to remember scroll position when going back/forward
 	scrollY?: number;
 }
-
-// currently dummy
 export interface RHelpProviderOptions {
 	// path to R executable
 	rPath?: string;
@@ -57,13 +50,34 @@ export interface RHelpProviderOptions {
 	cwd?: string;
 }
 
-
-// internal interface used to store history of help panel
-interface HistoryEntry {
-	helpFile: HelpFile;
+//// Declaration of AliasProvider used by the Help Panel
+// Is called to simulate `?` in vscode command palette, e.g.:
+//   When entering `? colMeans`, the help server will open `colSums.html`
+//   In this case: {name: "colMeans", alias: "colSums", package: "base"}
+export interface AliasProvider {
+	// used to generate quickpick options
+	getAllAliases(): Alias[] | null;
+	// could be used to look up a name entered by the user
+	getAliasesForName(name: string, pkgName?: string): Alias[] | null;
+	// reload aliases, used if triggered by user
+	refresh(): void;
+}
+export interface Alias {
+	// as presented to the user
+	name: string,
+	// as used by the help server
+	alias: string,
+	// name of the package the alias is from
+    package: string
+}
+export interface AliasProviderArgs {
+	// R path, must be vanilla R
+	rPath: string;
+	// getAliases.R
+    rScriptFile: string;
 }
 
-
+//// Declaration of interfaces used/implemented by the Help Panel class
 // specified when creating a new help panel
 export interface HelpPanelOptions {
 	/* Local path of script.js, used to send messages to vs code */
@@ -72,9 +86,21 @@ export interface HelpPanelOptions {
 	webviewStylePath: string;
 }
 
-export class HelpPanel {
+// returned when parsing R documentation's index files
+interface IndexFileEntry extends QuickPickItem {
+	href?: string
+}
+
+// internal interface used to store history of help panel
+interface HistoryEntry {
+	helpFile: HelpFile;
+}
+
+// implementation of the help panel, which is exported in the extensions's api
+export class HelpPanel implements api.HelpPanel {
 	// the object that actually provides help pages:
 	readonly helpProvider: HelpProvider;
+	readonly aliasProvider: AliasProvider;
 
 	// the webview panel where the help is shown
 	private panel?: WebviewPanel;
@@ -87,24 +113,24 @@ export class HelpPanel {
 	// virtual locations used by webview, changed each time a new webview is created
 	private webviewScriptUri?: Uri;
 	private webviewStyleUri?: Uri;
-	
 	// keep track of history to go back/forward:
 	private currentEntry: HistoryEntry|null = null;
 	private history: HistoryEntry[] = [];
 	private forwardHistory: HistoryEntry[] = [];
 
 	// cache parsed index files (list of installed packages, functions in packages)
-	private cachedIndexFiles: Map<string, DocumentedItem[]> = new Map<string, DocumentedItem[]>();
+	private cachedIndexFiles: Map<string, IndexFileEntry[]> = new Map<string, IndexFileEntry[]>();
 
 
-	constructor(rHelp: HelpProvider, options: HelpPanelOptions){
+	constructor(rHelp: HelpProvider, options: HelpPanelOptions, aliasProvider: AliasProvider){
 		this.helpProvider = rHelp;
 		this.webviewScriptFile = Uri.file(options.webviewScriptPath);
 		this.webviewStyleFile = Uri.file(options.webviewStylePath);
+		this.aliasProvider = aliasProvider;
 	}
 
-	// used to close files etc.
-	public dispose(): void{
+	// used to close files, stop servers etc.
+	public dispose(): void {
 		if(this.helpProvider.dispose){
 			this.helpProvider.dispose();
 		}
@@ -113,131 +139,153 @@ export class HelpPanel {
 		}
 	}
 
-	// prompts user for a package and function name to show:
-	public async showHelpForInput(): Promise<any> {
-		// get list of installed packages for the user to pick from
-		let packages: DocumentedItem[];
-		try {
-			packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
-		} catch (error) {
-			// continue even failed making package 
-		}
+	// if `subMenu` is not specified, let user choose between available help functions
+	public async showHelpMenu(subMenu?: api.HelpSubMenu): Promise<boolean> {
 
-		if(!packages){
-			void window.showErrorMessage('Help provider not available!');
-			return false;
-		}
-
-		let pkgName: string = undefined;
-
-		if(packages && packages.length>0){
-			// add "meta" entries to top of list
-			packages.unshift({
+		// if not specified, ask the user which subMenu to show
+		if(!subMenu){
+			// list of possible submenus
+			const subMenus: (QuickPickItem & {subMenu: api.HelpSubMenu})[] = [{
 				label: '$(home)',
 				description: 'Help Index',
-				pkgName: 'doc'
+				subMenu: 'doc'
+			},{
+				label: '$(list-unordered)',
+				description: 'List help indices by package',
+				subMenu: 'pkgList'
 			},{
 				label: '$(search)',
+				description: 'Search the help system using `?`',
+				subMenu: '?'
+			},{
+				label: '$(zoom-in)',
 				description: 'Search the help system using `??`',
-				pkgName: '??'
+				subMenu: '??'
 			},{
 				label:'$(refresh)',
 				description: 'Clear cached index files',
-				pkgName: '__refresh'
-			});
+				subMenu: 'refresh'
+			}];
 
-			// let user choose from found packages
-			const qp = await window.showQuickPick(packages, {
+			// let user choose from help functionalities
+			const qp = await window.showQuickPick(subMenus, {
 				matchOnDescription: true,
-				placeHolder: 'Please select a package'
+				placeHolder: 'Please select a help function'
 			});
 
-			// if user chose something, fill pkgName from qp info
-			// qp.pkgName is prefered (without .html), fallback is (mandatory) qp.label
 			if(qp){
-				pkgName = (qp.pkgName || '').replace(/\.html$/, '') || qp.label;
+				subMenu = qp.subMenu;
 			}
-		} else{
-			// no packages found -> let user type
-			const defaultPkg = 'doc';
-			pkgName = await window.showInputBox({
-				value: defaultPkg,
-				prompt: 'Please enter the package name'
-			});
 		}
 
-		if(!pkgName){
-			// happens e.g. if the user pressed ESC 
-			return false;
-		} else if(pkgName === '__refresh'){
-			// reload list of packages and prompt again
-			if(this.helpProvider.refresh){
-				this.helpProvider.refresh();
-			}
-			this.cachedIndexFiles.clear();
-			return this.showHelpForInput();
-		}
-
-		let fncName: string = undefined;
-
-		if(pkgName === 'doc'){
+		// handle user selection
+		if(subMenu === 'refresh'){
+			return this.refresh();
+		} else if(subMenu === 'doc'){
 			// no further selection sensible, show index page of docs
-			fncName = 'index.html';
-		} else if(pkgName === '??'){
+			return this.showHelpForFunctionName('doc', 'index.html');
+		} else if(subMenu === '??'){
 			// free text search
-			return this.searchHelp();
+			return this.searchHelpByText();
+		} else if(subMenu === '?'){
+			return this.searchHelpByAlias();
+		} else if(subMenu === 'pkgList'){
+			return this.showHelpForPackages();
 		} else{
-			// parse documented functions/items and let user pick
-			const functions = await this.getParsedIndexFile(`/library/${pkgName}/html/00Index.html`);
-			if(functions){
-				// add package index file to top of list
-				functions.unshift({
-					label: '$(list-unordered)',
-					href: '00Index',
-					description: 'Package Index'
-				});
-
-				// if there is a package doc entry, move to top and highlight with home-symbol
-				if(functions.length>1 && functions[1].label === `${pkgName}-package`){
-					functions[1] = {...functions[1]};
-					functions[1].href ||= functions[1].label;
-					functions[1].label = `$(home)`;
-					[functions[0], functions[1]] = [functions[1], functions[0]];
-				}
-
-				// let user pick function/item
-				const qp = await window.showQuickPick(functions, {
-					matchOnDescription: true,
-					placeHolder: 'Please select a documentation entry'
-				});
-
-				// prefer to use href as function name, fall back to qp.label
-				if(qp){
-					fncName = (qp.href || '').replace(/\.html$/, '') || qp.label;
-				}
-			} else{
-				// if no functions/items were found, let user type
-				const defaultFnc = (pkgName==='doc' ? 'index.html' : '00Index');
-				fncName = await window.showInputBox({
-					value: defaultFnc,
-					prompt: 'Please enter the function name'
-				});
-			}
-		}
-
-		if(!fncName){
-			// happens e.g. if the user pressed ESC
 			return false;
-		} else{
-			// changes e.g. ".vsc.print" to "dot-vsc.print"
-			fncName = fncName.replace(/^\./, 'dot-');
-			this.showHelpForFunctionName(fncName, pkgName);
+		}
+	}
+
+	// refresh list of packages that are cached by helpProvder & aliasProvider
+	public refresh(): boolean {
+		this.cachedIndexFiles.clear();
+		if(this.helpProvider.refresh){
+			this.helpProvider.refresh();
+		}
+		if(this.aliasProvider.refresh){
+			this.aliasProvider.refresh();
 		}
 		return true;
 	}
 
+	private async showHelpForPackages(){
+		// get list of installed packages for the user to pick from
+		let packages: IndexFileEntry[];
+		try {
+			packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
+		} catch (error) {
+			// handle together with packages===undefined etc.
+		}
+
+		if(!packages || packages.length === 0){
+			void window.showErrorMessage('Help provider not available!');
+			return false;
+		}
+
+		const qpOptions = {
+			matchOnDescription: true,
+			placeHolder: 'Please select a package'
+		};
+		const qp = await window.showQuickPick(packages, qpOptions);
+		const pkgName = (qp ? qp.label : undefined);
+
+		if(pkgName){
+			return this.showHelpForFunctions(pkgName);
+		} else {
+			return false;
+		}
+	}
+
+	private async showHelpForFunctions(pkgName: string){
+
+		let fncName: string;
+
+		// parse documented functions/items and let user pick
+		const functions = await this.getParsedIndexFile(`/library/${pkgName}/html/00Index.html`);
+		if(functions){
+			// add package index file to top of list
+			functions.unshift({
+				label: '$(list-unordered)',
+				href: '00Index',
+				description: 'Package Index'
+			});
+
+			// if there is a package doc entry, move to top and highlight with home-symbol
+			if(functions.length>1 && functions[1].label === `${pkgName}-package`){
+				functions[1] = {...functions[1]}; // make copy to keep cache intact
+				functions[1].href ||= functions[1].label;
+				functions[1].label = `$(home)`;
+				[functions[0], functions[1]] = [functions[1], functions[0]];
+			}
+
+			// let user pick function/item
+			const qp = await window.showQuickPick(functions, {
+				matchOnDescription: true,
+				placeHolder: 'Please select a documentation entry'
+			});
+
+			// prefer to use href as function name, fall back to qp.label
+			if(qp){
+				fncName = (qp.href || '').replace(/\.html$/, '') || qp.label;
+			}
+		} else{
+			// if no functions/items were found, let user type
+			const defaultFnc = (pkgName==='doc' ? 'index.html' : '00Index');
+			fncName = await window.showInputBox({
+				value: defaultFnc,
+				prompt: 'Please enter the function name'
+			});
+		}
+
+		if(fncName){
+			return this.showHelpForFunctionName(pkgName, fncName);
+		} else{
+			return false;
+		}
+	}
+
 	// search function, similar to typing `?? ...` in R
-	public async searchHelp(): Promise<boolean>{
+	private async searchHelpByText(): Promise<boolean>{
 		const searchTerm = await window.showInputBox({
 			value: '',
 			prompt: 'Please enter a search term'
@@ -245,15 +293,40 @@ export class HelpPanel {
 
 		if(searchTerm === undefined){
 			return false;
+		} else{
+			return this.showHelpForPath(`/doc/html/Search?pattern=${searchTerm}`);
 		}
+	}
 
-		const requestPath = `/doc/html/Search?pattern=${searchTerm}`;
-		this.showHelpForPath(requestPath);
-		return true;
+	// search function, similar to calling `?` in R
+	private async searchHelpByAlias(): Promise<boolean> {
+		const aliases = this.aliasProvider.getAllAliases();
+		if(!aliases){
+			void window.showErrorMessage('Failed to get list of R functions. Make sure that `jsonlite` is installed and r.helpPanel.rpath points to a valid R executable.');
+			return false;
+		}
+		const qpItems: (QuickPickItem & Alias)[] = aliases.map(v => Object({
+			...v,
+			label: v.name,
+			description: `(${v.package}::${v.name})`,
+		}));
+		const qpOptions = {
+			matchOnDescription: true,
+			placeHolder: 'Please type a function name/documentation entry'
+		};
+		const qp = await window.showQuickPick(
+			qpItems,
+			qpOptions
+		);
+		if(qp){
+			return this.showHelpForFunctionName(qp.package, qp.alias);
+		} else{
+			return false;
+		}
 	}
 
 	// shows help for package and function name
-	public showHelpForFunctionName(fncName: string, pkgName: string): void {
+	private showHelpForFunctionName(pkgName: string, fncName: string): Promise<boolean> {
 
 		let helpFile: HelpFile|Promise<HelpFile>;
 
@@ -265,26 +338,29 @@ export class HelpPanel {
 			helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 		}
 
-		void this.showHelpFile(helpFile);
+		return this.showHelpFile(helpFile);
 	}
 
 	// shows help for request path as used by R's internal help server
-	public showHelpForPath(requestPath: string, viewer?: string|any): void{
+	public showHelpForPath(requestPath: string, viewer?: string|any): boolean | Promise<boolean> {
 
+		// update this.viewColumn if a valid viewer argument was supplied
 		if(typeof viewer === 'string'){
 			this.viewColumn = ViewColumn[String(viewer)];
 		}
-		const helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 
+		// get and show helpFile
+		const helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 		if(helpFile){
-			void this.showHelpFile(helpFile);
+			return this.showHelpFile(helpFile);
 		} else{
 			console.error(`Couldn't handle path:\n${requestPath}\n`);
+			return false;
 		}
 	}
 
 	// shows (internal) help file object in webview
-	private async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, updateHistory = true, currentScrollY = 0): Promise<void>{
+	private async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, updateHistory = true, currentScrollY = 0): Promise<boolean>{
 
 		// get or create webview:
 		const webview = this.getWebview();
@@ -311,6 +387,8 @@ export class HelpPanel {
 		this.currentEntry = {
 			helpFile: helpFile
 		};
+
+		return true;
 	}
 
 	// retrieves the stored webview or creates a new one if the webview was closed
@@ -491,7 +569,7 @@ export class HelpPanel {
 
 	// retrieve and parse an index file
 	// (either list of all packages, or documentation entries of a package)
-	private async getParsedIndexFile(requestPath: string): Promise<DocumentedItem[]> {
+	private async getParsedIndexFile(requestPath: string): Promise<IndexFileEntry[]> {
 		// only read and parse file if not cached yet
 		if(!this.cachedIndexFiles.has(requestPath)){
 			const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
@@ -512,13 +590,13 @@ export class HelpPanel {
 		return ret;
 	}
 
-	private parseIndexFile(html: string): DocumentedItem[] {
+	private parseIndexFile(html: string): IndexFileEntry[] {
 
 		const $ = cheerio.load(html);
 
 		const tables = $('table');
 
-		const ret: DocumentedItem[] = [];
+		const ret: IndexFileEntry[] = [];
 
 		// loop over all tables on document and each row as one index entry
 		// assumes that the provided html is from a valid index file
