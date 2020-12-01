@@ -1,13 +1,12 @@
-
-
-
-import * as cp from 'child_process';
-
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+import { ChildProcess, exec } from 'child_process';
 import * as http from 'http';
+import * as kill from 'tree-kill'
 
 import * as rHelpPanel from './rHelpPanel';
 
-const kill = require('tree-kill');
+// const kill = require('tree-kill');
 
 export interface RHelpClientOptions extends rHelpPanel.RHelpProviderOptions {
 	// path of the R executable
@@ -17,7 +16,7 @@ export interface RHelpClientOptions extends rHelpPanel.RHelpProviderOptions {
 
 // Class to forward help requests to a backgorund R instance that is running a help server
 export class RHelpClient implements rHelpPanel.HelpProvider {
-    private cp: cp.ChildProcess;
+    private cp: ChildProcess;
     private port: number|Promise<number>;
     private readonly rPath: string;
     private readonly cwd?: string;
@@ -28,12 +27,12 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
         this.port = this.launchRHelpServer(); // is a promise for now!
     }
 
-    public refresh(){
+    public refresh(): void {
         kill(this.cp.pid); // more reliable than cp.kill (?)
         this.port = this.launchRHelpServer();
     }
 
-    public async launchRHelpServer(){
+    public async launchRHelpServer(): Promise<number>{
 		const lim = '---vsc---';
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
 
@@ -45,19 +44,19 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
         const cpOptions = {
             cwd: this.cwd
         };
-        this.cp = cp.exec(cmd, cpOptions);
+        this.cp = exec(cmd, cpOptions);
 
         let str = '';
         // promise containing the first output of the r process (contains only the port number)
         const outputPromise = new Promise<string>((resolve, reject) => {
             this.cp.stdout.on('data', (data) => {
                 str += data.toString();
-                if(str.match(re)){
+                if(re.exec(str)){
                     resolve(str.replace(re, '$1'));
                 }
             });
             this.cp.on('close', (code) => {
-                console.log('R process closed with code ' + code);
+                console.log(`R process closed with code ${code}`);
                 reject();
             });
         });
@@ -95,7 +94,7 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
         const maxForwards = 3;
         for (let index = 0; index < maxForwards; index++) {
             const htmlPromise = new Promise<HtmlResult>((resolve, reject) => {
-                let content: string = '';
+                let content = '';
                 http.get(url, (res: http.IncomingMessage) => {
                     if(res.statusCode === 302){
                         resolve({redirect: res.headers.location});
@@ -131,9 +130,9 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
         return ret;
     }
 
-    dispose(){
+    dispose(): void {
         if(this.cp){
-            this.cp.kill();
+            kill(this.cp.pid);
         }
     }
 }

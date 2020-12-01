@@ -3,16 +3,16 @@
 import { existsSync } from 'fs-extra';
 import path = require('path');
 import fs = require('fs');
-import { window, workspace } from 'vscode';
+import { window, workspace, WorkspaceConfiguration } from 'vscode';
 import winreg = require('winreg');
 
-export function config() {
+export function config(): WorkspaceConfiguration {
     return workspace.getConfiguration('r');
 }
 
 function getRfromEnvPath(platform: string) {
-    let splitChar: string = ':';
-    let fileExtension: string = '';
+    let splitChar = ':';
+    let fileExtension = '';
     
     if (platform === 'win32') {
         splitChar = ';';
@@ -29,9 +29,9 @@ function getRfromEnvPath(platform: string) {
     return '';
 }
 
-export async function getRpathFromSystem() {
+export async function getRpathFromSystem(): Promise<string> {
     
-    let rpath: string = '';
+    let rpath = '';
     const platform: string = process.platform;
     
     if ( platform === 'win32') {
@@ -54,9 +54,9 @@ export async function getRpathFromSystem() {
     return rpath;
 }
 
-export async function getRpath() {
+export async function getRpath(): Promise<string> {
     
-    let rpath: string = '';
+    let rpath = '';
     const platform: string = process.platform;
     
     if ( platform === 'win32') {
@@ -73,12 +73,12 @@ export async function getRpath() {
         return rpath;
     }
 
-    window.showErrorMessage(`${process.platform} can't use R`);
+    void window.showErrorMessage(`${process.platform} can't use R`);
     return undefined;
 }
 
 
-export function ToRStringLiteral(s: string, quote: string) {
+export function ToRStringLiteral(s: string, quote: string): string {
     if (s === undefined) {
         return 'NULL';
     }
@@ -96,14 +96,14 @@ export function ToRStringLiteral(s: string, quote: string) {
         quote);
 }
 
-export async function delay(ms: number) {
+export async function delay(ms: number): Promise<unknown> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function checkForSpecialCharacters(text: string) {
-    return !/[~`!#$%\^&*+=\-\[\]\\';,/{}|\\":<>\?\s]/g.test(text);
+export function checkForSpecialCharacters(text: string): boolean {
+    return !/[~`!#$%^&*+=\-[\]\\';,/{}|\\":<>?\s]/g.test(text);
 }
 
-export function checkIfFileExists(filePath: string) {
+export function checkIfFileExists(filePath: string): boolean {
     return existsSync(filePath);
 }

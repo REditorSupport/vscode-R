@@ -280,10 +280,6 @@
         "title": "R: Show help"
       },
       {
-        "command": "r.searchHelp",
-        "title": "R: Search help"
-      },
-      {
         "command": "r.helpPanel.back",
         "title": "R Help Panel: Go Back",
         "icon": "$(arrow-left)"

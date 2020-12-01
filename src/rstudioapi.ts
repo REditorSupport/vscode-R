@@ -1,3 +1,10 @@
+/* eslint-disable @typescript-eslint/restrict-plus-operands */
+/* eslint-disable @typescript-eslint/restrict-template-expressions */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   window, TextEditor, TextDocument, Uri,
   workspace, WorkspaceEdit, Position, Range, Selection,
@@ -6,16 +13,16 @@ import {
 import { sessionDir, sessionDirectoryExists, writeResponse, writeSuccessResponse } from './session';
 import fs = require('fs-extra');
 import path = require('path');
-import { chooseTerminal, runTextInTerm, restartRTerminal } from './rTerminal';
+import { runTextInTerm, restartRTerminal } from './rTerminal';
 import { config } from './util';
 
 let lastActiveTextEditor: TextEditor;
 
-export async function dispatchRStudioAPICall(action: string, args: any, sd: string) {
+export async function dispatchRStudioAPICall(action: string, args: any, sd: string): Promise<void> {
 
   switch (action) {
     case 'active_editor_context': {
-      await writeResponse(await activeEditorContext(), sd);
+      await writeResponse(activeEditorContext(), sd);
       break;
     }
     case 'insert_or_modify_text': {
@@ -29,7 +36,7 @@ export async function dispatchRStudioAPICall(action: string, args: any, sd: stri
       break;
     }
     case 'show_dialog': {
-      await showDialog(args.message);
+      showDialog(args.message);
       await writeSuccessResponse(sd);
       break;
     }
@@ -78,7 +85,7 @@ export async function dispatchRStudioAPICall(action: string, args: any, sd: stri
 }
 
 //rstudioapi
-export async function activeEditorContext() {
+export function activeEditorContext() {
   // info returned from RStudio:
   // list with:
   // id
@@ -97,7 +104,7 @@ export async function activeEditorContext() {
 export async function documentContext(id: string) {
   const target = findTargetUri(id);
   const targetDocument = await workspace.openTextDocument(target);
-  console.info(`[documentContext] getting context for: ${target}`);
+  console.info(`[documentContext] getting context for: ${target.path}`);
   return {
     id: targetDocument.uri
   };
@@ -108,7 +115,7 @@ export async function insertOrModifyText(query: any[], id: string = null) {
 
   const target = findTargetUri(id);
   const targetDocument = await workspace.openTextDocument(target);
-  console.info(`[insertTextAtPosition] inserting text into: ${target}`);
+  console.info(`[insertTextAtPosition] inserting text into: ${target.path}`);
   const edit = new WorkspaceEdit();
 
   query.forEach((op) => {
@@ -130,12 +137,12 @@ export async function insertOrModifyText(query: any[], id: string = null) {
     }
   });
 
-  workspace.applyEdit(edit);
+  void workspace.applyEdit(edit);
 }
 
-export async function replaceTextInCurrentSelection(text: string, id: string) {
+export async function replaceTextInCurrentSelection(text: string, id: string): Promise<void> {
   const target = findTargetUri(id);
-  console.info(`[replaceTextInCurrentSelection] inserting: ${text} into ${target}`);
+  console.info(`[replaceTextInCurrentSelection] inserting: ${text} into ${target.path}`);
   const edit = new WorkspaceEdit();
   edit.replace(
     target,
@@ -145,13 +152,13 @@ export async function replaceTextInCurrentSelection(text: string, id: string) {
   await workspace.applyEdit(edit);
 }
 
-export async function showDialog(message: string) {
+export function showDialog(message: string): void {
 
-  window.showInformationMessage(message);
+  void window.showInformationMessage(message);
 
 }
 
-export async function navigateToFile(file: string, line: number, column: number) {
+export async function navigateToFile(file: string, line: number, column: number): Promise<void>{
 
   const targetDocument = await workspace.openTextDocument(Uri.file(file));
   const editor = await window.showTextDocument(targetDocument);
@@ -160,7 +167,7 @@ export async function navigateToFile(file: string, line: number, column: number)
   editor.revealRange(new Range(targetPosition, targetPosition));
 }
 
-export async function setSelections(ranges: number[][], id: string) {
+export async function setSelections(ranges: number[][], id: string): Promise<void> {
   // Setting selections can only be done on TextEditors not TextDocuments, but
   // it is the latter which are the things actually referred to by `id`. In
   // VSCode it's not possible to get a list of the open text editors. it is not
@@ -195,17 +202,17 @@ export async function setSelections(ranges: number[][], id: string) {
   editor.selections = selectionObjects;
 }
 
-export async function documentSave(id: string) {
+export async function documentSave(id: string): Promise<void> {
   const target = findTargetUri(id);
   const targetDocument = await workspace.openTextDocument(target);
   await targetDocument.save();
 }
 
-export async function documentSaveAll() {
+export async function documentSaveAll(): Promise<void> {
   await workspace.saveAll();
 }
 
-export function projectPath() {
+export function projectPath(): { path: string; } {
 
   if (typeof workspace.workspaceFolders !== 'undefined') {
     // Is there a root folder open?
@@ -239,7 +246,7 @@ export function projectPath() {
   };
 }
 
-export async function documentNew(text: string, type: string, position: number[]) {
+export async function documentNew(text: string, type: string, position: number[]): Promise<void> {
   const documentUri = Uri.parse('untitled:' + path.join(projectPath().path, 'new_document.' + type));
   const targetDocument = await workspace.openTextDocument(documentUri);
   const edit = new WorkspaceEdit();
@@ -251,7 +258,7 @@ export async function documentNew(text: string, type: string, position: number[]
     )),
     text);
 
-  workspace.applyEdit(edit).then(async () => {
+  void workspace.applyEdit(edit).then(async () => {
     const editor = await window.showTextDocument(targetDocument);
     editor.selections = [new Selection(
       parsePosition(position, targetDocument),
@@ -269,13 +276,13 @@ interface AddinItem extends QuickPickItem {
 
 let addinQuickPicks: AddinItem[] = undefined;
 
-export async function getAddinPickerItems() {
+export async function getAddinPickerItems(): Promise<AddinItem[]> {
 
   if (typeof addinQuickPicks === 'undefined') {
     const addins: any[] = await fs.readJSON(path.join(sessionDir, 'addins.json')).
       then(
         (result) => result,
-        (reason) => {
+        () => {
           throw ('Could not find list of installed addins.' +
             ' options(vsc.rstudioapi = TRUE) must be set in your .Rprofile to use ' +
             ' RStudio Addins');
@@ -298,11 +305,11 @@ export async function getAddinPickerItems() {
   return addinQuickPicks;
 }
 
-export function purgeAddinPickerItems() {
+export function purgeAddinPickerItems(): void {
   addinQuickPicks = undefined;
 }
 
-export async function launchAddinPicker() {
+export async function launchAddinPicker(): Promise<void> {
 
   if (!config().get<boolean>('sessionWatcher')) {
     throw ('{rstudioapi} emulation requires session watcher to be enabled in extension config.');
@@ -396,7 +403,7 @@ function normaliseEditText(text: string, editLocation: any,
 }
 
 // window.onActiveTextEditorDidChange handler
-export function trackLastActiveTextEditor(editor: TextEditor) {
+export function trackLastActiveTextEditor(editor: TextEditor): void {
   if (typeof editor !== 'undefined') {
     lastActiveTextEditor = editor;
   }

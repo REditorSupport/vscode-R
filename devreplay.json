@@ -1,6 +1,14 @@
 [
   {
     "condition": [
+      "assert.equal"
+    ],
+    "consequent": [
+      "assert.strictEqual"
+    ]
+  },
+  {
+    "condition": [
       "show(${1:column}, ${2:preservalFocus})"
     ],
     "consequent": [

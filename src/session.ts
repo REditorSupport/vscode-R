@@ -1,4 +1,7 @@
-// tslint:disable: no-console
+/* eslint-disable @typescript-eslint/restrict-template-expressions */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use strict';
 
 import fs = require('fs-extra');
@@ -32,11 +35,10 @@ let plotFile: string;
 let plotLockFile: string;
 let plotTimeStamp: number;
 let plotDir: string;
-let requestWatcher: FSWatcher;
 let globalEnvWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
 
-export function deploySessionWatcher(extensionPath: string) {
+export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
     watcherDir = path.join(os.homedir(), '.vscode-R');
@@ -56,7 +58,7 @@ export function deploySessionWatcher(extensionPath: string) {
     console.info('[deploySessionWatcher] Done');
 }
 
-export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
+export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
     console.info('[startRequestWatcher] Starting');
     requestFile = path.join(watcherDir, 'request.log');
     requestLockFile = path.join(watcherDir, 'request.lock');
@@ -65,18 +67,18 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem) {
     if (!fs.existsSync(requestLockFile)) {
         fs.createFileSync(requestLockFile);
     }
-    requestWatcher = fs.watch(requestLockFile, {}, (event: string, filename: string) => {
-        updateRequest(sessionStatusBarItem);
+    fs.watch(requestLockFile, {}, () => {
+        void updateRequest(sessionStatusBarItem);
     });
     console.info('[startRequestWatcher] Done');
 }
 
-export function attachActive() {
+export function attachActive(): void {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
-        runTextInTerm('.vsc.attach()');
+        void runTextInTerm('.vsc.attach()');
     } else {
-        window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
+        void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }
 }
 
@@ -96,11 +98,11 @@ function removeDirectory(dir: string) {
     console.info('[removeDirectory] Done');
 }
 
-export function sessionDirectoryExists() {
+export function sessionDirectoryExists(): boolean {
     return (fs.existsSync(sessionDir));
 }
 
-export function removeSessionFiles() {
+export function removeSessionFiles(): void {
     console.info('[removeSessionFiles] ', sessionDir);
     if (sessionDirectoryExists()) {
         removeDirectory(sessionDir);
@@ -118,10 +120,10 @@ function updateSessionWatcher() {
         globalEnvWatcher.close();
     }
     if (fs.existsSync(globalenvLockFile)) {
-        globalEnvWatcher = fs.watch(globalenvLockFile, {}, (event: string, filename: string) => {
-            updateGlobalenv();
+        globalEnvWatcher = fs.watch(globalenvLockFile, {}, () => {
+            void updateGlobalenv();
         });
-        updateGlobalenv();
+        void updateGlobalenv();
     } else {
         console.info('[updateSessionWatcher] globalenvLockFile not found');
     }
@@ -134,10 +136,10 @@ function updateSessionWatcher() {
         plotWatcher.close();
     }
     if (fs.existsSync(plotLockFile)) {
-        plotWatcher = fs.watch(plotLockFile, {}, (event: string, filename: string) => {
-            updatePlot();
+        plotWatcher = fs.watch(plotLockFile, {}, () => {
+            void updatePlot();
         });
-        updatePlot();
+        void updatePlot();
     } else {
         console.info('[updateSessionWatcher] plotLockFile not found');
     }
@@ -151,7 +153,7 @@ async function updatePlot() {
     if (newTimeStamp !== plotTimeStamp) {
         plotTimeStamp = newTimeStamp;
         if (fs.existsSync(plotFile) && fs.statSync(plotFile).size > 0) {
-            commands.executeCommand('vscode.open', Uri.file(plotFile), {
+            void commands.executeCommand('vscode.open', Uri.file(plotFile), {
                 preserveFocus: true,
                 preview: true,
                 viewColumn: ViewColumn[plotView],
@@ -181,9 +183,9 @@ async function updateGlobalenv() {
 }
 
 function showBrowser(url: string, title: string, viewer: string | boolean) {
-    console.info(`[showBrowser] uri: ${url}, viewer: ${viewer}`);
+    console.info(`[showBrowser] uri: ${url}, viewer: ${viewer.toString()}`);
     if (viewer === false) {
-        env.openExternal(Uri.parse(url));
+        void env.openExternal(Uri.parse(url));
     } else {
         const port = parseInt(new URL(url).port);
         const panel = window.createWebviewPanel(
@@ -231,9 +233,9 @@ function getBrowserHtml(url: string) {
 }
 
 async function showWebView(file: string, title: string, viewer: string | boolean) {
-    console.info(`[showWebView] file: ${file}, viewer: ${viewer}`);
+    console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
     if (viewer === false) {
-        env.openExternal(Uri.parse(file));
+        void env.openExternal(Uri.parse(file));
     } else {
         const dir = path.dirname(file);
         const panel = window.createWebviewPanel('webview', title,
@@ -285,7 +287,7 @@ async function showDataView(source: string, type: string, title: string, file: s
         const content = await getListHtml(panel.webview, file);
         panel.webview.html = content;
     } else {
-        commands.executeCommand('vscode.open', Uri.file(file), {
+        await commands.executeCommand('vscode.open', Uri.file(file), {
             preserveFocus: true,
             preview: true,
             viewColumn: ViewColumn[viewer],
@@ -387,10 +389,10 @@ async function getListHtml(webview: Webview, file: string) {
 `;
 }
 
-export async function showPlotHistory() {
+export async function showPlotHistory(): Promise<void> {
     if (config().get<boolean>('sessionWatcher')) {
         if (plotDir === undefined) {
-            window.showErrorMessage('No session is attached.');
+            void window.showErrorMessage('No session is attached.');
         } else {
             const files = await fs.readdir(plotDir);
             if (files.length > 0) {
@@ -407,11 +409,11 @@ export async function showPlotHistory() {
                 const html = getPlotHistoryHtml(panel.webview, files);
                 panel.webview.html = html;
             } else {
-                window.showInformationMessage('There is no plot to show yet.');
+                void window.showInformationMessage('There is no plot to show yet.');
             }
         }
     } else {
-        window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
+        void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }
 }
 
@@ -467,7 +469,7 @@ function isFromWorkspace(dir: string) {
     return false;
 }
 
-export async function writeResponse(responseData: object, responseSessionDir: string) {
+export async function writeResponse(responseData: Record<string, unknown>, responseSessionDir: string): Promise<void> {
 
     const responseFile = path.join(responseSessionDir, 'response.log');
     const responseLockFile = path.join(responseSessionDir, 'response.lock');
@@ -482,11 +484,11 @@ export async function writeResponse(responseData: object, responseSessionDir: st
     console.info(`[writeRespnse] responseFile: ${responseFile}`);
     await fs.writeFile(responseFile, responseString);
     responseTimeStamp = Date.now();
-    await fs.writeFile(responseLockFile, responseTimeStamp + '\n');
+    await fs.writeFile(responseLockFile, `${responseTimeStamp}\n`);
 }
 
-export async function writeSuccessResponse(responseSessionDir: string) {
-    writeResponse({ result: true }, responseSessionDir);
+export async function writeSuccessResponse(responseSessionDir: string): Promise<void> {
+    await writeResponse({ result: true }, responseSessionDir);
 }
 
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
@@ -504,7 +506,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 case 'help': {
                     if(globalRHelpPanel){
                         console.log(request.requestPath);
-                        globalRHelpPanel.showHelpForPath(request.requestPath, request.viewer);
+                        void globalRHelpPanel.showHelpForPath(request.requestPath, request.viewer);
                     }
                     break;
                 }
@@ -525,11 +527,11 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     break;
                 }
                 case 'webview': {
-                    showWebView(request.file, request.title, request.viewer);
+                    void showWebView(request.file, request.title, request.viewer);
                     break;
                 }
                 case 'dataview': {
-                    showDataView(request.source,
+                    void showDataView(request.source,
                         request.type, request.title, request.file, request.viewer);
                     break;
                 }

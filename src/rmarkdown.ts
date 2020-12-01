@@ -147,7 +147,7 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
         return sorted;
       });
   }
-  public resolveCodeLens(codeLens: CodeLens, token: CancellationToken) {
+  public resolveCodeLens(codeLens: CodeLens): CodeLens {
     return codeLens;
   }
 }
@@ -287,25 +287,25 @@ function _getStartLine() {
 }
 
 export async function runCurrentChunk(chunks: RMarkdownChunk[] = _getChunks(),
-                                      line: number = _getStartLine()) {
+                                      line: number = _getStartLine()): Promise<void> {
   const currentChunk = getCurrentChunk(chunks, line);
-  runChunksInTerm([currentChunk.codeRange]);
+  await runChunksInTerm([currentChunk.codeRange]);
 }
 
 export async function runPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
-                                       line: number = _getStartLine()) {
+                                       line: number = _getStartLine()): Promise<void> {
   const previousChunk = getPreviousChunk(chunks, line);
-  runChunksInTerm([previousChunk.codeRange]);
+  await runChunksInTerm([previousChunk.codeRange]);
 }
 
 export async function runNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
-                                   line: number = _getStartLine()) {
+                                   line: number = _getStartLine()): Promise<void> {
   const nextChunk = getNextChunk(chunks, line);
-  runChunksInTerm([nextChunk.codeRange]);
+  await runChunksInTerm([nextChunk.codeRange]);
 }
 
 export async function runAboveChunks(chunks: RMarkdownChunk[] = _getChunks(),
-                                     line: number = _getStartLine()) {
+                                     line: number = _getStartLine()): Promise<void> {
   const previousChunk = getPreviousChunk(chunks, line);
   const firstChunkId = 1;
   const previousChunkId = previousChunk.id;
@@ -316,11 +316,11 @@ export async function runAboveChunks(chunks: RMarkdownChunk[] = _getChunks(),
     const chunk = chunks.filter(e => e.id === i)[0];
     codeRanges.push(chunk.codeRange);
   }
-  runChunksInTerm(codeRanges);
+  await runChunksInTerm(codeRanges);
 }
 
 export async function runBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
-                                     line: number = _getStartLine()) {
+                                     line: number = _getStartLine()): Promise<void> {
 
   const nextChunk = getNextChunk(chunks, line);
   const nextChunkId = nextChunk.id;
@@ -332,11 +332,11 @@ export async function runBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
     const chunk = chunks.filter(e => e.id === i)[0];
     codeRanges.push(chunk.codeRange);
   }
-  runChunksInTerm(codeRanges);
+  await runChunksInTerm(codeRanges);
 }
 
-export async function runCurrentAndBelowChunks(
-  chunks: RMarkdownChunk[] = _getChunks(), line: number = _getStartLine()) {
+export async function runCurrentAndBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
+                                               line: number = _getStartLine()): Promise<void> {
   const currentChunk = getCurrentChunk(chunks, line);
   const currentChunkId = currentChunk.id;
   const lastChunkId = chunks.length;
@@ -347,10 +347,10 @@ export async function runCurrentAndBelowChunks(
     const chunk = chunks.filter(e => e.id === i)[0];
     codeRanges.push(chunk.codeRange);
   }
-  runChunksInTerm(codeRanges);
+  await runChunksInTerm(codeRanges);
 }
 
-export async function runAllChunks(chunks: RMarkdownChunk[] = _getChunks()) {
+export async function runAllChunks(chunks: RMarkdownChunk[] = _getChunks()): Promise<void> {
 
   const firstChunkId = 1;
   const lastChunkId = chunks.length;
@@ -361,7 +361,7 @@ export async function runAllChunks(chunks: RMarkdownChunk[] = _getChunks()) {
     const chunk = chunks.filter(e => e.id === i)[0];
     codeRanges.push(chunk.codeRange);
   }
-  runChunksInTerm(codeRanges);
+  await runChunksInTerm(codeRanges);
 }
 
 function goToChunk(chunk: RMarkdownChunk) {
@@ -370,20 +370,20 @@ function goToChunk(chunk: RMarkdownChunk) {
   window.activeTextEditor.selection = new Selection(line, 0, line, 0);
 }
 
-export async function goToPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
-                                        line: number = _getStartLine()) {
+export function goToPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                        line: number = _getStartLine()): void {
   const previousChunk = getPreviousChunk(chunks, line);
   goToChunk(previousChunk);
 }
 
-export async function goToNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
-                                    line: number = _getStartLine()) {
+export function goToNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                    line: number = _getStartLine()): void {
   const nextChunk = getNextChunk(chunks, line);
   goToChunk(nextChunk);
 }
 
-export async function selectCurrentChunk(
-  chunks: RMarkdownChunk[] = _getChunks(), line: number = _getStartLine()) {
+export function selectCurrentChunk(chunks: RMarkdownChunk[] = _getChunks(),
+                                         line: number = _getStartLine()): void {
   const editor = window.activeTextEditor;
   const currentChunk = getCurrentChunk__CursorWithinChunk(chunks, line);
   const lines = editor.document.getText().split(/\r?\n/);
@@ -418,7 +418,7 @@ export class RMarkdownCompletionItemProvider implements CompletionItemProvider {
     });
   }
 
-  public provideCompletionItems(document: TextDocument, position: Position) {
+  public provideCompletionItems(document: TextDocument, position: Position): CompletionItem[] {
     const line = document.lineAt(position).text;
     if (isChunkStartLine(line) && getChunkLanguage(line) === 'r') {
       return this.chunkOptionCompletionItems;
