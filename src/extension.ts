@@ -21,7 +21,7 @@ import * as path from 'path';
 import { HelpPanel, HelpPanelOptions, HelpProvider, RHelpProviderOptions } from './rHelpPanel';
 import { RHelpClient } from './rHelpProviderBuiltin';
 import { RHelp } from './rHelpProviderCustom';
-import { WorkspaceDataProvider, WorkspaceItem } from './workspace';
+import { loadWorkspace, saveWorkspace, WorkspaceDataProvider, WorkspaceItem } from './workspace';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\<\>\/\s]+)/g;
@@ -291,6 +291,8 @@ export async function activate(context: ExtensionContext) {
         commands.registerCommand('r.workspaceViewer.view', (node: WorkspaceItem) => runTextInTerm(`View(${node.label})`)),
         commands.registerCommand('r.workspaceViewer.remove', (node: WorkspaceItem) => runTextInTerm(`rm(${node.label})`)),
         commands.registerCommand('r.workspaceViewer.clear', () => runTextInTerm(`rm(list = ls())`)),
+        commands.registerCommand('r.workspaceViewer.load', loadWorkspace),
+        commands.registerCommand('r.workspaceViewer.save', saveWorkspace),
         window.onDidCloseTerminal(deleteTerminal),
     );
 

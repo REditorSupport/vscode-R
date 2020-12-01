@@ -266,6 +266,16 @@
         "icon": "$(close)"
       },
       {
+        "command": "r.workspaceViewer.save",
+        "title": "Save workspace",
+        "icon": "$(save)"
+      },
+      {
+        "command": "r.workspaceViewer.load",
+        "title": "Load workspace",
+        "icon": "$(folder-opened)"
+      },
+      {
         "command": "r.showHelp",
         "title": "R: Show help"
       },
@@ -589,12 +599,20 @@
       ],
       "view/title": [
         {
+          "command": "r.workspaceViewer.load",
+          "group": "navigation@0"
+        },
+        {
+          "command": "r.workspaceViewer.save",
+          "group": "navigation@1"
+        },
+        {
           "command": "r.workspaceViewer.clear",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "r.workspaceViewer.refreshEntry",
-          "group": "navigation"
+          "group": "navigation@3"
         }
       ]
     },
