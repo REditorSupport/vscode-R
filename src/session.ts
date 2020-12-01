@@ -504,7 +504,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 case 'help': {
                     if(globalRHelpPanel){
                         console.log(request.requestPath);
-                        globalRHelpPanel.showHelpForPath(request.requestPath, request.viewer);
+                        void globalRHelpPanel.showHelpForPath(request.requestPath, request.viewer);
                     }
                     break;
                 }
