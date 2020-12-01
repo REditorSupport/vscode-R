@@ -26,7 +26,7 @@ import * as path from 'path';
 import { HelpPanel, HelpPanelOptions, HelpProvider, AliasProviderArgs, HelpSubMenu } from './rHelpPanel';
 import { RHelpClient } from './rHelpProviderBuiltin';
 import { RHelp } from './rHelpProviderCustom';
-import { loadWorkspace, saveWorkspace, WorkspaceDataProvider, WorkspaceItem } from './workspace';
+import { clearWorkspace, loadWorkspace, saveWorkspace, WorkspaceDataProvider, WorkspaceItem } from './workspace';
 import { AliasProvider } from './rHelpAliases';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
 
@@ -295,7 +295,7 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
         commands.registerCommand('r.workspaceViewer.refreshEntry', () => rWorkspace.refresh()),
         commands.registerCommand('r.workspaceViewer.view', (node: WorkspaceItem) => runTextInTerm(`View(${node.label})`)),
         commands.registerCommand('r.workspaceViewer.remove', (node: WorkspaceItem) => runTextInTerm(`rm(${node.label})`)),
-        commands.registerCommand('r.workspaceViewer.clear', () => runTextInTerm(`rm(list = ls())`)),
+        commands.registerCommand('r.workspaceViewer.clear', clearWorkspace),
         commands.registerCommand('r.workspaceViewer.load', loadWorkspace),
         commands.registerCommand('r.workspaceViewer.save', saveWorkspace),
         window.onDidCloseTerminal(deleteTerminal),

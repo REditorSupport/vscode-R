@@ -1,5 +1,5 @@
 import path = require('path');
-import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window } from 'vscode';
+import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window, workspace } from 'vscode';
 import { runTextInTerm } from './rTerminal';
 import { globalenv } from './session';
 
@@ -77,32 +77,57 @@ export class WorkspaceItem extends TreeItem {
 	}
 }
 
+export function clearWorkspace(): void {
+	void window.showInformationMessage(
+		"Are you sure you want to clear the workspace? This cannot be reversed.",
+		"Confirm",
+		"Cancel"
+	).then(selection => {
+		if (selection == "Confirm") {
+			void runTextInTerm(`rm(list = ls())`)
+		}
+	})
+}
+
 export function saveWorkspace(): void {
-	window.showSaveDialog({
-		defaultUri: Uri.file('workspace.RData'),
+	void window.showSaveDialog({
+		defaultUri: Uri.file(getWorkspacePath() + path.sep + 'workspace'),
 		filters: {
 			'Data': ['RData']
-		}
+		},
+		title: 'Save workspace'
 	}
 	).then((uri: Uri | undefined) => {
 		if (uri) {
-			runTextInTerm(
-				`save.image(\"${(uri.fsPath.split(path.sep).join(path.posix.sep))}\")`
+			void runTextInTerm(
+				`save.image("${(uri.fsPath.split(path.sep).join(path.posix.sep))}")`
 			);
 		}
 	});
 }
 
 export function loadWorkspace(): void {
-	window.showOpenDialog({
+	void window.showOpenDialog({
+		defaultUri: Uri.file(getWorkspacePath()),
 		filters: {
-			'Data': ['RData']
-		}
+			'Data': ['RData'],
+		},
+		title : 'Load workspace'
 	}).then((uri: Uri[] | undefined) => {
 		if (uri) {
-			runTextInTerm(
-				`load(\"${(uri[0].fsPath.split(path.sep).join(path.posix.sep))}\")`
+			void runTextInTerm(
+				`load("${(uri[0].fsPath.split(path.sep).join(path.posix.sep))}")`
 			);
 		}
 	});
+}
+
+function getWorkspacePath(): string {
+		if (workspace.workspaceFolders) {
+			return workspace.workspaceFolders?.map(folder => folder.uri.path)[0]
+		} else if (window.activeTextEditor) {
+			return path.dirname(window.activeTextEditor.document.uri.fsPath)
+		} else {
+			return process.env.USERPROFILE
+		}
 }
