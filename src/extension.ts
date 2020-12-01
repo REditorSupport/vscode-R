@@ -12,12 +12,10 @@ import { CancellationToken, commands, CompletionContext, CompletionItem, Complet
 
 import { previewDataframe, previewEnvironment } from './preview';
 import { createGitignore } from './rGitignore';
-import { createRTerm, deleteTerminal,
-    runChunksInTerm,
-         runSelectionInTerm, runTextInTerm } from './rTerminal';
+import { createRTerm, deleteTerminal, runChunksInTerm, runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
-import { config, ToRStringLiteral, getRpathFromSystem } from './util';
+import { config, ToRStringLiteral, getRpath } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
 import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, selectCurrentChunk, runCurrentChunk, runAboveChunks, runCurrentAndBelowChunks, runBelowChunks, runPreviousChunk, runNextChunk, runAllChunks, goToPreviousChunk, goToNextChunk } from './rmarkdown';
 
@@ -55,10 +53,7 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
     const rExtension = new RExtension();
 
     // get the "vanilla" R path from config
-    let rPath = config().get<string>('helpPanel.rpath', '') || await getRpathFromSystem();
-    if(/^[^'"].* .*[^'"]$/.exec(rPath)){
-        rPath = `"${rPath}"`;
-    }
+    const rPath = await getRpath(true, 'helpPanel.rpath');
     const rHelpProviderOptions = {
         rPath: rPath,
         cwd: ((workspace.workspaceFolders !== undefined && workspace.workspaceFolders.length > 0) ? workspace.workspaceFolders[0].uri.fsPath : undefined)
