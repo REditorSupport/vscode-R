@@ -111,7 +111,7 @@ export function clearWorkspace(): void {
 
 export function saveWorkspace(): void {
 	void window.showSaveDialog({
-		defaultUri: Uri.file(workingDir + path.sep + 'workspace'),
+		defaultUri: Uri.file(workingDir + path.sep + 'workspace.RData'),
 		filters: {
 			'Data': ['RData']
 		},
