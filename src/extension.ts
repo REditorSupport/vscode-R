@@ -26,7 +26,7 @@ import * as path from 'path';
 import { HelpPanel, HelpPanelOptions, HelpProvider, AliasProviderArgs, HelpSubMenu } from './rHelpPanel';
 import { RHelpClient } from './rHelpProviderBuiltin';
 import { RHelp } from './rHelpProviderCustom';
-import { clearWorkspace, loadWorkspace, saveWorkspace, WorkspaceDataProvider, WorkspaceItem } from './workspace';
+import { clearWorkspace, loadWorkspace, saveWorkspace, WorkspaceDataProvider, WorkspaceItem } from './workspaceViewer';
 import { AliasProvider } from './rHelpAliases';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
 

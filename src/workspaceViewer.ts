@@ -1,9 +1,11 @@
 import path = require('path');
+import os = require('os');
 import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window, workspace } from 'vscode';
 import { runTextInTerm } from './rTerminal';
-import { globalenv } from './session';
+import { globalenv, sessionDir } from './session';
+import { config } from './util';
 
-export interface WorkspaceAttr {
+interface WorkspaceAttr {
     [key: string]: {
         class: string[];
         type: string;
@@ -58,7 +60,21 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 				data[key].length
 			)) : [];
 
-		return items;
+		function sortItems(a: WorkspaceItem, b: WorkspaceItem) {
+			const priorityAttr: string[] = [
+				'data.frame',
+				'list',
+				'environment',
+				'data.table',
+				'tibble',
+				'tbl_df',
+				'tbl'
+			]
+
+			return priorityAttr.includes(a.contextValue) > priorityAttr.includes(b.contextValue) ? -1 : priorityAttr.includes(b.contextValue) > priorityAttr.includes(a.contextValue) ? 1 : 0 || a.label.localeCompare(b.label) || a.contextValue.localeCompare(b.contextValue);
+		}
+
+		return items.sort((a, b) => sortItems(a, b));
 	}
 }
 
@@ -74,17 +90,23 @@ export class WorkspaceItem extends TreeItem {
 		super(label, collapsibleState);
 		this.description = str;
 		this.tooltip = `${label} (${rClass}, length of ${length})`;
+		this.contextValue = rClass;
 	}
 }
 
 export function clearWorkspace(): void {
+	const removeHiddenItems: boolean = config().get('workspaceViewer.removeHiddenItems');
 	void window.showInformationMessage(
 		"Are you sure you want to clear the workspace? This cannot be reversed.",
 		"Confirm",
 		"Cancel"
 	).then(selection => {
 		if (selection == "Confirm") {
-			void runTextInTerm(`rm(list = ls())`)
+			if (removeHiddenItems) {
+				void runTextInTerm(`rm(list = ls(all.names = TRUE))`)
+			} else {
+				void runTextInTerm(`rm(list = ls())`)
+			}
 		}
 	})
 }
@@ -123,11 +145,27 @@ export function loadWorkspace(): void {
 }
 
 function getWorkspacePath(): string {
+	// Check if there is an active file
+	if (window.activeTextEditor) {
+		// Check if workspace folders exist
 		if (workspace.workspaceFolders) {
-			return workspace.workspaceFolders?.map(folder => folder.uri.path)[0]
-		} else if (window.activeTextEditor) {
+			// return current file's workspace folder
+			return workspace.getWorkspaceFolder(window.activeTextEditor.document.uri).uri.fsPath;
+		// Check if a filepath exists for current document
+		} else if (window.activeTextEditor.document.uri.fsPath) {
+			// return dir of current file
 			return path.dirname(window.activeTextEditor.document.uri.fsPath)
+		// Else return home dir
 		} else {
-			return process.env.USERPROFILE
+			return os.homedir()
 		}
+	} else {
+		// If workspace folders exist
+		if (workspace.workspaceFolders) {
+			// return first workspace folder
+			return workspace.workspaceFolders?.map(folder => folder.uri.path)[0]
+		} else {
+			return os.homedir()
+		}
+	}
 }
