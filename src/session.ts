@@ -26,6 +26,7 @@ let requestLockFile: string;
 let requestTimeStamp: number;
 let responseTimeStamp: number;
 export let sessionDir: string;
+export let workingDir: string;
 let pid: string;
 let globalenvFile: string;
 let globalenvLockFile: string;
@@ -513,6 +514,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 case 'attach': {
                     pid = String(request.pid);
                     sessionDir = path.join(request.tempdir, 'vscode-R');
+                    workingDir = request.wd;
                     plotDir = path.join(sessionDir, 'images');
                     plotView = String(request.plot);
                     console.info(`[updateRequest] attach PID: ${pid}`);

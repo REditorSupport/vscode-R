@@ -1,8 +1,7 @@
 import path = require('path');
-import os = require('os');
-import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window, workspace } from 'vscode';
+import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window } from 'vscode';
 import { runTextInTerm } from './rTerminal';
-import { globalenv, sessionDir } from './session';
+import { globalenv, workingDir } from './session';
 import { config } from './util';
 
 interface WorkspaceAttr {
@@ -13,7 +12,6 @@ interface WorkspaceAttr {
         str: string;
     }
 }
-
 export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 	private _onDidChangeTreeData: EventEmitter<void> = new EventEmitter();
 	readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
@@ -63,15 +61,15 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 		function sortItems(a: WorkspaceItem, b: WorkspaceItem) {
 			const priorityAttr: string[] = [
 				'data.frame',
-				'list',
-				'environment',
 				'data.table',
+				'environment',
+				'list',
 				'tibble',
 				'tbl_df',
 				'tbl'
 			]
 
-			return priorityAttr.includes(a.contextValue) > priorityAttr.includes(b.contextValue) ? -1 : priorityAttr.includes(b.contextValue) > priorityAttr.includes(a.contextValue) ? 1 : 0 || a.label.localeCompare(b.label) || a.contextValue.localeCompare(b.contextValue);
+			return priorityAttr.includes(a.contextValue) > priorityAttr.includes(b.contextValue) ? -1 : priorityAttr.includes(b.contextValue) > priorityAttr.includes(a.contextValue) ? 1 : 0 || a.label.localeCompare(b.label);
 		}
 
 		return items.sort((a, b) => sortItems(a, b));
@@ -113,7 +111,7 @@ export function clearWorkspace(): void {
 
 export function saveWorkspace(): void {
 	void window.showSaveDialog({
-		defaultUri: Uri.file(getWorkspacePath() + path.sep + 'workspace'),
+		defaultUri: Uri.file(workingDir + path.sep + 'workspace'),
 		filters: {
 			'Data': ['RData']
 		},
@@ -130,7 +128,7 @@ export function saveWorkspace(): void {
 
 export function loadWorkspace(): void {
 	void window.showOpenDialog({
-		defaultUri: Uri.file(getWorkspacePath()),
+		defaultUri: Uri.file(workingDir),
 		filters: {
 			'Data': ['RData'],
 		},
@@ -142,30 +140,4 @@ export function loadWorkspace(): void {
 			);
 		}
 	});
-}
-
-function getWorkspacePath(): string {
-	// Check if there is an active file
-	if (window.activeTextEditor) {
-		// Check if workspace folders exist
-		if (workspace.workspaceFolders) {
-			// return current file's workspace folder
-			return workspace.getWorkspaceFolder(window.activeTextEditor.document.uri).uri.fsPath;
-		// Check if a filepath exists for current document
-		} else if (window.activeTextEditor.document.uri.fsPath) {
-			// return dir of current file
-			return path.dirname(window.activeTextEditor.document.uri.fsPath)
-		// Else return home dir
-		} else {
-			return os.homedir()
-		}
-	} else {
-		// If workspace folders exist
-		if (workspace.workspaceFolders) {
-			// return first workspace folder
-			return workspace.workspaceFolders?.map(folder => folder.uri.path)[0]
-		} else {
-			return os.homedir()
-		}
-	}
 }
