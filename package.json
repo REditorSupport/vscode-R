@@ -677,7 +677,7 @@
     "@typescript-eslint/eslint-plugin": "^4.8.1",
     "@typescript-eslint/parser": "^4.8.1",
     "copy-webpack-plugin": "^6.3.2",
-    "devreplay": "^1.9.2",
+    "devreplay": "^1.9.3",
     "eslint": "^7.14.0",
     "eslint-plugin-jsdoc": "^30.7.8",
     "mocha": "^8.2.1",
