@@ -69,7 +69,13 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 				'tbl'
 			]
 
-			return priorityAttr.includes(a.contextValue) > priorityAttr.includes(b.contextValue) ? -1 : priorityAttr.includes(b.contextValue) > priorityAttr.includes(a.contextValue) ? 1 : 0 || a.label.localeCompare(b.label);
+			if (priorityAttr.includes(a.contextValue) > priorityAttr.includes(b.contextValue)) {
+				return -1
+			} else if (priorityAttr.includes(b.contextValue) > priorityAttr.includes(a.contextValue)) {
+				return 1
+			} else {
+				return 0 || a.label.localeCompare(b.label);
+			}
 		}
 
 		return items.sort((a, b) => sortItems(a, b));
