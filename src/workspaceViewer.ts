@@ -60,13 +60,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 
 		function sortItems(a: WorkspaceItem, b: WorkspaceItem) {
 			const priorityAttr: string[] = [
-				'data.frame',
-				'data.table',
-				'environment',
 				'list',
-				'tibble',
-				'tbl_df',
-				'tbl'
+				'environment'
 			]
 
 			if (priorityAttr.includes(a.contextValue) > priorityAttr.includes(b.contextValue)) {
@@ -94,7 +89,7 @@ export class WorkspaceItem extends TreeItem {
 		super(label, collapsibleState);
 		this.description = str;
 		this.tooltip = `${label} (${rClass}, length of ${length})`;
-		this.contextValue = rClass;
+		this.contextValue = type;
 	}
 }
 
