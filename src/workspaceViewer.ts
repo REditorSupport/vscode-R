@@ -101,9 +101,9 @@ export function clearWorkspace(): void {
 	).then(selection => {
 		if (selection == "Confirm") {
 			if (removeHiddenItems) {
-				void runTextInTerm(`rm(list = ls(all.names = TRUE))`)
+				return runTextInTerm(`rm(list = ls(all.names = TRUE))`)
 			} else {
-				void runTextInTerm(`rm(list = ls())`)
+				return runTextInTerm(`rm(list = ls())`)
 			}
 		}
 	})
@@ -111,7 +111,7 @@ export function clearWorkspace(): void {
 
 export function saveWorkspace(): void {
 	void window.showSaveDialog({
-		defaultUri: Uri.file(workingDir + path.sep + 'workspace.RData'),
+		defaultUri: Uri.file(`${workingDir}${path.sep}workspace.RData`),
 		filters: {
 			'Data': ['RData']
 		},
@@ -119,7 +119,7 @@ export function saveWorkspace(): void {
 	}
 	).then((uri: Uri | undefined) => {
 		if (uri) {
-			void runTextInTerm(
+			return runTextInTerm(
 				`save.image("${(uri.fsPath.split(path.sep).join(path.posix.sep))}")`
 			);
 		}
@@ -135,7 +135,7 @@ export function loadWorkspace(): void {
 		title : 'Load workspace'
 	}).then((uri: Uri[] | undefined) => {
 		if (uri) {
-			void runTextInTerm(
+			return runTextInTerm(
 				`load("${(uri[0].fsPath.split(path.sep).join(path.posix.sep))}")`
 			);
 		}
