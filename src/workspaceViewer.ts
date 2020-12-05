@@ -95,13 +95,13 @@ export class WorkspaceItem extends TreeItem {
 
 export function clearWorkspace(): void {
 	const removeHiddenItems: boolean = config().get('workspaceViewer.removeHiddenItems');
-	if (globalenv != undefined) {
+	if (globalenv !== undefined) {
 		void window.showInformationMessage(
 			"Are you sure you want to clear the workspace? This cannot be reversed.",
 			"Confirm",
 			"Cancel"
 		).then(selection => {
-			if (selection == "Confirm") {
+			if (selection === "Confirm") {
 				if (removeHiddenItems) {
 					return runTextInTerm(`rm(list = ls(all.names = TRUE))`)
 				} else {
@@ -113,7 +113,7 @@ export function clearWorkspace(): void {
 }
 
 export function saveWorkspace(): void {
-	if (globalenv != undefined) {
+	if (globalenv !== undefined) {
 		void window.showSaveDialog({
 			defaultUri: Uri.file(`${workingDir}${path.sep}workspace.RData`),
 			filters: {
@@ -132,7 +132,7 @@ export function saveWorkspace(): void {
 }
 
 export function loadWorkspace(): void {
-	if (globalenv != undefined) {
+	if (globalenv !== undefined) {
 		void window.showOpenDialog({
 			defaultUri: Uri.file(workingDir),
 			filters: {
