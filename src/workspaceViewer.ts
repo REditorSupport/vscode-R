@@ -95,50 +95,56 @@ export class WorkspaceItem extends TreeItem {
 
 export function clearWorkspace(): void {
 	const removeHiddenItems: boolean = config().get('workspaceViewer.removeHiddenItems');
-	void window.showInformationMessage(
-		"Are you sure you want to clear the workspace? This cannot be reversed.",
-		"Confirm",
-		"Cancel"
-	).then(selection => {
-		if (selection == "Confirm") {
-			if (removeHiddenItems) {
-				return runTextInTerm(`rm(list = ls(all.names = TRUE))`)
-			} else {
-				return runTextInTerm(`rm(list = ls())`)
+	if (globalenv != undefined) {
+		void window.showInformationMessage(
+			"Are you sure you want to clear the workspace? This cannot be reversed.",
+			"Confirm",
+			"Cancel"
+		).then(selection => {
+			if (selection == "Confirm") {
+				if (removeHiddenItems) {
+					return runTextInTerm(`rm(list = ls(all.names = TRUE))`)
+				} else {
+					return runTextInTerm(`rm(list = ls())`)
+				}
 			}
-		}
-	})
+		})
+	}
 }
 
 export function saveWorkspace(): void {
-	void window.showSaveDialog({
-		defaultUri: Uri.file(`${workingDir}${path.sep}workspace.RData`),
-		filters: {
-			'Data': ['RData']
-		},
-		title: 'Save workspace'
-	}
-	).then((uri: Uri | undefined) => {
-		if (uri) {
-			return runTextInTerm(
-				`save.image("${(uri.fsPath.split(path.sep).join(path.posix.sep))}")`
-			);
+	if (globalenv != undefined) {
+		void window.showSaveDialog({
+			defaultUri: Uri.file(`${workingDir}${path.sep}workspace.RData`),
+			filters: {
+				'Data': ['RData']
+			},
+			title: 'Save workspace'
 		}
-	});
+		).then((uri: Uri | undefined) => {
+			if (uri) {
+				return runTextInTerm(
+					`save.image("${(uri.fsPath.split(path.sep).join(path.posix.sep))}")`
+				);
+			}
+		});
+	}
 }
 
 export function loadWorkspace(): void {
-	void window.showOpenDialog({
-		defaultUri: Uri.file(workingDir),
-		filters: {
-			'Data': ['RData'],
-		},
-		title : 'Load workspace'
-	}).then((uri: Uri[] | undefined) => {
-		if (uri) {
-			return runTextInTerm(
-				`load("${(uri[0].fsPath.split(path.sep).join(path.posix.sep))}")`
-			);
-		}
-	});
+	if (globalenv != undefined) {
+		void window.showOpenDialog({
+			defaultUri: Uri.file(workingDir),
+			filters: {
+				'Data': ['RData'],
+			},
+			title : 'Load workspace'
+		}).then((uri: Uri[] | undefined) => {
+			if (uri) {
+				return runTextInTerm(
+					`load("${(uri[0].fsPath.split(path.sep).join(path.posix.sep))}")`
+				);
+			}
+		});
+	}
 }
