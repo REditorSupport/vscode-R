@@ -1,5 +1,25 @@
 # Change Log
 
+## 1.6.2
+
+* Improve style of help pages #481
+  * All help pages: center headings
+  * Normal functino help pages: hide (rather useless) header bar
+  * All help pages: hide image placeholders
+  * Manuel Pages: hide page-internal links
+  * Manual Pages: suppress mismatching header styles embedded in the html
+* Reorganize helppanel, add `?` function #477
+* Modify config #467
+* Fix bug that would leave background R processes running #475
+
+* Fix whole of style (Extends #361) (#474)
+
+### Thank you for contributors works
+* @markbaas: Fix The Ctrl+Enter shortcut does not work properly when a non-comment line in a function definition contains the "#" character. #462 (Fix #443)  
+* @kar9222: 
+  * Update README #480 (Fix #465)
+  * RMarkdown: Add run & navigation commands. More customization. Refactor. #465
+
 ## 1.6.1
 
 This version includes minor fix to stable new functions
