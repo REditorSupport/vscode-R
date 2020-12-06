@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 import { ChildProcess, exec } from 'child_process';
 import * as http from 'http';
-import * as kill from 'tree-kill'
+import * as kill from 'tree-kill';
 
 import * as rHelpPanel from './rHelpPanel';
 

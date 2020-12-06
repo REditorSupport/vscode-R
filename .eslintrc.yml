@@ -12,3 +12,9 @@ parserOptions:
 plugins:
   - '@typescript-eslint'
   - 'jsdoc'
+rules:
+    semi: "error"
+    no-extra-semi: "warn"
+    curly: "warn"
+    quotes: ["error", "single", { "allowTemplateLiterals": true } ]
+    eqeqeq: "error"
