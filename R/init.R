@@ -93,6 +93,7 @@ if (interactive() &&
                 is.environment(obj)) &&
                 !is.null(names(obj))) {
                 info$names <- names(obj)
+                info$dim  <- dim(obj)
               }
               if (isS4(obj)) {
                 info$slots <- slotNames(obj)

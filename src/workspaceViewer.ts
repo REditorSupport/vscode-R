@@ -9,7 +9,8 @@ interface WorkspaceAttr {
         class: string[];
         type: string;
         length: number;
-        str: string;
+		str: string;
+		dim?: number[]
     }
 }
 export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
@@ -37,7 +38,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 			rClass: string,
 			str: string,
 			type: string,
-			length: number
+			length: number,
+			dim?: number[]
 		): WorkspaceItem => {
 			return new WorkspaceItem(
 				key,
@@ -45,7 +47,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 				str,
 				type,
 				length,
-				TreeItemCollapsibleState.None
+				TreeItemCollapsibleState.None,
+				dim,
 			);
 		};
 
@@ -55,7 +58,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 				data[key].class[0],
 				data[key].str,
 				data[key].type,
-				data[key].length
+				data[key].length,
+				data[key].dim,
 			)) : [];
 
 		function sortItems(a: WorkspaceItem, b: WorkspaceItem) {
@@ -84,12 +88,21 @@ export class WorkspaceItem extends TreeItem {
 		str: string,
 		type: string,
 		length: number,
-		collapsibleState: TreeItemCollapsibleState
+		collapsibleState: TreeItemCollapsibleState,
+		dim?: number[]
 	) {
 		super(label, collapsibleState);
-		this.description = str;
+		this.description = this.getDescription(dim, str);
 		this.tooltip = `${label} (${rClass}, length of ${length})`;
 		this.contextValue = type;
+	}
+
+	private getDescription(dim: number[], str: string): string {
+		if (dim !== undefined) {
+			return `${dim[0]} obs. of ${dim[1]} variables`
+		} else {
+			return str
+		}
 	}
 }
 
@@ -97,11 +110,11 @@ export function clearWorkspace(): void {
 	const removeHiddenItems: boolean = config().get('workspaceViewer.removeHiddenItems');
 	if (globalenv !== undefined) {
 		void window.showInformationMessage(
-			"Are you sure you want to clear the workspace? This cannot be reversed.",
-			"Confirm",
-			"Cancel"
+			'Are you sure you want to clear the workspace? This cannot be reversed.',
+			'Confirm',
+			'Cancel'
 		).then(selection => {
-			if (selection === "Confirm") {
+			if (selection === 'Confirm') {
 				if (removeHiddenItems) {
 					return runTextInTerm(`rm(list = ls(all.names = TRUE))`)
 				} else {
