@@ -97,8 +97,8 @@ if (interactive() &&
               if (isS4(obj)) {
                 info$slots <- slotNames(obj)
               }
-              if (is.list(obj) ||
-                  is.array(obj)) {
+              if (is.list(obj) &&
+                  !is.null(dim(obj))) {
                 info$dim  <- dim(obj)
               }
               info

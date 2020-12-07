@@ -100,9 +100,7 @@ export class WorkspaceItem extends TreeItem {
 
 	private getDescription(dim: number[], str: string, rClass: string): string {
 		if (dim !== undefined) {
-			if (dim[1] === undefined) {
-				return `${rClass}: ${dim[0]} obs.`;
-			} else if (dim[0] === 1) {
+			if (dim[1] === 1) {
 				return `${rClass}: ${dim[0]} obs. of ${dim[1]} variable`;
 			}  else {
 				return `${rClass}: ${dim[0]} obs. of ${dim[1]} variables`;
