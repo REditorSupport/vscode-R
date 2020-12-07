@@ -13,6 +13,7 @@ interface WorkspaceAttr {
 		dim?: number[]
     }
 }
+
 export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 	private _onDidChangeTreeData: EventEmitter<void> = new EventEmitter();
 	readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
@@ -66,12 +67,12 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 			const priorityAttr: string[] = [
 				'list',
 				'environment'
-			]
+			];
 
 			if (priorityAttr.includes(a.contextValue) > priorityAttr.includes(b.contextValue)) {
-				return -1
+				return -1;
 			} else if (priorityAttr.includes(b.contextValue) > priorityAttr.includes(a.contextValue)) {
-				return 1
+				return 1;
 			} else {
 				return 0 || a.label.localeCompare(b.label);
 			}
@@ -92,16 +93,22 @@ export class WorkspaceItem extends TreeItem {
 		dim?: number[]
 	) {
 		super(label, collapsibleState);
-		this.description = this.getDescription(dim, str);
+		this.description = this.getDescription(dim, str, rClass);
 		this.tooltip = `${label} (${rClass}, length of ${length})`;
 		this.contextValue = type;
 	}
 
-	private getDescription(dim: number[], str: string): string {
+	private getDescription(dim: number[], str: string, rClass: string): string {
 		if (dim !== undefined) {
-			return `${dim[0]} obs. of ${dim[1]} variables`
+			if (dim[1] === undefined) {
+				return `${rClass}: ${dim[0]} obs.`;
+			} else if (dim[0] === 1) {
+				return `${rClass}: ${dim[0]} obs. of ${dim[1]} variable`;
+			}  else {
+				return `${rClass}: ${dim[0]} obs. of ${dim[1]} variables`;
+			}
 		} else {
-			return str
+			return str;
 		}
 	}
 }
@@ -116,12 +123,12 @@ export function clearWorkspace(): void {
 		).then(selection => {
 			if (selection === 'Confirm') {
 				if (removeHiddenItems) {
-					return runTextInTerm(`rm(list = ls(all.names = TRUE))`)
+					return runTextInTerm(`rm(list = ls(all.names = TRUE))`);
 				} else {
-					return runTextInTerm(`rm(list = ls())`)
+					return runTextInTerm(`rm(list = ls())`);
 				}
 			}
-		})
+		});
 	}
 }
 

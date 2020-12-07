@@ -719,9 +719,9 @@
           "default": 8,
           "description": "Delay in milliseconds before sending each line to rterm (only applies if r.bracketedPaste is false)"
         },
-        "r.workspaceViewer.removeHiddenItems" : {
-          "type" : "boolean",
-          "default" : false,
+        "r.workspaceViewer.removeHiddenItems": {
+          "type": "boolean",
+          "default": false,
           "description": "Remove hidden items when clearing workspace."
         }
       }
