@@ -56,6 +56,15 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
         rWorkspace
     );
 
+    // creates a custom context value for the workspace view
+    // only shows view when session watcher is enabled
+    const sessionBool = workspace.getConfiguration('r')['sessionWatcher'];
+    if (sessionBool === true) {
+        void commands.executeCommand('setContext', 'r.WorkspaceViewer:show', true);
+    } else {
+        void commands.executeCommand('setContext', 'r.WorkspaceViewer:show', false);
+    }
+
     // used to export an interface to the help panel
     // used e.g. by vscode-r-debugger to show the help panel from within debug sessions
     const rExtension = new RExtension();
