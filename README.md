@@ -344,6 +344,7 @@ I hope you will join us.
 * [@Ladvien](https://github.com/Ladvien)
 * [@renkun-ken](https://github.com/renkun-ken)
 * [@MilesMcBain](https://github.com/MilesMcBain)
+* [@ManuelHentschel](https://github.com/ManuelHentschel)
 
 ## FAQ
 
