@@ -24,6 +24,7 @@ import * as path from 'path';
 import { HelpPanel, HelpPanelOptions, HelpProvider, AliasProviderArgs, HelpSubMenu } from './rHelpPanel';
 import { RHelpClient } from './rHelpProviderBuiltin';
 import { RHelp } from './rHelpProviderCustom';
+import { clearWorkspace, loadWorkspace, saveWorkspace, WorkspaceDataProvider, WorkspaceItem } from './workspaceViewer';
 import { AliasProvider } from './rHelpAliases';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
 
@@ -43,10 +44,17 @@ const roxygenTagCompletionItems = [
 
 
 export let globalRHelpPanel: HelpPanel | null = null;
+export const rWorkspace = new WorkspaceDataProvider();
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export async function activate(context: ExtensionContext): Promise<RExtension> {
+
+    // register the R Workspace tree view
+    window.registerTreeDataProvider(
+        'workspaceViewer',
+        rWorkspace
+    );
 
     // used to export an interface to the help panel
     // used e.g. by vscode-r-debugger to show the help panel from within debug sessions
@@ -279,6 +287,12 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
         commands.registerCommand('r.runCommandWithEditorPath', runCommandWithEditorPath),
         commands.registerCommand('r.runCommand', runCommand),
         commands.registerCommand('r.launchAddinPicker', launchAddinPicker),
+        commands.registerCommand('r.workspaceViewer.refreshEntry', () => rWorkspace.refresh()),
+        commands.registerCommand('r.workspaceViewer.view', (node: WorkspaceItem) => runTextInTerm(`View(${node.label})`)),
+        commands.registerCommand('r.workspaceViewer.remove', (node: WorkspaceItem) => runTextInTerm(`rm(${node.label})`)),
+        commands.registerCommand('r.workspaceViewer.clear', clearWorkspace),
+        commands.registerCommand('r.workspaceViewer.load', loadWorkspace),
+        commands.registerCommand('r.workspaceViewer.save', saveWorkspace),
         window.onDidCloseTerminal(deleteTerminal),
     );
 

@@ -97,6 +97,10 @@ if (interactive() &&
               if (isS4(obj)) {
                 info$slots <- slotNames(obj)
               }
+              if (is.list(obj) &&
+                  !is.null(dim(obj))) {
+                info$dim  <- dim(obj)
+              }
               info
             }, all.names = FALSE, USE.NAMES = TRUE)
             jsonlite::write_json(objs, globalenv_file, pretty = FALSE)

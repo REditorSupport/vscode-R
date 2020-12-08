@@ -16,6 +16,7 @@ import { config } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { globalRHelpPanel } from './extension';
+import { rWorkspace } from './extension';
 
 export let globalenv: any;
 let resDir: string;
@@ -25,6 +26,7 @@ let requestLockFile: string;
 let requestTimeStamp: number;
 let responseTimeStamp: number;
 export let sessionDir: string;
+export let workingDir: string;
 let pid: string;
 let globalenvFile: string;
 let globalenvLockFile: string;
@@ -173,6 +175,7 @@ async function updateGlobalenv() {
         if (fs.existsSync(globalenvFile)) {
             const content = await fs.readFile(globalenvFile, 'utf8');
             globalenv = JSON.parse(content);
+            rWorkspace.refresh();
             console.info('[updateGlobalenv] Done');
         } else {
             console.info('[updateGlobalenv] File not found');
@@ -511,6 +514,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 case 'attach': {
                     pid = String(request.pid);
                     sessionDir = path.join(request.tempdir, 'vscode-R');
+                    workingDir = request.wd;
                     plotDir = path.join(sessionDir, 'images');
                     plotView = String(request.plot);
                     console.info(`[updateRequest] attach PID: ${pid}`);

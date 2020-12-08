@@ -63,6 +63,31 @@
   ],
   "main": "./dist/extension",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "workspaceViewer",
+          "title": "R",
+          "icon": "./images/Rlogo.svg"
+        }
+      ]
+    },
+    "views": {
+      "workspaceViewer": [
+        {
+          "id": "workspaceViewer",
+          "name": "Workspace",
+          "icon": "./images/Rlogo.svg",
+          "contextualTitle": "R"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "workspaceViewer",
+        "contents": "R workspace is empty."
+      }
+    ],
     "languages": [
       {
         "id": "r",
@@ -220,6 +245,36 @@
       }
     ],
     "commands": [
+      {
+        "command": "r.workspaceViewer.refreshEntry",
+        "title": "Manual Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "r.workspaceViewer.view",
+        "title": "View",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "r.workspaceViewer.clear",
+        "title": "Clear environment",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "r.workspaceViewer.remove",
+        "title": "Remove",
+        "icon": "$(close)"
+      },
+      {
+        "command": "r.workspaceViewer.save",
+        "title": "Save workspace",
+        "icon": "$(save)"
+      },
+      {
+        "command": "r.workspaceViewer.load",
+        "title": "Load workspace",
+        "icon": "$(folder-opened)"
+      },
       {
         "command": "r.showHelp",
         "title": "R: Show help"
@@ -527,6 +582,34 @@
           "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
         }
+      ],
+      "view/item/context": [
+        {
+          "command": "r.workspaceViewer.view",
+          "group": "inline"
+        },
+        {
+          "command": "r.workspaceViewer.remove",
+          "group": "inline"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "r.workspaceViewer.load",
+          "group": "navigation@0"
+        },
+        {
+          "command": "r.workspaceViewer.save",
+          "group": "navigation@1"
+        },
+        {
+          "command": "r.workspaceViewer.clear",
+          "group": "navigation@2"
+        },
+        {
+          "command": "r.workspaceViewer.refreshEntry",
+          "group": "navigation@3"
+        }
       ]
     },
     "configuration": {
@@ -652,6 +735,11 @@
           "type": "integer",
           "default": 8,
           "description": "Delay in milliseconds before sending each line to rterm (only applies if r.bracketedPaste is false)"
+        },
+        "r.workspaceViewer.removeHiddenItems": {
+          "type": "boolean",
+          "default": false,
+          "description": "Remove hidden items when clearing workspace."
         }
       }
     }
