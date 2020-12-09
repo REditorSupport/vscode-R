@@ -4,7 +4,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 
-import { commands, window, QuickPickItem, Uri, Webview, WebviewPanel, WebviewOptions, WebviewPanelOnDidChangeViewStateEvent, ViewColumn } from 'vscode';
+import { commands, window, QuickPickItem, Uri, Webview, WebviewPanel, WebviewOptions, WebviewPanelOptions, WebviewPanelOnDidChangeViewStateEvent, ViewColumn } from 'vscode';
 
 import * as cheerio from 'cheerio';
 
@@ -13,6 +13,7 @@ import * as hljs from 'highlight.js';
 import { config } from './util';
 
 import * as api from './api';
+import { downloadAndUnzipVSCode } from 'vscode-test';
 export { HelpSubMenu } from './api';
 
 //// Declaration of HelpProvider used by the Help Panel
@@ -395,11 +396,12 @@ export class HelpPanel implements api.HelpPanel {
 	private getWebview(): Webview {
 		// create webview if necessary
 		if(!this.panel){
-			const webViewOptions: WebviewOptions = {
-				enableScripts: true,
+			const webViewOptions: WebviewOptions & WebviewPanelOptions = {
+        enableScripts: true,
+        enableFindWidget: true
 			};
-			this.panel = window.createWebviewPanel('rhelp', 'R Help', this.viewColumn, webViewOptions);
-
+      this.panel = window.createWebviewPanel('rhelp', 'R Help', this.viewColumn, webViewOptions);
+      
 			// virtual uris used to access local files
 			this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);
 			this.webviewStyleUri = this.panel.webview.asWebviewUri(this.webviewStyleFile);
