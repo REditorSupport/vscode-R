@@ -4,13 +4,6 @@
 // @ts-ignore
 const vscode = acquireVsCodeApi(); 
 
-function postTextMessage(text: string){
-    vscode.postMessage({
-        message: 'text',
-        text: text
-    });
-}
-
 // notify vscode when mouse buttons are clicked
 // used to implement back/forward on mouse buttons 3/4
 window.onmousedown = (ev) => {
