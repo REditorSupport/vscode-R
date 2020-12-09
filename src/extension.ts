@@ -302,7 +302,8 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
     const rmdCompletionProvider = new RMarkdownCompletionItemProvider();
     languages.registerCompletionItemProvider('rmd', rmdCompletionProvider, ' ', ',');
 
-    if (config().get<boolean>('sessionWatcher')) {
+    const enabledSessionWatcher = config().get<boolean>('sessionWatcher');
+    if (enabledSessionWatcher) {
         console.info('Initialize session watcher');
         languages.registerHoverProvider('r', {
             provideHover(document, position, ) {
@@ -361,6 +362,10 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
                 return items;
             },
         },                                       '', '$', '@', '"', '\'');
+
+        // creates a custom context value for the workspace view
+        // only shows view when session watcher is enabled
+        void commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enabledSessionWatcher);
 
         console.info('Create sessionStatusBarItem');
         const sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);

@@ -78,7 +78,8 @@
           "id": "workspaceViewer",
           "name": "Workspace",
           "icon": "./images/Rlogo.svg",
-          "contextualTitle": "R"
+          "contextualTitle": "R",
+          "when": "r.WorkspaceViewer:show"
         }
       ]
     },
@@ -729,7 +730,7 @@
         "r.sessionWatcher": {
           "type": "boolean",
           "default": false,
-          "description": "Enable R session watcher (experimental). Restart required to take effect."
+          "description": "Enable R session watcher (experimental). Required for workspace viewer. Restart required to take effect."
         },
         "r.rtermSendDelay": {
           "type": "integer",
