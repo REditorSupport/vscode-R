@@ -58,7 +58,6 @@
     "onCommand:r.runCommandWithEditorPath",
     "onCommand:r.runCommand",
     "onCommand:r.showHelp",
-    "onCommand:editor.action.webvieweditor.showFind",
     "onCommand:r.helpPanel.back",
     "onCommand:r.helpPanel.forward"
   ],
