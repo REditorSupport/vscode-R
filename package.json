@@ -597,29 +597,35 @@
       "view/item/context": [
         {
           "command": "r.workspaceViewer.view",
-          "group": "inline"
+          "group": "inline",
+          "when": "view == workspaceViewer"
         },
         {
           "command": "r.workspaceViewer.remove",
-          "group": "inline"
+          "group": "inline",
+          "when": "view == workspaceViewer"
         }
       ],
       "view/title": [
         {
           "command": "r.workspaceViewer.load",
-          "group": "navigation@0"
+          "group": "navigation@0",
+          "when": "view == workspaceViewer"
         },
         {
           "command": "r.workspaceViewer.save",
-          "group": "navigation@1"
+          "group": "navigation@1",
+          "when": "view == workspaceViewer"
         },
         {
           "command": "r.workspaceViewer.clear",
-          "group": "navigation@2"
+          "group": "navigation@2",
+          "when": "view == workspaceViewer"
         },
         {
           "command": "r.workspaceViewer.refreshEntry",
-          "group": "navigation@3"
+          "group": "navigation@3",
+          "when": "view == workspaceViewer"
         }
       ]
     },
