@@ -13,7 +13,7 @@ import * as hljs from 'highlight.js';
 import { config } from './util';
 
 import * as api from './api';
-import { downloadAndUnzipVSCode } from 'vscode-test';
+
 export { HelpSubMenu } from './api';
 
 //// Declaration of HelpProvider used by the Help Panel
