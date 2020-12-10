@@ -6,6 +6,9 @@ on:
   push:
     branches: ["master"]
 
+env:
+  FILE_OUT: r-latest.vsix
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,14 +17,11 @@ jobs:
       - run: npm install
       - uses: lannonbr/vsce-action@master
         with:
-          args: "package"
-      - name: Identify output file # can be retrieved as steps.filenames.outputs.file_out
-        id: filenames
-        run: echo "::set-output name=file_out::$(ls | grep "^.*\.vsix$" | head -1)"
+          args: "package -o $FILE_OUT"
       - uses: actions/upload-artifact@v1
         with:
-          name: ${{ steps.filenames.outputs.file_out }}
-          path: ${{ steps.filenames.outputs.file_out }}
+          name: "${{ env.FILE_OUT }}"
+          path: "${{ env.FILE_OUT }}"
 
   pre-release:
     name: Pre-Release
@@ -29,20 +29,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Update tag
+        uses: richardsimko/update-tag@v1
+        with:
+          tag_name: latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Download artifacts
         uses: actions/download-artifact@v2
         with:
           path: "artifacts/"
-      - name: Get version from tag
-        id: get_version
-        run: echo ::set-output name=version::${GITHUB_REF/refs\/tags\/v/}
-      - name: Create release
-        uses: marvinpinto/action-automatic-releases@latest
+      - name: Upload artifacts
+        uses: meeDamian/github-release@2.0
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          title: "Development Build"
-          automatic_release_tag: "latest"
-          files: "artifacts/*/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: latest
+          commitish: master
+          name: Development Build
+          body: Contains the vsix-file from the latest push to master.
           prerelease: true
-          draft: false 
-
+          files: "artifacts/*/*"
+          gzip: false
+          allow_override: true
