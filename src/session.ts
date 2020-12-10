@@ -246,6 +246,7 @@ async function showWebView(file: string, title: string, viewer: string | boolean
             },
             {
                 enableScripts: true,
+                enableFindWidget: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(dir)],
             });
@@ -269,6 +270,7 @@ async function showDataView(source: string, type: string, title: string, file: s
             },
             {
                 enableScripts: true,
+                enableFindWidget: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
             });
@@ -282,6 +284,7 @@ async function showDataView(source: string, type: string, title: string, file: s
             },
             {
                 enableScripts: true,
+                enableFindWidget: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
             });
