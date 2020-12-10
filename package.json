@@ -80,6 +80,12 @@
           "icon": "./images/Rlogo.svg",
           "contextualTitle": "R",
           "when": "r.WorkspaceViewer:show"
+        },
+        {
+          "id": "rHelpPages",
+          "name": "R Help Pages",
+          "contextualTitle": "R",
+          "when": "r.WorkspaceViewer:show"
         }
       ]
     },
@@ -87,6 +93,10 @@
       {
         "view": "workspaceViewer",
         "contents": "R workspace is empty."
+      },
+      {
+        "view": "rHelpPages",
+        "contents": "R Help Pages"
       }
     ],
     "languages": [

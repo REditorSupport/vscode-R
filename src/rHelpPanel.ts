@@ -88,7 +88,7 @@ export interface HelpPanelOptions {
 }
 
 // returned when parsing R documentation's index files
-interface IndexFileEntry extends QuickPickItem {
+export interface IndexFileEntry extends QuickPickItem {
 	href?: string
 }
 
@@ -327,7 +327,7 @@ export class HelpPanel implements api.HelpPanel {
 	}
 
 	// shows help for package and function name
-	private showHelpForFunctionName(pkgName: string, fncName: string): Promise<boolean> {
+	public showHelpForFunctionName(pkgName: string, fncName: string): Promise<boolean> {
 
 		let helpFile: HelpFile|Promise<HelpFile>;
 
@@ -573,7 +573,7 @@ export class HelpPanel implements api.HelpPanel {
 
 	// retrieve and parse an index file
 	// (either list of all packages, or documentation entries of a package)
-	private async getParsedIndexFile(requestPath: string): Promise<IndexFileEntry[]> {
+	public async getParsedIndexFile(requestPath: string): Promise<IndexFileEntry[]> {
 		// only read and parse file if not cached yet
 		if(!this.cachedIndexFiles.has(requestPath)){
 			const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);

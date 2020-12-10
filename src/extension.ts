@@ -28,6 +28,8 @@ import { clearWorkspace, loadWorkspace, saveWorkspace, WorkspaceDataProvider, Wo
 import { AliasProvider } from './rHelpAliases';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
 
+import { HelpViewProvider } from './rHelpView';
+
 const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
 
 // Get with names(roxygen2:::default_tags())
@@ -55,6 +57,7 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
         'workspaceViewer',
         rWorkspace
     );
+
 
     // used to export an interface to the help panel
     // used e.g. by vscode-r-debugger to show the help panel from within debug sessions
@@ -113,6 +116,10 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
         rHelpPanel.goForward();
     }));
 
+    window.registerTreeDataProvider(
+        'rHelpPages',
+        new HelpViewProvider(rHelpPanel)
+    );
 
 
 
