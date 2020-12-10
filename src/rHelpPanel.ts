@@ -397,11 +397,11 @@ export class HelpPanel implements api.HelpPanel {
 		// create webview if necessary
 		if(!this.panel){
 			const webViewOptions: WebviewOptions & WebviewPanelOptions = {
-        enableScripts: true,
-        enableFindWidget: true
+				enableScripts: true,
+				enableFindWidget: true
 			};
-      this.panel = window.createWebviewPanel('rhelp', 'R Help', this.viewColumn, webViewOptions);
-      
+			this.panel = window.createWebviewPanel('rhelp', 'R Help', this.viewColumn, webViewOptions);
+
 			// virtual uris used to access local files
 			this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);
 			this.webviewStyleUri = this.panel.webview.asWebviewUri(this.webviewStyleFile);
