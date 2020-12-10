@@ -291,7 +291,7 @@ export async function getAddinPickerItems(): Promise<AddinItem[]> {
 
     const addinItems = addins.map((x) => {
       return {
-        alwaysShow: true,
+        alwaysShow: false,
         description: `{${x.package}}`,
         label: x.name,
         detail: x.description,
