@@ -281,6 +281,11 @@
         "title": "R: Show help"
       },
       {
+        "command": "editor.action.webvieweditor.showFind",
+        "title": "R Help Panel: Find in Topic",
+        "icon": "$(search)"
+      },
+      {
         "command": "r.helpPanel.back",
         "title": "R Help Panel: Go Back",
         "icon": "$(arrow-left)"
@@ -571,6 +576,11 @@
         {
           "when": "editorLangId == rmd",
           "command": "r.knitRmd",
+          "group": "navigation"
+        },
+        {
+          "command": "editor.action.webvieweditor.showFind",
+          "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
         },
         {
