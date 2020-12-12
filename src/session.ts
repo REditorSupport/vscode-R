@@ -8,7 +8,7 @@ import fs = require('fs-extra');
 import os = require('os');
 import path = require('path');
 import { URL } from 'url';
-import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
+import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
@@ -38,6 +38,8 @@ let plotTimeStamp: number;
 let plotDir: string;
 let globalEnvWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
+let activeBrowserPanel: WebviewPanel;
+let activeBrowserUrl: string;
 
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
@@ -206,6 +208,16 @@ function showBrowser(url: string, title: string, viewer: string | boolean) {
                     },
                 ],
             });
+        panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
+            if (e.webviewPanel.active) {
+                activeBrowserPanel = panel;
+                activeBrowserUrl = url;
+            } else {
+                activeBrowserPanel = undefined;
+                activeBrowserUrl = undefined;
+            }
+            void commands.executeCommand('setContext', 'r.browser.active', e.webviewPanel.active);
+        });
         panel.webview.html = getBrowserHtml(url);
     }
     console.info('[showBrowser] Done');
@@ -231,6 +243,21 @@ function getBrowserHtml(url: string) {
 </body>
 </html>
 `;
+}
+
+export function refreshBrowser():void {
+    console.log('[refreshBrowser]');
+    if (activeBrowserPanel) {
+        activeBrowserPanel.webview.html = '';
+        activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserUrl);
+    }
+}
+
+export function openExternalBrowser():void {
+    console.log('[openExternalBrowser]');
+    if (activeBrowserUrl) {
+        void env.openExternal(Uri.parse(activeBrowserUrl));
+    }
 }
 
 async function showWebView(file: string, title: string, viewer: string | boolean) {
