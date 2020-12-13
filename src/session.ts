@@ -7,8 +7,7 @@
 import fs = require('fs-extra');
 import os = require('os');
 import path = require('path');
-import { URL } from 'url';
-import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
+import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
@@ -38,6 +37,9 @@ let plotTimeStamp: number;
 let plotDir: string;
 let globalEnvWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
+let activeBrowserPanel: WebviewPanel;
+let activeBrowserUri: Uri;
+let activeBrowserExternalUri: Uri;
 
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
@@ -183,12 +185,13 @@ async function updateGlobalenv() {
     }
 }
 
-function showBrowser(url: string, title: string, viewer: string | boolean) {
+async function showBrowser(url: string, title: string, viewer: string | boolean) {
     console.info(`[showBrowser] uri: ${url}, viewer: ${viewer.toString()}`);
+    const uri = Uri.parse(url);
     if (viewer === false) {
-        void env.openExternal(Uri.parse(url));
+        void env.openExternal(uri);
     } else {
-        const port = parseInt(new URL(url).port);
+        const externalUri = await env.asExternalUri(uri);
         const panel = window.createWebviewPanel(
             'browser',
             title,
@@ -197,21 +200,34 @@ function showBrowser(url: string, title: string, viewer: string | boolean) {
                 viewColumn: ViewColumn[String(viewer)],
             },
             {
+                enableFindWidget: true,
                 enableScripts: true,
                 retainContextWhenHidden: true,
-                portMapping: [
-                    {
-                        extensionHostPort: port,
-                        webviewPort: port,
-                    },
-                ],
             });
-        panel.webview.html = getBrowserHtml(url);
+        panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
+            if (e.webviewPanel.active) {
+                activeBrowserPanel = panel;
+                activeBrowserUri = uri;
+                activeBrowserExternalUri = externalUri;
+            } else {
+                activeBrowserPanel = undefined;
+                activeBrowserUri = undefined;
+                activeBrowserExternalUri = undefined;
+            }
+            void commands.executeCommand('setContext', 'r.browser.active', e.webviewPanel.active);
+        });
+        panel.onDidDispose(() => {
+            activeBrowserPanel = undefined;
+            activeBrowserUri = undefined;
+            activeBrowserExternalUri = undefined;
+            void commands.executeCommand('setContext', 'r.browser.active', false);
+        });
+        panel.webview.html = getBrowserHtml(externalUri);
     }
     console.info('[showBrowser] Done');
 }
 
-function getBrowserHtml(url: string) {
+function getBrowserHtml(uri: Uri) {
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -227,10 +243,25 @@ function getBrowserHtml(url: string) {
   </style>
 </head>
 <body>
-    <iframe src="${url}" width="100%" height="100%" frameborder="0" />
+    <iframe src="${uri.toString(true)}" width="100%" height="100%" frameborder="0" />
 </body>
 </html>
 `;
+}
+
+export function refreshBrowser():void {
+    console.log('[refreshBrowser]');
+    if (activeBrowserPanel) {
+        activeBrowserPanel.webview.html = '';
+        activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserExternalUri);
+    }
+}
+
+export function openExternalBrowser():void {
+    console.log('[openExternalBrowser]');
+    if (activeBrowserUri) {
+        void env.openExternal(activeBrowserUri);
+    }
 }
 
 async function showWebView(file: string, title: string, viewer: string | boolean) {
@@ -528,7 +559,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     break;
                 }
                 case 'browser': {
-                    showBrowser(request.url, request.title, request.viewer);
+                    await showBrowser(request.url, request.title, request.viewer);
                     break;
                 }
                 case 'webview': {
