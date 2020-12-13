@@ -279,12 +279,14 @@
       {
         "command": "r.browser.refresh",
         "title": "Refresh",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "category": "R"
       },
       {
         "command": "r.browser.openExternal",
         "title": "Open in external browser",
-        "icon": "$(link-external)"
+        "icon": "$(link-external)",
+        "category": "R"
       },
       {
         "command": "r.showHelp",
@@ -292,8 +294,9 @@
       },
       {
         "command": "editor.action.webvieweditor.showFind",
-        "title": "R WebView: Find in text",
-        "icon": "$(search)"
+        "title": "R: Find in WebView",
+        "icon": "$(search)",
+        "category": "R"
       },
       {
         "command": "r.helpPanel.back",
