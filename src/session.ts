@@ -39,6 +39,7 @@ let globalEnvWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
 let activeBrowserPanel: WebviewPanel;
 let activeBrowserUri: Uri;
+let activeBrowserExternalUri: Uri;
 
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
@@ -205,10 +206,12 @@ async function showBrowser(url: string, title: string, viewer: string | boolean)
         panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
             if (e.webviewPanel.active) {
                 activeBrowserPanel = panel;
-                activeBrowserUri = externalUri;
+                activeBrowserUri = uri;
+                activeBrowserExternalUri = externalUri;
             } else {
                 activeBrowserPanel = undefined;
                 activeBrowserUri = undefined;
+                activeBrowserExternalUri = undefined;
             }
             void commands.executeCommand('setContext', 'r.browser.active', e.webviewPanel.active);
         });
@@ -243,7 +246,7 @@ export function refreshBrowser():void {
     console.log('[refreshBrowser]');
     if (activeBrowserPanel) {
         activeBrowserPanel.webview.html = '';
-        activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserUri);
+        activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserExternalUri);
     }
 }
 
