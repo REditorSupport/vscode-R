@@ -200,6 +200,7 @@ async function showBrowser(url: string, title: string, viewer: string | boolean)
                 viewColumn: ViewColumn[String(viewer)],
             },
             {
+                enableFindWidget: true,
                 enableScripts: true,
                 retainContextWhenHidden: true,
             });

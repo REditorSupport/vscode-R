@@ -600,6 +600,11 @@
         },
         {
           "command": "editor.action.webvieweditor.showFind",
+          "when": "resourceScheme =~ /webview/ && r.browser.active",
+          "group": "navigation"
+        },
+        {
+          "command": "editor.action.webvieweditor.showFind",
           "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
         },
