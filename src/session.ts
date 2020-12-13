@@ -39,7 +39,7 @@ let plotDir: string;
 let globalEnvWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
 let activeBrowserPanel: WebviewPanel;
-let activeBrowserUrl: string;
+let activeBrowserUri: Uri;
 
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
@@ -185,12 +185,13 @@ async function updateGlobalenv() {
     }
 }
 
-function showBrowser(url: string, title: string, viewer: string | boolean) {
+async function showBrowser(url: string, title: string, viewer: string | boolean) {
     console.info(`[showBrowser] uri: ${url}, viewer: ${viewer.toString()}`);
+    const uri = Uri.parse(url);
     if (viewer === false) {
-        void env.openExternal(Uri.parse(url));
+        void env.openExternal(uri);
     } else {
-        const port = parseInt(new URL(url).port);
+        const externalUri = await env.asExternalUri(uri);
         const panel = window.createWebviewPanel(
             'browser',
             title,
@@ -201,29 +202,23 @@ function showBrowser(url: string, title: string, viewer: string | boolean) {
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
-                portMapping: [
-                    {
-                        extensionHostPort: port,
-                        webviewPort: port,
-                    },
-                ],
             });
         panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
             if (e.webviewPanel.active) {
                 activeBrowserPanel = panel;
-                activeBrowserUrl = url;
+                activeBrowserUri = externalUri;
             } else {
                 activeBrowserPanel = undefined;
-                activeBrowserUrl = undefined;
+                activeBrowserUri = undefined;
             }
             void commands.executeCommand('setContext', 'r.browser.active', e.webviewPanel.active);
         });
-        panel.webview.html = getBrowserHtml(url);
+        panel.webview.html = getBrowserHtml(externalUri);
     }
     console.info('[showBrowser] Done');
 }
 
-function getBrowserHtml(url: string) {
+function getBrowserHtml(uri: Uri) {
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -239,7 +234,7 @@ function getBrowserHtml(url: string) {
   </style>
 </head>
 <body>
-    <iframe src="${url}" width="100%" height="100%" frameborder="0" />
+    <iframe src="${uri.toString(true)}" width="100%" height="100%" frameborder="0" />
 </body>
 </html>
 `;
@@ -249,14 +244,14 @@ export function refreshBrowser():void {
     console.log('[refreshBrowser]');
     if (activeBrowserPanel) {
         activeBrowserPanel.webview.html = '';
-        activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserUrl);
+        activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserUri);
     }
 }
 
 export function openExternalBrowser():void {
     console.log('[openExternalBrowser]');
-    if (activeBrowserUrl) {
-        void env.openExternal(Uri.parse(activeBrowserUrl));
+    if (activeBrowserUri) {
+        void env.openExternal(activeBrowserUri);
     }
 }
 
@@ -555,7 +550,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     break;
                 }
                 case 'browser': {
-                    showBrowser(request.url, request.title, request.viewer);
+                    await showBrowser(request.url, request.title, request.viewer);
                     break;
                 }
                 case 'webview': {
