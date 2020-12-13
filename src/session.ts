@@ -7,7 +7,6 @@
 import fs = require('fs-extra');
 import os = require('os');
 import path = require('path');
-import { URL } from 'url';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
 
 import { runTextInTerm } from './rTerminal';
