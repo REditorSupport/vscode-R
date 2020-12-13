@@ -216,6 +216,12 @@ async function showBrowser(url: string, title: string, viewer: string | boolean)
             }
             void commands.executeCommand('setContext', 'r.browser.active', e.webviewPanel.active);
         });
+        panel.onDidDispose(() => {
+            activeBrowserPanel = undefined;
+            activeBrowserUri = undefined;
+            activeBrowserExternalUri = undefined;
+            void commands.executeCommand('setContext', 'r.browser.active', false);
+        });
         panel.webview.html = getBrowserHtml(externalUri);
     }
     console.info('[showBrowser] Done');

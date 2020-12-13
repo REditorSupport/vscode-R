@@ -292,7 +292,7 @@
       },
       {
         "command": "editor.action.webvieweditor.showFind",
-        "title": "R Help Panel: Find in Topic",
+        "title": "R WebView: Find in text",
         "icon": "$(search)"
       },
       {
