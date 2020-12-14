@@ -14,7 +14,7 @@ import { FSWatcher } from 'fs-extra';
 import { config } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { globalRHelpPanel } from './extension';
+import { globalRHelp } from './extension';
 import { rWorkspace } from './extension';
 
 export let globalenv: any;
@@ -539,9 +539,10 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         if (isFromWorkspace(request.wd)) {
             switch (request.command) {
                 case 'help': {
-                    if(globalRHelpPanel){
+                    if(globalRHelp){
                         console.log(request.requestPath);
-                        void globalRHelpPanel.showHelpForPath(request.requestPath, request.viewer);
+                        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+                        void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
                     }
                     break;
                 }

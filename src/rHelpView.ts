@@ -1,7 +1,7 @@
 
 import * as vscode from 'vscode';
-import { HelpPanel } from './rHelpPanel';
-import { globalRHelpPanel } from './extension';
+import { RHelp } from './rHelp';
+import { globalRHelp } from './extension';
 
 
 class TreeItem extends vscode.TreeItem {
@@ -36,7 +36,7 @@ class PkgRootItem extends TreeItem {
     }
     async getChildren(){
         if(!this.children){
-            const packages = await globalRHelpPanel.getParsedIndexFile(`/doc/html/packages.html`);
+            const packages = await globalRHelp.getParsedIndexFile(`/doc/html/packages.html`);
             this.children = packages.map(pkg => {
                 const item = new PkgItem(pkg.label);
                 item.description = pkg.description;
@@ -58,7 +58,7 @@ class PkgItem extends TreeItem {
     }
     async getChildren(){
         if(!this.children){
-            const functions = await globalRHelpPanel.getParsedIndexFile(`/library/${this.label}/html/00Index.html`);
+            const functions = await globalRHelp.getParsedIndexFile(`/library/${this.label}/html/00Index.html`);
             const topics = new Map<string, TopicItem>();
             for(const fnc of functions){
                 fnc.href = fnc.href.replace(/\.html$/, '') || fnc.label;
@@ -98,14 +98,14 @@ class TopicItem extends TreeItem {
 
 export class HelpViewProvider implements vscode.TreeDataProvider<TreeItem> {
     public rootItem: RootItem;
-    public helpPanel: HelpPanel;
+    public helpPanel: RHelp;
 
-    constructor(helpPanel: HelpPanel){
+    constructor(helpPanel: RHelp){
         this.rootItem = new RootItem();
         this.helpPanel = helpPanel;
         vscode.commands.registerCommand('internalShowHelpPage', (pkg: string, fnc: string, href?: string) => {
             fnc = (href || '').replace(/\.html$/, '') || fnc;
-            void globalRHelpPanel.showHelpForFunctionName(pkg, fnc);
+            void globalRHelp.showHelpForFunctionName(pkg, fnc);
         });
     }
 

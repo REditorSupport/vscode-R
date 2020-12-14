@@ -2,7 +2,7 @@
 
 import * as cp from 'child_process';
 
-import * as rHelpPanel from './rHelpPanel';
+import * as rHelpPanel from './rHelp';
 
 interface PackageAliases {
     package?: string;

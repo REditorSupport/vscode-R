@@ -4,7 +4,7 @@ import { ChildProcess, exec } from 'child_process';
 import * as http from 'http';
 import * as kill from 'tree-kill';
 
-import * as rHelpPanel from './rHelpPanel';
+import * as rHelpPanel from './rHelp';
 
 // const kill = require('tree-kill');
 
@@ -15,7 +15,7 @@ export interface RHelpClientOptions extends rHelpPanel.RHelpProviderOptions {
 
 
 // Class to forward help requests to a backgorund R instance that is running a help server
-export class RHelpClient implements rHelpPanel.HelpProvider {
+export class RHelpProviderBuiltin implements rHelpPanel.HelpProvider {
     private cp: ChildProcess;
     private port: number|Promise<number>;
     private readonly rPath: string;
@@ -98,16 +98,17 @@ export class RHelpClient implements rHelpPanel.HelpProvider {
                 http.get(url, (res: http.IncomingMessage) => {
                     if(res.statusCode === 302){
                         resolve({redirect: res.headers.location});
+                    } else{
+                        res.on('data', (chunk) => {
+                            content += chunk.toString();
+                        });
+                        res.on('close', () => {
+                            resolve({content: content});
+                        });
+                        res.on('error', () => {
+                            reject();
+                        });
                     }
-                    res.on('data', (chunk) => {
-                        content += chunk.toString();
-                    });
-                    res.on('close', () => {
-                        resolve({content: content});
-                    });
-                    res.on('error', () => {
-                        reject();
-                    });
                 });
             });
             const htmlResult = await htmlPromise;

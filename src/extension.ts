@@ -21,14 +21,14 @@ import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, selectCurre
 
 import * as path from 'path';
 
-import { HelpPanel, HelpPanelOptions, HelpProvider, AliasProviderArgs, HelpSubMenu } from './rHelpPanel';
-import { RHelpClient } from './rHelpProviderBuiltin';
-import { RHelp } from './rHelpProviderCustom';
+import { RHelp, HelpPanelOptions, HelpProvider, AliasProviderArgs, HelpSubMenu } from './rHelp';
+import { RHelpProviderBuiltin } from './rHelpProviderBuiltin';
+import { RHelpProviderCustom } from './rHelpProviderCustom';
 import { clearWorkspace, loadWorkspace, saveWorkspace, WorkspaceDataProvider, WorkspaceItem } from './workspaceViewer';
 import { AliasProvider } from './rHelpAliases';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
 
-import { HelpViewProvider } from './rHelpView';
+import { HelpViewProvider } from './rHelpTree';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
 
@@ -45,7 +45,7 @@ const roxygenTagCompletionItems = [
     'title', 'usage'].map((x: string) => new CompletionItem(`${x} `));
 
 
-export let globalRHelpPanel: HelpPanel | null = null;
+export let globalRHelp: RHelp = null;
 export const rWorkspace = new WorkspaceDataProvider();
 
 // This method is called when your extension is activated
@@ -77,9 +77,9 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
     let helpProvider: HelpProvider = undefined;
     try{
         if(helpProviderType === 'custom'){
-            helpProvider = new RHelp(rHelpProviderOptions);
+            helpProvider = new RHelpProviderCustom(rHelpProviderOptions);
         } else {
-            helpProvider = new RHelpClient(rHelpProviderOptions);
+            helpProvider = new RHelpProviderBuiltin(rHelpProviderOptions);
         }
     } catch(e) {
         void window.showErrorMessage(`Help Panel not available`);
@@ -97,8 +97,8 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
         webviewScriptPath: path.join(context.extensionPath, path.normalize('/html/script.js')),
         webviewStylePath: path.join(context.extensionPath, path.normalize('/html/theme.css'))
     };
-    const rHelpPanel = new HelpPanel(helpProvider, rHelpPanelOptions, aliasProvider);
-    globalRHelpPanel = rHelpPanel;
+    const rHelpPanel = new RHelp(helpProvider, rHelpPanelOptions, aliasProvider);
+    globalRHelp = rHelpPanel;
 
     rExtension.helpPanel = rHelpPanel;
 
@@ -116,9 +116,12 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
         rHelpPanel.goForward();
     }));
 
-    window.registerTreeDataProvider(
+    const rHelpTreeView = window.createTreeView(
         'rHelpPages',
-        new HelpViewProvider(rHelpPanel)
+        {
+            treeDataProvider: new HelpViewProvider(rHelpPanel),
+            showCollapseAll: true
+        }
     );
 
 

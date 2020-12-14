@@ -11,7 +11,7 @@ import * as os from 'os';
 
 import { randomBytes } from 'crypto';
 
-import * as rHelpPanel from './rHelpPanel';
+import * as rHelpPanel from './rHelp';
 
 
 export interface RHelpOptions extends rHelpPanel.RHelpProviderOptions {
@@ -55,7 +55,7 @@ interface HelpFile extends rHelpPanel.HelpFile {
 // might be useful to provide help for non installed packages, custom help pages etc.
 // theoratically doesn't need to run R to provide help from .html files 
 // (not sure if there is a scenario where this is useful...)
-export class RHelp implements rHelpPanel.HelpProvider {
+export class RHelpProviderCustom implements rHelpPanel.HelpProvider {
 	// R executable
 	readonly rPath: string;
 	// libraries as returned by .libPaths()
