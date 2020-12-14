@@ -287,13 +287,26 @@
         "icon": "$(folder-opened)"
       },
       {
+        "command": "r.browser.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "R"
+      },
+      {
+        "command": "r.browser.openExternal",
+        "title": "Open in external browser",
+        "icon": "$(link-external)",
+        "category": "R"
+      },
+      {
         "command": "r.showHelp",
         "title": "R: Show help"
       },
       {
         "command": "editor.action.webvieweditor.showFind",
-        "title": "R Help Panel: Find in Topic",
-        "icon": "$(search)"
+        "title": "R: Find in WebView",
+        "icon": "$(search)",
+        "category": "R"
       },
       {
         "command": "r.helpPanel.back",
@@ -586,6 +599,21 @@
         {
           "when": "editorLangId == rmd",
           "command": "r.knitRmd",
+          "group": "navigation"
+        },
+        {
+          "command": "r.browser.refresh",
+          "when": "resourceScheme =~ /webview/ && r.browser.active",
+          "group": "navigation"
+        },
+        {
+          "command": "r.browser.openExternal",
+          "when": "resourceScheme =~ /webview/ && r.browser.active",
+          "group": "navigation"
+        },
+        {
+          "command": "editor.action.webvieweditor.showFind",
+          "when": "resourceScheme =~ /webview/ && r.browser.active",
           "group": "navigation"
         },
         {

@@ -14,7 +14,7 @@ import { previewDataframe, previewEnvironment } from './preview';
 import { createGitignore } from './rGitignore';
 import { createRTerm, deleteTerminal, runChunksInTerm, runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
-import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher } from './session';
+import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher, refreshBrowser, openExternalBrowser } from './session';
 import { config, ToRStringLiteral, getRpath } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
 import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, selectCurrentChunk, runCurrentChunk, runAboveChunks, runCurrentAndBelowChunks, runBelowChunks, runPreviousChunk, runNextChunk, runAllChunks, goToPreviousChunk, goToNextChunk } from './rmarkdown';
@@ -300,6 +300,8 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
         commands.registerCommand('r.workspaceViewer.clear', clearWorkspace),
         commands.registerCommand('r.workspaceViewer.load', loadWorkspace),
         commands.registerCommand('r.workspaceViewer.save', saveWorkspace),
+        commands.registerCommand('r.browser.refresh', refreshBrowser),
+        commands.registerCommand('r.browser.openExternal', openExternalBrowser),
         window.onDidCloseTerminal(deleteTerminal),
     );
 

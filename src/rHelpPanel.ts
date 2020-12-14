@@ -411,6 +411,7 @@ export class HelpPanel implements api.HelpPanel {
 				this.panel = undefined;
 				this.webviewScriptUri = undefined;
 				this.webviewStyleUri = undefined;
+				void commands.executeCommand('setContext', 'r.helpPanel.active', false);
 			});
 
 			// sent by javascript added to the help pages, e.g. when a link or mouse button is clicked
