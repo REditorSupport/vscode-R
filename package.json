@@ -535,6 +535,26 @@
         "title": "Open Topic in new Panel",
         "command": "r.helpPanel.openInNewPanel",
         "icon": "$(add)"
+      },
+      {
+        "title": "Clear Cached Files",
+        "command": "r.helpPanel.clearCache",
+        "icon": "$(refresh)"
+      },
+      {
+        "title": "Remove from favorites",
+        "command": "r.helpPanel.removeFromFavorites",
+        "icon": "$(star-full)"
+      },
+      {
+        "title": "Add to favorites",
+        "command": "r.helpPanel.addToFavorites",
+        "icon": "$(star-empty)"
+      },
+      {
+        "title": "Remove Package",
+        "command": "r.helpPanel.removePackage",
+        "icon": "$(trash)"
       }
     ],
     "keybindings": [
@@ -662,6 +682,27 @@
           "command": "r.helpPanel.openInNewPanel",
           "group": "inline",
           "when": "view == rHelpPages && viewItem =~ /openInNewPanel/"
+        },
+        {
+          "command": "r.helpPanel.clearCache",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /clearCache/"
+        },
+        {
+          "command": "r.helpPanel.addToFavorites",
+          "alt": "r.helpPanel.removeFromFavorites",
+          "group": "inline@9",
+          "when": "view == rHelpPages && viewItem =~ /addToFavorites/"
+        },
+        {
+          "command": "r.helpPanel.removeFromFavorites",
+          "group": "inline@9",
+          "when": "view == rHelpPages && viewItem =~ /removeFromFavorites/"
+        },
+        {
+          "command": "r.helpPanel.removePackage",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /removePackage/"
         }
       ],
       "view/title": [

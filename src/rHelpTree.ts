@@ -6,16 +6,65 @@ import { globalRHelp } from './extension';
 
 import { IndexFileEntry, RHelp } from './rHelp';
 import { RHelpPanel } from './rHelpPanel';
+import { getRpath } from './util';
+
+import * as cp from 'child_process';
+
+class Disposable {
+    dispose(): void {
+        // pass
+    }
+}
 
 // type QuickPickAction = 'runCommand'|'openPath'|'showChildren';
 const CollapsibleState = vscode.TreeItemCollapsibleState;
 
 const nodeCommands = {
     searchPackage: 'r.helpPanel.searchPackage',
-    openInNewPanel: 'r.helpPanel.openInNewPanel'
+    openInNewPanel: 'r.helpPanel.openInNewPanel',
+    clearCache: 'r.helpPanel.clearCache',
+    removeFromFavorites: 'r.helpPanel.removeFromFavorites',
+    addToFavorites: 'r.helpPanel.addToFavorites',
+    removePackage: 'r.helpPanel.removePackage'
 };
 
 type cmdName = keyof typeof nodeCommands;
+
+function makeContextValue(...args: cmdName[]){
+    return [...args].join('_');
+}
+
+function modifyContextValue(v0: string, add?: cmdName, remove?: cmdName) {
+    if(add){
+        v0 += '_' + add;
+    }
+    if(remove){
+        v0 = v0.replace(new RegExp(`${remove}_?`), '');
+    }
+    return v0;
+}
+
+
+async function removePackage(pkgName: string){
+    const rPath = await getRpath(true);
+    const cmd = `${rPath} --silent -e remove.packages('${pkgName}')`;
+    let ret: string;
+    let success: boolean;
+    try{
+        ret = cp.execSync(cmd, {encoding: 'utf-8'});
+        success = true;
+    } catch(e){
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        ret = <string>(e.message);
+        success = false;
+    }
+    return {
+        ret: ret,
+        success: success
+    };
+}
+
+
 
 export function initializeHelpTree(helpPanel: RHelp): void {
     const helpTreeWrapper = new HelpTreeWrapper(helpPanel);
@@ -28,27 +77,34 @@ export function initializeHelpTree(helpPanel: RHelp): void {
 
 export class HelpTreeWrapper {
     treeView: vscode.TreeView<Node>;
+    helpViewProvider: HelpViewProvider;
 
     constructor(helpPanel: RHelp){
+        this.helpViewProvider = new HelpViewProvider(this);
         this.treeView = vscode.window.createTreeView(
             'rHelpPages',
             {
-                treeDataProvider: new HelpViewProvider(helpPanel),
+                treeDataProvider: this.helpViewProvider,
                 showCollapseAll: true
             }
         );
     }
-}
 
+    refreshNode(node: Node): void {
+        for(const listener of this.helpViewProvider.listeners){
+            listener(node);
+        }
+    }
+}
 
 
 export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
     public rootItem: RootNode;
-    public helpPanel: RHelp;
 
-    constructor(helpPanel: RHelp){
-        this.rootItem = new RootNode();
-        this.helpPanel = helpPanel;
+    public listeners: ((e: Node) => void)[] = [];
+
+    constructor(wrapper: HelpTreeWrapper){
+        this.rootItem = new RootNode(wrapper);
 
         vscode.commands.registerCommand('rInternalHelpTreeCallback', (id?: string) => {
             const node = this.rootItem.findChild(id);
@@ -56,6 +112,11 @@ export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
                 node.callBack();
             }
         });
+    }
+
+    onDidChangeTreeData(listener: (e: Node) => void): Disposable {
+        this.listeners.push(listener);
+        return new Disposable();
     }
 
     getChildren(element?: Node): Node[] | Promise<Node[]> {
@@ -77,19 +138,21 @@ class Node extends vscode.TreeItem{
     public readonly nodeType: string;
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
 
+    public wrapper: HelpTreeWrapper;
+
     static newId: number = 0;
 
-    constructor(parent?: Node, includeCommand: boolean = true, label: string = ''){
-        super(label);
+    constructor(parent?: Node){
+        super('');
         this.parent = parent;
         this.id = `${Node.newId++}`;
-        if(includeCommand){
-            this.command = {
-                title: 'treeNodeCallback',
-                command: 'rInternalHelpTreeCallback',
-                arguments: [this.id]
-            };
-        }
+
+        // needs to be in constructor since this.id needs to be known
+        this.command = {
+            title: 'treeNodeCallback',
+            command: 'rInternalHelpTreeCallback',
+            arguments: [this.id]
+        };
     }
 
     public callBack?: () => void;
@@ -101,6 +164,10 @@ class Node extends vscode.TreeItem{
     public async getChildren(lazy: boolean = false): Promise<Node[]|null> | null {
         if(this.children === undefined && !lazy){
             await this.makeChildren();
+            for(const child of this.children){
+                child.parent = this;
+                child.wrapper = this.wrapper;
+            }
         }
         return this.children;
     }
@@ -124,6 +191,11 @@ class Node extends vscode.TreeItem{
         }
         return null;
     }
+
+    public refresh(){
+        this.children = undefined;
+        this.wrapper.refreshNode(this);
+    }
 }
 
 class MetaNode extends Node {
@@ -135,18 +207,25 @@ class MetaNode extends Node {
 class RootNode extends MetaNode {
     public collapsibleState = vscode.TreeItemCollapsibleState.None;
     public label = 'root';
-    constructor(){
+    public pkgRootNode?: PkgRootNode;
+
+    constructor(wrapper: HelpTreeWrapper){
         super(undefined);
+        this.wrapper = wrapper;
     }
     makeChildren(){
+        this.pkgRootNode = new PkgRootNode(this);
         this.children = [
             new HomeNode(this),
             new Search1Node(this),
             new Search2Node(this),
             new RefreshNode(this),
-            new PkgRootNode(this),
+            this.pkgRootNode,
             new NewHelpPanelNode(this),
         ];
+    }
+    refresh(){
+        this.wrapper.refreshNode(undefined);
     }
 }
 
@@ -156,14 +235,37 @@ class PkgRootNode extends MetaNode {
     collapsibleState = CollapsibleState.Collapsed;
     iconPath = new vscode.ThemeIcon('list-unordered');
     command = null;
+    contextValue = makeContextValue('clearCache');
+    public favoriteNames: string[] = [];
+
+    handleCommand(cmd: cmdName){
+        if(cmd === 'clearCache'){
+            this.refresh(true);
+        }
+    }
+
+    refresh(clearCache: boolean = false){
+        if(clearCache){
+            globalRHelp.clearCachedFiles(`/doc/html/packages.html`);
+        }
+        super.refresh();
+    }
 
     async makeChildren() {
         const packages = await globalRHelp.getParsedIndexFile(`/doc/html/packages.html`);
-        this.children = packages.map(pkg => {
-            const child = new PackageNode(this, pkg.label);
+        const favorites: PackageNode[] = [];
+        const children: PackageNode[] = [];
+        for(const pkg of packages){
+            const isFavorite = this.favoriteNames.includes(pkg.label);
+            const child = new PackageNode(this, pkg.label, isFavorite);
             child.description = pkg.description;
-            return child;
-        });
+            if(isFavorite){
+                favorites.push(child);
+            } else{
+                children.push(child);
+            }
+        }
+        this.children = [...favorites, ...children];
     }
 }
 
@@ -171,23 +273,64 @@ class PackageNode extends Node {
     collapsibleState = CollapsibleState.Collapsed;
     pkgName: string;
     command = null;
-    contextValue = ['searchPackage'].join('_');
+    isFavorite: boolean;
+    parent: PkgRootNode;
+    contextValue = makeContextValue('searchPackage', 'clearCache', 'removePackage');
 
-    constructor(parent: Node, pkgName: string){
+    constructor(parent: PkgRootNode, pkgName: string, isFavorite: boolean = false){
         super(parent);
         this.pkgName = pkgName;
         this.label = pkgName;
+        this.isFavorite = isFavorite;
+        if(this.isFavorite){
+            this.contextValue = modifyContextValue(this.contextValue, 'removeFromFavorites');
+            this.iconPath = new vscode.ThemeIcon('star-full');
+        } else{
+            this.contextValue = modifyContextValue(this.contextValue, 'addToFavorites');
+        }
     }
 
-    handleCommand(cmd: string){
+    public async handleCommand(cmd: cmdName){
         if(cmd === 'searchPackage'){
             void globalRHelp.showHelpForFunctions(this.pkgName);
-            // pass
+        } else if(cmd === 'clearCache'){
+            globalRHelp.clearCachedFiles(new RegExp(`^/library/${this.label}/`));
+            this.refresh();
+        } else if(cmd === 'addToFavorites'){
+            this.parent.favoriteNames.push(this.pkgName);
+            this.parent.refresh();
+        } else if(cmd === 'removeFromFavorites'){
+            const ind = this.parent.favoriteNames.indexOf(this.pkgName);
+            if(ind>=0){
+                this.parent.favoriteNames.splice(ind, 1);
+            }
+            this.parent.refresh();
+        } else if(cmd === 'removePackage'){
+            // getAllAliases is synchronous, but might take a while => make async and show progress
+            const options: vscode.ProgressOptions = {
+                location: {
+                    viewId: 'rHelpPages'
+                },
+                cancellable: false
+            };
+            await vscode.window.withProgress(options, async () => {
+                const confirmation = await vscode.window.showQuickPick(['Yes', 'No'], {
+                    placeHolder: `Are you sure you want to delete package ${this.pkgName}?`
+                });
+                if(confirmation !== 'Yes'){
+                    return;
+                }
+                const {ret: ret, success: success} = await removePackage(this.pkgName);
+                if(!success){
+                    void vscode.window.showErrorMessage('Failed to remove package: ' + ret);
+                }
+            });
+            this.parent.refresh(true);
         }
     }
 
     async makeChildren() {
-        const functions = await globalRHelp.getParsedIndexFile(`/library/${this.label}/html/00Index.html`);
+        const functions = await globalRHelp.getParsedIndexFile(`/library/${this.pkgName}/html/00Index.html`);
         const topics = new Map<string, TopicNode>();
         for(const fnc of functions){
             fnc.href = fnc.href.replace(/\.html$/, '') || fnc.label;
@@ -239,8 +382,9 @@ class TopicNode extends Node {
     fncName: string;
     pkgName: string;
     href: string;
+    path: string;
     iconPath = new vscode.ThemeIcon('circle-filled');
-    contextValue = ['openInNewPanel'].join('_');
+    contextValue = makeContextValue('openInNewPanel');
 
     topicType: 'home'|'index'|'normal' = 'normal';
 
@@ -257,13 +401,19 @@ class TopicNode extends Node {
         super(parent);
         this.fncName = fncName;
         this.pkgName = pkgName;
-        this.href = href;
+        this.href = (href || fncName).replace(/\.html$/, '');
+
+        if(this.pkgName === 'doc'){
+            this.path = `/doc/html/${this.fncName}`;
+        } else{
+            this.path = `/library/${this.pkgName}/html/${this.href}.html`;
+        }
 
         this.label = fncName;
     }
 
     callBack = () => {
-        void globalRHelp.showHelpForFunctionName(this.pkgName, (this.href || this.fncName).replace(/\.html$/, ''));
+        void globalRHelp.showHelpForPath(this.path);
     }
 }
 
@@ -299,12 +449,14 @@ class Search2Node extends MetaNode {
 }
 
 class RefreshNode extends MetaNode {
+    parent: RootNode;
 	label = 'Clear Cached Index Files';
     collapsibleState = CollapsibleState.None;
     iconPath = new vscode.ThemeIcon('refresh');
 
     callBack = () => {
-        void globalRHelp.refresh();
+        globalRHelp.refresh();
+        this.parent.pkgRootNode.refresh();
     }
 }
 

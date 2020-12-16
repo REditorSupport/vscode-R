@@ -5,7 +5,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 
-import { commands, window, QuickPickItem, Uri, Webview, WebviewPanel, WebviewOptions, WebviewPanelOptions, WebviewPanelOnDidChangeViewStateEvent, ViewColumn, ProgressOptions } from 'vscode';
+import { window, QuickPickItem, Uri, ProgressOptions } from 'vscode';
 
 import * as cheerio from 'cheerio';
 
@@ -17,7 +17,7 @@ import * as api from './api';
 
 export { HelpSubMenu } from './api';
 
-import { RHelpPanel, RHelpPageProvider } from './rHelpPanel';
+import { RHelpPanel } from './rHelpPanel';
 
 //// Declaration of HelpProvider used by the Help Panel
 // This interface needs to be implemented by a separate class that actually provides the R help pages
@@ -226,6 +226,7 @@ export class RHelp implements api.HelpPanel {
 	// refresh list of packages that are cached by helpProvder & aliasProvider
 	public refresh(): boolean {
 		this.cachedIndexFiles.clear();
+		this.cachedHelpFiles.clear();
 		if(this.helpProvider.refresh){
 			this.helpProvider.refresh();
 		}
@@ -233,6 +234,19 @@ export class RHelp implements api.HelpPanel {
 			this.aliasProvider.refresh();
 		}
 		return true;
+	}
+
+	public clearCachedFiles(re: string|RegExp): void {
+		for(const cache of [this.cachedHelpFiles, this.cachedIndexFiles]){
+			for(const path of cache.keys()){
+				if(
+					(typeof re === 'string' && path === re)
+					|| typeof re !== 'string' && re.exec(path)
+				){
+					cache.delete(path);
+				}
+			}
+		}
 	}
 
 	private async showHelpForPackages(){
@@ -385,10 +399,11 @@ export class RHelp implements api.HelpPanel {
 	}
 
 	// shows help for request path as used by R's internal help server
-	public showHelpForPath(requestPath: string, viewer?: string|any): boolean | Promise<boolean> {
+	public async showHelpForPath(requestPath: string, viewer?: string|any): Promise<boolean> {
 
 		// get and show helpFile
-		const helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
+		// const helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
+		const helpFile = await this.getHelpFileForPath(requestPath);
 		if(helpFile){
 			return this.showHelpFile(helpFile, viewer);
 		} else{
@@ -405,7 +420,7 @@ export class RHelp implements api.HelpPanel {
 		}
 
 
-		await new Promise((resolve) => setTimeout(resolve, 1));
+		// await new Promise((resolve) => setTimeout(resolve, 0));
 
 		// modify the helpFile (syntax highlighting etc.)
 		// modifications are cached
