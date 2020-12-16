@@ -263,7 +263,7 @@ export class RHelp implements api.HelpPanel {
 		}
 	}
 
-	private async showHelpForFunctions(pkgName: string){
+	public async showHelpForFunctions(pkgName: string): Promise<boolean> {
 
 		let fncName: string;
 

@@ -28,7 +28,7 @@ import { clearWorkspace, loadWorkspace, saveWorkspace, WorkspaceDataProvider, Wo
 import { AliasProvider } from './rHelpAliases';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
 
-import { HelpViewProvider } from './rHelpTree';
+import { HelpViewProvider, initializeHelpTree } from './rHelpTree';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
 
@@ -116,14 +116,8 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
         rHelpPanel.goForward();
     }));
 
-    const rHelpTreeView = window.createTreeView(
-        'rHelpPages',
-        {
-            treeDataProvider: new HelpViewProvider(rHelpPanel),
-            showCollapseAll: true
-        }
-    );
 
+    void initializeHelpTree(rHelpPanel);
 
 
     // Use the console to output diagnostic information (console.log) and errors (console.error)

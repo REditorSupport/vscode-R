@@ -525,6 +525,16 @@
         "title": "Launch RStudio Addin",
         "category": "R",
         "command": "r.launchAddinPicker"
+      },
+      {
+        "title": "Search Package Topics",
+        "command": "r.helpPanel.searchPackage",
+        "icon": "$(search)"
+      },
+      {
+        "title": "Open Topic in new Panel",
+        "command": "r.helpPanel.openInNewPanel",
+        "icon": "$(add)"
       }
     ],
     "keybindings": [
@@ -642,6 +652,16 @@
           "command": "r.workspaceViewer.remove",
           "group": "inline",
           "when": "view == workspaceViewer"
+        },
+        {
+          "command": "r.helpPanel.searchPackage",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /searchPackage/"
+        },
+        {
+          "command": "r.helpPanel.openInNewPanel",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /openInNewPanel/"
         }
       ],
       "view/title": [

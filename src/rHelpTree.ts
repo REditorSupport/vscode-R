@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-inferrable-types */
 
 import * as vscode from 'vscode';
@@ -9,6 +10,21 @@ import { RHelpPanel } from './rHelpPanel';
 // type QuickPickAction = 'runCommand'|'openPath'|'showChildren';
 const CollapsibleState = vscode.TreeItemCollapsibleState;
 
+const nodeCommands = {
+    searchPackage: 'r.helpPanel.searchPackage',
+    openInNewPanel: 'r.helpPanel.openInNewPanel'
+};
+
+type cmdName = keyof typeof nodeCommands;
+
+export function initializeHelpTree(helpPanel: RHelp): void {
+    const helpTreeWrapper = new HelpTreeWrapper(helpPanel);
+    for(const cmd in nodeCommands){
+        vscode.commands.registerCommand(nodeCommands[cmd], (node: Node) => {
+            node.handleCommand(cmd);
+        });
+    }
+}
 
 export class HelpTreeWrapper {
     treeView: vscode.TreeView<Node>;
@@ -78,18 +94,22 @@ class Node extends vscode.TreeItem{
 
     public callBack?: () => void;
 
-    async getChildren(lazy: boolean = false): Promise<Node[]|null> | null {
+    public handleCommand(cmd: string){
+        // to be overwritten
+    }
+
+    public async getChildren(lazy: boolean = false): Promise<Node[]|null> | null {
         if(this.children === undefined && !lazy){
             await this.makeChildren();
         }
         return this.children;
     }
     
-    makeChildren(): void | Promise<void> {
+    public makeChildren(): void | Promise<void> {
         this.children = [];
     }
 
-    findChild(id?: string): Node {
+    public findChild(id?: string): Node {
         if(!id){
             // do nothing
         } else if(this.id === id){
@@ -151,11 +171,19 @@ class PackageNode extends Node {
     collapsibleState = CollapsibleState.Collapsed;
     pkgName: string;
     command = null;
+    contextValue = ['searchPackage'].join('_');
 
     constructor(parent: Node, pkgName: string){
         super(parent);
         this.pkgName = pkgName;
         this.label = pkgName;
+    }
+
+    handleCommand(cmd: string){
+        if(cmd === 'searchPackage'){
+            void globalRHelp.showHelpForFunctions(this.pkgName);
+            // pass
+        }
     }
 
     async makeChildren() {
@@ -212,10 +240,18 @@ class TopicNode extends Node {
     pkgName: string;
     href: string;
     iconPath = new vscode.ThemeIcon('circle-filled');
+    contextValue = ['openInNewPanel'].join('_');
 
     topicType: 'home'|'index'|'normal' = 'normal';
 
     collapsibleState = CollapsibleState.None;
+
+    handleCommand(cmd: cmdName){
+        if(cmd === 'openInNewPanel'){
+            void globalRHelp.makeNewHelpPanel();
+            this.callBack();
+        }
+    }
 
     constructor(parent: Node, fncName: string, pkgName: string, href: string){
         super(parent);
