@@ -309,7 +309,7 @@ class PkgRootNode extends MetaNode {
                 continue;
             }
             const isFavorite = this.favoriteNames.includes(pkg.label);
-            const child = new PackageNode(this, pkg.label, isFavorite && showAllPackages);
+            const child = new PackageNode(this, pkg.label, isFavorite, showAllPackages);
             child.tooltip = pkg.description;
             if(isFavorite){
                 favorites.push(child);
@@ -334,16 +334,18 @@ class PackageNode extends Node {
     parent: PkgRootNode;
     contextValue = makeContextValue('searchPackage', 'clearCache', 'removePackage');
 
-    constructor(parent: PkgRootNode, pkgName: string, isFavorite: boolean = false){
+    constructor(parent: PkgRootNode, pkgName: string, isFavorite: boolean = false, showAllPackages: boolean = true){
         super(parent);
         this.pkgName = pkgName;
         this.label = pkgName;
         this.isFavorite = isFavorite;
         if(this.isFavorite){
             this.contextValue = modifyContextValue(this.contextValue, 'removeFromFavorites');
-            this.iconPath = new vscode.ThemeIcon('star-full');
         } else{
             this.contextValue = modifyContextValue(this.contextValue, 'addToFavorites');
+        }
+        if(this.isFavorite && showAllPackages){
+            this.iconPath = new vscode.ThemeIcon('star-full');
         }
     }
 
