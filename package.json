@@ -542,6 +542,11 @@
         "icon": "$(refresh)"
       },
       {
+        "title": "Filter Packages",
+        "command": "r.helpPanel.filterPackages",
+        "icon": "$(filter)"
+      },
+      {
         "title": "Remove from favorites",
         "command": "r.helpPanel.removeFromFavorites",
         "icon": "$(star-full)"
@@ -722,6 +727,11 @@
           "command": "r.helpPanel.removePackage",
           "group": "inline",
           "when": "view == rHelpPages && viewItem =~ /removePackage/"
+        },
+        {
+          "command": "r.helpPanel.filterPackages",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /filterPackages/"
         }
       ],
       "view/title": [

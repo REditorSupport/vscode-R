@@ -28,6 +28,7 @@ const nodeCommands = {
     removePackage: 'r.helpPanel.removePackage',
     showOnlyFavorites: 'r.helpPanel.showOnlyFavorites',
     showAllPackages: 'r.helpPanel.showAllPackages',
+    filterPackages: 'r.helpPanel.filterPackages'
 };
 
 type cmdName = keyof typeof nodeCommands;
@@ -236,15 +237,17 @@ class PkgRootNode extends MetaNode {
     collapsibleState = CollapsibleState.Collapsed;
     iconPath = new vscode.ThemeIcon('list-unordered');
     command = null;
-    contextValue = makeContextValue('clearCache', 'showOnlyFavorites');
+    contextValue = makeContextValue('clearCache', 'filterPackages', 'showOnlyFavorites');
+    description = '';
     private showOnlyFavorites: boolean = false;
     public favoriteNames: string[] = [];
     public children?: PackageNode[];
     public favorites?: PackageNode[];
     public parent: RootNode;
+    public filterText: string = '';
 
 
-    handleCommand(cmd: cmdName){
+    async handleCommand(cmd: cmdName){
         if(cmd === 'clearCache'){
             this.refresh(true);
         } else if(cmd === 'showOnlyFavorites'){
@@ -256,6 +259,18 @@ class PkgRootNode extends MetaNode {
             this.showOnlyFavorites = false;
             this.contextValue = modifyContextValue(this.contextValue, 'showOnlyFavorites', 'showAllPackages');
             this.iconPath = new vscode.ThemeIcon('list-unordered');
+            this.refresh();
+        } else if(cmd === 'filterPackages'){
+            const validateInput = (value: string) => {
+                this.filterText = value;
+                this.refresh();
+                return '';
+            };
+            this.filterText = await vscode.window.showInputBox({
+                validateInput: validateInput,
+                value: this.filterText,
+            });
+            this.description = (this.filterText ? `"${this.filterText}"` : '');
             this.refresh();
         }
     }
@@ -288,6 +303,10 @@ class PkgRootNode extends MetaNode {
         const children: PackageNode[] = [];
         const showAllPackages = !this.showOnlyFavorites;
         for(const pkg of packages){
+            const re = new RegExp(this.filterText, 'i');
+            if(this.filterText && !re.exec(pkg.label)){
+                continue;
+            }
             const isFavorite = this.favoriteNames.includes(pkg.label);
             const child = new PackageNode(this, pkg.label, isFavorite && showAllPackages);
             child.description = pkg.description;
