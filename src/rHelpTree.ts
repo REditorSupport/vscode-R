@@ -25,7 +25,9 @@ const nodeCommands = {
     clearCache: 'r.helpPanel.clearCache',
     removeFromFavorites: 'r.helpPanel.removeFromFavorites',
     addToFavorites: 'r.helpPanel.addToFavorites',
-    removePackage: 'r.helpPanel.removePackage'
+    removePackage: 'r.helpPanel.removePackage',
+    showOnlyFavorites: 'r.helpPanel.showOnlyFavorites',
+    showAllPackages: 'r.helpPanel.showAllPackages',
 };
 
 type cmdName = keyof typeof nodeCommands;
@@ -106,8 +108,7 @@ export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
     constructor(wrapper: HelpTreeWrapper){
         this.rootItem = new RootNode(wrapper);
 
-        vscode.commands.registerCommand('rInternalHelpTreeCallback', (id?: string) => {
-            const node = this.rootItem.findChild(id);
+        vscode.commands.registerCommand('r.helpPanel.internalCallback', (node: Node) => {
             if(node.callBack){
                 node.callBack();
             }
@@ -150,8 +151,8 @@ class Node extends vscode.TreeItem{
         // needs to be in constructor since this.id needs to be known
         this.command = {
             title: 'treeNodeCallback',
-            command: 'rInternalHelpTreeCallback',
-            arguments: [this.id]
+            command: 'r.helpPanel.internalCallback',
+            arguments: [this]
         };
     }
 
@@ -220,8 +221,8 @@ class RootNode extends MetaNode {
             new Search1Node(this),
             new Search2Node(this),
             new RefreshNode(this),
-            this.pkgRootNode,
             new NewHelpPanelNode(this),
+            this.pkgRootNode,
         ];
     }
     refresh(){
@@ -235,12 +236,27 @@ class PkgRootNode extends MetaNode {
     collapsibleState = CollapsibleState.Collapsed;
     iconPath = new vscode.ThemeIcon('list-unordered');
     command = null;
-    contextValue = makeContextValue('clearCache');
+    contextValue = makeContextValue('clearCache', 'showOnlyFavorites');
+    private showOnlyFavorites: boolean = false;
     public favoriteNames: string[] = [];
+    public children?: PackageNode[];
+    public favorites?: PackageNode[];
+    public parent: RootNode;
+
 
     handleCommand(cmd: cmdName){
         if(cmd === 'clearCache'){
             this.refresh(true);
+        } else if(cmd === 'showOnlyFavorites'){
+            this.showOnlyFavorites = true;
+            this.contextValue = modifyContextValue(this.contextValue, 'showAllPackages', 'showOnlyFavorites');
+            this.iconPath = new vscode.ThemeIcon('star-full');
+            this.refresh();
+        } else if(cmd === 'showAllPackages'){
+            this.showOnlyFavorites = false;
+            this.contextValue = modifyContextValue(this.contextValue, 'showOnlyFavorites', 'showAllPackages');
+            this.iconPath = new vscode.ThemeIcon('list-unordered');
+            this.refresh();
         }
     }
 
@@ -255,9 +271,10 @@ class PkgRootNode extends MetaNode {
         const packages = await globalRHelp.getParsedIndexFile(`/doc/html/packages.html`);
         const favorites: PackageNode[] = [];
         const children: PackageNode[] = [];
+        const showAllPackages = !this.showOnlyFavorites;
         for(const pkg of packages){
             const isFavorite = this.favoriteNames.includes(pkg.label);
-            const child = new PackageNode(this, pkg.label, isFavorite);
+            const child = new PackageNode(this, pkg.label, isFavorite && showAllPackages);
             child.description = pkg.description;
             if(isFavorite){
                 favorites.push(child);
@@ -265,15 +282,20 @@ class PkgRootNode extends MetaNode {
                 children.push(child);
             }
         }
-        this.children = [...favorites, ...children];
+        this.favorites = [...favorites];
+        this.children = [...favorites];
+        if(showAllPackages){
+            this.children.push(...children);
+        }
     }
 }
+
 
 class PackageNode extends Node {
     collapsibleState = CollapsibleState.Collapsed;
     pkgName: string;
     command = null;
-    isFavorite: boolean;
+    public isFavorite: boolean;
     parent: PkgRootNode;
     contextValue = makeContextValue('searchPackage', 'clearCache', 'removePackage');
 

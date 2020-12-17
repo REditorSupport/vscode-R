@@ -552,6 +552,16 @@
         "icon": "$(star-empty)"
       },
       {
+        "title": "Show all packages",
+        "command": "r.helpPanel.showAllPackages",
+        "icon": "$(star-full)"
+      },
+      {
+        "title": "Show only favorites",
+        "command": "r.helpPanel.showOnlyFavorites",
+        "icon": "$(star-empty)"
+      },
+      {
         "title": "Remove Package",
         "command": "r.helpPanel.removePackage",
         "icon": "$(trash)"
@@ -690,7 +700,6 @@
         },
         {
           "command": "r.helpPanel.addToFavorites",
-          "alt": "r.helpPanel.removeFromFavorites",
           "group": "inline@9",
           "when": "view == rHelpPages && viewItem =~ /addToFavorites/"
         },
@@ -698,6 +707,16 @@
           "command": "r.helpPanel.removeFromFavorites",
           "group": "inline@9",
           "when": "view == rHelpPages && viewItem =~ /removeFromFavorites/"
+        },
+        {
+          "command": "r.helpPanel.showOnlyFavorites",
+          "group": "inline@9",
+          "when": "view == rHelpPages && viewItem =~ /showOnlyFavorites/"
+        },
+        {
+          "command": "r.helpPanel.showAllPackages",
+          "group": "inline@9",
+          "when": "view == rHelpPages && viewItem =~ /showAllPackages/"
         },
         {
           "command": "r.helpPanel.removePackage",
