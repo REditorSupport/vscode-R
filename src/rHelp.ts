@@ -73,7 +73,8 @@ export async function initializeHelp(context: ExtensionContext, rExtension: api.
 		commands.registerCommand('r.helpPanel.openExternal', () => rHelp.openExternal())
 	);
 
-	void new HelpTreeWrapper();
+	const state = context.globalState;
+	void new HelpTreeWrapper(state);
 
 }
 

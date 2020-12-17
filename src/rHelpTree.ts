@@ -78,9 +78,11 @@ async function removePackage(pkgName: string, showProgress = true): Promise<bool
 export class HelpTreeWrapper {
     treeView: vscode.TreeView<Node>;
     helpViewProvider: HelpViewProvider;
+    state: vscode.Memento;
 
-    constructor(){
+    constructor(state: vscode.Memento){
         this.helpViewProvider = new HelpViewProvider(this);
+        this.state = state;
         this.treeView = vscode.window.createTreeView(
             'rHelpPages',
             {
@@ -258,7 +260,7 @@ class PkgRootNode extends MetaNode {
     collapsibleState = CollapsibleState.Collapsed;
     iconPath = new vscode.ThemeIcon('list-unordered');
     command = null;
-    contextValue = Node.makeContextValue('clearCache', 'filterPackages', 'showOnlyFavorites');
+    contextValue = Node.makeContextValue('searchPackage', 'clearCache', 'filterPackages', 'showOnlyFavorites');
     description = '';
     private showOnlyFavorites: boolean = false;
     public favoriteNames: string[] = [];
@@ -295,10 +297,26 @@ class PkgRootNode extends MetaNode {
             });
             this.description = (this.filterText ? `"${this.filterText}"` : '');
             this.refresh();
+        } else if(cmd === 'searchPackage'){
+            void globalRHelp.showHelpMenu('pkgList');
+        }
+    }
+
+    private pullFavoriteNames(){
+        const state = this.getRoot().wrapper.state;
+        if(state){
+            this.favoriteNames = state.get('r.helpPanel.favoriteNames') || this.favoriteNames;
+        }
+    }
+    private pushFavoriteNames(){
+        const state = this.getRoot().wrapper.state;
+        if(state){
+            void state.update('r.helpPanel.favoriteNames', this.favoriteNames);
         }
     }
 
     refresh(clearCache: boolean = false){
+        this.pullFavoriteNames();
         if(clearCache){
             globalRHelp.clearCachedFiles(`/doc/html/packages.html`);
         }
@@ -306,21 +324,26 @@ class PkgRootNode extends MetaNode {
     }
 
     addFavorite(pkgName: string){
+        this.pullFavoriteNames();
         if(this.favoriteNames.indexOf(pkgName) === -1){
             this.favoriteNames.push(pkgName);
-            this.refresh();
         }
+        this.pushFavoriteNames();
+        this.refresh();
     }
 
     removeFavorite(pkgName: string){
+        this.pullFavoriteNames();
         const ind = this.favoriteNames.indexOf(pkgName);
         if(ind>=0){
             this.favoriteNames.splice(ind, 1);
-            this.refresh();
         }
+        this.pushFavoriteNames();
+        this.refresh();
     }
 
     async makeChildren() {
+        this.pullFavoriteNames();
         const packages = await globalRHelp.getParsedIndexFile(`/doc/html/packages.html`);
         const favorites: PackageNode[] = [];
         const children: PackageNode[] = [];
