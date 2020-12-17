@@ -14,7 +14,7 @@ import { FSWatcher } from 'fs-extra';
 import { config } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { globalRHelp } from './extension';
+import { globalRHelp } from './rHelp';
 import { rWorkspace } from './extension';
 
 export let globalenv: any;

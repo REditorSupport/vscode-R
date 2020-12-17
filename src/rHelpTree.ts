@@ -2,10 +2,8 @@
 /* eslint-disable @typescript-eslint/no-inferrable-types */
 
 import * as vscode from 'vscode';
-import { globalRHelp } from './extension';
+import { globalRHelp } from './rHelp';
 
-import { IndexFileEntry, RHelp } from './rHelp';
-import { RHelpPanel } from './rHelpPanel';
 import { getRpath } from './util';
 
 import * as cp from 'child_process';
@@ -20,6 +18,7 @@ class Disposable {
 const CollapsibleState = vscode.TreeItemCollapsibleState;
 
 const nodeCommands = {
+    CALLBACK: 'r.helpPanel.internalCallback', // called when the item is clicked and node.command is as Node
     searchPackage: 'r.helpPanel.searchPackage',
     openInNewPanel: 'r.helpPanel.openInNewPanel',
     clearCache: 'r.helpPanel.clearCache',
@@ -33,56 +32,54 @@ const nodeCommands = {
 
 type cmdName = keyof typeof nodeCommands;
 
-function makeContextValue(...args: cmdName[]){
-    return [...args].join('_');
-}
-
-function modifyContextValue(v0: string, add?: cmdName, remove?: cmdName) {
-    if(add){
-        v0 += '_' + add;
-    }
-    if(remove){
-        v0 = v0.replace(new RegExp(`${remove}_?`), '');
-    }
-    return v0;
-}
-
-
-async function removePackage(pkgName: string){
-    const rPath = await getRpath(true);
-    const cmd = `${rPath} --silent -e remove.packages('${pkgName}')`;
-    let ret: string;
-    let success: boolean;
-    try{
-        ret = cp.execSync(cmd, {encoding: 'utf-8'});
-        success = true;
-    } catch(e){
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-        ret = <string>(e.message);
-        success = false;
-    }
-    return {
-        ret: ret,
-        success: success
+async function removePackage(pkgName: string, showProgress = true): Promise<boolean> {
+    const options: vscode.ProgressOptions = {
+        location: {
+            viewId: (showProgress ? 'rHelpPages' : '')
+        },
+        cancellable: false
     };
-}
 
-
-
-export function initializeHelpTree(helpPanel: RHelp): void {
-    const helpTreeWrapper = new HelpTreeWrapper(helpPanel);
-    for(const cmd in nodeCommands){
-        vscode.commands.registerCommand(nodeCommands[cmd], (node: Node) => {
-            node.handleCommand(cmd);
+    let success: boolean;
+    await vscode.window.withProgress(options, async () => {
+        const rPath = await getRpath(true);
+        const cmd = `${rPath} --silent -e remove.packages('${pkgName}')`;
+        const confirmation = 'Yes, delete package!';
+        const items: vscode.QuickPickItem[] = [
+            {
+                label: confirmation,
+                detail: cmd,
+            },
+            {
+                label: 'Cancel'
+            }
+        ];
+        const answer = await vscode.window.showQuickPick(items, {
+            placeHolder: `Are you sure you want to delete package ${pkgName}?`
         });
-    }
+        if(answer !== items[0]){
+            return false;
+        }
+        let ret: string;
+        try{
+            cp.execSync(cmd, {encoding: 'utf-8'});
+            success = true;
+        } catch(e){
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+            ret = <string>(e.message);
+            void vscode.window.showErrorMessage('Failed to remove package: ' + ret);
+            success = false;
+        }
+    });
+    return(success);
 }
+
 
 export class HelpTreeWrapper {
     treeView: vscode.TreeView<Node>;
     helpViewProvider: HelpViewProvider;
 
-    constructor(helpPanel: RHelp){
+    constructor(){
         this.helpViewProvider = new HelpViewProvider(this);
         this.treeView = vscode.window.createTreeView(
             'rHelpPages',
@@ -91,6 +88,12 @@ export class HelpTreeWrapper {
                 showCollapseAll: true
             }
         );
+
+        for(const cmd in nodeCommands){
+            vscode.commands.registerCommand(nodeCommands[cmd], (node: Node) => {
+                node.handleCommand(cmd);
+            });
+        }
     }
 
     refreshNode(node: Node): void {
@@ -108,12 +111,6 @@ export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
 
     constructor(wrapper: HelpTreeWrapper){
         this.rootItem = new RootNode(wrapper);
-
-        vscode.commands.registerCommand('r.helpPanel.internalCallback', (node: Node) => {
-            if(node.callBack){
-                node.callBack();
-            }
-        });
     }
 
     onDidChangeTreeData(listener: (e: Node) => void): Disposable {
@@ -141,6 +138,8 @@ class Node extends vscode.TreeItem{
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
     public description: string;
 
+    public contextValue = '';
+
     public wrapper: HelpTreeWrapper;
 
     static newId: number = 0;
@@ -153,12 +152,12 @@ class Node extends vscode.TreeItem{
         // needs to be in constructor since this.id needs to be known
         this.command = {
             title: 'treeNodeCallback',
-            command: 'r.helpPanel.internalCallback',
+            command: nodeCommands.CALLBACK,
             arguments: [this]
         };
     }
 
-    public callBack?: () => void;
+    public callBack?: string;
 
     public handleCommand(cmd: string){
         // to be overwritten
@@ -195,16 +194,37 @@ class Node extends vscode.TreeItem{
         return null;
     }
 
+    public getRoot(): Node {
+        if(this.parent){
+            return this.parent.getRoot();
+        } else{
+            return this;
+        }
+    }
+
     public refresh(){
         this.children = undefined;
         this.wrapper.refreshNode(this);
     }
+
+    static makeContextValue(...args: cmdName[]){
+        return [...args].join('_');
+    }
+    public addContextValue(...args: cmdName[]){
+        args.forEach(val => {
+            this.contextValue += '_' + val;
+        });
+        return this.contextValue;
+    }
+    public removeContextValue(...args: cmdName[]){
+        args.forEach(val => {
+            this.contextValue = this.contextValue.replace(new RegExp(`${val}_?`), '');
+        });
+        return this.contextValue;
+    }
 }
 
 class MetaNode extends Node {
-    constructor(parent: Node){
-        super(parent);
-    }
 }
 
 class RootNode extends MetaNode {
@@ -238,7 +258,7 @@ class PkgRootNode extends MetaNode {
     collapsibleState = CollapsibleState.Collapsed;
     iconPath = new vscode.ThemeIcon('list-unordered');
     command = null;
-    contextValue = makeContextValue('clearCache', 'filterPackages', 'showOnlyFavorites');
+    contextValue = Node.makeContextValue('clearCache', 'filterPackages', 'showOnlyFavorites');
     description = '';
     private showOnlyFavorites: boolean = false;
     public favoriteNames: string[] = [];
@@ -253,12 +273,14 @@ class PkgRootNode extends MetaNode {
             this.refresh(true);
         } else if(cmd === 'showOnlyFavorites'){
             this.showOnlyFavorites = true;
-            this.contextValue = modifyContextValue(this.contextValue, 'showAllPackages', 'showOnlyFavorites');
+            this.addContextValue('showAllPackages');
+            this.removeContextValue('showOnlyFavorites');
             this.iconPath = new vscode.ThemeIcon('star-full');
             this.refresh();
         } else if(cmd === 'showAllPackages'){
             this.showOnlyFavorites = false;
-            this.contextValue = modifyContextValue(this.contextValue, 'showOnlyFavorites', 'showAllPackages');
+            this.addContextValue('showOnlyFavorites');
+            this.removeContextValue('showAllPackages');
             this.iconPath = new vscode.ThemeIcon('list-unordered');
             this.refresh();
         } else if(cmd === 'filterPackages'){
@@ -332,7 +354,7 @@ class PackageNode extends Node {
     command = null;
     public isFavorite: boolean;
     parent: PkgRootNode;
-    contextValue = makeContextValue('searchPackage', 'clearCache', 'removePackage');
+    contextValue = Node.makeContextValue('searchPackage', 'clearCache', 'removePackage');
 
     constructor(parent: PkgRootNode, pkgName: string, isFavorite: boolean = false, showAllPackages: boolean = true){
         super(parent);
@@ -340,9 +362,9 @@ class PackageNode extends Node {
         this.label = pkgName;
         this.isFavorite = isFavorite;
         if(this.isFavorite){
-            this.contextValue = modifyContextValue(this.contextValue, 'removeFromFavorites');
+            this.addContextValue('removeFromFavorites');
         } else{
-            this.contextValue = modifyContextValue(this.contextValue, 'addToFavorites');
+            this.addContextValue('addToFavorites');
         }
         if(this.isFavorite && showAllPackages){
             this.iconPath = new vscode.ThemeIcon('star-full');
@@ -360,26 +382,10 @@ class PackageNode extends Node {
         } else if(cmd === 'removeFromFavorites'){
             this.parent.removeFavorite(this.pkgName);
         } else if(cmd === 'removePackage'){
-            // getAllAliases is synchronous, but might take a while => make async and show progress
-            const options: vscode.ProgressOptions = {
-                location: {
-                    viewId: 'rHelpPages'
-                },
-                cancellable: false
-            };
-            await vscode.window.withProgress(options, async () => {
-                const confirmation = await vscode.window.showQuickPick(['Yes', 'No'], {
-                    placeHolder: `Are you sure you want to delete package ${this.pkgName}?`
-                });
-                if(confirmation !== 'Yes'){
-                    return;
-                }
-                const {ret: ret, success: success} = await removePackage(this.pkgName);
-                if(!success){
-                    void vscode.window.showErrorMessage('Failed to remove package: ' + ret);
-                }
-            });
-            this.parent.refresh(true);
+            const success = await removePackage(this.pkgName, true);
+            if(success){
+                this.parent.refresh(true);
+            }
         }
     }
 
@@ -444,20 +450,22 @@ class TopicNode extends Node {
     href: string;
     path: string;
     iconPath = new vscode.ThemeIcon('circle-filled');
-    contextValue = makeContextValue('openInNewPanel');
+    contextValue = Node.makeContextValue('openInNewPanel');
 
     topicType: 'home'|'index'|'normal' = 'normal';
 
     collapsibleState = CollapsibleState.None;
 
     handleCommand(cmd: cmdName){
-        if(cmd === 'openInNewPanel'){
+        if(cmd === 'CALLBACK'){
+            void globalRHelp.showHelpForPath(this.path);
+        } else if(cmd === 'openInNewPanel'){
             void globalRHelp.makeNewHelpPanel();
-            this.callBack();
+            void globalRHelp.showHelpForPath(this.path);
         }
     }
 
-    constructor(parent: Node, fncName: string, pkgName: string, href: string){
+    constructor(parent: PackageNode, fncName: string, pkgName: string, href: string){
         super(parent);
         this.fncName = fncName;
         this.pkgName = pkgName;
@@ -471,10 +479,6 @@ class TopicNode extends Node {
 
         this.label = fncName;
     }
-
-    callBack = () => {
-        void globalRHelp.showHelpForPath(this.path);
-    }
 }
 
 
@@ -483,8 +487,10 @@ class HomeNode extends MetaNode {
     collapsibleState = CollapsibleState.None;
     iconPath = new vscode.ThemeIcon('home');
 
-    callBack = () => {
-        void globalRHelp.showHelpForFunctionName('doc', 'index.html');
+    handleCommand(cmd: cmdName){
+        if(cmd === 'CALLBACK'){
+            void globalRHelp.showHelpForFunctionName('doc', 'index.html');
+        }
     }
 }
 
@@ -493,8 +499,10 @@ class Search1Node extends MetaNode {
     collapsibleState = CollapsibleState.None;
     iconPath = new vscode.ThemeIcon('zap');
     
-    callBack = () => {
-        void globalRHelp.searchHelpByAlias();
+    handleCommand(cmd: cmdName){
+        if(cmd === 'CALLBACK'){
+            void globalRHelp.searchHelpByAlias();
+        }
     }
 }
 
@@ -503,8 +511,10 @@ class Search2Node extends MetaNode {
     collapsibleState = CollapsibleState.None;
     iconPath = new vscode.ThemeIcon('search');
 
-    callBack = () => {
-        void globalRHelp.searchHelpByText();
+    handleCommand(cmd: cmdName){
+        if(cmd === 'CALLBACK'){
+            void globalRHelp.searchHelpByText();
+        }
     }
 }
 
@@ -514,9 +524,11 @@ class RefreshNode extends MetaNode {
     collapsibleState = CollapsibleState.None;
     iconPath = new vscode.ThemeIcon('refresh');
 
-    callBack = () => {
-        globalRHelp.refresh();
-        this.parent.pkgRootNode.refresh();
+    handleCommand(cmd: cmdName){
+        if(cmd === 'CALLBACK'){
+            globalRHelp.refresh();
+            this.parent.pkgRootNode.refresh();
+        }
     }
 }
 
@@ -526,8 +538,10 @@ class NewHelpPanelNode extends MetaNode {
     collapsibleState = CollapsibleState.None;
     iconPath = new vscode.ThemeIcon('add');
 
-    callBack = () => {
-        void globalRHelp.makeNewHelpPanel();
+    handleCommand(cmd: cmdName){
+        if(cmd === 'CALLBACK'){
+            void globalRHelp.makeNewHelpPanel();
+        }
     }
 }
 

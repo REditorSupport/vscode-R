@@ -5,33 +5,80 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 
-import { window, QuickPickItem, Uri, ProgressOptions } from 'vscode';
+import { window, QuickPickItem, Uri, ProgressOptions, ExtensionContext, workspace, commands } from 'vscode';
 
 import * as cheerio from 'cheerio';
 
 import * as hljs from 'highlight.js';
 
-import { config } from './util';
+import { config, getRpath } from './util';
 
 import * as api from './api';
 
 export { HelpSubMenu } from './api';
 
-import { RHelpPanel } from './rHelpPanel';
+import { HelpPanel } from './rHelpPanel';
 
-//// Declaration of HelpProvider used by the Help Panel
-// This interface needs to be implemented by a separate class that actually provides the R help pages
-export interface HelpProvider {
-	// is called to get help for a request path
-	// the request path is the part of the help url after http://localhost:PORT/... when using R's help
-	getHelpFileFromRequestPath(requestPath: string): null|Promise<null>|HelpFile|Promise<HelpFile>;
+import { HelpProvider } from './rHelpProvider';
 
-	// called to refresh (cached) underlying package info
-	refresh(): void;
+import { AliasProvider, AliasProviderArgs } from './rHelpAliases';
+import { HelpTreeWrapper } from './rHelpTree';
 
-	// called to e.g. close servers, delete files
-	dispose?(): void;
+export let globalRHelp: RHelp = null;
+
+import * as path from 'path';
+
+
+export async function initializeHelp(context: ExtensionContext, rExtension: api.RExtension): Promise<void> {
+    // get the "vanilla" R path from config
+    const rPath = await getRpath(true, 'helpPanel.rpath');
+    const rHelpProviderOptions = {
+        rPath: rPath,
+        cwd: ((workspace.workspaceFolders !== undefined && workspace.workspaceFolders.length > 0) ? workspace.workspaceFolders[0].uri.fsPath : undefined)
+    };
+
+    // launch help provider (provides the html for requested entries)
+    let helpProvider: HelpProvider = undefined;
+    try{
+        helpProvider = new HelpProvider(rHelpProviderOptions);
+    } catch(e) {
+        void window.showErrorMessage(`Help Panel not available`);
+    }
+
+    // launch alias-provider. Is used to implement `?`
+    const aliasProviderArgs: AliasProviderArgs = {
+        rPath: rPath,
+        rScriptFile: context.asAbsolutePath('R/getAliases.R')
+    };
+    const aliasProvider = new AliasProvider(aliasProviderArgs);
+
+    // launch the help panel (displays the html provided by helpProvider)
+    const rHelpPanelOptions: HelpOptions = {
+        webviewScriptPath: path.join(context.extensionPath, path.normalize('/html/script.js')),
+        webviewStylePath: path.join(context.extensionPath, path.normalize('/html/theme.css')),
+        rPath,
+        cwd: ((workspace.workspaceFolders !== undefined && workspace.workspaceFolders.length > 0) ? workspace.workspaceFolders[0].uri.fsPath : undefined)
+    };
+    const rHelp = new RHelp(helpProvider, rHelpPanelOptions, aliasProvider);
+    globalRHelp = rHelp;
+
+    rExtension.helpPanel = rHelp;
+
+    context.subscriptions.push(rHelp);
+
+    context.subscriptions.push(
+		commands.registerCommand('r.showHelp', (subMenu?: api.HelpSubMenu) => rHelp.showHelpMenu(subMenu)),
+		commands.registerCommand('r.helpPanel.back', () => rHelp.goBack()),
+		commands.registerCommand('r.helpPanel.forward', () => rHelp.goForward()),
+		commands.registerCommand('r.helpPanel.openExternal', () => rHelp.openExternal())
+	);
+
+	void new HelpTreeWrapper();
+
 }
+
+
+
 export interface HelpFile {
 	// content of the file
 	html: string;
@@ -50,26 +97,10 @@ export interface HelpFile {
 	// can be used to scroll the document to a certain position when loading
 	// useful to remember scroll position when going back/forward
 	scrollY?: number;
-}
-export interface RHelpProviderOptions {
-	// path to R executable
-	rPath?: string;
-	// directory in which to launch R processes
-	cwd?: string;
+	// used to open the file in an external browser
+	url?: string;
 }
 
-//// Declaration of AliasProvider used by the Help Panel
-// Is called to simulate `?` in vscode command palette, e.g.:
-//   When entering `? colMeans`, the help server will open `colSums.html`
-//   In this case: {name: "colMeans", alias: "colSums", package: "base"}
-export interface AliasProvider {
-	// used to generate quickpick options
-	getAllAliases(): Alias[] | null;
-	// could be used to look up a name entered by the user
-	getAliasesForName(name: string, pkgName?: string): Alias[] | null;
-	// reload aliases, used if triggered by user
-	refresh(): void;
-}
 export interface Alias {
 	// as presented to the user
 	name: string,
@@ -78,26 +109,28 @@ export interface Alias {
 	// name of the package the alias is from
     package: string
 }
-export interface AliasProviderArgs {
-	// R path, must be vanilla R
-	rPath: string;
-	// getAliases.R
-    rScriptFile: string;
-}
 
 //// Declaration of interfaces used/implemented by the Help Panel class
 // specified when creating a new help panel
-export interface HelpPanelOptions {
+export interface HelpOptions {
 	/* Local path of script.js, used to send messages to vs code */
 	webviewScriptPath: string;
 	/* Local path of theme.css, used to actually format the highlighted syntax */
 	webviewStylePath: string;
+	// path of the R executable
+    rPath: string;
+	// directory in which to launch R processes
+	cwd?: string;
 }
 
 // returned when parsing R documentation's index files
 export interface IndexFileEntry extends QuickPickItem {
 	href?: string
 }
+
+
+
+
 
 // implementation of the help panel, which is exported in the extensions's api
 export class RHelp implements api.HelpPanel {
@@ -106,7 +139,7 @@ export class RHelp implements api.HelpPanel {
 	readonly aliasProvider: AliasProvider;
 
 	// the webview panel where the help is shown
-	private helpPanels: RHelpPanel[] = [];
+	private helpPanels: HelpPanel[] = [];
 
 	// locations on disk, only changed on construction
 	readonly webviewScriptFile: Uri; // the javascript added to help pages
@@ -118,9 +151,9 @@ export class RHelp implements api.HelpPanel {
 	// cache modified help files (syntax highlighting etc.)
 	private cachedHelpFiles: Map<string, HelpFile> = new Map<string, HelpFile>();
 
-	private helpPanelOptions: HelpPanelOptions;
+	private helpPanelOptions: HelpOptions;
 
-	constructor(rHelp: HelpProvider, options: HelpPanelOptions, aliasProvider: AliasProvider){
+	constructor(rHelp: HelpProvider, options: HelpOptions, aliasProvider: AliasProvider){
 		this.helpProvider = rHelp;
 		this.webviewScriptFile = Uri.file(options.webviewScriptPath);
 		this.webviewStyleFile = Uri.file(options.webviewStylePath);
@@ -138,31 +171,41 @@ export class RHelp implements api.HelpPanel {
 		}
 	}
 
-	public makeNewHelpPanel(): RHelpPanel {
+	public makeNewHelpPanel(): HelpPanel {
 		const helpPageProvider = {
 			getHelpFileFromRequestPath: (requestPath: string) => {
 				return this.getHelpFileForPath(requestPath);
 			}
 		};
-		const helpPanel = new RHelpPanel(this.helpPanelOptions, helpPageProvider);
+		const helpPanel = new HelpPanel(this.helpPanelOptions, helpPageProvider);
 		this.helpPanels.unshift(helpPanel);
 		return helpPanel;
 	}
 
-	public getActiveHelpPanel(): RHelpPanel {
+	public getActiveHelpPanel(fallBack: boolean = true): HelpPanel | undefined {
 		for(const helpPanel of this.helpPanels){
 			if(helpPanel.panel && helpPanel.panel.active){
 				return helpPanel;
 			}
 		}
-		return this.getNewestHelpPanel();
+		if(fallBack){
+			return this.getNewestHelpPanel();
+		}
+		return undefined;
 	}
 
-	public getNewestHelpPanel(): RHelpPanel {
+	public getNewestHelpPanel(): HelpPanel {
 		if(this.helpPanels.length){
 			return this.helpPanels[0];
 		} else{
 			return this.makeNewHelpPanel();
+		}
+	}
+
+	public openExternal(): void {
+		const panel = this.getActiveHelpPanel(false);
+		if(panel){
+			void panel.openInExternalBrowser();
 		}
 	}
 
@@ -181,11 +224,11 @@ export class RHelp implements api.HelpPanel {
 				description: 'List help indices by package',
 				subMenu: 'pkgList'
 			},{
-				label: '$(search)',
+				label: '$(zap)',
 				description: 'Search the help system using `?`',
 				subMenu: '?'
 			},{
-				label: '$(zoom-in)',
+				label: '$(search)',
 				description: 'Search the help system using `??`',
 				subMenu: '??'
 			},{
@@ -560,6 +603,5 @@ export class RHelp implements api.HelpPanel {
 
 		return retSorted;
 	}
-
 }
 

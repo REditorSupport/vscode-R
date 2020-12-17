@@ -4,24 +4,25 @@ import { ChildProcess, exec } from 'child_process';
 import * as http from 'http';
 import * as kill from 'tree-kill';
 
-import * as rHelpPanel from './rHelp';
+import * as rHelp from './rHelp';
 
 // const kill = require('tree-kill');
 
-export interface RHelpClientOptions extends rHelpPanel.RHelpProviderOptions {
+export interface RHelpProviderOptions {
 	// path of the R executable
     rPath: string;
+	// directory in which to launch R processes
+	cwd?: string;
 }
 
-
 // Class to forward help requests to a backgorund R instance that is running a help server
-export class RHelpProviderBuiltin implements rHelpPanel.HelpProvider {
+export class HelpProvider {
     private cp: ChildProcess;
     private port: number|Promise<number>;
     private readonly rPath: string;
     private readonly cwd?: string;
 
-    public constructor(options: RHelpClientOptions){
+    public constructor(options: RHelpProviderOptions){
         this.rPath = options.rPath || 'R';
         this.cwd = options.cwd;
         this.port = this.launchRHelpServer(); // is a promise for now!
@@ -69,7 +70,7 @@ export class RHelpProviderBuiltin implements rHelpPanel.HelpProvider {
         return port;
     }
 
-	public async getHelpFileFromRequestPath(requestPath: string): Promise<null|rHelpPanel.HelpFile> {
+	public async getHelpFileFromRequestPath(requestPath: string): Promise<null|rHelp.HelpFile> {
         // make sure the server is actually running
         this.port = await this.port;
 
@@ -123,13 +124,15 @@ export class RHelpProviderBuiltin implements rHelpPanel.HelpProvider {
         }
 
         // return help file
-        const ret: rHelpPanel.HelpFile = {
+        const ret: rHelp.HelpFile = {
             requestPath: requestPath,
             html: html,
-            isRealFile: false
+            isRealFile: false,
+            url: url
         };
         return ret;
     }
+
 
     dispose(): void {
         if(this.cp){

@@ -2,7 +2,7 @@
 
 import * as cp from 'child_process';
 
-import * as rHelpPanel from './rHelp';
+import * as rHelp from './rHelp';
 
 interface PackageAliases {
     package?: string;
@@ -14,17 +14,24 @@ interface PackageAliases {
 }
 
 
+export interface AliasProviderArgs {
+	// R path, must be vanilla R
+	rPath: string;
+	// getAliases.R
+    rScriptFile: string;
+}
+
 // Implements the aliasProvider required by the help panel
-export class AliasProvider implements rHelpPanel.AliasProvider {
+export class AliasProvider {
 
     private readonly rPath: string;
     private readonly rScriptFile: string;
     private allPackageAliases?: null | {
         [key: string]: PackageAliases;
     }
-    private aliases?: null | rHelpPanel.Alias[];
+    private aliases?: null | rHelp.Alias[];
 
-    constructor(args: rHelpPanel.AliasProviderArgs){
+    constructor(args: AliasProviderArgs){
         this.rPath = args.rPath;
         this.rScriptFile = args.rScriptFile;
     }
@@ -36,7 +43,7 @@ export class AliasProvider implements rHelpPanel.AliasProvider {
     }
 
     // get all aliases that match the given name, if specified only from 1 package
-    public getAliasesForName(name: string, pkgName?: string): rHelpPanel.Alias[] | null {
+    public getAliasesForName(name: string, pkgName?: string): rHelp.Alias[] | null {
         const aliases = this.getAliasesForPackage(pkgName);
         if(aliases){
             return aliases.filter((v) => v.name === name);
@@ -46,7 +53,7 @@ export class AliasProvider implements rHelpPanel.AliasProvider {
     }
 
     // get a list of all aliases
-    public getAllAliases(): rHelpPanel.Alias[] {
+    public getAllAliases(): rHelp.Alias[] {
         if(!this.aliases){
             this.makeAllAliases();
         }
@@ -62,7 +69,7 @@ export class AliasProvider implements rHelpPanel.AliasProvider {
     }
 
     // get all aliases provided by one package
-    private getAliasesForPackage(pkgName?: string): rHelpPanel.Alias[] | null {
+    private getAliasesForPackage(pkgName?: string): rHelp.Alias[] | null {
         if(!pkgName){
             return this.getAllAliases();
         }
@@ -70,7 +77,7 @@ export class AliasProvider implements rHelpPanel.AliasProvider {
         if(pkgName in packageAliases){
             const al = packageAliases[pkgName].aliases;
             if(al){
-                const ret: rHelpPanel.Alias[] = [];
+                const ret: rHelp.Alias[] = [];
                 for(const fncName in al){
                     ret.push({
                         name: fncName,
@@ -90,7 +97,7 @@ export class AliasProvider implements rHelpPanel.AliasProvider {
             this.readAliases();
         }
         if(this.allPackageAliases){
-            const ret: rHelpPanel.Alias[] = [];
+            const ret: rHelp.Alias[] = [];
             for(const pkg in this.allPackageAliases){
                 const pkgName = this.allPackageAliases[pkg].package || pkg;
                 const al = this.allPackageAliases[pkg].aliases;

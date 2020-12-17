@@ -8,27 +8,21 @@
 // Import the module and reference it with the alias vscode in your code below
 import { CancellationToken, commands, CompletionContext, CompletionItem, CompletionItemKind,
          ExtensionContext, Hover, IndentAction, languages, MarkdownString, Position, Range,
-         StatusBarAlignment, TextDocument, window, workspace } from 'vscode';
+         StatusBarAlignment, TextDocument, window } from 'vscode';
 
 import { previewDataframe, previewEnvironment } from './preview';
 import { createGitignore } from './rGitignore';
 import { createRTerm, deleteTerminal, runChunksInTerm, runSelectionInTerm, runTextInTerm } from './rTerminal';
 import { getWordOrSelection, surroundSelection } from './selection';
 import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher, refreshBrowser, openExternalBrowser } from './session';
-import { config, ToRStringLiteral, getRpath } from './util';
+import { config, ToRStringLiteral } from './util';
 import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
 import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, selectCurrentChunk, runCurrentChunk, runAboveChunks, runCurrentAndBelowChunks, runBelowChunks, runPreviousChunk, runNextChunk, runAllChunks, goToPreviousChunk, goToNextChunk } from './rmarkdown';
 
-import * as path from 'path';
 
-import { RHelp, HelpPanelOptions, HelpProvider, AliasProviderArgs, HelpSubMenu } from './rHelp';
-import { RHelpProviderBuiltin } from './rHelpProviderBuiltin';
-import { RHelpProviderCustom } from './rHelpProviderCustom';
 import { clearWorkspace, loadWorkspace, saveWorkspace, WorkspaceDataProvider, WorkspaceItem } from './workspaceViewer';
-import { AliasProvider } from './rHelpAliases';
 import { RExtensionImplementation as RExtension } from './apiImplementation';
-
-import { HelpViewProvider, initializeHelpTree } from './rHelpTree';
+import { initializeHelp } from './rHelp';
 
 const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
 
@@ -45,12 +39,11 @@ const roxygenTagCompletionItems = [
     'title', 'usage'].map((x: string) => new CompletionItem(`${x} `));
 
 
-export let globalRHelp: RHelp = null;
 export const rWorkspace = new WorkspaceDataProvider();
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
-export async function activate(context: ExtensionContext): Promise<RExtension> {
+export function activate(context: ExtensionContext): RExtension {
 
     // register the R Workspace tree view
     window.registerTreeDataProvider(
@@ -58,66 +51,11 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
         rWorkspace
     );
 
-
     // used to export an interface to the help panel
     // used e.g. by vscode-r-debugger to show the help panel from within debug sessions
     const rExtension = new RExtension();
 
-    // get the "vanilla" R path from config
-    const rPath = await getRpath(true, 'helpPanel.rpath');
-    const rHelpProviderOptions = {
-        rPath: rPath,
-        cwd: ((workspace.workspaceFolders !== undefined && workspace.workspaceFolders.length > 0) ? workspace.workspaceFolders[0].uri.fsPath : undefined)
-    };
-
-    // which helpProvider to use.
-    const helpProviderType = config().get<'custom'|'Rserver'>('helpPanel.helpProvider');
-
-    // launch help provider (provides the html for requested entries)
-    let helpProvider: HelpProvider = undefined;
-    try{
-        if(helpProviderType === 'custom'){
-            helpProvider = new RHelpProviderCustom(rHelpProviderOptions);
-        } else {
-            helpProvider = new RHelpProviderBuiltin(rHelpProviderOptions);
-        }
-    } catch(e) {
-        void window.showErrorMessage(`Help Panel not available`);
-    }
-
-    // launch alias-provider. Is used to implement `?`
-    const aliasProviderArgs: AliasProviderArgs = {
-        rPath: rPath,
-        rScriptFile: context.asAbsolutePath('R/getAliases.R')
-    };
-    const aliasProvider = new AliasProvider(aliasProviderArgs);
-
-    // launch the help panel (displays the html provided by helpProvider)
-    const rHelpPanelOptions: HelpPanelOptions = {
-        webviewScriptPath: path.join(context.extensionPath, path.normalize('/html/script.js')),
-        webviewStylePath: path.join(context.extensionPath, path.normalize('/html/theme.css'))
-    };
-    const rHelpPanel = new RHelp(helpProvider, rHelpPanelOptions, aliasProvider);
-    globalRHelp = rHelpPanel;
-
-    rExtension.helpPanel = rHelpPanel;
-
-    context.subscriptions.push(rHelpPanel);
-
-    context.subscriptions.push(commands.registerCommand('r.showHelp', (subMenu?: HelpSubMenu) => {
-        void rHelpPanel.showHelpMenu(subMenu);
-    }));
-
-    context.subscriptions.push(commands.registerCommand('r.helpPanel.back', () =>{
-        rHelpPanel.goBack();
-    }));
-
-    context.subscriptions.push(commands.registerCommand('r.helpPanel.forward', () =>{
-        rHelpPanel.goForward();
-    }));
-
-
-    void initializeHelpTree(rHelpPanel);
+    void initializeHelp(context, rExtension);
 
 
     // Use the console to output diagnostic information (console.log) and errors (console.error)

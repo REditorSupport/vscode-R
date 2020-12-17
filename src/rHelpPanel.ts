@@ -5,15 +5,13 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
-import * as vscode from 'vscode';
+import { env, commands, window, QuickPickItem, Uri, Webview, WebviewPanel, WebviewOptions, WebviewPanelOptions, WebviewPanelOnDidChangeViewStateEvent, ViewColumn, workspace } from 'vscode';
 
-import { commands, window, QuickPickItem, Uri, Webview, WebviewPanel, WebviewOptions, WebviewPanelOptions, WebviewPanelOnDidChangeViewStateEvent, ViewColumn } from 'vscode';
+import * as vscode from 'vscode';
 
 import { HelpFile } from './rHelp';
 
 import * as cheerio from 'cheerio';
-
-import { config } from './util';
 
 //// Declaration of interfaces used/implemented by the Help Panel class
 // specified when creating a new help panel
@@ -37,7 +35,7 @@ export interface RHelpPageProvider {
 	getHelpFileFromRequestPath(requestPath: string): null|Promise<null>|HelpFile|Promise<HelpFile>;
 }
 
-export class RHelpPanel {
+export class HelpPanel {
 
     private readonly helpProvider: RHelpPageProvider;
 
@@ -147,6 +145,22 @@ export class RHelpPanel {
 		return true;
 	}
 
+	public async openInExternalBrowser(helpFile?: HelpFile): Promise<boolean> {
+		if(!this.currentEntry){
+			return false;
+		}
+		if(!helpFile){
+			helpFile = this.currentEntry.helpFile;
+		}
+		const url = helpFile.url;
+		if(!url){
+			return false;
+		}
+		const uri = Uri.parse(url);
+		const externalUri = await env.asExternalUri(uri);
+		return env.openExternal(externalUri);
+	}
+
 	// go back/forward in the history of the webview:
 	public goBack(currentScrollY = 0): void{
 		const entry = this.history.pop();
@@ -206,7 +220,17 @@ export class RHelpPanel {
 
 			// if successful, show helpfile:
 			if(helpFile){
-				void this.showHelpFile(helpFile, true, currentScrollY);
+				if(uri.path.endsWith('.pdf')){
+					void this.openInExternalBrowser(helpFile);
+				} else if(uri.path.endsWith('.R')){
+					const doc = await vscode.workspace.openTextDocument({
+						language: 'r',
+						content: helpFile.html0
+					});
+					void window.showTextDocument(doc);
+				} else{
+					void this.showHelpFile(helpFile, true, currentScrollY);
+				}
 			}
 		} else if(msg.message === 'mouseClick'){
 			// use the additional mouse buttons to go forward/backwards

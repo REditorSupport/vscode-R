@@ -309,16 +309,6 @@
         "category": "R"
       },
       {
-        "command": "r.helpPanel.back",
-        "title": "R Help Panel: Go Back",
-        "icon": "$(arrow-left)"
-      },
-      {
-        "command": "r.helpPanel.forward",
-        "title": "R Help Panel: Go Forward",
-        "icon": "$(arrow-right)"
-      },
-      {
         "title": "Create R terminal",
         "category": "R",
         "command": "r.createRTerm"
@@ -527,6 +517,21 @@
         "command": "r.launchAddinPicker"
       },
       {
+        "command": "r.helpPanel.back",
+        "title": "R Help Panel: Go Back",
+        "icon": "$(arrow-left)"
+      },
+      {
+        "command": "r.helpPanel.forward",
+        "title": "R Help Panel: Go Forward",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "r.helpPanel.openExternal",
+        "title": "R Help Panel: Open in external browser",
+        "icon": "$(link-external)"
+      },
+      {
         "title": "Search Package Topics",
         "command": "r.helpPanel.searchPackage",
         "icon": "$(search)"
@@ -673,6 +678,11 @@
         },
         {
           "command": "r.helpPanel.forward",
+          "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
+          "group": "navigation"
+        },
+        {
+          "command": "r.helpPanel.openExternal",
           "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
         }
@@ -834,18 +844,6 @@
           "markdownDescription": "DEPRECATED! Path to an R executable. Must be \"vanilla\" R, not radian etc.! Will be read from registry or path if not set.",
           "markdownDeprecationMessage": "Will be deprecated. Use `#r.rpath.windows#`, `#r.rpath.mac#`, or `#r.rpath.linux#` instead.",
           "deprecationMessage": "Will be deprecated. Use r.rpath.windows, r.rpath.mac, or r.rpath.linux instead."
-        },
-        "r.helpPanel.helpProvider": {
-          "type": "string",
-          "default": "Rserver",
-          "enum": [
-            "custom",
-            "Rserver"
-          ],
-          "enumDescriptions": [
-            "A custom implementation of the R help server.",
-            "R's builtin help server"
-          ]
         },
         "r.source.encoding": {
           "type": "string",
