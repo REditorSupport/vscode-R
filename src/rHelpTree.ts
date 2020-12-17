@@ -139,6 +139,7 @@ class Node extends vscode.TreeItem{
     public children?: Node[] = undefined;
     public readonly nodeType: string;
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+    public description: string;
 
     public wrapper: HelpTreeWrapper;
 
@@ -309,7 +310,7 @@ class PkgRootNode extends MetaNode {
             }
             const isFavorite = this.favoriteNames.includes(pkg.label);
             const child = new PackageNode(this, pkg.label, isFavorite && showAllPackages);
-            child.description = pkg.description;
+            child.tooltip = pkg.description;
             if(isFavorite){
                 favorites.push(child);
             } else{
@@ -384,14 +385,14 @@ class PackageNode extends Node {
         const functions = await globalRHelp.getParsedIndexFile(`/library/${this.pkgName}/html/00Index.html`);
         const topics = new Map<string, TopicNode>();
         for(const fnc of functions){
-            fnc.href = fnc.href.replace(/\.html$/, '') || fnc.label;
+            fnc.href = fnc.href || fnc.label;
             let topic: TopicNode;
             if(topics.has(fnc.href)){
                 topic = topics.get(fnc.href);
-                topic.description += `, ${fnc.label}`;
+                topic.tooltip += `\n- ${fnc.label}`;
             } else{
                 topic = new TopicNode(this, fnc.description, this.pkgName, fnc.href);
-                topic.description = fnc.label;
+                topic.tooltip = `Aliases:\n- ${fnc.label}`;
                 topics.set(fnc.href, topic);
             }
             if(fnc.label === `${this.pkgName}-package`){
@@ -415,11 +416,17 @@ class PackageNode extends Node {
         }
 
         // make index topic
-        const indexNode = new TopicNode(this, 'Index', this.pkgName, '00Index');
+        const indexNode = new TopicNode(this, 'Index', this.pkgName, '00Index.html');
         indexNode.topicType = 'index';
         indexNode.iconPath = new vscode.ThemeIcon('list-unordered');
 
+        // make DESCRIPTION topic
+        const descriptionNode = new TopicNode(this, 'DESCRIPTION', this.pkgName, '../DESCRIPTION');
+        descriptionNode.topicType = 'index';
+        descriptionNode.iconPath = new vscode.ThemeIcon('file-code');
+
         // (re-)add index and home topic
+        children.unshift(descriptionNode);
         children.unshift(indexNode);
         if(homeNode){
             children.unshift(homeNode);
@@ -452,12 +459,12 @@ class TopicNode extends Node {
         super(parent);
         this.fncName = fncName;
         this.pkgName = pkgName;
-        this.href = (href || fncName).replace(/\.html$/, '');
+        this.href = (href || fncName);
 
         if(this.pkgName === 'doc'){
             this.path = `/doc/html/${this.fncName}`;
         } else{
-            this.path = `/library/${this.pkgName}/html/${this.href}.html`;
+            this.path = `/library/${this.pkgName}/html/${this.href}`;
         }
 
         this.label = fncName;
