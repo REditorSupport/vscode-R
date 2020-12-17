@@ -267,6 +267,21 @@ class PkgRootNode extends MetaNode {
         super.refresh();
     }
 
+    addFavorite(pkgName: string){
+        if(this.favoriteNames.indexOf(pkgName) === -1){
+            this.favoriteNames.push(pkgName);
+            this.refresh();
+        }
+    }
+
+    removeFavorite(pkgName: string){
+        const ind = this.favoriteNames.indexOf(pkgName);
+        if(ind>=0){
+            this.favoriteNames.splice(ind, 1);
+            this.refresh();
+        }
+    }
+
     async makeChildren() {
         const packages = await globalRHelp.getParsedIndexFile(`/doc/html/packages.html`);
         const favorites: PackageNode[] = [];
@@ -319,14 +334,9 @@ class PackageNode extends Node {
             globalRHelp.clearCachedFiles(new RegExp(`^/library/${this.label}/`));
             this.refresh();
         } else if(cmd === 'addToFavorites'){
-            this.parent.favoriteNames.push(this.pkgName);
-            this.parent.refresh();
+            this.parent.addFavorite(this.pkgName);
         } else if(cmd === 'removeFromFavorites'){
-            const ind = this.parent.favoriteNames.indexOf(this.pkgName);
-            if(ind>=0){
-                this.parent.favoriteNames.splice(ind, 1);
-            }
-            this.parent.refresh();
+            this.parent.removeFavorite(this.pkgName);
         } else if(cmd === 'removePackage'){
             // getAllAliases is synchronous, but might take a while => make async and show progress
             const options: vscode.ProgressOptions = {
