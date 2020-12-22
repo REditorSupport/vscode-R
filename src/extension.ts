@@ -43,7 +43,7 @@ export const rWorkspace = new WorkspaceDataProvider();
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
-export function activate(context: ExtensionContext): RExtension {
+export async function activate(context: ExtensionContext): Promise<RExtension> {
 
     // register the R Workspace tree view
     window.registerTreeDataProvider(
@@ -55,7 +55,7 @@ export function activate(context: ExtensionContext): RExtension {
     // used e.g. by vscode-r-debugger to show the help panel from within debug sessions
     const rExtension = new RExtension();
 
-    void initializeHelp(context, rExtension);
+    await initializeHelp(context, rExtension);
 
 
     // Use the console to output diagnostic information (console.log) and errors (console.error)
