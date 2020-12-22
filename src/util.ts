@@ -147,6 +147,8 @@ export function checkIfFileExists(filePath: string): boolean {
 }
 
 
+// shows a quick pick asking the user for confirmation
+// returns true if the user confirms, false if they cancel or dismiss the quickpick
 export async function getConfirmation(prompt: string, confirmation?: string, detail?: string): Promise<boolean> {
     confirmation ||= 'Yes';
     const items: vscode.QuickPickItem[] = [
@@ -164,6 +166,9 @@ export async function getConfirmation(prompt: string, confirmation?: string, det
     return answer === items[0];
 }
 
+// executes a given command as shell task
+// is more transparent thatn background processes without littering the integrated terminals
+// is not intended for actual user interaction
 export async function executeAsTask(name: string, command: string, args?: string[]): Promise<void> {
     const taskDefinition = {type: 'shell'};
     const taskExecution = new vscode.ShellExecution(
@@ -191,6 +196,9 @@ export async function executeAsTask(name: string, command: string, args?: string
     return await taskDonePromise;
 }
 
+// executes a callback and shows a 'busy' progress bar during the execution
+// synchronous callbacks are converted to async to properly render the progress bar
+// default location is in the help pages tree view
 export async function doWithProgress<T>(cb: () => T | Promise<T>, location: string | vscode.ProgressLocation = 'rHelpPages'): Promise<T> {
 	const location2 = (typeof location === 'string' ? {viewId: location} : location);
 	const options: vscode.ProgressOptions = {

@@ -7,12 +7,15 @@ import * as vscode from 'vscode';
 import { globalRHelp, RHelp } from './rHelp';
 import { Package, Topic, TopicType } from './rHelpPackages';
 
-
-// type QuickPickAction = 'runCommand'|'openPath'|'showChildren';
+// this enum is re-assigned just for code readability
 const CollapsibleState = vscode.TreeItemCollapsibleState;
 
+
+// the commands contributed in package.json for the tree view 
+// the commands are registered in HelpTreeWrapper.constructor
+// the node-objects only need to handle the keys ('QUICKPICK' etc.) in Node.handleCommand()
 const nodeCommands = {
-    QUICKPICK: 'r.helpPanel.showQuickPick',
+    QUICKPICK: 'r.helpPanel.showQuickPick', // called to show the children of a node in a quickpick
     CALLBACK: 'r.helpPanel.internalCallback', // called when the item is clicked and node.command is not null
     searchPackage: 'r.helpPanel.searchPackage',
     openInNewPanel: 'r.helpPanel.openInNewPanel',
@@ -27,10 +30,19 @@ const nodeCommands = {
     unsummarizeTopics: 'r.helpPanel.unsummarizeTopics'
 };
 
+// used to avoid typos when handling commands
 type cmdName = keyof typeof nodeCommands;
 
 
+////////////////////
+// The following classes are mostly just an 'adapter layer' between vscode's treeview interface
+// and the object oriented approach used here to present nodes of the treeview.
+// The 'interesting' part of the nodes is implemented below
 
+
+// wrapper around vscode.window.createTreeView()
+// necessary to implement Node.refresh(),
+// which is used to signal from a node that its contents/children have changed
 export class HelpTreeWrapper {
     public rHelp: RHelp;
     public helpView: vscode.TreeView<Node>;
@@ -47,8 +59,11 @@ export class HelpTreeWrapper {
             }
         );
 
+        // register the commands defiend in `nodeCommands`
+        // they still need to be defined in package.json (apart from CALLBACK)
         for(const cmd in nodeCommands){
-            vscode.commands.registerCommand(nodeCommands[cmd], (node: Node) => {
+            vscode.commands.registerCommand(nodeCommands[cmd], (node: Node | undefined) => {
+                // treeview-root is represented by `undefined`
                 node ||= this.helpViewProvider.rootItem;
                 node.handleCommand(<cmdName>cmd);
             });
@@ -63,6 +78,7 @@ export class HelpTreeWrapper {
 }
 
 
+// mostly just a wrapper to implement vscode.TreeDataProvider
 export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
     public rootItem: RootNode;
 
@@ -90,10 +106,16 @@ export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
 }
 
 // Abstract base class for nodes of the treeview
+// Is a rather technical base class to handle the intricacies of vscode's treeview API
+// All the 'interesting' stuff hapens in the derived classes
+// New commands should (if possible) be implemented by defining a new derived class,
+// rather than modifying this class!
 abstract class Node extends vscode.TreeItem{
     // TreeItem (defaults for this usecase)
     public description: string;
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None;
+
+    // set to null/undefined in derived class to expand/collapse on click
     public command = {
         title: 'treeNodeCallback', // is this title used anywhere?
         command: nodeCommands.CALLBACK,
@@ -101,16 +123,17 @@ abstract class Node extends vscode.TreeItem{
     };
 
     // Node
-    public readonly parent: Node | undefined;
+    public parent: Node | undefined;
     public children?: Node[] = undefined;
 
-    // When used in quickpick
-    public showInQuickPick: boolean = true;
-    public quickPickCommand: cmdName;
-    public qpLabel?: string;
-    public qpDetail?: string;
-    public qpPrompt?: string;
+    // These can be used to modify the behaviour of a node when showed as/in a quickpick:
+    public quickPickCommand?: cmdName; // defaults to this.showQuickPick or callBack
+    public qpLabel?: string; // defaults to node.icon + node.label
+    public qpDetail?: string; // defaults to node.detail || node.description || node.toolTip
+    public qpPrompt?: string; // defaults to empty input bar
 
+    // These are shared between nodes to access functions of the help panel etc.
+    // could also be static?
     protected readonly wrapper: HelpTreeWrapper;
     protected readonly rootNode: RootNode;
     protected readonly rHelp: RHelp;
@@ -118,6 +141,7 @@ abstract class Node extends vscode.TreeItem{
     // used to give unique ids to nodes
     static newId: number = 0;
 
+    // The default constructor just copies some info from parent
     constructor(parent: Node, wrapper?: HelpTreeWrapper){
         super('');
         if(parent){
@@ -132,6 +156,8 @@ abstract class Node extends vscode.TreeItem{
         this.id = `${Node.newId++}`;
     }
 
+    // Called when a node or command-button on a node is clicked
+    // Only internal commands are handled here, custom commands are implemented in _handleCommand!
     public handleCommand(cmd: cmdName){
         if(cmd === 'CALLBACK' && this.callBack){
             this.callBack();
@@ -148,12 +174,18 @@ abstract class Node extends vscode.TreeItem{
         }
     }
 
+    // overwrite this in derived classes to handle custom commands
     protected _handleCommand(cmd: cmdName){
         // to be overwritten
     }
 
+    // implement this to handle callBacks (simple clicks on a node)
+    // can also be implemented in _handleCommand('CALLBACK')
     public callBack?(): void;
 
+    // Shows a quickpick containing the children of a node
+    // If the picked child has children itself, another quickpick is shown
+    // Otherwise, its QUICKPICK or CALLBACK command is executed
     public async showQuickPick(){
         const children = await this.makeChildren(true);
         const qpItems: (vscode.QuickPickItem & {child: Node})[] = children.map(v => {
@@ -176,6 +208,8 @@ abstract class Node extends vscode.TreeItem{
         }
     }
 
+    // Called by vscode etc. to get the children of a node
+    // Not meant to be modified in derived classes!
     public async getChildren(): Promise<Node[]|null> | null {
         if(this.children === undefined){
             this.children = await this.makeChildren();
@@ -188,6 +222,7 @@ abstract class Node extends vscode.TreeItem{
         return [];
     }
 
+    // Can be called by a method from the node itself or externally to refresh the node in the treeview
     public refresh(refreshChildren: boolean = true){
         if(refreshChildren){
             this.children = undefined;
@@ -195,10 +230,22 @@ abstract class Node extends vscode.TreeItem{
         this.wrapper.refreshNode(this);
     }
 
+    // Clear 'grandchildren' without triggering the treeview to update too often
+    public refreshChildren(){
+        if(this.children){
+            for(const child of this.children){
+                child.children = undefined;
+            }
+        }
+    }
+
+    // show/focus the node in the treeview
     public reveal(options?: { select?: boolean, focus?: boolean, expand?: boolean | number }){
         void this.wrapper.helpView.reveal(this, options);
     }
 
+    // These methods are used to update this.contextValue with possible command names
+    // The constructed contextValue contains the command names of the commands applying to this node
     static makeContextValue(...args: cmdName[]){
         return args.map(v => `_${v}_`).join('');
     }
@@ -222,9 +269,24 @@ abstract class Node extends vscode.TreeItem{
 
 abstract class MetaNode extends Node {
     // abstract parent class nodes that don't represent packages, topics etc.
+    // delete?
 }
 
-// Root of the node. Is not actually used as TreeItem, but as 'imaginary' root item.
+
+
+
+
+
+
+
+///////////////////////////////////
+// The following classes contain the implementation of the help-view-specific behaviour
+// PkgRootNode, PackageNode, and TopicNode are a bit more complex
+// The remaining nodes mostly just contain an icon and a callback
+
+
+
+// Root of the node. Is not actually used by vscode, but as 'imaginary' root item.
 class RootNode extends MetaNode {
     public collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
     public label = 'root';
@@ -250,7 +312,7 @@ class RootNode extends MetaNode {
     }
 }
 
-
+// contains the list of installed packages
 class PkgRootNode extends MetaNode {
     // TreeItem
     public label = 'Help Topics by Package';
@@ -263,7 +325,8 @@ class PkgRootNode extends MetaNode {
     // Node
     public children?: PackageNode[];
     public parent: RootNode;
-    // public quickPickCommand: cmdName = 'searchPackage';
+
+    // quickpick
     public qpPrompt = 'Please select a package.';
 
     // PkgRootNode
@@ -273,6 +336,7 @@ class PkgRootNode extends MetaNode {
 
     async _handleCommand(cmd: cmdName){
         if(cmd === 'clearCache'){
+            // used e.g. after manually installing/removing a package
             this.refresh(true);
         } else if(cmd === 'showOnlyFavorites'){
             this.showOnlyFavorites = true;
@@ -301,16 +365,15 @@ class PkgRootNode extends MetaNode {
         } else if(cmd === 'unsummarizeTopics'){
             this.summarizeTopics = false;
             this.replaceContextValue('unsummarizeTopics', 'summarizeTopics');
-            this.refreshChildren();
+            this.refreshChildren(); // clears the 'grandchildren'
             this.refresh(false, false);
         } else if(cmd === 'summarizeTopics'){
             this.summarizeTopics = true;
             this.replaceContextValue('summarizeTopics', 'unsummarizeTopics');
-            this.refreshChildren();
+            this.refreshChildren(); // clears the 'grandchildren'
             this.refresh(false, false);
         }
     }
-
 
     refresh(clearCache: boolean = false, refreshChildren: boolean = true){
         if(clearCache){
@@ -319,15 +382,6 @@ class PkgRootNode extends MetaNode {
         }
         super.refresh(refreshChildren);
     }
-
-    refreshChildren(){
-        if(this.children){
-            for(const child of this.children){
-                child.children = undefined;
-            }
-        }
-    }
-
 
     async makeChildren() {
         let packages = await this.rHelp.packageManager.getPackages(false);
@@ -353,6 +407,7 @@ class PkgRootNode extends MetaNode {
 }
 
 
+// contains the topics belonging to an individual package
 class PackageNode extends Node {
     // TreeItem
     public command = null;
@@ -361,7 +416,8 @@ class PackageNode extends Node {
 
     // Node
     public parent: PkgRootNode;
-    // public quickPickCommand: cmdName = 'searchPackage';
+
+    // QuickPick
     public qpPrompt = 'Please select a Topic.';
 
     // Package
@@ -385,6 +441,7 @@ class PackageNode extends Node {
 
     public async _handleCommand(cmd: cmdName){
         if(cmd === 'clearCache'){
+            // useful e.g. when working on a package
             this.rHelp.clearCachedFiles(new RegExp(`^/library/${this.pkg.name}/`));
             this.refresh();
         } else if(cmd === 'addToFavorites'){
@@ -395,6 +452,8 @@ class PackageNode extends Node {
             this.parent.refresh();
         } else if(cmd === 'removePackage'){
             const success = await this.rHelp.packageManager.removePackage(this.pkg.name, true);
+            // only refresh if user confirmed removing the package (success === true)
+            // might still refresh if removing was attempted but failed
             if(success){
                 this.parent.refresh(true);
             }
@@ -411,6 +470,7 @@ class PackageNode extends Node {
     }
 }
 
+// Node representing an individual topic/help page
 class TopicNode extends Node {
     // TreeItem
     iconPath = new vscode.ThemeIcon('circle-filled');
@@ -453,6 +513,10 @@ class TopicNode extends Node {
         }
     }
 }
+
+
+/////////////
+// The following nodes only implement an individual command each
 
 class HomeNode extends MetaNode {
     label = 'Home';

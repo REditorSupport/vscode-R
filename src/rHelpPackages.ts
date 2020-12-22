@@ -8,6 +8,15 @@ import { getRpath, getConfirmation, executeAsTask, doWithProgress } from './util
 import { AliasProvider } from './rHelpProvider';
 
 
+// This file implements a rudimentary 'package manager'
+// The exported class PackageManager contains methods to
+//  * list installed packages
+//  * list help topics from a package
+//  * let the user pick a package and/or help topic
+//  * remove installed packages
+//  * install packages, selected from CRAN using a quickpick
+
+
 export enum TopicType {
     HOME,
     INDEX,
@@ -16,6 +25,7 @@ export enum TopicType {
 }
 
 
+// interface containing information about an individual help topic
 export interface Topic {
     name: string;
     description: string;
@@ -33,6 +43,8 @@ export interface Topic {
     isGrouped?: boolean;
 }
 
+// interface containing info about a package
+// can be either installed locally or parsed from the CRAN website
 export interface Package {
     name: string;
     description: string;
@@ -48,23 +60,24 @@ export interface Package {
     isCran?: boolean;
     isInstalled?: boolean;
 }
-
 export interface CranPackage extends Package {
     href: string;
     date: string;
     isCran: true;
 }
-
 export interface InstalledPackage extends Package {
     isInstalled: true;
 }
 
 
+// used to store package info parsed from /doc/html/00Index.html and /library/.../html/index.html
 export interface IndexFileEntry {
     name: string;
     description: string;
     href?: string;
 }
+
+type CachedIndexFiles = {path: string, items: IndexFileEntry[] | null}[];
 
 
 export interface PackageManagerOptions {
@@ -72,8 +85,6 @@ export interface PackageManagerOptions {
     rHelp: RHelp,
     persistentState: vscode.Memento
 }
-
-type CachedIndexFiles = {path: string, items: IndexFileEntry[] | null}[];
 
 export class PackageManager {
 
@@ -153,7 +164,7 @@ export class PackageManager {
         await this.state.update('r.helpPanel.cachedIndexFiles', cache);
     }
 
-    // private functions used to sync favoriteNames wi
+    // private functions used to sync favoriteNames with global state / workspace state
     private pullFavoriteNames(){
         if(this.state){
             this.favoriteNames = this.state.get('r.helpPanel.favoriteNames') || this.favoriteNames;
@@ -165,6 +176,7 @@ export class PackageManager {
         }
     }
 
+    // let the user pick and install a package from CRAN 
     public async pickAndInstallPackage(): Promise<boolean> {
         const pkg = await this.pickPackage('Please selecte a package.', true);
         if(!pkg){
@@ -174,7 +186,7 @@ export class PackageManager {
         return ret;
     }
 
-
+    // remove a specified package. The packagename is selected e.g. in the help tree-view
     public async removePackage(pkgName: string, _showError: boolean = false): Promise<boolean> {
         const rPath = await getRpath(false);
         const args = ['--silent', '-e', `remove.packages('${pkgName}')`];
@@ -189,7 +201,6 @@ export class PackageManager {
             return false;
         }
     }
-
 
     public async installPackage(pkgName: string, showError: boolean = false): Promise<boolean> {
         const rPath = await getRpath(false);
@@ -227,9 +238,9 @@ export class PackageManager {
         return packages;
     }
 
+    // Let the user pick a package, either from local installation or CRAN
     public async pickPackage(placeHolder: string = '', fromCran: boolean = false): Promise<Package> {
 
-        // const packages = await this.getPackages(fromCran);
         const packages = await doWithProgress(() => this.getPackages(fromCran));
 
 		if(!packages || packages.length === 0){
@@ -254,6 +265,7 @@ export class PackageManager {
         return (qp ? qp.package : undefined);
     }
 
+    // let the user pick a help topic from a package
     public async pickTopic(pkgName: string, placeHolder: string = '', summarize: boolean = false): Promise<Topic> {
 
         const topics = await this.getTopics(pkgName, summarize);
@@ -275,6 +287,8 @@ export class PackageManager {
         return qp.topic;
     }
 
+    // parses a package's index file to produce a list of help topics
+    // highlights ths 'home' topic and adds entries for the package index and DESCRIPTION file
     public async getTopics(pkgName: string, summarize: boolean = false, skipMeta: boolean = false): Promise<Topic[]> {
 
         const indexEntries = await this.getParsedIndexFile(`/library/${pkgName}/html/00Index.html`);
@@ -341,6 +355,7 @@ export class PackageManager {
         return ret;
     }
 
+    // Used to summarize index-entries that point to the same help file
     public summarizeTopics(topics: Topic[]): Topic[] {
         const topicMap = new Map<string, Topic>();
         for(const topic of topics){
@@ -425,14 +440,16 @@ export class PackageManager {
 		return retSorted;
 	}
 
+    // retrieves and parses a list of packages from CRAN
 	public async getParsedCranFile(url: string): Promise<Package[]> {
 
+        // return cache entry if present
         const cacheEntry = this.getCachedIndexFile(url);
-
         if(cacheEntry){
             return cacheEntry;
         }
 
+        // retrieve html from website
 		const htmlPromise = new Promise<string>((resolve) => {
 			let content = '';
 			http.get(url, (res: http.IncomingMessage) => {
@@ -449,12 +466,12 @@ export class PackageManager {
 		});
 		const html = await htmlPromise;
 
+        // parse file
 		const cranPackages = this.parseCranFile(html, url);
 
+        // update cache and return
         void this.updateCachedIndexFile(url, cranPackages);
-
         const ret = [...cranPackages];
-
 		return ret;
 	}
 
