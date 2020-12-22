@@ -177,7 +177,7 @@ export async function executeAsTask(name: string, command: string, args?: string
         'R',
         taskExecution,
         []
-    )
+    );
     const taskExecutionRunning = await vscode.tasks.executeTask(task);
 
     const taskDonePromise = new Promise<void>((resolve) => {
@@ -185,14 +185,14 @@ export async function executeAsTask(name: string, command: string, args?: string
             if(e.execution === taskExecutionRunning){
                 resolve();
             }
-        })
-    })
+        });
+    });
 
     return await taskDonePromise;
 }
 
 export async function doWithProgress<T>(cb: () => T | Promise<T>, location: string | vscode.ProgressLocation = 'rHelpPages'): Promise<T> {
-	const location2 = (typeof location === 'string' ? {viewId: location} : location)
+	const location2 = (typeof location === 'string' ? {viewId: location} : location);
 	const options: vscode.ProgressOptions = {
 		location: location2,
 		cancellable: false

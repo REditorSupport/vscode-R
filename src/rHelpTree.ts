@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-empty-function */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-inferrable-types */
 
@@ -138,7 +139,7 @@ abstract class Node extends vscode.TreeItem{
             if(this.quickPickCommand){
                 this._handleCommand(this.quickPickCommand);
             } else if(this.collapsibleState !== CollapsibleState.None){
-                this.showQuickPick();
+                void this.showQuickPick();
             } else{
                 this.handleCommand('CALLBACK');
             }
@@ -165,7 +166,7 @@ abstract class Node extends vscode.TreeItem{
                 detail: v.qpDetail ?? v.description ?? v.tooltip,
                 child: v
             };
-        })
+        });
         const qp = await vscode.window.showQuickPick(qpItems, {
             placeHolder: this.qpPrompt
         });
@@ -199,7 +200,7 @@ abstract class Node extends vscode.TreeItem{
     }
 
     static makeContextValue(...args: cmdName[]){
-        return args.map(v => `_${v}_`).join('')
+        return args.map(v => `_${v}_`).join('');
     }
     public addContextValues(...args: cmdName[]){
         args.forEach(val => {
@@ -314,7 +315,7 @@ class PkgRootNode extends MetaNode {
     refresh(clearCache: boolean = false, refreshChildren: boolean = true){
         if(clearCache){
             this.rHelp.clearCachedFiles(`/doc/html/packages.html`);
-            this.rHelp.packageManager.clearCachedFiles(`/doc/html/packages.html`);
+            void this.rHelp.packageManager.clearCachedFiles(`/doc/html/packages.html`);
         }
         super.refresh(refreshChildren);
     }
@@ -403,7 +404,7 @@ class PackageNode extends Node {
     async makeChildren(forQuickPick: boolean = false) {
         const summarizeTopics = (
             forQuickPick ? false : (this.parent.summarizeTopics ?? true)
-        )
+        );
         const topics = await this.rHelp.packageManager.getTopics(this.pkg.name, summarizeTopics, false);
         const ret = topics.map(topic => new TopicNode(this, topic));
         return ret;
@@ -468,7 +469,7 @@ class Search1Node extends MetaNode {
     iconPath = new vscode.ThemeIcon('zap');
     
     callBack(){
-        this.rHelp.searchHelpByAlias();
+        void this.rHelp.searchHelpByAlias();
     }
 }
 
@@ -477,7 +478,7 @@ class Search2Node extends MetaNode {
     iconPath = new vscode.ThemeIcon('search');
 
     callBack(){
-        this.rHelp.searchHelpByText();
+        void this.rHelp.searchHelpByText();
     }
 }
 
