@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -20,11 +21,13 @@ class DummyMemento implements vscode.Memento {
 	items = new Map<string, any>()
 	public get<T>(key: string, defaultValue?: T): T | undefined {
 		if(this.items.has(key)){
+			// eslint-disable-next-line @typescript-eslint/no-unsafe-return
 			return this.items.get(key);
 		} else{
 			return defaultValue;
 		}
 	}
+	// eslint-disable-next-line @typescript-eslint/require-await
 	public async update(key: string, value: any): Promise<void> {
 		this.items.set(key, value);
 	}
@@ -267,7 +270,7 @@ export class RHelp implements api.HelpPanel {
 
 	// if `subMenu` is not specified, let user choose between available help functions
 	public showHelpMenu(): void  {
-		this.treeViewWrapper.helpViewProvider.rootItem.showQuickPick();
+		void this.treeViewWrapper.helpViewProvider.rootItem.showQuickPick();
 	}
 
 	public clearCachedFiles(re: string|RegExp): void {
@@ -303,11 +306,13 @@ export class RHelp implements api.HelpPanel {
 			void vscode.window.showErrorMessage('Failed to get list of R functions. Make sure that `jsonlite` is installed and r.helpPanel.rpath points to a valid R executable.');
 			return false;
 		}
-		const qpItems: (vscode.QuickPickItem & Alias)[] = aliases.map(v => Object({
-			...v,
-			label: v.name,
-			description: `(${v.package}::${v.name})`,
-		}));
+		const qpItems: (vscode.QuickPickItem & Alias)[] = aliases.map(v => {
+			return {
+				...v,
+				label: v.name,
+				description: `(${v.package}::${v.name})`,
+			};
+		});
 		const qpOptions = {
 			matchOnDescription: true,
 			placeHolder: 'Please type a function name/documentation entry'
@@ -401,7 +406,7 @@ export class RHelp implements api.HelpPanel {
 							}
 						}
 					});
-					section.childNodes = newChildNodes;
+					section.childNodes = <cheerio.Element[]>newChildNodes;
 				});
 			}
 
@@ -420,12 +425,13 @@ export class RHelp implements api.HelpPanel {
 
 function escapeHtml(source: string) {
 	const entityMap = new Map<string, string>(Object.entries({
-		"&": "&amp;",
-		"<": "&lt;",
-		">": "&gt;",
+		'&': '&amp;',
+		'<': '&lt;',
+		'>': '&gt;',
 		'"': '&quot;',
-		"'": '&#39;',
-		"/": '&#x2F;'
-	}))
-    return String(source).replace(/[&<>"'\/]/g, (s: string) => entityMap.get(s)!);
+		'\'': '&#39;',
+		'/': '&#x2F;'
+	}));
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    return String(source).replace(/[&<>"'/]/g, (s: string) => entityMap.get(s)!);
 }

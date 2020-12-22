@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
@@ -84,7 +85,7 @@ export class HelpPanel {
 			});
 
 			// sent by javascript added to the help pages, e.g. when a link or mouse button is clicked
-			this.panel.webview.onDidReceiveMessage((e: any) => {
+			this.panel.webview.onDidReceiveMessage((e: {[key: string]: any}) => {
 				void this.handleMessage(e);
 			});
 
@@ -105,7 +106,7 @@ export class HelpPanel {
 
 		// update this.viewColumn if a valid viewer argument was supplied
 		if(typeof viewer === 'string'){
-			this.viewColumn = vscode.ViewColumn[String(viewer)];
+			this.viewColumn = <vscode.ViewColumn>vscode.ViewColumn[String(viewer)];
 		}
 
 		// get or create webview:
@@ -186,11 +187,11 @@ export class HelpPanel {
 	}
 
 	// handle message produced by javascript inside the help page
-	private async handleMessage(msg: any){
-		if(msg.message === 'linkClicked'){
+	private async handleMessage(msg: {[key: string]: any}){
+		if('message' in msg && msg.message === 'linkClicked'){
 			// handle hyperlinks clicked in the webview
 			// normal navigation does not work in webviews (even on localhost)
-			const href: string = msg.href || '';
+			const href: string = <string>msg.href || '';
 			const currentScrollY: number = Number(msg.scrollY) || 0;
 			console.log('Link clicked: ' + href);
 
@@ -233,7 +234,7 @@ export class HelpPanel {
 		} else if(msg.message === 'mouseClick'){
 			// use the additional mouse buttons to go forward/backwards
 			const currentScrollY = Number(msg.scrollY) || 0;
-			const button: number = msg.button || 0;
+			const button: number = Number(msg.button) || 0;
 			if(button === 3){
 				this._goBack(currentScrollY);
 			} else if(button === 4){
@@ -241,7 +242,7 @@ export class HelpPanel {
 			}
 		} else if(msg.message === 'text'){
 			// used for logging/debugging
-			console.log(`Message (text): ${msg.text}`);
+			console.log(`Message (text): ${String(msg.text)}`);
 		} else{
 			console.log('Unknown message:', msg);
 		}
@@ -262,10 +263,10 @@ export class HelpPanel {
 		$('body').attr('scrollyto', `${helpFile.scrollY ?? -1}`);
 
         if(styleUri){
-            $('body').append(`\n<link rel="stylesheet" href="${styleUri}"></link>`);
+            $('body').append(`\n<link rel="stylesheet" href="${styleUri.toString()}"></link>`);
         }
         if(scriptUri){
-            $('body').append(`\n<script src=${scriptUri}></script>`);
+            $('body').append(`\n<script src=${scriptUri.toString()}></script>`);
         }
 
 

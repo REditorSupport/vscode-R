@@ -94,7 +94,7 @@ export class PackageManager {
 
     public refresh(): void {
         this.pullFavoriteNames();
-        this.clearCachedFiles();
+        void this.clearCachedFiles();
     }
 
 	public async clearCachedFiles(re?: string|RegExp): Promise<void> {
@@ -146,7 +146,7 @@ export class PackageManager {
             cache.push({
                 path: path,
                 items: items
-            })
+            });
         } else{
             cache[ind].items = items;
         }
@@ -175,9 +175,9 @@ export class PackageManager {
     }
 
 
-    public async removePackage(pkgName: string, showError: boolean = false): Promise<boolean> {
+    public async removePackage(pkgName: string, _showError: boolean = false): Promise<boolean> {
         const rPath = await getRpath(false);
-        const args = ['--silent', '-e', `remove.packages('${pkgName}')`]
+        const args = ['--silent', '-e', `remove.packages('${pkgName}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
         const confirmation = 'Yes, remove package!';
         const prompt = `Are you sure you want to remove package ${pkgName}?`;
@@ -336,7 +336,7 @@ export class PackageManager {
             } else{
                 return a.type - b.type;
             }
-        })
+        });
 
         return ret;
     }
@@ -384,7 +384,7 @@ export class PackageManager {
 				// parse and cache file
 				indexItems = this.parseIndexFile(helpFile.html);
 			}
-            this.updateCachedIndexFile(path, indexItems);
+            void this.updateCachedIndexFile(path, indexItems);
 		}
 
 		// return cache entry. make new array to avoid messing with the cache
@@ -451,7 +451,7 @@ export class PackageManager {
 
 		const cranPackages = this.parseCranFile(html, url);
 
-        this.updateCachedIndexFile(url, cranPackages);
+        void this.updateCachedIndexFile(url, cranPackages);
 
         const ret = [...cranPackages];
 
