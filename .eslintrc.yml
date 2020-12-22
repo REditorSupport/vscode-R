@@ -18,3 +18,5 @@ rules:
     curly: "warn"
     quotes: ["error", "single", { "allowTemplateLiterals": true } ]
     eqeqeq: "error"
+    no-empty: "ignore"
+    no-inferrable-types: "ignore"

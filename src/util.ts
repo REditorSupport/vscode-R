@@ -5,6 +5,7 @@ import path = require('path');
 import fs = require('fs');
 import { window, workspace, WorkspaceConfiguration } from 'vscode';
 import winreg = require('winreg');
+import * as vscode from 'vscode';
 
 export function config(): WorkspaceConfiguration {
     return workspace.getConfiguration('r');
@@ -143,4 +144,66 @@ export function checkForSpecialCharacters(text: string): boolean {
 
 export function checkIfFileExists(filePath: string): boolean {
     return existsSync(filePath);
+}
+
+
+export async function getConfirmation(prompt: string, confirmation?: string, detail?: string): Promise<boolean> {
+    confirmation ||= 'Yes';
+    const items: vscode.QuickPickItem[] = [
+        {
+            label: confirmation,
+            detail: detail
+        },
+        {
+            label: 'Cancel'
+        }
+    ];
+    const answer = await vscode.window.showQuickPick(items, {
+        placeHolder: prompt
+    });
+    return answer === items[0];
+}
+
+export async function executeAsTask(name: string, command: string, args?: string[]): Promise<void> {
+    const taskDefinition = {type: 'shell'};
+    const taskExecution = new vscode.ShellExecution(
+        command,
+        args
+    );
+    const task = new vscode.Task(
+        taskDefinition,
+        vscode.TaskScope.Global,
+        name,
+        'R',
+        taskExecution,
+        []
+    )
+    const taskExecutionRunning = await vscode.tasks.executeTask(task);
+
+    const taskDonePromise = new Promise<void>((resolve) => {
+        vscode.tasks.onDidEndTask(e => {
+            if(e.execution === taskExecutionRunning){
+                resolve();
+            }
+        })
+    })
+
+    return await taskDonePromise;
+}
+
+export async function doWithProgress<T>(cb: () => T | Promise<T>, location: string | vscode.ProgressLocation = 'rHelpPages'): Promise<T> {
+	const location2 = (typeof location === 'string' ? {viewId: location} : location)
+	const options: vscode.ProgressOptions = {
+		location: location2,
+		cancellable: false
+	};
+	let ret: T;
+	await vscode.window.withProgress(options, async () => {
+		const retPromise = new Promise<T>((resolve) => setTimeout(() => {
+			const ret = cb();
+			resolve(ret);
+		}));
+		ret = await retPromise;
+	});
+	return ret;
 }

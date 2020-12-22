@@ -11,8 +11,8 @@ export declare class RExtension {
 export type HelpSubMenu = 'doc' | 'pkgList' | 'refresh' | '?' | '??';
 
 export interface HelpPanel {
-	showHelpMenu(subMenu?: HelpSubMenu): boolean | Promise<boolean>;
-	showHelpForPath(requestPath: string): void;
+	showHelpMenu(): void;
+	showHelpForPath(requestPath?: string): void;
 	dispose(): void;
 	refresh(): void;
 }
