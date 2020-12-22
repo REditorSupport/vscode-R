@@ -322,7 +322,7 @@ export class RHelp implements api.HelpPanel {
 			qpOptions
 		);
 		if(qp){
-			return this.showHelpForPath(`/library/${qp.package}/html/${qp.name}.html`);
+			return this.showHelpForPath(`/library/${qp.package}/html/${qp.alias}.html`);
 		}
 		return false;
 	}
