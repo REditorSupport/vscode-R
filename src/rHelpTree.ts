@@ -484,7 +484,7 @@ class Search2Node extends MetaNode {
 
 class RefreshNode extends MetaNode {
     parent: RootNode;
-	label = 'Clear Cached Index Files';
+	label = 'Clear Cached Index Files & Restart Help Server';
     iconPath = new vscode.ThemeIcon('refresh');
 
     callBack(){
