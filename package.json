@@ -578,6 +578,11 @@
         "icon": "$(trash)"
       },
       {
+        "title": "Install multiple packages",
+        "command": "r.helpPanel.installPackages",
+        "icon": "$(expand-all)"
+      },
+      {
         "title": "Show QuickPick",
         "command": "r.helpPanel.showQuickPick",
         "icon": "$(zap)"
@@ -753,6 +758,11 @@
           "command": "r.helpPanel.removePackage",
           "group": "inline",
           "when": "view == rHelpPages && viewItem =~ /_removePackage_/"
+        },
+        {
+          "command": "r.helpPanel.installPackages",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /_installPackages_/"
         },
         {
           "command": "r.helpPanel.filterPackages",

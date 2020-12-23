@@ -172,9 +172,10 @@ export async function getConfirmation(prompt: string, confirmation?: string, det
 // is not intended for actual user interaction
 export async function executeAsTask(name: string, command: string, args?: string[]): Promise<void> {
     const taskDefinition = {type: 'shell'};
+    const quotedArgs = args.map<vscode.ShellQuotedString>(arg => {return {value: arg, quoting: vscode.ShellQuoting.Weak};});
     const taskExecution = new vscode.ShellExecution(
         command,
-        args
+        quotedArgs
     );
     const task = new vscode.Task(
         taskDefinition,

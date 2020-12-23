@@ -27,7 +27,8 @@ const nodeCommands = {
     showAllPackages: 'r.helpPanel.showAllPackages',
     filterPackages: 'r.helpPanel.filterPackages',
     summarizeTopics: 'r.helpPanel.summarizeTopics',
-    unsummarizeTopics: 'r.helpPanel.unsummarizeTopics'
+    unsummarizeTopics: 'r.helpPanel.unsummarizeTopics',
+    installPackages: 'r.helpPanel.installPackages'
 };
 
 // used to avoid typos when handling commands
@@ -571,8 +572,17 @@ class InstallPackageNode extends MetaNode {
     label = 'Install CRAN Package';
     iconPath = new vscode.ThemeIcon('cloud-download');
 
+    contextValue = Node.makeContextValue('installPackages');
+
+    public async _handleCommand(cmd: cmdName){
+        if(cmd === 'installPackages'){
+            await this.rHelp.packageManager.pickAndInstallPackages(true);
+            this.rootNode.pkgRootNode.refresh(true);
+        }
+    }
+
     async callBack(){
-        await this.rHelp.packageManager.pickAndInstallPackage();
+        await this.rHelp.packageManager.pickAndInstallPackages();
         this.rootNode.pkgRootNode.refresh(true);
     }
 }

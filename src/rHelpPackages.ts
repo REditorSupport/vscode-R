@@ -183,19 +183,20 @@ export class PackageManager {
     }
 
     // let the user pick and install a package from CRAN 
-    public async pickAndInstallPackage(): Promise<boolean> {
-        const pkg = await this.pickPackage('Please selecte a package.', true);
-        if(!pkg){
+    public async pickAndInstallPackages(pickMany: boolean = false): Promise<boolean> {
+        const pkgs = await this.pickPackages('Please selecte a package.', true, pickMany);
+        if(!pkgs){
             return false;
         }
-        const ret = await this.installPackage(pkg.name);
+        const names = pkgs.map(v => v.name);
+        const ret = await this.installPackages(names);
         return ret;
     }
 
     // remove a specified package. The packagename is selected e.g. in the help tree-view
     public async removePackage(pkgName: string): Promise<boolean> {
         const rPath = await getRpath(false);
-        const args = ['--silent', '-e', `"remove.packages('${pkgName}')"`];
+        const args = ['--silent', '--slave', '-e', `remove.packages('${pkgName}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
         const confirmation = 'Yes, remove package!';
         const prompt = `Are you sure you want to remove package ${pkgName}?`;
@@ -208,12 +209,13 @@ export class PackageManager {
         }
     }
 
-    public async installPackage(pkgName: string): Promise<boolean> {
+    public async installPackages(pkgNames: string[]): Promise<boolean> {
         const rPath = await getRpath(false);
-        const args = [`--silent`, `-e`, `"install.packages('${pkgName}')"`];
+        const cranUrl = await getCranUrl('', this.cwd);
+        const args = [`--silent`, '--slave', `-e`, `install.packages(c(${pkgNames.map(v => `'${v}'`).join(',')}),repos='${cranUrl}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
-        const confirmation = 'Yes, install package!';
-        const prompt = `Are you sure you want to install package ${pkgName}?`;
+        const confirmation = 'Yes, install package(s)!';
+        const prompt = `Are you sure you want to install package(s): ${pkgNames.join(', ')}?`;
 
         if(await getConfirmation(prompt, confirmation, cmd)){
             await executeAsTask('Install Package', rPath, args);
@@ -257,8 +259,7 @@ export class PackageManager {
     }
 
     // Let the user pick a package, either from local installation or CRAN
-    public async pickPackage(placeHolder: string = '', fromCran: boolean = false): Promise<Package> {
-
+    public async pickPackages(placeHolder: string, fromCran: boolean = false, pickMany: boolean = false): Promise<Package[]|undefined> {
         const packages = await doWithProgress(() => this.getPackages(fromCran));
 
 		if(!packages || packages.length === 0){
@@ -277,9 +278,16 @@ export class PackageManager {
             matchOnDetail: true,
             placeHolder: placeHolder
         };
-        const qp = await vscode.window.showQuickPick(qpItems, qpOptions);
+        let ret: Package | Package[];
+        if(pickMany){
+            const qp = await vscode.window.showQuickPick(qpItems, {...qpOptions, canPickMany: true});
+            ret = qp?.map(v => v.package);
+        } else{
+            const qp = await vscode.window.showQuickPick(qpItems, qpOptions);
+            ret = (qp ? [qp.package] : undefined);
+        }
         
-        return (qp ? qp.package : undefined);
+        return ret;
     }
 
     // let the user pick a help topic from a package
