@@ -1,10 +1,11 @@
 
 import * as cheerio from 'cheerio';
+import * as https from 'https';
 import * as http from 'http';
 import * as vscode from 'vscode';
 
 import { RHelp } from './rHelp';
-import { getRpath, getConfirmation, executeAsTask, doWithProgress } from './util';
+import { getRpath, getConfirmation, executeAsTask, doWithProgress, getCranUrl } from './util';
 import { AliasProvider } from './rHelpProvider';
 
 
@@ -87,8 +88,6 @@ export interface PackageManagerOptions {
 }
 
 export class PackageManager {
-
-    readonly cranUrl = 'http://cran.r-project.org/web/packages/available_packages_by_date.html';
 
 	// the object that actually provides help pages:
     readonly rHelp: RHelp;
@@ -221,7 +220,8 @@ export class PackageManager {
         let packages: Package[];
         this.pullFavoriteNames();
         if(fromCran){
-            packages = await this.getParsedCranFile(this.cranUrl);
+            const url = getCranUrl('web/packages/available_packages_by_date.html');
+            packages = await this.getParsedCranFile(url);
         } else{
             packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
         }
@@ -452,7 +452,7 @@ export class PackageManager {
         // retrieve html from website
 		const htmlPromise = new Promise<string>((resolve) => {
 			let content = '';
-			http.get(url, (res: http.IncomingMessage) => {
+			https.get(url, (res: http.IncomingMessage) => {
 				res.on('data', (chunk: Buffer) => {
 					content += chunk.toString();
 				});

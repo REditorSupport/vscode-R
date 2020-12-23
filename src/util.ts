@@ -215,3 +215,14 @@ export async function doWithProgress<T>(cb: () => T | Promise<T>, location: stri
 	});
 	return ret;
 }
+
+
+// get the URL of a CRAN website
+// argument path is optional and should be relative to the cran root
+// currently the CRAN root url is hardcoded, this could be replaced by reading
+// the url from config, R, or both
+export function getCranUrl(path?: string): string {
+    const baseUrl: string = 'https://cran.r-project.org/';
+    const url = new URL(path, baseUrl);
+    return url.toString();
+}
