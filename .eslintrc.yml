@@ -13,10 +13,19 @@ plugins:
   - '@typescript-eslint'
   - 'jsdoc'
 rules:
-  semi: "error"
-  no-extra-semi: "warn"
-  curly: "warn"
-  quotes: ["error", "single", { "allowTemplateLiterals": true } ]
-  eqeqeq: "error"
-  no-empty: "off"
-  "@typescript-eslint/no-inferrable-types": "off"
+  semi: 'error'
+  no-extra-semi: 'warn'
+  curly: 'warn'
+  quotes:
+    - 'error'
+    - 'single'
+    - allowTemplateLiterals: true
+  eqeqeq: 'error'
+  no-empty:
+    - 'warn'
+    - allowEmptyCatch: true
+  '@typescript-eslint/no-inferrable-types':
+    - 'warn'
+    - 
+      ignoreParameters: true
+      ignoreProperties: true
