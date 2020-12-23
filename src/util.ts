@@ -6,6 +6,7 @@ import fs = require('fs');
 import { window, workspace, WorkspaceConfiguration } from 'vscode';
 import winreg = require('winreg');
 import * as vscode from 'vscode';
+import * as cp from 'child_process';
 
 export function config(): WorkspaceConfiguration {
     return workspace.getConfiguration('r');
@@ -221,8 +222,63 @@ export async function doWithProgress<T>(cb: () => T | Promise<T>, location: stri
 // argument path is optional and should be relative to the cran root
 // currently the CRAN root url is hardcoded, this could be replaced by reading
 // the url from config, R, or both
-export function getCranUrl(path?: string): string {
-    const baseUrl: string = 'https://cran.r-project.org/';
-    const url = new URL(path, baseUrl);
-    return url.toString();
+export async function getCranUrl(path?: string, cwd?: string): Promise<string> {
+    const defaultCranUrl = 'https://cran.r-project.org/';
+    // get cran URL from R. Returns empty string if option is not set.
+    const baseUrl = await executeRCommand('cat(getOption(\'repos\')[\'CRAN\'])', undefined, cwd);
+    let url: string;
+    try{
+        url = new URL(path, baseUrl).toString();
+    } catch(e){
+        url = new URL(path, defaultCranUrl).toString();
+    }
+    return url;
+}
+
+
+
+
+// executes an R command returns its output to stdout
+// uses a regex to filter out output generated e.g. by code in .Rprofile
+// returns the provided fallBack when the command failes
+//
+// WARNING: Cannot handle double quotes in the R command! (e.g. `print("hello world")`)
+// Single quotes are ok.
+//
+export async function executeRCommand(rCommand: string, fallBack?: string, cwd?: string): Promise<string|undefined> {
+    const lim = '---vsc---';
+    const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
+
+    const args = [
+        '--silent',
+        '--slave',
+        '--no-save',
+        '--no-restore',
+    ];
+
+    const rPath = await getRpath(true);
+
+    const options: cp.ExecSyncOptionsWithStringEncoding = {
+        cwd: cwd,
+        encoding: 'utf-8'
+    };
+
+    const cmd = (
+        `${rPath} ${args.join(' ')} -e cat('${lim}') -e "${rCommand}" -e cat('${lim}')`
+    );
+
+    let ret: string = undefined;
+
+    try{
+        const stdout = cp.execSync(cmd, options);
+        ret = stdout.replace(re, '$1');
+    } catch(e){
+        if(fallBack){
+            ret = fallBack;
+        } else{
+            console.warn(e);
+        }
+    }
+
+    return ret;
 }

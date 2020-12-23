@@ -84,7 +84,8 @@ type CachedIndexFiles = {path: string, items: IndexFileEntry[] | null}[];
 export interface PackageManagerOptions {
     rPath: string,
     rHelp: RHelp,
-    persistentState: vscode.Memento
+    persistentState: vscode.Memento,
+    cwd?: string
 }
 
 export class PackageManager {
@@ -94,15 +95,21 @@ export class PackageManager {
 	readonly aliasProvider: AliasProvider;
     readonly state: vscode.Memento;
 
+    readonly cwd?: string;
+
+    protected cranUrl?: string;
+
     public favoriteNames: string[] = [];
 
     constructor(args: PackageManagerOptions){
         this.rHelp = args.rHelp;
         this.state = args.persistentState;
+        this.cwd = args.cwd;
         this.pullFavoriteNames();
     }
 
     public refresh(): void {
+        this.cranUrl = undefined;
         this.pullFavoriteNames();
         void this.clearCachedFiles();
     }
@@ -220,10 +227,21 @@ export class PackageManager {
         let packages: Package[];
         this.pullFavoriteNames();
         if(fromCran){
-            const url = getCranUrl('web/packages/available_packages_by_date.html');
-            packages = await this.getParsedCranFile(url);
+            const cranPath = 'web/packages/available_packages_by_date.html';
+            try{
+                this.cranUrl ||= await getCranUrl(cranPath, this.cwd);
+                packages = await this.getParsedCranFile(this.cranUrl);
+            } catch(e){
+                packages = undefined;
+            }
+            if(!packages || packages.length === 0){
+                void vscode.window.showErrorMessage(`Failed to parse CRAN file from ${this.cranUrl || cranPath}`);
+            }
         } else{
             packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
+            if(!packages || packages.length === 0){
+                void vscode.window.showErrorMessage('Help provider not available!');
+            }
         }
         if(packages){
             for(const pkg of packages){
@@ -244,7 +262,6 @@ export class PackageManager {
         const packages = await doWithProgress(() => this.getPackages(fromCran));
 
 		if(!packages || packages.length === 0){
-			void vscode.window.showErrorMessage('Help provider not available!');
 			return undefined;
 		}
 
@@ -452,7 +469,8 @@ export class PackageManager {
         // retrieve html from website
 		const htmlPromise = new Promise<string>((resolve) => {
 			let content = '';
-			https.get(url, (res: http.IncomingMessage) => {
+            const httpOrHttps = (vscode.Uri.parse(url).scheme === 'https' ? https : http);
+			httpOrHttps.get(url, (res: http.IncomingMessage) => {
 				res.on('data', (chunk: Buffer) => {
 					content += chunk.toString();
 				});
