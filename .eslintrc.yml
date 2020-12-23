@@ -20,4 +20,3 @@ rules:
   eqeqeq: "error"
   no-empty: "off"
   "@typescript-eslint/no-inferrable-types": "off"
-  "@typescript-eslint/no-unused-vars": "off"

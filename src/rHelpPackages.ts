@@ -182,12 +182,12 @@ export class PackageManager {
         if(!pkg){
             return false;
         }
-        const ret = await this.installPackage(pkg.name, true);
+        const ret = await this.installPackage(pkg.name);
         return ret;
     }
 
     // remove a specified package. The packagename is selected e.g. in the help tree-view
-    public async removePackage(pkgName: string, _showError: boolean = false): Promise<boolean> {
+    public async removePackage(pkgName: string): Promise<boolean> {
         const rPath = await getRpath(false);
         const args = ['--silent', '-e', `remove.packages('${pkgName}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
@@ -202,7 +202,7 @@ export class PackageManager {
         }
     }
 
-    public async installPackage(pkgName: string, showError: boolean = false): Promise<boolean> {
+    public async installPackage(pkgName: string): Promise<boolean> {
         const rPath = await getRpath(false);
         const args = [`--silent`, `-e`, `install.packages('${pkgName}')`];
         const cmd = `${rPath} ${args.join(' ')}`;

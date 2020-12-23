@@ -451,7 +451,7 @@ class PackageNode extends Node {
             this.rHelp.packageManager.removeFavorite(this.pkg.name);
             this.parent.refresh();
         } else if(cmd === 'removePackage'){
-            const success = await this.rHelp.packageManager.removePackage(this.pkg.name, true);
+            const success = await this.rHelp.packageManager.removePackage(this.pkg.name);
             // only refresh if user confirmed removing the package (success === true)
             // might still refresh if removing was attempted but failed
             if(success){
