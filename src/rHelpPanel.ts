@@ -97,6 +97,7 @@ export class HelpPanel {
 		}
 
 		this.panel.reveal();
+		void vscode.commands.executeCommand('setContext', 'r.helpPanel.active', this.panel.active);
 
 		return this.panel.webview;
     }
