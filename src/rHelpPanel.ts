@@ -150,8 +150,7 @@ export class HelpPanel {
 			return false;
 		}
 		const uri = vscode.Uri.parse(url);
-		const externalUri = await vscode.env.asExternalUri(uri);
-		return vscode.env.openExternal(externalUri);
+		return vscode.env.openExternal(uri);
 	}
 
 	// go back/forward in the history of the webview:
