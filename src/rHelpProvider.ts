@@ -57,8 +57,7 @@ export class HelpProvider {
                     resolve(str.replace(re, '$1'));
                 }
             });
-            this.cp.on('close', (code) => {
-                console.log(`R process closed with code ${code}`);
+            this.cp.on('close', () => {
                 reject();
             });
         });
