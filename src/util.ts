@@ -264,7 +264,7 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
     };
 
     const cmd = (
-        `${rPath} ${args.join(' ')} -e cat('${lim}') -e "${rCommand}" -e cat('${lim}')`
+        `${rPath} ${args.join(' ')} -e "cat('${lim}')" -e "${rCommand}" -e "cat('${lim}')"`
     );
 
     let ret: string = undefined;
