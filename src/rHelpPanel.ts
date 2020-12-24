@@ -45,7 +45,7 @@ export class HelpPanel {
     private webviewStyleUri?: vscode.Uri;
 
 	// keep track of history to go back/forward:
-	private currentEntry: HistoryEntry|null = null;
+	private currentEntry: HistoryEntry|undefined = undefined;
 	private history: HistoryEntry[] = [];
 	private forwardHistory: HistoryEntry[] = [];
 
@@ -79,9 +79,12 @@ export class HelpPanel {
 			// called e.g. when the webview panel is closed by the user
 			this.panel.onDidDispose(() => {
 				this.panel = undefined;
+				this.history = [];
+				this.forwardHistory = [];
+				this.currentEntry = undefined;
 				this.webviewScriptUri = undefined;
 				this.webviewStyleUri = undefined;
-				void vscode.commands.executeCommand('setContext', 'r.helpPanel.active', false);
+				void this.setContextValues();
 			});
 
 			// sent by javascript added to the help pages, e.g. when a link or mouse button is clicked
@@ -90,17 +93,23 @@ export class HelpPanel {
 			});
 
 			// set context variable to show forward/backward buttons
-			this.panel.onDidChangeViewState((e: vscode.WebviewPanelOnDidChangeViewStateEvent) => {
-				void vscode.commands.executeCommand('setContext', 'r.helpPanel.active', e.webviewPanel.active);
+			this.panel.onDidChangeViewState(() => {
+				void this.setContextValues();
 			});
 
 		}
 
 		this.panel.reveal();
-		void vscode.commands.executeCommand('setContext', 'r.helpPanel.active', this.panel.active);
+		void this.setContextValues();
 
 		return this.panel.webview;
     }
+
+	public async setContextValues(): Promise<void> {
+		await vscode.commands.executeCommand('setContext', 'r.helpPanel.active', !!this.panel?.active);
+		await vscode.commands.executeCommand('setContext', 'r.helpPanel.canGoBack', this.history.length > 0);
+		await vscode.commands.executeCommand('setContext', 'r.helpPanel.canGoForward', this.forwardHistory.length > 0);
+	}
 
 	// shows (internal) help file object in webview
 	public async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, updateHistory = true, currentScrollY = 0, viewer?: string|any): Promise<boolean>{
@@ -135,6 +144,8 @@ export class HelpPanel {
 		this.currentEntry = {
 			helpFile: helpFile
 		};
+
+		await this.setContextValues();
 
 		return true;
 	}

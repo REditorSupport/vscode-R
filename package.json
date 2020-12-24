@@ -520,11 +520,13 @@
       {
         "command": "r.helpPanel.back",
         "title": "R Help Panel: Go Back",
+        "enablement": "r.helpPanel.canGoBack",
         "icon": "$(arrow-left)"
       },
       {
         "command": "r.helpPanel.forward",
         "title": "R Help Panel: Go Forward",
+        "enablement": "r.helpPanel.canGoForward",
         "icon": "$(arrow-right)"
       },
       {
