@@ -43,5 +43,5 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           files: "artifacts/*/*"
           prerelease: false
-          draft: true # Could also be false to publish the release immediately
+          draft: false
 
