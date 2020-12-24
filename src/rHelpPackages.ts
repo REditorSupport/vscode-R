@@ -185,12 +185,17 @@ export class PackageManager {
     // let the user pick and install a package from CRAN 
     public async pickAndInstallPackages(pickMany: boolean = false): Promise<boolean> {
         const pkgs = await this.pickPackages('Please selecte a package.', true, pickMany);
-        if(!pkgs){
-            return false;
+        if(pkgs?.length > 1){
+            const pkgsConfirmed = await this.confirmPackages('Are you sure you want to install these packages?', pkgs);
+            if(pkgsConfirmed?.length > 1){
+                const names = pkgsConfirmed.map(v => v.name);
+                return await this.installPackages(names, true);
+            }
+        } else if(pkgs?.length === 1){
+            const names = pkgs.map(v => v.name);
+            return await this.installPackages(names);
         }
-        const names = pkgs.map(v => v.name);
-        const ret = await this.installPackages(names);
-        return ret;
+        return false;
     }
 
     // remove a specified package. The packagename is selected e.g. in the help tree-view
@@ -209,7 +214,7 @@ export class PackageManager {
         }
     }
 
-    public async installPackages(pkgNames: string[]): Promise<boolean> {
+    public async installPackages(pkgNames: string[], skipConfirmation: boolean = false): Promise<boolean> {
         const rPath = await getRpath(false);
         const cranUrl = await getCranUrl('', this.cwd);
         const args = [`--silent`, '--slave', `-e`, `install.packages(c(${pkgNames.map(v => `'${v}'`).join(',')}),repos='${cranUrl}')`];
@@ -217,7 +222,7 @@ export class PackageManager {
         const confirmation = 'Yes, install package(s)!';
         const prompt = `Are you sure you want to install package(s): ${pkgNames.join(', ')}?`;
 
-        if(await getConfirmation(prompt, confirmation, cmd)){
+        if(skipConfirmation || await getConfirmation(prompt, confirmation, cmd)){
             await executeAsTask('Install Package', rPath, args);
             return true;
         } else{
@@ -256,6 +261,25 @@ export class PackageManager {
             }
         }
         return packages;
+    }
+
+    public async confirmPackages(placeHolder: string, packages: Package[]): Promise<Package[]> {
+        const qpItems: (vscode.QuickPickItem & {package: Package})[] = packages.map(pkg => {
+            return {
+                label: pkg.name,
+                detail: pkg.description,
+                package: pkg,
+                picked: true
+            };
+        });
+        const qpOptions: vscode.QuickPickOptions = {
+            matchOnDescription: true,
+            matchOnDetail: true,
+            placeHolder: placeHolder
+        };
+        const qp = await vscode.window.showQuickPick(qpItems, {...qpOptions, canPickMany: true});
+        const ret = qp?.map(v => v.package) || [];
+        return ret;
     }
 
     // Let the user pick a package, either from local installation or CRAN
