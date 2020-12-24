@@ -576,8 +576,10 @@ class InstallPackageNode extends MetaNode {
 
     public async _handleCommand(cmd: cmdName){
         if(cmd === 'installPackages'){
-            await this.rHelp.packageManager.pickAndInstallPackages(true);
-            this.rootNode.pkgRootNode.refresh(true);
+            const ret = await this.rHelp.packageManager.pickAndInstallPackages(true);
+            if(ret){
+                this.rootNode.pkgRootNode.refresh(true);
+            }
         }
     }
 
