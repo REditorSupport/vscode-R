@@ -71,7 +71,7 @@ export class HelpTreeWrapper {
         }
     }
 
-    refreshNode(node: Node): void {
+    refreshNode(node: Node | undefined): void {
         for(const listener of this.helpViewProvider.listeners){
             listener(node);
         }
@@ -83,7 +83,7 @@ export class HelpTreeWrapper {
 export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
     public rootItem: RootNode;
 
-    public listeners: ((e: Node) => void)[] = [];
+    public listeners: ((e: Node | undefined) => void)[] = [];
 
     constructor(wrapper: HelpTreeWrapper){
         this.rootItem = new RootNode(wrapper);
@@ -94,14 +94,14 @@ export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
         return new vscode.Disposable(() => {});
     }
 
-    getChildren(element?: Node): Node[] | Promise<Node[]> {
+    getChildren(element?: Node): vscode.ProviderResult<Node[]>{
         element ||= this.rootItem;
         return element.getChildren();
     }
     getTreeItem(element: Node): Node {
         return element;
     }
-    getParent(element: Node): Node {
+    getParent(element: Node): Node | undefined {
         return element.parent;
     }
 }
@@ -115,13 +115,14 @@ abstract class Node extends vscode.TreeItem{
     // TreeItem (defaults for this usecase)
     public description: string;
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None;
+    public contextValue: string = '';
 
     // set to null/undefined in derived class to expand/collapse on click
     public command = {
         title: 'treeNodeCallback', // is this title used anywhere?
         command: nodeCommands.CALLBACK,
         arguments: [this]
-    };
+    } as vscode.Command | undefined;
 
     // Node
     public parent: Node | undefined;
@@ -143,7 +144,7 @@ abstract class Node extends vscode.TreeItem{
     static newId: number = 0;
 
     // The default constructor just copies some info from parent
-    constructor(parent: Node, wrapper?: HelpTreeWrapper){
+    constructor(parent?: Node, wrapper?: HelpTreeWrapper){
         super('');
         if(parent){
             wrapper ||= parent.wrapper;
@@ -189,8 +190,11 @@ abstract class Node extends vscode.TreeItem{
     // Otherwise, its QUICKPICK or CALLBACK command is executed
     public async showQuickPick(){
         const children = await this.makeChildren(true);
+        if(!children){
+            return undefined;
+        }
         const qpItems: (vscode.QuickPickItem & {child: Node})[] = children.map(v => {
-            let label = v.label;
+            let label = v.label || '';
             if(typeof v.iconPath === 'object' && 'id' in v.iconPath){
                 label = `$(${v.iconPath.id}) ${label}`;
             }
@@ -211,7 +215,7 @@ abstract class Node extends vscode.TreeItem{
 
     // Called by vscode etc. to get the children of a node
     // Not meant to be modified in derived classes!
-    public async getChildren(): Promise<Node[]|null> | null {
+    public async getChildren(): Promise<Node[]|undefined> {
         if(this.children === undefined){
             this.children = await this.makeChildren();
         }
@@ -219,7 +223,7 @@ abstract class Node extends vscode.TreeItem{
     }
 
     // to be overwritten, if the node has any children
-    protected makeChildren(_forQuickPick: boolean = false): Node[] | Promise<Node[]> {
+    protected makeChildren(_forQuickPick: boolean = false): Promise<Node[]|undefined> | Node[] | undefined {
         return [];
     }
 
@@ -319,7 +323,7 @@ class PkgRootNode extends MetaNode {
     public label = 'Help Topics by Package';
     public iconPath = new vscode.ThemeIcon('list-unordered');
     public description = '';
-    public command = null;
+    public command = undefined;
     public collapsibleState = CollapsibleState.Collapsed;
     public contextValue = Node.makeContextValue('QUICKPICK', 'clearCache', 'filterPackages', 'showOnlyFavorites', 'unsummarizeTopics');
 
@@ -332,7 +336,7 @@ class PkgRootNode extends MetaNode {
 
     // PkgRootNode
     public showOnlyFavorites: boolean = false;
-    public filterText: string = '';
+    public filterText?: string;
     public summarizeTopics: boolean = true;
 
     async _handleCommand(cmd: cmdName){
@@ -387,6 +391,10 @@ class PkgRootNode extends MetaNode {
     async makeChildren() {
         let packages = await this.rHelp.packageManager.getPackages(false);
 
+        if(!packages){
+            return [];
+        }
+
         if(this.filterText){
             const re = new RegExp(this.filterText);
             packages = packages.filter(pkg => re.exec(pkg.name));
@@ -411,7 +419,7 @@ class PkgRootNode extends MetaNode {
 // contains the topics belonging to an individual package
 class PackageNode extends Node {
     // TreeItem
-    public command = null;
+    public command = undefined;
     public collapsibleState = CollapsibleState.Collapsed;
     public contextValue = Node.makeContextValue('QUICKPICK', 'clearCache', 'removePackage');
 
@@ -466,7 +474,7 @@ class PackageNode extends Node {
             forQuickPick ? false : (this.parent.summarizeTopics ?? true)
         );
         const topics = await this.rHelp.packageManager.getTopics(this.pkg.name, summarizeTopics, false);
-        const ret = topics.map(topic => new TopicNode(this, topic));
+        const ret = topics?.map(topic => new TopicNode(this, topic)) || [];
         return ret;
     }
 }
@@ -492,10 +500,10 @@ class TopicNode extends Node {
 
     protected _handleCommand(cmd: cmdName){
         if(cmd === 'CALLBACK'){
-            void globalRHelp.showHelpForPath(this.topic.helpPath);
+            void this.rHelp.showHelpForPath(this.topic.helpPath);
         } else if(cmd === 'openInNewPanel'){
-            void globalRHelp.makeNewHelpPanel();
-            void globalRHelp.showHelpForPath(this.topic.helpPath);
+            void this.rHelp.makeNewHelpPanel();
+            void this.rHelp.showHelpForPath(this.topic.helpPath);
         }
     }
 

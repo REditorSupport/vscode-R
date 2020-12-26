@@ -50,15 +50,15 @@ export class HelpProvider {
 
         let str = '';
         // promise containing the first output of the r process (contains only the port number)
-        const outputPromise = new Promise<string>((resolve, reject) => {
-            this.cp.stdout.on('data', (data) => {
+        const outputPromise = new Promise<string>((resolve) => {
+            this.cp.stdout?.on('data', (data) => {
                 str += data.toString();
                 if(re.exec(str)){
                     resolve(str.replace(re, '$1'));
                 }
             });
             this.cp.on('close', () => {
-                reject();
+                resolve('');
             });
         });
 
@@ -197,11 +197,11 @@ export class AliasProvider {
     }
 
     // get a list of all aliases
-    public getAllAliases(): rHelp.Alias[] {
+    public getAllAliases(): rHelp.Alias[] | null {
         if(!this.aliases){
             this.makeAllAliases();
         }
-        return this.aliases;
+        return this.aliases || null;
     }
 
     // get all aliases, grouped by package
@@ -218,7 +218,7 @@ export class AliasProvider {
             return this.getAllAliases();
         }
         const packageAliases = this.getPackageAliases();
-        if(pkgName in packageAliases){
+        if(packageAliases && pkgName in packageAliases){
             const al = packageAliases[pkgName].aliases;
             if(al){
                 const ret: rHelp.Alias[] = [];
@@ -265,7 +265,7 @@ export class AliasProvider {
     private readAliases(): void {
         // read from persistent workspace cache
         if(this.persistentState){
-            const cachedAliases = this.persistentState.get<{[key: string]: PackageAliases}>('r.helpPanel.cachedPackageAliases', undefined);
+            const cachedAliases = this.persistentState.get<{[key: string]: PackageAliases}>('r.helpPanel.cachedPackageAliases');
             if(cachedAliases){
                 this.allPackageAliases = cachedAliases;
                 return;

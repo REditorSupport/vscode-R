@@ -25,7 +25,7 @@ export interface RHelpPageProvider {
 	// is called to get help for a request path
     // the request path is the part of the help url after http://localhost:PORT/... when using R's help
     // Returned help files are already modified with e.g. syntax highlighting!
-	getHelpFileFromRequestPath(requestPath: string): null|Promise<null>|HelpFile|Promise<HelpFile>;
+	getHelpFileFromRequestPath(requestPath: string): null|HelpFile|Promise<null|HelpFile>;
 }
 
 export class HelpPanel {
@@ -34,7 +34,7 @@ export class HelpPanel {
 
 	// the webview panel where the help is shown
 	public panel?: vscode.WebviewPanel;
-	private viewColumn?: vscode.ViewColumn = vscode.ViewColumn.Two;
+	private viewColumn: vscode.ViewColumn = vscode.ViewColumn.Two;
 
 	// locations on disk, only changed on construction
 	readonly webviewScriptFile: vscode.Uri; // the javascript added to help pages
@@ -167,7 +167,7 @@ export class HelpPanel {
 
 	// go back/forward in the history of the webview:
 	public goBack(): void {
-		void this.panel.webview.postMessage({command: 'goBack'});
+		void this.panel?.webview.postMessage({command: 'goBack'});
 	}
 	private _goBack(currentScrollY = 0): void{
 		const entry = this.history.pop();
@@ -180,7 +180,7 @@ export class HelpPanel {
 		}
 	}
 	public goForward(): void {
-		void this.panel.webview.postMessage({command: 'goForward'});
+		void this.panel?.webview.postMessage({command: 'goForward'});
 	}
 	private _goForward(currentScrollY = 0): void{
 		const entry = this.forwardHistory.pop();
@@ -222,14 +222,13 @@ export class HelpPanel {
 			// retrieve helpfile for path:
 			const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
 
-			if(uri.fragment){
-				helpFile.hash = '#' + uri.fragment;
-			} else{
-				helpFile.scrollY = 0;
-			}
-
 			// if successful, show helpfile:
 			if(helpFile){
+				if(uri.fragment){
+					helpFile.hash = '#' + uri.fragment;
+				} else{
+					helpFile.scrollY = 0;
+				}
 				if(uri.path.endsWith('.pdf')){
 					void this.openInExternalBrowser(helpFile);
 				} else if(uri.path.endsWith('.R')){

@@ -8,6 +8,7 @@
             "es2018"
         ],
         "sourceMap": true,
+        // "strictNullChecks": true,
         "rootDir": "src"
     },
     "exclude": [
