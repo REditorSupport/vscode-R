@@ -11,6 +11,23 @@ window.onmousedown = function (ev) {
         scrollY: window.scrollY
     });
 };
+window.addEventListener('message', function (ev) {
+    var message = ev.data;
+    if (message.command === 'goBack') {
+        vscode.postMessage({
+            message: 'mouseClick',
+            button: 3,
+            scrollY: window.scrollY
+        });
+    }
+    else if (message.command === 'goForward') {
+        vscode.postMessage({
+            message: 'mouseClick',
+            button: 4,
+            scrollY: window.scrollY
+        });
+    }
+});
 // do everything after loading the body
 window.document.body.onload = function () {
     var _a;

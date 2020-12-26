@@ -80,6 +80,13 @@
           "icon": "./images/Rlogo.svg",
           "contextualTitle": "R",
           "when": "r.WorkspaceViewer:show"
+        },
+        {
+          "id": "rHelpPages",
+          "name": "Help Pages",
+          "icon": "./images/Rlogo.svg",
+          "contextualTitle": "R",
+          "when": "r.helpViewer.show"
         }
       ]
     },
@@ -87,6 +94,10 @@
       {
         "view": "workspaceViewer",
         "contents": "R workspace is empty."
+      },
+      {
+        "view": "rHelpPages",
+        "contents": "R Help Pages"
       }
     ],
     "languages": [
@@ -299,16 +310,6 @@
         "category": "R"
       },
       {
-        "command": "r.helpPanel.back",
-        "title": "R Help Panel: Go Back",
-        "icon": "$(arrow-left)"
-      },
-      {
-        "command": "r.helpPanel.forward",
-        "title": "R Help Panel: Go Forward",
-        "icon": "$(arrow-right)"
-      },
-      {
         "title": "Create R terminal",
         "category": "R",
         "command": "r.createRTerm"
@@ -515,6 +516,88 @@
         "title": "Launch RStudio Addin",
         "category": "R",
         "command": "r.launchAddinPicker"
+      },
+      {
+        "command": "r.helpPanel.back",
+        "title": "R Help Panel: Go Back",
+        "enablement": "r.helpPanel.canGoBack",
+        "icon": "$(arrow-left)"
+      },
+      {
+        "command": "r.helpPanel.forward",
+        "title": "R Help Panel: Go Forward",
+        "enablement": "r.helpPanel.canGoForward",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "r.helpPanel.openExternal",
+        "title": "R Help Panel: Open in external browser",
+        "icon": "$(link-external)"
+      },
+      {
+        "title": "Search Package Topics",
+        "command": "r.helpPanel.searchPackage",
+        "icon": "$(search)"
+      },
+      {
+        "title": "Open Topic in new Panel",
+        "command": "r.helpPanel.openInNewPanel",
+        "icon": "$(add)"
+      },
+      {
+        "title": "Clear Cached Files",
+        "command": "r.helpPanel.clearCache",
+        "icon": "$(refresh)"
+      },
+      {
+        "title": "Filter Packages",
+        "command": "r.helpPanel.filterPackages",
+        "icon": "$(filter)"
+      },
+      {
+        "title": "Remove from favorites",
+        "command": "r.helpPanel.removeFromFavorites",
+        "icon": "$(star-full)"
+      },
+      {
+        "title": "Add to favorites",
+        "command": "r.helpPanel.addToFavorites",
+        "icon": "$(star-empty)"
+      },
+      {
+        "title": "Show all packages",
+        "command": "r.helpPanel.showAllPackages",
+        "icon": "$(star-full)"
+      },
+      {
+        "title": "Show only favorites",
+        "command": "r.helpPanel.showOnlyFavorites",
+        "icon": "$(star-empty)"
+      },
+      {
+        "title": "Remove Package",
+        "command": "r.helpPanel.removePackage",
+        "icon": "$(trash)"
+      },
+      {
+        "title": "Install multiple packages",
+        "command": "r.helpPanel.installPackages",
+        "icon": "$(expand-all)"
+      },
+      {
+        "title": "Show QuickPick",
+        "command": "r.helpPanel.showQuickPick",
+        "icon": "$(zap)"
+      },
+      {
+        "title": "Summarize Identical Topics",
+        "command": "r.helpPanel.summarizeTopics",
+        "icon": "$(fold)"
+      },
+      {
+        "title": "Don't Summarize Identical Topics",
+        "command": "r.helpPanel.unsummarizeTopics",
+        "icon": "$(unfold)"
       }
     ],
     "keybindings": [
@@ -620,6 +703,11 @@
           "command": "r.helpPanel.forward",
           "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
+        },
+        {
+          "command": "r.helpPanel.openExternal",
+          "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -632,6 +720,71 @@
           "command": "r.workspaceViewer.remove",
           "group": "inline",
           "when": "view == workspaceViewer"
+        },
+        {
+          "command": "r.helpPanel.searchPackage",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /_searchPackage_/"
+        },
+        {
+          "command": "r.helpPanel.openInNewPanel",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /_openInNewPanel_/"
+        },
+        {
+          "command": "r.helpPanel.clearCache",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /_clearCache_/"
+        },
+        {
+          "command": "r.helpPanel.addToFavorites",
+          "group": "inline@9",
+          "when": "view == rHelpPages && viewItem =~ /_addToFavorites_/"
+        },
+        {
+          "command": "r.helpPanel.removeFromFavorites",
+          "group": "inline@9",
+          "when": "view == rHelpPages && viewItem =~ /_removeFromFavorites_/"
+        },
+        {
+          "command": "r.helpPanel.showOnlyFavorites",
+          "group": "inline@9",
+          "when": "view == rHelpPages && viewItem =~ /_showOnlyFavorites_/"
+        },
+        {
+          "command": "r.helpPanel.showAllPackages",
+          "group": "inline@9",
+          "when": "view == rHelpPages && viewItem =~ /_showAllPackages_/"
+        },
+        {
+          "command": "r.helpPanel.removePackage",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /_removePackage_/"
+        },
+        {
+          "command": "r.helpPanel.installPackages",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /_installPackages_/"
+        },
+        {
+          "command": "r.helpPanel.filterPackages",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /_filterPackages_/"
+        },
+        {
+          "command": "r.helpPanel.showQuickPick",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /_QUICKPICK_/"
+        },
+        {
+          "command": "r.helpPanel.unsummarizeTopics",
+          "group": "inline@8",
+          "when": "view == rHelpPages && viewItem =~ /_unsummarizeTopics_/"
+        },
+        {
+          "command": "r.helpPanel.summarizeTopics",
+          "group": "inline@8",
+          "when": "view == rHelpPages && viewItem =~ /_summarizeTopics_/"
         }
       ],
       "view/title": [
@@ -654,6 +807,11 @@
           "command": "r.workspaceViewer.refreshEntry",
           "group": "navigation@3",
           "when": "view == workspaceViewer"
+        },
+        {
+          "command": "r.helpPanel.showQuickPick",
+          "group": "navigation",
+          "when": "view == rHelpPages"
         }
       ]
     },
@@ -728,24 +886,27 @@
           "default": true,
           "description": "Enable syntax highlighting in the help panel."
         },
+        "r.helpPanel.cacheIndexFiles": {
+          "type": "string",
+          "enum": [
+            "None",
+            "Workspace",
+            "Global"
+          ],
+          "description": "Whether/where to store parsed help indices between sessions.",
+          "enumDescriptions": [
+            "Do not store anything",
+            "Store on a per workspace basis",
+            "Store globally"
+          ],
+          "default": "Global"
+        },
         "r.helpPanel.rpath": {
           "type": "string",
           "default": "",
           "markdownDescription": "DEPRECATED! Path to an R executable. Must be \"vanilla\" R, not radian etc.! Will be read from registry or path if not set.",
           "markdownDeprecationMessage": "Will be deprecated. Use `#r.rpath.windows#`, `#r.rpath.mac#`, or `#r.rpath.linux#` instead.",
           "deprecationMessage": "Will be deprecated. Use r.rpath.windows, r.rpath.mac, or r.rpath.linux instead."
-        },
-        "r.helpPanel.helpProvider": {
-          "type": "string",
-          "default": "Rserver",
-          "enum": [
-            "custom",
-            "Rserver"
-          ],
-          "enumDescriptions": [
-            "A custom implementation of the R help server.",
-            "R's builtin help server"
-          ]
         },
         "r.source.encoding": {
           "type": "string",
@@ -815,7 +976,7 @@
     "eslint-plugin-jsdoc": "^30.7.8",
     "mocha": "^8.2.1",
     "ts-loader": "^8.0.11",
-    "typescript": "^4.1.2",
+    "typescript": "^4.1.3",
     "vscode-test": "^1.4.1",
     "webpack": "^5.10.0",
     "webpack-cli": "^4.2.0",
