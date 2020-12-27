@@ -1,7 +1,7 @@
 name: release
 
 # runs when a tag v* is pushed
-# creates a release draft with the binaries
+# releases the extension to GitHub and the vscode marketplace
 
 on:
   push:
@@ -43,5 +43,19 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           files: "artifacts/*/*"
           prerelease: false
-          draft: true # Could also be false to publish the release immediately
+          draft: false
 
+
+  publish:
+    name: Publish
+    timeout-minutes: 30
+    needs: release # doesn't really need these, just to make sure that packaging etc worked
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: npm install
+      - uses: lannonbr/vsce-action@master
+        with:
+          args: "publish -p $VSCE_TOKEN"
+        env:
+          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
