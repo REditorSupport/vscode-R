@@ -83,7 +83,7 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
     }
 
     async function runSource(echo: boolean)  {
-        const wad = window.activeTextEditor.document;
+        const wad = window.activeTextEditor?.document;
         const isSaved = await saveDocument(wad);
         if (isSaved) {
             let rPath: string = ToRStringLiteral(wad.fileName, '"');
