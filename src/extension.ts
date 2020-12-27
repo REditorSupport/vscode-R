@@ -271,7 +271,6 @@ export async function activate(context: ExtensionContext): Promise<RExtension> {
                                 CompletionItemKind.Function :
                                 CompletionItemKind.Field);
                         item.detail = '[session]';
-                        // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
                         item.documentation = new MarkdownString(`\`\`\`r\n${obj.str}\n\`\`\``);
                         items.push(item);
                     });
