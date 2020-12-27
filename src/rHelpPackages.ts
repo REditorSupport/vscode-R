@@ -31,13 +31,13 @@ export interface Topic {
     name: string;
     description: string;
 
-    pkgName?: string;
+    pkgName: string;
 
     href?: string;
 
-    helpPath?: string;
+    helpPath: string;
 
-    type?: TopicType;
+    type: TopicType;
 
     aliases?: string[];
 
@@ -115,7 +115,7 @@ export class PackageManager {
     }
 
 	public async clearCachedFiles(re?: string|RegExp): Promise<void> {
-        let cache: CachedIndexFiles;
+        let cache: CachedIndexFiles | undefined;
         if(re){
             const oldCache = this.state.get<CachedIndexFiles>('r.helpPanel.cachedIndexFiles', []);
             cache = oldCache.filter(v => !(
@@ -185,7 +185,7 @@ export class PackageManager {
     // let the user pick and install a package from CRAN 
     public async pickAndInstallPackages(pickMany: boolean = false): Promise<boolean> {
         const pkgs = await this.pickPackages('Please selecte a package.', true, pickMany);
-        if(pkgs?.length > 1){
+        if(pkgs?.length){
             const pkgsConfirmed = await this.confirmPackages('Are you sure you want to install these packages?', pkgs);
             if(pkgsConfirmed?.length > 1){
                 const names = pkgsConfirmed.map(v => v.name);
@@ -230,8 +230,8 @@ export class PackageManager {
         }
     }
 
-    public async getPackages(fromCran: boolean = false): Promise<Package[]> {
-        let packages: Package[];
+    public async getPackages(fromCran: boolean = false): Promise<Package[]|undefined> {
+        let packages: Package[]|undefined;
         this.pullFavoriteNames();
         if(fromCran){
             const cranPath = 'web/packages/available_packages_by_date.html';
@@ -302,7 +302,7 @@ export class PackageManager {
             matchOnDetail: true,
             placeHolder: placeHolder
         };
-        let ret: Package | Package[];
+        let ret: Package | Package[] | undefined;
         if(pickMany){
             const qp = await vscode.window.showQuickPick(qpItems, {...qpOptions, canPickMany: true});
             ret = qp?.map(v => v.package);
@@ -315,9 +315,13 @@ export class PackageManager {
     }
 
     // let the user pick a help topic from a package
-    public async pickTopic(pkgName: string, placeHolder: string = '', summarize: boolean = false): Promise<Topic> {
+    public async pickTopic(pkgName: string, placeHolder: string = '', summarize: boolean = false): Promise<Topic|undefined> {
 
         const topics = await this.getTopics(pkgName, summarize);
+
+        if(!topics){
+            return undefined;
+        }
 
         const qpItems: (vscode.QuickPickItem & {topic: Topic})[] = topics.map(topic => {
 
@@ -333,21 +337,27 @@ export class PackageManager {
             matchOnDescription: true
         });
 
-        return qp.topic;
+        return qp?.topic;
     }
 
     // parses a package's index file to produce a list of help topics
     // highlights ths 'home' topic and adds entries for the package index and DESCRIPTION file
-    public async getTopics(pkgName: string, summarize: boolean = false, skipMeta: boolean = false): Promise<Topic[]> {
+    public async getTopics(pkgName: string, summarize: boolean = false, skipMeta: boolean = false): Promise<Topic[] | undefined> {
 
         const indexEntries = await this.getParsedIndexFile(`/library/${pkgName}/html/00Index.html`);
 
+        if(!indexEntries){
+            return undefined;
+        }
+
         const topics: Topic[] = indexEntries.map(v => {
-            const topic: Topic = {
+            const topic: Topic & {href: string} = {
                 pkgName: pkgName,
                 name: v.name,
                 description: v.description,
-                href: v.href || v.name
+                href: v.href || v.name,
+                type: TopicType.NORMAL, //replaced below
+                helpPath: '' // replaced below
             };
 
             topic.type = (topic.name === `${topic.pkgName}-package` ? TopicType.HOME : TopicType.NORMAL);
@@ -362,7 +372,7 @@ export class PackageManager {
 
         if(!skipMeta){
             const ind = topics.findIndex(v => v.type === TopicType.HOME);
-            let homeTopic: Topic = undefined;
+            let homeTopic: Topic | undefined = undefined;
             if(ind >= 0){
                 homeTopic = topics.splice(ind, 1)[0];
             }
@@ -409,7 +419,8 @@ export class PackageManager {
         const topicMap = new Map<string, Topic>();
         for(const topic of topics){
             if(topicMap.has(topic.helpPath)){
-                const newTopic = topicMap.get(topic.helpPath);
+                // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+                const newTopic = <Topic>topicMap.get(topic.helpPath); // checked above that key is present
                 if(newTopic.aliases){
                     newTopic.aliases.push(topic.name);
                 }
@@ -434,7 +445,7 @@ export class PackageManager {
 
 	// retrieve and parse an index file
 	// (either list of all packages, or documentation entries of a package)
-	public async getParsedIndexFile(path: string): Promise<IndexFileEntry[]> {
+	public async getParsedIndexFile(path: string): Promise<IndexFileEntry[]|undefined> {
 
         let indexItems = this.getCachedIndexFile(path);
 
@@ -452,8 +463,11 @@ export class PackageManager {
 		}
 
 		// return cache entry. make new array to avoid messing with the cache
-		const ret: IndexFileEntry[] = [];
-		ret.push(...indexItems);
+        let ret: IndexFileEntry[] | undefined = undefined;
+        if(indexItems){
+            ret = [];
+            ret.push(...indexItems);
+        }
 		return ret;
 	}
 

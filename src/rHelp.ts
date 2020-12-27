@@ -14,7 +14,7 @@ import { HelpTreeWrapper } from './rHelpTree';
 import { PackageManager } from './rHelpPackages';
 
 
-export let globalRHelp: RHelp = null;
+export let globalRHelp: RHelp | undefined;
 
 
 class DummyMemento implements vscode.Memento {
@@ -37,14 +37,14 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 
     // get the "vanilla" R path from config
     const rPath = await getRpath(true, 'helpPanel.rpath');
+
 	const cwd = (
-		(vscode.workspace.workspaceFolders !== undefined && vscode.workspace.workspaceFolders.length > 0) ?
+		vscode.workspace.workspaceFolders?.length ?
 		vscode.workspace.workspaceFolders[0].uri.fsPath :
 		undefined
 	);
 
-	console.log('init help');
-
+	// get the Memento for storing cached help files (or create a dummy for this session)
 	const cacheConfig = config().get<'None'|'Workspace'|'Global'>('helpPanel.cacheIndexFiles');
 	const state = (
 		cacheConfig === 'Workspace' ? context.workspaceState :
@@ -52,8 +52,7 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 		new DummyMemento()
 	);
 
-    // launch the help panel (displays the html provided by helpProvider)
-    const rHelpPanelOptions: HelpOptions = {
+    const rHelpOptions: HelpOptions = {
         webviewScriptPath: path.join(context.extensionPath, path.normalize('/html/script.js')),
         webviewStylePath: path.join(context.extensionPath, path.normalize('/html/theme.css')),
         rPath: rPath,
@@ -62,10 +61,10 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 		persistentState: state
     };
 
-	let rHelp: RHelp;
+	let rHelp: RHelp | undefined = undefined;
 
     try{
-		rHelp = new RHelp(rHelpPanelOptions);
+		rHelp = new RHelp(rHelpOptions);
     } catch(e) {
         void vscode.window.showErrorMessage(`Help Panel not available`);
     }
@@ -78,10 +77,10 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 
 		context.subscriptions.push(
 			// commands.registerCommand('r.showHelp', (subMenu?: api.HelpSubMenu) => rHelp.showHelpMenu(subMenu)),
-			vscode.commands.registerCommand('r.showHelp', () => rHelp.treeViewWrapper.helpViewProvider.rootItem.showQuickPick()),
-			vscode.commands.registerCommand('r.helpPanel.back', () => rHelp.goBack()),
-			vscode.commands.registerCommand('r.helpPanel.forward', () => rHelp.goForward()),
-			vscode.commands.registerCommand('r.helpPanel.openExternal', () => rHelp.openExternal())
+			vscode.commands.registerCommand('r.showHelp', () => rHelp?.treeViewWrapper.helpViewProvider.rootItem.showQuickPick()),
+			vscode.commands.registerCommand('r.helpPanel.back', () => rHelp?.goBack()),
+			vscode.commands.registerCommand('r.helpPanel.forward', () => rHelp?.goForward()),
+			vscode.commands.registerCommand('r.helpPanel.openExternal', () => rHelp?.openExternal())
 		);
 	}
 }
@@ -173,7 +172,7 @@ export class RHelp implements api.HelpPanel {
 
 
 	// cache modified help files (syntax highlighting etc.)
-	private cachedHelpFiles: Map<string, HelpFile> = new Map<string, HelpFile>();
+	private cachedHelpFiles: Map<string, HelpFile | null> = new Map<string, HelpFile | null>();
 
 	private helpPanelOptions: HelpOptions;
 
@@ -253,17 +252,15 @@ export class RHelp implements api.HelpPanel {
 
 	public openExternal(): void {
 		const panel = this.getActiveHelpPanel(false);
-		if(panel){
-			void panel.openInExternalBrowser();
-		}
+		void panel?.openInExternalBrowser();
 	}
 
 	// go back/forward in the history of the webview
 	public goBack(): void{
-		this.getActiveHelpPanel().goBack();
+		this.getActiveHelpPanel(false)?.goBack();
 	}
 	public goForward(): void{
-		this.getActiveHelpPanel().goForward();
+		this.getActiveHelpPanel(false)?.goForward();
 	}
 
 	// if `subMenu` is not specified, let user choose between available help functions
@@ -334,12 +331,13 @@ export class RHelp implements api.HelpPanel {
 		if(helpFile){
 			return this.showHelpFile(helpFile, viewer);
 		} else{
-			console.error(`Couldn't handle path:\n${requestPath}\n`);
+			const msg = `Couldn't show help for path:\n${requestPath}\n`;
+			void vscode.window.showErrorMessage(msg);
 			return false;
 		}
 	}
 
-	public async getHelpFileForPath(requestPath: string, modify: boolean = true): Promise<HelpFile>|null {
+	public async getHelpFileForPath(requestPath: string, modify: boolean = true): Promise<HelpFile | null> {
 		// get helpFile from helpProvider if not cached
 		if(!this.cachedHelpFiles.has(requestPath)){
 			const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
@@ -349,7 +347,9 @@ export class RHelp implements api.HelpPanel {
 		// modify the helpFile (syntax highlighting etc.)
 		// modifications are optional and cached
 		const helpFileCached = this.cachedHelpFiles.get(requestPath);
-		if(modify && !helpFileCached.isModified){
+		if(!helpFileCached){
+			return null;
+		} else if(modify && !helpFileCached.isModified){
 			this.pimpMyHelp(helpFileCached);
 		}
 
@@ -393,18 +393,8 @@ export class RHelp implements api.HelpPanel {
 
 				// apply syntax highlighting to each code section:
 				codeSections.each((i, section) => {
-					const newChildNodes = [];
-					section.children.forEach((subSection,) => {
-						if(subSection.type === 'text'){
-							const styledCode = hljs.highlight('r', subSection.data);
-							const newChildren = cheerio.parseHTML(styledCode.value);
-
-							for(const [, newChild] of newChildren.entries()){
-								newChildNodes.push(newChild);
-							}
-						}
-					});
-					section.childNodes = <cheerio.Element[]>newChildNodes;
+					const styledCode = hljs.highlight('r', $(section).text() || '');
+					$(section).html(styledCode.value);
 				});
 			}
 
