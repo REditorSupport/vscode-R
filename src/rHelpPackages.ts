@@ -486,14 +486,21 @@ export class PackageManager {
 			rows.each((rowIndex, row) => {
 				const elements = $('td', row);
 				if(elements.length === 2){
-					const href = elements[0].firstChild.attribs['href'];
-					const name = elements[0].firstChild.firstChild.data || '';
-					const description = elements[1].firstChild.data || '';
-					ret.push({
-						name: name,
-						description: description,
-						href: href,
-					});
+                    const e0 = elements[0];
+                    const e1 = elements[1];
+                    if(
+                        e0.type === 'tag' && e1.type === 'tag' &&
+                        e0.firstChild.type === 'tag'
+                    ){
+                        const href = e0.firstChild.attribs['href'];
+                        const name = e0.firstChild.firstChild.data || '';
+                        const description = e1.firstChild.data || '';
+                        ret.push({
+                            name: name,
+                            description: description,
+                            href: href,
+                        });
+                    }
 				}
 			});
 		});
@@ -554,15 +561,25 @@ export class PackageManager {
 			rows.each((rowIndex, row) => {
 				const elements = $('td', row);
 				if(elements.length === 3){
-					const href = elements[1].children[1].attribs['href'];
-					const url = new URL(href, baseUrl).toString();
-					ret.push({
-						date: (elements[0].firstChild.data || '').trim(),
-						name: (elements[1].children[1].firstChild.data || '').trim(),
-						href: url,
-						description: (elements[2].firstChild.data || '').trim(),
-                        isCran: true
-					});
+
+                    const e0 = elements[0];
+                    const e1 = elements[1];
+                    const e2 = elements[2];
+                    if(
+                        e0.type === 'tag' && e1.type === 'tag' &&
+                        e0.firstChild.type === 'text' && e1.children[1].type === 'tag' &&
+                        e2.type === 'tag'
+                    ){
+                        const href = e1.children[1].attribs['href'];
+                        const url = new URL(href, baseUrl).toString();
+                        ret.push({
+                            date: (e0.firstChild.data || '').trim(),
+                            name: (e1.children[1].firstChild.data || '').trim(),
+                            href: url,
+                            description: (e2.firstChild.data || '').trim(),
+                            isCran: true
+                        });
+                    }
 				}
 			});
 		});

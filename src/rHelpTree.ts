@@ -114,6 +114,8 @@ abstract class Node extends vscode.TreeItem{
     public description: string;
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None;
     public contextValue: string = '';
+    public label: string;
+    public tooltip: string;
 
     // set to null/undefined in derived class to expand/collapse on click
     public command = {

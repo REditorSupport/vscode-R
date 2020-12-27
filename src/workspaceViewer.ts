@@ -83,6 +83,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 }
 
 export class WorkspaceItem extends TreeItem {
+	public label: string;
 	constructor(
 		label: string,
 		rClass: string,
