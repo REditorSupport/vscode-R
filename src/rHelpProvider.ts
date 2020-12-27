@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
 
 import * as vscode from 'vscode';
 import * as http from 'http';
@@ -52,7 +50,12 @@ export class HelpProvider {
         // promise containing the first output of the r process (contains only the port number)
         const outputPromise = new Promise<string>((resolve) => {
             this.cp.stdout?.on('data', (data) => {
-                str += data.toString();
+                try{
+                    // eslint-disable-next-line 
+                    str += data.toString();
+                } catch(e){
+                    resolve('');
+                }
                 if(re.exec(str)){
                     resolve(str.replace(re, '$1'));
                 }
@@ -101,7 +104,12 @@ export class HelpProvider {
                         resolve({redirect: res.headers.location});
                     } else{
                         res.on('data', (chunk) => {
-                            content += chunk.toString();
+                            try{
+                                // eslint-disable-next-line
+                                content += chunk.toString();
+                            } catch(e){
+                                reject();
+                            }
                         });
                         res.on('close', () => {
                             resolve({content: content});
