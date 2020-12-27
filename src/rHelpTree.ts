@@ -177,8 +177,8 @@ abstract class Node extends vscode.TreeItem{
     }
 
     // overwrite this in derived classes to handle custom commands
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    protected _handleCommand(cmd: cmdName){
+    protected _handleCommand(cmd: cmdName): void;
+    protected _handleCommand(){
         // to be overwritten
     }
 
@@ -225,7 +225,8 @@ abstract class Node extends vscode.TreeItem{
 
     // to be overwritten, if the node has any children
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    protected makeChildren(forQuickPick: boolean = false): Promise<Node[]|undefined> | Node[] | undefined {
+    protected makeChildren(forQuickPick?: boolean): Promise<Node[]|undefined> | Node[] | undefined;
+    protected makeChildren(): Promise<Node[]|undefined> | Node[] | undefined {
         return [];
     }
 
