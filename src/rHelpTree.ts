@@ -224,7 +224,6 @@ abstract class Node extends vscode.TreeItem{
     }
 
     // to be overwritten, if the node has any children
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     protected makeChildren(forQuickPick?: boolean): Promise<Node[]|undefined> | Node[] | undefined;
     protected makeChildren(): Promise<Node[]|undefined> | Node[] | undefined {
         return [];
