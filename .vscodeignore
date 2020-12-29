@@ -12,6 +12,7 @@ html/*.ts
 node_modules
 out/
 out/test/**
+scripts/**
 src/
 src/**
 test/**

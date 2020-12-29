@@ -4,7 +4,7 @@ name: pre-release
 
 on:
   push:
-    branches: ["master"]
+    branches: ["devbuild*"]
 
 env:
   FILE_OUT: r-latest.vsix
@@ -44,10 +44,22 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: latest
-          commitish: master
           name: Development Build
           body: Contains the vsix-file from the latest push to master.
           prerelease: true
           files: "artifacts/*/*"
           gzip: false
           allow_override: true
+
+  publish:
+    name: Publish Devbuild
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: node scripts/prepareDevbuild.js
+      - run: npm install
+      - uses: lannonbr/vsce-action@master
+        with:
+          args: "publish -p $VSCE_TOKEN_DEV_BUILD"
+        env:
+          VSCE_TOKEN_DEV_BUILD: ${{ secrets.VSCE_TOKEN_DEV_BUILD }}

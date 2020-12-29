@@ -7,6 +7,7 @@
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
   "icon": "images/Rlogo.png",
+  "preview": false,
   "repository": {
     "type": "git",
     "url": "https://github.com/Ikuyadeu/vscode-R"
