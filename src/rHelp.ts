@@ -21,8 +21,7 @@ class DummyMemento implements vscode.Memento {
 	items = new Map<string, any>()
 	public get<T>(key: string, defaultValue?: T): T | undefined {
 		if(this.items.has(key)){
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-return
-			return this.items.get(key);
+			return <T>this.items.get(key);
 		} else{
 			return defaultValue;
 		}
@@ -422,6 +421,5 @@ function escapeHtml(source: string) {
 		'\'': '&#39;',
 		'/': '&#x2F;'
 	}));
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return String(source).replace(/[&<>"'/]/g, (s: string) => entityMap.get(s)!);
+    return String(source).replace(/[&<>"'/]/g, (s: string) => entityMap.get(s));
 }

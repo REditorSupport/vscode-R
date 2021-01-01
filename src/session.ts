@@ -541,7 +541,6 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 case 'help': {
                     if(globalRHelp){
                         console.log(request.requestPath);
-                        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
                         void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
                     }
                     break;

@@ -1,5 +1,23 @@
 # Change Log
 
+## 1.6.3
+
+* Add browser WebView command buttons #494
+* Enable find widget in WebViews #490
+* Disable alwaysShow for addin items #491
+* Only show R menu items in R view #493
+* Modify pre-release action #492 (Fix #484)
+* Improve release action #505 (Fix #503)
+* Improve help view #502 (Follow up to #497)
+
+### Thank you for contributors works
+
+* @ElianHugh
+  * Implement R workspace viewer #476 (Fix #416)
+  * Conditionally show view #487
+* @tdeenes: Find in topic (help panel) #488 (Fix #463)
+* @jsta: typo fix #500
+
 ## 1.6.2
 
 * Improve style of help pages #481

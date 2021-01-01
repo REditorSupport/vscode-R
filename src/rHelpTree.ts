@@ -1,10 +1,6 @@
-/* eslint-disable @typescript-eslint/no-empty-function */
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-inferrable-types */
-
 import * as vscode from 'vscode';
 
-import { globalRHelp, RHelp } from './rHelp';
+import { RHelp } from './rHelp';
 import { Package, Topic, TopicType } from './rHelpPackages';
 
 // this enum is re-assigned just for code readability
@@ -91,7 +87,9 @@ export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
 
     onDidChangeTreeData(listener: (e: Node) => void): vscode.Disposable {
         this.listeners.push(listener);
-        return new vscode.Disposable(() => {});
+        return new vscode.Disposable(() => {
+            // do nothing
+        });
     }
 
     getChildren(element?: Node): vscode.ProviderResult<Node[]>{
@@ -116,6 +114,8 @@ abstract class Node extends vscode.TreeItem{
     public description: string;
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None;
     public contextValue: string = '';
+    public label: string;
+    public tooltip: string;
 
     // set to null/undefined in derived class to expand/collapse on click
     public command = {
@@ -177,7 +177,8 @@ abstract class Node extends vscode.TreeItem{
     }
 
     // overwrite this in derived classes to handle custom commands
-    protected _handleCommand(cmd: cmdName){
+    protected _handleCommand(cmd: cmdName): void;
+    protected _handleCommand(){
         // to be overwritten
     }
 
@@ -223,7 +224,8 @@ abstract class Node extends vscode.TreeItem{
     }
 
     // to be overwritten, if the node has any children
-    protected makeChildren(_forQuickPick: boolean = false): Promise<Node[]|undefined> | Node[] | undefined {
+    protected makeChildren(forQuickPick?: boolean): Promise<Node[]|undefined> | Node[] | undefined;
+    protected makeChildren(): Promise<Node[]|undefined> | Node[] | undefined {
         return [];
     }
 
@@ -566,15 +568,15 @@ class RefreshNode extends MetaNode {
     }
 }
 
-class NewHelpPanelNode extends MetaNode {
-    label = 'Make New Helppanel';
-    description = '(Opened with next help command)';
-    iconPath = new vscode.ThemeIcon('add');
+// class NewHelpPanelNode extends MetaNode {
+//     label = 'Make New Helppanel';
+//     description = '(Opened with next help command)';
+//     iconPath = new vscode.ThemeIcon('add');
 
-    callBack(){
-        this.rHelp.makeNewHelpPanel();
-    }
-}
+//     callBack(){
+//         this.rHelp.makeNewHelpPanel();
+//     }
+// }
 
 class InstallPackageNode extends MetaNode {
     label = 'Install CRAN Package';
