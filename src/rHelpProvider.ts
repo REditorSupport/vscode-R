@@ -291,8 +291,9 @@ export class AliasProvider {
             if(json){
                 this.allPackageAliases = <{[key: string]: PackageAliases}> JSON.parse(json) || {};
             }
-        } catch(e){
-            // do nothing
+        } catch(e: unknown){
+            console.log(e);
+            void vscode.window.showErrorMessage((<{message: string}>e).message);
         }
         // update persistent workspace cache
         if(this.persistentState){
