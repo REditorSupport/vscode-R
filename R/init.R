@@ -1,7 +1,8 @@
 if (interactive() &&
   Sys.getenv("RSTUDIO") == "" &&
   Sys.getenv("TERM_PROGRAM") == "vscode") {
-  if (requireNamespace("jsonlite", quietly = TRUE)) local({
+  if (requireNamespace("jsonlite", quietly = TRUE) &&
+      requireNamespace("rlang", quietly = TRUE)) local({
     # cleanup previous version
     removeTaskCallback("vscode-R")
     options(vscodeR = NULL)
@@ -69,6 +70,45 @@ if (interactive() &&
         }
       }
 
+      inspect_env <- function(env) {
+        all_names <- ls(env)
+        is_promise <- rlang::env_binding_are_lazy(env, all_names)
+        objs <- lapply(all_names, function(name) {
+          if (is_promise[[name]]) {
+            info <- list(
+              class = "promise",
+              type = unbox("promise"),
+              length = unbox(0L),
+              str = unbox("<promise>")
+            )
+          } else {
+            obj <- env[[name]]
+            str <- capture_str(obj)[[1L]]
+            info <- list(
+              class = class(obj),
+              type = unbox(typeof(obj)),
+              length = unbox(length(obj)),
+              str = unbox(trimws(str))
+            )
+            if ((is.list(obj) ||
+              is.environment(obj)) &&
+              !is.null(names(obj))) {
+              info$names <- names(obj)
+            }
+            if (isS4(obj)) {
+              info$slots <- slotNames(obj)
+            }
+            if (is.list(obj) &&
+              !is.null(dim(obj))) {
+              info$dim <- dim(obj)
+            }
+          }
+          info
+        })
+        names(objs) <- all_names
+        objs
+      }
+
       dir_session <- file.path(tempdir, "vscode-R")
       dir.create(dir_session, showWarnings = FALSE, recursive = TRUE)
 
@@ -81,28 +121,7 @@ if (interactive() &&
 
         update_globalenv <- function(...) {
           tryCatch({
-            objs <- eapply(.GlobalEnv, function(obj) {
-              str <- capture_str(obj)[[1L]]
-              info <- list(
-                class = class(obj),
-                type = unbox(typeof(obj)),
-                length = unbox(length(obj)),
-                str = unbox(trimws(str))
-              )
-              if ((is.list(obj) ||
-                is.environment(obj)) &&
-                !is.null(names(obj))) {
-                info$names <- names(obj)
-              }
-              if (isS4(obj)) {
-                info$slots <- slotNames(obj)
-              }
-              if (is.list(obj) &&
-                  !is.null(dim(obj))) {
-                info$dim  <- dim(obj)
-              }
-              info
-            }, all.names = FALSE, USE.NAMES = TRUE)
+            objs <- inspect_env(.GlobalEnv)
             jsonlite::write_json(objs, globalenv_file, pretty = FALSE)
             cat(get_timestamp(), file = globalenv_lock_file)
           }, error = message)
