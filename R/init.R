@@ -73,6 +73,7 @@ if (interactive() &&
       inspect_env <- function(env) {
         all_names <- ls(env)
         is_promise <- rlang::env_binding_are_lazy(env, all_names)
+        is_active <- rlang::env_binding_are_active(env, all_names)
         objs <- lapply(all_names, function(name) {
           if (is_promise[[name]]) {
             info <- list(
@@ -80,6 +81,13 @@ if (interactive() &&
               type = unbox("promise"),
               length = unbox(0L),
               str = unbox("<promise>")
+            )
+          } else if (is_active[[name]]) {
+            info <- list(
+              class = "active_binding",
+              type = unbox("active_binding"),
+              length = unbox(0L),
+              str = unbox("<active-binding>")
             )
           } else {
             obj <- env[[name]]
