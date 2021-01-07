@@ -93,14 +93,14 @@ local({
                 class = "promise",
                 type = unbox("promise"),
                 length = unbox(0L),
-                str = unbox("<promise>")
+                str = unbox("(promise)")
               )
             } else if (is_active[[name]]) {
               info <- list(
                 class = "active_binding",
                 type = unbox("active_binding"),
                 length = unbox(0L),
-                str = unbox("<active-binding>")
+                str = unbox("(active-binding)")
               )
             } else {
               obj <- env[[name]]
@@ -310,17 +310,44 @@ local({
               title <- deparse(sub, nlines = 1)
             }
             if (is.environment(x)) {
-              x <- eapply(x, function(obj) {
-                data.frame(
-                  class = paste0(class(obj), collapse = ", "),
-                  type = typeof(obj),
-                  length = length(obj),
-                  size = as.integer(object.size(obj)),
-                  value = trimws(capture_str(obj)),
-                  stringsAsFactors = FALSE,
-                  check.names = FALSE
-                )
-              }, all.names = FALSE, USE.NAMES = TRUE)
+              all_names <- ls(x)
+              is_promise <- rlang::env_binding_are_lazy(x, all_names)
+              is_active <- rlang::env_binding_are_active(x, all_names)
+              x <- lapply(all_names, function(name) {
+                if (is_promise[[name]]) {
+                  data.frame(
+                    class = "promise",
+                    type = "promise",
+                    length = 0L,
+                    size = 0L,
+                    value = "(promise)",
+                    stringsAsFactors = FALSE,
+                    check.names = FALSE
+                  )
+                } else if (is_active[[name]]) {
+                  data.frame(
+                    class = "active_binding",
+                    type = "active_binding",
+                    length = 0L,
+                    size = 0L,
+                    value = "(active-binding)",
+                    stringsAsFactors = FALSE,
+                    check.names = FALSE
+                  )
+                } else {
+                  obj <- x[[name]]
+                  data.frame(
+                    class = paste0(class(obj), collapse = ", "),
+                    type = typeof(obj),
+                    length = length(obj),
+                    size = as.integer(object.size(obj)),
+                    value = trimws(capture_str(obj)),
+                    stringsAsFactors = FALSE,
+                    check.names = FALSE
+                  )
+                }
+              })
+              names(x) <- all_names
               if (length(x)) {
                 x <- do.call(rbind, x)
               } else {
