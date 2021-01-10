@@ -1,7 +1,6 @@
-local({
-  if (interactive() &&
+if (interactive() &&
     Sys.getenv("RSTUDIO") == "" &&
-    Sys.getenv("TERM_PROGRAM") == "vscode") {
+    Sys.getenv("TERM_PROGRAM") == "vscode") local({
 
     required_packages <- c("jsonlite", "rlang")
     missing_packages <- required_packages[
@@ -684,5 +683,5 @@ local({
 
       .vsc.attach()
     })
-  }
-})
+  })
+  
