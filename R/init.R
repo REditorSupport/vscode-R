@@ -1,7 +1,20 @@
 if (interactive() &&
   Sys.getenv("RSTUDIO") == "" &&
-  Sys.getenv("TERM_PROGRAM") == "vscode") {
-  if (requireNamespace("jsonlite", quietly = TRUE)) local({
+  Sys.getenv("TERM_PROGRAM") == "vscode") local({
+
+  required_packages <- c("jsonlite", "rlang")
+  missing_packages <- required_packages[
+    !vapply(required_packages, requireNamespace,
+      logical(1L), quietly = TRUE)
+  ]
+
+  if (length(missing_packages)) {
+    message(
+      "VSCode R Session Watcher requires ",
+      toString(missing_packages), ". ",
+      "Please install manually in order to use VSCode-R."
+    )
+  } else local({
     # cleanup previous version
     removeTaskCallback("vscode-R")
     options(vscodeR = NULL)
@@ -69,6 +82,53 @@ if (interactive() &&
         }
       }
 
+      inspect_env <- function(env) {
+        all_names <- ls(env)
+        is_promise <- rlang::env_binding_are_lazy(env, all_names)
+        is_active <- rlang::env_binding_are_active(env, all_names)
+        objs <- lapply(all_names, function(name) {
+          if (is_promise[[name]]) {
+            info <- list(
+              class = "promise",
+              type = unbox("promise"),
+              length = unbox(0L),
+              str = unbox("(promise)")
+            )
+          } else if (is_active[[name]]) {
+            info <- list(
+              class = "active_binding",
+              type = unbox("active_binding"),
+              length = unbox(0L),
+              str = unbox("(active-binding)")
+            )
+          } else {
+            obj <- env[[name]]
+            str <- capture_str(obj)[[1L]]
+            info <- list(
+              class = class(obj),
+              type = unbox(typeof(obj)),
+              length = unbox(length(obj)),
+              str = unbox(trimws(str))
+            )
+            if ((is.list(obj) ||
+              is.environment(obj)) &&
+              !is.null(names(obj))) {
+              info$names <- names(obj)
+            }
+            if (isS4(obj)) {
+              info$slots <- slotNames(obj)
+            }
+            if (is.list(obj) &&
+              !is.null(dim(obj))) {
+              info$dim <- dim(obj)
+            }
+          }
+          info
+        })
+        names(objs) <- all_names
+        objs
+      }
+
       dir_session <- file.path(tempdir, "vscode-R")
       dir.create(dir_session, showWarnings = FALSE, recursive = TRUE)
 
@@ -81,28 +141,7 @@ if (interactive() &&
 
         update_globalenv <- function(...) {
           tryCatch({
-            objs <- eapply(.GlobalEnv, function(obj) {
-              str <- capture_str(obj)[[1L]]
-              info <- list(
-                class = class(obj),
-                type = unbox(typeof(obj)),
-                length = unbox(length(obj)),
-                str = unbox(trimws(str))
-              )
-              if ((is.list(obj) ||
-                is.environment(obj)) &&
-                !is.null(names(obj))) {
-                info$names <- names(obj)
-              }
-              if (isS4(obj)) {
-                info$slots <- slotNames(obj)
-              }
-              if (is.list(obj) &&
-                  !is.null(dim(obj))) {
-                info$dim  <- dim(obj)
-              }
-              info
-            }, all.names = FALSE, USE.NAMES = TRUE)
+            objs <- inspect_env(.GlobalEnv)
             jsonlite::write_json(objs, globalenv_file, pretty = FALSE)
             cat(get_timestamp(), file = globalenv_lock_file)
           }, error = message)
@@ -264,23 +303,50 @@ if (interactive() &&
         }
 
         show_dataview <- function(x, title,
-          viewer = getOption("vsc.view", "Two")) {
+                                  viewer = getOption("vsc.view", "Two")) {
           if (missing(title)) {
             sub <- substitute(x)
             title <- deparse(sub, nlines = 1)
           }
           if (is.environment(x)) {
-            x <- eapply(x, function(obj) {
-              data.frame(
-                class = paste0(class(obj), collapse = ", "),
-                type = typeof(obj),
-                length = length(obj),
-                size = as.integer(object.size(obj)),
-                value = trimws(capture_str(obj)),
-                stringsAsFactors = FALSE,
-                check.names = FALSE
-              )
-            }, all.names = FALSE, USE.NAMES = TRUE)
+            all_names <- ls(x)
+            is_promise <- rlang::env_binding_are_lazy(x, all_names)
+            is_active <- rlang::env_binding_are_active(x, all_names)
+            x <- lapply(all_names, function(name) {
+              if (is_promise[[name]]) {
+                data.frame(
+                  class = "promise",
+                  type = "promise",
+                  length = 0L,
+                  size = 0L,
+                  value = "(promise)",
+                  stringsAsFactors = FALSE,
+                  check.names = FALSE
+                )
+              } else if (is_active[[name]]) {
+                data.frame(
+                  class = "active_binding",
+                  type = "active_binding",
+                  length = 0L,
+                  size = 0L,
+                  value = "(active-binding)",
+                  stringsAsFactors = FALSE,
+                  check.names = FALSE
+                )
+              } else {
+                obj <- x[[name]]
+                data.frame(
+                  class = paste0(class(obj), collapse = ", "),
+                  type = typeof(obj),
+                  length = length(obj),
+                  size = as.integer(object.size(obj)),
+                  value = trimws(capture_str(obj)),
+                  stringsAsFactors = FALSE,
+                  check.names = FALSE
+                )
+              }
+            })
+            names(x) <- all_names
             if (length(x)) {
               x <- do.call(rbind, x)
             } else {
@@ -361,7 +427,7 @@ if (interactive() &&
       }
 
       show_browser <- function(url, title = url, ...,
-        viewer = getOption("vsc.browser", "Active")) {
+                               viewer = getOption("vsc.browser", "Active")) {
         if (grepl("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:\\d+)?", url)) {
           request_browser(url = url, title = title, ..., viewer = viewer)
         } else if (grepl("^https?\\://", url)) {
@@ -420,7 +486,7 @@ if (interactive() &&
       }
 
       show_viewer <- function(url, title = NULL, ...,
-        viewer = getOption("vsc.viewer", "Two")) {
+                              viewer = getOption("vsc.viewer", "Two")) {
         if (is.null(title)) {
           expr <- substitute(url)
           if (is.character(url)) {
@@ -433,7 +499,7 @@ if (interactive() &&
       }
 
       show_page_viewer <- function(url, title = NULL, ...,
-        viewer = getOption("vsc.page_viewer", "Active")) {
+                                   viewer = getOption("vsc.page_viewer", "Active")) {
         if (is.null(title)) {
           expr <- substitute(url)
           if (is.character(url)) {
@@ -527,7 +593,7 @@ if (interactive() &&
             ".html"
           )
           request(command = "help", requestPath = requestPath, viewer = viewer)
-        } else{
+        } else {
           utils:::print.help_files_with_topic(h, ...)
         }
         invisible(h)
@@ -566,7 +632,7 @@ if (interactive() &&
             }
           )
           request(command = "help", requestPath = requestPath, viewer = viewer)
-        } else{
+        } else {
           utils:::print.hsearch(x, ...)
         }
         invisible(x)
@@ -616,10 +682,5 @@ if (interactive() &&
     attach(environment(), name = .vsc.name, warn.conflicts = FALSE)
 
     .vsc.attach()
-  }) else {
-    message(
-      "VSCode R Session Watcher requires jsonlite.\n",
-      "Please install it with install.packages(\"jsonlite\")."
-    )
-  }
-}
+  })
+})
