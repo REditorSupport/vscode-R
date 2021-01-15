@@ -14,8 +14,7 @@ import { FSWatcher } from 'fs-extra';
 import { config } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { globalRHelp } from './rHelp';
-import { rWorkspace } from './extension';
+import { rWorkspace, globalRHelp } from './extension';
 
 export let globalenv: any;
 let resDir: string;
@@ -177,7 +176,7 @@ async function updateGlobalenv() {
         if (fs.existsSync(globalenvFile)) {
             const content = await fs.readFile(globalenvFile, 'utf8');
             globalenv = JSON.parse(content);
-            rWorkspace.refresh();
+            rWorkspace?.refresh();
             console.info('[updateGlobalenv] Done');
         } else {
             console.info('[updateGlobalenv] File not found');

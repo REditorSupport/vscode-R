@@ -7,10 +7,103 @@ import { pathExists } from 'fs-extra';
 import { isDeepStrictEqual } from 'util';
 import { commands, Position, Range, Terminal, TerminalOptions, window } from 'vscode';
 
+import * as vscode from 'vscode';
+import * as util from './util';
+import * as selection from './selection';
+
 import { getSelection } from './selection';
 import { removeSessionFiles } from './session';
 import { config, delay, getRterm } from './util';
 export let rTerm: Terminal;
+
+
+
+export async function runSource(echo: boolean): Promise<void>  {
+    const wad = vscode.window.activeTextEditor?.document;
+    const isSaved = await util.saveDocument(wad);
+    if (isSaved) {
+        let rPath: string = util.ToRStringLiteral(wad.fileName, '"');
+        let encodingParam = util.config().get<string>('source.encoding');
+        encodingParam = `encoding = "${encodingParam}"`;
+        rPath = [rPath, encodingParam].join(', ');
+        if (echo) {
+            rPath = [rPath, 'echo = TRUE'].join(', ');
+        }
+        void runTextInTerm(`source(${rPath})`);
+    }
+}
+
+export async function knitRmd(echo: boolean, outputFormat: string): Promise<void>  {
+    const wad: vscode.TextDocument = vscode.window.activeTextEditor.document;
+    const isSaved = await util.saveDocument(wad);
+    if (isSaved) {
+        let rPath = util.ToRStringLiteral(wad.fileName, '"');
+        let encodingParam = util.config().get<string>('source.encoding');
+        encodingParam = `encoding = "${encodingParam}"`;
+        rPath = [rPath, encodingParam].join(', ');
+        if (echo) {
+            rPath = [rPath, 'echo = TRUE'].join(', ');
+        }
+        if (outputFormat === undefined) {
+            void runTextInTerm(`rmarkdown::render(${rPath})`);
+        } else {
+            void runTextInTerm(`rmarkdown::render(${rPath}, "${outputFormat}")`);
+        }
+    }
+}
+
+export async function runSelection(): Promise<void> {
+    await runSelectionInTerm(true);
+}
+
+export async function runSelectionRetainCursor(): Promise<void> {
+    await runSelectionInTerm(false);
+}
+
+export async function runSelectionOrWord(rFunctionName: string[]): Promise<void> {
+    const text = selection.getWordOrSelection();
+    const wrappedText = selection.surroundSelection(text, rFunctionName);
+    await runTextInTerm(wrappedText);
+}
+
+export async function runCommandWithSelectionOrWord(rCommand: string): Promise<void>  {
+    const text = selection.getWordOrSelection();
+    const call = rCommand.replace(/\$\$/g, text);
+    await runTextInTerm(call);
+}
+
+export async function runCommandWithEditorPath(rCommand: string): Promise<void>  {
+    const wad: vscode.TextDocument = vscode.window.activeTextEditor.document;
+    const isSaved = await util.saveDocument(wad);
+    if (isSaved) {
+        const rPath = util.ToRStringLiteral(wad.fileName, '');
+        const call = rCommand.replace(/\$\$/g, rPath);
+        await runTextInTerm(call);
+    }
+}
+
+export async function runCommand(rCommand: string): Promise<void>  {
+    await runTextInTerm(rCommand);
+}
+
+export async function runFromBeginningToLine(): Promise<void>  {
+    const endLine = vscode.window.activeTextEditor.selection.end.line;
+    const charactersOnLine = vscode.window.activeTextEditor.document.lineAt(endLine).text.length;
+    const endPos = new vscode.Position(endLine, charactersOnLine);
+    const range = new vscode.Range(new vscode.Position(0, 0), endPos);
+    const text = vscode.window.activeTextEditor.document.getText(range);
+    await runTextInTerm(text);
+}
+
+export async function runFromLineToEnd(): Promise<void>  {
+    const startLine = vscode.window.activeTextEditor.selection.start.line;
+    const startPos = new vscode.Position(startLine, 0);
+    const endLine = vscode.window.activeTextEditor.document.lineCount;
+    const range = new vscode.Range(startPos, new vscode.Position(endLine, 0));
+    const text = vscode.window.activeTextEditor.document.getText(range);
+    await runTextInTerm(text);
+}
+
 
 export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     const termName = 'R Interactive';
