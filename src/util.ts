@@ -148,6 +148,23 @@ export function checkIfFileExists(filePath: string): boolean {
 }
 
 
+export async function saveDocument(document: vscode.TextDocument): Promise<boolean> {
+    if (document.isUntitled) {
+        void vscode.window.showErrorMessage('Document is unsaved. Please save and retry running R command.');
+
+        return false;
+    }
+
+    const isSaved: boolean = document.isDirty ? (await document.save()) : true;
+    if (!isSaved) {
+        void vscode.window.showErrorMessage('Cannot run R command: document could not be saved.');
+
+        return false;
+    }
+
+    return true;
+}
+
 // shows a quick pick asking the user for confirmation
 // returns true if the user confirms, false if they cancel or dismiss the quickpick
 export async function getConfirmation(prompt: string, confirmation?: string, detail?: string): Promise<boolean> {

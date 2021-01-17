@@ -1,380 +1,173 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+
 'use strict';
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-import { CancellationToken, commands, CompletionContext, CompletionItem, CompletionItemKind,
-         ExtensionContext, Hover, IndentAction, languages, MarkdownString, Position, Range,
-         StatusBarAlignment, TextDocument, window } from 'vscode';
 
-import { previewDataframe, previewEnvironment } from './preview';
-import { createGitignore } from './rGitignore';
-import { createRTerm, deleteTerminal, runChunksInTerm, runSelectionInTerm, runTextInTerm } from './rTerminal';
-import { getWordOrSelection, surroundSelection } from './selection';
-import { attachActive, deploySessionWatcher, globalenv, showPlotHistory, startRequestWatcher, refreshBrowser, openExternalBrowser } from './session';
-import { config, ToRStringLiteral } from './util';
-import { launchAddinPicker, trackLastActiveTextEditor } from './rstudioapi';
-import { RMarkdownCodeLensProvider, RMarkdownCompletionItemProvider, selectCurrentChunk, runCurrentChunk, runAboveChunks, runCurrentAndBelowChunks, runBelowChunks, runPreviousChunk, runNextChunk, runAllChunks, goToPreviousChunk, goToNextChunk } from './rmarkdown';
+// interfaces, functions, etc. provided by vscode
+import * as vscode from 'vscode';
 
-
-import { clearWorkspace, loadWorkspace, saveWorkspace, WorkspaceDataProvider, WorkspaceItem } from './workspaceViewer';
-import { RExtensionImplementation as RExtension } from './apiImplementation';
-import { initializeHelp } from './rHelp';
-
-const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
-
-// Get with names(roxygen2:::default_tags())
-const roxygenTagCompletionItems = [
-    'export', 'exportClass', 'exportMethod', 'exportPattern', 'import', 'importClassesFrom',
-    'importFrom', 'importMethodsFrom', 'rawNamespace', 'S3method', 'useDynLib', 'aliases',
-    'author', 'backref', 'concept', 'describeIn', 'description', 'details',
-    'docType', 'encoding', 'evalRd', 'example', 'examples', 'family',
-    'field', 'format', 'inherit', 'inheritParams', 'inheritDotParams', 'inheritSection',
-    'keywords', 'method', 'name', 'md', 'noMd', 'noRd',
-    'note', 'param', 'rdname', 'rawRd', 'references', 'return',
-    'section', 'seealso', 'slot', 'source', 'template', 'templateVar',
-    'title', 'usage'].map((x: string) => new CompletionItem(`${x} `));
+// functions etc. implemented in this extension
+import * as preview from './preview';
+import * as rGitignore from './rGitignore';
+import * as rTerminal from './rTerminal';
+import * as session from './session';
+import * as util from './util';
+import * as rstudioapi from './rstudioapi';
+import * as rmarkdown from './rmarkdown';
+import * as workspaceViewer from './workspaceViewer';
+import * as apiImplementation from './apiImplementation';
+import * as rHelp from './rHelp';
+import * as completions from './completions';
 
 
-export const rWorkspace = new WorkspaceDataProvider();
-
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export async function activate(context: ExtensionContext): Promise<RExtension> {
-
-    // register the R Workspace tree view
-    window.registerTreeDataProvider(
-        'workspaceViewer',
-        rWorkspace
-    );
-
-    // used to export an interface to the help panel
-    // used e.g. by vscode-r-debugger to show the help panel from within debug sessions
-    const rExtension = new RExtension();
-
-    await initializeHelp(context, rExtension);
+// global objects used in other files
+export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
+export let globalRHelp: rHelp.RHelp | undefined = undefined;
 
 
-    // Use the console to output diagnostic information (console.log) and errors (console.error)
-    // This line of code will only be executed once when your extension is activated
+// Called (once) when the extension is activated
+export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
+    // create a new instance of RExtensionImplementation
+    // is used to export an interface to the help panel
+    // this export is used e.g. by vscode-r-debugger to show the help panel from within debug sessions
+    const rExtension = new apiImplementation.RExtensionImplementation();
 
-    // The command has been defined in the package.json file
-    // Now provide the implementation of the command with  registerCommand
-    // The commandId parameter must match the command field in package.json
 
-    async function saveDocument(document: TextDocument) {
-        if (document.isUntitled) {
-            void window.showErrorMessage('Document is unsaved. Please save and retry running R command.');
+    // register commands specified in package.json
+    const commands = {
+        // create R terminal
+        'r.createRTerm': rTerminal.createRTerm,
 
-            return false;
-        }
+        // run code from editor in terminal 
+        'r.nrow': () => rTerminal.runSelectionOrWord(['nrow']),
+        'r.length': () => rTerminal.runSelectionOrWord(['length']),
+        'r.head': () => rTerminal.runSelectionOrWord(['head']),
+        'r.thead': () => rTerminal.runSelectionOrWord(['t', 'head']),
+        'r.names': () => rTerminal.runSelectionOrWord(['names']),
+        'r.runSource': () => { void rTerminal.runSource(false); },
+        'r.runSelection': rTerminal.runSelection,
+        'r.runFromLineToEnd': rTerminal.runFromLineToEnd,
+        'r.runFromBeginningToLine': rTerminal.runFromBeginningToLine,
+        'r.runSelectionRetainCursor': rTerminal.runSelectionRetainCursor,
+        'r.runCommandWithSelectionOrWord': rTerminal.runCommandWithSelectionOrWord,
+        'r.runCommandWithEditorPath': rTerminal.runCommandWithEditorPath,
+        'r.runCommand': rTerminal.runCommand,
+        'r.runSourcewithEcho': () => { void rTerminal.runSource(true); },
 
-        const isSaved: boolean = document.isDirty ? (await document.save()) : true;
-        if (!isSaved) {
-            void window.showErrorMessage('Cannot run R command: document could not be saved.');
+        // rmd related
+        'r.knitRmd': () => { void rTerminal.knitRmd(false, undefined); },
+        'r.knitRmdToPdf': () => { void rTerminal.knitRmd(false, 'pdf_document'); },
+        'r.knitRmdToHtml': () => { void rTerminal.knitRmd(false, 'html_document'); },
+        'r.knitRmdToAll': () => { void rTerminal.knitRmd(false, 'all'); },
+        'r.selectCurrentChunk': rmarkdown.selectCurrentChunk,
+        'r.runCurrentChunk': rmarkdown.runCurrentChunk,
+        'r.runPreviousChunk': rmarkdown.runPreviousChunk,
+        'r.runNextChunk': rmarkdown.runNextChunk,
+        'r.runAboveChunks': rmarkdown.runAboveChunks,
+        'r.runCurrentAndBelowChunks': rmarkdown.runCurrentAndBelowChunks,
+        'r.runBelowChunks': rmarkdown.runBelowChunks,
+        'r.runAllChunks': rmarkdown.runAllChunks,
+        'r.goToPreviousChunk': rmarkdown.goToPreviousChunk,
+        'r.goToNextChunk': rmarkdown.goToNextChunk,
+        'r.runChunks': rTerminal.runChunksInTerm,
 
-            return false;
-        }
+        // editor independent commands
+        'r.createGitignore': rGitignore.createGitignore,
+        'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
+        'r.test': () => rTerminal.runTextInTerm('devtools::test()'),
+        'r.install': () => rTerminal.runTextInTerm('devtools::install()'),
+        'r.build': () => rTerminal.runTextInTerm('devtools::build()'),
+        'r.document': () => rTerminal.runTextInTerm('devtools::document()'),
 
-        return true;
+        // interaction with R sessions
+        'r.previewDataframe': preview.previewDataframe,
+        'r.previewEnvironment': preview.previewEnvironment,
+        'r.attachActive': session.attachActive,
+        'r.showPlotHistory': session.showPlotHistory,
+        'r.launchAddinPicker': rstudioapi.launchAddinPicker,
+
+        // workspace viewer
+        'r.workspaceViewer.refreshEntry': () => rWorkspace.refresh(),
+        'r.workspaceViewer.view': (node: workspaceViewer.WorkspaceItem) => rTerminal.runTextInTerm(`View(${node.label})`),
+        'r.workspaceViewer.remove': (node: workspaceViewer.WorkspaceItem) => rTerminal.runTextInTerm(`rm(${node.label})`),
+        'r.workspaceViewer.clear': workspaceViewer.clearWorkspace,
+        'r.workspaceViewer.load': workspaceViewer.loadWorkspace,
+        'r.workspaceViewer.save': workspaceViewer.saveWorkspace,
+
+        // browser controls
+        'r.browser.refresh': session.refreshBrowser,
+        'r.browser.openExternal': session.openExternalBrowser
+    };
+    for(const key in commands){
+        context.subscriptions.push(vscode.commands.registerCommand(key, commands[key]));
     }
 
-    async function runSource(echo: boolean)  {
-        const wad = window.activeTextEditor?.document;
-        const isSaved = await saveDocument(wad);
-        if (isSaved) {
-            let rPath: string = ToRStringLiteral(wad.fileName, '"');
-            let encodingParam = config().get<string>('source.encoding');
-            encodingParam = `encoding = "${encodingParam}"`;
-            rPath = [rPath, encodingParam].join(', ');
-            if (echo) {
-                rPath = [rPath, 'echo = TRUE'].join(', ');
-            }
-            void runTextInTerm(`source(${rPath})`);
-        }
-    }
 
-    async function knitRmd(echo: boolean, outputFormat: string)  {
-        const wad: TextDocument = window.activeTextEditor.document;
-        const isSaved = await saveDocument(wad);
-        if (isSaved) {
-            let rPath = ToRStringLiteral(wad.fileName, '"');
-            let encodingParam = config().get<string>('source.encoding');
-            encodingParam = `encoding = "${encodingParam}"`;
-            rPath = [rPath, encodingParam].join(', ');
-            if (echo) {
-                rPath = [rPath, 'echo = TRUE'].join(', ');
-            }
-            if (outputFormat === undefined) {
-                void runTextInTerm(`rmarkdown::render(${rPath})`);
-            } else {
-                void runTextInTerm(`rmarkdown::render(${rPath}, "${outputFormat}")`);
-            }
-        }
-    }
+    // keep track of terminals
+    context.subscriptions.push(vscode.window.onDidCloseTerminal(rTerminal.deleteTerminal));
 
-    async function runSelection() {
-        await runSelectionInTerm(true);
-    }
 
-    async function runSelectionRetainCursor() {
-        await runSelectionInTerm(false);
-    }
+    // register on-enter rule for roxygen comments
+    const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
+    vscode.languages.setLanguageConfiguration('r', {
+		onEnterRules: [
+			{
+				// Automatically continue roxygen comments: #'
+				action: { indentAction: vscode.IndentAction.None, appendText: '#\' ' },
+				beforeText: /^#'.*/,
+			},
+		],
+		wordPattern,
+	});
 
-    async function runSelectionOrWord(rFunctionName: string[]) {
-        const text = getWordOrSelection();
-        const wrappedText = surroundSelection(text, rFunctionName);
-        await runTextInTerm(wrappedText);
-    }
 
-    async function runCommandWithSelectionOrWord(rCommand: string) {
-        const text = getWordOrSelection();
-        const call = rCommand.replace(/\$\$/g, text);
-        await runTextInTerm(call);
-    }
+    // initialize the package/help related functions
+    globalRHelp = await rHelp.initializeHelp(context, rExtension);
 
-    async function runCommandWithEditorPath(rCommand: string) {
-        const wad: TextDocument = window.activeTextEditor.document;
-        const isSaved = await saveDocument(wad);
-        if (isSaved) {
-            const rPath = ToRStringLiteral(wad.fileName, '');
-            const call = rCommand.replace(/\$\$/g, rPath);
-            await runTextInTerm(call);
-        }
-    }
 
-    async function runCommand(rCommand: string) {
-        await runTextInTerm(rCommand);
-    }
+    // register codelens and complmetion providers for r markdown
+    vscode.languages.registerCodeLensProvider('rmd', new rmarkdown.RMarkdownCodeLensProvider());
+    vscode.languages.registerCompletionItemProvider('rmd', new rmarkdown.RMarkdownCompletionItemProvider(), ' ', ',');
 
-    async function runFromBeginningToLine() {
-        const endLine = window.activeTextEditor.selection.end.line;
-        const charactersOnLine = window.activeTextEditor.document.lineAt(endLine).text.length;
-        const endPos = new Position(endLine, charactersOnLine);
-        const range = new Range(new Position(0, 0), endPos);
-        const text = window.activeTextEditor.document.getText(range);
-        await runTextInTerm(text);
-    }
 
-    async function runFromLineToEnd() {
-        const startLine = window.activeTextEditor.selection.start.line;
-        const startPos = new Position(startLine, 0);
-        const endLine = window.activeTextEditor.document.lineCount;
-        const range = new Range(startPos, new Position(endLine, 0));
-        const text = window.activeTextEditor.document.getText(range);
-        await runTextInTerm(text);
-    }
+    // register (session) hover and completion providers
+    vscode.languages.registerHoverProvider('r', new completions.HoverProvider());
+    vscode.languages.registerCompletionItemProvider('r', new completions.StaticCompletionItemProvider(), '@');
 
-    languages.registerCompletionItemProvider('r', {
-        provideCompletionItems(document: TextDocument, position: Position) {
-            if (document.lineAt(position).text
-                        .substr(0, 2) === '#\'') {
-                return roxygenTagCompletionItems;
-            }
 
-            return undefined;
-        },
-    },                                       '@'); // Trigger on '@'
-
-    languages.setLanguageConfiguration('r', {
-        onEnterRules: [{ // Automatically continue roxygen comments: #'
-        action: { indentAction: IndentAction.None, appendText: '#\' ' },
-        beforeText: /^#'.*/,
-        }],
-        wordPattern,
-    });
-
-    context.subscriptions.push(
-        commands.registerCommand('r.nrow', () => runSelectionOrWord(['nrow'])),
-        commands.registerCommand('r.length', () => runSelectionOrWord(['length'])),
-        commands.registerCommand('r.head', () => runSelectionOrWord(['head'])),
-        commands.registerCommand('r.thead', () => runSelectionOrWord(['t', 'head'])),
-        commands.registerCommand('r.names', () => runSelectionOrWord(['names'])),
-        commands.registerCommand('r.runSource', () => { void runSource(false); }),
-        commands.registerCommand('r.knitRmd', () => { void knitRmd(false, undefined); }),
-        commands.registerCommand('r.knitRmdToPdf', () => { void knitRmd(false, 'pdf_document'); }),
-        commands.registerCommand('r.knitRmdToHtml', () => { void knitRmd(false, 'html_document'); }),
-        commands.registerCommand('r.knitRmdToAll', () => { void knitRmd(false, 'all'); }),
-        commands.registerCommand('r.createRTerm', createRTerm),
-        commands.registerCommand('r.runSourcewithEcho', () => { void runSource(true); }),
-        commands.registerCommand('r.runSelection', runSelection),
-        commands.registerCommand('r.runFromBeginningToLine', runFromBeginningToLine),
-        commands.registerCommand('r.runFromLineToEnd', runFromLineToEnd),
-        commands.registerCommand('r.runSelectionRetainCursor', runSelectionRetainCursor),
-        commands.registerCommand('r.selectCurrentChunk', selectCurrentChunk),
-        commands.registerCommand('r.runCurrentChunk', runCurrentChunk),
-        commands.registerCommand('r.runPreviousChunk', runPreviousChunk),
-        commands.registerCommand('r.runNextChunk', runNextChunk),
-        commands.registerCommand('r.runAboveChunks', runAboveChunks),
-        commands.registerCommand('r.runCurrentAndBelowChunks', runCurrentAndBelowChunks),
-        commands.registerCommand('r.runBelowChunks', runBelowChunks),
-        commands.registerCommand('r.runAllChunks', runAllChunks),
-        commands.registerCommand('r.goToPreviousChunk', goToPreviousChunk),
-        commands.registerCommand('r.goToNextChunk', goToNextChunk),
-        commands.registerCommand('r.runChunks', runChunksInTerm),
-        commands.registerCommand('r.createGitignore', createGitignore),
-        commands.registerCommand('r.previewDataframe', previewDataframe),
-        commands.registerCommand('r.previewEnvironment', previewEnvironment),
-        commands.registerCommand('r.loadAll', () => runTextInTerm('devtools::load_all()')),
-        commands.registerCommand('r.test', () => runTextInTerm('devtools::test()')),
-        commands.registerCommand('r.install', () => runTextInTerm('devtools::install()')),
-        commands.registerCommand('r.build', () => runTextInTerm('devtools::build()')),
-        commands.registerCommand('r.document', () => runTextInTerm('devtools::document()')),
-        commands.registerCommand('r.attachActive', attachActive),
-        commands.registerCommand('r.showPlotHistory', showPlotHistory),
-        commands.registerCommand('r.runCommandWithSelectionOrWord', runCommandWithSelectionOrWord),
-        commands.registerCommand('r.runCommandWithEditorPath', runCommandWithEditorPath),
-        commands.registerCommand('r.runCommand', runCommand),
-        commands.registerCommand('r.launchAddinPicker', launchAddinPicker),
-        commands.registerCommand('r.workspaceViewer.refreshEntry', () => rWorkspace.refresh()),
-        commands.registerCommand('r.workspaceViewer.view', (node: WorkspaceItem) => runTextInTerm(`View(${node.label})`)),
-        commands.registerCommand('r.workspaceViewer.remove', (node: WorkspaceItem) => runTextInTerm(`rm(${node.label})`)),
-        commands.registerCommand('r.workspaceViewer.clear', clearWorkspace),
-        commands.registerCommand('r.workspaceViewer.load', loadWorkspace),
-        commands.registerCommand('r.workspaceViewer.save', saveWorkspace),
-        commands.registerCommand('r.browser.refresh', refreshBrowser),
-        commands.registerCommand('r.browser.openExternal', openExternalBrowser),
-        window.onDidCloseTerminal(deleteTerminal),
-    );
-
-    const rmdCodeLensProvider = new RMarkdownCodeLensProvider();
-    languages.registerCodeLensProvider('rmd', rmdCodeLensProvider);
-
-    const rmdCompletionProvider = new RMarkdownCompletionItemProvider();
-    languages.registerCompletionItemProvider('rmd', rmdCompletionProvider, ' ', ',');
-
-    const enabledSessionWatcher = config().get<boolean>('sessionWatcher');
-    if (enabledSessionWatcher) {
+    // deploy session watcher (if configured by user)
+    const enableSessionWatcher = util.config().get<boolean>('sessionWatcher', false);
+    if (enableSessionWatcher) {
         console.info('Initialize session watcher');
-        languages.registerHoverProvider('r', {
-            provideHover(document, position, ) {
-                const wordRange = document.getWordRangeAtPosition(position);
-                const text = document.getText(wordRange);
+        session.deploySessionWatcher(context.extensionPath);
 
-                return new Hover(`\`\`\`\n${globalenv[text].str}\n\`\`\``);
-            },
-        });
-
-        languages.registerCompletionItemProvider('r', {
-            provideCompletionItems(document: TextDocument, position: Position, token: CancellationToken, completionContext: CompletionContext) {
-                const items = [];
-                if (token.isCancellationRequested) { return items; }
-
-                if (completionContext.triggerCharacter === undefined) {
-                    Object.keys(globalenv).map((key) => {
-                        const obj = globalenv[key];
-                        const item = new CompletionItem(key,
-                                                        obj.type === 'closure' || obj.type === 'builtin' ?
-                                CompletionItemKind.Function :
-                                CompletionItemKind.Field);
-                        item.detail = '[session]';
-                        item.documentation = new MarkdownString(`\`\`\`r\n${obj.str}\n\`\`\``);
-                        items.push(item);
-                    });
-                } else if (completionContext.triggerCharacter === '$' || completionContext.triggerCharacter === '@') {
-                    const symbolPosition = new Position(position.line, position.character - 1);
-                    const symbolRange = document.getWordRangeAtPosition(symbolPosition);
-                    const symbol = document.getText(symbolRange);
-                    const doc = new MarkdownString('Element of `' + symbol + '`');
-                    const obj = globalenv[symbol];
-                    let elements: string[];
-                    if (obj !== undefined) {
-                        if (completionContext.triggerCharacter === '$') {
-                            elements = obj.names;
-                        } else if (completionContext.triggerCharacter === '@') {
-                            elements = obj.slots;
-                        }
-                    }
-                    elements.map((key) => {
-                        const item = new CompletionItem(key, CompletionItemKind.Field);
-                        item.detail = '[session]';
-                        item.documentation = doc;
-                        items.push(item);
-                    });
-                }
-
-                if (completionContext.triggerCharacter === undefined ||
-                    completionContext.triggerCharacter === '"' ||
-                    completionContext.triggerCharacter === '\'') {
-                    getBracketCompletionItems(document, position, token, items);
-                }
-
-                return items;
-            },
-        },                                       '', '$', '@', '"', '\'');
-
-        // creates a custom context value for the workspace view
-        // only shows view when session watcher is enabled
-        void commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enabledSessionWatcher);
-
+        // create status bar item that contains info about the session watcher
         console.info('Create sessionStatusBarItem');
-        const sessionStatusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 1000);
+        const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
         sessionStatusBarItem.command = 'r.attachActive';
         sessionStatusBarItem.text = 'R: (not attached)';
         sessionStatusBarItem.tooltip = 'Attach Active Terminal';
-        context.subscriptions.push(sessionStatusBarItem);
         sessionStatusBarItem.show();
+        context.subscriptions.push(sessionStatusBarItem);
+        session.startRequestWatcher(sessionStatusBarItem);
 
-        deploySessionWatcher(context.extensionPath);
-        startRequestWatcher(sessionStatusBarItem);
-        trackLastActiveTextEditor(window.activeTextEditor);
-        window.onDidChangeActiveTextEditor(trackLastActiveTextEditor);
+        // track active text editor
+        rstudioapi.trackLastActiveTextEditor(vscode.window.activeTextEditor);
+        vscode.window.onDidChangeActiveTextEditor(rstudioapi.trackLastActiveTextEditor);
+
+        // register the R Workspace tree view
+        // creates a custom context value for the workspace view
+        // only shows view when session watcher is enabled
+        rWorkspace = new workspaceViewer.WorkspaceDataProvider();
+        vscode.window.registerTreeDataProvider(
+            'workspaceViewer',
+            rWorkspace
+        );
+        void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
+
+        // if session watcher is active, register dyamic completion provider
+        const liveTriggerCharacters = ['', '$', '@', '"', '\'' ];
+        vscode.languages.registerCompletionItemProvider('r', new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
 
-    console.log('vscode-r: returning R extension...');
     return rExtension;
 }
 
-function getBracketCompletionItems(document: TextDocument, position: Position, token: CancellationToken, items: CompletionItem[]) {
-    let range = new Range(new Position(position.line, 0), position);
-    let expectOpenBrackets = 0;
-    let symbol: string;
-
-    loop1:
-    while (range.start.line >= 0) {
-        if (token.isCancellationRequested) { return; }
-        const text = document.getText(range);
-        for (let i = text.length - 1; i >= 0; i -= 1) {
-            const chr = text.charAt(i);
-            if (chr === ']') {
-                expectOpenBrackets += 1;
-            // tslint:disable-next-line: triple-equals
-            } else if (chr === '[') {
-                if (expectOpenBrackets === 0) {
-                    const symbolPosition = new Position(range.start.line, i - 1);
-                    const symbolRange = document.getWordRangeAtPosition(symbolPosition);
-                    symbol = document.getText(symbolRange);
-                    break loop1;
-                } else {
-                    expectOpenBrackets -= 1;
-                }
-            }
-        }
-        if (range.start.line > 0) {
-            range = document.lineAt(range.start.line - 1).range;
-        } else {
-            break;
-        }
-    }
-
-    if (!token.isCancellationRequested && symbol !== undefined) {
-        const obj = globalenv[symbol];
-        if (obj !== undefined && obj.names !== undefined) {
-            const doc = new MarkdownString('Element of `' + symbol + '`');
-            obj.names.map((name: string) => {
-                const item = new CompletionItem(name, CompletionItemKind.Field);
-                item.detail = '[session]';
-                item.documentation = doc;
-                items.push(item);
-            });
-        }
-    }
-}
-
-// This method is called when your extension is deactivated
-// Export function deactivate() {
-
-// }

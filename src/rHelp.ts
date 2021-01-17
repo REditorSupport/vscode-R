@@ -14,7 +14,6 @@ import { HelpTreeWrapper } from './rHelpTree';
 import { PackageManager } from './rHelpPackages';
 
 
-export let globalRHelp: RHelp | undefined;
 
 
 class DummyMemento implements vscode.Memento {
@@ -32,7 +31,7 @@ class DummyMemento implements vscode.Memento {
 	}
 }
 
-export async function initializeHelp(context: vscode.ExtensionContext, rExtension: api.RExtension): Promise<void> {
+export async function initializeHelp(context: vscode.ExtensionContext, rExtension: api.RExtension): Promise<RHelp|undefined> {
 
 	void vscode.commands.executeCommand('setContext', 'r.helpViewer.show', true);
 
@@ -70,7 +69,6 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
         void vscode.window.showErrorMessage(`Help Panel not available`);
     }
 
-    globalRHelp = rHelp;
     rExtension.helpPanel = rHelp;
 
 	if(rHelp){
@@ -84,6 +82,8 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 			vscode.commands.registerCommand('r.helpPanel.openExternal', () => rHelp?.openExternal())
 		);
 	}
+
+	return rHelp;
 }
 
 
