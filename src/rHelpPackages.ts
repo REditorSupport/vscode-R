@@ -18,10 +18,15 @@ import { AliasProvider } from './rHelpProvider';
 //  * install packages, selected from CRAN using a quickpick
 
 
+// Types of help topics
 export enum TopicType {
+    // "Home page" of a package, e.g. .../base-package.html
     HOME,
+    // An Index file, e.g. list of packages or list of topics in a package
     INDEX,
+    // E.g. DESCRIPTION
     META,
+    // Regular help topic containing help about an R function etc.
     NORMAL
 }
 
@@ -30,19 +35,14 @@ export enum TopicType {
 export interface Topic {
     name: string;
     description: string;
-
     pkgName: string;
-
     href?: string;
-
     helpPath: string;
-
     type: TopicType;
-
     aliases?: string[];
-
     isGrouped?: boolean;
 }
+
 
 // interface containing info about a package
 // can be either installed locally or parsed from the CRAN website
@@ -88,18 +88,22 @@ export interface PackageManagerOptions {
     cwd?: string
 }
 
+
 export class PackageManager {
 
-	// the object that actually provides help pages:
     readonly rHelp: RHelp;
+
 	readonly aliasProvider: AliasProvider;
+
     readonly state: vscode.Memento;
 
     readonly cwd?: string;
 
     protected cranUrl?: string;
 
+    // names of packages to be highlighted in the package list
     public favoriteNames: string[] = [];
+
 
     constructor(args: PackageManagerOptions){
         this.rHelp = args.rHelp;
@@ -108,12 +112,15 @@ export class PackageManager {
         this.pullFavoriteNames();
     }
 
+    // Functions to force a refresh of listed packages
+    // Useful e.g. after installing/removing packages
     public refresh(): void {
         this.cranUrl = undefined;
         this.pullFavoriteNames();
         void this.clearCachedFiles();
     }
 
+    // Funciton to clear only the cached files regarding an individual package etc.
 	public async clearCachedFiles(re?: string|RegExp): Promise<void> {
         let cache: CachedIndexFiles | undefined;
         if(re){
@@ -128,6 +135,7 @@ export class PackageManager {
         await this.state.update('r.helpPanel.cachedIndexFiles', cache);
 	}
 
+    // Function to add/remove packages from favorites
     public addFavorite(pkgName: string): string[] {
         this.pullFavoriteNames();
         if(pkgName && this.favoriteNames.indexOf(pkgName) === -1){
@@ -146,6 +154,7 @@ export class PackageManager {
         return this.favoriteNames;
     }
 
+    // return the index file if cached, else undefined
     private getCachedIndexFile(path: string){
         const cache = this.state.get<CachedIndexFiles>('r.helpPanel.cachedIndexFiles', []);
         const ind = cache.findIndex(v => v.path === path);
@@ -156,6 +165,7 @@ export class PackageManager {
         }
     }
 
+    // Save a new file to the cache (or update existing entry)
     private async updateCachedIndexFile(path: string, items: IndexFileEntry[] | null){
         const cache = this.state.get<CachedIndexFiles>('r.helpPanel.cachedIndexFiles', []);
         const ind = cache.findIndex(v => v.path === path);
@@ -170,7 +180,8 @@ export class PackageManager {
         await this.state.update('r.helpPanel.cachedIndexFiles', cache);
     }
 
-    // private functions used to sync favoriteNames with global state / workspace state
+    // Private functions used to sync favoriteNames with global state / workspace state
+    // Is used frequently when list of favorites is shared globally to sync between sessions
     private pullFavoriteNames(){
         if(this.state){
             this.favoriteNames = this.state.get('r.helpPanel.favoriteNames') || this.favoriteNames;
@@ -187,13 +198,10 @@ export class PackageManager {
         const pkgs = await this.pickPackages('Please selecte a package.', true, pickMany);
         if(pkgs?.length){
             const pkgsConfirmed = await this.confirmPackages('Are you sure you want to install these packages?', pkgs);
-            if(pkgsConfirmed?.length > 1){
+            if(pkgsConfirmed?.length){
                 const names = pkgsConfirmed.map(v => v.name);
                 return await this.installPackages(names, true);
             }
-        } else if(pkgs?.length === 1){
-            const names = pkgs.map(v => v.name);
-            return await this.installPackages(names);
         }
         return false;
     }
@@ -214,6 +222,8 @@ export class PackageManager {
         }
     }
 
+    // actually install packages
+    // confirmation can be skipped (e.g. if the user has confimred before)
     public async installPackages(pkgNames: string[], skipConfirmation: boolean = false): Promise<boolean> {
         const rPath = await getRpath(false);
         const cranUrl = await getCranUrl('', this.cwd);
@@ -225,9 +235,8 @@ export class PackageManager {
         if(skipConfirmation || await getConfirmation(prompt, confirmation, cmd)){
             await executeAsTask('Install Package', rPath, args);
             return true;
-        } else{
-            return false;
         }
+        return false;
     }
 
     public async getPackages(fromCran: boolean = false): Promise<Package[]|undefined> {
@@ -263,15 +272,14 @@ export class PackageManager {
         return packages;
     }
 
+    // Used to let the user confirm their choice when installing/removing packages
     public async confirmPackages(placeHolder: string, packages: Package[]): Promise<Package[]> {
-        const qpItems: (vscode.QuickPickItem & {package: Package})[] = packages.map(pkg => {
-            return {
-                label: pkg.name,
-                detail: pkg.description,
-                package: pkg,
-                picked: true
-            };
-        });
+        const qpItems: (vscode.QuickPickItem & {package: Package})[] = packages.map(pkg => ({
+            label: pkg.name,
+            detail: pkg.description,
+            package: pkg,
+            picked: true
+        }));
         const qpOptions: vscode.QuickPickOptions = {
             matchOnDescription: true,
             matchOnDetail: true,
@@ -290,13 +298,12 @@ export class PackageManager {
 			return undefined;
 		}
 
-        const qpItems: (vscode.QuickPickItem & {package: Package})[] = packages.map(pkg => {
-            return {
-                label: pkg.name,
-                detail: pkg.description,
-                package: pkg
-            };
-        });
+        const qpItems: (vscode.QuickPickItem & {package: Package})[] = packages.map(pkg => ({
+            label: pkg.name,
+            detail: pkg.description,
+            package: pkg
+        }));
+
         const qpOptions: vscode.QuickPickOptions = {
             matchOnDescription: true,
             matchOnDetail: true,
@@ -323,14 +330,11 @@ export class PackageManager {
             return undefined;
         }
 
-        const qpItems: (vscode.QuickPickItem & {topic: Topic})[] = topics.map(topic => {
-
-            return {
-                label: topic.name,
-                description: topic.description,
-                topic: topic
-            };
-        });
+        const qpItems: (vscode.QuickPickItem & {topic: Topic})[] = topics.map(topic => ({
+            label: topic.name,
+            description: topic.description,
+            topic: topic
+        }));
 
         const qp = await vscode.window.showQuickPick(qpItems, {
             placeHolder: placeHolder,

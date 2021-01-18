@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 
-import { HelpFile } from './rHelp';
+import { HelpFile, RHelp } from './rHelp';
 
 
 //// Declaration of interfaces used/implemented by the Help Panel class
@@ -20,17 +20,9 @@ interface HistoryEntry {
 	helpFile: HelpFile;
 }
 
-// provides modified help pages for paths
-export interface RHelpPageProvider {
-	// is called to get help for a request path
-    // the request path is the part of the help url after http://localhost:PORT/... when using R's help
-    // Returned help files are already modified with e.g. syntax highlighting!
-	getHelpFileFromRequestPath(requestPath: string): null|HelpFile|Promise<null|HelpFile>;
-}
-
 export class HelpPanel {
 
-    private readonly helpProvider: RHelpPageProvider;
+    private readonly rHelp: RHelp;
 
 	// the webview panel where the help is shown
 	public panel?: vscode.WebviewPanel;
@@ -49,10 +41,10 @@ export class HelpPanel {
 	private history: HistoryEntry[] = [];
 	private forwardHistory: HistoryEntry[] = [];
 
-	constructor(options: HelpPanelOptions, helpPageProvider: RHelpPageProvider){
+	constructor(options: HelpPanelOptions, rHelp: RHelp){
 		this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
         this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
-        this.helpProvider = helpPageProvider;
+        this.rHelp = rHelp;
 	}
 
 	// used to close files, stop servers etc.
@@ -220,7 +212,7 @@ export class HelpPanel {
 			const requestPath = parts.join('/');
 
 			// retrieve helpfile for path:
-			const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
+			const helpFile = await this.rHelp.getHelpFileForPath(requestPath);
 
 			// if successful, show helpfile:
 			if(helpFile){
