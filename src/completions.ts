@@ -96,12 +96,12 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             });
         }
 
-        if (trigger === undefined || trigger === ',' || trigger === '"' || trigger === '\'') {
+        if (trigger === undefined || trigger === '[' || trigger === ',' || trigger === '"' || trigger === '\'') {
             const bracketItems = getBracketCompletionItems(document, position, token);
             items.push(...bracketItems);
         }
 
-        if (trigger === undefined || trigger === ',') {
+        if (trigger === undefined || trigger === '(' || trigger === ',') {
             const pipelineItems = getPipelineCompletionItems(document, position, token);
             items.push(...pipelineItems);
         }
