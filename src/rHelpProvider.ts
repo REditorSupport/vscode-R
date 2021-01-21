@@ -5,6 +5,9 @@ import * as cp from 'child_process';
 import * as kill from 'tree-kill';
 
 import * as rHelp from './rHelp';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 
 
 export interface RHelpProviderOptions {
@@ -153,6 +156,8 @@ export class HelpProvider {
 export interface AliasProviderArgs {
 	// R path, must be vanilla R
 	rPath: string;
+    // cwd
+    cwd?: string;
 	// getAliases.R
     rScriptFile: string;
     
@@ -172,6 +177,7 @@ interface PackageAliases {
 export class AliasProvider {
 
     private readonly rPath: string;
+    private readonly cwd?: string;
     private readonly rScriptFile: string;
     private allPackageAliases?: null | {
         [key: string]: PackageAliases;
@@ -181,6 +187,7 @@ export class AliasProvider {
 
     constructor(args: AliasProviderArgs){
         this.rPath = args.rPath;
+        this.cwd = args.cwd;
         this.rScriptFile = args.rScriptFile;
         this.persistentState = args.persistentState;
     }
@@ -284,9 +291,17 @@ export class AliasProvider {
         this.allPackageAliases = null; 
 		const lim = '---vsc---'; // must match the lim used in R!
 		const re = new RegExp(`^.*?${lim}(.*)${lim}.*$`, 'ms');
-        const cmd = `${this.rPath} --silent --no-save --no-restore --slave -f "${this.rScriptFile}"`;
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-aliases-'));
+        const tempFile = path.join(tempDir, 'aliases.json');
+        const cmd = `${this.rPath} --silent --no-save --no-restore --slave -f "${this.rScriptFile}" > "${tempFile}"`;
+
         try{
-            const txt = cp.execSync(cmd, {encoding: 'utf-8'});
+            // execute R script 'getAliases.R'
+            // aliases will be written to tempDir
+            cp.execSync(cmd, {cwd: this.cwd});
+
+            // read and parse aliases
+            const txt = fs.readFileSync(tempFile, 'utf-8');
             const json = txt.replace(re, '$1');
             if(json){
                 this.allPackageAliases = <{[key: string]: PackageAliases}> JSON.parse(json) || {};
@@ -294,6 +309,8 @@ export class AliasProvider {
         } catch(e: unknown){
             console.log(e);
             void vscode.window.showErrorMessage((<{message: string}>e).message);
+        } finally {
+            fs.rmdirSync(tempDir, {recursive: true});
         }
         // update persistent workspace cache
         if(this.persistentState){
