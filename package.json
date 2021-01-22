@@ -580,6 +580,11 @@
         "icon": "$(trash)"
       },
       {
+        "title": "Update/reinstall Package",
+        "command": "r.helpPanel.updatePackage",
+        "icon": "$(cloud-download)"
+      },
+      {
         "title": "Install multiple packages",
         "command": "r.helpPanel.installPackages",
         "icon": "$(expand-all)"
@@ -760,6 +765,11 @@
           "command": "r.helpPanel.removePackage",
           "group": "inline",
           "when": "view == rHelpPages && viewItem =~ /_removePackage_/"
+        },
+        {
+          "command": "r.helpPanel.updatePackage",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /_updatePackage_/"
         },
         {
           "command": "r.helpPanel.installPackages",
