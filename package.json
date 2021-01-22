@@ -598,6 +598,10 @@
         "title": "Don't Summarize Identical Topics",
         "command": "r.helpPanel.unsummarizeTopics",
         "icon": "$(unfold)"
+      },
+      {
+        "title": "Open help for selection",
+        "command": "r.helpPanel.openForSelection"
       }
     ],
     "keybindings": [
