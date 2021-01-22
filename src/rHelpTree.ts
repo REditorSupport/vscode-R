@@ -464,8 +464,8 @@ class PackageNode extends Node {
             this.parent.refresh();
         } else if(cmd === 'updatePackage'){
             const success = await this.rHelp.packageManager.installPackages([this.pkg.name]);
-            // only refresh if user confirmed removing the package (success === true)
-            // might still refresh if removing was attempted but failed
+            // only reinstall if user confirmed removing the package (success === true)
+            // might still refresh if install was attempted but failed
             if(success){
                 this.parent.refresh(true);
             }
