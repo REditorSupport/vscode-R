@@ -600,7 +600,7 @@
         "icon": "$(unfold)"
       },
       {
-        "title": "Open help for selection",
+        "title": "R: Open help for selection",
         "command": "r.helpPanel.openForSelection"
       }
     ],

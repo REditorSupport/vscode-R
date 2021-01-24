@@ -83,8 +83,16 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 
 			vscode.commands.registerCommand('r.helpPanel.openForSelection', () => {
 				const editor = vscode.window.activeTextEditor;
-				const txt = editor?.document.getText(editor.selection);
-				void rHelp?.openHelpByAlias(txt);
+				if (editor !== undefined) {
+					let txt: string;
+					if (editor.selection.isEmpty) {
+						const range = editor.document.getWordRangeAtPosition(editor.selection.start);
+						txt = editor.document.getText(range);
+					} else {
+						txt = editor.document.getText(editor.selection);
+					}
+					void rHelp?.openHelpByAlias(txt);
+				}
 			})
 		);
 	}
