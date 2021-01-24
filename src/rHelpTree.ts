@@ -25,7 +25,8 @@ const nodeCommands = {
     filterPackages: 'r.helpPanel.filterPackages',
     summarizeTopics: 'r.helpPanel.summarizeTopics',
     unsummarizeTopics: 'r.helpPanel.unsummarizeTopics',
-    installPackages: 'r.helpPanel.installPackages'
+    installPackages: 'r.helpPanel.installPackages',
+    updateInstalledPackages: 'r.helpPanel.updateInstalledPackages'
 };
 
 // used to avoid typos when handling commands
@@ -312,6 +313,7 @@ class RootNode extends MetaNode {
             new Search2Node(this),
             new RefreshNode(this),
             new InstallPackageNode(this),
+            // new UpdatePackagesNode(this),
             this.pkgRootNode,
         ];
     }
@@ -576,6 +578,19 @@ class RefreshNode extends MetaNode {
     }
 }
 
+class UpdatePackagesNode extends MetaNode {
+    parent: RootNode;
+    label = 'Update all Packages';
+    iconPath = new vscode.ThemeIcon('versions');
+    
+    async callBack(){
+        const ret = await this.rHelp.packageManager.updatePackages();
+        if(ret){
+            this.rootNode.pkgRootNode.refresh(true);
+        }
+    }
+}
+
 // class NewHelpPanelNode extends MetaNode {
 //     label = 'Make New Helppanel';
 //     description = '(Opened with next help command)';
@@ -590,11 +605,16 @@ class InstallPackageNode extends MetaNode {
     label = 'Install CRAN Package';
     iconPath = new vscode.ThemeIcon('cloud-download');
 
-    contextValue = Node.makeContextValue('installPackages');
+    contextValue = Node.makeContextValue('installPackages', 'updateInstalledPackages');
 
     public async _handleCommand(cmd: cmdName){
         if(cmd === 'installPackages'){
             const ret = await this.rHelp.packageManager.pickAndInstallPackages(true);
+            if(ret){
+                this.rootNode.pkgRootNode.refresh(true);
+            }
+        } else if(cmd === 'updateInstalledPackages'){
+            const ret = await this.rHelp.packageManager.updatePackages();
             if(ret){
                 this.rootNode.pkgRootNode.refresh(true);
             }

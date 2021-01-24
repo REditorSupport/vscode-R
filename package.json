@@ -580,6 +580,11 @@
         "icon": "$(trash)"
       },
       {
+        "title": "Update Installed Packages",
+        "command": "r.helpPanel.updateInstalledPackages",
+        "icon": "$(clone)"
+      },
+      {
         "title": "Update/reinstall Package",
         "command": "r.helpPanel.updatePackage",
         "icon": "$(cloud-download)"
@@ -767,13 +772,18 @@
           "when": "view == rHelpPages && viewItem =~ /_removePackage_/"
         },
         {
+          "command": "r.helpPanel.updateInstalledPackages",
+          "group": "inline",
+          "when": "view == rHelpPages && viewItem =~ /_updateInstalledPackages_/"
+        },
+        {
           "command": "r.helpPanel.updatePackage",
           "group": "inline",
           "when": "view == rHelpPages && viewItem =~ /_updatePackage_/"
         },
         {
           "command": "r.helpPanel.installPackages",
-          "group": "inline",
+          "group": "inline@9",
           "when": "view == rHelpPages && viewItem =~ /_installPackages_/"
         },
         {
