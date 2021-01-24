@@ -309,6 +309,7 @@ class RootNode extends MetaNode {
             new HomeNode(this),
             new Search1Node(this),
             new Search2Node(this),
+            new OpenForSelectionNode(this),
             new RefreshNode(this),
             new InstallPackageNode(this),
             this.pkgRootNode,
@@ -565,6 +566,16 @@ class RefreshNode extends MetaNode {
     callBack(){
         this.rHelp.refresh();
         this.parent.pkgRootNode.refresh();
+    }
+}
+
+class OpenForSelectionNode extends MetaNode {
+    parent: RootNode;
+    label = 'Open Help Page for Selected Text';
+    iconPath = new vscode.ThemeIcon('symbol-key');
+    
+    callBack(){
+        void this.rHelp.openHelpForSelection();
     }
 }
 
