@@ -178,7 +178,7 @@ function getPipelineCompletionItems(document: vscode.TextDocument, position: vsc
             continue;
         }
 
-        const pipeSymbolIndex = line.text.search(/([\w_.]+|`.+`)\s*(%.+%|\|>)/);
+        const pipeSymbolIndex = line.text.search(/([\w_.]+)\s*(%.+%|\|>)/);
         if (pipeSymbolIndex < 0) {
             break;
         }
