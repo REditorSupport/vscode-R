@@ -80,26 +80,12 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 			vscode.commands.registerCommand('r.helpPanel.back', () => rHelp?.goBack()),
 			vscode.commands.registerCommand('r.helpPanel.forward', () => rHelp?.goForward()),
 			vscode.commands.registerCommand('r.helpPanel.openExternal', () => rHelp?.openExternal()),
-
-			vscode.commands.registerCommand('r.helpPanel.openForSelection', () => {
-				const editor = vscode.window.activeTextEditor;
-				if (editor !== undefined) {
-					let txt: string;
-					if (editor.selection.isEmpty) {
-						const range = editor.document.getWordRangeAtPosition(editor.selection.start);
-						txt = editor.document.getText(range);
-					} else {
-						txt = editor.document.getText(editor.selection);
-					}
-					void rHelp?.openHelpByAlias(txt);
-				}
-			})
+			vscode.commands.registerCommand('r.helpPanel.openForSelection', () => rHelp?.openHelpForSelection())
 		);
 	}
 
 	return rHelp;
 }
-
 
 
 export interface HelpFile {
@@ -305,6 +291,47 @@ export class RHelp implements api.HelpPanel {
 			return this.showHelpForPath(`/doc/html/Search?pattern=${searchTerm}`);
 		}
 		return false;
+	}
+	
+	// quickly open help for selection
+	public async openHelpForSelection(): Promise<boolean> {
+		// only use if we failed to show help page:
+		let errMsg: string;
+
+		const editor = vscode.window.activeTextEditor;
+		if (editor) {
+			// the text to show help for:
+			let txt = '';
+			if (editor.selection.isEmpty) {
+				// no text selected -> find word at current cursor position
+				// use regex including ":" to capture package/namespace (e.g. base::print)
+				const re = /([a-zA-Z0-9._:])+/;
+				const range = editor.document.getWordRangeAtPosition(editor.selection.start, re);
+				// check if the cursor is at a word (else: whitespace -> ignore)
+				if(range){
+					txt = editor.document.getText(range);
+				}
+			} else {
+				// use selected text
+				txt = editor.document.getText(editor.selection);
+			}
+			txt = txt.trim();
+			if(txt){
+				const success = await this.openHelpByAlias(txt);
+				if(!success){
+					errMsg = `Failed to open help for "${txt}"!`;
+				}
+			} else{
+				errMsg = 'Cannot show help: No valid text selected!';
+			}
+		} else{
+			errMsg = 'No editor active!';
+		}
+		if(errMsg){
+			void vscode.window.showErrorMessage(errMsg);
+			return false;
+		}
+		return true;
 	}
 
 	// quickly open help page by alias
