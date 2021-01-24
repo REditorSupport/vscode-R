@@ -600,7 +600,8 @@
         "icon": "$(unfold)"
       },
       {
-        "title": "R: Open help for selection",
+        "title": "Open help for selection",
+        "category": "R",
         "command": "r.helpPanel.openForSelection"
       }
     ],
@@ -712,6 +713,16 @@
           "command": "r.helpPanel.openExternal",
           "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "r.helpPanel.openForSelection",
+          "when": "resourceLangId == r"
+        },
+        {
+          "command": "r.helpPanel.openForSelection",
+          "when": "resourceLangId == rmd"
         }
       ],
       "view/item/context": [
