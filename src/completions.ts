@@ -158,7 +158,6 @@ function getBracketCompletionItems(document: vscode.TextDocument, position: vsco
     return items;
 }
 
-
 function getPipelineCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
     const items: vscode.CompletionItem[] = [];
     const range = extendSelection(position.line, (x) => document.lineAt(x).text, document.lineCount);
@@ -179,7 +178,12 @@ function getPipelineCompletionItems(document: vscode.TextDocument, position: vsc
             continue;
         }
 
-        const symbolPosition = new vscode.Position(i, line.firstNonWhitespaceCharacterIndex);
+        const pipeSymbolIndex = line.text.search(/([\w_.]+|`.+`)\s*(%.+%|\|>)/);
+        if (pipeSymbolIndex < 0) {
+            break;
+        }
+
+        const symbolPosition = new vscode.Position(i, pipeSymbolIndex);
         const symbolRange = document.getWordRangeAtPosition(symbolPosition);
 
         if (symbolRange !== undefined) {

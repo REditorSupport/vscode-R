@@ -190,8 +190,8 @@ export function extendSelection(line: number, getLine: (line: number) => string,
     endLine: number;
 } {
     const lc = new LineCache(getLine, lineCount);
-    const getLineFromCache = (x) => lc.getLineFromCache(x);
-    const getEndsInOperatorFromCache = (x) => lc.getEndsInOperatorFromCache(x);
+    const getLineFromCache = (x: number) => lc.getLineFromCache(x);
+    const getEndsInOperatorFromCache = (x: number) => lc.getEndsInOperatorFromCache(x);
     let lookingForward = true;
     /* poss[1] is the farthest point reached looking forward from line,
      and poss[0] is the farthest point reached looking backward from line. */
