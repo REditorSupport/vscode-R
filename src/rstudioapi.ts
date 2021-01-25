@@ -13,7 +13,7 @@ import {
 import { sessionDir, sessionDirectoryExists, writeResponse, writeSuccessResponse } from './session';
 import fs = require('fs-extra');
 import path = require('path');
-import { runTextInTerm, restartRTerminal } from './rTerminal';
+import { runTextInTerm, restartRTerminal, chooseTerminal } from './rTerminal';
 import { config } from './util';
 
 let lastActiveTextEditor: TextEditor;
@@ -75,6 +75,11 @@ export async function dispatchRStudioAPICall(action: string, args: any, sd: stri
     }
     case 'restart_r': {
       await restartRTerminal();
+      await writeSuccessResponse(sd);
+      break;
+    }
+    case 'send_to_console': {
+      await sendCodeToRTerminal(args.code, args.focus);
       await writeSuccessResponse(sd);
       break;
     }
@@ -331,6 +336,15 @@ export async function launchAddinPicker(): Promise<void> {
 
   if (!(typeof addinSelection === 'undefined')) {
     await runTextInTerm(addinSelection.package + ':::' + addinSelection.binding + '()');
+  }
+}
+
+export async function sendCodeToRTerminal(code: string, focus: boolean) {
+  console.info(`[sendCodeToRTerminal] inserting code: ${code}`);
+  await runTextInTerm(code);
+  if (focus) {
+    const rTerm = await chooseTerminal();
+    rTerm.show();
   }
 }
 
