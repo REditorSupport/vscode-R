@@ -311,9 +311,9 @@ class RootNode extends MetaNode {
             new HomeNode(this),
             new Search1Node(this),
             new Search2Node(this),
+            new OpenForSelectionNode(this),
             new RefreshNode(this),
             new InstallPackageNode(this),
-            // new UpdatePackagesNode(this),
             this.pkgRootNode,
         ];
     }
@@ -578,28 +578,15 @@ class RefreshNode extends MetaNode {
     }
 }
 
-class UpdatePackagesNode extends MetaNode {
+class OpenForSelectionNode extends MetaNode {
     parent: RootNode;
-    label = 'Update all Packages';
-    iconPath = new vscode.ThemeIcon('versions');
+    label = 'Open Help Page for Selected Text';
+    iconPath = new vscode.ThemeIcon('symbol-key');
     
-    async callBack(){
-        const ret = await this.rHelp.packageManager.updatePackages();
-        if(ret){
-            this.rootNode.pkgRootNode.refresh(true);
-        }
+    callBack(){
+        void this.rHelp.openHelpForSelection();
     }
 }
-
-// class NewHelpPanelNode extends MetaNode {
-//     label = 'Make New Helppanel';
-//     description = '(Opened with next help command)';
-//     iconPath = new vscode.ThemeIcon('add');
-
-//     callBack(){
-//         this.rHelp.makeNewHelpPanel();
-//     }
-// }
 
 class InstallPackageNode extends MetaNode {
     label = 'Install CRAN Package';

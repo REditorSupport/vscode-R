@@ -608,6 +608,11 @@
         "title": "Don't Summarize Identical Topics",
         "command": "r.helpPanel.unsummarizeTopics",
         "icon": "$(unfold)"
+      },
+      {
+        "title": "Open help for selection",
+        "category": "R",
+        "command": "r.helpPanel.openForSelection"
       }
     ],
     "keybindings": [
@@ -718,6 +723,16 @@
           "command": "r.helpPanel.openExternal",
           "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "r.helpPanel.openForSelection",
+          "when": "resourceLangId == r"
+        },
+        {
+          "command": "r.helpPanel.openForSelection",
+          "when": "resourceLangId == rmd"
         }
       ],
       "view/item/context": [

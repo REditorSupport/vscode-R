@@ -79,13 +79,13 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 			vscode.commands.registerCommand('r.showHelp', () => rHelp?.treeViewWrapper.helpViewProvider.rootItem.showQuickPick()),
 			vscode.commands.registerCommand('r.helpPanel.back', () => rHelp?.goBack()),
 			vscode.commands.registerCommand('r.helpPanel.forward', () => rHelp?.goForward()),
-			vscode.commands.registerCommand('r.helpPanel.openExternal', () => rHelp?.openExternal())
+			vscode.commands.registerCommand('r.helpPanel.openExternal', () => rHelp?.openExternal()),
+			vscode.commands.registerCommand('r.helpPanel.openForSelection', () => rHelp?.openHelpForSelection())
 		);
 	}
 
 	return rHelp;
 }
-
 
 
 export interface HelpFile {
@@ -292,15 +292,100 @@ export class RHelp implements api.HelpPanel {
 		}
 		return false;
 	}
+	
+	// quickly open help for selection
+	public async openHelpForSelection(): Promise<boolean> {
+		// only use if we failed to show help page:
+		let errMsg: string;
+
+		const editor = vscode.window.activeTextEditor;
+		if (editor) {
+			// the text to show help for:
+			let txt = '';
+			if (editor.selection.isEmpty) {
+				// no text selected -> find word at current cursor position
+				// use regex including ":" to capture package/namespace (e.g. base::print)
+				const re = /([a-zA-Z0-9._:])+/;
+				const range = editor.document.getWordRangeAtPosition(editor.selection.start, re);
+				// check if the cursor is at a word (else: whitespace -> ignore)
+				if(range){
+					txt = editor.document.getText(range);
+				}
+			} else {
+				// use selected text
+				txt = editor.document.getText(editor.selection);
+			}
+			txt = txt.trim();
+			if(txt){
+				const success = await this.openHelpByAlias(txt);
+				if(!success){
+					errMsg = `Failed to open help for "${txt}"!`;
+				}
+			} else{
+				errMsg = 'Cannot show help: No valid text selected!';
+			}
+		} else{
+			errMsg = 'No editor active!';
+		}
+		if(errMsg){
+			void vscode.window.showErrorMessage(errMsg);
+			return false;
+		}
+		return true;
+	}
+
+	// quickly open help page by alias
+	public async openHelpByAlias(token: string = ''): Promise<boolean> {
+		const aliases = await this.getAllAliases();
+		if(!aliases){
+			return false;
+		}
+
+		const matchingAliases = aliases.filter(alias => (
+			token === alias.name
+			|| token === `${alias.package}::${alias.name}`
+			|| token === `${alias.package}:::${alias.name}`
+		));
+
+		let pickedAlias: Alias | undefined;
+		if(matchingAliases.length === 0){
+			pickedAlias = undefined;
+		} else if(matchingAliases.length === 1){
+			pickedAlias = matchingAliases[0];
+		} else{
+			pickedAlias = await this.pickAlias(matchingAliases);
+		}
+		if(pickedAlias){
+			return await this.showHelpForAlias(pickedAlias);
+		}
+		return false;
+	}
 
 	// search function, similar to calling `?` in R
 	public async searchHelpByAlias(): Promise<boolean> {
+		const alias = await this.pickAlias();
+		if(alias){
+			return this.showHelpForAlias(alias);
+		}
+		return false;
+	}
 
+	// helper function to get aliases from aliasprovider
+	private async getAllAliases(): Promise<Alias[] | null | undefined> {
 		const aliases = await doWithProgress(() => this.aliasProvider.getAllAliases());
-
 		if(!aliases){
 			void vscode.window.showErrorMessage('Failed to get list of R functions. Make sure that `jsonlite` is installed and r.helpPanel.rpath points to a valid R executable.');
-			return false;
+		}
+		return aliases;
+	}
+
+	// let the user pick an alias from a supplied list of aliases
+	// if no list supplied, get all aliases from alias provider
+	private async pickAlias(aliases?: Alias[], prompt?: string): Promise<Alias | undefined>{
+		prompt ||= 'Please type a function name/documentation entry';
+		aliases ||= await this.getAllAliases();
+		if(!aliases){
+			return undefined;
 		}
 		const qpItems: (vscode.QuickPickItem & Alias)[] = aliases.map(v => {
 			return {
@@ -311,16 +396,17 @@ export class RHelp implements api.HelpPanel {
 		});
 		const qpOptions = {
 			matchOnDescription: true,
-			placeHolder: 'Please type a function name/documentation entry'
+			placeHolder: prompt
 		};
 		const qp = await vscode.window.showQuickPick(
 			qpItems,
 			qpOptions
 		);
-		if(qp){
-			return this.showHelpForPath(`/library/${qp.package}/html/${qp.alias}.html`);
-		}
-		return false;
+		return qp;
+	}
+
+	private async showHelpForAlias(alias: Alias): Promise<boolean> {
+		return this.showHelpForPath(`/library/${alias.package}/html/${alias.alias}.html`);
 	}
 
 	// shows help for request path as used by R's internal help server
