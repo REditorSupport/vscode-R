@@ -164,7 +164,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
 
         // if session watcher is active, register dyamic completion provider
-        const liveTriggerCharacters = ['', '$', '@', '"', '\'' ];
+        const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\'' ];
         vscode.languages.registerCompletionItemProvider('r', new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
 
