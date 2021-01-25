@@ -185,9 +185,9 @@ export class PackageManager {
     // let the user pick and install a package from CRAN 
     public async pickAndInstallPackages(pickMany: boolean = false): Promise<boolean> {
         const pkgs = await this.pickPackages('Please selecte a package.', true, pickMany);
-        if(pkgs?.length){
+        if(pkgs?.length > 1){
             const pkgsConfirmed = await this.confirmPackages('Are you sure you want to install these packages?', pkgs);
-            if(pkgsConfirmed?.length > 1){
+            if(pkgsConfirmed?.length){
                 const names = pkgsConfirmed.map(v => v.name);
                 return await this.installPackages(names, true);
             }
@@ -219,11 +219,28 @@ export class PackageManager {
         const cranUrl = await getCranUrl('', this.cwd);
         const args = [`--silent`, '--slave', `-e`, `install.packages(c(${pkgNames.map(v => `'${v}'`).join(',')}),repos='${cranUrl}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
-        const confirmation = 'Yes, install package(s)!';
-        const prompt = `Are you sure you want to install package(s): ${pkgNames.join(', ')}?`;
+        const pluralS = pkgNames.length > 1? 's' : '';
+        const confirmation = `Yes, install package${pluralS}!`;
+        const prompt = `Are you sure you want to install package${pluralS}: ${pkgNames.join(', ')}?`;
 
         if(skipConfirmation || await getConfirmation(prompt, confirmation, cmd)){
             await executeAsTask('Install Package', rPath, args);
+            return true;
+        } else{
+            return false;
+        }
+    }
+    
+    public async updatePackages(skipConfirmation: boolean = false): Promise<boolean> {
+        const rPath = await getRpath(false);
+        const cranUrl = await getCranUrl('', this.cwd);
+        const args = ['--silent', '--slave', '-e', `update.packages(ask=FALSE,repos='${cranUrl}')`];
+        const cmd = `${rPath} ${args.join(' ')}`;
+        const confirmation = 'Yes, update all packages!';
+        const prompt = 'Are you sure you want to update all installed packages? This might take some time!';
+
+        if(skipConfirmation || await getConfirmation(prompt, confirmation, cmd)){
+            await executeAsTask('Update Packages', rPath, args);
             return true;
         } else{
             return false;

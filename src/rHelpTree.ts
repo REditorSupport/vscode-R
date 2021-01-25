@@ -19,12 +19,14 @@ const nodeCommands = {
     removeFromFavorites: 'r.helpPanel.removeFromFavorites',
     addToFavorites: 'r.helpPanel.addToFavorites',
     removePackage: 'r.helpPanel.removePackage',
+    updatePackage: 'r.helpPanel.updatePackage',
     showOnlyFavorites: 'r.helpPanel.showOnlyFavorites',
     showAllPackages: 'r.helpPanel.showAllPackages',
     filterPackages: 'r.helpPanel.filterPackages',
     summarizeTopics: 'r.helpPanel.summarizeTopics',
     unsummarizeTopics: 'r.helpPanel.unsummarizeTopics',
-    installPackages: 'r.helpPanel.installPackages'
+    installPackages: 'r.helpPanel.installPackages',
+    updateInstalledPackages: 'r.helpPanel.updateInstalledPackages'
 };
 
 // used to avoid typos when handling commands
@@ -311,6 +313,7 @@ class RootNode extends MetaNode {
             new Search2Node(this),
             new RefreshNode(this),
             new InstallPackageNode(this),
+            // new UpdatePackagesNode(this),
             this.pkgRootNode,
         ];
     }
@@ -423,7 +426,7 @@ class PackageNode extends Node {
     // TreeItem
     public command = undefined;
     public collapsibleState = CollapsibleState.Collapsed;
-    public contextValue = Node.makeContextValue('QUICKPICK', 'clearCache', 'removePackage');
+    public contextValue = Node.makeContextValue('QUICKPICK', 'clearCache', 'removePackage', 'updatePackage');
 
     // Node
     public parent: PkgRootNode;
@@ -461,6 +464,13 @@ class PackageNode extends Node {
         } else if(cmd === 'removeFromFavorites'){
             this.rHelp.packageManager.removeFavorite(this.pkg.name);
             this.parent.refresh();
+        } else if(cmd === 'updatePackage'){
+            const success = await this.rHelp.packageManager.installPackages([this.pkg.name]);
+            // only reinstall if user confirmed removing the package (success === true)
+            // might still refresh if install was attempted but failed
+            if(success){
+                this.parent.refresh(true);
+            }
         } else if(cmd === 'removePackage'){
             const success = await this.rHelp.packageManager.removePackage(this.pkg.name);
             // only refresh if user confirmed removing the package (success === true)
@@ -568,6 +578,19 @@ class RefreshNode extends MetaNode {
     }
 }
 
+class UpdatePackagesNode extends MetaNode {
+    parent: RootNode;
+    label = 'Update all Packages';
+    iconPath = new vscode.ThemeIcon('versions');
+    
+    async callBack(){
+        const ret = await this.rHelp.packageManager.updatePackages();
+        if(ret){
+            this.rootNode.pkgRootNode.refresh(true);
+        }
+    }
+}
+
 // class NewHelpPanelNode extends MetaNode {
 //     label = 'Make New Helppanel';
 //     description = '(Opened with next help command)';
@@ -582,11 +605,16 @@ class InstallPackageNode extends MetaNode {
     label = 'Install CRAN Package';
     iconPath = new vscode.ThemeIcon('cloud-download');
 
-    contextValue = Node.makeContextValue('installPackages');
+    contextValue = Node.makeContextValue('installPackages', 'updateInstalledPackages');
 
     public async _handleCommand(cmd: cmdName){
         if(cmd === 'installPackages'){
             const ret = await this.rHelp.packageManager.pickAndInstallPackages(true);
+            if(ret){
+                this.rootNode.pkgRootNode.refresh(true);
+            }
+        } else if(cmd === 'updateInstalledPackages'){
+            const ret = await this.rHelp.packageManager.updatePackages();
             if(ret){
                 this.rootNode.pkgRootNode.refresh(true);
             }
