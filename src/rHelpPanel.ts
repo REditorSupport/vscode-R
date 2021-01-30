@@ -63,14 +63,18 @@ export class HelpPanel {
     }
 
 	// retrieves the stored webview or creates a new one if the webview was closed
-	private getWebview(): vscode.Webview {
+	private getWebview(preserveFocus: boolean = false): vscode.Webview {
 		// create webview if necessary
 		if(!this.panel){
 			const webViewOptions: vscode.WebviewOptions & vscode.WebviewPanelOptions = {
 				enableScripts: true,
 				enableFindWidget: true
 			};
-			this.panel = vscode.window.createWebviewPanel('rhelp', 'R Help', this.viewColumn, webViewOptions);
+			const showOptions = {
+				viewColumn: this.viewColumn,
+				preserveFocus: preserveFocus
+			};
+			this.panel = vscode.window.createWebviewPanel('rhelp', 'R Help', showOptions, webViewOptions);
 
 			// virtual uris used to access local files
 			this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);
@@ -99,7 +103,7 @@ export class HelpPanel {
 
 		}
 
-		this.panel.reveal();
+		this.panel.reveal(undefined, preserveFocus);
 		void this.setContextValues();
 
 		return this.panel.webview;
@@ -112,7 +116,7 @@ export class HelpPanel {
 	}
 
 	// shows (internal) help file object in webview
-	public async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, updateHistory = true, currentScrollY = 0, viewer?: string|any): Promise<boolean>{
+	public async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, updateHistory = true, currentScrollY = 0, viewer?: string|any, preserveFocus: boolean = false): Promise<boolean>{
 
 		// update this.viewColumn if a valid viewer argument was supplied
 		if(typeof viewer === 'string'){
@@ -120,7 +124,7 @@ export class HelpPanel {
 		}
 
 		// get or create webview:
-		const webview = this.getWebview();
+		const webview = this.getWebview(preserveFocus);
 
 		// make sure helpFile is not a promise:
 		helpFile = await helpFile;

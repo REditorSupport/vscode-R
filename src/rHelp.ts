@@ -80,7 +80,7 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 			vscode.commands.registerCommand('r.helpPanel.back', () => rHelp?.goBack()),
 			vscode.commands.registerCommand('r.helpPanel.forward', () => rHelp?.goForward()),
 			vscode.commands.registerCommand('r.helpPanel.openExternal', () => rHelp?.openExternal()),
-			vscode.commands.registerCommand('r.helpPanel.openForSelection', () => rHelp?.openHelpForSelection())
+			vscode.commands.registerCommand('r.helpPanel.openForSelection', (preserveFocus: boolean = false) => rHelp?.openHelpForSelection(!!preserveFocus))
 		);
 	}
 
@@ -294,7 +294,7 @@ export class RHelp implements api.HelpPanel {
 	}
 	
 	// quickly open help for selection
-	public async openHelpForSelection(): Promise<boolean> {
+	public async openHelpForSelection(preserveFocus: boolean = false): Promise<boolean> {
 		// only use if we failed to show help page:
 		let errMsg: string;
 
@@ -317,7 +317,7 @@ export class RHelp implements api.HelpPanel {
 			}
 			txt = txt.trim();
 			if(txt){
-				const success = await this.openHelpByAlias(txt);
+				const success = await this.openHelpByAlias(txt, preserveFocus);
 				if(!success){
 					errMsg = `Failed to open help for "${txt}"!`;
 				}
@@ -335,7 +335,7 @@ export class RHelp implements api.HelpPanel {
 	}
 
 	// quickly open help page by alias
-	public async openHelpByAlias(token: string = ''): Promise<boolean> {
+	public async openHelpByAlias(token: string = '', preserveFocus: boolean = false): Promise<boolean> {
 		const aliases = await this.getAllAliases();
 		if(!aliases){
 			return false;
@@ -356,7 +356,7 @@ export class RHelp implements api.HelpPanel {
 			pickedAlias = await this.pickAlias(matchingAliases);
 		}
 		if(pickedAlias){
-			return await this.showHelpForAlias(pickedAlias);
+			return await this.showHelpForAlias(pickedAlias, preserveFocus);
 		}
 		return false;
 	}
@@ -405,18 +405,18 @@ export class RHelp implements api.HelpPanel {
 		return qp;
 	}
 
-	private async showHelpForAlias(alias: Alias): Promise<boolean> {
-		return this.showHelpForPath(`/library/${alias.package}/html/${alias.alias}.html`);
+	private async showHelpForAlias(alias: Alias, preserveFocus: boolean = false): Promise<boolean> {
+		return this.showHelpForPath(`/library/${alias.package}/html/${alias.alias}.html`, undefined, preserveFocus);
 	}
 
 	// shows help for request path as used by R's internal help server
-	public async showHelpForPath(requestPath: string, viewer?: string|any): Promise<boolean> {
+	public async showHelpForPath(requestPath: string, viewer?: string|any, preserveFocus: boolean = false): Promise<boolean> {
 
 		// get and show helpFile
 		// const helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 		const helpFile = await this.getHelpFileForPath(requestPath);
 		if(helpFile){
-			return this.showHelpFile(helpFile, viewer);
+			return this.showHelpFile(helpFile, viewer, preserveFocus);
 		} else{
 			const msg = `Couldn't show help for path:\n${requestPath}\n`;
 			void vscode.window.showErrorMessage(msg);
@@ -449,8 +449,8 @@ export class RHelp implements api.HelpPanel {
 	}
 
 	// shows (internal) help file object in webview
-	private async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, viewer?: string|any): Promise<boolean>{
-		return await this.getNewestHelpPanel().showHelpFile(helpFile, undefined, undefined, viewer);
+	private async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, viewer?: string|any, preserveFocus: boolean = false): Promise<boolean>{
+		return await this.getNewestHelpPanel().showHelpFile(helpFile, undefined, undefined, viewer, preserveFocus);
 	}
 
 
