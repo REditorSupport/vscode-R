@@ -108,7 +108,8 @@ if (interactive() &&
               class = class(obj),
               type = unbox(typeof(obj)),
               length = unbox(length(obj)),
-              str = unbox(trimws(str))
+              str = unbox(trimws(str)),
+              size = as.integer(object.size(obj))
             )
             if ((is.list(obj) ||
               is.environment(obj)) &&

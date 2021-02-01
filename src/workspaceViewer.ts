@@ -8,8 +8,8 @@ interface WorkspaceAttr {
     [key: string]: {
         class: string[];
         type: string;
-        length: number;
 		str: string;
+		size?: number;
 		dim?: number[]
     }
 }
@@ -39,7 +39,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 			rClass: string,
 			str: string,
 			type: string,
-			length: number,
+			size?: number,
 			dim?: number[]
 		): WorkspaceItem => {
 			return new WorkspaceItem(
@@ -47,7 +47,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 				rClass,
 				str,
 				type,
-				length,
+				size,
 				TreeItemCollapsibleState.None,
 				dim,
 			);
@@ -59,7 +59,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 				data[key].class[0],
 				data[key].str,
 				data[key].type,
-				data[key].length,
+				data[key].size,
 				data[key].dim,
 			)) : [];
 
@@ -89,13 +89,13 @@ export class WorkspaceItem extends TreeItem {
 		rClass: string,
 		str: string,
 		type: string,
-		length: number,
+		size: number,
 		collapsibleState: TreeItemCollapsibleState,
 		dim?: number[]
 	) {
 		super(label, collapsibleState);
 		this.description = this.getDescription(dim, str, rClass);
-		this.tooltip = `${label} (${rClass}, length of ${length})`;
+		this.tooltip = this.getTooltip(label, rClass, size);
 		this.contextValue = type;
 	}
 
@@ -108,6 +108,13 @@ export class WorkspaceItem extends TreeItem {
 			}
 		} else {
 			return str;
+		}
+	}
+	private getTooltip(label:string, rClass: string, size: number): string {
+		if (size !== undefined) {
+			return `${label} (${rClass}, ${size} bytes)`;
+		} else {
+			return `${label} (${rClass})`;
 		}
 	}
 }
