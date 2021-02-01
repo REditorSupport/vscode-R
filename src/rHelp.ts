@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import * as path from 'path';
+import { join, normalize } from 'path';
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 import * as hljs from 'highlight.js';
@@ -53,8 +53,8 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 	);
 
     const rHelpOptions: HelpOptions = {
-        webviewScriptPath: path.join(context.extensionPath, path.normalize('/html/script.js')),
-        webviewStylePath: path.join(context.extensionPath, path.normalize('/html/theme.css')),
+        webviewScriptPath: join(context.extensionPath, normalize('/html/script.js')),
+        webviewStylePath: join(context.extensionPath, normalize('/html/theme.css')),
         rPath: rPath,
         cwd: cwd,
 		rScriptFile: context.asAbsolutePath('R/getAliases.R'),

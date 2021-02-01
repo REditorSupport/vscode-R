@@ -1,14 +1,13 @@
 
-import * as vscode from 'vscode';
+import { Memento, window } from 'vscode';
 import * as http from 'http';
 import * as cp from 'child_process';
 import * as kill from 'tree-kill';
-
-import * as rHelp from './rHelp';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 
+import * as rHelp from './rHelp';
 
 export interface RHelpProviderOptions {
 	// path of the R executable
@@ -161,7 +160,7 @@ export interface AliasProviderArgs {
 	// getAliases.R
     rScriptFile: string;
     
-    persistentState: vscode.Memento;
+    persistentState: Memento;
 }
 
 interface PackageAliases {
@@ -183,7 +182,7 @@ export class AliasProvider {
         [key: string]: PackageAliases;
     }
     private aliases?: null | rHelp.Alias[];
-	private readonly persistentState?: vscode.Memento;
+	private readonly persistentState?: Memento;
 
     constructor(args: AliasProviderArgs){
         this.rPath = args.rPath;
@@ -308,7 +307,7 @@ export class AliasProvider {
             }
         } catch(e: unknown){
             console.log(e);
-            void vscode.window.showErrorMessage((<{message: string}>e).message);
+            void window.showErrorMessage((<{message: string}>e).message);
         } finally {
             fs.rmdirSync(tempDir, {recursive: true});
         }

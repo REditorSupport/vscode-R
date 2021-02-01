@@ -8,7 +8,6 @@
 import * as vscode from 'vscode';
 
 import * as session from './session';
-
 import { extendSelection } from './selection';
 import { cleanLine } from './lineCache';
 

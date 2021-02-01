@@ -2,7 +2,7 @@
 
 import { writeFile } from 'fs-extra';
 import { join } from 'path';
-import {  window, workspace } from 'vscode';
+import { window, workspace } from 'vscode';
 // From "https://github.com/github/gitignore/raw/master/R.gitignore"
 const ignoreFiles = ['.Rhistory',
                      '.Rapp.history',

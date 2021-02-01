@@ -1,4 +1,4 @@
-import path = require('path');
+import * as path from 'path';
 import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window } from 'vscode';
 import { runTextInTerm } from './rTerminal';
 import { globalenv, workingDir } from './session';
