@@ -62,8 +62,15 @@ if (interactive() &&
       }
 
       capture_str <- function(object) {
-        utils::capture.output(
-          utils::str(object, max.level = 0, give.attr = FALSE)
+        paste0(
+          utils::capture.output(
+            utils::str(object,
+              max.level = getOption("vsc.str.max.level", 0),
+              give.attr = FALSE,
+              vec.len = 1
+            )
+          ),
+          collapse = "\n"
         )
       }
 

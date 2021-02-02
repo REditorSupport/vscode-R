@@ -224,6 +224,12 @@ options(vsc.view = "Two" | "Active" | "Beside" | FALSE)
 # (e.g. after sending `?mean` to terminal)?
 # Use FALSE to disable help panel and revert to old behaviour.
 options(vsc.helpPanel = "Two" | "Active" | "Beside" | FALSE)
+
+# How much of the object to show on hover and autocomplete detail? 
+# As controlled by max.level arg of str().
+# Use 0 (or 1) is the default - literal value or object type and dimensions
+# Use 2 to show list contents, data frame columns, and example values.
+options(vsc.str.max.level = 0 | 2 )
 ```
 
 The first values are the default and all subsequent values after `|` are available choices.
