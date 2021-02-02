@@ -62,7 +62,7 @@ if (interactive() &&
         paste0(
           utils::capture.output(
             utils::str(object,
-              max.level = getOption("vsc.hover.str.max.level", 0),
+              max.level = getOption("vsc.str.max.level", 0),
               give.attr = FALSE,
               vec.len = 1
             )
