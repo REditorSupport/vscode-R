@@ -3,6 +3,7 @@
 
 // interfaces, functions, etc. provided by vscode
 import * as vscode from 'vscode';
+import * as path from 'path';
 
 // functions etc. implemented in this extension
 import * as preview from './preview';
@@ -171,7 +172,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     context.subscriptions.push(
         vscode.notebook.registerNotebookContentProvider(
           'r-notebook',
-          new RNotebookProvider()
+          new RNotebookProvider(path.join(context.extensionPath, 'R', 'notebook.R')))
         )
       );
 
