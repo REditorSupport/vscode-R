@@ -54,7 +54,6 @@ r$run(function() {
       res <- tryCatch({
         expr <- parse(text = expr)
         out <- withVisible(eval(expr, globalenv()))
-        text <- utils::capture.output(print(out$value, view = TRUE))
         if (check_null_dev()) {
           record <- recordPlot()
           plot_file <- tempfile(fileext = ".svg")
@@ -79,6 +78,12 @@ r$run(function() {
             result = browser_url
           )
         } else if (out$visible) {
+          if (inherits(out$value, "data.frame")) {
+            text <- utils::capture.output(knitr::kable(out$value, format = "html"))
+          } else {
+            text <- utils::capture.output(print(out$value, view = TRUE))
+          }
+
           list(
             id = id,
             type = "text",

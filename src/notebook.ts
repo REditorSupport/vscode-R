@@ -60,6 +60,7 @@ class RKernel {
 
       server.listen(0, '127.0.0.1', () => {
         this.port = (server.address() as net.AddressInfo).port;
+        // FIXME: grab R path from settings
         const childProcess = spawn('R', ['--quiet', '--slave', '-f', this.kernelScript, '--args', `port=${this.port}`],
           { cwd: this.cwd, env: env });
         childProcess.stderr.on('data', (chunk: Buffer) => {
@@ -301,6 +302,80 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     await vscode.workspace.fs.writeFile(targetResource, Buffer.from(content));
   }
 
+  async renderPlotOutput(response) {
+    const content = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result))).toString();
+
+    return {
+      outputKind: vscode.CellOutputKind.Rich,
+      data: {
+        'image/svg+xml': content,
+      },
+    };
+  }
+
+  async renderTextOutput(response) {
+    // Text may contain html, so render as such.
+    const isXml = response.result.match(/^<.+>$/gms) != null
+
+    if (isXml) {
+      return {
+        outputKind: vscode.CellOutputKind.Rich,
+        data: {
+          'text/html': response.result
+        }
+      }
+    } else {
+      return {
+        outputKind: vscode.CellOutputKind.Text,
+        text: response.result,
+      }
+    }
+  }
+
+  async renderOutput(cell, response) {
+
+    switch (response.type) {
+      case 'text': {
+        cell.outputs = [await this.renderTextOutput(response)];
+        break;
+      }
+      case 'plot': {
+        cell.outputs = [await this.renderPlotOutput(response)]
+        break;
+      }
+      case 'viewer': {
+        cell.outputs = [{
+          outputKind: vscode.CellOutputKind.Rich,
+          data: {
+            // 'text/html': `<ifravscode-webview-resource://${response.result}`,
+            'text/html': `<a href="vscode-webview-resource:${response.result}">Here</a>`,
+            // <iframe src="vscode-webview-resource:${response.result}"></iframe>`,
+          },
+        }];
+        break;
+      }
+      case 'browser': {
+        cell.outputs = [{
+          outputKind: vscode.CellOutputKind.Rich,
+          data: {
+            'text/plain': response.result,
+          },
+        }];
+        break;
+      }
+      case 'error': {
+        cell.metadata.runState = vscode.NotebookCellRunState.Error;
+        cell.outputs = [{
+          outputKind: vscode.CellOutputKind.Error,
+          evalue: response.result,
+          ename: 'Error',
+          traceback: [],
+        }];
+        break;
+      }
+    }
+  }
+
   onDidChangeNotebook = new vscode.EventEmitter<vscode.NotebookDocumentEditEvent>().event;
 
   async resolveNotebook(): Promise<void> { }
@@ -347,54 +422,10 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         const response = await notebook.eval(cell);
         cell.metadata.runState = vscode.NotebookCellRunState.Success;
         cell.metadata.lastRunDuration = +new Date() - cell.metadata.runStartTime;
+
         console.log(`uri: ${cell.uri}, id: ${response.id}, type: ${response.type}, result: ${response.result}`);
-        switch (response.type) {
-          case 'text': {
-            cell.outputs = [{
-              outputKind: vscode.CellOutputKind.Text,
-              text: response.result,
-            }];
-            break;
-          }
-          case 'plot': {
-            const content = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result))).toString();
-            cell.outputs = [{
-              outputKind: vscode.CellOutputKind.Rich,
-              data: {
-                'image/svg+xml': content,
-              },
-            }];
-            break;
-          }
-          case 'viewer': {
-            cell.outputs = [{
-              outputKind: vscode.CellOutputKind.Rich,
-              data: {
-                'text/plain': response.result,
-              },
-            }];
-            break;
-          }
-          case 'browser': {
-            cell.outputs = [{
-              outputKind: vscode.CellOutputKind.Rich,
-              data: {
-                'text/plain': response.result,
-              },
-            }];
-            break;
-          }
-          case 'error': {
-            cell.metadata.runState = vscode.NotebookCellRunState.Error;
-            cell.outputs = [{
-              outputKind: vscode.CellOutputKind.Error,
-              evalue: response.result,
-              ename: 'Error',
-              traceback: [],
-            }];
-            break;
-          }
-        }
+
+        await this.renderOutput(cell, response)
       } catch (e) {
         cell.outputs = [{
           outputKind: vscode.CellOutputKind.Error,
