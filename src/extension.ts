@@ -32,6 +32,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     const rExtension = new apiImplementation.RExtensionImplementation();
 
 
+    // Register notebook provider
+    const rNotebook = new RNotebookProvider(path.join(context.extensionPath, 'R', 'notebook.R'))
+    context.subscriptions.push(
+        vscode.notebook.registerNotebookContentProvider(
+          'r-notebook',
+          rNotebook
+        )
+      );
+
     // register commands specified in package.json
     const commands = {
         // create R terminal
@@ -95,8 +104,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // browser controls
         'r.browser.refresh': session.refreshBrowser,
-        'r.browser.openExternal': session.openExternalBrowser
-    };
+        'r.browser.openExternal': session.openExternalBrowser,
+
+        // notebook commands
+        'r.notebook.restartKernel': () => {
+			if (vscode.window.activeNotebookEditor) {
+				const { document } = vscode.window.activeNotebookEditor;
+				const notebook = rNotebook.lookupNotebook(document.uri);
+				if (notebook) {
+					notebook.restartKernel();
+				}
+			}
+        }
+    }
+
     for(const key in commands){
         context.subscriptions.push(vscode.commands.registerCommand(key, commands[key]));
     }
@@ -169,12 +190,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         vscode.languages.registerCompletionItemProvider('r', new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
 
-    context.subscriptions.push(
-        vscode.notebook.registerNotebookContentProvider(
-          'r-notebook',
-          new RNotebookProvider(path.join(context.extensionPath, 'R', 'notebook.R')))
-        )
-      );
+
 
     return rExtension;
 }

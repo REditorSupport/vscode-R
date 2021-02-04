@@ -616,7 +616,13 @@
         "title": "Open help for selection",
         "category": "R",
         "command": "r.helpPanel.openForSelection"
-      }
+      },
+			{
+				"title": "Restart Kernel",
+				"command": "r.notebook.restartKernel",
+				"icon": "$(refresh)",
+        "category": "R"
+			}
     ],
     "keybindings": [
       {
