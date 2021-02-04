@@ -16,22 +16,19 @@ r <- callr::r_session$new(
 
 r$run(function() {
   requireNamespace("jsonlite")
-  requireNamespace("svglite")
 
   .vscNotebook <- local({
-    null_dev_id <- c(pdf = 2L)
-    null_dev_size <- c(7 + pi, 7 + pi)
     viewer_file <- NULL
     browser_url <- NULL
+    plot.new.called <- F
+
+    set_plot_new <- function() {
+        plot.new.called <<- T
+    }
+    setHook("before.plot.new", set_plot_new)
+    setHook("before.grid.newpage", set_plot_new)
 
     options(
-      device = function(...) {
-        pdf(NULL,
-          width = null_dev_size[[1L]],
-          height = null_dev_size[[2L]],
-          bg = "white")
-        dev.control(displaylist = "enable")
-      },
       viewer = function(url, ...) {
         viewer_file <<- url
       },
@@ -43,27 +40,31 @@ r$run(function() {
       }
     )
 
-    check_null_dev <- function() {
-      identical(dev.cur(), null_dev_id) &&
-        identical(dev.size(), null_dev_size)
-    }
-
     evaluate <- function(id, expr) {
+      plot_dir <- tempdir()
+      plot_file <- file.path(plot_dir, "plot%03d.svg")
+
+      svg(plot_file, width = 12, height = 8)
+
       viewer_file <<- NULL
       browser_url <<- NULL
+
       res <- tryCatch({
         expr <- parse(text = expr)
         out <- withVisible(eval(expr, globalenv()))
-        if (check_null_dev()) {
-          record <- recordPlot()
-          plot_file <- tempfile(fileext = ".svg")
-          svglite::svglite(plot_file, width = 12, height = 8)
-          replayPlot(record)
-          graphics.off()
+
+        text <- utils::capture.output(print(out$value, view = TRUE))
+
+        dev.off()
+        graphics.off()
+
+        if (plot.new.called) {
+          plot.new.called <<- F
+
           list(
             id = id,
             type = "plot",
-            result = plot_file
+            result = list.files(plot_dir, pattern = ".*\\.svg", full.names = T)
           )
         } else if (!is.null(viewer_file)) {
           list(
@@ -80,20 +81,20 @@ r$run(function() {
         } else if (out$visible) {
           if (inherits(out$value, "data.frame")) {
             text <- utils::capture.output(knitr::kable(out$value, format = "html"))
-          } else {
-            text <- utils::capture.output(print(out$value, view = TRUE))
           }
 
           list(
             id = id,
             type = "text",
-            result = paste0(text, collapse = "\n")
+            result = paste0(text, collapse = "\n"),
+            tempdir = plot_dir
           )
         } else {
           list(
             id = id,
             type = "text",
-            result = ""
+            result = "",
+            tempdir = plot_dir
           )
         }
       }, error = function(e) {

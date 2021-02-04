@@ -1,0 +1,30 @@
+Somehow we need to render a external index.html
+```{r}
+library(tibble)
+
+df = data.frame(a = c(1,2,3,4), b = c(10, 20, 13, 1))
+
+
+library(ggplot2)
+library(plotly)
+
+
+```
+```{r}
+ggplot(df, aes(a, b)) + geom_point()
+
+```
+```{r}
+plot(df)
+
+```
+Something goes wrong here internally with paged_table
+```{r}
+rmarkdown::paged_table(df)
+```
+```{r}
+knitr::kable(df, format = "html")
+```
+```{r}
+df
+```

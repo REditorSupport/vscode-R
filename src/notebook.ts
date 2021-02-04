@@ -188,6 +188,10 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     );
   }
 
+  lookupNotebook(uri: vscode.Uri): RNotebook {
+    return this.notebooks.get(uri.toString())
+  }
+
   async openNotebook(uri: vscode.Uri): Promise<vscode.NotebookData> {
     const content = (await vscode.workspace.fs.readFile(uri)).toString();
     const lines = content.split(/\r?\n/);
