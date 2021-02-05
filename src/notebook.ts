@@ -4,7 +4,6 @@ import { spawn, ChildProcess } from 'child_process';
 import { dirname } from 'path';
 import { inlineAll } from './inlineScripts';
 
-
 interface RKernelRequest {
   id: number;
   type: 'eval' | 'cancel';
@@ -339,7 +338,6 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
   }
 
   async renderHtmlOutput(response) {
-
   	const html = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result))).toString();
     const htmlDir = dirname(response.result)
     const htmlInline = await inlineAll(html, htmlDir)
@@ -354,6 +352,26 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       outputKind: vscode.CellOutputKind.Rich,
       data: {
         'text/html': htmlWrapped
+      },
+    }
+  }
+
+  async renderTableOutput(response) {
+    const html = `
+      <div id="chunk-table-${response.id}"></div>
+      <script>
+        $('#example').DataTable({
+          data: JSON.parse('${JSON.stringify(response.result)}')
+        })
+      </script>
+    `
+
+    return {
+      outputKind: vscode.CellOutputKind.Rich,
+      data: {
+        'text/html': response.result.html,
+        'text/markdown': response.result.markdown,
+        'text/plain': response.result.markdown
       },
     }
   }
@@ -380,6 +398,10 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
             'text/plain': response.result,
           },
         }];
+        break;
+      }
+      case 'table': {
+        cell.outputs = [await this.renderTableOutput(response)];
         break;
       }
       case 'error': {

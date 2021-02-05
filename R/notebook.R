@@ -80,21 +80,27 @@ r$run(function() {
           )
         } else if (out$visible) {
           if (inherits(out$value, "data.frame")) {
-            text <- utils::capture.output(knitr::kable(out$value, format = "html"))
+            table <- head(out$value, 10)
+            list(
+              id = id,
+              type = "table",
+              result = list(
+                html = knitr::kable(table, format = "html"),
+                markdown = paste0(knitr::kable(table, format = "markdown"), collapse = "\n")
+              )
+            )
+          } else {
+            list(
+              id = id,
+              type = "text",
+              result = paste0(text, collapse = "\n")
+            )
           }
-
-          list(
-            id = id,
-            type = "text",
-            result = paste0(text, collapse = "\n"),
-            tempdir = plot_dir
-          )
         } else {
           list(
             id = id,
             type = "text",
-            result = "",
-            tempdir = plot_dir
+            result = ""
           )
         }
       }, error = function(e) {
