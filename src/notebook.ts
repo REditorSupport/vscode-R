@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import net = require('net');
 import { spawn, ChildProcess } from 'child_process';
 import { dirname } from 'path';
+import { inlineAll } from './inlineScripts';
+
 
 interface RKernelRequest {
   id: number;
@@ -336,6 +338,26 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     }
   }
 
+  async renderHtmlOutput(response) {
+
+  	const html = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result))).toString();
+    const htmlDir = dirname(response.result)
+    const htmlInline = await inlineAll(html, htmlDir)
+    const htmlWrapped = `
+    <iframe id="plotly" frameborder="0" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
+    <script>
+    var iframe = document.getElementById("plotly")
+    iframe.srcdoc = unescape("${escape(htmlInline)}")
+    </script>
+    `
+    return {
+      outputKind: vscode.CellOutputKind.Rich,
+      data: {
+        'text/html': htmlWrapped
+      },
+    }
+  }
+
   async renderOutput(cell, response) {
 
     switch (response.type) {
@@ -348,14 +370,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         break;
       }
       case 'viewer': {
-        cell.outputs = [{
-          outputKind: vscode.CellOutputKind.Rich,
-          data: {
-            // 'text/html': `<ifravscode-webview-resource://${response.result}`,
-            'text/html': `<a href="vscode-webview-resource:${response.result}">Here</a>`,
-            // <iframe src="vscode-webview-resource:${response.result}"></iframe>`,
-          },
-        }];
+        cell.outputs = [await this.renderHtmlOutput(response)];
         break;
       }
       case 'browser': {
