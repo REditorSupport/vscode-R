@@ -40,7 +40,7 @@ if (interactive() &&
       }
 
       get_timestamp <- function() {
-        format.default(Sys.time(), nsmall = 6)
+        format.default(Sys.time(), nsmall = 6, scientific = FALSE)
       }
 
       scalar <- function(x) {
