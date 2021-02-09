@@ -357,21 +357,12 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
   }
 
   async renderTableOutput(response) {
-    const html = `
-      <div id="chunk-table-${response.id}"></div>
-      <script>
-        $('#example').DataTable({
-          data: JSON.parse('${JSON.stringify(response.result)}')
-        })
-      </script>
-    `
-
     return {
       outputKind: vscode.CellOutputKind.Rich,
       data: {
-        'text/html': response.result.html,
+        'ms-vscode.r-notebook/table': response.result.data,
         'text/markdown': response.result.markdown,
-        'text/plain': response.result.markdown
+        'application/json': response.result.data,
       },
     }
   }

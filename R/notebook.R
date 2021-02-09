@@ -86,7 +86,8 @@ r$run(function() {
               type = "table",
               result = list(
                 html = knitr::kable(table, format = "html"),
-                markdown = paste0(knitr::kable(table, format = "markdown"), collapse = "\n")
+                markdown = paste0(knitr::kable(table, format = "markdown"), collapse = "\n"),
+                data = head(out$value, 1000)
               )
             )
           } else {
