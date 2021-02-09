@@ -74,6 +74,14 @@
         "mimeTypes": [
           "ms-vscode.r-notebook/table"
         ]
+      },
+      {
+        "id": "r-notebook-viewer-renderer",
+        "displayName": "Notebook Viewer Render",
+        "entrypoint": "./dist/viewerRenderer.js",
+        "mimeTypes": [
+          "ms-vscode.r-notebook/viewer"
+        ]
       }
     ],
     "viewsContainers": {

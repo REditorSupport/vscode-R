@@ -8,10 +8,10 @@ df = data.frame(a = c(1,2,3,4), b = c(10, 20, 13, 1))
 library(ggplot2)
 library(plotly)
 
-df
+ggplotly(ggplot(df, aes(a, b)) + geom_point())
 ```
 ```{r}
-ggplot(df, aes(a, b)) + geom_point()
+ggplotly(ggplot(df, aes(a, b)) + geom_point())
 
 ```
 ```{r}

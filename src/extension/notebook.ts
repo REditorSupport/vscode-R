@@ -341,17 +341,11 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
   	const html = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result))).toString();
     const htmlDir = dirname(response.result)
     const htmlInline = await inlineAll(html, htmlDir)
-    const htmlWrapped = `
-    <iframe id="plotly" frameborder="0" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
-    <script>
-    var iframe = document.getElementById("plotly")
-    iframe.srcdoc = unescape("${escape(htmlInline)}")
-    </script>
-    `
+
     return {
       outputKind: vscode.CellOutputKind.Rich,
       data: {
-        'text/html': htmlWrapped
+        'ms-vscode.r-notebook/viewer': htmlInline
       },
     }
   }

@@ -64,7 +64,8 @@ const extensionConfig = {
 const clientConfig = {
   target: 'web',
   entry: {
-    "tableRenderer": "./src/client/renderers/tableRenderer.tsx"
+    "tableRenderer": "./src/client/renderers/tableRenderer.tsx",
+    "viewerRenderer": "./src/client/renderers/viewerRenderer.tsx"
   },
   output: {
     // the bundle is stored in the 'dist' folder (check package.json), 📖 -> https://webpack.js.org/configuration/output/
@@ -108,5 +109,5 @@ const clientConfig = {
   ]
 }
 
-// module.exports = [extensionConfig, clientConfig]
-module.exports = [clientConfig]
+module.exports = [extensionConfig, clientConfig]
+// module.exports = [clientConfig]
