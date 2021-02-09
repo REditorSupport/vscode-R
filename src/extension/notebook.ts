@@ -354,9 +354,10 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     return {
       outputKind: vscode.CellOutputKind.Rich,
       data: {
-        'ms-vscode.r-notebook/table': response.result.data,
-        'text/markdown': response.result.markdown,
-        'application/json': response.result.data,
+        'ms-vscode.r-notebook/table': response.result.data
+        // TODO: make the html table default, no clue how to do this.
+        // 'text/markdown': response.result.markdown,
+        // 'application/json': response.result.data,
       },
     }
   }
