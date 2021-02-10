@@ -245,7 +245,8 @@
           "meta.embedded.block.c": "c",
           "meta.embedded.block.cpp": "cpp",
           "meta.embedded.block.r": "r",
-          "meta.embedded.block.yaml": "yaml"
+          "meta.embedded.block.yaml": "yaml",
+          "meta.embedded.block.latex": "latex"
         }
       },
       {

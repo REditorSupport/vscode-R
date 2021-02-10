@@ -2,7 +2,7 @@
     "fileTypes" : [],
     "injectionSelector" : "L:text.html.rmarkdown",
     "patterns" : [
-        {"include" :"#block"},
+        {"include" : "#block"},
         {"include" : "#inline"}
     ],
     "repository" : {
@@ -117,7 +117,8 @@
         },
         "inline" : {
             "patterns" : [
-                {"include" : "#code-inline-r"}
+                {"include" : "#code-inline-r"},
+                {"include" : "#code-inline-latex"}
             ],
             "repository" : {
                 "code-inline-r" : {
@@ -137,10 +138,28 @@
                     "patterns" : [
                         {"include" : "source.r"}
                     ]
-                }
+                },
+                "code-inline-latex" : {
+                    "begin" : "([$|$$][ ]+)",
+                    "beginCaptures" : {
+                        "1" : {
+                            "name" : "punctuation.definition.raw.rmarkdown"
+                        }
+                    },
+                    "end" : "([$|$$])",
+                    "endCaptures" : {
+                            "1" : {
+                            "name" : "punctuation.definition.raw.rmarkdown"
+                        }
+                    },
+                    "contentName" : "meta.embedded.block.latex",
+                    "patterns" : [
+                        {"include" : "source.latex"}
+                    ]
             }
         }
     },
     "scopeName" : "text.html.markdown.redcarpet",
     "uuid" : "BE79A69A-B9F5-4BCD-9068-893496E86663"
+    }
 }
