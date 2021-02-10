@@ -20,10 +20,10 @@ r$run(function() {
   .vscNotebook <- local({
     viewer_file <- NULL
     browser_url <- NULL
-    plot.new.called <- F
+    plot.new.called <- FALSE
 
     set_plot_new <- function() {
-        plot.new.called <<- T
+        plot.new.called <<- TRUE
     }
     setHook("before.plot.new", set_plot_new)
     setHook("before.grid.newpage", set_plot_new)
@@ -44,75 +44,73 @@ r$run(function() {
       plot_dir <- tempdir()
       plot_file <- file.path(plot_dir, "plot%03d.svg")
 
-      svg(plot_file, width = 12, height = 8)
-
       viewer_file <<- NULL
       browser_url <<- NULL
+      error <- NULL
 
       res <- tryCatch({
+        svg(plot_file, width = 12, height = 8)
         expr <- parse(text = expr)
         out <- withVisible(eval(expr, globalenv()))
-
         text <- utils::capture.output(print(out$value, view = TRUE))
-
-        dev.off()
-        graphics.off()
-
-        if (plot.new.called) {
-          plot.new.called <<- F
-
-          list(
-            id = id,
-            type = "plot",
-            # FIXME: support multiple plots
-            result = list(plot = list.files(plot_dir, pattern = ".*\\.svg", full.names = T))
-          )
-        } else if (!is.null(viewer_file)) {
-          list(
-            id = id,
-            type = "viewer",
-            result = list(file = viewer_file)
-          )
-        } else if (!is.null(browser_url)) {
-          list(
-            id = id,
-            type = "browser",
-            result = list(url = browser_url)
-          )
-        } else if (out$visible) {
-          if (inherits(out$value, "data.frame")) {
-            table <- head(out$value, 10)
-            list(
-              id = id,
-              type = "table",
-              result = list(
-                markdown = paste0(knitr::kable(table, format = "markdown"), collapse = "\n"),
-                data = head(out$value, 1000)
-              )
-            )
-          } else {
-            list(
-              id = id,
-              type = "text",
-              result = list(text = paste0(text, collapse = "\n"))
-            )
-          }
-        } else {
-          list(
-            id = id,
-            type = "text",
-            result = list(text = "")
-          )
-        }
       }, error = function(e) {
-        list(
+        error <<- list(
           id = id,
           type  = "error",
           result = list(error = conditionMessage(e))
         )
+      }, finally = {
+        graphics.off()
       })
 
-      res
+      if (!is.null(error)) {
+        error
+      } else if (plot.new.called) {
+        plot.new.called <<- FALSE
+
+        list(
+          id = id,
+          type = "plot",
+          # FIXME: support multiple plots
+          result = list(plot = list.files(plot_dir, pattern = ".*\\.svg", full.names = TRUE))
+        )
+      } else if (!is.null(viewer_file)) {
+        list(
+          id = id,
+          type = "viewer",
+          result = list(file = viewer_file)
+        )
+      } else if (!is.null(browser_url)) {
+        list(
+          id = id,
+          type = "browser",
+          result = list(url = browser_url)
+        )
+      } else if (out$visible) {
+        if (is.data.frame(out$value)) {
+          table <- head(out$value, 10)
+          list(
+            id = id,
+            type = "table",
+            result = list(
+              markdown = paste0(knitr::kable(table, format = "markdown"), collapse = "\n"),
+              data = head(out$value, 1000)
+            )
+          )
+        } else {
+          list(
+            id = id,
+            type = "text",
+            result = list(text = paste0(text, collapse = "\n"))
+          )
+        }
+      } else {
+        list(
+          id = id,
+          type = "text",
+          result = list(text = "")
+        )
+      }
     }
 
     environment()
