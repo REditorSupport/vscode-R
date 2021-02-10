@@ -14,6 +14,7 @@ interface RKernelResult {
   text?: string,
   plot?: string,
   url?: string,
+  file?: string,
   error?: string,
   data?: any,
   markdown?: string
@@ -158,6 +159,34 @@ class RNotebook implements vscode.Disposable {
 
   public async cancel(cell: vscode.NotebookCell): Promise<void> {
     return this.kernel.cancel(cell);
+  }
+}
+
+class RNotebookCellEdit {
+  private uri: vscode.Uri;
+  private cellIndex: number;
+
+  constructor(uri: vscode.Uri, cellIndex: number) {
+    this.uri = uri;
+    this.cellIndex = cellIndex
+  }
+
+  apply(outputs?: (vscode.NotebookCellOutput | vscode.CellOutput)[], metadata?: vscode.NotebookCellMetadata, outputAppend: boolean = false) {
+    const edit = new vscode.WorkspaceEdit();
+
+    if (outputs){
+      if (outputAppend) {
+        edit.appendNotebookCellOutput(this.uri, this.cellIndex, outputs)
+      } else {
+        edit.replaceNotebookCellOutput(this.uri, this.cellIndex, outputs)
+      }
+    }
+
+    if (metadata) {
+      edit.replaceNotebookCellMetadata(this.uri, this.cellIndex, metadata)
+    }
+
+    vscode.workspace.applyEdit(edit)
   }
 }
 
@@ -316,7 +345,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     await vscode.workspace.fs.writeFile(targetResource, Buffer.from(content));
   }
 
-  async renderPlotOutput(response: RKernelResponse) {
+  async renderPlotOutput(response: RKernelResponse): Promise<vscode.CellDisplayOutput> {
     const content = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result.plot))).toString();
 
     return {
@@ -327,7 +356,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     };
   }
 
-  async renderTextOutput(response: RKernelResponse) {
+  async renderTextOutput(response: RKernelResponse): Promise<vscode.CellDisplayOutput> {
     // Text may contain html, so render as such.
     const isXml = response.result.text.match(/^<.+>$/gms) != null
 
@@ -335,20 +364,22 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       return {
         outputKind: vscode.CellOutputKind.Rich,
         data: {
-          'text/html': response.result
+          'text/html': response.result.text
         }
       }
     } else {
       return {
-        outputKind: vscode.CellOutputKind.Text,
-        text: response.result,
+        outputKind: vscode.CellOutputKind.Rich,
+        data: {
+          'text/plain': response.result.text
+        }
       }
     }
   }
 
-  async renderHtmlOutput(response: RKernelResponse) {
-  	const html = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result.url))).toString();
-    const htmlDir = dirname(response.result.url)
+  async renderHtmlOutput(response: RKernelResponse): Promise<vscode.CellDisplayOutput> {
+  	const html = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result.file))).toString();
+    const htmlDir = dirname(response.result.file)
     const htmlInline = await inlineAll(html, htmlDir)
 
     return {
@@ -359,7 +390,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     }
   }
 
-  async renderTableOutput(response: RKernelResponse) {
+  async renderTableOutput(response: RKernelResponse): Promise<vscode.CellDisplayOutput> {
     return {
       outputKind: vscode.CellOutputKind.Rich,
       data: {
@@ -371,48 +402,43 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     }
   }
 
-  async renderOutput(cell: vscode.NotebookCell, response: RKernelResponse) {
+  async renderOutput(response: RKernelResponse): Promise<vscode.CellOutput[]> {
 
     switch (response.type) {
       case 'text': {
-        cell.outputs = [await this.renderTextOutput(response)];
-        break;
+        return [await this.renderTextOutput(response)];
       }
       case 'plot': {
-        cell.outputs = [await this.renderPlotOutput(response)]
+        return [await this.renderPlotOutput(response)]
         break;
       }
       case 'viewer': {
-        cell.outputs = [await this.renderHtmlOutput(response)];
-        break;
+        return [await this.renderHtmlOutput(response)];
       }
       case 'browser': {
-        cell.outputs = [{
+        return [{
           outputKind: vscode.CellOutputKind.Rich,
           data: {
             'text/plain': response.result,
           },
         }];
-        break;
       }
       case 'table': {
-        cell.outputs = [await this.renderTableOutput(response)];
-        break;
+        return [await this.renderTableOutput(response)];
       }
       case 'error': {
-        cell.metadata.runState = vscode.NotebookCellRunState.Error;
-        cell.outputs = [{
+        return [{
           outputKind: vscode.CellOutputKind.Error,
-          evalue: response.result,
+          evalue: response.result.error,
           ename: 'Error',
           traceback: [],
         }];
-        break;
       }
     }
   }
 
-  onDidChangeNotebook = new vscode.EventEmitter<vscode.NotebookDocumentEditEvent>().event;
+  // FIXME: I think this should be changed in NotebookCellsChangeEvent
+  onDidChangeNotebook = new vscode.EventEmitter<vscode.NotebookCellsChangeEvent>().event;
 
   async resolveNotebook(): Promise<void> { }
 
@@ -449,28 +475,44 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       return;
     }
 
+    const cellEdit = new RNotebookCellEdit(document.uri, cell.index)
+
     if (notebook && cell.metadata.runState !== vscode.NotebookCellRunState.Running) {
       try {
-        cell.metadata.runState = vscode.NotebookCellRunState.Running;
-        const start = +new Date();
-        cell.metadata.runStartTime = start;
-        cell.metadata.executionOrder = ++this.runIndex;
+        const startTime = +new Date()
+
+        cellEdit.apply(undefined, {
+          runState: vscode.NotebookCellRunState.Running,
+          runStartTime: startTime,
+          executionOrder: ++this.runIndex,
+        })
+
         const response = await notebook.eval(cell);
-        cell.metadata.runState = vscode.NotebookCellRunState.Success;
-        cell.metadata.lastRunDuration = +new Date() - cell.metadata.runStartTime;
 
         console.log(`uri: ${cell.uri}, id: ${response.id}, type: ${response.type}, result: ${response.result}`);
 
-        await this.renderOutput(cell, response)
+        const outputs = await this.renderOutput(response)
+
+        const runState = (outputs[0].outputKind === vscode.CellOutputKind.Error) ? vscode.NotebookCellRunState.Error : vscode.NotebookCellRunState.Success
+
+        cellEdit.apply(outputs, {
+          runStartTime: +new Date(),
+          executionOrder: ++this.runIndex,
+          runState,
+          lastRunDuration: +new Date() - startTime,
+        })
+
+
       } catch (e) {
-        cell.outputs = [{
-          outputKind: vscode.CellOutputKind.Error,
-          evalue: e.toString(),
-          ename: '',
-          traceback: [],
-        }];
-        cell.metadata.runState = vscode.NotebookCellRunState.Error;
-        cell.metadata.lastRunDuration = undefined;
+        cellEdit.apply([{
+            outputKind: vscode.CellOutputKind.Error,
+            evalue: e.toString(),
+            ename: '',
+            traceback: [],
+          }], {
+            runState: vscode.NotebookCellRunState.Error,
+            lastRunDuration: undefined
+          })
       }
     }
   }

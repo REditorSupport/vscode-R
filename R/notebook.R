@@ -65,7 +65,7 @@ r$run(function() {
             id = id,
             type = "plot",
             # FIXME: support multiple plots
-            result = list(plot = list.files(plot_dir, pattern = ".*\\.svg", full.names = T)[[1]])
+            result = list(plot = list.files(plot_dir, pattern = ".*\\.svg", full.names = T))
           )
         } else if (!is.null(viewer_file)) {
           list(
