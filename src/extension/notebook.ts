@@ -10,10 +10,19 @@ interface RKernelRequest {
   expr?: any;
 }
 
+interface RKernelResult {
+  text?: string,
+  plot?: string,
+  url?: string,
+  error?: string,
+  data?: any,
+  markdown?: string
+}
+
 interface RKernelResponse {
   id: number;
-  type: 'text' | 'plot' | 'viewer' | 'browser' | 'error';
-  result: string;
+  type: 'text' | 'plot' | 'viewer' | 'browser' | 'error' | 'table';
+  result: RKernelResult
 }
 
 class RKernel {
@@ -307,8 +316,8 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     await vscode.workspace.fs.writeFile(targetResource, Buffer.from(content));
   }
 
-  async renderPlotOutput(response) {
-    const content = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result))).toString();
+  async renderPlotOutput(response: RKernelResponse) {
+    const content = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result.plot))).toString();
 
     return {
       outputKind: vscode.CellOutputKind.Rich,
@@ -318,9 +327,9 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     };
   }
 
-  async renderTextOutput(response) {
+  async renderTextOutput(response: RKernelResponse) {
     // Text may contain html, so render as such.
-    const isXml = response.result.match(/^<.+>$/gms) != null
+    const isXml = response.result.text.match(/^<.+>$/gms) != null
 
     if (isXml) {
       return {
@@ -337,9 +346,9 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     }
   }
 
-  async renderHtmlOutput(response) {
-  	const html = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result))).toString();
-    const htmlDir = dirname(response.result)
+  async renderHtmlOutput(response: RKernelResponse) {
+  	const html = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result.url))).toString();
+    const htmlDir = dirname(response.result.url)
     const htmlInline = await inlineAll(html, htmlDir)
 
     return {
@@ -350,7 +359,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     }
   }
 
-  async renderTableOutput(response) {
+  async renderTableOutput(response: RKernelResponse) {
     return {
       outputKind: vscode.CellOutputKind.Rich,
       data: {
@@ -362,7 +371,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     }
   }
 
-  async renderOutput(cell, response) {
+  async renderOutput(cell: vscode.NotebookCell, response: RKernelResponse) {
 
     switch (response.type) {
       case 'text': {

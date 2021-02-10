@@ -64,19 +64,20 @@ r$run(function() {
           list(
             id = id,
             type = "plot",
-            result = list.files(plot_dir, pattern = ".*\\.svg", full.names = T)
+            # FIXME: support multiple plots
+            result = list(plot = list.files(plot_dir, pattern = ".*\\.svg", full.names = T)[[1]])
           )
         } else if (!is.null(viewer_file)) {
           list(
             id = id,
             type = "viewer",
-            result = viewer_file
+            result = list(file = viewer_file)
           )
         } else if (!is.null(browser_url)) {
           list(
             id = id,
             type = "browser",
-            result = browser_url
+            result = list(url = browser_url)
           )
         } else if (out$visible) {
           if (inherits(out$value, "data.frame")) {
@@ -85,7 +86,6 @@ r$run(function() {
               id = id,
               type = "table",
               result = list(
-                html = knitr::kable(table, format = "html"),
                 markdown = paste0(knitr::kable(table, format = "markdown"), collapse = "\n"),
                 data = head(out$value, 1000)
               )
@@ -94,21 +94,21 @@ r$run(function() {
             list(
               id = id,
               type = "text",
-              result = paste0(text, collapse = "\n")
+              result = list(text = paste0(text, collapse = "\n"))
             )
           }
         } else {
           list(
             id = id,
             type = "text",
-            result = ""
+            result = list(text = "")
           )
         }
       }, error = function(e) {
         list(
           id = id,
           type  = "error",
-          result = conditionMessage(e)
+          result = list(error = conditionMessage(e))
         )
       })
 
