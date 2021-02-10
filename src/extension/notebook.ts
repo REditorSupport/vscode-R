@@ -26,6 +26,15 @@ interface RKernelResponse {
   result: RKernelResult
 }
 
+interface OutputCacheCells {
+  [cellIndex: string]: OutputCacheCell
+}
+
+interface OutputCacheCell {
+  outputs: vscode.CellOutput[];
+  metadata: vscode.NotebookCellMetadata;
+}
+
 class RKernel {
   private kernelScript: string;
   private doc: vscode.NotebookDocument;
@@ -174,7 +183,7 @@ class RNotebookCellEdit {
   apply(outputs?: (vscode.NotebookCellOutput | vscode.CellOutput)[], metadata?: vscode.NotebookCellMetadata, outputAppend: boolean = false) {
     const edit = new vscode.WorkspaceEdit();
 
-    if (outputs){
+    if (outputs) {
       if (outputAppend) {
         edit.appendNotebookCellOutput(this.uri, this.cellIndex, outputs)
       } else {
@@ -233,6 +242,13 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
 
   async openNotebook(uri: vscode.Uri): Promise<vscode.NotebookData> {
     const content = (await vscode.workspace.fs.readFile(uri)).toString();
+
+    const outputUri = vscode.Uri.parse(uri.toString() + ".json")
+    let outputContent: OutputCacheCells = {}
+    try {
+        outputContent = JSON.parse((await vscode.workspace.fs.readFile(outputUri)).toString())
+    } catch {}
+
     const lines = content.split(/\r?\n/);
     const cells: vscode.NotebookCellData[] = [];
 
@@ -290,14 +306,14 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         }
       } else if (cellType === 'r') {
         if (lines[line].startsWith('```')) {
+          const cacheCell = outputContent[cells.length]
           cells.push({
             cellKind: vscode.CellKind.Code,
             source: lines.slice(cellStartLine + 1, line).join('\n'),
             language: 'r',
-            outputs: [],
+            outputs: cacheCell?.outputs || [],
             metadata: {
-              editable: true,
-              runnable: true,
+              ...cacheCell?.metadata || {},
               custom: {
                 header: lines[cellStartLine],
                 footer: lines[line],
@@ -320,6 +336,8 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
 
   async save(document: vscode.NotebookDocument, targetResource: vscode.Uri, cancellation: vscode.CancellationToken): Promise<void> {
     let content = '';
+    let outputContent = {}
+
     for (const cell of document.cells) {
       if (cancellation.isCancellationRequested) {
         return;
@@ -340,11 +358,17 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         } else {
           content += '```{' + cell.language + '}\n' + cell.document.getText() + '\n```\n';
         }
+
+        // save output as-is
+        outputContent[cell.index] = {
+          outputs: cell.outputs,
+          metadata: cell.metadata
+        }
       }
     }
     await vscode.workspace.fs.writeFile(targetResource, Buffer.from(content));
+    await vscode.workspace.fs.writeFile(vscode.Uri.parse(targetResource.toString() + ".json"), Buffer.from(JSON.stringify(outputContent)));
   }
-
   async renderPlotOutput(response: RKernelResponse): Promise<vscode.CellDisplayOutput> {
     const content = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result.plot))).toString();
 
@@ -378,7 +402,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
   }
 
   async renderHtmlOutput(response: RKernelResponse): Promise<vscode.CellDisplayOutput> {
-  	const html = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result.file))).toString();
+    const html = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result.file))).toString();
     const htmlDir = dirname(response.result.file)
     const htmlInline = await inlineAll(html, htmlDir)
 
@@ -410,7 +434,6 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       }
       case 'plot': {
         return [await this.renderPlotOutput(response)]
-        break;
       }
       case 'viewer': {
         return [await this.renderHtmlOutput(response)];
@@ -437,10 +460,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     }
   }
 
-  // FIXME: I think this should be changed in NotebookCellsChangeEvent
-  onDidChangeNotebook = new vscode.EventEmitter<vscode.NotebookCellsChangeEvent>().event;
-
-  async resolveNotebook(): Promise<void> { }
+  async resolveNotebook(): Promise<void> {  }
 
   async saveNotebook(document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> {
     await this.save(document, document.uri, cancellation);
@@ -505,14 +525,14 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
 
       } catch (e) {
         cellEdit.apply([{
-            outputKind: vscode.CellOutputKind.Error,
-            evalue: e.toString(),
-            ename: '',
-            traceback: [],
-          }], {
-            runState: vscode.NotebookCellRunState.Error,
-            lastRunDuration: undefined
-          })
+          outputKind: vscode.CellOutputKind.Error,
+          evalue: e.toString(),
+          ename: '',
+          traceback: [],
+        }], {
+          runState: vscode.NotebookCellRunState.Error,
+          lastRunDuration: undefined
+        })
       }
     }
   }
