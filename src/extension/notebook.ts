@@ -31,7 +31,7 @@ interface OutputCacheCells {
 }
 
 interface OutputCacheCell {
-  outputs: vscode.CellOutput[];
+  outputs: vscode.NotebookCellOutput[];
   metadata: vscode.NotebookCellMetadata;
 }
 
@@ -180,14 +180,14 @@ class RNotebookCellEdit {
     this.cellIndex = cellIndex
   }
 
-  apply(outputs?: (vscode.NotebookCellOutput | vscode.CellOutput)[], metadata?: vscode.NotebookCellMetadata, outputAppend: boolean = false) {
+  async apply(outputs?: vscode.NotebookCellOutput, metadata?: vscode.NotebookCellMetadata, outputAppend: boolean = false): Promise<void> {
     const edit = new vscode.WorkspaceEdit();
 
     if (outputs) {
       if (outputAppend) {
-        edit.appendNotebookCellOutput(this.uri, this.cellIndex, outputs)
+        edit.appendNotebookCellOutput(this.uri, this.cellIndex, [outputs])
       } else {
-        edit.replaceNotebookCellOutput(this.uri, this.cellIndex, outputs)
+        edit.replaceNotebookCellOutput(this.uri, this.cellIndex, [outputs])
       }
     }
 
@@ -195,7 +195,7 @@ class RNotebookCellEdit {
       edit.replaceNotebookCellMetadata(this.uri, this.cellIndex, metadata)
     }
 
-    vscode.workspace.applyEdit(edit)
+    await vscode.workspace.applyEdit(edit)
   }
 }
 
@@ -307,11 +307,17 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       } else if (cellType === 'r') {
         if (lines[line].startsWith('```')) {
           const cacheCell = outputContent[cells.length]
+          let cellOutput = undefined
+          if (cacheCell) {
+            cellOutput = cacheCell.outputs.map(x =>  new vscode.NotebookCellOutput(x.outputs, x.id))
+          //   const data = cacheCell.outputs[0].data
+          //   Object.keys(data).map((x) => new vscode.NotebookCellOutputItem(x, ))
+          }
           cells.push({
             cellKind: vscode.CellKind.Code,
             source: lines.slice(cellStartLine + 1, line).join('\n'),
             language: 'r',
-            outputs: cacheCell?.outputs || [],
+            outputs: cellOutput,
             metadata: {
               ...cacheCell?.metadata || {},
               custom: {
@@ -369,98 +375,79 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     await vscode.workspace.fs.writeFile(targetResource, Buffer.from(content));
     await vscode.workspace.fs.writeFile(vscode.Uri.parse(targetResource.toString() + ".json"), Buffer.from(JSON.stringify(outputContent)));
   }
-  async renderPlotOutput(response: RKernelResponse): Promise<vscode.CellDisplayOutput> {
+
+  async renderPlotOutput(response: RKernelResponse): Promise<vscode.NotebookCellOutput> {
     const content = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result.plot))).toString();
 
-    return {
-      outputKind: vscode.CellOutputKind.Rich,
-      data: {
-        'image/svg+xml': content,
-      },
-    };
+    return new vscode.NotebookCellOutput(
+      [new vscode.NotebookCellOutputItem('image/svg+xml', content)]
+    )
   }
 
-  async renderTextOutput(response: RKernelResponse): Promise<vscode.CellDisplayOutput> {
+  async renderTextOutput(response: RKernelResponse): Promise<vscode.NotebookCellOutput> {
     // Text may contain html, so render as such.
-    const isXml = response.result.text.match(/^<.+>$/gms) != null
+    const mimeType = (response.result.text.match(/^<.+>$/gms) != null) ?
+      'text/html' : 'text/plain'
 
-    if (isXml) {
-      return {
-        outputKind: vscode.CellOutputKind.Rich,
-        data: {
-          'text/html': response.result.text
-        }
-      }
-    } else {
-      return {
-        outputKind: vscode.CellOutputKind.Rich,
-        data: {
-          'text/plain': response.result.text
-        }
-      }
-    }
+    return new vscode.NotebookCellOutput(
+      [new vscode.NotebookCellOutputItem(mimeType, response.result.text)]
+    )
   }
 
-  async renderHtmlOutput(response: RKernelResponse): Promise<vscode.CellDisplayOutput> {
+  async renderHtmlOutput(response: RKernelResponse): Promise<vscode.NotebookCellOutput> {
     const html = (await vscode.workspace.fs.readFile(vscode.Uri.parse(response.result.file))).toString();
     const htmlDir = dirname(response.result.file)
     const htmlInline = await inlineAll(html, htmlDir)
-
-    return {
-      outputKind: vscode.CellOutputKind.Rich,
-      data: {
-        'ms-vscode.r-notebook/viewer': htmlInline
-      },
-    }
+    return new vscode.NotebookCellOutput(
+      [new vscode.NotebookCellOutputItem('ms-vscode.r-notebook/viewer', htmlInline)]
+    )
   }
 
-  async renderTableOutput(response: RKernelResponse): Promise<vscode.CellDisplayOutput> {
-    return {
-      outputKind: vscode.CellOutputKind.Rich,
-      data: {
-        'ms-vscode.r-notebook/table': response.result.data
+  async renderTableOutput(response: RKernelResponse): Promise<vscode.NotebookCellOutput> {
+    return new vscode.NotebookCellOutput(
+      [new vscode.NotebookCellOutputItem('ms-vscode.r-notebook/table', response.result.data)]
+    )
+
         // TODO: make the html table default, no clue how to do this.
         // 'text/markdown': response.result.markdown,
         // 'application/json': response.result.data,
-      },
-    }
   }
 
-  async renderOutput(response: RKernelResponse): Promise<vscode.CellOutput[]> {
+  async renderOutput(response: RKernelResponse): Promise<vscode.NotebookCellOutput> {
 
     switch (response.type) {
       case 'text': {
-        return [await this.renderTextOutput(response)];
+        return await this.renderTextOutput(response);
       }
       case 'plot': {
-        return [await this.renderPlotOutput(response)]
+        return await this.renderPlotOutput(response)
       }
       case 'viewer': {
-        return [await this.renderHtmlOutput(response)];
+        return await this.renderHtmlOutput(response);
       }
       case 'browser': {
-        return [{
-          outputKind: vscode.CellOutputKind.Rich,
-          data: {
-            'text/plain': response.result,
-          },
-        }];
+        return new vscode.NotebookCellOutput(
+          [new vscode.NotebookCellOutputItem('text/plain', response.result.url)]
+        )
       }
       case 'table': {
-        return [await this.renderTableOutput(response)];
+        return await this.renderTableOutput(response);
       }
       case 'error': {
-        return [{
-          outputKind: vscode.CellOutputKind.Error,
-          evalue: response.result.error,
-          ename: 'Error',
-          traceback: [],
-        }];
+        return new vscode.NotebookCellOutput(
+          [new vscode.NotebookCellOutputItem('application/x.notebook.error-traceback', response.result.error)]
+        )
       }
     }
   }
 
-  async resolveNotebook(): Promise<void> {  }
+  async resolveNotebook(document: vscode.NotebookDocument): Promise<void> {
+    const cells = document.cells
+    // new vscode.EventEmitter<vscode.NotebookCellOutputsChangeEvent>().fire({ document, cells })
+    //vscode.notebook.onDidChangeCellOutputs()
+    console.log("hello")
+
+   }
 
   async saveNotebook(document: vscode.NotebookDocument, cancellation: vscode.CancellationToken): Promise<void> {
     await this.save(document, document.uri, cancellation);
@@ -513,9 +500,9 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
 
         const outputs = await this.renderOutput(response)
 
-        const runState = (outputs[0].outputKind === vscode.CellOutputKind.Error) ? vscode.NotebookCellRunState.Error : vscode.NotebookCellRunState.Success
+        const runState = (outputs.outputs[0].mime === 'application/x.notebook.error-traceback') ? vscode.NotebookCellRunState.Error : vscode.NotebookCellRunState.Success
 
-        cellEdit.apply(outputs, {
+        await cellEdit.apply(outputs, {
           runStartTime: +new Date(),
           executionOrder: ++this.runIndex,
           runState,
@@ -524,12 +511,9 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
 
 
       } catch (e) {
-        cellEdit.apply([{
-          outputKind: vscode.CellOutputKind.Error,
-          evalue: e.toString(),
-          ename: '',
-          traceback: [],
-        }], {
+        await cellEdit.apply(new vscode.NotebookCellOutput(
+          [new vscode.NotebookCellOutputItem('application/x.notebook.error-traceback', e.toString())]
+        ), {
           runState: vscode.NotebookCellRunState.Error,
           lastRunDuration: undefined
         })
