@@ -14,3 +14,5 @@ tmp.*
 temp.*
 tmp
 temp
+.Rhistory
+.Rproj.user

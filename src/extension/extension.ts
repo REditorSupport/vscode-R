@@ -3,6 +3,7 @@
 
 // interfaces, functions, etc. provided by vscode
 import * as vscode from 'vscode';
+import * as path from 'path';
 
 // functions etc. implemented in this extension
 import * as preview from './preview';
@@ -16,7 +17,7 @@ import * as workspaceViewer from './workspaceViewer';
 import * as apiImplementation from './apiImplementation';
 import * as rHelp from './rHelp';
 import * as completions from './completions';
-
+import { RNotebookProvider } from './notebook';
 
 // global objects used in other files
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
@@ -31,12 +32,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     const rExtension = new apiImplementation.RExtensionImplementation();
 
 
+    // Register notebook provider
+    const rNotebook = new RNotebookProvider(path.join(context.extensionPath, 'R', 'notebook.R'))
+    context.subscriptions.push(
+        vscode.notebook.registerNotebookContentProvider(
+          'r-notebook',
+          rNotebook
+        )
+      );
+
     // register commands specified in package.json
     const commands = {
         // create R terminal
         'r.createRTerm': rTerminal.createRTerm,
 
-        // run code from editor in terminal 
+        // run code from editor in terminal
         'r.nrow': () => rTerminal.runSelectionOrWord(['nrow']),
         'r.length': () => rTerminal.runSelectionOrWord(['length']),
         'r.head': () => rTerminal.runSelectionOrWord(['head']),
@@ -94,8 +104,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // browser controls
         'r.browser.refresh': session.refreshBrowser,
-        'r.browser.openExternal': session.openExternalBrowser
-    };
+        'r.browser.openExternal': session.openExternalBrowser,
+
+        // notebook commands
+        'r.notebook.restartKernel': () => {
+			if (vscode.window.activeNotebookEditor) {
+				const { document } = vscode.window.activeNotebookEditor;
+				const notebook = rNotebook.lookupNotebook(document.uri);
+				if (notebook) {
+					notebook.restartKernel();
+				}
+			}
+        }
+    }
+
     for(const key in commands){
         context.subscriptions.push(vscode.commands.registerCommand(key, commands[key]));
     }
@@ -168,6 +190,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         vscode.languages.registerCompletionItemProvider('r', new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
 
+
+
     return rExtension;
 }
-
