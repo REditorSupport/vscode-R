@@ -263,7 +263,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         } else if (lines[line].startsWith('```{r')) {
           if (line > cellStartLine) {
             cells.push({
-              cellKind: vscode.CellKind.Markdown,
+              cellKind: vscode.NotebookCellKind.Markdown,
               source: lines.slice(cellStartLine, line).join('\n'),
               language: 'markdown',
               outputs: [],
@@ -278,7 +278,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
         } else if (line === lines.length - 1) {
           if (line > cellStartLine) {
             cells.push({
-              cellKind: vscode.CellKind.Markdown,
+              cellKind: vscode.NotebookCellKind.Markdown,
               source: lines.slice(cellStartLine, line).join('\n'),
               language: 'markdown',
               outputs: [],
@@ -292,7 +292,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       } else if (cellType === 'yaml') {
         if (lines[line].startsWith('---')) {
           cells.push({
-            cellKind: vscode.CellKind.Code,
+            cellKind: vscode.NotebookCellKind.Code,
             source: lines.slice(cellStartLine, line + 1).join('\n'),
             language: 'yaml',
             outputs: [],
@@ -314,7 +314,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
           //   Object.keys(data).map((x) => new vscode.NotebookCellOutputItem(x, ))
           }
           cells.push({
-            cellKind: vscode.CellKind.Code,
+            cellKind: vscode.NotebookCellKind.Code,
             source: lines.slice(cellStartLine + 1, line).join('\n'),
             language: 'r',
             outputs: cellOutput,
@@ -334,7 +334,6 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
     }
 
     return {
-      languages: ['r'],
       metadata: {},
       cells: cells,
     };
@@ -348,9 +347,9 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       if (cancellation.isCancellationRequested) {
         return;
       }
-      if (cell.cellKind === vscode.CellKind.Markdown) {
+      if (cell.cellKind === vscode.NotebookCellKind.Markdown) {
         content += cell.document.getText() + '\n';
-      } else if (cell.cellKind === vscode.CellKind.Code) {
+      } else if (cell.cellKind === vscode.NotebookCellKind.Code) {
         if (cell.language === 'r') {
           if (cell.metadata.custom === undefined) {
             cell.metadata.custom = {
@@ -474,7 +473,7 @@ export class RNotebookProvider implements vscode.NotebookContentProvider, vscode
       }
 
       for (const cell of document.cells) {
-        if (cell.cellKind === vscode.CellKind.Code && cell.metadata.runnable) {
+        if (cell.cellKind === vscode.NotebookCellKind.Code && cell.metadata.runnable) {
           await this.executeCell(document, cell);
         }
       }
