@@ -240,6 +240,19 @@ versionInfo <- function() {
         release_name = "vscode"
     )
 }
+
+sendToConsole <- function(code, execute = TRUE, echo = TRUE, focus = FALSE) {
+    if (!execute || !echo) {
+          stop("rstudioapi::sendToConsole only supports execute = TRUE and echo = TRUE in VSCode.")
+      }
+
+    code_to_run <- paste0(code, collapse = "\n")
+    invisible(
+        rstudioapi_call("send_to_console", code = code_to_run, focus = focus)
+    )
+}
+
+
 # Unimplemented API calls that will error if called.
 
 .vsc_not_yet_implemented <- function(...) {
@@ -250,7 +263,6 @@ versionInfo <- function() {
 getConsoleEditorContext <- .vsc_not_yet_implemented
 sourceMarkers <- .vsc_not_yet_implemented
 documentClose <- .vsc_not_yet_implemented
-sendToConsole <- .vsc_not_yet_implemented
 showPrompt <- .vsc_not_yet_implemented
 showQuestion <- .vsc_not_yet_implemented
 updateDialog <- .vsc_not_yet_implemented

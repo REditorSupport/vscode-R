@@ -1,21 +1,18 @@
 'use strict';
 
-import os = require('os');
-import path = require('path');
-
+import * as path from 'path';
+import * as os from 'os';
 import { pathExists } from 'fs-extra';
 import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
+
 import * as util from './util';
 import * as selection from './selection';
-
 import { getSelection } from './selection';
 import { removeSessionFiles } from './session';
 import { config, delay, getRterm } from './util';
 export let rTerm: vscode.Terminal;
-
-
 
 export async function runSource(echo: boolean): Promise<void>  {
     const wad = vscode.window.activeTextEditor?.document;

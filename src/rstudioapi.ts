@@ -10,10 +10,10 @@ import {
   workspace, WorkspaceEdit, Position, Range, Selection,
   QuickPickItem, QuickPickOptions, ViewColumn
 } from 'vscode';
+import { readJSON } from 'fs-extra';
+import * as path from 'path';
 import { sessionDir, sessionDirectoryExists, writeResponse, writeSuccessResponse } from './session';
-import fs = require('fs-extra');
-import path = require('path');
-import { runTextInTerm, restartRTerminal } from './rTerminal';
+import { runTextInTerm, restartRTerminal, chooseTerminal } from './rTerminal';
 import { config } from './util';
 
 let lastActiveTextEditor: TextEditor;
@@ -75,6 +75,11 @@ export async function dispatchRStudioAPICall(action: string, args: any, sd: stri
     }
     case 'restart_r': {
       await restartRTerminal();
+      await writeSuccessResponse(sd);
+      break;
+    }
+    case 'send_to_console': {
+      await sendCodeToRTerminal(args.code, args.focus);
       await writeSuccessResponse(sd);
       break;
     }
@@ -279,7 +284,7 @@ let addinQuickPicks: AddinItem[] = undefined;
 export async function getAddinPickerItems(): Promise<AddinItem[]> {
 
   if (typeof addinQuickPicks === 'undefined') {
-    const addins: any[] = await fs.readJSON(path.join(sessionDir, 'addins.json')).
+    const addins: any[] = await readJSON(path.join(sessionDir, 'addins.json')).
       then(
         (result) => result,
         () => {
@@ -331,6 +336,15 @@ export async function launchAddinPicker(): Promise<void> {
 
   if (!(typeof addinSelection === 'undefined')) {
     await runTextInTerm(addinSelection.package + ':::' + addinSelection.binding + '()');
+  }
+}
+
+export async function sendCodeToRTerminal(code: string, focus: boolean) {
+  console.info(`[sendCodeToRTerminal] inserting code: ${code}`);
+  await runTextInTerm(code);
+  if (focus) {
+    const rTerm = await chooseTerminal();
+    rTerm.show();
   }
 }
 

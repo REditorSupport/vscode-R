@@ -8,6 +8,8 @@
 import * as vscode from 'vscode';
 
 import * as session from './session';
+import { extendSelection } from './selection';
+import { cleanLine } from './lineCache';
 
 
 // Get with names(roxygen2:::default_tags())
@@ -93,9 +95,14 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             });
         }
 
-        if (trigger === undefined || trigger === '"' || trigger === '\'') {
+        if (trigger === undefined || trigger === '[' || trigger === ',' || trigger === '"' || trigger === '\'') {
             const bracketItems = getBracketCompletionItems(document, position, token);
             items.push(...bracketItems);
+        }
+
+        if (trigger === undefined || trigger === '(' || trigger === ',') {
+            const pipelineItems = getPipelineCompletionItems(document, position, token);
+            items.push(...pipelineItems);
         }
 
         return items;
@@ -135,6 +142,56 @@ function getBracketCompletionItems(document: vscode.TextDocument, position: vsco
         }
     }
 
+    if (!token.isCancellationRequested && symbol !== undefined) {
+        const obj = session.globalenv[symbol];
+        if (obj !== undefined && obj.names !== undefined) {
+            const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
+            obj.names.map((name: string) => {
+                const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Field);
+                item.detail = '[session]';
+                item.documentation = doc;
+                items.push(item);
+            });
+        }
+    }
+    return items;
+}
+
+function getPipelineCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
+    const items: vscode.CompletionItem[] = [];
+    const range = extendSelection(position.line, (x) => document.lineAt(x).text, document.lineCount);
+    let symbol: string;
+
+    for (let i = range.startLine; i <= range.endLine; i++) {
+        if (token.isCancellationRequested) {
+            break;
+        }
+
+        const line = document.lineAt(i);
+        if (line.isEmptyOrWhitespace) {
+            continue;
+        }
+        
+        const cleanedLine = cleanLine(line.text);
+        if (cleanedLine.length === 0) {
+            continue;
+        }
+
+        const pipeSymbolIndex = line.text.search(/([\w_.]+)\s*(%.+%|\|>)/);
+        if (pipeSymbolIndex < 0) {
+            break;
+        }
+
+        const symbolPosition = new vscode.Position(i, pipeSymbolIndex);
+        const symbolRange = document.getWordRangeAtPosition(symbolPosition);
+
+        if (symbolRange !== undefined) {
+            symbol = document.getText(symbolRange);
+        }
+
+        break;
+    }
+    
     if (!token.isCancellationRequested && symbol !== undefined) {
         const obj = session.globalenv[symbol];
         if (obj !== undefined && obj.names !== undefined) {

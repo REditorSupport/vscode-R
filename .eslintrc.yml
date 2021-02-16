@@ -26,6 +26,5 @@ rules:
     - allowEmptyCatch: true
   '@typescript-eslint/no-inferrable-types':
     - 'warn'
-    - 
-      ignoreParameters: true
+    - ignoreParameters: true
       ignoreProperties: true

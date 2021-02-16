@@ -1,11 +1,13 @@
 
-import * as vscode from 'vscode';
+import { Memento, window } from 'vscode';
 import * as http from 'http';
 import * as cp from 'child_process';
 import * as kill from 'tree-kill';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 
 import * as rHelp from './rHelp';
-
 
 export interface RHelpProviderOptions {
 	// path of the R executable
@@ -153,10 +155,12 @@ export class HelpProvider {
 export interface AliasProviderArgs {
 	// R path, must be vanilla R
 	rPath: string;
+    // cwd
+    cwd?: string;
 	// getAliases.R
     rScriptFile: string;
     
-    persistentState: vscode.Memento;
+    persistentState: Memento;
 }
 
 interface PackageAliases {
@@ -172,15 +176,17 @@ interface PackageAliases {
 export class AliasProvider {
 
     private readonly rPath: string;
+    private readonly cwd?: string;
     private readonly rScriptFile: string;
     private allPackageAliases?: null | {
         [key: string]: PackageAliases;
     }
     private aliases?: null | rHelp.Alias[];
-	private readonly persistentState?: vscode.Memento;
+	private readonly persistentState?: Memento;
 
     constructor(args: AliasProviderArgs){
         this.rPath = args.rPath;
+        this.cwd = args.cwd;
         this.rScriptFile = args.rScriptFile;
         this.persistentState = args.persistentState;
     }
@@ -284,16 +290,26 @@ export class AliasProvider {
         this.allPackageAliases = null; 
 		const lim = '---vsc---'; // must match the lim used in R!
 		const re = new RegExp(`^.*?${lim}(.*)${lim}.*$`, 'ms');
-        const cmd = `${this.rPath} --silent --no-save --no-restore --slave -f "${this.rScriptFile}"`;
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-aliases-'));
+        const tempFile = path.join(tempDir, 'aliases.json');
+        const cmd = `${this.rPath} --silent --no-save --no-restore --slave -f "${this.rScriptFile}" > "${tempFile}"`;
+
         try{
-            const txt = cp.execSync(cmd, {encoding: 'utf-8'});
+            // execute R script 'getAliases.R'
+            // aliases will be written to tempDir
+            cp.execSync(cmd, {cwd: this.cwd});
+
+            // read and parse aliases
+            const txt = fs.readFileSync(tempFile, 'utf-8');
             const json = txt.replace(re, '$1');
             if(json){
                 this.allPackageAliases = <{[key: string]: PackageAliases}> JSON.parse(json) || {};
             }
         } catch(e: unknown){
             console.log(e);
-            void vscode.window.showErrorMessage((<{message: string}>e).message);
+            void window.showErrorMessage((<{message: string}>e).message);
+        } finally {
+            fs.rmdirSync(tempDir, {recursive: true});
         }
         // update persistent workspace cache
         if(this.persistentState){

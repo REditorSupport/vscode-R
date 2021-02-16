@@ -1,15 +1,14 @@
 'use strict';
 
 import { existsSync } from 'fs-extra';
-import path = require('path');
-import fs = require('fs');
-import { window, workspace, WorkspaceConfiguration } from 'vscode';
+import * as fs from 'fs';
 import winreg = require('winreg');
+import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 
-export function config(): WorkspaceConfiguration {
-    return workspace.getConfiguration('r');
+export function config(): vscode.WorkspaceConfiguration {
+    return vscode.workspace.getConfiguration('r');
 }
 
 function getRfromEnvPath(platform: string) {
@@ -81,7 +80,7 @@ export async function getRpath(quote=false, overwriteConfig?: string): Promise<s
 
     if(!rpath){
         // inform user about missing R path:
-        void window.showErrorMessage(`${process.platform} can't use R`);
+        void vscode.window.showErrorMessage(`${process.platform} can't use R`);
     } else if(quote && /^[^'"].* .*[^'"]$/.exec(rpath)){
         // if requested and rpath contains spaces, add quotes:
         rpath = `"${rpath}"`;
@@ -112,7 +111,7 @@ export async function getRterm(): Promise<string|undefined> {
         return rpath;
     }
 
-    void window.showErrorMessage(`${process.platform} can't use R`);
+    void vscode.window.showErrorMessage(`${process.platform} can't use R`);
     return undefined;
 }
 

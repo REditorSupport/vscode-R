@@ -4,9 +4,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use strict';
 
-import fs = require('fs-extra');
-import os = require('os');
-import path = require('path');
+import * as fs from 'fs-extra';
+import * as os from 'os';
+import * as path from 'path';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
 
 import { runTextInTerm } from './rTerminal';

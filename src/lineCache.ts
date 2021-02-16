@@ -48,7 +48,7 @@ function isComment(c: string) {
     return c === '#';
 }
 
-function cleanLine(text: string) {
+export function cleanLine(text: string): string {
     let cleaned = '';
     let withinQuotes = null;
     for (let i = 0; i < text.length; i++) {

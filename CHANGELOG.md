@@ -1,5 +1,16 @@
 # Change Log
 
+## 1,6,4
+
+* Better error message when reading aliases (#518)
+* Keep promises and active bindings in globalenv (#521) 
+* Refactor extension.ts (#525)
+* Write aliases to file (#526)
+* add sendToConsole to rstudioapi emulation (#535)
+* Add function to open help for selected text (#531)
+* Add initial pipeline completion support (#530)
+* Add updatePackage command (#532)
+* Add option to preserve focus when opening help view (#541)
 ## 1.6.3
 
 * Add browser WebView command buttons #494
