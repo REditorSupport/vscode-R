@@ -292,24 +292,3 @@ export class HelpPanel {
 	}
 
 }
-
-
-
-// export class HelpPanelSerializer implements vscode.WebviewPanelSerializer<string> {
-// 	// required to launch new helppanels:
-// 	rHelp: RHelp;
-
-// 	constructor(rHelp: RHelp){
-// 		this.rHelp = rHelp;
-// 	}
-
-// 	// eslint-disable-next-line @typescript-eslint/require-await
-// 	async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel, path: string): Promise<void>{
-// 		const rHelpPanel = this.rHelp.makeNewHelpPanel(webviewPanel);
-// 		await this.rHelp.showHelpForPath(path);
-// 		return;
-// 	}
-// }
-
-
-
