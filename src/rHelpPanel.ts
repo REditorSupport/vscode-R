@@ -41,10 +41,14 @@ export class HelpPanel {
 	private history: HistoryEntry[] = [];
 	private forwardHistory: HistoryEntry[] = [];
 
-	constructor(options: HelpPanelOptions, rHelp: RHelp){
+	constructor(options: HelpPanelOptions, rHelp: RHelp, panel?: vscode.WebviewPanel){
 		this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
         this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
         this.rHelp = rHelp;
+		if(panel){
+			this.panel = panel;
+			this.initializePanel();
+		}
 	}
 
 	// used to close files, stop servers etc.
@@ -68,31 +72,7 @@ export class HelpPanel {
 			};
 			this.panel = vscode.window.createWebviewPanel('rhelp', 'R Help', showOptions, webViewOptions);
 
-			// virtual uris used to access local files
-			this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);
-			this.webviewStyleUri = this.panel.webview.asWebviewUri(this.webviewStyleFile);
-
-			// called e.g. when the webview panel is closed by the user
-			this.panel.onDidDispose(() => {
-				this.panel = undefined;
-				this.history = [];
-				this.forwardHistory = [];
-				this.currentEntry = undefined;
-				this.webviewScriptUri = undefined;
-				this.webviewStyleUri = undefined;
-				void this.setContextValues();
-			});
-
-			// sent by javascript added to the help pages, e.g. when a link or mouse button is clicked
-			this.panel.webview.onDidReceiveMessage((e: {[key: string]: any}) => {
-				void this.handleMessage(e);
-			});
-
-			// set context variable to show forward/backward buttons
-			this.panel.onDidChangeViewState(() => {
-				void this.setContextValues();
-			});
-
+			this.initializePanel();
 		}
 
 		this.panel.reveal(undefined, preserveFocus);
@@ -100,6 +80,34 @@ export class HelpPanel {
 
 		return this.panel.webview;
     }
+	
+	private initializePanel(){
+		// virtual uris used to access local files
+		this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);
+		this.webviewStyleUri = this.panel.webview.asWebviewUri(this.webviewStyleFile);
+
+		// called e.g. when the webview panel is closed by the user
+		this.panel.onDidDispose(() => {
+			this.panel = undefined;
+			this.history = [];
+			this.forwardHistory = [];
+			this.currentEntry = undefined;
+			this.webviewScriptUri = undefined;
+			this.webviewStyleUri = undefined;
+			void this.setContextValues();
+		});
+
+		// sent by javascript added to the help pages, e.g. when a link or mouse button is clicked
+		this.panel.webview.onDidReceiveMessage((e: {[key: string]: any}) => {
+			void this.handleMessage(e);
+		});
+
+		// set context variable to show forward/backward buttons
+		this.panel.onDidChangeViewState(() => {
+			void this.setContextValues();
+		});
+	}
+	
 
 	public async setContextValues(): Promise<void> {
 		await vscode.commands.executeCommand('setContext', 'r.helpPanel.active', !!this.panel?.active);
@@ -284,4 +292,24 @@ export class HelpPanel {
 	}
 
 }
+
+
+
+// export class HelpPanelSerializer implements vscode.WebviewPanelSerializer<string> {
+// 	// required to launch new helppanels:
+// 	rHelp: RHelp;
+
+// 	constructor(rHelp: RHelp){
+// 		this.rHelp = rHelp;
+// 	}
+
+// 	// eslint-disable-next-line @typescript-eslint/require-await
+// 	async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel, path: string): Promise<void>{
+// 		const rHelpPanel = this.rHelp.makeNewHelpPanel(webviewPanel);
+// 		await this.rHelp.showHelpForPath(path);
+// 		return;
+// 	}
+// }
+
+
 

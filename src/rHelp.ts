@@ -69,6 +69,8 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 			vscode.commands.registerCommand('r.helpPanel.openExternal', () => rHelp?.openExternal()),
 			vscode.commands.registerCommand('r.helpPanel.openForSelection', (preserveFocus: boolean = false) => rHelp?.openHelpForSelection(!!preserveFocus))
 		);
+		
+		vscode.window.registerWebviewPanelSerializer('rhelp', rHelp);
 	}
 
 	return rHelp;
@@ -130,7 +132,7 @@ export interface HelpOptions {
 
 // The name api.HelpPanel is a bit misleading
 // This class manages all R-help and R-packages related functions
-export class RHelp implements api.HelpPanel {
+export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<string> {
 
 	// Path of a vanilla R installation
 	readonly rPath: string;
@@ -152,7 +154,7 @@ export class RHelp implements api.HelpPanel {
 	readonly treeViewWrapper: HelpTreeWrapper;
 
 	// the webview panel(s) where the help is shown
-	private readonly helpPanels: HelpPanel[] = [];
+	public readonly helpPanels: HelpPanel[] = [];
 
 	// locations on disk, only changed on construction
 	readonly webviewScriptFile: vscode.Uri; // the javascript added to help pages
@@ -172,6 +174,13 @@ export class RHelp implements api.HelpPanel {
 		this.packageManager = new PackageManager({...options, rHelp: this});
 		this.treeViewWrapper = new HelpTreeWrapper(this);
 		this.helpPanelOptions = options;
+	}
+	
+
+	async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel, path: string): Promise<void>{
+		this.makeNewHelpPanel(webviewPanel);
+		await this.showHelpForPath(path, undefined, true);
+		return;
 	}
 
 	// used to close files, stop servers etc.
@@ -221,8 +230,8 @@ export class RHelp implements api.HelpPanel {
 
 
 	// create a new help panel
-	public makeNewHelpPanel(): HelpPanel {
-		const helpPanel = new HelpPanel(this.helpPanelOptions, this);
+	public makeNewHelpPanel(panel?: vscode.WebviewPanel): HelpPanel {
+		const helpPanel = new HelpPanel(this.helpPanelOptions, this, panel);
 		this.helpPanels.unshift(helpPanel);
 		return helpPanel;
 	}

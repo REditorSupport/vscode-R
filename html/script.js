@@ -33,6 +33,8 @@ window.document.body.onload = function () {
     var _a;
     // make relative path for hyperlinks
     var relPath = (document.body.getAttribute('relPath') || '');
+    // notify vscode, used to restore help panels between sessions
+    vscode.setState(relPath);
     var loc = document.location;
     var url0 = new URL(loc.protocol + '//' + loc.host);
     var url1 = new URL(relPath, url0);
