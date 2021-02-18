@@ -156,10 +156,10 @@
                     "patterns" : [
                         {"include" : "source.latex"}
                     ]
+                }
             }
         }
     },
     "scopeName" : "text.html.markdown.redcarpet",
     "uuid" : "BE79A69A-B9F5-4BCD-9068-893496E86663"
-    }
 }
