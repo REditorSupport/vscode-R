@@ -543,6 +543,14 @@ class HomeNode extends MetaNode {
     label = 'Home';
     collapsibleState = CollapsibleState.None;
     iconPath = new vscode.ThemeIcon('home');
+    contextValue = Node.makeContextValue('openInNewPanel');
+    
+    _handleCommand(cmd: cmdName){
+        if(cmd === 'openInNewPanel'){
+            void this.rHelp.makeNewHelpPanel();
+            void this.rHelp.showHelpForPath('doc/html/index.html');
+        }
+    }
 
     callBack(){
         void this.rHelp.showHelpForPath('doc/html/index.html');

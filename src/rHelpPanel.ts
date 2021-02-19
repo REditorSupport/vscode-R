@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 
-import { HelpFile } from './rHelp';
+import { HelpFile, RHelp } from './rHelp';
 
 
 //// Declaration of interfaces used/implemented by the Help Panel class
@@ -20,17 +20,9 @@ interface HistoryEntry {
 	helpFile: HelpFile;
 }
 
-// provides modified help pages for paths
-export interface RHelpPageProvider {
-	// is called to get help for a request path
-    // the request path is the part of the help url after http://localhost:PORT/... when using R's help
-    // Returned help files are already modified with e.g. syntax highlighting!
-	getHelpFileFromRequestPath(requestPath: string): null|HelpFile|Promise<null|HelpFile>;
-}
-
 export class HelpPanel {
 
-    private readonly helpProvider: RHelpPageProvider;
+    private readonly rHelp: RHelp;
 
 	// the webview panel where the help is shown
 	public panel?: vscode.WebviewPanel;
@@ -49,10 +41,14 @@ export class HelpPanel {
 	private history: HistoryEntry[] = [];
 	private forwardHistory: HistoryEntry[] = [];
 
-	constructor(options: HelpPanelOptions, helpPageProvider: RHelpPageProvider){
+	constructor(options: HelpPanelOptions, rHelp: RHelp, panel?: vscode.WebviewPanel){
 		this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
         this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
-        this.helpProvider = helpPageProvider;
+        this.rHelp = rHelp;
+		if(panel){
+			this.panel = panel;
+			this.initializePanel();
+		}
 	}
 
 	// used to close files, stop servers etc.
@@ -76,31 +72,7 @@ export class HelpPanel {
 			};
 			this.panel = vscode.window.createWebviewPanel('rhelp', 'R Help', showOptions, webViewOptions);
 
-			// virtual uris used to access local files
-			this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);
-			this.webviewStyleUri = this.panel.webview.asWebviewUri(this.webviewStyleFile);
-
-			// called e.g. when the webview panel is closed by the user
-			this.panel.onDidDispose(() => {
-				this.panel = undefined;
-				this.history = [];
-				this.forwardHistory = [];
-				this.currentEntry = undefined;
-				this.webviewScriptUri = undefined;
-				this.webviewStyleUri = undefined;
-				void this.setContextValues();
-			});
-
-			// sent by javascript added to the help pages, e.g. when a link or mouse button is clicked
-			this.panel.webview.onDidReceiveMessage((e: {[key: string]: any}) => {
-				void this.handleMessage(e);
-			});
-
-			// set context variable to show forward/backward buttons
-			this.panel.onDidChangeViewState(() => {
-				void this.setContextValues();
-			});
-
+			this.initializePanel();
 		}
 
 		this.panel.reveal(undefined, preserveFocus);
@@ -108,6 +80,34 @@ export class HelpPanel {
 
 		return this.panel.webview;
     }
+	
+	private initializePanel(){
+		// virtual uris used to access local files
+		this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);
+		this.webviewStyleUri = this.panel.webview.asWebviewUri(this.webviewStyleFile);
+
+		// called e.g. when the webview panel is closed by the user
+		this.panel.onDidDispose(() => {
+			this.panel = undefined;
+			this.history = [];
+			this.forwardHistory = [];
+			this.currentEntry = undefined;
+			this.webviewScriptUri = undefined;
+			this.webviewStyleUri = undefined;
+			void this.setContextValues();
+		});
+
+		// sent by javascript added to the help pages, e.g. when a link or mouse button is clicked
+		this.panel.webview.onDidReceiveMessage((e: {[key: string]: any}) => {
+			void this.handleMessage(e);
+		});
+
+		// set context variable to show forward/backward buttons
+		this.panel.onDidChangeViewState(() => {
+			void this.setContextValues();
+		});
+	}
+	
 
 	public async setContextValues(): Promise<void> {
 		await vscode.commands.executeCommand('setContext', 'r.helpPanel.active', !!this.panel?.active);
@@ -224,7 +224,7 @@ export class HelpPanel {
 			const requestPath = parts.join('/');
 
 			// retrieve helpfile for path:
-			const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
+			const helpFile = await this.rHelp.getHelpFileForPath(requestPath);
 
 			// if successful, show helpfile:
 			if(helpFile){
@@ -292,4 +292,3 @@ export class HelpPanel {
 	}
 
 }
-

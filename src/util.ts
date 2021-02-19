@@ -299,3 +299,22 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
 
     return ret;
 }
+
+
+// This class is a wrapper around Map<string, any> that implements vscode.Memento
+// Can be used in place of vscode.ExtensionContext.globalState or .workspaceState when no caching is desired
+export class DummyMemento implements vscode.Memento {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	items = new Map<string, any>()
+	public get<T>(key: string, defaultValue?: T): T | undefined {
+		if(this.items.has(key)){
+			return <T>this.items.get(key);
+		} else{
+			return defaultValue;
+		}
+	}
+	// eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any
+	public async update(key: string, value: any): Promise<void> {
+		this.items.set(key, value);
+	}
+}
