@@ -178,8 +178,8 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	
 
 	async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel, path: string): Promise<void>{
-		this.makeNewHelpPanel(webviewPanel);
-		await this.showHelpForPath(path, undefined, true);
+		const panel = this.makeNewHelpPanel(webviewPanel);
+		await this.showHelpForPath(path, undefined, true, panel);
 		return;
 	}
 
@@ -414,13 +414,13 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	}
 
 	// shows help for request path as used by R's internal help server
-	public async showHelpForPath(requestPath: string, viewer?: string|any, preserveFocus: boolean = false): Promise<boolean> {
+	public async showHelpForPath(requestPath: string, viewer?: string|any, preserveFocus: boolean = false, panel?: HelpPanel): Promise<boolean> {
 
 		// get and show helpFile
 		// const helpFile = this.helpProvider.getHelpFileFromRequestPath(requestPath);
 		const helpFile = await this.getHelpFileForPath(requestPath);
 		if(helpFile){
-			return this.showHelpFile(helpFile, viewer, preserveFocus);
+			return this.showHelpFile(helpFile, viewer, preserveFocus, panel);
 		} else{
 			const msg = `Couldn't show help for path:\n${requestPath}\n`;
 			void vscode.window.showErrorMessage(msg);
@@ -453,8 +453,14 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	}
 
 	// shows (internal) help file object in webview
-	private async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, viewer?: string|any, preserveFocus: boolean = false): Promise<boolean>{
-		return await this.getNewestHelpPanel().showHelpFile(helpFile, undefined, undefined, viewer, preserveFocus);
+	private async showHelpFile(
+		helpFile: HelpFile|Promise<HelpFile>,
+		viewer?: string|any,
+		preserveFocus: boolean = false,
+		panel?: HelpPanel
+	): Promise<boolean>{
+		panel ||= this.getNewestHelpPanel();
+		return await panel.showHelpFile(helpFile, undefined, undefined, viewer, preserveFocus);
 	}
 
 
