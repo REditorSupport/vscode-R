@@ -260,7 +260,7 @@ export async function runTextInTerm(text: string): Promise<void> {
     }
     setFocus(term);
     // Scroll console to see latest output
-    await vscode.commands.executeCommand("workbench.action.terminal.scrollToBottom");
+    await vscode.commands.executeCommand('workbench.action.terminal.scrollToBottom');
 }
 
 function setFocus(term: vscode.Terminal) {
