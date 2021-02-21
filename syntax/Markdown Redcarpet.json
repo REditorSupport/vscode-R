@@ -140,13 +140,13 @@
                     ]
                 },
                 "code-inline-latex" : {
-                    "begin" : "([$|$$][ ]+)",
+                    "begin" : "([\\$|\\$\\$])",
                     "beginCaptures" : {
                         "1" : {
                             "name" : "punctuation.definition.raw.rmarkdown"
                         }
                     },
-                    "end" : "([$|$$])",
+                    "end" : "([\\$|\\$$])",
                     "endCaptures" : {
                             "1" : {
                             "name" : "punctuation.definition.raw.rmarkdown"
