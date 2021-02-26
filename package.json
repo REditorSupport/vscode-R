@@ -59,7 +59,9 @@
     "onCommand:r.runCommand",
     "onCommand:r.showHelp",
     "onCommand:r.helpPanel.back",
-    "onCommand:r.helpPanel.forward"
+    "onCommand:r.helpPanel.forward",
+    "onCommand:r.helpPanel.openForSelection",
+    "onWebviewPanel:rhelp"
   ],
   "main": "./dist/extension",
   "contributes": {

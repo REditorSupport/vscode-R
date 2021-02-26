@@ -40,10 +40,13 @@ if (interactive() &&
       }
 
       get_timestamp <- function() {
-        format.default(Sys.time(), nsmall = 6)
+        format.default(Sys.time(), nsmall = 6, scientific = FALSE)
       }
 
-      unbox <- jsonlite::unbox
+      scalar <- function(x) {
+        class(x) <- c("scalar", class(x))
+        x
+      }
 
       request <- function(command, ...) {
         obj <- list(
@@ -59,8 +62,15 @@ if (interactive() &&
       }
 
       capture_str <- function(object) {
-        utils::capture.output(
-          utils::str(object, max.level = 0, give.attr = FALSE)
+        paste0(
+          utils::capture.output(
+            utils::str(object,
+              max.level = getOption("vsc.str.max.level", 0),
+              give.attr = FALSE,
+              vec.len = 1
+            )
+          ),
+          collapse = "\n"
         )
       }
 
@@ -90,26 +100,26 @@ if (interactive() &&
           if (is_promise[[name]]) {
             info <- list(
               class = "promise",
-              type = unbox("promise"),
-              length = unbox(0L),
-              str = unbox("(promise)")
+              type = scalar("promise"),
+              length = scalar(0L),
+              str = scalar("(promise)")
             )
           } else if (is_active[[name]]) {
             info <- list(
               class = "active_binding",
-              type = unbox("active_binding"),
-              length = unbox(0L),
-              str = unbox("(active-binding)")
+              type = scalar("active_binding"),
+              length = scalar(0L),
+              str = scalar("(active-binding)")
             )
           } else {
             obj <- env[[name]]
             str <- capture_str(obj)[[1L]]
             info <- list(
               class = class(obj),
-              type = unbox(typeof(obj)),
-              length = unbox(length(obj)),
-              str = unbox(trimws(str)),
-              size = as.integer(object.size(obj))
+              type = scalar(typeof(obj)),
+              length = scalar(length(obj)),
+              str = scalar(trimws(str)),
+              size = scalar(unclass(object.size(obj)))
             )
             if ((is.list(obj) ||
               is.environment(obj)) &&
@@ -143,7 +153,7 @@ if (interactive() &&
         update_globalenv <- function(...) {
           tryCatch({
             objs <- inspect_env(.GlobalEnv)
-            jsonlite::write_json(objs, globalenv_file, pretty = FALSE)
+            jsonlite::write_json(objs, globalenv_file, force = TRUE, pretty = FALSE)
             cat(get_timestamp(), file = globalenv_lock_file)
           }, error = message)
           TRUE
@@ -296,9 +306,9 @@ if (interactive() &&
           }
           columns <- .mapply(function(title, type) {
             class <- if (type == "string") "text-left" else "text-right"
-            list(title = unbox(title),
-              className = unbox(class),
-              type = unbox(type))
+            list(title = scalar(title),
+              className = scalar(class),
+              type = scalar(type))
           }, list(colnames, types), NULL)
           list(columns = columns, data = data)
         }

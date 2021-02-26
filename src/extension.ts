@@ -95,6 +95,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // browser controls
         'r.browser.refresh': session.refreshBrowser,
         'r.browser.openExternal': session.openExternalBrowser
+
+        // (help related commands are registered in rHelp.initializeHelp)
     };
     for(const key in commands){
         context.subscriptions.push(vscode.commands.registerCommand(key, commands[key]));
