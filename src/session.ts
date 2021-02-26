@@ -15,6 +15,7 @@ import { config } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { rWorkspace, globalRHelp } from './extension';
+import * as rShare from './rShare';
 
 export let globalenv: any;
 let resDir: string;
@@ -39,6 +40,7 @@ let plotWatcher: FSWatcher;
 let activeBrowserPanel: WebviewPanel;
 let activeBrowserUri: Uri;
 let activeBrowserExternalUri: Uri;
+let LiveSession;
 
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
@@ -174,10 +176,18 @@ async function updateGlobalenv() {
     if (newTimeStamp !== globalenvTimeStamp) {
         globalenvTimeStamp = newTimeStamp;
         if (fs.existsSync(globalenvFile)) {
-            const content = await fs.readFile(globalenvFile, 'utf8');
-            globalenv = JSON.parse(content);
-            rWorkspace?.refresh();
-            console.info('[updateGlobalenv] Done');
+            if (LiveSession) {
+                const liveEnv = await rShare.ExposeEnvironment(LiveSession, globalenvFile);
+                const content = await fs.readFile(liveEnv, 'utf8');
+                globalenv = JSON.parse(content);
+                rWorkspace?.refresh();
+                console.info('[updateGlobalenv] Done');
+            } else {
+                const content = await fs.readFile(globalenvFile, 'utf8');
+                globalenv = JSON.parse(content);
+                rWorkspace?.refresh();
+                console.info('[updateGlobalenv] Done');
+            }
         } else {
             console.info('[updateGlobalenv] File not found');
         }
