@@ -62,10 +62,18 @@ export function deploySessionWatcher(extensionPath: string): void {
     console.info('[deploySessionWatcher] Done');
 }
 
-export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
+export async function startRequestWatcher(sessionStatusBarItem: StatusBarItem): Promise<void> {
     console.info('[startRequestWatcher] Starting');
-    requestFile = path.join(watcherDir, 'request.log');
-    requestLockFile = path.join(watcherDir, 'request.lock');
+
+    // Resolve
+    if (LiveSession) {
+        const liveWatcherDir = await rShare.ExposeRequestWatcher(LiveSession, watcherDir);
+        requestFile = path.join(liveWatcherDir, 'request.log');
+        requestLockFile = path.join(liveWatcherDir, 'request.lock');
+    } else {
+        requestFile = path.join(watcherDir, 'request.log');
+        requestLockFile = path.join(watcherDir, 'request.lock');
+    }
     requestTimeStamp = 0;
     responseTimeStamp = 0;
     if (!fs.existsSync(requestLockFile)) {

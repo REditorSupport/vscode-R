@@ -33,3 +33,16 @@ export async function ExposeEnvironment(user: vsls.SessionChangeEvent, _globalen
         return null;
     }
 }
+
+export async function ExposeRequestWatcher(user: vsls.SessionChangeEvent, _watcherDir: string): Promise<string> {
+    const liveSession: vsls.LiveShare | null = await vsls.getApi();
+    const watcherDir = Uri.parse(_watcherDir);
+
+    if (user.session.role === vsls.Role.Host) {
+        return liveSession.convertLocalUriToShared(watcherDir).toString();
+    } else if (user.session.role === vsls.Role.Guest) {
+        return liveSession.convertSharedUriToLocal(watcherDir).toString();
+    } else {
+        return null;
+    }
+}
