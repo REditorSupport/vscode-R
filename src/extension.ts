@@ -36,7 +36,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // create R terminal
         'r.createRTerm': rTerminal.createRTerm,
 
-        // run code from editor in terminal 
+        // run code from editor in terminal
         'r.nrow': () => rTerminal.runSelectionOrWord(['nrow']),
         'r.length': () => rTerminal.runSelectionOrWord(['length']),
         'r.head': () => rTerminal.runSelectionOrWord(['head']),
@@ -139,7 +139,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     const enableSessionWatcher = util.config().get<boolean>('sessionWatcher', false);
     if (enableSessionWatcher) {
         console.info('Initialize session watcher');
-        session.deploySessionWatcher(context.extensionPath);
+        void session.deploySessionWatcher(context.extensionPath);
 
         // create status bar item that contains info about the session watcher
         console.info('Create sessionStatusBarItem');

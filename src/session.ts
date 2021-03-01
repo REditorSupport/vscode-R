@@ -48,8 +48,11 @@ export async function deploySessionWatcher(extensionPath: string): Promise<void>
     resDir = path.join(extensionPath, 'dist', 'resources');
     watcherDir = path.join(os.homedir(), '.vscode-R');
 
+    // Share URIs with guest LiveShare sessions
+    // Must be using the same vscode-r version!
     if (await LiveSession) {
-        watcherDir = await rShare.ExposeRequestWatcher(watcherDir);
+        watcherDir = await rShare.ExposeWatcherDir(watcherDir);
+        resDir = await rShare.ExposeResDir(resDir);
     }
 
     console.info(`[deploySessionWatcher] watcherDir: ${watcherDir}`);
@@ -121,17 +124,11 @@ export function removeSessionFiles(): void {
     console.info('[removeSessionFiles] Done');
 }
 
-async function updateSessionWatcher() {
+function updateSessionWatcher() {
     console.info(`[updateSessionWatcher] PID: ${pid}`);
     console.info('[updateSessionWatcher] Create globalEnvWatcher');
-    if (await LiveSession) {
-        const sharedDir = await rShare.ExposeSessionDir(sessionDir);
-        globalenvFile = path.join(sharedDir, 'globalenv.json');
-        globalenvLockFile = path.join(sharedDir, 'globalenv.lock');
-    } else {
-        globalenvFile = path.join(sessionDir, 'globalenv.json');
-        globalenvLockFile = path.join(sessionDir, 'globalenv.lock');
-    }
+    globalenvFile = path.join(sessionDir, 'globalenv.json');
+    globalenvLockFile = path.join(sessionDir, 'globalenv.lock');
     globalenvTimeStamp = 0;
     if (globalEnvWatcher !== undefined) {
         globalEnvWatcher.close();
@@ -570,7 +567,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     console.info(`[updateRequest] attach PID: ${pid}`);
                     sessionStatusBarItem.text = `R: ${pid}`;
                     sessionStatusBarItem.show();
-                    void updateSessionWatcher();
+                    updateSessionWatcher();
                     purgeAddinPickerItems();
                     break;
                 }
