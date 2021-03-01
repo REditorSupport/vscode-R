@@ -10,8 +10,8 @@ let sharedTermPath: string = undefined;
 // Bool to check if live share is loaded and active
 export async function isLiveShare(): Promise<boolean> {
     const shareExists = vscode.extensions.getExtension('ms-vsliveshare.vsliveshare') !== null ? true : false;
-    const shareLoaded = await vsls.getApi() !== null || undefined ? true : false;
-    if (shareExists && shareLoaded) {
+    const shareStarted = (await vsls.getApi()).session.id !== null ? true : false;
+    if (shareExists && shareStarted) {
         return true;
     } else {
         return false;
@@ -58,10 +58,11 @@ export async function ExposeWatcherDir(_watcherDir: string): Promise<string> {
 export async function ShareHostTerm(_term: vscode.Terminal): Promise<vscode.Terminal> {
     const liveSession: vsls.LiveShare | null = await vsls.getApi();
     const user = liveSession.session.role;
+
     // Share terminal
     if (user === vsls.Role.Host) {
         sharedTerm = _term;
-        return sharedTerm;
+        return _term;
     // Get terminal
     } else if (user === vsls.Role.Guest) {
         //void vscode.window.showInformationMessage(sharedTerm.toString());
@@ -75,6 +76,8 @@ export async function ExposeTermPath(_termPath: string): Promise<string> {
     const liveSession: vsls.LiveShare | null = await vsls.getApi();
     const termPath = vscode.Uri.parse(_termPath);
     const user = liveSession.session.role;
+
+
 
     if (user === vsls.Role.Host) {
         sharedTermPath = liveSession.convertSharedUriToLocal(termPath).toString();

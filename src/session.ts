@@ -181,6 +181,7 @@ async function updatePlot() {
 
 async function updateGlobalenv() {
     console.info(`[updateGlobalenv] ${globalenvFile}`);
+
     const lockContent = await fs.readFile(globalenvLockFile, 'utf8');
     const newTimeStamp = Number.parseFloat(lockContent);
     if (newTimeStamp !== globalenvTimeStamp) {
@@ -190,8 +191,6 @@ async function updateGlobalenv() {
                 globalenv = JSON.parse(content);
                 rWorkspace?.refresh();
                 console.info('[updateGlobalenv] Done');
-                void window.showInformationMessage(`UNSHARED val is ${globalenvFile}`);
-            // }
         } else {
             console.info('[updateGlobalenv] File not found');
         }
@@ -565,7 +564,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     plotDir = path.join(sessionDir, 'images');
                     plotView = String(request.plot);
                     console.info(`[updateRequest] attach PID: ${pid}`);
-                    sessionStatusBarItem.text = `R: ${pid}`;
+                    sessionStatusBarItem.text = await LiveSession ? `Shared R: ${pid}` : `R: ${pid}`;
                     sessionStatusBarItem.show();
                     updateSessionWatcher();
                     purgeAddinPickerItems();
