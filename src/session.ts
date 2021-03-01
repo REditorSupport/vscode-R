@@ -15,7 +15,6 @@ import { config } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { rWorkspace, globalRHelp } from './extension';
-import * as rShare from './rShare';
 
 export let globalenv: any;
 let resDir: string;
@@ -40,12 +39,19 @@ let plotWatcher: FSWatcher;
 let activeBrowserPanel: WebviewPanel;
 let activeBrowserUri: Uri;
 let activeBrowserExternalUri: Uri;
-let LiveSession;
 
-export function deploySessionWatcher(extensionPath: string): void {
+import * as rShare from './rShare';
+const LiveSession = rShare.LiveSessionBool;
+
+export async function deploySessionWatcher(extensionPath: string): Promise<void> {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
     watcherDir = path.join(os.homedir(), '.vscode-R');
+
+    if (await LiveSession) {
+        watcherDir = await rShare.ExposeRequestWatcher(watcherDir);
+    }
+
     console.info(`[deploySessionWatcher] watcherDir: ${watcherDir}`);
     if (!fs.existsSync(watcherDir)) {
         console.info('[deploySessionWatcher] watcherDir not exists, create directory');
@@ -62,18 +68,11 @@ export function deploySessionWatcher(extensionPath: string): void {
     console.info('[deploySessionWatcher] Done');
 }
 
-export async function startRequestWatcher(sessionStatusBarItem: StatusBarItem): Promise<void> {
+export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
     console.info('[startRequestWatcher] Starting');
-
     // Resolve
-    if (LiveSession) {
-        const liveWatcherDir = await rShare.ExposeRequestWatcher(LiveSession, watcherDir);
-        requestFile = path.join(liveWatcherDir, 'request.log');
-        requestLockFile = path.join(liveWatcherDir, 'request.lock');
-    } else {
-        requestFile = path.join(watcherDir, 'request.log');
-        requestLockFile = path.join(watcherDir, 'request.lock');
-    }
+    requestFile = path.join(watcherDir, 'request.log');
+    requestLockFile = path.join(watcherDir, 'request.lock');
     requestTimeStamp = 0;
     responseTimeStamp = 0;
     if (!fs.existsSync(requestLockFile)) {
@@ -122,11 +121,17 @@ export function removeSessionFiles(): void {
     console.info('[removeSessionFiles] Done');
 }
 
-function updateSessionWatcher() {
+async function updateSessionWatcher() {
     console.info(`[updateSessionWatcher] PID: ${pid}`);
     console.info('[updateSessionWatcher] Create globalEnvWatcher');
-    globalenvFile = path.join(sessionDir, 'globalenv.json');
-    globalenvLockFile = path.join(sessionDir, 'globalenv.lock');
+    if (await LiveSession) {
+        const sharedDir = await rShare.ExposeSessionDir(sessionDir);
+        globalenvFile = path.join(sharedDir, 'globalenv.json');
+        globalenvLockFile = path.join(sharedDir, 'globalenv.lock');
+    } else {
+        globalenvFile = path.join(sessionDir, 'globalenv.json');
+        globalenvLockFile = path.join(sessionDir, 'globalenv.lock');
+    }
     globalenvTimeStamp = 0;
     if (globalEnvWatcher !== undefined) {
         globalEnvWatcher.close();
@@ -184,18 +189,12 @@ async function updateGlobalenv() {
     if (newTimeStamp !== globalenvTimeStamp) {
         globalenvTimeStamp = newTimeStamp;
         if (fs.existsSync(globalenvFile)) {
-            if (LiveSession) {
-                const liveEnv = await rShare.ExposeEnvironment(LiveSession, globalenvFile);
-                const content = await fs.readFile(liveEnv, 'utf8');
-                globalenv = JSON.parse(content);
-                rWorkspace?.refresh();
-                console.info('[updateGlobalenv] Done');
-            } else {
                 const content = await fs.readFile(globalenvFile, 'utf8');
                 globalenv = JSON.parse(content);
                 rWorkspace?.refresh();
                 console.info('[updateGlobalenv] Done');
-            }
+                void window.showInformationMessage(`UNSHARED val is ${globalenvFile}`);
+            // }
         } else {
             console.info('[updateGlobalenv] File not found');
         }
@@ -571,7 +570,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     console.info(`[updateRequest] attach PID: ${pid}`);
                     sessionStatusBarItem.text = `R: ${pid}`;
                     sessionStatusBarItem.show();
-                    updateSessionWatcher();
+                    void updateSessionWatcher();
                     purgeAddinPickerItems();
                     break;
                 }

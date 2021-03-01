@@ -1,48 +1,98 @@
-import { Uri } from 'vscode';
+import * as vscode from 'vscode';
 import * as vsls from 'vsls';
 
-// Returns the current LiveShare user
-export async function LiveSession() {
+export const LiveSessionBool = isLiveShare();
+let sharedTerm: vscode.Terminal = undefined;
+let sharedEnv: string = undefined;
+let sharedSessionDir: string = undefined;
+let sharedRequestWatcher: string = undefined;
 
-    const liveSession: vsls.LiveShare | null = await vsls.getApi();
+// Bool to check if live share is loaded and active
+export async function isLiveShare(): Promise<boolean> {
+    const shareExists = vscode.extensions.getExtension('ms-vsliveshare.vsliveshare') !== null ? true : false;
+    const shareLoaded = await vsls.getApi() !== null ? true : false;
 
-    liveSession.onDidChangeSession(user => {
-        if (user.session.role === vsls.Role.Host) {
-            return user;
-        } else if (user.session.role === vsls.Role.Guest) {
-            return user;
-        } else {
-            return null;
-        }
+    if (shareExists && shareLoaded) {
+        return true;
+    } else {
+        return false;
     }
-    );
 }
 
 // Exposes the globalenv to the LiveShare session
 // If the user === host, we return a local -> shared uri
 // if the user === guest, we return a shared -> local uri
-export async function ExposeEnvironment(user: vsls.SessionChangeEvent, _globalenv: string): Promise<string> {
+export async function ExposeEnvironment(_globalenv: string): Promise<string> {
     const liveSession: vsls.LiveShare | null = await vsls.getApi();
-    const globalenv = Uri.parse(_globalenv);
+    const globalenv = vscode.Uri.parse(_globalenv);
+    const user = liveSession.session.role;
 
-    if (user.session.role === vsls.Role.Host) {
-        return  liveSession.convertLocalUriToShared(globalenv).toString();
-    } else if (user.session.role === vsls.Role.Guest) {
-        return liveSession.convertSharedUriToLocal(globalenv).toString();
+    if (user === vsls.Role.Host) {
+        sharedEnv = liveSession.convertLocalUriToShared(globalenv).toString();
+        return _globalenv;
+    } else if (user === vsls.Role.Guest) {
+        return sharedEnv;
     } else {
-        return null;
+        return _globalenv;
     }
 }
 
-export async function ExposeRequestWatcher(user: vsls.SessionChangeEvent, _watcherDir: string): Promise<string> {
+export async function ExposeSessionDir(_sessionDir: string): Promise<string> {
     const liveSession: vsls.LiveShare | null = await vsls.getApi();
-    const watcherDir = Uri.parse(_watcherDir);
+    const sessionDir = vscode.Uri.parse(_sessionDir);
+    const user = liveSession.session.role;
 
-    if (user.session.role === vsls.Role.Host) {
-        return liveSession.convertLocalUriToShared(watcherDir).toString();
-    } else if (user.session.role === vsls.Role.Guest) {
-        return liveSession.convertSharedUriToLocal(watcherDir).toString();
+    if (user === vsls.Role.Host) {
+        sharedSessionDir = liveSession.convertLocalUriToShared(sessionDir).toString();
+        return _sessionDir;
+    } else if (user === vsls.Role.Guest) {
+        return sharedSessionDir;
     } else {
-        return null;
+        return _sessionDir;
     }
 }
+
+export async function ExposeRequestWatcher(_watcherDir: string): Promise<string> {
+    const liveSession: vsls.LiveShare | null = await vsls.getApi();
+    const watcherDir = vscode.Uri.parse(_watcherDir);
+    const user = liveSession.session.role;
+
+    if (user === vsls.Role.Host) {
+        sharedRequestWatcher = liveSession.convertSharedUriToLocal(watcherDir).toString();
+        return _watcherDir;
+    } else if (user === vsls.Role.Guest) {
+        return sharedRequestWatcher;
+    } else {
+        return _watcherDir;
+    }
+}
+
+// Here we return the host's chosen terminal to the guest
+// This allows for the execution of rTerminal.ts commands
+// in the host's terminal from a guest session
+export async function ShareHostTerm(_term: vscode.Terminal): Promise<vscode.Terminal> {
+    const liveSession: vsls.LiveShare | null = await vsls.getApi();
+    const user = liveSession.session.role;
+    // Share terminal
+    if (user === vsls.Role.Host) {
+        sharedTerm = _term;
+        return sharedTerm;
+    // Get terminal
+    } else  {
+        return sharedTerm;
+    }
+}
+
+// export async function LocalToShared(_path): Promise<string> {
+//     const liveSession: vsls.LiveShare | null = await vsls.getApi();
+//     const path = vscode.Uri.parse(_path);
+//     const user = liveSession.session.role;
+
+//     if (user === vsls.Role.Host) {
+//          = liveSession.convertSharedUriToLocal(path).toString();
+//         return sharedTerm;
+//         // Get terminal
+//     } else {
+//         return _path;
+//     }
+// }
