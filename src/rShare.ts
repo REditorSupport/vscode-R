@@ -2,10 +2,8 @@ import * as vscode from 'vscode';
 import * as vsls from 'vsls';
 
 export const LiveSessionBool = isLiveShare();
-let sharedTerm: vscode.Terminal = undefined;
 let sharedResDir: string = undefined;
 let sharedWatcherDir: string = undefined;
-let sharedTermPath: string = undefined;
 
 // Bool to check if live share is loaded and active
 export async function isLiveShare(): Promise<boolean> {
@@ -49,42 +47,5 @@ export async function ExposeWatcherDir(_watcherDir: string): Promise<string> {
         return sharedWatcherDir;
     } else {
         return _watcherDir;
-    }
-}
-
-// Here we return the host's chosen terminal to the guest
-// This allows for the execution of rTerminal.ts commands
-// in the host's terminal from a guest session
-export async function ShareHostTerm(_term: vscode.Terminal): Promise<vscode.Terminal> {
-    const liveSession: vsls.LiveShare | null = await vsls.getApi();
-    const user = liveSession.session.role;
-
-    // Share terminal
-    if (user === vsls.Role.Host) {
-        sharedTerm = _term;
-        return _term;
-    // Get terminal
-    } else if (user === vsls.Role.Guest) {
-        //void vscode.window.showInformationMessage(sharedTerm.toString());
-        return sharedTerm;
-    } else {
-        return _term;
-    }
-}
-
-export async function ExposeTermPath(_termPath: string): Promise<string> {
-    const liveSession: vsls.LiveShare | null = await vsls.getApi();
-    const termPath = vscode.Uri.parse(_termPath);
-    const user = liveSession.session.role;
-
-
-
-    if (user === vsls.Role.Host) {
-        sharedTermPath = liveSession.convertSharedUriToLocal(termPath).toString();
-        return _termPath;
-    } else if (user === vsls.Role.Guest) {
-        return sharedTermPath;
-    } else {
-        return _termPath;
     }
 }

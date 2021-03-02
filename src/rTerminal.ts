@@ -167,7 +167,7 @@ export async function chooseTerminal(): Promise<vscode.Terminal> {
         msg += `Terminal ${i}: ${vscode.window.terminals[i].name} `;
     }
     if (vscode.window.terminals.length > 0) {
-        const rTermNameOptions = ['R', 'R Interactive'];
+        const rTermNameOptions = ['R', 'R Interactive', 'R Interactive [Shared]', 'R [Shared]'];
         if (vscode.window.activeTerminal !== undefined) {
             const activeTerminalName = vscode.window.activeTerminal.name;
             if (rTermNameOptions.includes(activeTerminalName)) {
