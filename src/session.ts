@@ -73,7 +73,6 @@ export async function deploySessionWatcher(extensionPath: string): Promise<void>
 
 export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
     console.info('[startRequestWatcher] Starting');
-    // Resolve
     requestFile = path.join(watcherDir, 'request.log');
     requestLockFile = path.join(watcherDir, 'request.lock');
     requestTimeStamp = 0;
@@ -187,10 +186,10 @@ async function updateGlobalenv() {
     if (newTimeStamp !== globalenvTimeStamp) {
         globalenvTimeStamp = newTimeStamp;
         if (fs.existsSync(globalenvFile)) {
-                const content = await fs.readFile(globalenvFile, 'utf8');
-                globalenv = JSON.parse(content);
-                rWorkspace?.refresh();
-                console.info('[updateGlobalenv] Done');
+            const content = await fs.readFile(globalenvFile, 'utf8');
+            globalenv = JSON.parse(content);
+            rWorkspace?.refresh();
+            console.info('[updateGlobalenv] Done');
         } else {
             console.info('[updateGlobalenv] File not found');
         }

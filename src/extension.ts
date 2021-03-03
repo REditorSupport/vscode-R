@@ -16,7 +16,7 @@ import * as workspaceViewer from './workspaceViewer';
 import * as apiImplementation from './apiImplementation';
 import * as rHelp from './rHelp';
 import * as completions from './completions';
-
+import * as rShare from './rShare';
 
 // global objects used in other files
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
@@ -30,6 +30,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // this export is used e.g. by vscode-r-debugger to show the help panel from within debug sessions
     const rExtension = new apiImplementation.RExtensionImplementation();
 
+    // attach liveshare listener
+    void rShare.AttachOnJoin();
 
     // register commands specified in package.json
     const commands = {
