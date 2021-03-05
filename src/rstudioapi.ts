@@ -344,7 +344,9 @@ export async function sendCodeToRTerminal(code: string, focus: boolean) {
   await runTextInTerm(code);
   if (focus) {
     const rTerm = await chooseTerminal();
-    rTerm.show();
+    if (rTerm !== undefined) {
+      rTerm.show();
+    }
   }
 }
 
