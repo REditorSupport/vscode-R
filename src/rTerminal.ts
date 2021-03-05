@@ -206,11 +206,8 @@ export async function chooseTerminal(): Promise<vscode.Terminal> {
     }
 
     if (rTerm === undefined) {
-        const success = await createRTerm(true);
+        await createRTerm(true);
         await delay(200); // Let RTerm warm up
-        if (!success) {
-            return undefined;
-        }
     }
 
     return rTerm;
