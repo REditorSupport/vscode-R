@@ -955,7 +955,8 @@
           "default": "editor",
           "enum": [
             "editor",
-            "terminal"
+            "terminal",
+            "none"
           ],
           "description": "Keeping focus when running."
         },

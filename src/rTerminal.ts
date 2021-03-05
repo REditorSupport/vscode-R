@@ -265,5 +265,7 @@ export async function runTextInTerm(text: string): Promise<void> {
 
 function setFocus(term: vscode.Terminal) {
     const focus: string = config().get('source.focus');
-    term.show(focus !== 'terminal');
+    if (focus !== 'none') {
+        term.show(focus !== 'terminal');
+    }
 }
