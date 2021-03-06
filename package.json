@@ -955,9 +955,10 @@
           "default": "editor",
           "enum": [
             "editor",
-            "terminal"
+            "terminal",
+            "none"
           ],
-          "description": "Keeping focus when running."
+          "description": "What to show/focus after running code. Set to 'editor' or 'terminal' to show the terminal. Set to 'none' to not show the terminal."
         },
         "r.alwaysUseActiveTerminal": {
           "type": "boolean",
