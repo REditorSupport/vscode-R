@@ -680,17 +680,18 @@
       }
     ],
     "menus": {
-      "editor/title": [
+      "editor/title/run": [
         {
           "when": "editorLangId == r",
-          "command": "r.runSource",
-          "group": "navigation"
+          "command": "r.runSource"
         },
         {
           "when": "editorLangId == rmd",
           "command": "r.knitRmd",
           "group": "navigation"
-        },
+        }
+      ],
+      "editor/title": [
         {
           "command": "r.browser.refresh",
           "when": "resourceScheme =~ /webview/ && r.browser.active",
