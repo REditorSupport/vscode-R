@@ -67,7 +67,12 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 			vscode.commands.registerCommand('r.helpPanel.back', () => rHelp?.goBack()),
 			vscode.commands.registerCommand('r.helpPanel.forward', () => rHelp?.goForward()),
 			vscode.commands.registerCommand('r.helpPanel.openExternal', () => rHelp?.openExternal()),
-			vscode.commands.registerCommand('r.helpPanel.openForSelection', (preserveFocus: boolean = false) => rHelp?.openHelpForSelection(!!preserveFocus))
+			vscode.commands.registerCommand('r.helpPanel.openForSelection', (preserveFocus: boolean = false) => rHelp?.openHelpForSelection(!!preserveFocus)),
+			vscode.commands.registerCommand('r.helpPanel.openForPath', (path?: string) => {
+				if(path){
+					void rHelp?.showHelpForPath(path);
+				}
+			})
 		);
 		
 		vscode.window.registerWebviewPanelSerializer('rhelp', rHelp);
@@ -340,16 +345,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 
 	// quickly open help page by alias
 	public async openHelpByAlias(token: string = '', preserveFocus: boolean = false): Promise<boolean> {
-		const aliases = await this.getAllAliases();
-		if(!aliases){
-			return false;
-		}
-
-		const matchingAliases = aliases.filter(alias => (
-			token === alias.name
-			|| token === `${alias.package}::${alias.name}`
-			|| token === `${alias.package}:::${alias.name}`
-		));
+		const matchingAliases = await this.getMatchingAliases(token);
 
 		let pickedAlias: Alias | undefined;
 		if(matchingAliases.length === 0){
@@ -363,6 +359,21 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 			return await this.showHelpForAlias(pickedAlias, preserveFocus);
 		}
 		return false;
+	}
+	
+	public async getMatchingAliases(token: string): Promise<Alias[]> {
+		const aliases = await this.getAllAliases();
+		if(!aliases){
+			[];
+		}
+
+		const matchingAliases = aliases.filter(alias => (
+			token === alias.name
+			|| token === `${alias.package}::${alias.name}`
+			|| token === `${alias.package}:::${alias.name}`
+		));
+		
+		return matchingAliases;
 	}
 
 	// search function, similar to calling `?` in R
