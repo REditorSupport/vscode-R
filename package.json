@@ -615,6 +615,11 @@
         "title": "Open help for selection",
         "category": "R",
         "command": "r.helpPanel.openForSelection"
+      },
+      {
+        "title": "Open help for path",
+        "category": "R",
+        "command": "r.helpPanel.openForPath"
       }
     ],
     "keybindings": [
@@ -945,6 +950,11 @@
           "markdownDescription": "DEPRECATED! Path to an R executable. Must be \"vanilla\" R, not radian etc.! Will be read from registry or path if not set.",
           "markdownDeprecationMessage": "Will be deprecated. Use `#r.rpath.windows#`, `#r.rpath.mac#`, or `#r.rpath.linux#` instead.",
           "deprecationMessage": "Will be deprecated. Use r.rpath.windows, r.rpath.mac, or r.rpath.linux instead."
+        },
+        "r.helpPanel.enableHoverLinks": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show links to matching help pages in hover"
         },
         "r.source.encoding": {
           "type": "string",

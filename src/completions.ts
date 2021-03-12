@@ -10,6 +10,8 @@ import * as vscode from 'vscode';
 import * as session from './session';
 import { extendSelection } from './selection';
 import { cleanLine } from './lineCache';
+import { globalRHelp } from './extension';
+import { config } from './util';
 
 
 // Get with names(roxygen2:::default_tags())
@@ -33,6 +35,30 @@ export class HoverProvider implements vscode.HoverProvider {
         return new vscode.Hover(`\`\`\`\n${session.globalenv[text].str}\n\`\`\``);
     }
 }
+
+export class HelpLinkHoverProvider implements vscode.HoverProvider {
+    async provideHover(document: vscode.TextDocument, position: vscode.Position): Promise<vscode.Hover> {
+        if(!config().get<boolean>('helpPanel.enableHoverLinks')){
+            return null;
+        }
+        const re = /([a-zA-Z0-9._:])+/;
+        const wordRange = document.getWordRangeAtPosition(position, re);
+        const token = document.getText(wordRange);
+        const aliases = await globalRHelp?.getMatchingAliases(token) || [];
+        const mds = aliases.map(a => {
+            const cmdText = `${a.package}::${a.name}`;
+            const args = [`/library/${a.package}/html/${a.alias}.html`];
+            const encodedArgs = encodeURIComponent(JSON.stringify(args));
+            const cmd = 'command:r.helpPanel.openForPath';
+            const cmdUri = vscode.Uri.parse(`${cmd}?${encodedArgs}`);
+            return `[\`${cmdText}\`](${cmdUri})`;
+        });
+        const md = new vscode.MarkdownString(mds.join('  \n'));
+        md.isTrusted = true;
+        return new vscode.Hover(md, wordRange);        
+    }
+}
+
 
 export class StaticCompletionItemProvider implements vscode.CompletionItemProvider {
     provideCompletionItems(document: vscode.TextDocument, position: vscode.Position): vscode.CompletionItem[] | undefined {
