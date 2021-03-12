@@ -51,9 +51,9 @@ export class HelpLinkHoverProvider implements vscode.HoverProvider {
             const encodedArgs = encodeURIComponent(JSON.stringify(args));
             const cmd = 'command:r.helpPanel.openForPath';
             const cmdUri = vscode.Uri.parse(`${cmd}?${encodedArgs}`);
-            return `[${cmdText}](${cmdUri})`;
+            return `[\`${cmdText}\`](${cmdUri})`;
         });
-        const md = new vscode.MarkdownString(mds.join('\n\n'));
+        const md = new vscode.MarkdownString(mds.join('  \n'));
         md.isTrusted = true;
         return new vscode.Hover(md, wordRange);        
     }
