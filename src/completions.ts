@@ -12,6 +12,7 @@ import { extendSelection } from './selection';
 import { cleanLine } from './lineCache';
 import { globalRHelp } from './extension';
 import { config } from './util';
+import { activeEditorContext } from './rstudioapi';
 
 
 // Get with names(roxygen2:::default_tags())
@@ -36,29 +37,32 @@ export class HoverProvider implements vscode.HoverProvider {
     }
 }
 
-export class HelpLinkHoverProvider implements vscode.HoverProvider {
-    async provideHover(document: vscode.TextDocument, position: vscode.Position): Promise<vscode.Hover> {
-        if(!config().get<boolean>('helpPanel.enableHoverLinks')){
+export class HelpLinkCodeActionProvider implements vscode.CodeActionProvider {
+    public static readonly providedCodeActionKinds = [
+        vscode.CodeActionKind.Empty
+    ];
+
+    public async provideCodeActions(document: vscode.TextDocument, range: vscode.Range): Promise<vscode.CodeAction[] | undefined> {
+        if (!config().get<boolean>('helpPanel.enableHoverLinks')) {
             return null;
         }
         const re = /([a-zA-Z0-9._:])+/;
-        const wordRange = document.getWordRangeAtPosition(position, re);
+        const wordRange = range.isEmpty ? document.getWordRangeAtPosition(range.end, re) : range;
         const token = document.getText(wordRange);
         const aliases = await globalRHelp?.getMatchingAliases(token) || [];
+        const cmd = 'r.helpPanel.openForPath';
         const mds = aliases.map(a => {
-            const cmdText = `${a.package}::${a.name}`;
-            const args = [`/library/${a.package}/html/${a.alias}.html`];
-            const encodedArgs = encodeURIComponent(JSON.stringify(args));
-            const cmd = 'command:r.helpPanel.openForPath';
-            const cmdUri = vscode.Uri.parse(`${cmd}?${encodedArgs}`);
-            return `[\`${cmdText}\`](${cmdUri})`;
+            const action = new vscode.CodeAction(`Show help for ${a.package}::${a.name}`, vscode.CodeActionKind.Empty);
+            action.command = {
+                title: 'help',
+                command: cmd,
+                arguments: [`/library/${a.package}/html/${a.alias}.html`],
+            };
+            return action;
         });
-        const md = new vscode.MarkdownString(mds.join('  \n'));
-        md.isTrusted = true;
-        return new vscode.Hover(md, wordRange);        
+        return mds;
     }
 }
-
 
 export class StaticCompletionItemProvider implements vscode.CompletionItemProvider {
     provideCompletionItems(document: vscode.TextDocument, position: vscode.Position): vscode.CompletionItem[] | undefined {
