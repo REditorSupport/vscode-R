@@ -12,7 +12,6 @@ import { extendSelection } from './selection';
 import { cleanLine } from './lineCache';
 import { globalRHelp } from './extension';
 import { config } from './util';
-import { activeEditorContext } from './rstudioapi';
 
 
 // Get with names(roxygen2:::default_tags())
