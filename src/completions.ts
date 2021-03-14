@@ -36,13 +36,36 @@ export class HoverProvider implements vscode.HoverProvider {
     }
 }
 
+export class HelpLinkHoverProvider implements vscode.HoverProvider {
+    async provideHover(document: vscode.TextDocument, position: vscode.Position): Promise<vscode.Hover> {
+        if (config().get<string>('helpPanel.showHelpLinks') !== 'hover') {
+            return null;
+        }
+        const re = /([a-zA-Z0-9._:])+/;
+        const wordRange = document.getWordRangeAtPosition(position, re);
+        const token = document.getText(wordRange);
+        const aliases = await globalRHelp?.getMatchingAliases(token) || [];
+        const cmd = 'command:r.helpPanel.openForPath';
+        const mds = aliases.map(a => {
+            const cmdText = `${a.package}::${a.name}`;
+            const args = [`/library/${a.package}/html/${a.alias}.html`];
+            const encodedArgs = encodeURIComponent(JSON.stringify(args));
+            const cmdUri = vscode.Uri.parse(`${cmd}?${encodedArgs}`);
+            return `[\`${cmdText}\`](${cmdUri})`;
+        });
+        const md = new vscode.MarkdownString(mds.join('  \n'));
+        md.isTrusted = true;
+        return new vscode.Hover(md, wordRange);
+    }
+}
+
 export class HelpLinkCodeActionProvider implements vscode.CodeActionProvider {
     public static readonly providedCodeActionKinds = [
         vscode.CodeActionKind.Empty
     ];
 
     public async provideCodeActions(document: vscode.TextDocument, range: vscode.Range): Promise<vscode.CodeAction[] | undefined> {
-        if (!config().get<boolean>('helpPanel.enableHoverLinks')) {
+        if (config().get<string>('helpPanel.showHelpLinks') !== 'codeActions') {
             return null;
         }
         const re = /([a-zA-Z0-9._:])+/;

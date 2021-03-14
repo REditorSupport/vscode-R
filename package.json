@@ -951,10 +951,15 @@
           "markdownDeprecationMessage": "Will be deprecated. Use `#r.rpath.windows#`, `#r.rpath.mac#`, or `#r.rpath.linux#` instead.",
           "deprecationMessage": "Will be deprecated. Use r.rpath.windows, r.rpath.mac, or r.rpath.linux instead."
         },
-        "r.helpPanel.enableHoverLinks": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Show links to matching help pages in hover"
+        "r.helpPanel.showHelpLinks": {
+          "type": "string",
+          "default": "hover",
+          "enum": [
+            "hover",
+            "codeActions",
+            "none"
+          ],
+          "description": "Where to show links to matching help pages in editor."
         },
         "r.source.encoding": {
           "type": "string",

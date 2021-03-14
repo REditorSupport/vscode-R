@@ -132,6 +132,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // register (session) hover and completion providers
     vscode.languages.registerHoverProvider('r', new completions.HoverProvider());
+    vscode.languages.registerHoverProvider('r', new completions.HelpLinkHoverProvider());
     vscode.languages.registerCodeActionsProvider('r', new completions.HelpLinkCodeActionProvider());
     vscode.languages.registerCompletionItemProvider('r', new completions.StaticCompletionItemProvider(), '@');
 
