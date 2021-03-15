@@ -118,8 +118,7 @@ if (interactive() &&
               class = class(obj),
               type = scalar(typeof(obj)),
               length = scalar(length(obj)),
-              str = scalar(trimws(str)),
-              size = scalar(unclass(object.size(obj)))
+              str = scalar(trimws(str))
             )
             if ((is.list(obj) ||
               is.environment(obj)) &&
