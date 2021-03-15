@@ -1,8 +1,5 @@
 [
   {
-    "extends": ["TypeScript"]
-  },
-  {
     "before": [
       "assert.equal"
     ],

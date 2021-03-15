@@ -1,5 +1,17 @@
 # Change Log
 
+# 1.6.5
+
+* Add links to help pages in hover #578
+* Move `r.runSource` and `r.knitRmd` to `editor/title/run` #573 (Fix #572)
+* Fix so code can be run after creating terminal #567
+* Add option to keep terminal hidden after running code #566
+* Scroll to bottom after running a command #559 (Thank you @samkimhis)
+* Refactoring and implementation of webviewPanelSerializer #556
+* add option vsc.hover.str.max.level #545
+* Change workspace tooltip #544 (Thank you @ElianHugh)
+
+
 ## 1,6,4
 
 * Better error message when reading aliases (#518)
