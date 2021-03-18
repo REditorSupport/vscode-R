@@ -213,7 +213,7 @@ export async function chooseTerminal(): Promise<vscode.Terminal> {
     return rTerm;
 }
 
-export async function runSelectionInTerm(moveCursor: boolean): Promise<void> {
+export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): Promise<void> {
     const selection = getSelection();
     if (moveCursor && selection.linesDownToMoveCursor > 0) {
         const lineCount = vscode.window.activeTextEditor.document.lineCount;
@@ -224,7 +224,11 @@ export async function runSelectionInTerm(moveCursor: boolean): Promise<void> {
         await vscode.commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
         await vscode.commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
     }
-    await runTextInTerm(selection.selectedText);
+    if(useRepl && vscode.debug.activeDebugSession?.type === 'R-Debugger'){
+        await sendRangeToRepl(selection.range);
+    } else{
+        await runTextInTerm(selection.selectedText);
+    }
 }
 
 export async function runChunksInTerm(chunks: vscode.Range[]): Promise<void> {
@@ -265,4 +269,12 @@ function setFocus(term: vscode.Terminal) {
     if (focus !== 'none') {
         term.show(focus !== 'terminal');
     }
+}
+
+export async function sendRangeToRepl(rng: vscode.Range): Promise<void> {
+    const sel0 = vscode.window.activeTextEditor.selections;
+    const sel1 = new vscode.Selection(rng.start, rng.end);
+    vscode.window.activeTextEditor.selections = [sel1];
+    await vscode.commands.executeCommand('editor.debug.action.selectionToRepl');
+    vscode.window.activeTextEditor.selections = sel0;
 }
