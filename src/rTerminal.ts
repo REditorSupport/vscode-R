@@ -252,7 +252,7 @@ export async function runTextInTerm(text: string, execute = true): Promise<void>
         const rtermSendDelay: number = config().get('rtermSendDelay');
         const split = text.split('\n');
         const n_splits = split.length;
-        var count = 0;
+        let count = 0;
         for (const line of split) {
             if (count > 0) {
                 await delay(rtermSendDelay); // Increase delay if RTerm can't handle speed.
@@ -260,7 +260,7 @@ export async function runTextInTerm(text: string, execute = true): Promise<void>
             ++count;
 
             // Avoid sending newline on last line
-            if (count == n_splits && !execute) {
+            if (count === n_splits && !execute) {
                 term.sendText(line, false);
             } else {
                 term.sendText(line);
