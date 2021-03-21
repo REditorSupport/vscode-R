@@ -237,7 +237,7 @@ export async function runChunksInTerm(chunks: vscode.Range[]): Promise<void> {
     }
 }
 
-export async function runTextInTerm(text: string): Promise<void> {
+export async function runTextInTerm(text: string, execute: boolean): Promise<void> {
     const term = await chooseTerminal();
     if (term === undefined) {
         return;
@@ -247,12 +247,24 @@ export async function runTextInTerm(text: string): Promise<void> {
             // Surround with ANSI control characters for bracketed paste mode
             text = `\x1b[200~${text}\x1b[201~`;
         }
-        term.sendText(text);
+        term.sendText(text, execute);
     } else {
         const rtermSendDelay: number = config().get('rtermSendDelay');
-        for (const line of text.split('\n')) {
-            await delay(rtermSendDelay); // Increase delay if RTerm can't handle speed.
-            term.sendText(line);
+        const split = text.split('\n');
+        const n_splits = split.length;
+        var count = 0;
+        for (const line of split) {
+            if (count > 0) {
+                await delay(rtermSendDelay); // Increase delay if RTerm can't handle speed.
+            }
+            ++count;
+
+            // Avoid sending newline on last line
+            if (count == n_splits && !execute) {
+                term.sendText(line, false);
+            } else {
+                term.sendText(line);
+            }
         }
     }
     setFocus(term);

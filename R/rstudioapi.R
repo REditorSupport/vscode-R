@@ -242,13 +242,13 @@ versionInfo <- function() {
 }
 
 sendToConsole <- function(code, execute = TRUE, echo = TRUE, focus = FALSE) {
-    if (!execute || !echo) {
-          stop("rstudioapi::sendToConsole only supports execute = TRUE and echo = TRUE in VSCode.")
-      }
+    if (!echo) {
+        stop("rstudioapi::sendToConsole only supports echo = TRUE in VSCode.")
+    }
 
     code_to_run <- paste0(code, collapse = "\n")
     invisible(
-        rstudioapi_call("send_to_console", code = code_to_run, focus = focus)
+        rstudioapi_call("send_to_console", code = code_to_run, execute = execute, focus = focus)
     )
 }
 
