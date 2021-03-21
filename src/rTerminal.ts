@@ -272,9 +272,16 @@ function setFocus(term: vscode.Terminal) {
 }
 
 export async function sendRangeToRepl(rng: vscode.Range): Promise<void> {
-    const sel0 = vscode.window.activeTextEditor.selections;
-    const sel1 = new vscode.Selection(rng.start, rng.end);
-    vscode.window.activeTextEditor.selections = [sel1];
+    const editor = vscode.window.activeTextEditor;
+    const sel0 = editor.selections;
+    let sel1 = new vscode.Selection(rng.start, rng.end);
+    while(/^[\r\n]/.exec(editor.document.getText(sel1))){
+        sel1 = new vscode.Selection(sel1.start.translate(1), sel1.end);
+    }
+    while(/\r?\n\r?\n$/.exec(editor.document.getText(sel1))){
+        sel1 = new vscode.Selection(sel1.start, sel1.end.translate(-1));
+    }
+    editor.selections = [sel1];
     await vscode.commands.executeCommand('editor.debug.action.selectionToRepl');
-    vscode.window.activeTextEditor.selections = sel0;
+    editor.selections = sel0;
 }
