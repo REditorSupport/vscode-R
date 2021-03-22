@@ -747,12 +747,12 @@
         {
           "command": "r.workspaceViewer.view",
           "group": "inline",
-          "when": "view == workspaceViewer"
+          "when": "view == workspaceViewer && viewItem == rootNode"
         },
         {
           "command": "r.workspaceViewer.remove",
           "group": "inline",
-          "when": "view == workspaceViewer"
+          "when": "view == workspaceViewer && viewItem == rootNode"
         },
         {
           "command": "r.helpPanel.searchPackage",
