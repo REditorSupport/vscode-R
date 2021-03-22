@@ -2,6 +2,7 @@
         "recommendations": [
                 "dbaeumer.vscode-eslint",
                 "GrapeCity.gc-excelviewer",
-                "ikuyadeu.devreplay"
+                "ikuyadeu.devreplay",
+		"DavidAnson.vscode-markdownlint"
 	]
 }
