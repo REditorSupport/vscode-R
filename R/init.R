@@ -133,9 +133,10 @@ if (interactive() &&
             if (show_object_size) {
               addr <- address(obj)
               cobj <- cache[[name]]
-              if (is.null(cobj) || cobj$address != addr) {
+              if (is.null(cobj) || cobj$address != addr || cobj$length != info$length) {
                 cache[[name]] <- cobj <- list(
                   address = addr,
+                  length = length(obj),
                   size = unclass(object.size(obj))
                 )
               }
