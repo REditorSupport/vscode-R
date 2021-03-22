@@ -17,11 +17,11 @@ Full document is on the [Wiki page](https://github.com/Ikuyadeu/vscode-R/wiki)
 
 * Run Source(`Ctrl+Shift+S` or Push icon![icon](images/FileDownload.png)) and Run Selected Line (`Ctrl+Enter`) (Mac: `Ctrl` to `⌘`)
 * Run functions:
-  * `nrow` (`Show number of rows for selected object`)
-  * `length` (`Show length for a selected object`)
-  * `head` (`Show first part of a selected object`)
-  * `thead` (`Show first part of a selected object (transposed)`)
-  * `names` (`Show names for a selected object`)
+    * `nrow` (`Show number of rows for selected object`)
+    * `length` (`Show length for a selected object`)
+    * `head` (`Show first part of a selected object`)
+    * `thead` (`Show first part of a selected object (transposed)`)
+    * `names` (`Show names for a selected object`)
 
 ![use Run .R](images/feature.png)
 
@@ -225,7 +225,7 @@ options(vsc.view = "Two" | "Active" | "Beside" | FALSE)
 # Use FALSE to disable help panel and revert to old behaviour.
 options(vsc.helpPanel = "Two" | "Active" | "Beside" | FALSE)
 
-# How much of the object to show on hover and autocomplete detail? 
+# How much of the object to show on hover and autocomplete detail?
 # As controlled by max.level arg of str().
 # Use 0 (or 1) is the default - literal value or object type and dimensions
 # Use 2 to show list contents, data frame columns, and example values.
