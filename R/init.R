@@ -104,6 +104,7 @@ if (interactive() &&
         rm(list = setdiff(names(globalenv_cache), all_names), envir = cache)
         is_promise <- rlang::env_binding_are_lazy(env, all_names)
         is_active <- rlang::env_binding_are_active(env, all_names)
+        show_object_size <- getOption("vsc.show_object_size", FALSE)
         objs <- lapply(all_names, function(name) {
           if (is_promise[[name]]) {
             info <- list(
@@ -122,22 +123,24 @@ if (interactive() &&
           } else {
             obj <- env[[name]]
 
-            addr <- address(obj)
-            cobj <- cache[[name]]
-            if (is.null(cobj) || cobj$address != addr) {
-              cache[[name]] <- cobj <- list(
-                address = addr,
-                size = unclass(object.size(obj))
-              )
-            }
-
             info <- list(
               class = class(obj),
               type = scalar(typeof(obj)),
               length = scalar(length(obj)),
-              str = scalar(trimws(capture_str(obj)[[1L]])),
-              size = scalar(cobj$size)
+              str = scalar(trimws(capture_str(obj)[[1L]]))
             )
+
+            if (show_object_size) {
+              addr <- address(obj)
+              cobj <- cache[[name]]
+              if (is.null(cobj) || cobj$address != addr) {
+                cache[[name]] <- cobj <- list(
+                  address = addr,
+                  size = unclass(object.size(obj))
+                )
+              }
+              info$size <- scalar(cobj$size)
+            }
 
             if ((is.list(obj) ||
               is.environment(obj)) &&
