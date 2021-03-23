@@ -251,16 +251,14 @@ export async function runTextInTerm(text: string, execute: boolean = true): Prom
     } else {
         const rtermSendDelay: number = config().get('rtermSendDelay');
         const split = text.split('\n');
-        const n_splits = split.length;
-        let count = 0;
-        for (const line of split) {
+        const last_split = split.length - 1;
+        for (const [count, line] of split.entries()) {
             if (count > 0) {
                 await delay(rtermSendDelay); // Increase delay if RTerm can't handle speed.
             }
-            ++count;
 
             // Avoid sending newline on last line
-            if (count === n_splits && !execute) {
+            if (count === last_split && !execute) {
                 term.sendText(line, false);
             } else {
                 term.sendText(line);
