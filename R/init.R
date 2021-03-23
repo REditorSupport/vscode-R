@@ -92,10 +92,19 @@ if (interactive() &&
         }
       }
 
-      inspect_env <- function(env) {
+      address <- function(x) {
+        info <- utils::capture.output(.Internal(inspect(x, 0L)))
+        gsub("@([a-z0-9]+)\\s+.+", "\\1", info[[1]])
+      }
+
+      globalenv_cache <- new.env(parent = emptyenv())
+
+      inspect_env <- function(env, cache) {
         all_names <- ls(env)
+        rm(list = setdiff(names(globalenv_cache), all_names), envir = cache)
         is_promise <- rlang::env_binding_are_lazy(env, all_names)
         is_active <- rlang::env_binding_are_active(env, all_names)
+        show_object_size <- getOption("vsc.show_object_size", FALSE)
         objs <- lapply(all_names, function(name) {
           if (is_promise[[name]]) {
             info <- list(
@@ -113,14 +122,27 @@ if (interactive() &&
             )
           } else {
             obj <- env[[name]]
-            str <- capture_str(obj)[[1L]]
+
             info <- list(
               class = class(obj),
               type = scalar(typeof(obj)),
               length = scalar(length(obj)),
-              str = scalar(trimws(str)),
-              size = scalar(unclass(object.size(obj)))
+              str = scalar(trimws(capture_str(obj)[[1L]]))
             )
+
+            if (show_object_size) {
+              addr <- address(obj)
+              cobj <- cache[[name]]
+              if (is.null(cobj) || cobj$address != addr || cobj$length != info$length) {
+                cache[[name]] <- cobj <- list(
+                  address = addr,
+                  length = length(obj),
+                  size = unclass(object.size(obj))
+                )
+              }
+              info$size <- scalar(cobj$size)
+            }
+
             if ((is.list(obj) ||
               is.environment(obj)) &&
               !is.null(names(obj))) {
@@ -152,7 +174,7 @@ if (interactive() &&
 
         update_globalenv <- function(...) {
           tryCatch({
-            objs <- inspect_env(.GlobalEnv)
+            objs <- inspect_env(.GlobalEnv, globalenv_cache)
             jsonlite::write_json(objs, globalenv_file, force = TRUE, pretty = FALSE)
             cat(get_timestamp(), file = globalenv_lock_file)
           }, error = message)

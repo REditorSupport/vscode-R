@@ -135,11 +135,20 @@ export class WorkspaceItem extends TreeItem {
 			return str;
 		}
 	}
+
+	private getSizeString(bytes: number): string {
+		if (bytes < 1024) {
+			return `${bytes} bytes`;
+		} else {
+			const e = Math.floor(Math.log(bytes) / Math.log(1024));
+			return (bytes / Math.pow(1024, e)).toFixed(0) + 'KMGTP'.charAt(e - 1) + 'b';
+		}
+	}
+
 	private getTooltip(label:string, rClass: string, 
 				size: number, treeLevel: number): string {
-
 		if (size !== undefined && treeLevel === 0) {
-			return `${label} (${rClass}, ${size} bytes)`;
+			return `${label} (${rClass}, ${this.getSizeString(size)})`;
 		} else if (treeLevel === 1) {
 			return null;
 		} else {
