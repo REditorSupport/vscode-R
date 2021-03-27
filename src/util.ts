@@ -80,7 +80,7 @@ export async function getRpath(quote=false, overwriteConfig?: string): Promise<s
 
     if(!rpath){
         // inform user about missing R path:
-        void vscode.window.showErrorMessage(`${process.platform} can't use R`);
+        void vscode.window.showErrorMessage(`Cannot find R to use for help, package installation etc. Change setting r.${configEntry} to R path.`);
     } else if(quote && /^[^'"].* .*[^'"]$/.exec(rpath)){
         // if requested and rpath contains spaces, add quotes:
         rpath = `"${rpath}"`;
@@ -93,17 +93,12 @@ export async function getRpath(quote=false, overwriteConfig?: string): Promise<s
 }
 
 export async function getRterm(): Promise<string|undefined> {
-    
-    let rpath = '';
-    const platform: string = process.platform;
-    
-    if ( platform === 'win32') {
-        rpath = config().get<string>('rterm.windows');
-    } else if (platform === 'darwin') {
-        rpath = config().get<string>('rterm.mac');
-    } else if (platform === 'linux') {
-        rpath = config().get<string>('rterm.linux');
-    }
+    const configEntry = (
+        process.platform === 'win32' ? 'rterm.windows' :
+        process.platform === 'darwin' ? 'rterm.mac' :
+        'rterm.linux'
+    );
+    let rpath = config().get<string>(configEntry);
 
     rpath ||= await getRpathFromSystem();
     
@@ -111,7 +106,7 @@ export async function getRterm(): Promise<string|undefined> {
         return rpath;
     }
 
-    void vscode.window.showErrorMessage(`${process.platform} can't use R`);
+    void vscode.window.showErrorMessage(`Cannot find R for creating R terminal. Change setting r.${configEntry} to R path.`);
     return undefined;
 }
 
