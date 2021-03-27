@@ -127,7 +127,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
 
             return true;
         }
-        void vscode.window.showErrorMessage('Cannot find R client.  Please check R path in preferences and reload.');
+        void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check r.rterm setting.`);
 
         return false;
     });
