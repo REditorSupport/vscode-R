@@ -16,13 +16,16 @@ import * as workspaceViewer from './workspaceViewer';
 import * as apiImplementation from './apiImplementation';
 import * as rHelp from './rHelp';
 import * as completions from './completions';
-
+import * as rShare from './rShare';
+import * as rShareSession from './rShareSession';
 
 // global objects used in other files
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext | undefined = undefined;
 
+// rShare
+export let isLiveShareGuest: boolean;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -30,7 +33,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // is used to export an interface to the help panel
     // this export is used e.g. by vscode-r-debugger to show the help panel from within debug sessions
     const rExtension = new apiImplementation.RExtensionImplementation();
-    
+
     // assign extension context to global variable
     extensionContext = context;
 
@@ -39,7 +42,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // create R terminal
         'r.createRTerm': rTerminal.createRTerm,
 
-        // run code from editor in terminal 
+        // run code from editor in terminal
         'r.nrow': () => rTerminal.runSelectionOrWord(['nrow']),
         'r.length': () => rTerminal.runSelectionOrWord(['length']),
         'r.head': () => rTerminal.runSelectionOrWord(['head']),
@@ -89,8 +92,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // workspace viewer
         'r.workspaceViewer.refreshEntry': () => rWorkspace.refresh(),
-        'r.workspaceViewer.view': (node: workspaceViewer.WorkspaceItem) => rTerminal.runTextInTerm(`View(${node.label})`),
-        'r.workspaceViewer.remove': (node: workspaceViewer.WorkspaceItem) => rTerminal.runTextInTerm(`rm(${node.label})`),
+        'r.workspaceViewer.view': (node: workspaceViewer.WorkspaceItem) => workspaceViewer.viewItem(node.label),
+        'r.workspaceViewer.remove': (node: workspaceViewer.WorkspaceItem) => workspaceViewer.removeItem(node.label),
         'r.workspaceViewer.clear': workspaceViewer.clearWorkspace,
         'r.workspaceViewer.load': workspaceViewer.loadWorkspace,
         'r.workspaceViewer.save': workspaceViewer.saveWorkspace,
@@ -101,7 +104,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // (help related commands are registered in rHelp.initializeHelp)
     };
-    for(const key in commands){
+    for (const key in commands) {
         context.subscriptions.push(vscode.commands.registerCommand(key, commands[key]));
     }
 
@@ -113,22 +116,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // register on-enter rule for roxygen comments
     const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
     vscode.languages.setLanguageConfiguration('r', {
-		onEnterRules: [
-			{
-				// Automatically continue roxygen comments: #'
-				action: { indentAction: vscode.IndentAction.None, appendText: '#\' ' },
-				beforeText: /^#'.*/,
-			},
-		],
-		wordPattern,
-	});
+        onEnterRules: [
+            {
+                // Automatically continue roxygen comments: #'
+                action: { indentAction: vscode.IndentAction.None, appendText: '#\' ' },
+                beforeText: /^#'.*/,
+            },
+        ],
+        wordPattern,
+    });
 
 
     // initialize the package/help related functions
     globalRHelp = await rHelp.initializeHelp(context, rExtension);
 
 
-    // register codelens and complmetion providers for r markdown
+    // register codelens and completion providers for r markdown
     vscode.languages.registerCodeLensProvider('rmd', new rmarkdown.RMarkdownCodeLensProvider());
     vscode.languages.registerCompletionItemProvider('rmd', new rmarkdown.RMarkdownCompletionItemProvider(), ' ', ',');
 
@@ -142,18 +145,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // deploy session watcher (if configured by user)
     const enableSessionWatcher = util.config().get<boolean>('sessionWatcher', false);
     if (enableSessionWatcher) {
-        console.info('Initialize session watcher');
-        session.deploySessionWatcher(context.extensionPath);
+        await rShare.LiveSessionListener();
+        isLiveShareGuest = await rShare.isGuest();
 
-        // create status bar item that contains info about the session watcher
-        console.info('Create sessionStatusBarItem');
-        const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
-        sessionStatusBarItem.command = 'r.attachActive';
-        sessionStatusBarItem.text = 'R: (not attached)';
-        sessionStatusBarItem.tooltip = 'Attach Active Terminal';
-        sessionStatusBarItem.show();
-        context.subscriptions.push(sessionStatusBarItem);
-        session.startRequestWatcher(sessionStatusBarItem);
+        if (isLiveShareGuest) {
+            rShareSession.initGuest(context);
+        } else {
+            console.info('Initialize session watcher');
+            void session.deploySessionWatcher(context.extensionPath);
+
+            // create status bar item that contains info about the session watcher
+            console.info('Create sessionStatusBarItem');
+            const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+            sessionStatusBarItem.command = 'r.attachActive';
+            sessionStatusBarItem.text = 'R: (not attached)';
+            sessionStatusBarItem.tooltip = 'Attach Active Terminal';
+            sessionStatusBarItem.show();
+            context.subscriptions.push(sessionStatusBarItem);
+            void session.startRequestWatcher(sessionStatusBarItem);
+        }
 
         // track active text editor
         rstudioapi.trackLastActiveTextEditor(vscode.window.activeTextEditor);
@@ -168,9 +178,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
             rWorkspace
         );
         void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
+        void vscode.commands.executeCommand('setContext', 'r.LiveShare:isGuest', isLiveShareGuest);
 
-        // if session watcher is active, register dyamic completion provider
-        const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\'' ];
+        // if session watcher is active, register dynamic completion provider
+        const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
         vscode.languages.registerCompletionItemProvider('r', new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
 
