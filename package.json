@@ -834,12 +834,12 @@
         {
           "command": "r.workspaceViewer.load",
           "group": "navigation@0",
-          "when": "view == workspaceViewer"
+          "when": "view == workspaceViewer && !r.LiveShare:isGuest"
         },
         {
           "command": "r.workspaceViewer.save",
           "group": "navigation@1",
-          "when": "view == workspaceViewer"
+          "when": "view == workspaceViewer && !r.LiveShare:isGuest"
         },
         {
           "command": "r.workspaceViewer.clear",
@@ -995,6 +995,26 @@
           "type": "boolean",
           "default": false,
           "description": "Remove hidden items when clearing workspace."
+        },
+        "r.liveShare.attachGuestsOnJoin": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically call '.vsc.attach()' when there is an active R terminal and a guest joins."
+        },
+        "r.liveShare.allowGuestAttach": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow guests to call '.vsc.attach()' when the terminal does not have read/write permissions."
+        },
+        "r.liveShare.guestAttachDelay": {
+          "type": "integer",
+          "default": 1000,
+          "description": "Delay in milliseconds before the calls '.vsc.attach()'. A longer delay may be required for slower connections. Restart required to take effect."
+        },
+        "r.liveShare.allowCommandForwarding": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allows guests to call workspace viewer commands, even if the terminal does not have read/write permissions."
         }
       }
     }
@@ -1045,6 +1065,7 @@
     "popper.js": "^1.16.1",
     "showdown": "^1.9.1",
     "tree-kill": "^1.2.2",
+    "vsls": "^1.0.3015",
     "winreg": "^1.2.4"
   }
 }
