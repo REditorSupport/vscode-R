@@ -4,7 +4,7 @@ import * as fs from 'fs-extra';
 import { globalRHelp, rWorkspace } from './extension';
 import { UUID } from './rShare';
 import { dispatchRStudioAPICall } from './rstudioapi';
-import { config } from './util';
+import { config, readContent } from './util';
 import { showBrowser, showDataView, showWebView } from './session';
 import { rGuestService } from './rShare';
 
@@ -61,8 +61,8 @@ export function attachActiveGuest(): void {
 
 // Guest version of session.ts updateRequest(), no need to check for changes in files
 // as this is handled by the session.ts variant
-export async function updateGuestRequest(sessionStatusBarItem: vscode.StatusBarItem): Promise<void> {
-    const requestContent: string = await rGuestService.getRequestContent();
+export async function updateGuestRequest(sessionStatusBarItem: vscode.StatusBarItem, file : string): Promise<void> {
+    const requestContent: string = await readContent(file, 'utf8');
     console.info(`[updateGuestRequest] request: ${requestContent}`);
     if (typeof (requestContent) === 'string') {
         const request: IRequest = JSON.parse(requestContent) as IRequest;
@@ -110,8 +110,8 @@ export async function updateGuestRequest(sessionStatusBarItem: vscode.StatusBarI
 }
 
 // Call from host, pass globalenvfile
-export async function updateGuestGlobalenv(): Promise<void> {
-    const content: string = await rGuestService.getGlobalenvContent();
+export async function updateGuestGlobalenv(file: string): Promise<void> {
+    const content: string = await readContent(file, 'utf8');
     if (typeof content === 'string') {
         guestGlobalenv = JSON.parse(content);
         void rWorkspace?.refresh();
@@ -120,7 +120,7 @@ export async function updateGuestGlobalenv(): Promise<void> {
 }
 
 export async function updateGuestPlot(file: string): Promise<void> {
-    const plotContent = await rGuestService.requestFileContent(file);
+    const plotContent = await readContent(file, 'utf8');
     if (typeof plotContent === 'string') {
         await fs.outputFile(
             file,

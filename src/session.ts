@@ -11,7 +11,7 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
-import { config } from './util';
+import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { rWorkspace, globalRHelp, isLiveShareGuest } from './extension';
@@ -180,7 +180,7 @@ async function updateGlobalenv() {
             void rWorkspace?.refresh();
             console.info('[updateGlobalenv] Done');
             if (await isLiveShare() === true) {
-                rHostService.notifyGlobalenv();
+                rHostService.notifyGlobalenv(globalenvFile);
             }
         } else {
             console.info('[updateGlobalenv] File not found');
@@ -284,7 +284,7 @@ export async function showWebView(file: string, title: string, viewer: string | 
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(dir)],
             });
-        const content = await fs.readFile(file);
+        const content = await readContent(file);
         const html = content.toString()
             .replace('<body>', '<body style="color: black;">')
             .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
@@ -297,7 +297,7 @@ export async function showWebView(file: string, title: string, viewer: string | 
 export async function showDataView(source: string, type: string, title: string, file: string, viewer: string) {
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}`);
     if (isLiveShareGuest) {
-        const fileContent = await rGuestService.requestFileContent(file);
+        const fileContent = await rGuestService.requestFileContent(file, 'utf8');
         await fs.outputFile(
             file,
             fileContent
@@ -345,7 +345,7 @@ export async function showDataView(source: string, type: string, title: string, 
 
 export async function getTableHtml(webview: Webview, file: string) {
     resDir = isLiveShareGuest ? guestResDir : resDir;
-    const content = isLiveShareGuest ? await rGuestService.requestFileContent(file) : await fs.readFile(file);
+    const content = await readContent(file, 'utf8');
 
     return `
 <!DOCTYPE html>
@@ -397,8 +397,8 @@ export async function getTableHtml(webview: Webview, file: string) {
 }
 
 export async function getListHtml(webview: Webview, file: string) {
-    const content = isLiveShareGuest ? await rGuestService.requestFileContent(file) : await fs.readFile(file);
-
+    resDir = isLiveShareGuest ? guestResDir : resDir;
+    const content = await readContent(file, 'utf8');
 
     return `
 <!doctype HTML>
@@ -598,7 +598,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
             console.info(`[updateRequest] Ignored request outside workspace`);
         }
         if (await isLiveShare() === true) {
-            void rHostService.notifyRequest();
+            void rHostService.notifyRequest(requestFile);
         }
     }
 }
