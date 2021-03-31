@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
 import * as vsls from 'vsls';
 import * as fs from 'fs-extra';
-import { globalenvFile, requestFile } from './session';
 import { runTextInTerm } from './rTerminal';
 import { updateGuestGlobalenv, updateGuestPlot, updateGuestRequest } from './rShareSession';
-import { delay, config } from './util';
+import { delay, config, isTermActive } from './util';
 
 // LiveShare
 export let rHostService: HostService = undefined;
@@ -21,8 +20,6 @@ const enum ShareRequest {
     NotifyMessage = 'NotifyMessage',
     RequestAttachGuest = 'RequestAttachGuest',
     RequestRunTextInTerm = 'RequestRunTextInTerm',
-    GetGlobalenvContent = 'GetGlobalenvContent',
-    GetRequestContent = 'GetRequestContent',
     GetFileContent = 'GetFileContent',
 }
 const enum MessageType {
@@ -33,7 +30,7 @@ const enum MessageType {
 
 // Bool to check if live share is loaded and active
 export async function isLiveShare(): Promise<boolean> {
-    const shareStarted = (await vsls.getApi())?.session;
+    const shareStarted = (await vsls.getApi())?.session.id;
     // If there is a hosted session*, return true
     // else return false
     // * using vsls.getApi() instead of vsls.getApi().session.id
@@ -51,12 +48,6 @@ export async function isGuest(): Promise<boolean> {
     } else {
         return false;
     }
-}
-
-function isTermActive(): boolean {
-    const term = vscode.window.activeTerminal.name;
-    const termNames = ['R', 'R Interactive'];
-    return (termNames.includes(term)) ? true : false;
 }
 
 // Listens for the activation of a LiveShare session
@@ -139,16 +130,14 @@ export class HostService {
             /// File Handling ///
             // Host reads content from file, then passes the content
             // to the guest session.
-            this.service.onRequest(ShareRequest.GetRequestContent, async (): Promise<string> => {
-                return await fs.readFile(requestFile, 'utf8');
+            this.service.onRequest(ShareRequest.GetFileContent, async (args: [text: string, encoding?: string]): Promise<string | Buffer> => {
+                if (typeof (args[1]) !== 'undefined') {
+                    return await fs.readFile(args[0], args[1]);
+                } else {
+                    return await fs.readFile(args[0]);
+                }
             });
-            this.service.onRequest(ShareRequest.GetGlobalenvContent, async (): Promise<string> => {
-                return await fs.readFile(globalenvFile, 'utf8');
-            });
-            this.service.onRequest(ShareRequest.GetFileContent, async (args: [text: string]): Promise<string> => {
-                return await fs.readFile(args[0], 'utf8');
-            });
-            /// Terminal commands //
+            /// Terminal commands ///
             // Command arguments are sent from the guest to the host,
             // and then the host sends the arguments to the console
             this.service.onRequest(ShareRequest.RequestAttachGuest, async (): Promise<void> => {
@@ -157,7 +146,7 @@ export class HostService {
                     if (isTermActive() === true) {
                         await runTextInTerm(`.vsc.attach()`);
                     } else {
-                        this.service.notify(ShareRequest.NotifyMessage, { text: 'Cannot attach guest terminal. Must have active host R terminal.', messageType: MessageType.information });
+                        this.service.notify(ShareRequest.NotifyMessage, { text: 'Cannot attach guest terminal. Must have active host R terminal.', messageType: MessageType.error });
                     }
                 } else {
                     this.service.notify(ShareRequest.NotifyMessage, { text: 'The host has not enabled guest attach.', messageType: MessageType.warning });
@@ -180,17 +169,20 @@ export class HostService {
             console.error('[HostService] service activation failed');
         }
     }
-    /// Session Syncing
+    /// Session Syncing ///
     // These are called from the host in order to tell the guest session
     // to update the env/request/plot
-    public notifyGlobalenv(): void {
+    // This way, we don't have to re-create a guest version of the session
+    // watcher, and can rely on the host to tell when something needs to be
+    // updated
+    public notifyGlobalenv(file: string): void {
         if (this.isStarted) {
-            void this.service.notify(ShareRequest.NotifyEnvUpdate, {});
+            void this.service.notify(ShareRequest.NotifyEnvUpdate, { file });
         }
     }
-    public notifyRequest(): void {
+    public notifyRequest(file: string): void {
         if (this.isStarted) {
-            void this.service.notify(ShareRequest.NotifyRequestUpdate, {});
+            void this.service.notify(ShareRequest.NotifyRequestUpdate, { file });
         }
     }
     public notifyPlot(file: string): void {
@@ -210,16 +202,22 @@ export class GuestService {
             console.error('[GuestService] service request failed');
         } else {
             this._isStarted = true;
-            /// Session Syncing
-            this.service.onNotify(ShareRequest.NotifyEnvUpdate, (): void => {
-                void updateGuestGlobalenv();
+            /// Session Syncing ///
+            this.service.onNotify(ShareRequest.NotifyEnvUpdate, (args: { file: string }): void => {
+                void updateGuestGlobalenv(args.file);
             });
-            this.service.onNotify(ShareRequest.NotifyRequestUpdate, (): void => {
-                void updateGuestRequest(this._sessionStatusBarItem);
+            this.service.onNotify(ShareRequest.NotifyRequestUpdate, (args: { file: string }): void => {
+                void updateGuestRequest(this._sessionStatusBarItem, args.file);
             });
             this.service.onNotify(ShareRequest.NotifyPlotUpdate, (args: { file: string }): void => {
                 void updateGuestPlot(args.file);
             });
+            /// vscode Messages ///
+            // The host sends messages to the guest, which are displayed as a vscode window message
+            // E.g., teling the guest a terminal is not attached to the current session
+            //
+            // This way, we don't have to do much error checking on the guests side, which is more secure
+            // and less prone to error
             this.service.onNotify(ShareRequest.NotifyMessage, (args: { text: string, messageType: MessageType }): void => {
                 switch (args.messageType) {
                     case MessageType.error:
@@ -255,41 +253,34 @@ export class GuestService {
         }
     }
     // Used to ensure that the guest can run workspace viewer commands, e.g. view, remove, clean
+    // * Permissions are handled host-side
     public requestRunTextInTerm(text: string): void {
         if (this._isStarted) {
             void this.service.request(ShareRequest.RequestRunTextInTerm, [text]);
         }
     }
-    // As we can't expose the host files directly, we get the host to return the read file content
-    // to the guest session
-    public async getRequestContent(): Promise<string> {
+    // The session watcher relies on files for providing many functions to vscode-R.
+    // As LiveShare does not allow for exposing files outside a given workspace,
+    // the guest must rely on the host sending the content of a given file, in place
+    // of having their own /tmp/ files
+    public async requestFileContent(file: fs.PathLike | number) : Promise<Buffer>;
+    public async requestFileContent(file: fs.PathLike | number, encoding: string): Promise<string>;
+    public async requestFileContent(file: fs.PathLike | number, encoding?: string): Promise<string | Buffer> {
         if (this._isStarted) {
-            const returnedFile: string | unknown = await this.service.request(ShareRequest.GetRequestContent, []);
-            if (typeof returnedFile === 'string') {
-                return returnedFile;
+            if (encoding !== undefined) {
+                const content: string | unknown = await this.service.request(ShareRequest.GetFileContent, [file, encoding]);
+                if (typeof content === 'string') {
+                    return content;
+                } else {
+                    console.error('[GuestService] failed to retrieve file content (not of type "string")');
+                }
             } else {
-                console.log('[GuestService] failed to retrieve request content (not of type "string")');
-            }
-        }
-    }
-    public async getGlobalenvContent(): Promise<string> {
-        if (this._isStarted) {
-            const returnedFile: string | unknown = await this.service.request(ShareRequest.GetGlobalenvContent, []);
-            if (typeof returnedFile === 'string') {
-                return returnedFile;
-            } else {
-                console.log('[GuestService] failed to retrieve globalenv content (not of type "string")');
-            }
-        }
-    }
-    public async requestFileContent(file: string): Promise<string> {
-        if (this._isStarted) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-            const content: string | unknown = await this.service.request(ShareRequest.GetFileContent, [file]);
-            if (typeof content === 'string') {
-                return content;
-            } else {
-                console.log('[GuestService] failed to retrieve file content (not of type "string")');
+                const content: Buffer | unknown = await this.service.request(ShareRequest.GetFileContent, [file]);
+                if (content !== undefined) {
+                    return content as Buffer;
+                } else {
+                    console.error('[GuestService] failed to retrieve file content (not of type "Buffer")');
+                }
             }
         }
     }
