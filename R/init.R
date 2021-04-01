@@ -2,7 +2,7 @@
 # This file is executed with its containing directory as wd
 
 # Remember absolute path of vsc.R
-filepathVscR <- normalizePath("vsc.R")
+dir_init <- getwd()
 
 
 # This function is run at the beginning of R's startup sequence
@@ -55,7 +55,7 @@ initLast <- function() {
 
   # Source vsc utils in new environmeent
   .vsc <- new.env()
-  source(filepathVscR, local = .vsc)
+  source(file.path(dir_init, "vsc.R"), local = .vsc)
 
   # attach functions that are meant to be called by the user/vscode
   exports <- local({

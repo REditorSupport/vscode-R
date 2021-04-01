@@ -5,9 +5,9 @@ tempdir <- tempdir()
 homedir <- Sys.getenv(
   if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"
 )
-dir_extension <- Sys.getenv("VSCODE_WATCHER_DIR", file.path(homedir, ".vscode-R"))
-request_file <- file.path(dir_extension, "request.log")
-request_lock_file <- file.path(dir_extension, "request.lock")
+dir_watcher <- Sys.getenv("VSCODE_WATCHER_DIR", file.path(homedir, ".vscode-R"))
+request_file <- file.path(dir_watcher, "request.log")
+request_lock_file <- file.path(dir_watcher, "request.lock")
 
 if (is.null(getOption("help_type"))) {
   options(help_type = "html")
@@ -553,12 +553,8 @@ if (rstudioapi_enabled()) {
 
   rstudioapi_util_env <- new.env()
   rstudioapi_env <- new.env(parent = rstudioapi_util_env)
-  source(file.path(dir_extension, "rstudioapi_util.R"),
-    local = rstudioapi_util_env,
-  )
-  source(file.path(dir_extension, "rstudioapi.R"),
-    local = rstudioapi_env
-  )
+  source(file.path(dir_init, "rstudioapi_util.R"), local = rstudioapi_util_env)
+  source(file.path(dir_init, "rstudioapi.R"), local = rstudioapi_env)
   setHook(
     packageEvent("rstudioapi", "onLoad"),
     function(...) {
