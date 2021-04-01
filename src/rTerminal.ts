@@ -1,16 +1,16 @@
 'use strict';
 
 import * as path from 'path';
-import * as os from 'os';
 import { pathExists } from 'fs-extra';
 import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
 
+import { extensionContext } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { removeSessionFiles } from './session';
+import { removeSessionFiles, watcherDir } from './session';
 import { config, delay, getRterm } from './util';
 export let rTerm: vscode.Terminal;
 
@@ -116,10 +116,14 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
                 shellPath: termPath,
                 shellArgs: termOpt,
             };
+            const newRprofile = extensionContext.asAbsolutePath(path.join('R', '.Rprofile'));
+            const initR = extensionContext.asAbsolutePath(path.join('R', 'init.R'));
             if (config().get<boolean>('sessionWatcher')) {
                 termOptions.env = {
                     R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
-                    R_PROFILE_USER: path.join(os.homedir(), '.vscode-R', '.Rprofile'),
+                    R_PROFILE_USER: newRprofile,
+                    VSCODE_INIT_R: initR,
+                    VSCODE_WATCHER_DIR: watcherDir
                 };
             }
             rTerm = vscode.window.createTerminal(termOptions);

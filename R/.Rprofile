@@ -1,3 +1,5 @@
+
+# Source the original .Rprofile
 local({
   try_source <- function(file) {
     if (file.exists(file)) {
@@ -23,9 +25,10 @@ local({
   invisible()
 })
 
-if (!exists(".vsc")) {
-  source(file.path(
-    Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"),
-    ".vscode-R", "init.R")
-  )
-}
+# Run vscode initializer
+local({
+  filePathInit <- Sys.getenv("VSCODE_INIT_R")
+  if(nzchar(filePathInit)){
+    source(filePathInit, chdir = TRUE, local = TRUE)
+  }
+})

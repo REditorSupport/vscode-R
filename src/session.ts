@@ -18,7 +18,7 @@ import { rWorkspace, globalRHelp } from './extension';
 
 export let globalenv: any;
 let resDir: string;
-let watcherDir: string;
+export let watcherDir: string;
 let requestFile: string;
 let requestLockFile: string;
 let requestTimeStamp: number;
@@ -43,21 +43,13 @@ let activeBrowserExternalUri: Uri;
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
-    watcherDir = path.join(os.homedir(), '.vscode-R');
+    const tempPath = os.tmpdir();
+    watcherDir = path.join(tempPath, '.vscode-R');
     console.info(`[deploySessionWatcher] watcherDir: ${watcherDir}`);
     if (!fs.existsSync(watcherDir)) {
         console.info('[deploySessionWatcher] watcherDir not exists, create directory');
         fs.mkdirSync(watcherDir);
     }
-    console.info('[deploySessionWatcher] Deploy init.R');
-    fs.copySync(path.join(extensionPath, 'R', 'init.R'), path.join(watcherDir, 'init.R'));
-    console.info('[deploySessionWatcher] Deploy .Rprofile');
-    fs.copySync(path.join(extensionPath, 'R', '.Rprofile'), path.join(watcherDir, '.Rprofile'));
-    console.info('[deploySessionWatcher] Deploy rstudioapi_util.R');
-    fs.copySync(path.join(extensionPath, 'R', 'rstudioapi_util.R'), path.join(watcherDir, 'rstudioapi_util.R'));
-    console.info('[deploySessionWatcher] Deploy rstudioapi.R');
-    fs.copySync(path.join(extensionPath, 'R', 'rstudioapi.R'), path.join(watcherDir, 'rstudioapi.R'));
-    console.info('[deploySessionWatcher] Done');
 }
 
 export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
