@@ -203,13 +203,6 @@ if (show_plot) {
   setHook("plot.new", new_plot, "replace")
   setHook("grid.newpage", new_plot, "replace")
 
-  # rebind(".External.graphics", function(...) {
-  #   out <- .Primitive(".External.graphics")(...)
-  #   if (check_null_dev()) {
-  #     plot_updated <<- TRUE
-  #   }
-  #   out
-  # }, "base")
   .External.graphics <- function(...) {
     out <- .Primitive(".External.graphics")(...)
     if (check_null_dev()) {
@@ -389,7 +382,6 @@ if (show_view) {
     }
   }
 
-  # rebind("View", show_dataview, "utils")
   View <- show_dataview
 }
 

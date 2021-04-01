@@ -13,10 +13,10 @@ initFirst <- function() {
     !interactive()
     || Sys.getenv("RSTUDIO") != ""
     || Sys.getenv("TERM_PROGRAM") != "vscode"
-  ){
+  ) {
     return()
   }
-  
+
   # check requried packages
   required_packages <- c("jsonlite", "rlang")
   missing_packages <- required_packages[
@@ -66,7 +66,7 @@ initLast <- function() {
     .vsc.page_viewer <- .vsc$show_page_viewer
 
     # assign functions that are optional:
-    for(funcName in c("View", ".External.graphics")) {
+    for (funcName in c("View", ".External.graphics")) {
       if (funcName %in% ls(.vsc)) {
         assign(funcName, .vsc[[funcName]])
       }
@@ -77,7 +77,7 @@ initLast <- function() {
 
   # overwrite S3 bindings from other packages
   suppressWarnings({
-    if(!identical(getOption("vsc.helpPanel", "Two"), FALSE)) {
+    if (!identical(getOption("vsc.helpPanel", "Two"), FALSE)) {
       # Overwrite print function for results of `?`
       .vsc$.S3method(
         "print",
