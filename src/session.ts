@@ -16,7 +16,7 @@ import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { rWorkspace, globalRHelp, isLiveShareGuest } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare } from './rShare';
-import { guestResDir } from './rShareSession';
+import { closeBrowser, guestResDir, shareBrowser } from './rShareSession';
 
 export let globalenv: any;
 let resDir: string;
@@ -214,6 +214,9 @@ export async function showBrowser(url: string, title: string, viewer: string | b
                 enableScripts: true,
                 retainContextWhenHidden: true,
             });
+        if (await isLiveShare()) {
+            await shareBrowser(url, title);
+        }
         panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
             if (e.webviewPanel.active) {
                 activeBrowserPanel = panel;
@@ -226,10 +229,13 @@ export async function showBrowser(url: string, title: string, viewer: string | b
             }
             void commands.executeCommand('setContext', 'r.browser.active', e.webviewPanel.active);
         });
-        panel.onDidDispose(() => {
+        panel.onDidDispose(async () => {
             activeBrowserPanel = undefined;
             activeBrowserUri = undefined;
             activeBrowserExternalUri = undefined;
+            if (await isLiveShare()) {
+                closeBrowser(url);
+            }
             void commands.executeCommand('setContext', 'r.browser.active', false);
         });
         panel.webview.html = getBrowserHtml(externalUri);
