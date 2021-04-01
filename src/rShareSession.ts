@@ -122,11 +122,12 @@ export async function updateGuestGlobalenv(file: string): Promise<void> {
 }
 
 export async function updateGuestPlot(file: string): Promise<void> {
-    const plotContent = await readContent(file, 'utf8');
-    if (typeof plotContent === 'string') {
-        await fs.outputFile(
+    const plotContent = await readContent(file, 'base64');
+    if (plotContent !== undefined) {
+        fs.outputFileSync(
             file,
-            plotContent
+            plotContent,
+            'base64'
         );
         void vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file), {
             preserveFocus: true,
