@@ -8,7 +8,7 @@ import { delay, config, isTermActive } from './util';
 // LiveShare
 export let rHostService: HostService = undefined;
 export let rGuestService: GuestService = undefined;
-let liveSession: vsls.LiveShare;
+export let liveSession: vsls.LiveShare;
 
 // Service vars
 export const UUID = Math.floor(Math.random() * Date.now()); // random number for workspace viewer purposes
@@ -124,6 +124,9 @@ export class HostService {
         }
     }
     public async startService(): Promise<void> {
+        // Provides core liveshare functionality
+        // The shared service is used as a RPC service
+        // to pass messages between the host and guests
         this.service = await liveSession.shareService(ShareProviderName);
         if (this.service) {
             this._isStarted = true;

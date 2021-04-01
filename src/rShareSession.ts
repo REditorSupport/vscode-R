@@ -1,8 +1,9 @@
 import path = require('path');
 import * as vscode from 'vscode';
 import * as fs from 'fs-extra';
+import * as vsls from 'vsls';
 import { globalRHelp, rWorkspace } from './extension';
-import { UUID } from './rShare';
+import { liveSession, UUID } from './rShare';
 import { dispatchRStudioAPICall } from './rstudioapi';
 import { config, readContent } from './util';
 import { showBrowser, showDataView, showWebView } from './session';
@@ -12,6 +13,7 @@ let guestPid: string;
 let guestPlotView: string;
 export let guestGlobalenv: unknown;
 export let guestResDir: string;
+const browserDisposables: { Disposable: vscode.Disposable, url: string }[] = [];
 
 interface IRequest {
     command: string;
@@ -134,4 +136,29 @@ export async function updateGuestPlot(file: string): Promise<void> {
         });
 
     }
+}
+
+export async function shareBrowser(url: string, name: string,): Promise<void> {
+    const _url = new URL(url);
+    const server: vsls.Server = {
+        port: parseInt(_url.port),
+        displayName: name,
+        browseUrl: url,
+    };
+    const disposable = await liveSession.shareServer(server);
+    browserDisposables.push({ Disposable: disposable, url });
+}
+
+export function closeBrowser(url: string): void {
+    browserDisposables.find(
+        e => e.url === url
+    )?.Disposable.dispose();
+
+    for (let i = 0; i < browserDisposables.length; i++) {
+        if (browserDisposables[i].url === url) {
+            browserDisposables.splice(i, 1);
+            i--;
+        }
+    }
+
 }
