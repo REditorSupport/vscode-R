@@ -36,13 +36,14 @@ initFirst <- function() {
   }
 }
 
+old.First.sys <- .First.sys
 
 # Overwrite for `.First.sys`
 # Is used to make sure that all default packages are loaded first
 # Will be assigned to and called from the global environment,
 # Will be run with wd being the user's working directory (!)
 initLast <- function() {
-  base::.First.sys()
+  old.First.sys()
 
   # cleanup previous version
   removeTaskCallback("vscode-R")
@@ -103,7 +104,7 @@ initLast <- function() {
   # Attach to vscode
   exports$.vsc.attach()
 
-  invisible(NULL)
+  invisible()
 }
 
 initFirst()
