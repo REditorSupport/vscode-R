@@ -43,8 +43,7 @@ let activeBrowserExternalUri: Uri;
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
-    const tempPath = os.tmpdir();
-    watcherDir = path.join(tempPath, '.vscode-R');
+    watcherDir = path.join(os.homedir(), '.vscode-R');
     console.info(`[deploySessionWatcher] watcherDir: ${watcherDir}`);
     if (!fs.existsSync(watcherDir)) {
         console.info('[deploySessionWatcher] watcherDir not exists, create directory');
