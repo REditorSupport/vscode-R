@@ -49,6 +49,9 @@ export function deploySessionWatcher(extensionPath: string): void {
         console.info('[deploySessionWatcher] watcherDir not exists, create directory');
         fs.mkdirSync(watcherDir);
     }
+    const initPath = path.join(extensionPath, 'R', 'init.R');
+    const linkPath = path.join(watcherDir, 'init.R');
+    fs.writeFileSync(linkPath, `local(source("${initPath.replace(/\\/g, '\\\\')}", chdir = TRUE, local = TRUE))`);
 }
 
 export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {

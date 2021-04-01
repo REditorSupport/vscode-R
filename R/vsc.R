@@ -5,7 +5,7 @@ tempdir <- tempdir()
 homedir <- Sys.getenv(
   if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"
 )
-dir_extension <- Sys.getenv("VSCODE_WATCHER_DIR")
+dir_extension <- Sys.getenv("VSCODE_WATCHER_DIR", file.path(homedir, ".vscode-R"))
 request_file <- file.path(dir_extension, "request.log")
 request_lock_file <- file.path(dir_extension, "request.lock")
 
