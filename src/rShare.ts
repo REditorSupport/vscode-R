@@ -3,7 +3,7 @@ import * as vsls from 'vsls';
 import * as fs from 'fs-extra';
 import { runTextInTerm } from './rTerminal';
 import { updateGuestGlobalenv, updateGuestPlot, updateGuestRequest } from './rShareSession';
-import { delay, config, isTermActive } from './util';
+import { config, isTermActive } from './util';
 
 // LiveShare
 export let rHostService: HostService = undefined;
@@ -50,31 +50,22 @@ export async function isGuest(): Promise<boolean> {
     }
 }
 
+export async function isHost(): Promise<boolean> {
+    if ((await isLiveShare()) === true) {
+        return liveSession.session.role === vsls.Role.Host ? true : false;
+    } else {
+        return false;
+    }
+}
+
 // Listens for the activation of a LiveShare session
 export async function LiveSessionListener(): Promise<void> {
-    const attachGuestBool: boolean = config().get('liveShare.attachGuestsOnJoin');
-    const attachDelay: number = config().get('liveShare.guestAttachDelay');
     rHostService = new HostService;
     rGuestService = new GuestService;
-
     console.log('[LiveSessionListener] started');
     const liveSessionStatus = await vsls.getApi();
     if (!liveSessionStatus) { return; }
     liveSession = liveSessionStatus;
-
-    // If a guest joins and there is an active R terminal,
-    // attach terminal
-    // * Can be disabled in settings
-    liveSession.onDidChangePeers(async e => {
-        if (liveSession.session.role === vsls.Role.Host) {
-            if (e.added.length > 0) {
-                if (isTermActive() && attachGuestBool) {
-                    await delay(attachDelay); // await guest warmup
-                    await runTextInTerm(`.vsc.attach()`);
-                }
-            }
-        }
-    });
 
     liveSession.onDidChangeSession(async (e: vsls.SessionChangeEvent) => {
         switch (e.session.role) {
@@ -205,6 +196,8 @@ export class GuestService {
             console.error('[GuestService] service request failed');
         } else {
             this._isStarted = true;
+            // Try to get attach guest to host terminal
+            this.requestAttach();
             /// Session Syncing ///
             this.service.onNotify(ShareRequest.NotifyEnvUpdate, (args: { file: string }): void => {
                 void updateGuestGlobalenv(args.file);
