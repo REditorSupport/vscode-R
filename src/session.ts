@@ -15,7 +15,7 @@ import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { rWorkspace, globalRHelp, isLiveShareGuest } from './extension';
-import { UUID, rHostService, rGuestService, isLiveShare } from './rShare';
+import { UUID, rHostService, rGuestService, isLiveShare, isHost } from './rShare';
 import { closeBrowser, guestResDir, shareBrowser } from './rShareSession';
 
 export let globalenv: any;
@@ -214,7 +214,7 @@ export async function showBrowser(url: string, title: string, viewer: string | b
                 enableScripts: true,
                 retainContextWhenHidden: true,
             });
-        if (await isLiveShare() && !isLiveShareGuest && config().get<boolean>('liveShare.autoShareBrowser')) {
+        if (await isHost() && config().get<boolean>('liveShare.autoShareBrowser')) {
             await shareBrowser(url, title);
         }
         panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
@@ -233,7 +233,7 @@ export async function showBrowser(url: string, title: string, viewer: string | b
             activeBrowserPanel = undefined;
             activeBrowserUri = undefined;
             activeBrowserExternalUri = undefined;
-            if (await isLiveShare() && !isLiveShareGuest && config().get<boolean>('liveShare.autoShareBrowser')) {
+            if (await isHost() && config().get<boolean>('liveShare.autoShareBrowser')) {
                 closeBrowser(url);
             }
             void commands.executeCommand('setContext', 'r.browser.active', false);
