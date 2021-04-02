@@ -11,7 +11,7 @@ export let rGuestService: GuestService = undefined;
 export let liveSession: vsls.LiveShare;
 
 // Service vars
-export const UUID = Math.floor(Math.random() * Date.now()); // random number for workspace viewer purposes
+export const UUID = Math.floor(Math.random() * Date.now()); // random number to fake a UUID for workspace viewer purposes
 const ShareProviderName = 'vscode-r';
 const enum ShareRequest {
     NotifyEnvUpdate = 'NotifyEnvUpdate',
