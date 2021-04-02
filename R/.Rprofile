@@ -1,4 +1,3 @@
-
 # Source the original .Rprofile
 local({
   try_source <- function(file) {

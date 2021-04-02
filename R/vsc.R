@@ -1,4 +1,3 @@
-
 pid <- Sys.getpid()
 wd <- getwd()
 tempdir <- tempdir()
