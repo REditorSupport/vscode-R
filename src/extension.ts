@@ -21,6 +21,7 @@ import * as completions from './completions';
 // global objects used in other files
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
+export let extensionContext: vscode.ExtensionContext | undefined = undefined;
 
 
 // Called (once) when the extension is activated
@@ -29,7 +30,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // is used to export an interface to the help panel
     // this export is used e.g. by vscode-r-debugger to show the help panel from within debug sessions
     const rExtension = new apiImplementation.RExtensionImplementation();
-
+    
+    // assign extension context to global variable
+    extensionContext = context;
 
     // register commands specified in package.json
     const commands = {

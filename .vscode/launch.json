@@ -10,6 +10,19 @@
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}"
+      ],
+      "outFiles": [
+        "${workspaceRoot}/out/src/**/*.js"
+      ],
+      "preLaunchTask": "npm: compile"
+    },
+    {
+      "name": "Launch Extension (--disable-extensions)",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
         "--extensionDevelopmentPath=${workspaceFolder}",
         "--disable-extensions"
       ],
