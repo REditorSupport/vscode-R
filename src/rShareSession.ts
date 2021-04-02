@@ -141,6 +141,10 @@ export async function updateGuestPlot(file: string): Promise<void> {
     }
 }
 
+// Share and close browser are called from the
+// host session
+// Automates sharing browser sessions through the
+// shareServer method
 export async function shareBrowser(url: string, name: string,): Promise<void> {
     const _url = new URL(url);
     const server: vsls.Server = {

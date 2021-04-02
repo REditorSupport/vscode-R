@@ -188,18 +188,10 @@ export function clearWorkspace(): void {
 			if (selection === 'Confirm') {
 				const hiddenText = 'rm(list = ls(all.names = TRUE))';
 				const text = 'rm(list = ls())';
-				if (isLiveShareGuest) {
-					if (removeHiddenItems) {
-						void rGuestService.requestRunTextInTerm(`${hiddenText}`);
-					} else {
-						void rGuestService.requestRunTextInTerm(`${text}`);
-					}
+				if (removeHiddenItems) {
+					void runTextInTerm(`${hiddenText}`);
 				} else {
-					if (removeHiddenItems) {
-						void runTextInTerm(`${hiddenText}`);
-					} else {
-						void runTextInTerm(`${text}`);
-					}
+					void runTextInTerm(`${text}`);
 				}
 			}
 		});
@@ -246,20 +238,12 @@ export function loadWorkspace(): void {
 
 export async function viewItem(node: string): Promise<void> {
 	if (await isLiveShare()) {
-		if (isLiveShareGuest) {
-			void rGuestService.requestRunTextInTerm(`View(${node}, .UUID = ${UUID})`);
-		} else {
-			void runTextInTerm(`View(${node}, .UUID = ${UUID})`);
-		}
+		void runTextInTerm(`View(${node}, .UUID = ${UUID})`);
 	} else {
 		void runTextInTerm(`View(${node})`);
 	}
 }
 
 export function removeItem(node: string): void {
-	if (isLiveShareGuest) {
-		void rGuestService.requestRunTextInTerm(`rm(${node})`);
-	} else {
-		void runTextInTerm(`rm(${node})`);
-	}
+	void runTextInTerm(`rm(${node})`);
 }

@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
 import * as vsls from 'vsls';
 import * as fs from 'fs-extra';
+import * as path from 'path';
 import { runTextInTerm } from './rTerminal';
 import { updateGuestGlobalenv, updateGuestPlot, updateGuestRequest } from './rShareSession';
 import { config, isTermActive } from './util';
+import { isLiveShareGuest } from './extension';
+import { sessionDir } from './session';
 
 // LiveShare
 export let rHostService: HostService = undefined;
@@ -21,6 +24,7 @@ const enum ShareRequest {
     RequestAttachGuest = 'RequestAttachGuest',
     RequestRunTextInTerm = 'RequestRunTextInTerm',
     GetFileContent = 'GetFileContent',
+    GetJSONContent = 'GetJSONContent'
 }
 const enum MessageType {
     information = 'information',
@@ -62,11 +66,18 @@ export async function isHost(): Promise<boolean> {
 export async function LiveSessionListener(): Promise<void> {
     rHostService = new HostService;
     rGuestService = new GuestService;
-    console.log('[LiveSessionListener] started');
+
+    // Return out when the vsls extension isn't
+    // installed/available
     const liveSessionStatus = await vsls.getApi();
     if (!liveSessionStatus) { return; }
     liveSession = liveSessionStatus;
+    console.log('[LiveSessionListener] started');
 
+    // When the session state changes, attempt to
+    // start a liveSession service, which is responsible
+    // for providing session-watcher functionality
+    // to guest sessions
     liveSession.onDidChangeSession(async (e: vsls.SessionChangeEvent) => {
         switch (e.session.role) {
             case vsls.Role.None:
@@ -131,6 +142,12 @@ export class HostService {
                     return await fs.readFile(args[0]);
                 }
             });
+            this.service.onRequest(ShareRequest.GetJSONContent, async (): Promise<unknown> => {
+                const content: unknown = await fs.readJSON(path.join(sessionDir, 'addins.json'));
+                if (content !== 'undefined') {
+                    return content;
+                }
+            });
             /// Terminal commands ///
             // Command arguments are sent from the guest to the host,
             // and then the host sends the arguments to the console
@@ -192,9 +209,7 @@ export class GuestService {
     private _sessionStatusBarItem: vscode.StatusBarItem;
     public async startService(): Promise<void> {
         this.service = await liveSession.getSharedService(ShareProviderName);
-        if (this.service === null) {
-            console.error('[GuestService] service request failed');
-        } else {
+        if (this.service) {
             this._isStarted = true;
             // Try to get attach guest to host terminal
             this.requestAttach();
@@ -211,7 +226,6 @@ export class GuestService {
             /// vscode Messages ///
             // The host sends messages to the guest, which are displayed as a vscode window message
             // E.g., teling the guest a terminal is not attached to the current session
-            //
             // This way, we don't have to do much error checking on the guests side, which is more secure
             // and less prone to error
             this.service.onNotify(ShareRequest.NotifyMessage, (args: { text: string, messageType: MessageType }): void => {
@@ -226,6 +240,8 @@ export class GuestService {
                         return void vscode.window.showInformationMessage(args.text);
                 }
             });
+        } else {
+            console.error('[GuestService] service request failed');
         }
     }
     public isStarted(): boolean {
@@ -248,7 +264,8 @@ export class GuestService {
             void this.service.request(ShareRequest.RequestAttachGuest, []);
         }
     }
-    // Used to ensure that the guest can run workspace viewer commands, e.g. view, remove, clean
+    // Used to ensure that the guest can run workspace viewer commands
+    // e.g.view, remove, clean
     // * Permissions are handled host-side
     public requestRunTextInTerm(text: string): void {
         if (this._isStarted) {
@@ -258,8 +275,10 @@ export class GuestService {
     // The session watcher relies on files for providing many functions to vscode-R.
     // As LiveShare does not allow for exposing files outside a given workspace,
     // the guest must rely on the host sending the content of a given file, in place
-    // of having their own /tmp/ files
-    public async requestFileContent(file: fs.PathLike | number) : Promise<Buffer>;
+    // of having their own /tmp/ files*
+    // * in some cases, creating a file on the guest side is necessary,
+    // * such as dataview files or plot images
+    public async requestFileContent(file: fs.PathLike | number): Promise<Buffer>;
     public async requestFileContent(file: fs.PathLike | number, encoding: string): Promise<string>;
     public async requestFileContent(file: fs.PathLike | number, encoding?: string): Promise<string | Buffer> {
         if (this._isStarted) {
@@ -277,6 +296,14 @@ export class GuestService {
                 } else {
                     console.error('[GuestService] failed to retrieve file content (not of type "Buffer")');
                 }
+            }
+        }
+    }
+    public async requestJSONContent(): Promise<unknown> {
+        if (this._isStarted) {
+            const content: unknown = await this.service.request(ShareRequest.GetJSONContent, []);
+            if (content !== undefined) {
+                return content;
             }
         }
     }

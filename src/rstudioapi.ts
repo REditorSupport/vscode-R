@@ -15,8 +15,11 @@ import * as path from 'path';
 import { sessionDir, sessionDirectoryExists, writeResponse, writeSuccessResponse } from './session';
 import { runTextInTerm, restartRTerminal, chooseTerminal } from './rTerminal';
 import { config } from './util';
+import { isLiveShareGuest } from './extension';
+import { rGuestService } from './rShare';
 
 let lastActiveTextEditor: TextEditor;
+let addins: any[] = undefined;
 
 export async function dispatchRStudioAPICall(action: string, args: any, sd: string): Promise<void> {
 
@@ -242,7 +245,7 @@ export function projectPath(): { path: string; } {
     }
   }
 
-  // if we got to here either: 
+  // if we got to here either:
   //   - the workspaceFolders array was undefined (no folder open)
   //   - the activeText editor was an unsaved document, which has undefined workspace folder.
   // return undefined and handle with a message in R.
@@ -284,7 +287,10 @@ let addinQuickPicks: AddinItem[] = undefined;
 export async function getAddinPickerItems(): Promise<AddinItem[]> {
 
   if (typeof addinQuickPicks === 'undefined') {
-    const addins: any[] = await readJSON(path.join(sessionDir, 'addins.json')).
+    if (isLiveShareGuest) {
+      addins = await rGuestService.requestJSONContent() as [];
+    } else {
+      addins = await readJSON(path.join(sessionDir, 'addins.json')).
       then(
         (result) => result,
         () => {
@@ -293,6 +299,7 @@ export async function getAddinPickerItems(): Promise<AddinItem[]> {
             ' RStudio Addins');
         }
       );
+    }
 
     const addinItems = addins.map((x) => {
       return {
@@ -319,7 +326,7 @@ export async function launchAddinPicker(): Promise<void> {
   if (!config().get<boolean>('sessionWatcher')) {
     throw ('{rstudioapi} emulation requires session watcher to be enabled in extension config.');
   }
-  if (!sessionDirectoryExists()) {
+  if (!isLiveShareGuest && !sessionDirectoryExists()) {
     throw ('No active R terminal session, attach one to use RStudio addins.');
   }
 
