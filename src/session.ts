@@ -51,7 +51,7 @@ export function deploySessionWatcher(extensionPath: string): void {
     }
     const initPath = path.join(extensionPath, 'R', 'init.R');
     const linkPath = path.join(watcherDir, 'init.R');
-    fs.writeFileSync(linkPath, `local(source("${initPath.replace(/\\/g, '\\\\')}", chdir = TRUE, local = TRUE))`);
+    fs.writeFileSync(linkPath, `local(source("${initPath.replace(/\\/g, '\\\\')}", chdir = TRUE, local = TRUE))\n`);
 }
 
 export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
