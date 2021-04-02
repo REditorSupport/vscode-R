@@ -26,8 +26,8 @@ local({
 
 # Run vscode initializer
 local({
-  filePathInit <- Sys.getenv("VSCODE_INIT_R")
-  if (nzchar(filePathInit)) {
-    source(filePathInit, chdir = TRUE, local = TRUE)
+  init_file <- Sys.getenv("VSCODE_INIT_R")
+  if (nzchar(init_file)) {
+    source(init_file, chdir = TRUE, local = TRUE)
   }
 })
