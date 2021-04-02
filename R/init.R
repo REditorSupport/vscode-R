@@ -1,13 +1,12 @@
-
 # This file is executed with its containing directory as wd
 
-# Remember absolute path of vsc.R
+# Remember the working directory (should be extension subfolder that contains this script)
 dir_init <- getwd()
 
 
 # This function is run at the beginning of R's startup sequence
-# Code that is meant to be run at the end of the startup should go in `initLast`
-initFirst <- function() {
+# Code that is meant to be run at the end of the startup should go in `init_last`
+init_first <- function() {
   # return early if not a vscode term session
   if (
     !interactive()
@@ -32,7 +31,7 @@ initFirst <- function() {
     )
   } else {
     # Initialize vsc utils after loading other default packages
-    assign(".First.sys", initLast, envir = globalenv())
+    assign(".First.sys", init_last, envir = globalenv())
   }
 }
 
@@ -42,7 +41,7 @@ old.First.sys <- .First.sys
 # Is used to make sure that all default packages are loaded first
 # Will be assigned to and called from the global environment,
 # Will be run with wd being the user's working directory (!)
-initLast <- function() {
+init_last <- function() {
   old.First.sys()
 
   # cleanup previous version
@@ -107,4 +106,4 @@ initLast <- function() {
   invisible()
 }
 
-initFirst()
+init_first()
