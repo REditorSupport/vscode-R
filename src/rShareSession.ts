@@ -9,10 +9,13 @@ import { config, readContent } from './util';
 import { showBrowser, showDataView, showWebView } from './session';
 import { rGuestService } from './rShare';
 
+// Workspace Vars
 let guestPid: string;
 let guestPlotView: string;
 export let guestGlobalenv: unknown;
 export let guestResDir: string;
+
+// Browser Vars
 const browserDisposables: { Disposable: vscode.Disposable, url: string }[] = [];
 
 interface IRequest {
@@ -59,7 +62,6 @@ export function attachActiveGuest(): void {
         void vscode.window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }
 }
-
 
 // Guest version of session.ts updateRequest(), no need to check for changes in files
 // as this is handled by the session.ts variant

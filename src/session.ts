@@ -207,7 +207,7 @@ export async function showBrowser(url: string, title: string, viewer: string | b
                 enableScripts: true,
                 retainContextWhenHidden: true,
             });
-        if (await isLiveShare()) {
+        if (await isLiveShare() && !isLiveShareGuest && config().get<boolean>('liveShare.autoShareBrowser')) {
             await shareBrowser(url, title);
         }
         panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
@@ -226,7 +226,7 @@ export async function showBrowser(url: string, title: string, viewer: string | b
             activeBrowserPanel = undefined;
             activeBrowserUri = undefined;
             activeBrowserExternalUri = undefined;
-            if (await isLiveShare()) {
+            if (await isLiveShare() && !isLiveShareGuest && config().get<boolean>('liveShare.autoShareBrowser')) {
                 closeBrowser(url);
             }
             void commands.executeCommand('setContext', 'r.browser.active', false);
