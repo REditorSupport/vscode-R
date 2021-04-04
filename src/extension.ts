@@ -144,6 +144,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     vscode.tasks.registerTaskProvider(type, {
         provideTasks() {
             return [
+                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Check', 'R',
+                    new vscode.ShellExecution('Rscript -e "devtools::check()"')),
                 new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Document', 'R',
                     new vscode.ShellExecution('Rscript -e "devtools::document()"')),
                 new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Install', 'R',
