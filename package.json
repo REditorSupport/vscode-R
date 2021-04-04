@@ -997,7 +997,12 @@
           "description": "Remove hidden items when clearing workspace."
         }
       }
-    }
+    },
+    "taskDefinitions": [
+      {
+        "type": "R"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "webpack --mode production",
