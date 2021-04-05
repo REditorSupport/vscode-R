@@ -15,8 +15,7 @@ import * as path from 'path';
 import { sessionDir, sessionDirectoryExists, writeResponse, writeSuccessResponse } from './session';
 import { runTextInTerm, restartRTerminal, chooseTerminal } from './rTerminal';
 import { config } from './util';
-import { isGuestSession } from './extension';
-import { rGuestService } from './rShare';
+import { rGuestService, isGuestSession } from './rShare';
 
 let lastActiveTextEditor: TextEditor;
 let addins: any[] = undefined;

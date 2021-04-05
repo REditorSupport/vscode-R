@@ -14,8 +14,8 @@ import { FSWatcher } from 'fs-extra';
 import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { rWorkspace, globalRHelp, isGuestSession } from './extension';
-import { UUID, rHostService, rGuestService, isLiveShare, isHost } from './rShare';
+import { rWorkspace, globalRHelp } from './extension';
+import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession } from './rShare';
 import { closeBrowser, guestResDir, shareBrowser } from './rShareSession';
 
 export let globalenv: any;
