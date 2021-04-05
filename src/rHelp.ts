@@ -20,7 +20,7 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 	void vscode.commands.executeCommand('setContext', 'r.helpViewer.show', true);
 
     // get the "vanilla" R path from config
-    const rPath = await getRpath(true, 'helpPanel.rpath');
+    const rPath = await getRpath(true);
 
 	// get the current working directory from vscode
 	const cwd = (
