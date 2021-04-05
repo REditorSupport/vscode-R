@@ -195,9 +195,7 @@ export class AliasProvider {
     public refresh(): void {
         this.aliases = null;
         this.allPackageAliases = null;
-        if(this.persistentState){
-            void this.persistentState.update('r.helpPanel.cachedPackageAliases', undefined);
-        }
+        void this.persistentState?.update('r.helpPanel.cachedPackageAliases', undefined);
     }
 
     // get all aliases that match the given name, if specified only from 1 package
@@ -278,12 +276,10 @@ export class AliasProvider {
     // call R script `getAliases.R` and parse the output
     private readAliases(): void {
         // read from persistent workspace cache
-        if(this.persistentState){
-            const cachedAliases = this.persistentState.get<{[key: string]: PackageAliases}>('r.helpPanel.cachedPackageAliases');
-            if(cachedAliases){
-                this.allPackageAliases = cachedAliases;
-                return;
-            }
+        const cachedAliases = this.persistentState?.get<{[key: string]: PackageAliases}>('r.helpPanel.cachedPackageAliases');
+        if(cachedAliases){
+            this.allPackageAliases = cachedAliases;
+            return;
         }
 
         // get from R
@@ -312,9 +308,7 @@ export class AliasProvider {
             fs.rmdirSync(tempDir, {recursive: true});
         }
         // update persistent workspace cache
-        if(this.persistentState){
-            void this.persistentState.update('r.helpPanel.cachedPackageAliases', this.allPackageAliases);
-        }
+        void this.persistentState?.update('r.helpPanel.cachedPackageAliases', this.allPackageAliases);
     }
 }
 
