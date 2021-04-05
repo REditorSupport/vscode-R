@@ -95,7 +95,7 @@
           "name": "Live Share Controls",
           "icon": "./images/Rlogo.svg",
           "contextualTitle": "R",
-          "when" : "!r.liveShare:isGuest",
+          "when" : "r.WorkspaceViewer:show && !r.liveShare:isGuest",
           "visibility": "collapsed"
         }
       ]
@@ -854,12 +854,12 @@
         {
           "command": "r.workspaceViewer.load",
           "group": "navigation@0",
-          "when": "view == workspaceViewer && !r.LiveShare:isGuest"
+          "when": "view == workspaceViewer && !r.liveShare:isGuest"
         },
         {
           "command": "r.workspaceViewer.save",
           "group": "navigation@1",
-          "when": "view == workspaceViewer && !r.LiveShare:isGuest"
+          "when": "view == workspaceViewer && !r.liveShare:isGuest"
         },
         {
           "command": "r.workspaceViewer.clear",

@@ -6,13 +6,13 @@ import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
 
-import { extensionContext, isGuestSession } from './extension';
+import { extensionContext } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
 import { removeSessionFiles, watcherDir } from './session';
 import { config, delay, getRterm } from './util';
-import { rGuestService } from './rShare';
+import { rGuestService, isGuestSession } from './rShare';
 export let rTerm: vscode.Terminal;
 
 export async function runSource(echo: boolean): Promise<void>  {

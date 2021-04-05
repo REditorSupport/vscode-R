@@ -7,12 +7,12 @@ import { attachActiveGuest, initGuest, updateGuestGlobalenv, updateGuestPlot, up
 import { isTermActive } from './util';
 import { requestFile, sessionDir } from './session';
 import { forwardCommands, initTreeView, rLiveShareProvider, shareWorkspace, ToggleNode } from './rShareTree';
-import { isGuestSession, enableSessionWatcher } from './extension';
 
 // LiveShare
 export let rHostService: HostService = undefined;
 export let rGuestService: GuestService = undefined;
 export let liveSession: vsls.LiveShare;
+export let isGuestSession: boolean;
 
 // Service vars
 export const UUID = Math.floor(Math.random() * Date.now()); // random number to fake a UUID for workspace viewer purposes
@@ -157,7 +157,6 @@ export class HostService {
                 if (shareWorkspace === true) {
                     if (isTermActive() === true) {
                         void rHostService.notifyRequest(requestFile, true);
-                        //await runTextInTerm(`.vsc.attach()`);
                     } else {
                         this.service.notify(ShareRequest.NotifyMessage, { text: 'Cannot attach guest terminal. Must have active host R terminal.', messageType: MessageType.error });
                     }
@@ -310,7 +309,9 @@ export class GuestService {
     }
 }
 
-export function initLiveShare(context: vscode.ExtensionContext): void {
+export async function initLiveShare(context: vscode.ExtensionContext): Promise<void> {
+    await LiveSessionListener();
+    isGuestSession = await isGuest();
         if (!isGuestSession) {
             // Construct tree view for host
             initTreeView();
@@ -319,6 +320,8 @@ export function initLiveShare(context: vscode.ExtensionContext): void {
             initGuest(context);
     }
 
+    // Set context value for hiding buttons for guests
+    void vscode.commands.executeCommand('setContext', 'r.liveShare:isGuest', isGuestSession);
 
     // push command for hosts
     context.subscriptions.push(
@@ -329,6 +332,4 @@ export function initLiveShare(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
         vscode.commands.registerCommand('r.attachActiveGuest', () => attachActiveGuest())
     );
-
-
 }
