@@ -6,7 +6,7 @@ import winreg = require('winreg');
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
-import { isLiveShareGuest } from './extension';
+import { isGuestSession } from './extension';
 import { rGuestService } from './rShare';
 
 export function config(): vscode.WorkspaceConfiguration {
@@ -158,7 +158,7 @@ export function checkIfFileExists(filePath: string): boolean {
 export function readContent(file: PathLike | number): Promise<Buffer>;
 export function readContent(file: PathLike | number, encoding: string): Promise<string>;
 export function readContent(file: PathLike | number, encoding?: string): Promise<string | Buffer> {
-    if (isLiveShareGuest) {
+    if (isGuestSession) {
         return encoding === undefined ? rGuestService.requestFileContent(file) : rGuestService.requestFileContent(file, encoding);
     } else {
         return encoding === undefined ? readFile(file) : readFile(file, encoding);

@@ -15,7 +15,7 @@ import * as path from 'path';
 import { sessionDir, sessionDirectoryExists, writeResponse, writeSuccessResponse } from './session';
 import { runTextInTerm, restartRTerminal, chooseTerminal } from './rTerminal';
 import { config } from './util';
-import { isLiveShareGuest } from './extension';
+import { isGuestSession } from './extension';
 import { rGuestService } from './rShare';
 
 let lastActiveTextEditor: TextEditor;
@@ -287,7 +287,7 @@ let addinQuickPicks: AddinItem[] = undefined;
 export async function getAddinPickerItems(): Promise<AddinItem[]> {
 
   if (typeof addinQuickPicks === 'undefined') {
-    if (isLiveShareGuest) {
+    if (isGuestSession) {
       addins = await rGuestService.requestJSONContent() as [];
     } else {
       addins = await readJSON(path.join(sessionDir, 'addins.json')).
@@ -326,7 +326,7 @@ export async function launchAddinPicker(): Promise<void> {
   if (!config().get<boolean>('sessionWatcher')) {
     throw ('{rstudioapi} emulation requires session watcher to be enabled in extension config.');
   }
-  if (!isLiveShareGuest && !sessionDirectoryExists()) {
+  if (!isGuestSession && !sessionDirectoryExists()) {
     throw ('No active R terminal session, attach one to use RStudio addins.');
   }
 

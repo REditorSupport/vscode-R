@@ -89,6 +89,14 @@
           "icon": "./images/Rlogo.svg",
           "contextualTitle": "R",
           "when": "r.helpViewer.show"
+        },
+        {
+          "id": "rLiveShare",
+          "name": "Live Share Controls",
+          "icon": "./images/Rlogo.svg",
+          "contextualTitle": "R",
+          "when" : "!r.liveShare:isGuest",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -100,6 +108,10 @@
       {
         "view": "rHelpPages",
         "contents": "R Help Pages"
+      },
+      {
+        "view": "rLiveShare",
+        "contents": "R LiveShare not active."
       }
     ],
     "languages": [
@@ -620,7 +632,11 @@
         "title": "Open help for path",
         "category": "R",
         "command": "r.helpPanel.openForPath"
-      }
+      },
+          {
+            "command": "r.liveShare.toggle",
+            "title": "Toggle"
+          }
     ],
     "keybindings": [
       {
@@ -828,6 +844,10 @@
           "command": "r.helpPanel.summarizeTopics",
           "group": "inline@8",
           "when": "view == rHelpPages && viewItem =~ /_summarizeTopics_/"
+        },
+        {
+          "command": "r.liveShare.toggle",
+          "when": "view == rLiveShare"
         }
       ],
       "view/title": [
@@ -996,29 +1016,19 @@
           "default": false,
           "description": "Remove hidden items when clearing workspace."
         },
-        "r.liveShare.allowCommandForwarding": {
+        "r.liveShare.commandForwardDefault": {
           "type": "boolean",
           "default": false,
           "description": "Allows guests to call workspace viewer commands, even if the terminal does not have read/write permissions."
         },
-        "r.liveShare.allowGuestAttach": {
+        "r.liveShare.shareWorkspaceDefault": {
           "type": "boolean",
           "default": true,
           "description": "Allow guests to call '.vsc.attach()' when the terminal does not have read/write permissions."
         },
-        "r.liveShare.attachGuestsOnJoin": {
+        "r.liveShare.shareBrowserDefault": {
           "type": "boolean",
-          "default": true,
-          "description": "Automatically call '.vsc.attach()' when there is an active R terminal and a guest joins."
-        },
-        "r.liveShare.guestAttachDelay": {
-          "type": "integer",
-          "default": 1000,
-          "description": "Delay in milliseconds before the calls '.vsc.attach()'. A longer delay may be required for slower connections. Restart required to take effect."
-        },
-        "r.liveShare.autoShareBrowser": {
-          "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Automatically shares/closes R browsers with guests."
         }
 

@@ -3,10 +3,11 @@ import * as vsls from 'vsls';
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import { runTextInTerm } from './rTerminal';
-import { updateGuestGlobalenv, updateGuestPlot, updateGuestRequest } from './rShareSession';
-import { config, isTermActive } from './util';
-import { isLiveShareGuest } from './extension';
-import { sessionDir } from './session';
+import { attachActiveGuest, initGuest, updateGuestGlobalenv, updateGuestPlot, updateGuestRequest } from './rShareSession';
+import { isTermActive } from './util';
+import { requestFile, sessionDir } from './session';
+import { forwardCommands, initTreeView, rLiveShareProvider, shareWorkspace, ToggleNode } from './rShareTree';
+import { isGuestSession, enableSessionWatcher } from './extension';
 
 // LiveShare
 export let rHostService: HostService = undefined;
@@ -90,6 +91,7 @@ export async function LiveSessionListener(): Promise<void> {
             case vsls.Role.Host:
                 console.log('[LiveSessionListener] host event');
                 await rHostService.startService();
+                rLiveShareProvider.refresh();
                 break;
             default:
                 console.log('[LiveSessionListener] default case');
@@ -151,11 +153,11 @@ export class HostService {
             /// Terminal commands ///
             // Command arguments are sent from the guest to the host,
             // and then the host sends the arguments to the console
-            this.service.onRequest(ShareRequest.RequestAttachGuest, async (): Promise<void> => {
-                const attachGuestBool: boolean = config().get('liveShare.allowGuestAttach');
-                if (attachGuestBool === true) {
+            this.service.onRequest(ShareRequest.RequestAttachGuest, (): void => {
+                if (shareWorkspace === true) {
                     if (isTermActive() === true) {
-                        await runTextInTerm(`.vsc.attach()`);
+                        void rHostService.notifyRequest(requestFile, true);
+                        //await runTextInTerm(`.vsc.attach()`);
                     } else {
                         this.service.notify(ShareRequest.NotifyMessage, { text: 'Cannot attach guest terminal. Must have active host R terminal.', messageType: MessageType.error });
                     }
@@ -164,8 +166,7 @@ export class HostService {
                 }
             });
             this.service.onRequest(ShareRequest.RequestRunTextInTerm, (args: [text: string]) => {
-                const commandForwardBool: boolean = config().get('liveShare.allowCommandForwarding');
-                if (commandForwardBool === true) {
+                if (forwardCommands === true) {
                     if (isTermActive() === true) {
                         void runTextInTerm(`${args[0]}`);
                     } else {
@@ -191,9 +192,9 @@ export class HostService {
             void this.service.notify(ShareRequest.NotifyEnvUpdate, { file });
         }
     }
-    public notifyRequest(file: string): void {
+    public notifyRequest(file: string, force: boolean = false): void {
         if (this.isStarted) {
-            void this.service.notify(ShareRequest.NotifyRequestUpdate, { file });
+            void this.service.notify(ShareRequest.NotifyRequestUpdate, { file, force });
         }
     }
     public notifyPlot(file: string): void {
@@ -217,8 +218,8 @@ export class GuestService {
             this.service.onNotify(ShareRequest.NotifyEnvUpdate, (args: { file: string }): void => {
                 void updateGuestGlobalenv(args.file);
             });
-            this.service.onNotify(ShareRequest.NotifyRequestUpdate, (args: { file: string }): void => {
-                void updateGuestRequest(this._sessionStatusBarItem, args.file);
+            this.service.onNotify(ShareRequest.NotifyRequestUpdate, (args: { file: string, force: boolean }): void => {
+                void updateGuestRequest(this._sessionStatusBarItem, args.file, args.force);
             });
             this.service.onNotify(ShareRequest.NotifyPlotUpdate, (args: { file: string }): void => {
                 void updateGuestPlot(args.file);
@@ -307,4 +308,27 @@ export class GuestService {
             }
         }
     }
+}
+
+export function initLiveShare(context: vscode.ExtensionContext): void {
+        if (!isGuestSession) {
+            // Construct tree view for host
+            initTreeView();
+        } else {
+            // Construct guest session watcher
+            initGuest(context);
+    }
+
+
+    // push command for hosts
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            'r.liveShare.toggle', (node: ToggleNode) => node.toggle(rLiveShareProvider)
+        )
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('r.attachActiveGuest', () => attachActiveGuest())
+    );
+
+
 }

@@ -14,7 +14,7 @@ import { FSWatcher } from 'fs-extra';
 import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { rWorkspace, globalRHelp, isLiveShareGuest } from './extension';
+import { rWorkspace, globalRHelp, isGuestSession } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost } from './rShare';
 import { closeBrowser, guestResDir, shareBrowser } from './rShareSession';
 
@@ -302,7 +302,7 @@ export async function showWebView(file: string, title: string, viewer: string | 
 
 export async function showDataView(source: string, type: string, title: string, file: string, viewer: string) {
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}`);
-    if (isLiveShareGuest) {
+    if (isGuestSession) {
         const fileContent = await rGuestService.requestFileContent(file, 'utf8');
         await fs.outputFile(
             file,
@@ -350,7 +350,7 @@ export async function showDataView(source: string, type: string, title: string, 
 }
 
 export async function getTableHtml(webview: Webview, file: string) {
-    resDir = isLiveShareGuest ? guestResDir : resDir;
+    resDir = isGuestSession ? guestResDir : resDir;
     const content = await readContent(file, 'utf8');
 
     return `
@@ -403,7 +403,7 @@ export async function getTableHtml(webview: Webview, file: string) {
 }
 
 export async function getListHtml(webview: Webview, file: string) {
-    resDir = isLiveShareGuest ? guestResDir : resDir;
+    resDir = isGuestSession ? guestResDir : resDir;
     const content = await readContent(file, 'utf8');
 
     return `

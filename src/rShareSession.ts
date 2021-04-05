@@ -8,6 +8,7 @@ import { dispatchRStudioAPICall } from './rstudioapi';
 import { config, readContent } from './util';
 import { showBrowser, showDataView, showWebView } from './session';
 import { rGuestService } from './rShare';
+import { autoShareBrowser } from './rShareTree';
 
 // Workspace Vars
 let guestPid: string;
@@ -38,9 +39,6 @@ interface IRequest {
 }
 
 export function initGuest(context: vscode.ExtensionContext): void {
-    context.subscriptions.push(
-        vscode.commands.registerCommand('r.attachActiveGuest', () => attachActiveGuest())
-    );
 
     // create status bar item that contains info about the *guest* session watcher
     console.info('Create guestSessionStatusBarItem');
@@ -65,12 +63,12 @@ export function attachActiveGuest(): void {
 
 // Guest version of session.ts updateRequest(), no need to check for changes in files
 // as this is handled by the session.ts variant
-export async function updateGuestRequest(sessionStatusBarItem: vscode.StatusBarItem, file : string): Promise<void> {
+export async function updateGuestRequest(sessionStatusBarItem: vscode.StatusBarItem, file : string, force: boolean = false): Promise<void> {
     const requestContent: string = await readContent(file, 'utf8');
     console.info(`[updateGuestRequest] request: ${requestContent}`);
     if (typeof (requestContent) === 'string') {
         const request: IRequest = JSON.parse(requestContent) as IRequest;
-        if (request) {
+        if (request && !force) {
             if (request.UUID === null || request.UUID === undefined || request.UUID === UUID) {
                 switch (request.command) {
                     case 'help': {
@@ -109,6 +107,12 @@ export async function updateGuestRequest(sessionStatusBarItem: vscode.StatusBarI
                         console.error(`[updateRequest] Unsupported command: ${request.command}`);
                 }
             }
+        } else {
+            guestPid = String(request.pid);
+            guestPlotView = String(request.plot);
+            console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
+            sessionStatusBarItem.text = `Guest R: ${guestPid}`;
+            sessionStatusBarItem.show();
         }
     }
 }
@@ -146,14 +150,16 @@ export async function updateGuestPlot(file: string): Promise<void> {
 // Automates sharing browser sessions through the
 // shareServer method
 export async function shareBrowser(url: string, name: string,): Promise<void> {
-    const _url = new URL(url);
-    const server: vsls.Server = {
-        port: parseInt(_url.port),
-        displayName: name,
-        browseUrl: url,
-    };
-    const disposable = await liveSession.shareServer(server);
-    browserDisposables.push({ Disposable: disposable, url });
+    if (autoShareBrowser) {
+        const _url = new URL(url);
+        const server: vsls.Server = {
+            port: parseInt(_url.port),
+            displayName: name,
+            browseUrl: url,
+        };
+        const disposable = await liveSession.shareServer(server);
+        browserDisposables.push({ Disposable: disposable, url });
+    }
 }
 
 export function closeBrowser(url: string): void {

@@ -6,7 +6,7 @@ import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
 
-import { extensionContext, isLiveShareGuest } from './extension';
+import { extensionContext, isGuestSession } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
@@ -247,7 +247,7 @@ export async function runChunksInTerm(chunks: vscode.Range[]): Promise<void> {
 }
 
 export async function runTextInTerm(text: string, execute: boolean = true): Promise<void> {
-    if (isLiveShareGuest) {
+    if (isGuestSession) {
         rGuestService.requestRunTextInTerm(text);
     } else {
         const term = await chooseTerminal();

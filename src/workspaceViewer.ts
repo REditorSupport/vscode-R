@@ -4,7 +4,7 @@ import { runTextInTerm } from './rTerminal';
 import { globalenv, workingDir } from './session';
 import { config } from './util';
 import { rGuestService, isLiveShare, UUID } from './rShare';
-import { isLiveShareGuest } from './extension';
+import { isGuestSession } from './extension';
 import { guestGlobalenv } from './rShareSession';
 
 interface WorkspaceAttr {
@@ -22,7 +22,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 	readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
 
 	refresh(): void {
-		if (isLiveShareGuest) {
+		if (isGuestSession) {
 			this.data = <WorkspaceAttr>guestGlobalenv;
 		} else {
 			this.data = <WorkspaceAttr>globalenv;
@@ -179,7 +179,7 @@ export class WorkspaceItem extends TreeItem {
 
 export function clearWorkspace(): void {
 	const removeHiddenItems: boolean = config().get('workspaceViewer.removeHiddenItems');
-	if ((isLiveShareGuest ? guestGlobalenv : globalenv) !== undefined) {
+	if ((isGuestSession ? guestGlobalenv : globalenv) !== undefined) {
 		void window.showInformationMessage(
 			'Are you sure you want to clear the workspace? This cannot be reversed.',
 			'Confirm',

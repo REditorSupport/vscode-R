@@ -17,15 +17,15 @@ import * as apiImplementation from './apiImplementation';
 import * as rHelp from './rHelp';
 import * as completions from './completions';
 import * as rShare from './rShare';
-import * as rShareSession from './rShareSession';
 
 // global objects used in other files
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext | undefined = undefined;
+export let enableSessionWatcher: boolean = undefined;
 
 // rShare
-export let isLiveShareGuest: boolean;
+export let isGuestSession = false;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -100,7 +100,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // browser controls
         'r.browser.refresh': session.refreshBrowser,
-        'r.browser.openExternal': session.openExternalBrowser
+        'r.browser.openExternal': session.openExternalBrowser,
 
         // (help related commands are registered in rHelp.initializeHelp)
     };
@@ -141,16 +141,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     vscode.languages.registerHoverProvider('r', new completions.HelpLinkHoverProvider());
     vscode.languages.registerCompletionItemProvider('r', new completions.StaticCompletionItemProvider(), '@');
 
+    // deply liveshare listener
+    await rShare.LiveSessionListener();
+    isGuestSession = await rShare.isGuest();
+    void rShare.initLiveShare(context);
 
     // deploy session watcher (if configured by user)
-    const enableSessionWatcher = util.config().get<boolean>('sessionWatcher', false);
+    enableSessionWatcher = util.config().get<boolean>('sessionWatcher', false);
     if (enableSessionWatcher) {
-        await rShare.LiveSessionListener();
-        isLiveShareGuest = await rShare.isGuest();
-
-        if (isLiveShareGuest) {
-            rShareSession.initGuest(context);
-        } else {
+        if (!isGuestSession) {
             console.info('Initialize session watcher');
             void session.deploySessionWatcher(context.extensionPath);
 
@@ -178,12 +177,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
             rWorkspace
         );
         void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
-        void vscode.commands.executeCommand('setContext', 'r.LiveShare:isGuest', isLiveShareGuest);
+
+        // Set context value for hiding buttons for guests
+        void vscode.commands.executeCommand('setContext', 'r.liveShare:isGuest', isGuestSession);
 
         // if session watcher is active, register dynamic completion provider
         const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
         vscode.languages.registerCompletionItemProvider('r', new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
+
 
     return rExtension;
 }
