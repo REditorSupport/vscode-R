@@ -383,7 +383,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	private async getAllAliases(): Promise<Alias[] | null | undefined> {
 		const aliases = await doWithProgress(() => this.aliasProvider.getAllAliases());
 		if(!aliases){
-			void vscode.window.showErrorMessage(`Failed to get list of R functions. Make sure that \`jsonlite\` is installed and r.${getRPathConfigEntry()}, points to a valid R executable.`);
+			void vscode.window.showErrorMessage(`Failed to get list of R functions. Make sure that \`jsonlite\` is installed and r.${getRPathConfigEntry()} points to a valid R executable.`);
 		}
 		return aliases;
 	}
