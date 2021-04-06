@@ -7,6 +7,7 @@ import { attachActiveGuest, initGuest, updateGuestGlobalenv, updateGuestPlot, up
 import { isTermActive } from './util';
 import { requestFile, sessionDir } from './session';
 import { forwardCommands, initTreeView, rLiveShareProvider, shareWorkspace, ToggleNode } from './rShareTree';
+import { enableSessionWatcher } from './extension';
 
 // LiveShare
 export let rHostService: HostService = undefined;
@@ -14,9 +15,15 @@ export let rGuestService: GuestService = undefined;
 export let liveSession: vsls.LiveShare;
 export let isGuestSession: boolean;
 
-// Service vars
 export const UUID = Math.floor(Math.random() * Date.now()); // random number to fake a UUID for workspace viewer purposes
+
+/// Share Service Variables
+// the service name that is used to share content between
+// the host and the guest
 const ShareProviderName = 'vscode-r';
+
+// used for notify & request events
+// to prevent accidental typos
 const enum ShareRequest {
     NotifyEnvUpdate = 'NotifyEnvUpdate',
     NotifyPlotUpdate = 'NotifyPlotUpdate',
@@ -27,10 +34,40 @@ const enum ShareRequest {
     GetFileContent = 'GetFileContent',
     GetJSONContent = 'GetJSONContent'
 }
+
+// used in sending messages to the
+// guest service
 const enum MessageType {
     information = 'information',
     error = 'error',
     warning = 'warning'
+}
+
+// Initialises the Liveshare functionality for host & guest
+// session watcher is required ^
+export async function initLiveShare(context: vscode.ExtensionContext): Promise<void> {
+    if (enableSessionWatcher) {
+        await LiveSessionListener();
+        isGuestSession = await isGuest();
+        if (!isGuestSession) {
+            // Construct tree view for host
+            initTreeView();
+        } else {
+            // Construct guest session watcher
+            initGuest(context);
+        }
+
+        // Set context value for hiding buttons for guests
+        void vscode.commands.executeCommand('setContext', 'r.liveShare:isGuest', isGuestSession);
+
+        // push command for hosts
+        context.subscriptions.push(
+            vscode.commands.registerCommand(
+                'r.liveShare.toggle', (node: ToggleNode) => node.toggle(rLiveShareProvider)
+            ),
+            vscode.commands.registerCommand('r.attachActiveGuest', () => attachActiveGuest())
+        );
+    }
 }
 
 // Bool to check if live share is loaded and active
@@ -116,6 +153,18 @@ export async function LiveSessionListener(): Promise<void> {
     }
 }
 
+
+// Communication between the HostService and the GuestService
+// typically falls under 2 communication paths (there are exceptions):
+//
+// 1. a function on the HostService is called, which pushes
+// an event (notify), which is picked up by a callback (onNotify)
+// e.g. rHostService.notifyRequest
+//
+// 2. a function on the GuestService is called, which pushes a
+// request to the HostService, which is picked up the HostService
+// callback and * returned * to the GuestService
+// e.g. rGuestService.requestFileContent
 export class HostService {
     private service: vsls.SharedService | null = null;
     private _isStarted: boolean = false;
@@ -211,9 +260,9 @@ export class GuestService {
         this.service = await liveSession.getSharedService(ShareProviderName);
         if (this.service) {
             this._isStarted = true;
-            // Try to get attach guest to host terminal
-            this.requestAttach();
             /// Session Syncing ///
+            // Try to attach guest to host terminal
+            this.requestAttach();
             this.service.onNotify(ShareRequest.NotifyEnvUpdate, (args: { file: string }): void => {
                 void updateGuestGlobalenv(args.file);
             });
@@ -307,29 +356,4 @@ export class GuestService {
             }
         }
     }
-}
-
-export async function initLiveShare(context: vscode.ExtensionContext): Promise<void> {
-    await LiveSessionListener();
-    isGuestSession = await isGuest();
-        if (!isGuestSession) {
-            // Construct tree view for host
-            initTreeView();
-        } else {
-            // Construct guest session watcher
-            initGuest(context);
-    }
-
-    // Set context value for hiding buttons for guests
-    void vscode.commands.executeCommand('setContext', 'r.liveShare:isGuest', isGuestSession);
-
-    // push command for hosts
-    context.subscriptions.push(
-        vscode.commands.registerCommand(
-            'r.liveShare.toggle', (node: ToggleNode) => node.toggle(rLiveShareProvider)
-        )
-    );
-    context.subscriptions.push(
-        vscode.commands.registerCommand('r.attachActiveGuest', () => attachActiveGuest())
-    );
 }

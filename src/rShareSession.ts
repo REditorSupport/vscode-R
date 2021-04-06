@@ -17,6 +17,7 @@ export let guestGlobalenv: unknown;
 export let guestResDir: string;
 
 // Browser Vars
+// Used to keep track of shared browsers
 const browserDisposables: { Disposable: vscode.Disposable, url: string }[] = [];
 
 interface IRequest {
@@ -39,7 +40,6 @@ interface IRequest {
 }
 
 export function initGuest(context: vscode.ExtensionContext): void {
-
     // create status bar item that contains info about the *guest* session watcher
     console.info('Create guestSessionStatusBarItem');
     const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);

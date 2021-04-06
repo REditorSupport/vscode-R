@@ -1,4 +1,5 @@
 # R support for Visual Studio Code
+[![Badge](https://aka.ms/vsls-badge)](https://aka.ms/vsls)
 
 Requires [R](https://www.r-project.org/).
 
@@ -252,6 +253,19 @@ Alternatively, individual addin functions can be bound to keys using `r.runRComm
 
 See the wiki for [lists of supported `{rstudioapi}` commands, and verified compatible addin packages](https://github.com/Ikuyadeu/vscode-R/wiki/RStudio-addin-support).
 
+### Live Share support
+
+The session watcher further enhances LiveShare collaboration.
+
+The workspace viewer, data view, plots, browsers, and RStudioApi are available to guests through the host session.
+
+To enable this feature, *both* the host and guest must have this extension and session watcher enabled.
+
+Hosts can control the level of access guests have through the provided Live Share Control view. This provides the following controls:
+
+* Whether guests can access the current R session and its workspace
+* Whether R commands should be forwarded from the guest to the host terminal (bypasses terminal permissions)
+* Whether opened R browsers should be shared with guests
 
 ### How to disable it
 

@@ -94,6 +94,7 @@ export abstract class ToggleNode extends Node {
 
 }
 
+/// Nodes for changing R LiveShare variables
 class ShareNode extends ToggleNode {
     toggle(treeProvider: ShareTreeProvider): void {
         shareWorkspace = !shareWorkspace;

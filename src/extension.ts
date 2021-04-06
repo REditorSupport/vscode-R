@@ -34,6 +34,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // assign extension context to global variable
     extensionContext = context;
 
+    // assign session watcher setting to global variable
+    enableSessionWatcher = util.config().get<boolean>('sessionWatcher', false);
+
     // register commands specified in package.json
     const commands = {
         // create R terminal
@@ -142,7 +145,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     void rShare.initLiveShare(context);
 
     // deploy session watcher (if configured by user)
-    enableSessionWatcher = util.config().get<boolean>('sessionWatcher', false);
     if (enableSessionWatcher) {
         if (!(await rShare.isGuest())) {
             console.info('Initialize session watcher');

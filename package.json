@@ -1019,17 +1019,17 @@
         "r.liveShare.commandForwardDefault": {
           "type": "boolean",
           "default": false,
-          "description": "Allows guests to call workspace viewer commands, even if the terminal does not have read/write permissions."
+          "description": "Default boolean value for guest command forwarding."
         },
         "r.liveShare.shareWorkspaceDefault": {
           "type": "boolean",
           "default": true,
-          "description": "Allow guests to call '.vsc.attach()' when the terminal does not have read/write permissions."
+          "description": "Default boolean value for sharing the R workspace with guests."
         },
         "r.liveShare.shareBrowserDefault": {
           "type": "boolean",
           "default": false,
-          "description": "Automatically shares/closes R browsers with guests."
+          "description": "Default boolean value for automatically sharing R browser ports with guests."
         }
 
       }
