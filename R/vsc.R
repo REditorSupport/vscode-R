@@ -560,6 +560,14 @@ if (rstudioapi_enabled()) {
       rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
     }
   )
+  if ("rstudioapi" %in% loadedNamespaces()) {
+    # if the rstudioapi is already loaded, for example via a call to
+    # library(tidyverse) in the user's profile, we need to shim it now.
+    # There's no harm in having also registered the hook in this case. It can
+    # work in the event that the namespace is unloaded and reloaded.
+    rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
+  }
+
 }
 
 print.help_files_with_topic <- function(h, ...) {
