@@ -567,7 +567,7 @@ if (rstudioapi_enabled()) {
     # work in the event that the namespace is unloaded and reloaded.
     rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
   }
-  
+
 }
 
 print.help_files_with_topic <- function(h, ...) {
