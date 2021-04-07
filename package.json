@@ -1019,9 +1019,11 @@
     "@types/highlight.js": "^10.1.0",
     "@types/mocha": "^8.2.1",
     "@types/node": "^14.14.34",
+    "@types/node-fetch": "^2.5.9",
     "@types/showdown": "^1.9.3",
     "@types/vscode": "^1.54.0",
     "@types/winreg": "^1.2.30",
+    "@types/ws": "^7.4.1",
     "@typescript-eslint/eslint-plugin": "^4.17.0",
     "@typescript-eslint/parser": "^4.17.0",
     "copy-webpack-plugin": "^7.0.0",
@@ -1047,9 +1049,11 @@
     "highlight.js": "^10.6.0",
     "jquery": "^3.6.0",
     "jquery.json-viewer": "^1.4.0",
+    "node-fetch": "^2.6.1",
     "popper.js": "^1.16.1",
     "showdown": "^1.9.1",
     "tree-kill": "^1.2.2",
-    "winreg": "^1.2.4"
+    "winreg": "^1.2.4",
+    "ws": "^7.4.4"
   }
 }
