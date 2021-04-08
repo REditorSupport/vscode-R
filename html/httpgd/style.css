@@ -1,0 +1,29 @@
+
+/* .httpgd line, .httpgd polyline, .httpgd polygon, .httpgd path, .httpgd rect, .httpgd circle {
+    fill: none;
+    stroke: #000000;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-miterlimit: 10.00;
+} */
+
+.httpgd rect {
+    stroke: none;
+    fill: none;
+}
+svg text {
+    font-family: var(--vscode-editor-font-family) !important;
+    stroke: var(--vscode-foreground);
+}
+.httpgd line, .httpgd polyline, .httpgd polygon, .httpgd path, .httpgd rect, .httpgd circle {
+    stroke: var(--vscode-foreground);
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-miterlimit: 10.00;
+}
+
+svg {
+    width: 80%;
+    height: 80%;
+}

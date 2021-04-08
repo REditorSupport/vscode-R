@@ -64,6 +64,11 @@ class HttpgdApi {
         url.searchParams.append('id', id);
         return url;
     }
+    
+    public async svg_content(url: string): Promise<string> {
+        const res = await fetch(url);
+        return await res.text();
+    }
 
     private svg_ext(width?: number, height?: number, c?: string): URL {
         const url = new URL(this.httpSVG);
@@ -76,7 +81,7 @@ class HttpgdApi {
         if (c) {url.searchParams.append('c', c);}
         return url;
     }
-
+    
     private remove_index(index: number): URL {
         const url = new URL(this.httpRemove);
         url.searchParams.append('index', index.toString());
@@ -407,7 +412,7 @@ export class HttpgdViewer {
         void this.connection.api.get_plots().then(plots => {
             this.navi.update(plots);
             this.onIndexStringChange?.(this.navi.indexStr());
-            // this.updateSidebar(plots, scroll);
+            this.updateSidebar(plots, scroll);
             this.updateImage();
         });
     }
@@ -415,60 +420,56 @@ export class HttpgdViewer {
     private updateImage(c?: string) {
         const n = this.navi.next(this.connection.api, `${this.plotUpid}${c || ''}`);
         if (n) {
-            // console.log('update image');
-            // this.image.src = n;
             void this.updateSvg(n);
         }
     }
     
     private async updateSvg(n: string){
-        console.log(n);
-        const ret = await fetch(n);
-        this.svg = await ret.text();
+        this.svg = await this.connection.api.svg_content(n);
         this.didChange();
     }
 
-    // private updateSidebar(plots: HttpgdPlots, scroll: boolean = false) {
-    //     if (!this.sidebar) {return;}
+    private updateSidebar(plots: HttpgdPlots, scroll: boolean = false) {
+        // if (!this.sidebar) {return;}
 
-    //     //this.sidebar.innerHTML = '';
+        // //this.sidebar.innerHTML = '';
 
-    //     let idx = 0;
-    //     while (idx < this.sidebar.children.length) {
-    //         if (idx >= plots.plots.length || this.sidebar.children[idx].getAttribute('data-pid') !== plots.plots[idx].id) {
-    //             this.sidebar.removeChild(this.sidebar.children[idx]);
-    //         } else {
-    //             idx++;
-    //         }
-    //     }
+        // let idx = 0;
+        // while (idx < this.sidebar.children.length) {
+        //     if (idx >= plots.plots.length || this.sidebar.children[idx].getAttribute('data-pid') !== plots.plots[idx].id) {
+        //         this.sidebar.removeChild(this.sidebar.children[idx]);
+        //     } else {
+        //         idx++;
+        //     }
+        // }
 
-    //     for (; idx < plots.plots.length; ++idx) {
-    //         const p = plots.plots[idx];
-    //         const elem_card = document.createElement('div');
-    //         elem_card.setAttribute('data-pid', p.id);
-    //         const elem_x = document.createElement('a');
-    //         elem_x.innerHTML = '&#10006;';
-    //         elem_x.onclick = () => {
-    //             void this.connection.api.get_remove_id(p.id);
-    //             this.updatePlots();
-    //         };
-    //         const elem_img = document.createElement('img');
-    //         elem_card.classList.add('history-item');
-    //         elem_img.setAttribute('src', this.connection.api.svg_id(p.id).href);
-    //         elem_card.onclick = () => {
-    //             this.navi.jump_id(p.id);
-    //             this.onIndexStringChange?.(this.navi.indexStr());
-    //             this.updateImage();
-    //         };
-    //         elem_card.appendChild(elem_img);
-    //         elem_card.appendChild(elem_x);
-    //         this.sidebar.appendChild(elem_card);
-    //     }
+        // for (; idx < plots.plots.length; ++idx) {
+        //     const p = plots.plots[idx];
+        //     const elem_card = document.createElement('div');
+        //     elem_card.setAttribute('data-pid', p.id);
+        //     const elem_x = document.createElement('a');
+        //     elem_x.innerHTML = '&#10006;';
+        //     elem_x.onclick = () => {
+        //         void this.connection.api.get_remove_id(p.id);
+        //         this.updatePlots();
+        //     };
+        //     const elem_img = document.createElement('img');
+        //     elem_card.classList.add('history-item');
+        //     elem_img.setAttribute('src', this.connection.api.svg_id(p.id).href);
+        //     elem_card.onclick = () => {
+        //         this.navi.jump_id(p.id);
+        //         this.onIndexStringChange?.(this.navi.indexStr());
+        //         this.updateImage();
+        //     };
+        //     elem_card.appendChild(elem_img);
+        //     elem_card.appendChild(elem_x);
+        //     this.sidebar.appendChild(elem_card);
+        // }
 
-    //     if (scroll) {
-    //         this.sidebar.scrollTop = this.sidebar.scrollHeight;
-    //     }
-    // }
+        // if (scroll) {
+        //     this.sidebar.scrollTop = this.sidebar.scrollHeight;
+        // }
+    }
 
     // checks if there were server side changes
     private serverChanges(remoteState: HttpgdState): void {
