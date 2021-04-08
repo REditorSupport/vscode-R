@@ -287,10 +287,13 @@ if (show_view) {
         className = scalar(class),
         type = scalar(type))
     }, list(colnames, types), NULL)
-    list(columns = columns, data = data)
+    list(columns = columns,
+        data = data,
+        rowCount = nrow(data),
+        shape = dim(data))
   }
 
-  show_dataview <- function(x, title,
+  show_dataview <- function(x, page=1, show=10, title,
                             viewer = getOption("vsc.view", "Two")) {
     if (missing(title)) {
       sub <- substitute(x)
@@ -350,8 +353,13 @@ if (show_view) {
       }
     }
     if (is.data.frame(x) || is.matrix(x)) {
-      data <- dataview_table(x)
+      # ending_row  <-  page * show
+      # starting_row  <-  ending_row - show + 1
+      # data <- dataview_table(x[starting_row:ending_row, ])
       file <- tempfile(tmpdir = tempdir, fileext = ".json")
+      data <- append(
+        dataview_table(x),
+        list(fileName = file, type = class(x)[1], name = deparse(substitute(x))))
       jsonlite::write_json(data, file, matrix = "rowmajor")
       request("dataview", source = "table", type = "json",
         title = title, file = file, viewer = viewer)

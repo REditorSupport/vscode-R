@@ -7,7 +7,9 @@
 import * as fs from 'fs-extra';
 import * as os from 'os';
 import * as path from 'path';
-import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
+import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel, extensions } from 'vscode';
+
+// const jupyterExtension = extensions.getExtension('ms-toolsai.jupyter').;
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
@@ -15,6 +17,7 @@ import { config } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { rWorkspace, globalRHelp } from './extension';
+import { DataViewerDataProvider } from './jupyter-dataviwer/DataViewerDataProvider';
 
 export let globalenv: any;
 let resDir: string;
@@ -326,6 +329,11 @@ async function showDataView(source: string, type: string, title: string, file: s
 
 async function getTableHtml(webview: Webview, file: string) {
     const content = await fs.readFile(file);
+    const jupyterExtension = extensions.getExtension('ms-toolsai.jupyter');
+    const jupyterApi = jupyterExtension.exports;
+    const dataProvider : DataViewerDataProvider = new DataViewerDataProvider(file);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    jupyterApi.showDataViewer(dataProvider, 'lalala');
 
     return `
 <!DOCTYPE html>

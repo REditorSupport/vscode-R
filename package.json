@@ -1046,5 +1046,8 @@
     "showdown": "^1.9.1",
     "tree-kill": "^1.2.2",
     "winreg": "^1.2.4"
-  }
+  },
+  "extensionDependencies": [
+    "ms-toolsai.jupyter"
+  ]
 }
