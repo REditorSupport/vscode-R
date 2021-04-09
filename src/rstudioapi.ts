@@ -15,7 +15,6 @@ import * as path from 'path';
 import { sessionDir, sessionDirectoryExists, writeResponse, writeSuccessResponse } from './session';
 import { runTextInTerm, restartRTerminal, chooseTerminal } from './rTerminal';
 import { config } from './util';
-import { rGuestService, isGuestSession } from './rShare';
 
 let lastActiveTextEditor: TextEditor;
 let addins: any[] = undefined;
@@ -286,9 +285,6 @@ let addinQuickPicks: AddinItem[] = undefined;
 export async function getAddinPickerItems(): Promise<AddinItem[]> {
 
   if (typeof addinQuickPicks === 'undefined') {
-    if (isGuestSession) {
-      addins = await rGuestService.requestJSONContent() as [];
-    } else {
       addins = await readJSON(path.join(sessionDir, 'addins.json')).
       then(
         (result) => result,
@@ -298,7 +294,7 @@ export async function getAddinPickerItems(): Promise<AddinItem[]> {
             ' RStudio Addins');
         }
       );
-    }
+
 
     const addinItems = addins.map((x) => {
       return {

@@ -257,7 +257,7 @@ See the wiki for [lists of supported `{rstudioapi}` commands, and verified compa
 
 The session watcher further enhances LiveShare collaboration.
 
-The workspace viewer, data view, plots, browsers, and RStudioApi are available to guests through the host session.
+The workspace viewer, data view, plots, and browsers are available to guests through the host session.
 
 To enable this feature, *both* the host and guest must have this extension and session watcher enabled.
 

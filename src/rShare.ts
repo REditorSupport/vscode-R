@@ -1,11 +1,10 @@
 import * as vscode from 'vscode';
 import * as vsls from 'vsls';
 import * as fs from 'fs-extra';
-import * as path from 'path';
 import { runTextInTerm } from './rTerminal';
 import { attachActiveGuest, initGuest, updateGuestGlobalenv, updateGuestPlot, updateGuestRequest } from './rShareSession';
 import { isTermActive } from './util';
-import { requestFile, sessionDir } from './session';
+import { requestFile } from './session';
 import { forwardCommands, initTreeView, rLiveShareProvider, shareWorkspace, ToggleNode } from './rShareTree';
 import { enableSessionWatcher } from './extension';
 
@@ -31,8 +30,7 @@ const enum ShareRequest {
     NotifyMessage = 'NotifyMessage',
     RequestAttachGuest = 'RequestAttachGuest',
     RequestRunTextInTerm = 'RequestRunTextInTerm',
-    GetFileContent = 'GetFileContent',
-    GetJSONContent = 'GetJSONContent'
+    GetFileContent = 'GetFileContent'
 }
 
 // used in sending messages to the
@@ -193,12 +191,6 @@ export class HostService {
                     return await fs.readFile(args[0]);
                 }
             });
-            this.service.onRequest(ShareRequest.GetJSONContent, async (): Promise<unknown> => {
-                const content: unknown = await fs.readJSON(path.join(sessionDir, 'addins.json'));
-                if (content !== 'undefined') {
-                    return content;
-                }
-            });
             /// Terminal commands ///
             // Command arguments are sent from the guest to the host,
             // and then the host sends the arguments to the console
@@ -345,14 +337,6 @@ export class GuestService {
                 } else {
                     console.error('[GuestService] failed to retrieve file content (not of type "Buffer")');
                 }
-            }
-        }
-    }
-    public async requestJSONContent(): Promise<unknown> {
-        if (this._isStarted) {
-            const content: unknown = await this.service.request(ShareRequest.GetJSONContent, []);
-            if (content !== undefined) {
-                return content;
             }
         }
     }

@@ -4,7 +4,6 @@ import * as fs from 'fs-extra';
 import * as vsls from 'vsls';
 import { globalRHelp, rWorkspace } from './extension';
 import { liveSession, UUID } from './rShare';
-import { dispatchRStudioAPICall } from './rstudioapi';
 import { config, readContent } from './util';
 import { showBrowser, showDataView, showWebView } from './session';
 import { rGuestService } from './rShare';
@@ -100,7 +99,7 @@ export async function updateGuestRequest(sessionStatusBarItem: vscode.StatusBarI
                         break;
                     }
                     case 'rstudioapi': {
-                        await dispatchRStudioAPICall(request.action, request.args, request.sd);
+                        console.error(`[GuestService] ${request.command} not supported`);
                         break;
                     }
                     default:
