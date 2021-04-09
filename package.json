@@ -1014,6 +1014,7 @@
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.27",
+    "@types/ejs": "^3.0.6",
     "@types/express": "^4.17.11",
     "@types/fs-extra": "^9.0.8",
     "@types/highlight.js": "^10.1.0",
@@ -1044,6 +1045,7 @@
     "datatables.net": "^1.10.24",
     "datatables.net-bs4": "^1.10.24",
     "datatables.net-fixedheader-jqui": "^3.1.8",
+    "ejs": "^3.1.6",
     "fotorama": "^4.6.4",
     "fs-extra": "^9.1.0",
     "highlight.js": "^10.6.0",

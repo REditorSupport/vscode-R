@@ -114,6 +114,16 @@ class HttpgdApi {
         });
         return await (res.json() as Promise<HttpgdPlots>);
     }
+    
+    public async get_plot_contents(): Promise<string[]> {
+        const plotIds = await this.get_plots();
+        const plots = plotIds.plots.map(async id => {
+            const url = this.svg_id(id.id);
+            const plot = await this.svg_content(url.toString());
+            return plot;
+        });
+        return await Promise.all(plots);
+    }
 
     public async get_clear(): Promise<Response> {
         const res = await fetch(this.httpClear, {
@@ -365,9 +375,10 @@ export class HttpgdViewer {
     private deviceActive: boolean = true;
     
     private svg: string = '';
+    private plots: string[] = [];
     private sidebar: string = '';
     
-    private listeners: ((svg: string) => void)[] = [];
+    private listeners: ((svg: string, plots: string[]) => void)[] = [];
 
     public onDeviceActiveChange?: (deviceActive: boolean) => void;
     public onDisconnectedChange?: (disconnected: boolean) => void;
@@ -380,12 +391,12 @@ export class HttpgdViewer {
         this.connection.connectionChanged = (disconnected: boolean) => this.onDisconnectedChange?.(disconnected);
     }
     
-    public onChange(listener: (svg: string) => void): void {
+    public onChange(listener: (svg: string, plots: string[]) => void): void {
         this.listeners.push(listener);
     }
     private didChange(): void {
         for(const listener of this.listeners){
-            listener(this.svg);
+            listener(this.svg, this.plots);
         }
     }
 
@@ -426,6 +437,7 @@ export class HttpgdViewer {
     
     private async updateSvg(n: string){
         this.svg = await this.connection.api.svg_content(n);
+        this.plots = await this.connection.api.get_plot_contents();
         this.didChange();
     }
 

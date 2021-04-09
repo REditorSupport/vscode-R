@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <link href="<%= asWebViewPath('style.css') %> " rel="stylesheet">
+    </head>
+    <body>
+        <div id="svgDiv">
+            <%- svg %> 
+        </div>
+        <% plots.forEach(plot => { %>
+        <div id="plotDiv">
+            <%- plot %> 
+        </div>
+        <% }) %>
+    </body>
+</html>
