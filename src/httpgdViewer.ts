@@ -10,7 +10,6 @@ import { extensionContext } from './extension';
 
 export function httpgdViewer(urlString: string): void {
     
-
     const url = new URL(urlString);
 
     const host = url.host;
@@ -45,15 +44,25 @@ export function httpgdViewer(urlString: string): void {
         asWebViewPath: asWebViewPath
     };
     
-    function updatePanel(svg: string, plots: string[]){
-        ejsData.svg = svg;
+    let plots: string[] = [];
+
+    function updatePanel(newPlots?: string[], index?: number){
+        plots = newPlots || plots;
+        index ??= plots.length - 1;
+
+        ejsData.activeIndex = index;
+        ejsData.svg = plots[index];
         ejsData.plots = plots;
         const html = ejs.render(indexTemplate, ejsData);
         panel.webview.html = html;
     }
+
+    vscode.commands.registerCommand('r.httpgd.showIndex', (index?: number) => {
+        updatePanel(undefined, index);
+    });
     
     api.onChange((svg: string, plots: string[]) => {
-        updatePanel(svg, plots);
+        updatePanel(plots);
     });
 }
 

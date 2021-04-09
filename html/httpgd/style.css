@@ -31,3 +31,7 @@ svg text {
 #plotDiv:hover {
     background-color: var(--vscode-list-hoverBackground);
 }
+
+#plotDiv[activePlot] {
+    background-color: var(--vscode-list-inactiveSelectionBackground);
+}

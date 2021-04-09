@@ -7,10 +7,12 @@
         <div id="svgDiv">
             <%- svg %> 
         </div>
-        <% plots.forEach(plot => { %>
-        <div id="plotDiv">
-            <%- plot %> 
-        </div>
+        <% plots.forEach((plot, index) => { %>
+        <a href="command:r.httpgd.showIndex?%5B<%- index %>%5D">
+            <div id="plotDiv" <%- index===activeIndex ? 'activePlot=true' : '' %> >
+                <%- plot %> 
+            </div>
+        </a>
         <% }) %>
     </body>
 </html>
