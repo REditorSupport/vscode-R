@@ -13,7 +13,7 @@ Highlight
 * Send code to debug repl
 * shim the rstudioapi if it has already been loaded
 
-Thank you for contributors
+Thank you for your contributions.
 
 * @krlmlr
   * Update vscode engine #586
