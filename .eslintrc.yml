@@ -8,7 +8,9 @@ parser: '@typescript-eslint/parser'
 parserOptions:
   ecmaVersion: 12
   sourceType: module
-  project: ./tsconfig.json
+  project: 
+    - ./tsconfig.json
+    - ./html/httpgd/tsconfig.json
 plugins:
   - '@typescript-eslint'
   - 'jsdoc'
