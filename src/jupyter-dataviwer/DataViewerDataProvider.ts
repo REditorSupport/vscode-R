@@ -4,8 +4,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import { 
     IDataFrameInfo, 
-    IDataViewerDataProvider, 
-    IRDataFrameInfo, 
+    IDataViewerDataProvider,
     IRowsResponse } from './types';
 import * as rTerminal from '../rTerminal';
 import * as fs from 'fs-extra';
@@ -50,9 +49,9 @@ export class DataViewerDataProvider implements IDataViewerDataProvider {
         end: number, 
         sliceExpression?: string): Promise<IRowsResponse> {
 
-        await rTerminal.runCommand(`.vsc.get_rows(${start}, ${end}, ${this.dataFrameInfo.name}, "${this.file}")`);
+        await rTerminal.runCommand(`.vsc.get_rows(${start + 1}, ${end}, ${this.dataFrameInfo.name}, "${this.file}")`);
         
-        return this.waitUntilFileExistThenRead(`${this.file}_rows_${start}_to_${end}.json`);
+        return this.waitUntilFileExistThenRead(`${this.file}_rows_${start + 1}_to_${end}.json`);
 
     }
 

@@ -231,46 +231,26 @@ if (show_view) {
   }
 
   dataview_table_info <- function(data) {
-    if (is.data.frame(data)) {
-      columns  <- data.frame(
-        key = names(data),
-        type = unname(sapply(data, typeof))
-      )
-    } else if (is.matrix(data)) {
-      if (is.factor(data)) {
-        data <- format(data)
-      }
-      types <- rep(dataview_data_type(data), ncol(data))
-      colnames <- colnames(data)
-      colnames(data) <- NULL
-      if (is.null(colnames)) {
-        colnames <- sprintf("(X%d)", seq_len(ncol(data)))
-      } else {
-        colnames <- trimws(colnames)
-      }
-      rownames <- rownames(data)
-      rownames(data) <- NULL
-      data <- trimws(format(data))
-      if (is.null(rownames)) {
-        types <- c("num", types)
-        rownames <- seq_len(nrow(data))
-      } else {
-        types <- c("string", types)
-        rownames <- trimws(rownames)
-      }
-      dim(data) <- c(length(rownames), length(colnames))
-      colnames <- c(" ", colnames)
-      data <- cbind(rownames, data)
-
-      columns <- .mapply(function(title, type) {
-      class <- if (type == "string") "text-left" else "text-right"
-      list(title = scalar(title),
-        className = scalar(class),
-        type = scalar(type))
-    }, list(colnames, types), NULL)
+    if (is.matrix(data)) {
+      data <- as.data.frame(data)
+    } else if (is.data.frame(data)) {
     } else {
       stop("data must be data.frame or matrix")
     }
+
+    iDataFrameInfoColumnType <- function(column) {
+        switch(typeof(column),
+        "integer" = "num",
+        "double" = "num",
+        "logical" = "bool",
+        "string")
+    }
+
+    columns  <- data.frame(
+      key = names(data),
+      type = unname(sapply(data, iDataFrameInfoColumnType))
+    )
+
     list(columns = columns,
         rowCount = nrow(data),
         shape = dim(data),
@@ -616,17 +596,22 @@ print.hsearch <- function(x, ...) {
   invisible(x)
 }
 
-get_rows <- function(start, end, data_frame, file) {
+get_rows <- function(start, end, object, file) {
+
   message("getting row ",
     format(start, scientific = FALSE),
     " to ",
     format(end, scientific = FALSE),
     " for View(",
-    deparse(substitute(data_frame)),
+    deparse(substitute(object)),
     ")")
 
+  if (is.matrix(object)) {
+      object <- as.data.frame(object)
+  }
+
   jsonlite::write_json(
-    data_frame[(start + 1):end, ],
+    object[start:end, ],
     path = paste0(file,
                   "_rows_",
                   format(start, scientific = FALSE),

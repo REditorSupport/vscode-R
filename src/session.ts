@@ -295,7 +295,7 @@ async function showDataView(source: string, type: string, title: string, file: s
         
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         jupyterApi.showDataViewer(new DataViewerDataProvider(file), title);
-
+        
     } else if (source === 'list') {
         const panel = window.createWebviewPanel('dataview', title,
             {
