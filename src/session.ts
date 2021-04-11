@@ -42,6 +42,8 @@ let plotWatcher: FSWatcher;
 let activeBrowserPanel: WebviewPanel;
 let activeBrowserUri: Uri;
 let activeBrowserExternalUri: Uri;
+const jupyterExtension = extensions.getExtension('ms-toolsai.jupyter');
+const jupyterApi = jupyterExtension.exports;
 
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
@@ -290,19 +292,10 @@ async function showWebView(file: string, title: string, viewer: string | boolean
 async function showDataView(source: string, type: string, title: string, file: string, viewer: string) {
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}`);
     if (source === 'table') {
-        const panel = window.createWebviewPanel('dataview', title,
-            {
-                preserveFocus: true,
-                viewColumn: ViewColumn[viewer],
-            },
-            {
-                enableScripts: true,
-                enableFindWidget: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [Uri.file(resDir)],
-            });
-        const content = await getTableHtml(panel.webview, file);
-        panel.webview.html = content;
+        
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        jupyterApi.showDataViewer(new DataViewerDataProvider(file), title);
+
     } else if (source === 'list') {
         const panel = window.createWebviewPanel('dataview', title,
             {
@@ -327,62 +320,6 @@ async function showDataView(source: string, type: string, title: string, file: s
     console.info('[showDataView] Done');
 }
 
-async function getTableHtml(webview: Webview, file: string) {
-    const content = await fs.readFile(file);
-    const jupyterExtension = extensions.getExtension('ms-toolsai.jupyter');
-    const jupyterApi = jupyterExtension.exports;
-    const dataProvider : DataViewerDataProvider = new DataViewerDataProvider(file);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    jupyterApi.showDataViewer(dataProvider, 'lalala');
-
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'bootstrap.min.css'))))}" rel="stylesheet">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'dataTables.bootstrap4.min.css'))))}" rel="stylesheet">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'fixedHeader.jqueryui.min.css'))))}" rel="stylesheet">
-  <style type="text/css">
-    body {
-        color: black;
-        background-color: white;
-    }
-    table {
-        font-size: 0.75em;
-    }
-  </style>
-</head>
-<body>
-  <div class="container-fluid">
-    <table id="data-table" class="display table table-sm table-striped table-condensed table-hover"></table>
-  </div>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.dataTables.min.js'))))}"></script>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'dataTables.bootstrap4.min.js'))))}"></script>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'dataTables.fixedHeader.min.js'))))}"></script>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'fixedHeader.jqueryui.min.js'))))}"></script>
-  <script>
-    var data = ${String(content)};
-    $(document).ready(function () {
-      $("#data-table").DataTable({
-        data: data.data,
-        columns: data.columns,
-        paging: false,
-        autoWidth: false,
-        order: [],
-        fixedHeader: true
-      });
-      $("#data-table tbody").on("click", "tr", function() {
-        $(this).toggleClass("table-active");
-      });
-    });
-  </script>
-</body>
-</html>
-`;
-}
 
 async function getListHtml(webview: Webview, file: string) {
     const content = await fs.readFile(file);

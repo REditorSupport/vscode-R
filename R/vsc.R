@@ -230,29 +230,12 @@ if (show_view) {
     }
   }
 
-  dataview_table <- function(data) {
+  dataview_table_info <- function(data) {
     if (is.data.frame(data)) {
-      nrow <- nrow(data)
-      colnames <- colnames(data)
-      if (is.null(colnames)) {
-        colnames <- sprintf("(X%d)", seq_len(ncol(data)))
-      } else {
-        colnames <- trimws(colnames)
-      }
-      if (.row_names_info(data) > 0L) {
-        rownames <- rownames(data)
-        rownames(data) <- NULL
-      } else {
-        rownames <- seq_len(nrow)
-      }
-      data <- c(list(" " = rownames), .subset(data))
-      colnames <- c(" ", colnames)
-      types <- vapply(data, dataview_data_type,
-        character(1L), USE.NAMES = FALSE)
-      data <- vapply(data, function(x) {
-        trimws(format(x))
-      }, character(nrow), USE.NAMES = FALSE)
-      dim(data) <- c(length(rownames), length(colnames))
+      columns  <- data.frame(
+        key = names(data),
+        type = unname(sapply(data, typeof))
+      )
     } else if (is.matrix(data)) {
       if (is.factor(data)) {
         data <- format(data)
@@ -278,22 +261,23 @@ if (show_view) {
       dim(data) <- c(length(rownames), length(colnames))
       colnames <- c(" ", colnames)
       data <- cbind(rownames, data)
-    } else {
-      stop("data must be data.frame or matrix")
-    }
-    columns <- .mapply(function(title, type) {
+
+      columns <- .mapply(function(title, type) {
       class <- if (type == "string") "text-left" else "text-right"
       list(title = scalar(title),
         className = scalar(class),
         type = scalar(type))
     }, list(colnames, types), NULL)
+    } else {
+      stop("data must be data.frame or matrix")
+    }
     list(columns = columns,
-        data = data,
         rowCount = nrow(data),
-        shape = dim(data))
+        shape = dim(data),
+        type = class(data)[1])
   }
 
-  show_dataview <- function(x, page=1, show=10, title,
+  show_dataview <- function(x, title,
                             viewer = getOption("vsc.view", "Two")) {
     if (missing(title)) {
       sub <- substitute(x)
@@ -353,14 +337,16 @@ if (show_view) {
       }
     }
     if (is.data.frame(x) || is.matrix(x)) {
-      # ending_row  <-  page * show
-      # starting_row  <-  ending_row - show + 1
-      # data <- dataview_table(x[starting_row:ending_row, ])
-      file <- tempfile(tmpdir = tempdir, fileext = ".json")
-      data <- append(
-        dataview_table(x),
-        list(fileName = file, type = class(x)[1], name = deparse(substitute(x))))
-      jsonlite::write_json(data, file, matrix = "rowmajor")
+      file <- tempfile(tmpdir = tempdir)
+      data_info <- c(
+        dataview_table_info(x),
+        name = deparse(substitute(x)),
+        fileName = file)
+      jsonlite::write_json(
+        data_info,
+        path = paste0(file, "_info.json"),
+        auto_unbox = TRUE,
+        matrix = "rowmajor")
       request("dataview", source = "table", type = "json",
         title = title, file = file, viewer = viewer)
     } else if (is.list(x)) {
@@ -628,6 +614,26 @@ print.hsearch <- function(x, ...) {
     utils:::print.hsearch(x, ...)
   }
   invisible(x)
+}
+
+get_rows <- function(start, end, data_frame, file) {
+  message("getting row ",
+    format(start, scientific = FALSE),
+    " to ",
+    format(end, scientific = FALSE),
+    " for View(",
+    deparse(substitute(data_frame)),
+    ")")
+
+  jsonlite::write_json(
+    data_frame[(start + 1):end, ],
+    path = paste0(file,
+                  "_rows_",
+                  format(start, scientific = FALSE),
+                  "_to_",
+                  format(end, scientific = FALSE),
+                  ".json")
+  )
 }
 
 # a copy of .S3method(), since this function is new in R 4.0

@@ -64,6 +64,7 @@ init_last <- function() {
     .vsc.browser <- .vsc$show_browser
     .vsc.viewer <- .vsc$show_viewer
     .vsc.page_viewer <- .vsc$show_page_viewer
+    .vsc.get_rows <- .vsc$get_rows
 
     # assign functions that are optional:
     for (funcName in c("View", ".External.graphics")) {

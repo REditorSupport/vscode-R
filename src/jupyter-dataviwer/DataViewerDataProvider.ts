@@ -2,15 +2,18 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
-import { IDataFrameInfo, IDataViewerDataProvider, IRDataFrameInfo, IRowsResponse } from './types';
+import { 
+    IDataFrameInfo, 
+    IDataViewerDataProvider, 
+    IRDataFrameInfo, 
+    IRowsResponse } from './types';
+import * as rTerminal from '../rTerminal';
 import * as fs from 'fs-extra';
+import * as path from 'path';
 
 export class DataViewerDataProvider implements IDataViewerDataProvider {
     private file: string;
-    protected dataFrameInfo: IDataFrameInfo;
-    private rDataFrameInfoData: IRowsResponse[];
-
-
+    private dataFrameInfo: IDataFrameInfo;
 
 
     constructor(file: string){
@@ -18,72 +21,58 @@ export class DataViewerDataProvider implements IDataViewerDataProvider {
     }
 
     public dispose(): void {
-        console.log('disposed');
+        const filePath = path.dirname(this.file);
+        const regex = new RegExp(`^${this.file.split('/')[3]}`);
+        fs.readdirSync(filePath)
+            .filter(f => regex.test(f))
+            .forEach(f => fs.unlinkSync(filePath + path.sep + f));
     }
 
-    public getDataFrameInfo(sliceExpression?: string, isRefresh?: boolean): Promise<IDataFrameInfo> {
+    public getDataFrameInfo(
+        sliceExpression?: string, 
+        isRefresh?: boolean): Promise<IDataFrameInfo> {
 
-        const rDataFrameInfo : IRDataFrameInfo =  JSON.parse(fs.readFileSync(this.file).toString());
-        this.rDataFrameInfoData = rDataFrameInfo.data;
+        this.dataFrameInfo = JSON.parse(
+            fs.readFileSync(`${this.file}_info.json`).toString());
+        
 
-
-        return new Promise<IDataFrameInfo> ((resolve, reject) => resolve(this.convertRDataFrameInfoToDataFrameInfo(rDataFrameInfo)));
+        return new Promise<IDataFrameInfo> ((resolve) => resolve(this.dataFrameInfo));
 
     }
 
 
     public getAllRows(sliceExpression?: string): Promise<IRowsResponse> {
-        const allRows: IRowsResponse = [{col1: 1 ,col2: 1}, {col1: 2 ,col2: 2}];
 
-        return new Promise<IRowsResponse>((resolve, reject) => resolve(allRows));
+        return new Promise<IRowsResponse>((resolve) => resolve([]));
     }
-    public getRows(start: number, end: number, sliceExpression?: string): Promise<IRowsResponse> {
+    public async getRows(
+        start: number, 
+        end: number, 
+        sliceExpression?: string): Promise<IRowsResponse> {
 
-        const rows: IRowsResponse = this.convertRDataFrameInfoDataToRows(this.rDataFrameInfoData);
-
-        return new Promise<IRowsResponse>((resolve, reject) => resolve(rows));
-
-    }
-
-    private convertRDataFrameInfoToDataFrameInfo(rdataFrameInfo : IRDataFrameInfo): IDataFrameInfo {
-        const dataFrameInfo : IDataFrameInfo = {
-            columns: rdataFrameInfo
-                .columns
-                .filter((elem, index) => index > 0)
-                .map(c => {
-                    return {key: c.title, type: c.type};
-                }),
-            rowCount: rdataFrameInfo.rowCount[0],
-            shape: rdataFrameInfo.shape,
-            type: rdataFrameInfo.type[0],
-            name: rdataFrameInfo.name[0],
-            fileName:  rdataFrameInfo.fileName[0]
-        };
-
-        this.dataFrameInfo = dataFrameInfo;
-
-        return dataFrameInfo;
+        await rTerminal.runCommand(`.vsc.get_rows(${start}, ${end}, ${this.dataFrameInfo.name}, "${this.file}")`);
+        
+        return this.waitUntilFileExistThenRead(`${this.file}_rows_${start}_to_${end}.json`);
 
     }
 
-    private convertRDataFrameInfoDataToRows(rDataFrameInfoData: IRowsResponse): IRowsResponse {
-        return rDataFrameInfoData
-            .map(dataRow => {
-                const rowObject = {};
-                dataRow
-                    .filter((dataRowItem, index: number) =>  index > 0)
-                    .forEach((dataRowItem, index: number) => {
-                        const colName = this.dataFrameInfo.columns[index]['key'];
-                        rowObject[colName] = dataRowItem;
-                    });
-                return rowObject;
-            });
-          
+    private waitUntilFileExistThenRead(filePath, counter = 0, maxTries = 20, timeOut = 500) {
+        return new Promise<IRowsResponse>((resolve, reject) => {
+            setTimeout(() => {
+                fs.access(filePath, fs.constants.F_OK, (err) => {
+                    if (err) {
+                        if (counter <= maxTries){
+                            // console.log(`counter = ${counter}`);              
+                            resolve(this.waitUntilFileExistThenRead(filePath, counter + 1));
+                        } else {
+                            reject(err);
+                        }
+                    } else {
+                    //file exists
+                        resolve(JSON.parse(fs.readFileSync(filePath).toString()));
+                    }
+                });
+            }, timeOut);
+        });
     }
 }
-
-                // return data.filter((elem, index) =>  index > 0)
-                // .map((row, index) => {
-                //     const colname: { col: string } = {`${this.dataFrameInfo.columns[index]['key']}` : row};
-                //     return colname;
-                // });
