@@ -17,6 +17,21 @@ svg text {
     stroke-miterlimit: 10.00;
 }
 
+@keyframes fadein {
+    from {
+        stroke: var(--vscode-editor-background);
+    }
+    to {
+        stroke: var(--vscode-foreground);
+    }
+}
+
+.httpgd circle {
+    animation-name: fadein;
+    animation-duration: 0.5s;
+    pointer-events: all;
+}
+
 #svgDiv {
     width: 100%;
     height: 100%;
@@ -32,6 +47,6 @@ svg text {
     background-color: var(--vscode-list-hoverBackground);
 }
 
-#plotDiv[activePlot] {
+#plotDiv[activePlot=true] {
     background-color: var(--vscode-list-inactiveSelectionBackground);
 }

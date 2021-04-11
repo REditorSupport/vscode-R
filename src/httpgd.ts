@@ -378,7 +378,7 @@ export class HttpgdViewer {
     private plots: string[] = [];
     private sidebar: string = '';
     
-    private listeners: ((svg: string, plots: string[]) => void)[] = [];
+    private listeners: ((plots: string[]) => void)[] = [];
 
     public onDeviceActiveChange?: (deviceActive: boolean) => void;
     public onDisconnectedChange?: (disconnected: boolean) => void;
@@ -391,12 +391,12 @@ export class HttpgdViewer {
         this.connection.connectionChanged = (disconnected: boolean) => this.onDisconnectedChange?.(disconnected);
     }
     
-    public onChange(listener: (svg: string, plots: string[]) => void): void {
+    public onChange(listener: (plots: string[]) => void): void {
         this.listeners.push(listener);
     }
     private didChange(): void {
         for(const listener of this.listeners){
-            listener(this.svg, this.plots);
+            listener(this.plots);
         }
     }
 

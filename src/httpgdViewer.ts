@@ -61,7 +61,7 @@ export function httpgdViewer(urlString: string): void {
         updatePanel(undefined, index);
     });
     
-    api.onChange((svg: string, plots: string[]) => {
+    api.onChange((plots: string[]) => {
         updatePanel(plots);
     });
 }

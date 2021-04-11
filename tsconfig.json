@@ -12,6 +12,7 @@
         "rootDir": "src"
     },
     "exclude": [
+        "html",
         "node_modules",
         ".vscode-test",
         "html/*"
