@@ -2,9 +2,16 @@
 
 ## Latest updates
 
-From v1.6.6, You can check all of our changes from [Release Page](https://github.com/Ikuyadeu/vscode-R/releases)
+You can check all of our changes from [Release Page](https://github.com/Ikuyadeu/vscode-R/releases)
 
 ## [1.6.6](https://github.com/Ikuyadeu/vscode-R/releases/tag/v1.6.6)
+
+Highlight
+
+* Clarify error messages
+* Being more conservative to call object.size() in task callback
+* Send code to debug repl
+* shim the rstudioapi if it has already been loaded
 
 Thank you for contributors
 
