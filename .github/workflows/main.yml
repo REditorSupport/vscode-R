@@ -39,12 +39,13 @@ jobs:
           node-version: "13.x"
       - run: npm install
       - run: npm run lint
-  markdownlint:
-    runs-on: ubuntu-latest
+  markdownlint-cli:
     steps:
-      - uses: actions/checkout@v2
-      - uses: xt0rted/markdownlint-problem-matcher@v1
-      - run: markdownlint **/*.md --ignore node_modules -c .markdownlint.json
+      - uses: nosborn/github-action-markdown-cli@v1.1.1
+        with:
+          files: .
+          config_file: ".markdownlint.json"
+          ignore_files: "node_modules/*"
   lintr:
     runs-on: ubuntu-latest
     container:
