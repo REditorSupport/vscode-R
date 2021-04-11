@@ -55,21 +55,26 @@ export async function getRpathFromSystem(): Promise<string> {
     return rpath;
 }
 
+export function getRPathConfigEntry(term: boolean = false): string {
+    const trunc = (term ? 'rterm' : 'rpath');
+    const platform = (
+        process.platform === 'win32' ? 'windows' :
+        process.platform === 'darwin' ? 'mac' :
+        'linux'
+    );
+    return `${trunc}.${platform}`;
+}
+
 export async function getRpath(quote=false, overwriteConfig?: string): Promise<string> {
     let rpath = '';
     
-    const configEntry = (
-        process.platform === 'win32' ? 'rpath.windows' :
-        process.platform === 'darwin' ? 'rpath.mac' :
-        'rpath.linux'
-    );
-
     // try the config entry specified in the function arg:
     if(overwriteConfig){
         rpath = config().get<string>(overwriteConfig);
     }
 
     // try the os-specific config entry for the rpath:
+    const configEntry = getRPathConfigEntry();
     rpath ||= config().get<string>(configEntry);
 
     // read from path/registry:
@@ -80,7 +85,7 @@ export async function getRpath(quote=false, overwriteConfig?: string): Promise<s
 
     if(!rpath){
         // inform user about missing R path:
-        void vscode.window.showErrorMessage(`${process.platform} can't use R`);
+        void vscode.window.showErrorMessage(`Cannot find R to use for help, package installation etc. Change setting r.${configEntry} to R path.`);
     } else if(quote && /^[^'"].* .*[^'"]$/.exec(rpath)){
         // if requested and rpath contains spaces, add quotes:
         rpath = `"${rpath}"`;
@@ -93,17 +98,8 @@ export async function getRpath(quote=false, overwriteConfig?: string): Promise<s
 }
 
 export async function getRterm(): Promise<string|undefined> {
-    
-    let rpath = '';
-    const platform: string = process.platform;
-    
-    if ( platform === 'win32') {
-        rpath = config().get<string>('rterm.windows');
-    } else if (platform === 'darwin') {
-        rpath = config().get<string>('rterm.mac');
-    } else if (platform === 'linux') {
-        rpath = config().get<string>('rterm.linux');
-    }
+    const configEntry = getRPathConfigEntry(true);
+    let rpath = config().get<string>(configEntry);
 
     rpath ||= await getRpathFromSystem();
     
@@ -111,7 +107,7 @@ export async function getRterm(): Promise<string|undefined> {
         return rpath;
     }
 
-    void vscode.window.showErrorMessage(`${process.platform} can't use R`);
+    void vscode.window.showErrorMessage(`Cannot find R for creating R terminal. Change setting r.${configEntry} to R path.`);
     return undefined;
 }
 

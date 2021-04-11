@@ -79,7 +79,7 @@ export async function dispatchRStudioAPICall(action: string, args: any, sd: stri
       break;
     }
     case 'send_to_console': {
-      await sendCodeToRTerminal(args.code, args.focus);
+      await sendCodeToRTerminal(args.code, args.execute, args.focus);
       await writeSuccessResponse(sd);
       break;
     }
@@ -339,9 +339,14 @@ export async function launchAddinPicker(): Promise<void> {
   }
 }
 
-export async function sendCodeToRTerminal(code: string, focus: boolean) {
-  console.info(`[sendCodeToRTerminal] inserting code: ${code}`);
-  await runTextInTerm(code);
+export async function sendCodeToRTerminal(code: string, execute: boolean, focus: boolean) {
+  if (execute) {
+    console.info(`[sendCodeToRTerminal] sending code: ${code}`);
+  } else {
+    console.info(`[sendCodeToRTerminal] inserting code: ${code}`);
+  }
+
+  await runTextInTerm(code, execute);
   if (focus) {
     const rTerm = await chooseTerminal();
     if (rTerm !== undefined) {

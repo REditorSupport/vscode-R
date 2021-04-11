@@ -31,34 +31,39 @@ export function surroundSelection(text: string, rFunctionName: string[]): string
     return text;
 }
 
-export function getSelection(): {
+export interface RSelection {
     linesDownToMoveCursor: number;
     selectedText: string;
-} {
-    const selection = { linesDownToMoveCursor: 0, selectedText: '' };
-    const { start, end } = window.activeTextEditor.selection;
-    const currentDocument = window.activeTextEditor.document;
-    const range = new Range(start, end);
+    startLine: number;
+    endLine: number;
+    range: Range;
+}
 
-    let selectedLine = currentDocument.getText(range);
-    if (!selectedLine) {
-        const { startLine, endLine }
-        = extendSelection(start.line, (x) => currentDocument.lineAt(x).text, currentDocument.lineCount);
+export function getSelection(): RSelection {
+    const currentDocument = window.activeTextEditor.document;
+    const { start, end } = window.activeTextEditor.selection;
+    const selection = {
+        linesDownToMoveCursor: 0,
+        selectedText: '',
+        startLine: start.line,
+        endLine: end.line,
+        range: new Range(start, end)
+    };
+
+    if (selection.range.isEmpty) {
+        const {startLine, endLine} = extendSelection(
+            start.line,
+            (x) => currentDocument.lineAt(x).text,
+            currentDocument.lineCount
+        );
         const charactersOnLine = window.activeTextEditor.document.lineAt(endLine).text.length;
         const newStart = new Position(startLine, 0);
         const newEnd = new Position(endLine, charactersOnLine);
         selection.linesDownToMoveCursor = endLine + 1 - start.line;
-        selectedLine = currentDocument.getText(new Range(newStart, newEnd));
-    } else if (start.line === end.line) {
-        selection.linesDownToMoveCursor = 0;
-        selection.selectedText = currentDocument.getText(new Range(start, end));
-
-        return selection;
-    } else {
-        selectedLine = currentDocument.getText(new Range(start, end));
+        selection.range = new Range(newStart, newEnd);
     }
 
-    selection.selectedText = selectedLine.trim();
+    selection.selectedText = currentDocument.getText(selection.range).trim();
 
     return selection;
 }

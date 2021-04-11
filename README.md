@@ -229,6 +229,11 @@ options(vsc.helpPanel = "Two" | "Active" | "Beside" | FALSE)
 # Use 0 (or 1) is the default - literal value or object type and dimensions
 # Use 2 to show list contents, data frame columns, and example values.
 options(vsc.str.max.level = 0 | 2 )
+
+# Show object size in the workspace viewer tooltip
+# The R session could become laggy if there are large character vectors in
+#   objects in the global environment when this option is `TRUE`.
+options(vsc.show_object_size = FALSE | TRUE)
 ```
 
 The first values are the default and all subsequent values after `|` are available choices.

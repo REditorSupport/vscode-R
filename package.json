@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "R language support (run, snippet, viewer)",
-  "version": "1.6.5",
+  "version": "1.6.6",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
@@ -26,7 +26,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.54.0"
+    "vscode": "^1.55.0"
   },
   "activationEvents": [
     "onLanguage:r",
@@ -747,12 +747,12 @@
         {
           "command": "r.workspaceViewer.view",
           "group": "inline",
-          "when": "view == workspaceViewer"
+          "when": "view == workspaceViewer && viewItem == rootNode"
         },
         {
           "command": "r.workspaceViewer.remove",
           "group": "inline",
-          "when": "view == workspaceViewer"
+          "when": "view == workspaceViewer && viewItem == rootNode"
         },
         {
           "command": "r.helpPanel.searchPackage",
@@ -997,7 +997,12 @@
           "description": "Remove hidden items when clearing workspace."
         }
       }
-    }
+    },
+    "taskDefinitions": [
+      {
+        "type": "R"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "webpack --mode production",
@@ -1008,38 +1013,38 @@
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {
-    "@types/cheerio": "^0.22.27",
+    "@types/cheerio": "^0.22.28",
     "@types/express": "^4.17.11",
-    "@types/fs-extra": "^9.0.8",
+    "@types/fs-extra": "^9.0.10",
     "@types/highlight.js": "^10.1.0",
-    "@types/mocha": "^8.2.1",
-    "@types/node": "^14.14.34",
+    "@types/mocha": "^8.2.2",
+    "@types/node": "^14.14.37",
     "@types/showdown": "^1.9.3",
-    "@types/vscode": "^1.54.0",
+    "@types/vscode": "^1.55.0",
     "@types/winreg": "^1.2.30",
-    "@typescript-eslint/eslint-plugin": "^4.17.0",
-    "@typescript-eslint/parser": "^4.17.0",
-    "copy-webpack-plugin": "^7.0.0",
-    "devreplay": "^1.9.26",
-    "eslint": "^7.22.0",
-    "eslint-plugin-jsdoc": "^31.6.1",
+    "@typescript-eslint/eslint-plugin": "^4.21.0",
+    "@typescript-eslint/parser": "^4.21.0",
+    "copy-webpack-plugin": "^8.1.1",
+    "devreplay": "^1.9.29",
+    "eslint": "^7.24.0",
+    "eslint-plugin-jsdoc": "^32.3.0",
     "mocha": "^8.3.2",
-    "ts-loader": "^8.0.18",
-    "typescript": "^4.1.3",
-    "vscode-test": "^1.5.1",
-    "webpack": "^5.25.1",
-    "webpack-cli": "^4.5.0",
+    "ts-loader": "^8.1.0",
+    "typescript": "^4.2.4",
+    "vscode-test": "^1.5.2",
+    "webpack": "^5.31.2",
+    "webpack-cli": "^4.6.0",
     "yamljs": "^0.3.0"
   },
   "dependencies": {
     "bootstrap": "^4.6.0",
-    "cheerio": "^1.0.0-rc.5",
+    "cheerio": "1.0.0-rc.6",
     "datatables.net": "^1.10.24",
     "datatables.net-bs4": "^1.10.24",
     "datatables.net-fixedheader-jqui": "^3.1.8",
     "fotorama": "^4.6.4",
     "fs-extra": "^9.1.0",
-    "highlight.js": "^10.6.0",
+    "highlight.js": "^10.7.2",
     "jquery": "^3.6.0",
     "jquery.json-viewer": "^1.4.0",
     "popper.js": "^1.16.1",

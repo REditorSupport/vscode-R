@@ -1,16 +1,16 @@
 'use strict';
 
 import * as path from 'path';
-import * as os from 'os';
 import { pathExists } from 'fs-extra';
 import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
 
+import { extensionContext } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { removeSessionFiles } from './session';
+import { removeSessionFiles, watcherDir } from './session';
 import { config, delay, getRterm } from './util';
 export let rTerm: vscode.Terminal;
 
@@ -116,10 +116,14 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
                 shellPath: termPath,
                 shellArgs: termOpt,
             };
+            const newRprofile = extensionContext.asAbsolutePath(path.join('R', '.Rprofile'));
+            const initR = extensionContext.asAbsolutePath(path.join('R', 'init.R'));
             if (config().get<boolean>('sessionWatcher')) {
                 termOptions.env = {
                     R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
-                    R_PROFILE_USER: path.join(os.homedir(), '.vscode-R', '.Rprofile'),
+                    R_PROFILE_USER: newRprofile,
+                    VSCODE_INIT_R: initR,
+                    VSCODE_WATCHER_DIR: watcherDir
                 };
             }
             rTerm = vscode.window.createTerminal(termOptions);
@@ -127,7 +131,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
 
             return true;
         }
-        void vscode.window.showErrorMessage('Cannot find R client.  Please check R path in preferences and reload.');
+        void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check r.rterm setting.`);
 
         return false;
     });
@@ -213,7 +217,7 @@ export async function chooseTerminal(): Promise<vscode.Terminal> {
     return rTerm;
 }
 
-export async function runSelectionInTerm(moveCursor: boolean): Promise<void> {
+export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): Promise<void> {
     const selection = getSelection();
     if (moveCursor && selection.linesDownToMoveCursor > 0) {
         const lineCount = vscode.window.activeTextEditor.document.lineCount;
@@ -224,7 +228,11 @@ export async function runSelectionInTerm(moveCursor: boolean): Promise<void> {
         await vscode.commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
         await vscode.commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
     }
-    await runTextInTerm(selection.selectedText);
+    if(useRepl && vscode.debug.activeDebugSession?.type === 'R-Debugger'){
+        await sendRangeToRepl(selection.range);
+    } else{
+        await runTextInTerm(selection.selectedText);
+    }
 }
 
 export async function runChunksInTerm(chunks: vscode.Range[]): Promise<void> {
@@ -237,7 +245,7 @@ export async function runChunksInTerm(chunks: vscode.Range[]): Promise<void> {
     }
 }
 
-export async function runTextInTerm(text: string): Promise<void> {
+export async function runTextInTerm(text: string, execute: boolean = true): Promise<void> {
     const term = await chooseTerminal();
     if (term === undefined) {
         return;
@@ -247,12 +255,22 @@ export async function runTextInTerm(text: string): Promise<void> {
             // Surround with ANSI control characters for bracketed paste mode
             text = `\x1b[200~${text}\x1b[201~`;
         }
-        term.sendText(text);
+        term.sendText(text, execute);
     } else {
         const rtermSendDelay: number = config().get('rtermSendDelay');
-        for (const line of text.split('\n')) {
-            await delay(rtermSendDelay); // Increase delay if RTerm can't handle speed.
-            term.sendText(line);
+        const split = text.split('\n');
+        const last_split = split.length - 1;
+        for (const [count, line] of split.entries()) {
+            if (count > 0) {
+                await delay(rtermSendDelay); // Increase delay if RTerm can't handle speed.
+            }
+
+            // Avoid sending newline on last line
+            if (count === last_split && !execute) {
+                term.sendText(line, false);
+            } else {
+                term.sendText(line);
+            }
         }
     }
     setFocus(term);
@@ -265,4 +283,19 @@ function setFocus(term: vscode.Terminal) {
     if (focus !== 'none') {
         term.show(focus !== 'terminal');
     }
+}
+
+export async function sendRangeToRepl(rng: vscode.Range): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    const sel0 = editor.selections;
+    let sel1 = new vscode.Selection(rng.start, rng.end);
+    while(/^[\r\n]/.exec(editor.document.getText(sel1))){
+        sel1 = new vscode.Selection(sel1.start.translate(1), sel1.end);
+    }
+    while(/\r?\n\r?\n$/.exec(editor.document.getText(sel1))){
+        sel1 = new vscode.Selection(sel1.start, sel1.end.translate(-1));
+    }
+    editor.selections = [sel1];
+    await vscode.commands.executeCommand('editor.debug.action.selectionToRepl');
+    editor.selections = sel0;
 }

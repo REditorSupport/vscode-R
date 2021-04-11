@@ -29,8 +29,25 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 		return element;
 	}
 
-	getChildren(): WorkspaceItem[] {
-		return this.getWorkspaceItems(this.data);
+	getChildren(element?: WorkspaceItem): WorkspaceItem[] {
+		if (element) {
+			return element.str
+				.split('\n')
+				.filter((elem, index) => {return index > 0;})
+				.map(strItem => 
+					new WorkspaceItem(
+						'', 
+						'', 
+						strItem.replace(/\s+/g,' ').trim(), 
+						'', 
+						0, 
+						element.treeLevel + 1
+					)
+				);
+		} else {
+			return this.getWorkspaceItems(this.data);
+		}
+
 	}
 
 	private getWorkspaceItems(data: WorkspaceAttr): WorkspaceItem[] {
@@ -48,7 +65,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 				str,
 				type,
 				size,
-				TreeItemCollapsibleState.None,
+				0,
 				dim,
 			);
 		};
@@ -83,20 +100,28 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 }
 
 export class WorkspaceItem extends TreeItem {
-	public label: string;
+	label: string;
+	desc: string;
+	str: string;
+	treeLevel: number;
+	contextValue: string;
+
 	constructor(
 		label: string,
 		rClass: string,
 		str: string,
 		type: string,
 		size: number,
-		collapsibleState: TreeItemCollapsibleState,
-		dim?: number[]
+		treeLevel: number,
+		dim?: number[],
 	) {
-		super(label, collapsibleState);
+		super(label, WorkspaceItem.setCollapsibleState(treeLevel, type, str));
 		this.description = this.getDescription(dim, str, rClass);
-		this.tooltip = this.getTooltip(label, rClass, size);
+		this.tooltip = this.getTooltip(label, rClass, size, treeLevel);
 		this.contextValue = type;
+		this.str = str;
+		this.treeLevel = treeLevel;
+		this.contextValue = treeLevel === 0 ? 'rootNode' : `childNode${treeLevel}`;
 	}
 
 	private getDescription(dim: number[], str: string, rClass: string): string {
@@ -110,12 +135,38 @@ export class WorkspaceItem extends TreeItem {
 			return str;
 		}
 	}
-	private getTooltip(label:string, rClass: string, size: number): string {
-		if (size !== undefined) {
-			return `${label} (${rClass}, ${size} bytes)`;
+
+	private getSizeString(bytes: number): string {
+		if (bytes < 1024) {
+			return `${bytes} bytes`;
+		} else {
+			const e = Math.floor(Math.log(bytes) / Math.log(1024));
+			return (bytes / Math.pow(1024, e)).toFixed(0) + 'KMGTP'.charAt(e - 1) + 'b';
+		}
+	}
+
+	private getTooltip(label:string, rClass: string, 
+				size: number, treeLevel: number): string {
+		if (size !== undefined && treeLevel === 0) {
+			return `${label} (${rClass}, ${this.getSizeString(size)})`;
+		} else if (treeLevel === 1) {
+			return null;
 		} else {
 			return `${label} (${rClass})`;
 		}
+	}
+
+	/* This logic has to be implemented this way to allow it to be called
+	during the super constructor above. I created it to give full control
+	of what elements can have have 'child' nodes os not. It can be expanded
+	in the futere for more tree levels.*/
+
+	private static setCollapsibleState(treeLevel: number, type: string, str: string) { 
+		if (treeLevel === 0 && type === 'list' && str.includes('\n')){
+			return TreeItemCollapsibleState.Collapsed;
+		} else {
+			return TreeItemCollapsibleState.None;
+		} 
 	}
 }
 
