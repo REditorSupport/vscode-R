@@ -25,7 +25,7 @@ Thank you for contributors
 * add option vsc.hover.str.max.level #545
 * Change workspace tooltip #544 (Thank you @ElianHugh)
 
-## 1,6,4
+## 1.6.4
 
 * Better error message when reading aliases (#518)
 * Keep promises and active bindings in globalenv (#521)
