@@ -23,6 +23,12 @@ export interface HttpgdPlot {
     // (displayed size might vary, if % values are used)
     heigth: number;
     width: number;
+    
+    // Further info to be used in viewer
+    metaData?: {
+        // Title to be used e.g. on hover or as webview-title
+        title?: string;
+    }
 }
 
 export interface HttpgdState {
