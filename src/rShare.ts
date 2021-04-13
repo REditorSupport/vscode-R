@@ -5,7 +5,7 @@ import { doesTermExist } from './util';
 import { requestFile } from './session';
 import { runTextInTerm } from './rTerminal';
 import { enableSessionWatcher } from './extension';
-import { attachActiveGuest, initGuest, updateGuestGlobalenv, updateGuestPlot, updateGuestRequest } from './rShareSession';
+import { attachActiveGuest, detachGuest, initGuest, updateGuestGlobalenv, updateGuestPlot, updateGuestRequest } from './rShareSession';
 import { forwardCommands, initTreeView, rLiveShareProvider, shareWorkspace, ToggleNode } from './rShareTree';
 
 // LiveShare
@@ -55,6 +55,8 @@ export async function isHost(): Promise<boolean> {
 
 // used for notify & request events
 // to prevent accidental typos
+
+
 const enum Callback {
     NotifyEnvUpdate = 'NotifyEnvUpdate',
     NotifyPlotUpdate = 'NotifyPlotUpdate',
@@ -62,7 +64,8 @@ const enum Callback {
     NotifyMessage = 'NotifyMessage',
     RequestAttachGuest = 'RequestAttachGuest',
     RequestRunTextInTerm = 'RequestRunTextInTerm',
-    GetFileContent = 'GetFileContent'
+    GetFileContent = 'GetFileContent',
+    OrderDetach = 'OrderDetach'
 }
 
 // used in sending messages to the
@@ -140,6 +143,9 @@ const commands: ICommands = {
         },
         'NotifyPlotUpdate': (args: [ file: string ]): void => {
             void updateGuestPlot(args[0]);
+        },
+        'OrderDetach': (): void => {
+            void detachGuest();
         },
         /// vscode Messages ///
         // The host sends messages to the guest, which are displayed as a vscode window message
@@ -326,6 +332,11 @@ export class HostService {
     public notifyPlot(file: string): void {
         if (this.isStarted) {
             void request(Callback.NotifyPlotUpdate, file);
+        }
+    }
+    orderGuestDetach(): void {
+        if (this.isStarted) {
+            void request(Callback.OrderDetach);
         }
     }
 }

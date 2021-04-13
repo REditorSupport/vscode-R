@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { isLiveShare } from './rShare';
+import { isLiveShare, rHostService } from './rShare';
 import { config } from './util';
 
 export let forwardCommands: boolean;
@@ -99,6 +99,7 @@ class ShareNode extends ToggleNode {
     toggle(treeProvider: ShareTreeProvider): void {
         shareWorkspace = !shareWorkspace;
         this.description = shareWorkspace === true ? 'Enabled' : 'Disabled';
+        rHostService.orderGuestDetach();
         treeProvider.refresh();
     }
 

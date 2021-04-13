@@ -38,6 +38,10 @@ interface IRequest {
     UUID?: number;
 }
 
+function guestHasAccess(): boolean {
+    return sessionStatusBarItem.text === 'Guest R: (not attached)' ? false : true;
+}
+
 export function initGuest(context: vscode.ExtensionContext): void {
     // create status bar item that contains info about the *guest* session watcher
     console.info('Create guestSessionStatusBarItem');
@@ -49,6 +53,13 @@ export function initGuest(context: vscode.ExtensionContext): void {
     context.subscriptions.push(sessionStatusBarItem);
     rGuestService.setStatusBarItem(sessionStatusBarItem);
     guestResDir = path.join(context.extensionPath, 'dist', 'resources');
+}
+
+export function detachGuest(): void {
+    console.info('[Guest Service] detach guest from workspace');
+    sessionStatusBarItem.text = 'Guest R: (not attached)';
+    guestGlobalenv = undefined;
+    rWorkspace.refresh();
 }
 
 export function attachActiveGuest(): void {
@@ -69,42 +80,44 @@ export async function updateGuestRequest(file : string, force: boolean = false):
     if (typeof (requestContent) === 'string') {
         const request: IRequest = JSON.parse(requestContent) as IRequest;
         if (request && !force) {
-            if (request.UUID === null || request.UUID === undefined || request.UUID === UUID) {
-                switch (request.command) {
-                    case 'help': {
-                        if (globalRHelp) {
-                            console.log(request.requestPath);
-                            void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
+            if (guestHasAccess()) {
+                if (request.UUID === null || request.UUID === undefined || request.UUID === UUID) {
+                    switch (request.command) {
+                        case 'help': {
+                            if (globalRHelp) {
+                                console.log(request.requestPath);
+                                void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
+                            }
+                            break;
                         }
-                        break;
+                        case 'attach': {
+                            guestPid = String(request.pid);
+                            guestPlotView = String(request.plot);
+                            console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
+                            sessionStatusBarItem.text = `Guest R: ${guestPid}`;
+                            sessionStatusBarItem.show();
+                            break;
+                        }
+                        case 'browser': {
+                            await showBrowser(request.url, request.title, request.viewer);
+                            break;
+                        }
+                        case 'webview': {
+                            void showWebView(request.file, request.title, request.viewer);
+                            break;
+                        }
+                        case 'dataview': {
+                            void showDataView(request.source,
+                                request.type, request.title, request.file, request.viewer);
+                            break;
+                        }
+                        case 'rstudioapi': {
+                            console.error(`[GuestService] ${request.command} not supported`);
+                            break;
+                        }
+                        default:
+                            console.error(`[updateRequest] Unsupported command: ${request.command}`);
                     }
-                    case 'attach': {
-                        guestPid = String(request.pid);
-                        guestPlotView = String(request.plot);
-                        console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
-                        sessionStatusBarItem.text = `Guest R: ${guestPid}`;
-                        sessionStatusBarItem.show();
-                        break;
-                    }
-                    case 'browser': {
-                        await showBrowser(request.url, request.title, request.viewer);
-                        break;
-                    }
-                    case 'webview': {
-                        void showWebView(request.file, request.title, request.viewer);
-                        break;
-                    }
-                    case 'dataview': {
-                        void showDataView(request.source,
-                            request.type, request.title, request.file, request.viewer);
-                        break;
-                    }
-                    case 'rstudioapi': {
-                        console.error(`[GuestService] ${request.command} not supported`);
-                        break;
-                    }
-                    default:
-                        console.error(`[updateRequest] Unsupported command: ${request.command}`);
                 }
             }
         } else {
@@ -119,11 +132,13 @@ export async function updateGuestRequest(file : string, force: boolean = false):
 
 // Call from host, pass globalenvfile
 export async function updateGuestGlobalenv(file: string): Promise<void> {
-    const content: string = await readContent(file, 'utf8');
-    if (typeof content === 'string') {
-        guestGlobalenv = JSON.parse(content);
-        void rWorkspace?.refresh();
-        console.info('[updateGuestGlobalenv] Done');
+    if (guestHasAccess()) {
+        const content: string = await readContent(file, 'utf8');
+        if (typeof content === 'string') {
+            guestGlobalenv = JSON.parse(content);
+            void rWorkspace?.refresh();
+            console.info('[updateGuestGlobalenv] Done');
+        }
     }
 }
 
