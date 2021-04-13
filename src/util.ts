@@ -111,10 +111,16 @@ export async function getRterm(): Promise<string|undefined> {
     return undefined;
 }
 
-export function isTermActive(): boolean {
-    const term = vscode.window.activeTerminal.name;
+export function doesTermExist(): boolean {
     const termNames = ['R', 'R Interactive'];
-    return (termNames.includes(term)) ? true : false;
+    for (const [i] of vscode.window.terminals.entries()) {
+        const terminal = vscode.window.terminals[i];
+        const terminalName = terminal.name;
+        if (termNames.includes(terminalName)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 export function ToRStringLiteral(s: string, quote: string): string {

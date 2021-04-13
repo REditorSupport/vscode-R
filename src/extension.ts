@@ -141,7 +141,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     vscode.languages.registerHoverProvider('r', new completions.HelpLinkHoverProvider());
     vscode.languages.registerCompletionItemProvider('r', new completions.StaticCompletionItemProvider(), '@');
 
-    // deply liveshare listener
+    // deploy liveshare listener
     void rShare.initLiveShare(context);
 
     // deploy session watcher (if configured by user)

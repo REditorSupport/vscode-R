@@ -6,7 +6,7 @@ import { globalRHelp, rWorkspace } from './extension';
 import { liveSession, UUID } from './rShare';
 import { config, readContent } from './util';
 import { showBrowser, showDataView, showWebView } from './session';
-import { rGuestService } from './rShare';
+import { rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from './rShare';
 import { autoShareBrowser } from './rShareTree';
 
 // Workspace Vars
@@ -62,7 +62,8 @@ export function attachActiveGuest(): void {
 
 // Guest version of session.ts updateRequest(), no need to check for changes in files
 // as this is handled by the session.ts variant
-export async function updateGuestRequest(sessionStatusBarItem: vscode.StatusBarItem, file : string, force: boolean = false): Promise<void> {
+// the force parameter is used for ensuring that the 'attach' case is appropriately called on guest join
+export async function updateGuestRequest(file : string, force: boolean = false): Promise<void> {
     const requestContent: string = await readContent(file, 'utf8');
     console.info(`[updateGuestRequest] request: ${requestContent}`);
     if (typeof (requestContent) === 'string') {
@@ -148,7 +149,7 @@ export async function updateGuestPlot(file: string): Promise<void> {
 // host session
 // Automates sharing browser sessions through the
 // shareServer method
-export async function shareBrowser(url: string, name: string,): Promise<void> {
+export async function shareBrowser(url: string, name: string): Promise<void> {
     if (autoShareBrowser) {
         const _url = new URL(url);
         const server: vsls.Server = {
@@ -166,11 +167,9 @@ export function closeBrowser(url: string): void {
         e => e.url === url
     )?.Disposable.dispose();
 
-    for (let i = 0; i < browserDisposables.length; i++) {
-        if (browserDisposables[i].url === url) {
-            browserDisposables.splice(i, 1);
-            i--;
+    for (const [key, item] of browserDisposables.entries()) {
+        if (item.url === url) {
+            browserDisposables.splice(key, 1);
         }
     }
-
 }

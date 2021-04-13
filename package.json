@@ -95,7 +95,7 @@
           "name": "Live Share Controls",
           "icon": "./images/Rlogo.svg",
           "contextualTitle": "R",
-          "when" : "r.WorkspaceViewer:show && !r.liveShare:isGuest",
+          "when": "r.WorkspaceViewer:show && !r.liveShare:isGuest",
           "visibility": "collapsed"
         }
       ]
@@ -633,10 +633,10 @@
         "category": "R",
         "command": "r.helpPanel.openForPath"
       },
-          {
-            "command": "r.liveShare.toggle",
-            "title": "Toggle"
-          }
+      {
+        "command": "r.liveShare.toggle",
+        "title": "Toggle"
+      }
     ],
     "keybindings": [
       {
@@ -1031,7 +1031,6 @@
           "default": false,
           "description": "Default boolean value for automatically sharing R browser ports with guests."
         }
-
       }
     }
   },

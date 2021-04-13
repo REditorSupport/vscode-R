@@ -13,7 +13,7 @@ export function initTreeView(): void {
     forwardCommands = config().get('liveShare.commandForwardDefault');
     autoShareBrowser = config().get('liveShare.shareBrowserDefault');
 
-    // create tree view for hosts
+    // create tree view for host controls
     rLiveShareProvider = new ShareTreeProvider();
     void vscode.window.registerTreeDataProvider(
         'rLiveShare',
