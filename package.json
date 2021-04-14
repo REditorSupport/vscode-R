@@ -1014,14 +1014,17 @@
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.28",
+    "@types/ejs": "^3.0.6",
     "@types/express": "^4.17.11",
     "@types/fs-extra": "^9.0.10",
     "@types/highlight.js": "^10.1.0",
     "@types/mocha": "^8.2.2",
     "@types/node": "^14.14.37",
+    "@types/node-fetch": "^2.5.10",
     "@types/showdown": "^1.9.3",
     "@types/vscode": "^1.55.0",
     "@types/winreg": "^1.2.30",
+    "@types/ws": "^7.4.1",
     "@typescript-eslint/eslint-plugin": "^4.21.0",
     "@typescript-eslint/parser": "^4.21.0",
     "copy-webpack-plugin": "^8.1.1",
@@ -1042,14 +1045,17 @@
     "datatables.net": "^1.10.24",
     "datatables.net-bs4": "^1.10.24",
     "datatables.net-fixedheader-jqui": "^3.1.8",
+    "ejs": "^3.1.6",
     "fotorama": "^4.6.4",
     "fs-extra": "^9.1.0",
     "highlight.js": "^10.7.2",
     "jquery": "^3.6.0",
     "jquery.json-viewer": "^1.4.0",
+    "node-fetch": "^2.6.1",
     "popper.js": "^1.16.1",
     "showdown": "^1.9.1",
     "tree-kill": "^1.2.2",
-    "winreg": "^1.2.4"
+    "winreg": "^1.2.4",
+    "ws": "^7.4.4"
   }
 }

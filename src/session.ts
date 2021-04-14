@@ -15,6 +15,7 @@ import { config } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { rWorkspace, globalRHelp } from './extension';
+import { httpgdViewer } from './httpgdViewer';
 
 export let globalenv: any;
 let resDir: string;
@@ -531,6 +532,12 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         const request = JSON.parse(requestContent);
         if (isFromWorkspace(request.wd)) {
             switch (request.command) {
+                case 'httpgd': {
+                    if(request.url){
+                        httpgdViewer(request.url);
+                    }
+                    break;
+                }
                 case 'help': {
                     if(globalRHelp){
                         console.log(request.requestPath);

@@ -1,0 +1,52 @@
+
+.httpgd rect {
+    stroke: none;
+    fill: none;
+}
+
+svg text {
+    font-family: var(--vscode-editor-font-family) !important;
+    stroke: var(--vscode-foreground);
+}
+
+.httpgd line, .httpgd polyline, .httpgd polygon, .httpgd path, .httpgd rect, .httpgd circle {
+    stroke: var(--vscode-foreground);
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-miterlimit: 10.00;
+}
+
+@keyframes fadein {
+    from {
+        stroke: var(--vscode-editor-background);
+    }
+    to {
+        stroke: var(--vscode-foreground);
+    }
+}
+
+.httpgd circle {
+    animation-name: fadein;
+    animation-duration: 0.5s;
+    pointer-events: all;
+}
+
+#svgDiv {
+    width: 100%;
+    height: 100%;
+}
+
+#plotDiv {
+    width: 20%;
+    height: 20%;
+    float: left;
+}
+
+#plotDiv:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+#plotDiv[activePlot=true] {
+    background-color: var(--vscode-list-inactiveSelectionBackground);
+}

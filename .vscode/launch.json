@@ -10,7 +10,8 @@
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}"
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "${workspaceFolder}/../testHttpgd"
       ],
       "outFiles": [
         "${workspaceRoot}/out/src/**/*.js"
