@@ -1,7 +1,7 @@
 
 
 import * as vscode from 'vscode';
-import * as httpgd from './httpgd';
+import { Httpgd, HttpgdPlot } from './httpgd';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as ejs from 'ejs';
@@ -28,8 +28,8 @@ export function httpgdViewer(urlString: string): void {
         }
     );
 
-    const api = new httpgd.HttpgdViewer(host, token, true);
-    api.init();
+    const api = new Httpgd(host, token);
+    api.start();
     
     const htmlRoot = extensionContext.asAbsolutePath('html/httpgd');
     const indexTemplate = fs.readFileSync(path.join(htmlRoot, 'index.ejs'), 'utf-8');
@@ -44,15 +44,17 @@ export function httpgdViewer(urlString: string): void {
         asWebViewPath: asWebViewPath
     };
     
-    let plots: string[] = [];
+    let plots: HttpgdPlot[] = [];
 
-    function updatePanel(newPlots?: string[], index?: number){
+    function updatePanel(newPlots?: HttpgdPlot[], index?: number){
         plots = newPlots || plots;
+        const plots_svg = plots.map(p => p.svg);
+
         index ??= plots.length - 1;
 
         ejsData.activeIndex = index;
-        ejsData.svg = plots[index];
-        ejsData.plots = plots;
+        ejsData.svg = plots_svg[index];
+        ejsData.plots = plots_svg;
         const html = ejs.render(indexTemplate, ejsData);
         panel.webview.html = html;
     }
@@ -61,8 +63,10 @@ export function httpgdViewer(urlString: string): void {
         updatePanel(undefined, index);
     });
     
-    api.onChange((plots: string[]) => {
-        updatePanel(plots);
+    api.onPlotsChange(() => {
+        api.getPlotContents().then((plots: HttpgdPlot[]) => {
+            updatePanel(plots);
+        });
     });
 }
 
