@@ -66,7 +66,7 @@ export function httpgdViewer(urlString: string): void {
     api.onPlotsChange(() => {
         api.getPlotContents().then((plots: HttpgdPlot[]) => {
             updatePanel(plots);
-        });
+        }, (reason) => void reason);
     });
 }
 

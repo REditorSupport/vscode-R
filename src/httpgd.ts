@@ -135,10 +135,10 @@ class HttpgdApi {
         return await (res.json() as Promise<PlotsResponse>);
     }
     
-    public async get_plot_contents_all(): Promise<HttpgdPlot[]> {
+    public async get_plot_contents_all(width?: number, height?: number, c?: string): Promise<HttpgdPlot[]> {
         const plotIds = await this.get_plots();
         const plots = plotIds.plots.map(async idRes => {
-            return await this.get_plot_contents(idRes.id);
+            return await this.get_plot_contents(idRes.id, width, height, c);
         });
         return await Promise.all(plots);
     }
@@ -372,12 +372,12 @@ export class Httpgd {
     // get content of multiple plots:
     // Use sensible defaults if no heigth/width given.
     // Return all plots if no ids given.
-    public getPlotContents(ids?: PlotId[], heigth?: number, width?: number): Promise<HttpgdPlot[]> {
+    public getPlotContents(ids?: PlotId[], width?: number, heigth?: number, c?: string): Promise<HttpgdPlot[]> {
         if (!ids) {
-            return this.connection.api.get_plot_contents_all();
+            return this.connection.api.get_plot_contents_all(width, heigth, c);
         }
         const plots = ids.map(async id => {
-            return await this.connection.api.get_plot_contents(id);
+            return await this.connection.api.get_plot_contents(id, width, heigth, c);
         });
         return Promise.all(plots);
     } 
