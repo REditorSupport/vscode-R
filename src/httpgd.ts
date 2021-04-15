@@ -5,24 +5,8 @@ import * as WebSocket from 'ws';
 
 import fetch from 'node-fetch';
 
-// type to indicate where a plotId is required
-export type PlotId = string;
+import { HttpgdPlot, IHttpgdViewerApi, PlotId } from './httpgdTypes';
 
-export interface HttpgdPlot {
-    // url of the connection this plot was retrieved from
-    url: string;
-
-    // unique ID for this plot (w.r.t. this connection/device)
-    id: PlotId;
-
-    // svg of the plot
-    svg: string;
-    
-    // Size when computed:
-    // (displayed size might vary, if % values are used)
-    heigth?: number;
-    width?: number;
-}
 
 /**
  * State of the graphics device.
@@ -341,7 +325,7 @@ class HttpgdConnection {
 /**
  * Public API for communicating with a httpgd server.
  */
-export class Httpgd {
+export class Httpgd implements IHttpgdViewerApi {
 
     private connection: HttpgdConnection;
     
