@@ -2,22 +2,23 @@ import path = require('path');
 import * as vscode from 'vscode';
 import * as fs from 'fs-extra';
 import * as vsls from 'vsls';
+
 import { globalRHelp, rWorkspace } from './extension';
-import { liveSession, UUID } from './rShare';
 import { config, readContent } from './util';
-import { showBrowser, showDataView, showWebView } from './session';
-import { rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from './rShare';
+import { removeDirectory, showBrowser, showDataView, showWebView } from './session';
+import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from './rShare';
 import { autoShareBrowser } from './rShareTree';
 
 // Workspace Vars
 let guestPid: string;
 let guestPlotView: string;
+let guestSessionDir: string;
 export let guestGlobalenv: unknown;
 export let guestResDir: string;
 
 // Browser Vars
 // Used to keep track of shared browsers
-const browserDisposables: { Disposable: vscode.Disposable, url: string }[] = [];
+export const browserDisposables: { Disposable: vscode.Disposable, url: string }[] = [];
 
 interface IRequest {
     command: string;
@@ -36,6 +37,7 @@ interface IRequest {
     url?: string;
     requestPath?: string;
     UUID?: number;
+    tempdir?: string;
 }
 
 function guestHasAccess(): boolean {
@@ -93,6 +95,7 @@ export async function updateGuestRequest(file : string, force: boolean = false):
                         case 'attach': {
                             guestPid = String(request.pid);
                             guestPlotView = String(request.plot);
+                            guestSessionDir = path.join(request.tempdir, 'vscode-R');
                             console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
                             sessionStatusBarItem.text = `Guest R: ${guestPid}`;
                             sessionStatusBarItem.show();
@@ -187,4 +190,12 @@ export function closeBrowser(url: string): void {
             browserDisposables.splice(key, 1);
         }
     }
+}
+
+export function removeGuestFiles(): void {
+    console.info('[removeGuestFiles] ', guestSessionDir);
+    if (fs.existsSync(guestSessionDir)) {
+        removeDirectory(guestSessionDir);
+    }
+    console.info('[removeSessionFiles] Done');
 }

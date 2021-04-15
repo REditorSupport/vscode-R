@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
-import { isLiveShare, rHostService } from './rShare';
+
 import { config } from './util';
+import { isLiveShare, rHostService } from './rShare';
 
 export let forwardCommands: boolean;
 export let shareWorkspace: boolean;
 export let autoShareBrowser: boolean;
-export let rLiveShareProvider: ShareTreeProvider;
+export let rLiveShareProvider: LiveShareTreeProvider;
 
 export function initTreeView(): void {
     // get default bool values from settings
@@ -14,14 +15,14 @@ export function initTreeView(): void {
     autoShareBrowser = config().get('liveShare.shareBrowserDefault');
 
     // create tree view for host controls
-    rLiveShareProvider = new ShareTreeProvider();
+    rLiveShareProvider = new LiveShareTreeProvider();
     void vscode.window.registerTreeDataProvider(
         'rLiveShare',
         rLiveShareProvider
     );
 }
 
-export class ShareTreeProvider implements vscode.TreeDataProvider<Node> {
+export class LiveShareTreeProvider implements vscode.TreeDataProvider<Node> {
     private _onDidChangeTreeData: vscode.EventEmitter<void> = new vscode.EventEmitter();
     readonly onDidChangeTreeData: vscode.Event<void> = this._onDidChangeTreeData.event;
 
@@ -79,7 +80,7 @@ abstract class Node extends vscode.TreeItem {
 // that is used for tracking state.
 // If a toggle is not required, extend a different Node type.
 export abstract class ToggleNode extends Node {
-    public toggle(treeProvider: ShareTreeProvider): void { treeProvider.refresh(); }
+    public toggle(treeProvider: LiveShareTreeProvider): void { treeProvider.refresh(); }
     public label: string;
     public tooltip: string;
     public contextValue: string;
@@ -96,7 +97,7 @@ export abstract class ToggleNode extends Node {
 
 /// Nodes for changing R LiveShare variables
 class ShareNode extends ToggleNode {
-    toggle(treeProvider: ShareTreeProvider): void {
+    toggle(treeProvider: LiveShareTreeProvider): void {
         shareWorkspace = !shareWorkspace;
         this.description = shareWorkspace === true ? 'Enabled' : 'Disabled';
         rHostService.orderGuestDetach();
@@ -116,7 +117,7 @@ class ShareNode extends ToggleNode {
 }
 
 class CommandNode extends ToggleNode {
-    toggle(treeProvider: ShareTreeProvider): void {
+    toggle(treeProvider: LiveShareTreeProvider): void {
         forwardCommands = !forwardCommands;
         this.description = forwardCommands === true ? 'Enabled' : 'Disabled';
         treeProvider.refresh();
@@ -134,7 +135,7 @@ class CommandNode extends ToggleNode {
 }
 
 class PortNode extends ToggleNode {
-    toggle(treeProvider: ShareTreeProvider): void {
+    toggle(treeProvider: LiveShareTreeProvider): void {
         autoShareBrowser = !autoShareBrowser;
         this.description = autoShareBrowser === true ? 'Enabled' : 'Disabled';
         treeProvider.refresh();

@@ -111,6 +111,8 @@ export async function getRterm(): Promise<string|undefined> {
     return undefined;
 }
 
+// boolean that checks if an R term exists,
+// even if it is not the current active terminal
 export function doesTermExist(): boolean {
     const termNames = ['R', 'R Interactive'];
     for (const [i] of vscode.window.terminals.entries()) {

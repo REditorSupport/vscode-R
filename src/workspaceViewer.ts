@@ -217,7 +217,7 @@ export function saveWorkspace(): void {
 }
 
 export function loadWorkspace(): void {
-	if (global !== undefined) {
+	if (globalenv !== undefined) {
 		void window.showOpenDialog({
 			defaultUri: Uri.file(workingDir),
 			filters: {

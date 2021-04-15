@@ -81,7 +81,7 @@ export function attachActive(): void {
     }
 }
 
-function removeDirectory(dir: string) {
+export function removeDirectory(dir: string) {
     console.info(`[removeDirectory] dir: ${dir}`);
     if (fs.existsSync(dir)) {
         console.info('[removeDirectory] dir exists');
