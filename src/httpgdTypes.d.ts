@@ -137,13 +137,3 @@ export class IHttpgdViewer {
     // Not sure if sensible here
     dispose?(): void;
 }
-
-
-// Maybe a class like this is useful to interact with multiple devices/sessions?
-export class HttpgdManager {
-    viewers: IHttpgdViewer[];
-    
-    // Cann be called to either reactivate an existing viewer or create a new one
-    public showViewer(host: string, token?: string): void;
-}
-

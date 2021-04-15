@@ -620,6 +620,32 @@
         "title": "Open help for path",
         "category": "R",
         "command": "r.helpPanel.openForPath"
+      },
+      {
+        "title": "Toggle Style",
+        "category": "R Httpgd",
+        "command": "r.httpgd.toggleStyle",
+        "icon": "$(fold)"
+      },
+      {
+        "title": "Export Plot",
+        "category": "R Httpgd",
+        "command": "r.httpgd.exportPlot",
+        "icon": "$(clone)"
+      },
+      {
+        "title": "Previous Plot",
+        "category": "R Httpgd",
+        "command": "r.httpgd.prevPlot",
+        "enablement": "r.httpgd.canGoBack",
+        "icon": "$(arrow-left)"
+      },
+      {
+        "title": "Next Plot",
+        "category": "R Httpgd",
+        "command": "r.httpgd.nextPlot",
+        "enablement": "r.httpgd.canGoForward",
+        "icon": "$(arrow-right)"
       }
     ],
     "keybindings": [
@@ -731,6 +757,26 @@
           "command": "r.helpPanel.openExternal",
           "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.httpgd.active",
+          "command": "r.httpgd.toggleStyle"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.httpgd.active",
+          "command": "r.httpgd.exportPlot"
+        },
+        {
+          "group": "navigation@001",
+          "when": "resourceScheme =~ /webview/ && r.httpgd.active",
+          "command": "r.httpgd.prevPlot"
+        },
+        {
+          "group": "navigation@002",
+          "when": "resourceScheme =~ /webview/ && r.httpgd.active",
+          "command": "r.httpgd.nextPlot"
         }
       ],
       "editor/context": [

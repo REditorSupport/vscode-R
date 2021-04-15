@@ -9,28 +9,65 @@ import * as ejs from 'ejs';
 
 import { extensionContext } from './extension';
 
-export function httpgdViewer(urlString: string): void {
-    
-    const url = new URL(urlString);
 
-    const host = url.host;
-    const token = url.searchParams.get('token');
-
-    const htmlRoot = extensionContext.asAbsolutePath('html/httpgd');
-    const htmlTemplatePath = path.join(htmlRoot, 'index.ejs');
-    
-    const viewerOptions = {
-        htmlRoot: htmlRoot,
-        htmlTemplatePath: htmlTemplatePath,
-        preserveFocus: true,
-        viewColumn: vscode.ViewColumn.Two
+export function initializeHttpgd(): HttpgdManager {
+    const httpgdManager = new HttpgdManager();
+    const commands = {
+        'r.httpgd.showIndex': (id?: string) => httpgdManager.getNewestViewer()?.focusPlot(id),
+        'r.httpgd.toggleStyle': () => httpgdManager.viewers.forEach(
+            (viewer) => viewer.toggleStyle()
+        ),
+        'r.httpgd.exportPlot': () => httpgdManager.getNewestViewer()?.exportPlot(),
+        'r.httpgd.nextPlot': () => httpgdManager.getNewestViewer()?.nextPlot(),
+        'r.httpgd.prevPlot': () => httpgdManager.getNewestViewer()?.prevPlot()
     };
-    
-    const viewer = new HttpgdViewer(viewerOptions, host, token);
+    for(const key in commands){
+        vscode.commands.registerCommand(key, commands[key]);
+    }
+    return httpgdManager;
+}
 
-    vscode.commands.registerCommand('r.httpgd.showIndex', (id?: string) => {
-        viewer.focusPlot(id);
-    });
+export class HttpgdManager {
+    viewers: HttpgdViewer[] = [];
+    
+    viewerOptions: HttpgdViewerOptions;
+    
+    constructor(){
+        const htmlRoot = extensionContext.asAbsolutePath('html/httpgd');
+        const htmlTemplatePath = path.join(htmlRoot, 'index.ejs');
+        this.viewerOptions = {
+            htmlRoot: htmlRoot,
+            htmlTemplatePath: htmlTemplatePath,
+            preserveFocus: true,
+            viewColumn: vscode.ViewColumn.Two
+        };
+    }
+
+    public showViewer(urlString: string): void {
+        const url = new URL(urlString);
+        const host = url.host;
+        const token = url.searchParams.get('token');
+        const ind = this.viewers.findIndex(
+            (viewer) => viewer.host === host && viewer.token === token
+        );
+        if(ind >= 0){
+            const viewer = this.viewers.splice(ind, 1)[0];
+            this.viewers.unshift(viewer);
+            viewer.show();
+
+        } else{
+            const viewer = new HttpgdViewer(
+                this.viewerOptions,
+                host,
+                token
+            );
+            this.viewers.unshift(viewer);
+        }
+    }
+    
+    public getNewestViewer(): HttpgdViewer | undefined {
+        return this.viewers[0];
+    }
 }
 
 
@@ -44,6 +81,10 @@ interface EjsData {
 
 
 export class HttpgdViewer implements IHttpgdViewer {
+    
+    host: string;
+    token?: string;
+
     // Actual webview where the plot viewer is shown
     // Will have to be created anew, if the user closes it and the plot changes
     webviewPanel?: vscode.WebviewPanel;
@@ -75,6 +116,8 @@ export class HttpgdViewer implements IHttpgdViewer {
     // constructor called by the session watcher if a corresponding function was called in R
     // creates a new api instance itself
     constructor(options: HttpgdViewerOptions, host: string, token?: string) {
+        this.host = host;
+        this.token = token;
         this.api = new Httpgd(host, token);
         this.api.onPlotsChange(() => {
             void this.refreshPlots();
@@ -94,6 +137,19 @@ export class HttpgdViewer implements IHttpgdViewer {
         };
         this.api.start();
     }
+
+	public async setContextValues(): Promise<void> {
+		await vscode.commands.executeCommand(
+            'setContext', 'r.httpgd.active', !!this.webviewPanel?.active
+        );
+		await vscode.commands.executeCommand(
+            'setContext', 'r.httpgd.canGoBack', this.activeIndex > 0
+        );
+		await vscode.commands.executeCommand(
+            'setContext', 'r.httpgd.canGoForward', this.activeIndex < this.plots.length - 1
+        );
+	}
+
     
     async refreshPlots(): Promise<void> {
         this.plots = await this.api.getPlotContents();
@@ -110,8 +166,12 @@ export class HttpgdViewer implements IHttpgdViewer {
                 this.webviewOptions
             );
             this.webviewPanel.onDidDispose(() => this.webviewPanel = undefined);
+            this.webviewPanel.onDidChangeViewState(() => {
+                void this.setContextValues();
+            });
         }
         this.webviewPanel.webview.html = this.makeHtml();
+        void this.setContextValues();
     }
     
     makeHtml(): string {
@@ -175,13 +235,15 @@ export class HttpgdViewer implements IHttpgdViewer {
     
     toggleStyle(force?: boolean): void{
         this.stripStyles = force ?? !this.stripStyles;
+        this.refreshHtml();
     }
     
     // export plot
     // if no format supplied, show a quickpick menu etc.
     // if no filename supplied, show selector window
-    exportPlot(id: PlotId, format?: ExportFormat, outFile?: string): void {
+    exportPlot(id?: PlotId, format?: ExportFormat, outFile?: string): void {
         // pass
+        void vscode.window.showInformationMessage('Export not implemented.');
     }
 
     // Dispose-function to clean up when vscode closes
