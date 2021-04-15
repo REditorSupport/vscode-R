@@ -5,24 +5,8 @@ import * as WebSocket from 'ws';
 
 import fetch from 'node-fetch';
 
-// type to indicate where a plotId is required
-export type PlotId = string;
+import { HttpgdPlot, IHttpgdViewerApi, PlotId } from './httpgdTypes';
 
-export interface HttpgdPlot {
-    // url of the connection this plot was retrieved from
-    url: string;
-
-    // unique ID for this plot (w.r.t. this connection/device)
-    id: PlotId;
-
-    // svg of the plot
-    svg: string;
-    
-    // Size when computed:
-    // (displayed size might vary, if % values are used)
-    heigth?: number;
-    width?: number;
-}
 
 /**
  * State of the graphics device.
@@ -135,10 +119,10 @@ class HttpgdApi {
         return await (res.json() as Promise<PlotsResponse>);
     }
     
-    public async get_plot_contents_all(width?: number, height?: number, c?: string): Promise<HttpgdPlot[]> {
+    public async get_plot_contents_all(): Promise<HttpgdPlot[]> {
         const plotIds = await this.get_plots();
         const plots = plotIds.plots.map(async idRes => {
-            return await this.get_plot_contents(idRes.id, width, height, c);
+            return await this.get_plot_contents(idRes.id);
         });
         return await Promise.all(plots);
     }
@@ -341,7 +325,7 @@ class HttpgdConnection {
 /**
  * Public API for communicating with a httpgd server.
  */
-export class Httpgd {
+export class Httpgd implements IHttpgdViewerApi {
 
     private connection: HttpgdConnection;
     
@@ -372,12 +356,12 @@ export class Httpgd {
     // get content of multiple plots:
     // Use sensible defaults if no heigth/width given.
     // Return all plots if no ids given.
-    public getPlotContents(ids?: PlotId[], width?: number, heigth?: number, c?: string): Promise<HttpgdPlot[]> {
+    public getPlotContents(ids?: PlotId[], heigth?: number, width?: number): Promise<HttpgdPlot[]> {
         if (!ids) {
-            return this.connection.api.get_plot_contents_all(width, heigth, c);
+            return this.connection.api.get_plot_contents_all();
         }
         const plots = ids.map(async id => {
-            return await this.connection.api.get_plot_contents(id, width, heigth, c);
+            return await this.connection.api.get_plot_contents(id);
         });
         return Promise.all(plots);
     } 

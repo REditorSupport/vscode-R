@@ -14,8 +14,7 @@ import { FSWatcher } from 'fs-extra';
 import { config } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { rWorkspace, globalRHelp } from './extension';
-import { httpgdViewer } from './httpgdViewer';
+import { rWorkspace, globalRHelp, globalHttpgdManager } from './extension';
 
 export let globalenv: any;
 let resDir: string;
@@ -534,7 +533,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
             switch (request.command) {
                 case 'httpgd': {
                     if(request.url){
-                        httpgdViewer(request.url);
+                        globalHttpgdManager?.showViewer(request.url);
                     }
                     break;
                 }

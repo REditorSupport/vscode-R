@@ -1,0 +1,15 @@
+
+
+.httpgd rect {
+    stroke: none !important;
+    fill: none !important;
+}
+
+svg text {
+    font-family: var(--vscode-editor-font-family) !important;
+    stroke: var(--vscode-foreground) !important;
+}
+
+.httpgd line, .httpgd polyline, .httpgd polygon, .httpgd path, .httpgd rect, .httpgd circle {
+    stroke: var(--vscode-foreground) !important;
+}
