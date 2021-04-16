@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 
 import { HelpFile, RHelp } from './rHelp';
+import { setContext } from './util';
 
 
 //// Declaration of interfaces used/implemented by the Help Panel class
@@ -110,9 +111,9 @@ export class HelpPanel {
 	
 
 	public async setContextValues(): Promise<void> {
-		await vscode.commands.executeCommand('setContext', 'r.helpPanel.active', !!this.panel?.active);
-		await vscode.commands.executeCommand('setContext', 'r.helpPanel.canGoBack', this.history.length > 0);
-		await vscode.commands.executeCommand('setContext', 'r.helpPanel.canGoForward', this.forwardHistory.length > 0);
+		await setContext('r.helpPanel.active', !!this.panel?.active);
+		await setContext('r.helpPanel.canGoBack', this.history.length > 0);
+		await setContext('r.helpPanel.canGoForward', this.forwardHistory.length > 0);
 	}
 
 	// shows (internal) help file object in webview

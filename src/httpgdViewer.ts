@@ -2,10 +2,12 @@
 
 import * as vscode from 'vscode';
 import { Httpgd } from './httpgd';
-import { HttpgdPlot, IHttpgdViewer, HttpgdViewerOptions, PlotId, ExportFormat } from './httpgdTypes';
+import { HttpgdPlot, IHttpgdViewer, HttpgdViewerOptions, PlotId, ExportFormat, HttpgdState } from './httpgdTypes';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as ejs from 'ejs';
+
+import { setContext } from './util';
 
 import { extensionContext } from './extension';
 
@@ -46,7 +48,7 @@ export class HttpgdManager {
     public showViewer(urlString: string): void {
         const url = new URL(urlString);
         const host = url.host;
-        const token = url.searchParams.get('token');
+        const token = url.searchParams.get('token') || undefined;
         const ind = this.viewers.findIndex(
             (viewer) => viewer.host === host && viewer.token === token
         );
@@ -73,7 +75,7 @@ export class HttpgdManager {
 
 interface EjsData {
     overwriteStyles: boolean;
-    activePlot: PlotId;
+    activePlot?: PlotId;
     plots: HttpgdPlot[];
     largePlot: HttpgdPlot;
     asWebViewPath: (localPath: string) => string;
@@ -93,10 +95,11 @@ export class HttpgdViewer implements IHttpgdViewer {
     api: Httpgd;
 
     // active plots
-    plots: HttpgdPlot[];
+    plots: HttpgdPlot[] = [];
+    state?: HttpgdState;
     
     // remember closed plots to let user restore?
-    discardedPlots: HttpgdPlot[];
+    discardedPlots: HttpgdPlot[] = [];
     
     // Id of the currently viewed plot
     activePlot?: PlotId;
@@ -139,29 +142,40 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
 
 	public async setContextValues(): Promise<void> {
-		await vscode.commands.executeCommand(
-            'setContext', 'r.httpgd.active', !!this.webviewPanel?.active
-        );
-		await vscode.commands.executeCommand(
-            'setContext', 'r.httpgd.canGoBack', this.activeIndex > 0
-        );
-		await vscode.commands.executeCommand(
-            'setContext', 'r.httpgd.canGoForward', this.activeIndex < this.plots.length - 1
-        );
+        await setContext('r.httpgd.active', !!this.webviewPanel?.active);
+        await setContext('r.httpgd.canGoBack', this.activeIndex > 0);
+        await setContext('r.httpgd.canGoForward', this.activeIndex < this.plots.length - 1);
 	}
 
-    
+    async checkState(): Promise<void> {
+        const oldState = this.state;
+        this.state = await this.api.getState();
+        if(this.state.upid !== oldState?.upid){
+            void this.refreshPlots();
+        }
+    }
+
     async refreshPlots(): Promise<void> {
-        this.plots = await this.api.getPlotContents();
+        const mosteRecentPlotId = this.plots[this.plots.length - 1]?.id;
+        const plotIds = await this.api.getPlotIds();
+        const newPlots = plotIds.map(async (id) => {
+            const plot = this.plots.find((plt) => plt.id === id);
+            if(plot && id !== mosteRecentPlotId){
+                return plot;
+            } else{
+                return await this.api.getPlotContent(id);
+            }
+        });
+        this.plots = await Promise.all(newPlots);
         this.activePlot = this.plots[this.plots.length - 1].id;
         this.refreshHtml();
     }
     
     refreshHtml(): void {
         if(!this.webviewPanel){
-            this.webviewPanel ??= vscode.window.createWebviewPanel(
+            this.webviewPanel = vscode.window.createWebviewPanel(
                 'RPlot',
-                'RPlot',
+                'R Plot',
                 this.showOptions,
                 this.webviewOptions
             );
@@ -176,6 +190,9 @@ export class HttpgdViewer implements IHttpgdViewer {
     
     makeHtml(): string {
         const asWebViewPath = (localPath: string) => {
+            if(!this.webviewPanel){
+                return localPath;
+            }
             const localUri = vscode.Uri.file(path.join(this.htmlRoot, localPath));
             const webViewUri = this.webviewPanel.webview.asWebviewUri(localUri);
             return webViewUri.toString();            
@@ -241,15 +258,51 @@ export class HttpgdViewer implements IHttpgdViewer {
     // export plot
     // if no format supplied, show a quickpick menu etc.
     // if no filename supplied, show selector window
-    exportPlot(id?: PlotId, format?: ExportFormat, outFile?: string): void {
-        // pass
-        void vscode.window.showInformationMessage('Export not implemented.');
+    async exportPlot(id?: PlotId, format?: ExportFormat, outFile?: string): Promise<void> {
+        // make sure id is valid or return:
+        id ||= this.activePlot || this.plots[this.plots.length-1]?.id;
+        const plot = this.plots.find((plt) => plt.id === id);
+        if(!plot){
+            void vscode.window.showWarningMessage('No plot available for export.');
+            return;
+        }
+        // make sure format is valid or return:
+        if(!format){
+            const formats: ExportFormat[] = ['svg'];
+            const options: vscode.QuickPickOptions = {
+                placeHolder: 'Please choose a file format'
+            };
+            format = await vscode.window.showQuickPick(formats, options) as ExportFormat | undefined;
+            if(!format){
+                return;
+            }
+        }
+        // make sure outFile is valid or return:
+        if(!outFile){
+            const options: vscode.SaveDialogOptions = {};
+            const outUri = await vscode.window.showSaveDialog(options);
+            outFile = outUri?.fsPath;
+            if(!outFile){
+                return;
+            }
+        }
+        // actually export plot:
+        if(format === 'svg'){
+            // do export
+            fs.writeFileSync(outFile, plot.svg);
+            const uri = vscode.Uri.file(outFile);
+            // await vscode.workspace.openTextDocument(uri);
+            void vscode.window.showTextDocument(uri);
+        } else{
+            void vscode.window.showWarningMessage('Format not implemented');
+        }
     }
 
     // Dispose-function to clean up when vscode closes
     // E.g. to close connections etc., notify R, ...
-    // Not sure if sensible here
-    dispose?(): void;
+    dispose(): void {
+        this.api.dispose();
+    }
 }
 
 // not used currently

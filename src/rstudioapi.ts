@@ -424,7 +424,7 @@ function normaliseEditText(text: string, editLocation: any,
 }
 
 // window.onActiveTextEditorDidChange handler
-export function trackLastActiveTextEditor(editor: TextEditor): void {
+export function trackLastActiveTextEditor(editor?: TextEditor): void {
   if (typeof editor !== 'undefined') {
     lastActiveTextEditor = editor;
   }

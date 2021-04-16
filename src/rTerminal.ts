@@ -29,7 +29,7 @@ export async function runSource(echo: boolean): Promise<void>  {
     }
 }
 
-export async function knitRmd(echo: boolean, outputFormat: string): Promise<void>  {
+export async function knitRmd(echo: boolean, outputFormat?: string): Promise<void>  {
     const wad: vscode.TextDocument = vscode.window.activeTextEditor.document;
     const isSaved = await util.saveDocument(wad);
     if (isSaved) {
