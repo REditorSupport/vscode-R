@@ -1,22 +1,27 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <link href="<%= asWebViewPath('style.css') %> " rel="stylesheet">
-        <% if(overwriteStyles){ %>
+
+<head>
+    <link href="<%= asWebViewPath('style.css') %> " rel="stylesheet">
+    <% if(overwriteStyles){ %>
         <link href="<%= asWebViewPath('styleOverwrites.css') %> " rel="stylesheet">
-        <% } %>
-    </head>
-    <body>
-        <div id="svgDiv">
-            <%- largePlot?.svg %> 
-        </div>
-        <% plots.forEach((plot) => { %>
-        <a href="command:r.httpgd.showIndex?%5B%22<%- plot.id %>%22%5D" title="Plot <%- plot.id %>">
-            <div id="plotDiv" isActivePlot=<%- plot.id===activePlot %>>
-                <%- plot.svg %> 
-            </div>
-        </a>
+    <% } %>
+</head>
+
+<body>
+    <div id="svgDiv">
+        <%- largePlot?.svg %>
+    </div>
+    <div id="smallPlots">
+        <% plots.forEach((plot)=> { %>
+            <a href="command:r.httpgd.showIndex?%5B%22<%- plot.id %>%22%5D" title="Plot <%- plot.id %>">
+                <div id="plotDiv" isActivePlot=<%- plot.id===activePlot %>>
+                    <%- plot.svg %>
+                </div>
+            </a>
         <% }) %>
-    </body>
-    <script src="<%= asWebViewPath('index.js') %>"></script>
+    </div>
+</body>
+<script src="<%= asWebViewPath('index.js') %>"></script>
+
 </html>

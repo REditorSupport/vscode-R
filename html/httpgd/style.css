@@ -15,10 +15,10 @@
     height: auto;
 }
 
-#plotDiv:hover {
-    background-color: var(--vscode-list-hoverBackground);
+#plotDiv[isActivePlot=true] {
+    background-color: var(--vscode-list-inactiveSelectionBackground);
 }
 
-#plotDiv[activePlot=true] {
-    background-color: var(--vscode-list-inactiveSelectionBackground);
+#plotDiv:hover {
+    background-color: var(--vscode-list-hoverBackground);
 }
