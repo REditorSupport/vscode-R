@@ -634,6 +634,12 @@
         "icon": "$(clone)"
       },
       {
+        "title": "Close Plot",
+        "category": "R Httpgd",
+        "command": "r.httpgd.closePlot",
+        "icon": "$(trash)"
+      },
+      {
         "title": "Hide Plot",
         "category": "R Httpgd",
         "command": "r.httpgd.hidePlot",
@@ -783,7 +789,8 @@
         {
           "group": "navigation",
           "when": "resourceScheme =~ /webview/ && r.httpgd.active",
-          "command": "r.httpgd.hidePlot"
+          "command": "r.httpgd.hidePlot",
+          "alt": "r.httpgd.closePlot"
         },
         {
           "group": "navigation",

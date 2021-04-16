@@ -366,6 +366,11 @@ export class Httpgd implements IHttpgdViewerApi {
         return Promise.all(plots);
     } 
     
+    // close/remove plot
+    public async closePlot(id: PlotId): Promise<void> {
+        await this.connection.api.get_remove_id(id);
+    }
+    
     // Listen to connection changes of the httpgd server
     // Todo: Expand to fill observer pattern with multiple listeners (?)
     public onConnectionChange(listener: (disconnected: boolean) => void): void {

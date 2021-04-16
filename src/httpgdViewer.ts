@@ -23,6 +23,7 @@ export function initializeHttpgd(): HttpgdManager {
         'r.httpgd.nextPlot': () => httpgdManager.getNewestViewer()?.nextPlot(),
         'r.httpgd.prevPlot': () => httpgdManager.getNewestViewer()?.prevPlot(),
         'r.httpgd.hidePlot': () => httpgdManager.getNewestViewer()?.hidePlot(),
+        'r.httpgd.closePlot': () => httpgdManager.getNewestViewer()?.closePlot(),
         'r.httpgd.resetPlots': () => httpgdManager.getNewestViewer()?.resetPlots()
     };
     for(const key in commands){
@@ -170,7 +171,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             }
         });
         this.plots = await Promise.all(newPlots);
-        this.activePlot = this.plots[this.plots.length - 1].id;
+        this.activePlot = this.plots[this.plots.length - 1]?.id;
         this.refreshHtml();
     }
     
@@ -265,6 +266,12 @@ export class HttpgdViewer implements IHttpgdViewer {
             }
             this.refreshHtml();
         }
+    }
+    
+    async closePlot(id?: PlotId): Promise<void> {
+        id ??= this.activePlot;
+        await this.api.closePlot(id);
+        await this.refreshPlots();
     }
     
     toggleStyle(force?: boolean): void{
