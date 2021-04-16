@@ -8,6 +8,8 @@ import { forwardCommands, shareWorkspace } from './rShareTree';
 import { runTextInTerm } from './rTerminal';
 import { requestFile } from './session';
 import { doesTermExist } from './util';
+import { HelpFile } from './rHelp';
+import { globalRHelp } from './extension';
 
 // used in sending messages to the guest service,
 // distinguishes the type of vscode message to show
@@ -36,7 +38,8 @@ export const enum Callback {
     RequestAttachGuest = 'RequestAttachGuest',
     RequestRunTextInTerm = 'RequestRunTextInTerm',
     GetFileContent = 'GetFileContent',
-    OrderDetach = 'OrderDetach'
+    OrderDetach = 'OrderDetach',
+    GetHelpFileContent = 'GetHelpFileContent'
 }
 
 // To contribute a request between the host and guest,
@@ -81,15 +84,16 @@ export const Commands: ICommands = {
             }
 
         },
+        [Callback.GetHelpFileContent]: (args: [text: string]): Promise<HelpFile | null >  => {
+            return globalRHelp.getHelpFileForPath(args[0]);
+        },
         /// File Handling ///
         // Host reads content from file, then passes the content
         // to the guest session.
         [Callback.GetFileContent]: async (args: [text: string, encoding?: string]): Promise<string | Buffer> => {
-            if (typeof (args[1]) !== 'undefined') {
-                return await fs.readFile(args[0], args[1]);
-            } else {
-                return await fs.readFile(args[0]);
-            }
+            return args[1] !== undefined ?
+                await fs.readFile(args[0], args[1]) :
+                await fs.readFile(args[0]);
         }
     },
     'guest': {

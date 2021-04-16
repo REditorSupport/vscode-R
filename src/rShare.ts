@@ -6,6 +6,7 @@ import { enableSessionWatcher, extensionContext } from './extension';
 import { attachActiveGuest, browserDisposables, initGuest, removeGuestFiles } from './rShareSession';
 import { initTreeView, rLiveShareProvider, ToggleNode } from './rShareTree';
 import { Commands, Callback, onRequest, request } from './rShareCommands';
+import { HelpFile } from './rHelp';
 
 /// LiveShare
 export let rHostService: HostService = undefined;
@@ -42,7 +43,9 @@ export async function isLiveShare(): Promise<boolean> {
 
 export async function isGuest(): Promise<boolean> {
     if ((await isLiveShare()) === true) {
-        return liveSession.session.role === vsls.Role.Guest ? true : false;
+        return liveSession.session.role === vsls.Role.Guest ?
+            true :
+            false;
     } else {
         return false;
     }
@@ -50,7 +53,9 @@ export async function isGuest(): Promise<boolean> {
 
 export async function isHost(): Promise<boolean> {
     if ((await isLiveShare()) === true) {
-        return liveSession.session.role === vsls.Role.Host ? true : false;
+        return liveSession.session.role === vsls.Role.Host ?
+            true :
+            false;
     } else {
         return false;
     }
@@ -280,6 +285,13 @@ export class GuestService {
                     console.error('[GuestService] failed to retrieve file content (not of type "Buffer")');
                 }
             }
+        }
+    }
+
+    public async requestHelpContent(file: string): Promise<HelpFile> {
+        const content: string | null | unknown = await request(Callback.GetHelpFileContent, file);
+        if (content !== undefined) {
+            return content as HelpFile;
         }
     }
 }
