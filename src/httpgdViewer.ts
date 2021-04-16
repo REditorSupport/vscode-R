@@ -21,7 +21,9 @@ export function initializeHttpgd(): HttpgdManager {
         ),
         'r.httpgd.exportPlot': () => httpgdManager.getNewestViewer()?.exportPlot(),
         'r.httpgd.nextPlot': () => httpgdManager.getNewestViewer()?.nextPlot(),
-        'r.httpgd.prevPlot': () => httpgdManager.getNewestViewer()?.prevPlot()
+        'r.httpgd.prevPlot': () => httpgdManager.getNewestViewer()?.prevPlot(),
+        'r.httpgd.hidePlot': () => httpgdManager.getNewestViewer()?.hidePlot(),
+        'r.httpgd.resetPlots': () => httpgdManager.getNewestViewer()?.resetPlots()
     };
     for(const key in commands){
         vscode.commands.registerCommand(key, commands[key]);
@@ -98,11 +100,11 @@ export class HttpgdViewer implements IHttpgdViewer {
     plots: HttpgdPlot[] = [];
     state?: HttpgdState;
     
-    // remember closed plots to let user restore?
-    discardedPlots: HttpgdPlot[] = [];
-    
     // Id of the currently viewed plot
     activePlot?: PlotId;
+    
+    // Ids of plots that are not shown, but not closed inside httpgd
+    hiddenPlots: PlotId[] = [];
     
     stripStyles: boolean;
     
@@ -157,7 +159,8 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     async refreshPlots(): Promise<void> {
         const mosteRecentPlotId = this.plots[this.plots.length - 1]?.id;
-        const plotIds = await this.api.getPlotIds();
+        let plotIds = await this.api.getPlotIds();
+        plotIds = plotIds.filter((id) => !this.hiddenPlots.includes(id));
         const newPlots = plotIds.map(async (id) => {
             const plot = this.plots.find((plt) => plt.id === id);
             if(plot && id !== mosteRecentPlotId){
@@ -247,7 +250,21 @@ export class HttpgdViewer implements IHttpgdViewer {
     
     // restore closed plots, show most recent plot etc.?
     resetPlots(): void {
-        // pass
+        this.hiddenPlots = [];
+        void this.refreshPlots();
+    }
+    
+    hidePlot(id?: PlotId): void {
+        id ??= this.activePlot;
+        if(id){
+            const tmpIndex = this.activeIndex;
+            this.hiddenPlots.push(id);
+            this.plots = this.plots.filter((plt) => !this.hiddenPlots.includes(plt.id));
+            if(id === this.activePlot){
+                this.activeIndex = tmpIndex;
+            }
+            this.refreshHtml();
+        }
     }
     
     toggleStyle(force?: boolean): void{

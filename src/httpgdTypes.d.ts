@@ -96,9 +96,6 @@ export class IHttpgdViewer {
     // active plots
     plots: HttpgdPlot[];
     
-    // remember closed plots to let user restore?
-    discardedPlots: HttpgdPlot[];
-    
     // Id of the currently viewed plot
     activePlot?: PlotId;
     

@@ -8,7 +8,7 @@
     </head>
     <body>
         <div id="svgDiv">
-            <%- largePlot.svg %> 
+            <%- largePlot?.svg %> 
         </div>
         <% plots.forEach((plot) => { %>
         <a href="command:r.httpgd.showIndex?%5B%22<%- plot.id %>%22%5D" title="Plot <%- plot.id %>">

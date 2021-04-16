@@ -625,13 +625,25 @@
         "title": "Toggle Style",
         "category": "R Httpgd",
         "command": "r.httpgd.toggleStyle",
-        "icon": "$(fold)"
+        "icon": "$(symbol-color)"
       },
       {
         "title": "Export Plot",
         "category": "R Httpgd",
         "command": "r.httpgd.exportPlot",
         "icon": "$(clone)"
+      },
+      {
+        "title": "Hide Plot",
+        "category": "R Httpgd",
+        "command": "r.httpgd.hidePlot",
+        "icon": "$(close)"
+      },
+      {
+        "title": "Restore Plots",
+        "category": "R Httpgd",
+        "command": "r.httpgd.resetPlots",
+        "icon": "$(discard)"
       },
       {
         "title": "Previous Plot",
@@ -767,6 +779,16 @@
           "group": "navigation",
           "when": "resourceScheme =~ /webview/ && r.httpgd.active",
           "command": "r.httpgd.exportPlot"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.httpgd.active",
+          "command": "r.httpgd.hidePlot"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.httpgd.active",
+          "command": "r.httpgd.resetPlots"
         },
         {
           "group": "navigation@001",
