@@ -7,7 +7,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as ejs from 'ejs';
 
-import { setContext } from './util';
+import { config, setContext } from './util';
 
 import { extensionContext } from './extension';
 
@@ -16,9 +16,7 @@ export function initializeHttpgd(): HttpgdManager {
     const httpgdManager = new HttpgdManager();
     const commands = {
         'r.httpgd.showIndex': (id?: string) => httpgdManager.getNewestViewer()?.focusPlot(id),
-        'r.httpgd.toggleStyle': () => httpgdManager.viewers.forEach(
-            (viewer) => viewer.toggleStyle()
-        ),
+        'r.httpgd.toggleStyle': () => httpgdManager.getNewestViewer()?.toggleStyle(),
         'r.httpgd.exportPlot': () => httpgdManager.getNewestViewer()?.exportPlot(),
         'r.httpgd.nextPlot': () => httpgdManager.getNewestViewer()?.nextPlot(),
         'r.httpgd.prevPlot': () => httpgdManager.getNewestViewer()?.prevPlot(),
@@ -61,6 +59,8 @@ export class HttpgdManager {
             viewer.show();
 
         } else{
+            const colorTheme = config().get('httpgd.defaultColorTheme', 'vscode');
+            this.viewerOptions.stripStyles = (colorTheme === 'vscode');
             const viewer = new HttpgdViewer(
                 this.viewerOptions,
                 host,

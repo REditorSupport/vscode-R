@@ -1070,6 +1070,19 @@
           "type": "boolean",
           "default": false,
           "description": "Remove hidden items when clearing workspace."
+        },
+        "r.httpgd.defaultColorTheme": {
+          "type": "string",
+          "default": "vscode",
+          "enum": [
+            "vscode",
+            "original"
+          ],
+          "enumDescriptions": [
+            "Match background and primary stroke color to the current color theme",
+            "Use original colors"
+          ],
+          "markdownDescription": "Which color theme to use when launching the plot viewer."
         }
       }
     },
