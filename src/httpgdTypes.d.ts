@@ -1,6 +1,7 @@
 
 
 import * as vscode from 'vscode';
+import { HttpgdManager } from './httpgdViewer';
 
 export type MaybePromise<T> = T | Promise<T>;
 
@@ -77,6 +78,8 @@ export declare class IHttpgdViewerApi {
 
 // Example for possible viewer creation options:
 export interface HttpgdViewerOptions {
+    parent: HttpgdManager;
+    token?: string;
     preserveFocus?: boolean;
     viewColumn?: vscode.ViewColumn;
     htmlTemplatePath: string;
@@ -105,7 +108,7 @@ export class IHttpgdViewer {
     
     // constructor called by the session watcher if a corresponding function was called in R
     // creates a new api instance itself
-    constructor(options: HttpgdViewerOptions, host: string, token?: string);
+    constructor(options: HttpgdViewerOptions);
 
 
     // Methods to interact with the webview

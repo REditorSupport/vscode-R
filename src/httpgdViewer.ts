@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 
 import * as vscode from 'vscode';
@@ -11,21 +12,25 @@ import { config, setContext } from './util';
 
 import { extensionContext } from './extension';
 
+const commands = [
+    'showIndex',
+    'toggleStyle',
+    'exportPlot',
+    'nextPlot',
+    'prevPlot',
+    'hidePlot',
+    'closePlot',
+    'resetPlots'
+] as const;
+
+type CommandName = typeof commands[number];
 
 export function initializeHttpgd(): HttpgdManager {
     const httpgdManager = new HttpgdManager();
-    const commands = {
-        'r.httpgd.showIndex': (id?: string) => httpgdManager.getNewestViewer()?.focusPlot(id),
-        'r.httpgd.toggleStyle': () => httpgdManager.getNewestViewer()?.toggleStyle(),
-        'r.httpgd.exportPlot': () => httpgdManager.getNewestViewer()?.exportPlot(),
-        'r.httpgd.nextPlot': () => httpgdManager.getNewestViewer()?.nextPlot(),
-        'r.httpgd.prevPlot': () => httpgdManager.getNewestViewer()?.prevPlot(),
-        'r.httpgd.hidePlot': () => httpgdManager.getNewestViewer()?.hidePlot(),
-        'r.httpgd.closePlot': () => httpgdManager.getNewestViewer()?.closePlot(),
-        'r.httpgd.resetPlots': () => httpgdManager.getNewestViewer()?.resetPlots()
-    };
-    for(const key in commands){
-        vscode.commands.registerCommand(key, commands[key]);
+    for(const cmd of commands){
+        const fullCommand = `r.httpgd.${cmd}`;
+        const cb = httpgdManager.getCommandHandler(cmd);
+        vscode.commands.registerCommand(fullCommand, cb);
     }
     return httpgdManager;
 }
@@ -35,10 +40,13 @@ export class HttpgdManager {
     
     viewerOptions: HttpgdViewerOptions;
     
+    recentlyActiveViewers: HttpgdViewer[] = [];
+    
     constructor(){
         const htmlRoot = extensionContext.asAbsolutePath('html/httpgd');
         const htmlTemplatePath = path.join(htmlRoot, 'index.ejs');
         this.viewerOptions = {
+            parent: this,
             htmlRoot: htmlRoot,
             htmlTemplatePath: htmlTemplatePath,
             preserveFocus: true,
@@ -51,27 +59,103 @@ export class HttpgdManager {
         const host = url.host;
         const token = url.searchParams.get('token') || undefined;
         const ind = this.viewers.findIndex(
-            (viewer) => viewer.host === host && viewer.token === token
+            (viewer) => viewer.host === host
         );
         if(ind >= 0){
             const viewer = this.viewers.splice(ind, 1)[0];
             this.viewers.unshift(viewer);
             viewer.show();
-
         } else{
             const colorTheme = config().get('httpgd.defaultColorTheme', 'vscode');
             this.viewerOptions.stripStyles = (colorTheme === 'vscode');
-            const viewer = new HttpgdViewer(
-                this.viewerOptions,
-                host,
-                token
-            );
+            this.viewerOptions.token = token;
+            const viewer = new HttpgdViewer(host, this.viewerOptions);
             this.viewers.unshift(viewer);
         }
     }
     
+    public registerActiveViewer(viewer: HttpgdViewer): void {
+        const ind = this.recentlyActiveViewers.indexOf(viewer);
+        if(ind){
+            this.recentlyActiveViewers.splice(ind, 1);
+        }
+        this.recentlyActiveViewers.unshift(viewer);
+    }
+    
+    public getRecentViewer(): HttpgdViewer | undefined {
+        return this.recentlyActiveViewers.find((viewer) => !!viewer.webviewPanel);
+    }
+    
     public getNewestViewer(): HttpgdViewer | undefined {
         return this.viewers[0];
+    }
+    
+    public getCommandHandler(command: CommandName): (...args: any[]) => void {
+        return (...args: any[]) => {
+            this.handleCommand(command, ...args);
+        };
+    }
+    
+    // generic command handler
+    public handleCommand(command: CommandName, hostOrWebviewUri?: string | vscode.Uri, ...args: any[]): void {
+        // the number and type of arguments given to a command can vary, depending on where it was called from:
+        // - calling from the title bar menu provides two arguments, the first of which identifies the webview
+        // - calling from the command palette provides no arguments
+        // - calling from a command uri provides a flexible number/type of arguments
+        // below  is an attempt to handle these different combinations efficiently and (somewhat) robustly
+
+        // Identify the correct viewer
+        let viewer: HttpgdViewer | undefined;
+        if(typeof hostOrWebviewUri === 'string'){
+            const host = hostOrWebviewUri;
+            viewer = this.viewers.find((viewer) => viewer.host === host);
+        } else if(hostOrWebviewUri instanceof vscode.Uri){
+            const uri = hostOrWebviewUri;
+            viewer = this.viewers.find((viewer) => viewer.getPanelPath() === uri.path);
+            console.log('asdf');
+        } else {
+            viewer = this.getRecentViewer();
+        }
+
+        // Abort if no viewer identified
+        if(!viewer){
+            return;
+        }
+        
+        // Get possible arguments for commands:
+        const stringArg = findItemOfType(args, 'string');
+        const boolArg = findItemOfType(args, 'boolean');
+        
+        // Call corresponding method, possibly with an argument:
+        switch(command) {
+            case 'showIndex': {
+                viewer.focusPlot(stringArg);
+                break;
+            } case 'nextPlot': {
+                viewer.nextPlot(boolArg);
+                break;
+            } case 'prevPlot': {
+                viewer.prevPlot(boolArg);
+                break;
+            } case 'resetPlots': {
+                viewer.resetPlots();
+                break;
+            } case 'toggleStyle': {
+                viewer.toggleStyle(boolArg);
+                break;
+            } case 'closePlot': {
+                void viewer.closePlot(stringArg);
+                break;
+            } case 'hidePlot': {
+                void viewer.hidePlot(stringArg);
+                break;
+            } case 'exportPlot': {
+                void viewer.exportPlot(stringArg);
+                break;
+            } default: {
+                break;
+            }
+        }
     }
 }
 
@@ -82,11 +166,14 @@ interface EjsData {
     plots: HttpgdPlot[];
     largePlot: HttpgdPlot;
     asWebViewPath: (localPath: string) => string;
+    makeCommandUri: (command: string, ...args: any[]) => string;
 }
 
 
 export class HttpgdViewer implements IHttpgdViewer {
     
+    parent: HttpgdManager;
+
     host: string;
     token?: string;
 
@@ -121,10 +208,11 @@ export class HttpgdViewer implements IHttpgdViewer {
     
     // constructor called by the session watcher if a corresponding function was called in R
     // creates a new api instance itself
-    constructor(options: HttpgdViewerOptions, host: string, token?: string) {
+    constructor(host: string, options: HttpgdViewerOptions) {
         this.host = host;
-        this.token = token;
-        this.api = new Httpgd(host, token);
+        this.token = options.token;
+        this.parent = options.parent;
+        this.api = new Httpgd(this.host, this.token);
         this.api.onPlotsChange(() => {
             void this.refreshPlots();
         });
@@ -139,16 +227,32 @@ export class HttpgdViewer implements IHttpgdViewer {
             preserveFocus: !!options.preserveFocus
         };
         this.webviewOptions = {
-            enableCommandUris: true
+            enableCommandUris: true,
+            enableScripts: true
         };
         this.api.start();
     }
 
-	public async setContextValues(): Promise<void> {
-        await setContext('r.httpgd.active', !!this.webviewPanel?.active);
-        await setContext('r.httpgd.canGoBack', this.activeIndex > 0);
-        await setContext('r.httpgd.canGoForward', this.activeIndex < this.plots.length - 1);
+	public async setContextValues(mightBeInBackground: boolean = false): Promise<void> {
+        if(this.webviewPanel?.active){
+            this.parent.registerActiveViewer(this);
+            await setContext('r.httpgd.active', true);
+            await setContext('r.httpgd.canGoBack', this.activeIndex > 0);
+            await setContext('r.httpgd.canGoForward', this.activeIndex < this.plots.length - 1);
+        } else if (!mightBeInBackground){
+            await setContext('r.httpgd.active', false);
+        }
 	}
+    
+    public getPanelPath(): string | undefined {
+        if(!this.webviewPanel) {
+            return undefined;
+        }
+        const dummyUri = this.webviewPanel.webview.asWebviewUri(vscode.Uri.file(''));
+        const m = /^https?:\/\/([^.]*)\./.exec(dummyUri.toString());
+        const webviewId = m[1] || '';
+        return `webview-panel/webview-${webviewId}`;
+    }
 
     async checkState(): Promise<void> {
         const oldState = this.state;
@@ -189,7 +293,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             });
         }
         this.webviewPanel.webview.html = this.makeHtml();
-        void this.setContextValues();
+        void this.setContextValues(true);
     }
     
     makeHtml(): string {
@@ -201,12 +305,19 @@ export class HttpgdViewer implements IHttpgdViewer {
             const webViewUri = this.webviewPanel.webview.asWebviewUri(localUri);
             return webViewUri.toString();            
         };
+        const makeCommandUri = (command: string, ...args: any[]) => {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            args = [this.host, ...args];
+            const argString = encodeURIComponent(JSON.stringify(args));
+            return `command:${command}?${argString}`;
+        };
         const ejsData: EjsData = {
             overwriteStyles: this.stripStyles,
             plots: this.plots,
             largePlot: this.plots[this.activeIndex],
             activePlot: this.activePlot,
-            asWebViewPath: asWebViewPath
+            asWebViewPath: asWebViewPath,
+            makeCommandUri: makeCommandUri
         };
         const html = ejs.render(this.htmlTemplate, ejsData);
         return html;
@@ -230,6 +341,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     // Called to create a new webview if the user closed the old one:
     show(preserveFocus?: boolean): void {
+        this.parent.registerActiveViewer(this);
         // pass
     }
     
@@ -329,10 +441,12 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
 }
 
-// not used currently
-function stripStyle(svg: string): string {
-    svg = svg.replace(/<style.*?<\/style>/s, '');
-    svg = svg.replace(/(<rect[^>]*?)style="[^"]*?"/, '$1');
-    return svg;
+// helper function to handle argument lists that might contain (useless) extra arguments
+function findItemOfType(arr: any[], type: 'string'): string | undefined;
+function findItemOfType(arr: any[], type: 'boolean'): boolean | undefined;
+function findItemOfType(arr: any[], type: 'number'): number | undefined;
+function findItemOfType<T = unknown>(arr: any[], type: string): T {
+    const item = arr.find((elm) => typeof elm === type) as T;
+    return item;
 }
 
