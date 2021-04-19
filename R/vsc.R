@@ -47,6 +47,24 @@ capture_str <- function(object) {
   )
 }
 
+rebind <- function(sym, value, ns) {
+  if (is.character(ns)) {
+    Recall(sym, value, getNamespace(ns))
+    pkg <- paste0("package:", ns)
+    if (pkg %in% search()) {
+      Recall(sym, value, as.environment(pkg))
+    }
+  } else if (is.environment(ns)) {
+    if (bindingIsLocked(sym, ns)) {
+      unlockBinding(sym, ns)
+      on.exit(lockBinding(sym, ns))
+    }
+    assign(sym, value, ns)
+  } else {
+    stop("ns must be a string or environment")
+  }
+}
+
 address <- function(x) {
   info <- utils::capture.output(.Internal(inspect(x, 0L)))
   gsub("@([a-z0-9]+)\\s+.+", "\\1", info[[1]])
@@ -202,13 +220,13 @@ if (show_plot) {
   setHook("plot.new", new_plot, "replace")
   setHook("grid.newpage", new_plot, "replace")
 
-  .External.graphics <- function(...) {
+  rebind(".External.graphics", function(...) {
     out <- .Primitive(".External.graphics")(...)
     if (check_null_dev()) {
       plot_updated <<- TRUE
     }
     out
-  }
+  }, "base")
 
   update_plot()
   addTaskCallback(update_plot, name = "vsc.plot")
