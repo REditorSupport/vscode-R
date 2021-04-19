@@ -9,17 +9,20 @@
 </head>
 
 <body>
-    <div id="svgDiv">
-        <%- largePlot?.svg %>
-    </div>
-    <div id="smallPlots">
-        <% plots.forEach((plot)=> { %>
-            <a href="<%- makeCommandUri('r.httpgd.showIndex', plot.id) %> " title="Plot <%- plot.id %>">
-                <div id="plotDiv" isActivePlot=<%- plot.id===activePlot %>>
-                    <%- plot.svg %>
-                </div>
-            </a>
-        <% }) %>
+    <div id="container">
+        <div id="svgDiv">
+            <%- largePlot?.svg %>
+        </div>
+        <div id="handler"> </div>
+        <div id="smallPlots">
+            <% plots.forEach((plot)=> { %>
+                <a href="<%- makeCommandUri('r.httpgd.showIndex', plot.id) %> " title="Plot <%- plot.id %>">
+                    <div class="plotDiv" isActivePlot=<%- plot.id===activePlot %>>
+                        <%- plot.svg %>
+                    </div>
+                </a>
+            <% }) %>
+        </div>
     </div>
 </body>
 <script src="<%= asWebViewPath('index.js') %>"></script>

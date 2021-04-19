@@ -262,6 +262,17 @@ export class HttpgdViewer implements IHttpgdViewer {
         }
     }
 
+    async handleResize(height: number, width: number){
+        const plt = await this.api.getPlotContent(this.activePlot, height, width);
+        // this.plots[this.activeIndex] = plt;
+        const msg = {
+            message: 'updatePlot',
+            id: 'svg',
+            svg: plt.svg
+        };
+        this.webviewPanel?.webview.postMessage(msg);
+    }
+
     async refreshPlots(): Promise<void> {
         const mosteRecentPlotId = this.plots[this.plots.length - 1]?.id;
         let plotIds = await this.api.getPlotIds();
@@ -290,6 +301,14 @@ export class HttpgdViewer implements IHttpgdViewer {
             this.webviewPanel.onDidDispose(() => this.webviewPanel = undefined);
             this.webviewPanel.onDidChangeViewState(() => {
                 void this.setContextValues();
+            });
+            this.webviewPanel.webview.onDidReceiveMessage((e) => {
+                console.log(e);
+                if(e.message === 'resize'){
+                    const height = e.height;
+                    const width = e.width;
+                    this.handleResize(height, width);
+                }
             });
         }
         this.webviewPanel.webview.html = this.makeHtml();
