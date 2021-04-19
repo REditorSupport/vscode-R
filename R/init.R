@@ -66,7 +66,7 @@ init_last <- function() {
     .vsc.page_viewer <- .vsc$show_page_viewer
 
     # assign functions that are optional:
-    for (funcName in c("View", ".External.graphics")) {
+    for (funcName in c("View")) {
       if (funcName %in% ls(.vsc)) {
         assign(funcName, .vsc[[funcName]])
       }
