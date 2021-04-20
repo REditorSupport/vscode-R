@@ -321,7 +321,7 @@ export async function launchAddinPicker(): Promise<void> {
   if (!config().get<boolean>('sessionWatcher')) {
     throw ('{rstudioapi} emulation requires session watcher to be enabled in extension config.');
   }
-  if (!isGuestSession && !sessionDirectoryExists()) {
+  if (!sessionDirectoryExists()) {
     throw ('No active R terminal session, attach one to use RStudio addins.');
   }
 
