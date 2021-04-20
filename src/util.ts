@@ -56,21 +56,26 @@ export async function getRpathFromSystem(): Promise<string> {
     return rpath;
 }
 
+export function getRPathConfigEntry(term: boolean = false): string {
+    const trunc = (term ? 'rterm' : 'rpath');
+    const platform = (
+        process.platform === 'win32' ? 'windows' :
+        process.platform === 'darwin' ? 'mac' :
+        'linux'
+    );
+    return `${trunc}.${platform}`;
+}
+
 export async function getRpath(quote=false, overwriteConfig?: string): Promise<string> {
     let rpath = '';
-
-    const configEntry = (
-        process.platform === 'win32' ? 'rpath.windows' :
-        process.platform === 'darwin' ? 'rpath.mac' :
-        'rpath.linux'
-    );
-
+    
     // try the config entry specified in the function arg:
     if(overwriteConfig){
         rpath = config().get<string>(overwriteConfig);
     }
 
     // try the os-specific config entry for the rpath:
+    const configEntry = getRPathConfigEntry();
     rpath ||= config().get<string>(configEntry);
 
     // read from path/registry:
@@ -94,11 +99,7 @@ export async function getRpath(quote=false, overwriteConfig?: string): Promise<s
 }
 
 export async function getRterm(): Promise<string|undefined> {
-    const configEntry = (
-        process.platform === 'win32' ? 'rterm.windows' :
-        process.platform === 'darwin' ? 'rterm.mac' :
-        'rterm.linux'
-    );
+    const configEntry = getRPathConfigEntry(true);
     let rpath = config().get<string>(configEntry);
 
     rpath ||= await getRpathFromSystem();

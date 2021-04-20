@@ -18,11 +18,11 @@ Full document is on the [Wiki page](https://github.com/Ikuyadeu/vscode-R/wiki)
 
 * Run Source(`Ctrl+Shift+S` or Push icon![icon](images/FileDownload.png)) and Run Selected Line (`Ctrl+Enter`) (Mac: `Ctrl` to `⌘`)
 * Run functions:
-    * `nrow` (`Show number of rows for selected object`)
-    * `length` (`Show length for a selected object`)
-    * `head` (`Show first part of a selected object`)
-    * `thead` (`Show first part of a selected object (transposed)`)
-    * `names` (`Show names for a selected object`)
+  * `nrow` (`Show number of rows for selected object`)
+  * `length` (`Show length for a selected object`)
+  * `head` (`Show first part of a selected object`)
+  * `thead` (`Show first part of a selected object (transposed)`)
+  * `names` (`Show names for a selected object`)
 
 ![use Run .R](images/feature.png)
 
@@ -75,30 +75,30 @@ This extension contributes the following settings:
   <details>
     <summary>Details</summary>
 
-    * Click the buttons to run commands.
-    * Hover on the buttons to show tooltips.
-    * CodeLens commands are customizable via settings UI (Rmarkdown: Code Lens commands) or settings.json `r.rmarkdown.codeLensCommands`
+  * Click the buttons to run commands.
+  * Hover on the buttons to show tooltips.
+  * CodeLens commands are customizable via settings UI (Rmarkdown: Code Lens commands) or settings.json `r.rmarkdown.codeLensCommands`
   </details>
 * `r.rmarkdown.codeLensCommands`: Customize RMarkdown CodeLens, which are inline commands/buttons e.g. 'Run Chunk | Run Above' shown on the first line of each code chunk. <details>
     <summary>Details</summary>
     Available commands:
 
-    * `r.selectCurrentChunk`
-    * `r.runCurrentChunk`
-    * `r.runAboveChunks`
-    * `r.runCurrentAndBelowChunks`
-    * `r.runBelowChunks`
-    * `r.runAllChunks`
-    * `r.runPreviousChunk`
-    * `r.runNextChunk`
-    * `r.goToPreviousChunk`
-    * `r.goToNextChunk`
+  * `r.selectCurrentChunk`
+  * `r.runCurrentChunk`
+  * `r.runAboveChunks`
+  * `r.runCurrentAndBelowChunks`
+  * `r.runBelowChunks`
+  * `r.runAllChunks`
+  * `r.runPreviousChunk`
+  * `r.runNextChunk`
+  * `r.goToPreviousChunk`
+  * `r.goToNextChunk`
     <br>
 
     Customize both the commands AND its orders (that is, CodeLens respect user-specified orders). Default commands:
-    * `r.runCurrentChunk`
-    * `r.runAboveChunks`
-    * `<Add item...>`
+  * `r.runCurrentChunk`
+  * `r.runAboveChunks`
+  * `<Add item...>`
   </details>
 * `r.rmarkdown.chunkBackgroundColor:` RMarkdown chunk background color in RGBA or RGB value.
   <details>
@@ -107,11 +107,10 @@ This extension contributes the following settings:
     <br><br>
 
     Examples for syntax `rgba(<red>, <green>, <blue>, <alpha>)`:
-    * `rgba(128, 128, 128, 0.1)`
-    * `rgba(128, 128, 128, 0.3)`
-    * `rgba(255, 165, 0, 0.1)`
+  * `rgba(128, 128, 128, 0.1)`
+  * `rgba(128, 128, 128, 0.3)`
+  * `rgba(255, 165, 0, 0.1)`
   </details>
-
 
 * Language server(developing [here](https://github.com/REditorSupport/languageserver))
 
@@ -255,11 +254,11 @@ See the wiki for [lists of supported `{rstudioapi}` commands, and verified compa
 
 ### Live Share support
 
+
 The session watcher further enhances LiveShare collaboration.
-
 The workspace viewer, data view, plots, and browsers are available to guests through the host session.
-
 To enable this feature, *both* the host and guest must have this extension and session watcher enabled.
+
 
 Hosts can control the level of access guests have through the provided Live Share Control view. This provides the following controls:
 

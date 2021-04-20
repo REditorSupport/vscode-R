@@ -1,0 +1,7 @@
+{
+    "no-inline-html": {
+      "allowed_elements": [ "details", "summary", "br" ]
+    },
+    "line-length": false,
+    "no-trailing-punctuation": false
+}

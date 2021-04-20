@@ -6,7 +6,7 @@ import * as hljs from 'highlight.js';
 
 import * as api from './api';
 
-import { config, getRpath, doWithProgress, DummyMemento } from './util';
+import { config, getRpath, doWithProgress, DummyMemento, getRPathConfigEntry } from './util';
 import { HelpPanel } from './rHelpPanel';
 import { HelpProvider, AliasProvider } from './rHelpProvider';
 import { HelpTreeWrapper } from './rHelpTree';
@@ -21,7 +21,7 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 	void vscode.commands.executeCommand('setContext', 'r.helpViewer.show', true);
 
     // get the "vanilla" R path from config
-    const rPath = await getRpath(true, 'helpPanel.rpath');
+    const rPath = await getRpath(true);
 
 	// get the current working directory from vscode
 	const cwd = (
@@ -210,15 +210,9 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	// refresh cached help info
 	public refresh(): boolean {
 		this.cachedHelpFiles.clear();
-		if(this.helpProvider?.refresh){
-			this.helpProvider.refresh();
-		}
-		if(this.aliasProvider?.refresh){
-			this.aliasProvider.refresh();
-		}
-		if(this.packageManager?.refresh){
-			this.packageManager.refresh();
-		}
+		this.helpProvider?.refresh?.();
+		this.aliasProvider?.refresh?.();
+		this.packageManager?.refresh?.();
 		return true;
 	}
 
@@ -390,7 +384,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	private async getAllAliases(): Promise<Alias[] | null | undefined> {
 		const aliases = await doWithProgress(() => this.aliasProvider.getAllAliases());
 		if(!aliases){
-			void vscode.window.showErrorMessage('Failed to get list of R functions. Make sure that `jsonlite` is installed and r.helpPanel.rpath points to a valid R executable.');
+			void vscode.window.showErrorMessage(`Failed to get list of R functions. Make sure that \`jsonlite\` is installed and r.${getRPathConfigEntry()} points to a valid R executable.`);
 		}
 		return aliases;
 	}

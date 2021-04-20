@@ -144,6 +144,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // deploy liveshare listener
     void rShare.initLiveShare(context);
 
+    // register task provider
+    const type = 'R';
+    vscode.tasks.registerTaskProvider(type, {
+        provideTasks() {
+            return [
+                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Check', 'R',
+                    new vscode.ShellExecution('Rscript -e "devtools::check()"')),
+                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Document', 'R',
+                    new vscode.ShellExecution('Rscript -e "devtools::document()"')),
+                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Install', 'R',
+                    new vscode.ShellExecution('Rscript -e "devtools::install()"')),
+                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Test', 'R',
+                    new vscode.ShellExecution('Rscript -e "devtools::test()"')),
+            ];
+        },
+        resolveTask(task: vscode.Task) {
+            return task;
+        }
+    });
+
+
     // deploy session watcher (if configured by user)
     if (enableSessionWatcher) {
         if (!(await rShare.isGuest())) {
