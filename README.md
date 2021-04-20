@@ -1,4 +1,5 @@
 # R support for Visual Studio Code
+
 [![Badge](https://aka.ms/vsls-badge)](https://aka.ms/vsls)
 
 Requires [R](https://www.r-project.org/).
@@ -254,11 +255,9 @@ See the wiki for [lists of supported `{rstudioapi}` commands, and verified compa
 
 ### Live Share support
 
-
 The session watcher further enhances LiveShare collaboration.
 The workspace viewer, data view, plots, and browsers are available to guests through the host session.
 To enable this feature, *both* the host and guest must have this extension and session watcher enabled.
-
 
 Hosts can control the level of access guests have through the provided Live Share Control view. This provides the following controls:
 
