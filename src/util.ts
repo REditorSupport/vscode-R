@@ -1,11 +1,12 @@
 'use strict';
 
-import { existsSync } from 'fs-extra';
+import { existsSync, PathLike, readFile } from 'fs-extra';
 import * as fs from 'fs';
 import winreg = require('winreg');
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
+import { rGuestService, isGuestSession } from './rShare';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -14,12 +15,12 @@ export function config(): vscode.WorkspaceConfiguration {
 function getRfromEnvPath(platform: string) {
     let splitChar = ':';
     let fileExtension = '';
-    
+
     if (platform === 'win32') {
         splitChar = ';';
         fileExtension = '.exe';
     }
-    
+
     const os_paths: string[]|string = process.env.PATH.split(splitChar);
     for (const os_path of os_paths) {
         const os_r_path: string = path.join(os_path, 'R' + fileExtension);
@@ -31,10 +32,10 @@ function getRfromEnvPath(platform: string) {
 }
 
 export async function getRpathFromSystem(): Promise<string> {
-    
+
     let rpath = '';
     const platform: string = process.platform;
-    
+
     if ( platform === 'win32') {
         // Find path from registry
         try {
@@ -102,7 +103,7 @@ export async function getRterm(): Promise<string|undefined> {
     let rpath = config().get<string>(configEntry);
 
     rpath ||= await getRpathFromSystem();
-    
+
     if (rpath !== '') {
         return rpath;
     }
@@ -111,6 +112,19 @@ export async function getRterm(): Promise<string|undefined> {
     return undefined;
 }
 
+// boolean that checks if an R term exists,
+// even if it is not the current active terminal
+export function doesTermExist(): boolean {
+    const termNames = ['R', 'R Interactive'];
+    for (const [i] of vscode.window.terminals.entries()) {
+        const terminal = vscode.window.terminals[i];
+        const terminalName = terminal.name;
+        if (termNames.includes(terminalName)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 export function ToRStringLiteral(s: string, quote: string): string {
     if (s === undefined) {
@@ -140,6 +154,23 @@ export function checkForSpecialCharacters(text: string): boolean {
 
 export function checkIfFileExists(filePath: string): boolean {
     return existsSync(filePath);
+}
+
+// Drop-in replacement for fs-extra.readFile (),
+// passes to guest service if the caller is a guest
+// This can be used wherever fs.readFile() is used,
+// particularly if a guest can access the function
+//
+// If it is a guest, the guest service requests the host
+// to read the file, and pass back its contents to the guest
+export function readContent(file: PathLike | number): Promise<Buffer>;
+export function readContent(file: PathLike | number, encoding: string): Promise<string>;
+export function readContent(file: PathLike | number, encoding?: string): Promise<string | Buffer> {
+    if (isGuestSession) {
+        return encoding === undefined ? rGuestService.requestFileContent(file) : rGuestService.requestFileContent(file, encoding);
+    } else {
+        return encoding === undefined ? readFile(file) : readFile(file, encoding);
+    }
 }
 
 

@@ -89,6 +89,14 @@
           "icon": "./images/Rlogo.svg",
           "contextualTitle": "R",
           "when": "r.helpViewer.show"
+        },
+        {
+          "id": "rLiveShare",
+          "name": "Live Share Controls",
+          "icon": "./images/Rlogo.svg",
+          "contextualTitle": "R",
+          "when": "r.WorkspaceViewer:show && !r.liveShare:isGuest",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -100,6 +108,10 @@
       {
         "view": "rHelpPages",
         "contents": "R Help Pages"
+      },
+      {
+        "view": "rLiveShare",
+        "contents": "R LiveShare not active."
       }
     ],
     "languages": [
@@ -620,6 +632,10 @@
         "title": "Open help for path",
         "category": "R",
         "command": "r.helpPanel.openForPath"
+      },
+      {
+        "command": "r.liveShare.toggle",
+        "title": "Toggle"
       }
     ],
     "keybindings": [
@@ -828,18 +844,22 @@
           "command": "r.helpPanel.summarizeTopics",
           "group": "inline@8",
           "when": "view == rHelpPages && viewItem =~ /_summarizeTopics_/"
+        },
+        {
+          "command": "r.liveShare.toggle",
+          "when": "view == rLiveShare"
         }
       ],
       "view/title": [
         {
           "command": "r.workspaceViewer.load",
           "group": "navigation@0",
-          "when": "view == workspaceViewer"
+          "when": "view == workspaceViewer && !r.liveShare:isGuest"
         },
         {
           "command": "r.workspaceViewer.save",
           "group": "navigation@1",
-          "when": "view == workspaceViewer"
+          "when": "view == workspaceViewer && !r.liveShare:isGuest"
         },
         {
           "command": "r.workspaceViewer.clear",
@@ -995,6 +1015,21 @@
           "type": "boolean",
           "default": false,
           "description": "Remove hidden items when clearing workspace."
+        },
+        "r.liveShare.commandForwardDefault": {
+          "type": "boolean",
+          "default": false,
+          "description": "Default boolean value for guest command forwarding."
+        },
+        "r.liveShare.shareWorkspaceDefault": {
+          "type": "boolean",
+          "default": true,
+          "description": "Default boolean value for sharing the R workspace with guests."
+        },
+        "r.liveShare.shareBrowserDefault": {
+          "type": "boolean",
+          "default": false,
+          "description": "Default boolean value for automatically sharing R browser ports with guests."
         }
       }
     },
@@ -1050,6 +1085,7 @@
     "popper.js": "^1.16.1",
     "showdown": "^1.9.1",
     "tree-kill": "^1.2.2",
+    "vsls": "^1.0.3015",
     "winreg": "^1.2.4"
   }
 }
