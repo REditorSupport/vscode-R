@@ -12,6 +12,21 @@ import { config, setContext } from './util';
 
 import { extensionContext } from './extension';
 
+interface IOutMessage {
+  message: string;
+}
+interface ResizeMessage extends IOutMessage {
+  message: 'resize',
+  height: number,
+  width: number
+}
+interface LogMessage extends IOutMessage {
+  message: 'log',
+  body: any
+}
+
+type OutMessage = ResizeMessage | LogMessage;
+
 const commands = [
     'showIndex',
     'toggleStyle',
@@ -206,6 +221,8 @@ export class HttpgdViewer implements IHttpgdViewer {
     showOptions: { viewColumn: vscode.ViewColumn, preserveFocus?: boolean };
     webviewOptions: vscode.WebviewPanelOptions & vscode.WebviewOptions;
     
+    private resizeBusy: boolean = false;
+    
     // constructor called by the session watcher if a corresponding function was called in R
     // creates a new api instance itself
     constructor(host: string, options: HttpgdViewerOptions) {
@@ -262,31 +279,39 @@ export class HttpgdViewer implements IHttpgdViewer {
         }
     }
 
-    async handleResize(height: number, width: number){
+    async handleResize(height: number, width: number): Promise<void> {
+        this.resizeBusy = true;
         const plt = await this.api.getPlotContent(this.activePlot, height, width);
         // this.plots[this.activeIndex] = plt;
+        this.width = width;
+        this.height = height;
         const msg = {
             message: 'updatePlot',
             id: 'svg',
-            svg: plt.svg
+            svg: plt.svg,
+            plotId: plt.id
         };
         this.webviewPanel?.webview.postMessage(msg);
+        this.resizeBusy = false;
     }
 
     async refreshPlots(): Promise<void> {
         const mosteRecentPlotId = this.plots[this.plots.length - 1]?.id;
+        const nPlots = this.plots.length;
         let plotIds = await this.api.getPlotIds();
         plotIds = plotIds.filter((id) => !this.hiddenPlots.includes(id));
         const newPlots = plotIds.map(async (id) => {
             const plot = this.plots.find((plt) => plt.id === id);
-            if(plot && id !== mosteRecentPlotId){
+            if(plot && id !== this.activePlot){
                 return plot;
             } else{
-                return await this.api.getPlotContent(id);
+                return await this.api.getPlotContent(id, this.height, this.width);
             }
         });
         this.plots = await Promise.all(newPlots);
-        this.activePlot = this.plots[this.plots.length - 1]?.id;
+        if(this.plots.length !== nPlots){
+            this.activePlot = this.plots[this.plots.length - 1]?.id;
+        }
         this.refreshHtml();
     }
     
@@ -302,12 +327,14 @@ export class HttpgdViewer implements IHttpgdViewer {
             this.webviewPanel.onDidChangeViewState(() => {
                 void this.setContextValues();
             });
-            this.webviewPanel.webview.onDidReceiveMessage((e) => {
+            this.webviewPanel.webview.onDidReceiveMessage((e: OutMessage) => {
                 console.log(e);
-                if(e.message === 'resize'){
+                if(this.resizeBusy){
+                    console.log('Resize busy');
+                } else if(e.message === 'resize'){
                     const height = e.height;
                     const width = e.width;
-                    this.handleResize(height, width);
+                    void this.handleResize(height, width);
                 }
             });
         }

@@ -1,7 +1,30 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
+
+interface IOutMessage {
+  message: string;
+}
+interface ResizeMessage extends IOutMessage {
+  message: 'resize',
+  height: number,
+  width: number
+}
+interface LogMessage extends IOutMessage {
+  message: 'log',
+  body: any
+}
+
+type OutMessage = ResizeMessage | LogMessage;
+
+interface VsCode {
+  postMessage: (msg: OutMessage) => void;
+}
 
 // @ts-ignore
-const vscode = acquireVsCodeApi(); 
+const vscode = acquireVsCodeApi() as VsCode;
 
 let oldHeight = -1;
 let oldWidth = -1;
@@ -14,23 +37,32 @@ function postResizeMessage(){
       message: 'resize',
       height: newHeight,
       width: newWidth
-    })
+    });
     oldHeight = newHeight;
     oldWidth = newWidth;
   }
 }
 
-interface Message {
-  message: 'updatePlot',
-  id: 'svg',
-  svg: string
+function postLogMessage(content: any){
+  vscode.postMessage({
+    message: 'log',
+    body: content
+  });
 }
 
-window.addEventListener('message', (ev: MessageEvent<Message>) => {
+interface InMessage {
+  message: 'updatePlot',
+  id: 'svg',
+  svg: string,
+  plotId: string
+}
+
+window.addEventListener('message', (ev: MessageEvent<InMessage>) => {
   const msg = ev.data;
   if(msg.message === 'updatePlot' && msg.id === 'svg'){
     const elm = document.getElementById('svgDiv');
-    if(!elm){
+    const plotId = elm?.getAttribute('plotId');
+    if(!elm || msg.plotId !== plotId){
       return;
     }
     elm.innerHTML = msg.svg;
@@ -47,18 +79,21 @@ const wrapper = handler?.closest('#container') as HTMLDivElement;
 const svgDiv = wrapper?.querySelector('#svgDiv') as HTMLDivElement;
 let isHandlerDragging = false;
 
-document.addEventListener('mousedown', function(e) {
+document.addEventListener('mousedown', (e) => {
   // If mousedown event is fired from .handler, toggle flag to true
   if (e.target === handler) {
     isHandlerDragging = true;
+    postLogMessage('mousedown');
   }
 });
 
-document.addEventListener('mousemove', function(e) {
+document.addEventListener('mousemove', (e) => {
   // Don't do anything if dragging flag is false
   if (!isHandlerDragging) {
     return false;
   }
+  
+  // postLogMessage('mousemove');
 
   // Get offset
   const containerOffsetTop = wrapper?.offsetTop;
@@ -78,14 +113,16 @@ document.addEventListener('mousemove', function(e) {
   if(svgDiv.style.height !== newHeightString){
     svgDiv.style.height = newHeightString;
     svgDiv.style.flexGrow = '0';
-    postResizeMessage();
   }
 });
 
 window.onresize = () => postResizeMessage();
 
-document.addEventListener('mouseup', function(e) {
+document.addEventListener('mouseup', () => {
   // Turn off dragging flag when user mouse is up
+  if(isHandlerDragging){
+    postResizeMessage();
+  }
   isHandlerDragging = false;
 });
 

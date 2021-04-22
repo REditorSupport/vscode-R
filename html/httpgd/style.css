@@ -1,20 +1,23 @@
 
 #svgDiv {
     width: 100%;
-    overflow: auto;
-    background-color: blue;
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
 .plotDiv {
     width: 20%;
-    height: 20%;
+    height: auto;
     float: left;
 }
 
 #handler {
-    background-color: khaki;
+    background-color: var(--vscode-textSeparator-foreground);
     height: 5px;
     cursor: ns-resize;
+}
+#handler:hover {
+    background-color: var(--vscode-focusBorder);
 }
 
 .httpgd {
@@ -26,6 +29,10 @@
     background-color: var(--vscode-list-inactiveSelectionBackground);
 }
 
-#plotDiv:hover {
+.plotDiv:hover[isActivePlot=false] {
     background-color: var(--vscode-list-hoverBackground);
+}
+
+:focus {
+    outline: 0 !important;
 }

@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // @ts-ignore
 const vscode = acquireVsCodeApi();
 let oldHeight = -1;
@@ -15,11 +19,18 @@ function postResizeMessage() {
         oldWidth = newWidth;
     }
 }
+function postLogMessage(content) {
+    vscode.postMessage({
+        message: 'log',
+        body: content
+    });
+}
 window.addEventListener('message', (ev) => {
     const msg = ev.data;
     if (msg.message === 'updatePlot' && msg.id === 'svg') {
         const elm = document.getElementById('svgDiv');
-        if (!elm) {
+        const plotId = elm === null || elm === void 0 ? void 0 : elm.getAttribute('plotId');
+        if (!elm || msg.plotId !== plotId) {
             return;
         }
         elm.innerHTML = msg.svg;
@@ -32,17 +43,19 @@ const handler = document.querySelector('#handler');
 const wrapper = handler === null || handler === void 0 ? void 0 : handler.closest('#container');
 const svgDiv = wrapper === null || wrapper === void 0 ? void 0 : wrapper.querySelector('#svgDiv');
 let isHandlerDragging = false;
-document.addEventListener('mousedown', function (e) {
+document.addEventListener('mousedown', (e) => {
     // If mousedown event is fired from .handler, toggle flag to true
     if (e.target === handler) {
         isHandlerDragging = true;
+        postLogMessage('mousedown');
     }
 });
-document.addEventListener('mousemove', function (e) {
+document.addEventListener('mousemove', (e) => {
     // Don't do anything if dragging flag is false
     if (!isHandlerDragging) {
         return false;
     }
+    // postLogMessage('mousemove');
     // Get offset
     const containerOffsetTop = wrapper === null || wrapper === void 0 ? void 0 : wrapper.offsetTop;
     // Get x-coordinate of pointer relative to container
@@ -57,11 +70,13 @@ document.addEventListener('mousemove', function (e) {
     if (svgDiv.style.height !== newHeightString) {
         svgDiv.style.height = newHeightString;
         svgDiv.style.flexGrow = '0';
-        postResizeMessage();
     }
 });
 window.onresize = () => postResizeMessage();
-document.addEventListener('mouseup', function (e) {
+document.addEventListener('mouseup', () => {
     // Turn off dragging flag when user mouse is up
+    if (isHandlerDragging) {
+        postResizeMessage();
+    }
     isHandlerDragging = false;
 });
