@@ -12,20 +12,8 @@ import { config, setContext } from './util';
 
 import { extensionContext } from './extension';
 
-interface IOutMessage {
-  message: string;
-}
-interface ResizeMessage extends IOutMessage {
-  message: 'resize',
-  height: number,
-  width: number
-}
-interface LogMessage extends IOutMessage {
-  message: 'log',
-  body: any
-}
+import { OutMessage } from './webviewMessages';
 
-type OutMessage = ResizeMessage | LogMessage;
 
 const commands = [
     'showIndex',
@@ -180,6 +168,7 @@ interface EjsData {
     activePlot?: PlotId;
     plots: HttpgdPlot[];
     largePlot: HttpgdPlot;
+    host: string;
     asWebViewPath: (localPath: string) => string;
     makeCommandUri: (command: string, ...args: any[]) => string;
 }
@@ -212,8 +201,14 @@ export class HttpgdViewer implements IHttpgdViewer {
     stripStyles: boolean;
     
     // Size of the view area:
-    height: number;
-    width: number;
+    viewHeight: number;
+    viewWidth: number;
+    
+    // Size of the shown plot (as computed):
+    plotHeight: number;
+    plotWidth: number;
+    
+    resizeTimeout?: NodeJS.Timeout;
     
     htmlTemplate: string;
     htmlRoot: string;
@@ -279,20 +274,34 @@ export class HttpgdViewer implements IHttpgdViewer {
         }
     }
 
-    async handleResize(height: number, width: number): Promise<void> {
-        this.resizeBusy = true;
+    handleResize(height: number, width: number, userTriggered: boolean = false): void {
+        this.viewHeight = height;
+        this.viewWidth = width;
+        clearTimeout(this.resizeTimeout);
+        if(userTriggered){
+            void this.resizePlot();
+        } else{
+            this.resizeTimeout = setTimeout(() => {
+                void this.resizePlot();
+            }, 100);
+        }
+    }
+    
+    async resizePlot(): Promise<void> {
+        const height = this.viewHeight;
+        const width = this.viewWidth;
         const plt = await this.api.getPlotContent(this.activePlot, height, width);
+        plt.svg = stripSize(plt.svg);
         // this.plots[this.activeIndex] = plt;
-        this.width = width;
-        this.height = height;
         const msg = {
             message: 'updatePlot',
             id: 'svg',
             svg: plt.svg,
             plotId: plt.id
         };
+        this.plotWidth = width;
+        this.plotHeight = height;
         this.webviewPanel?.webview.postMessage(msg);
-        this.resizeBusy = false;
     }
 
     async refreshPlots(): Promise<void> {
@@ -305,7 +314,9 @@ export class HttpgdViewer implements IHttpgdViewer {
             if(plot && id !== this.activePlot){
                 return plot;
             } else{
-                return await this.api.getPlotContent(id, this.height, this.width);
+                const plt = await this.api.getPlotContent(id, this.viewHeight, this.viewWidth);
+                plt.svg = stripSize(plt.svg);
+                return plt;
             }
         });
         this.plots = await Promise.all(newPlots);
@@ -317,29 +328,42 @@ export class HttpgdViewer implements IHttpgdViewer {
     
     refreshHtml(): void {
         if(!this.webviewPanel){
-            this.webviewPanel = vscode.window.createWebviewPanel(
-                'RPlot',
-                'R Plot',
-                this.showOptions,
-                this.webviewOptions
-            );
-            this.webviewPanel.onDidDispose(() => this.webviewPanel = undefined);
-            this.webviewPanel.onDidChangeViewState(() => {
-                void this.setContextValues();
-            });
-            this.webviewPanel.webview.onDidReceiveMessage((e: OutMessage) => {
-                console.log(e);
-                if(this.resizeBusy){
-                    console.log('Resize busy');
-                } else if(e.message === 'resize'){
-                    const height = e.height;
-                    const width = e.width;
-                    void this.handleResize(height, width);
-                }
-            });
+            this.webviewPanel = this.makeNewWebview();
         }
         this.webviewPanel.webview.html = this.makeHtml();
         void this.setContextValues(true);
+    }
+    
+    makeNewWebview(): vscode.WebviewPanel {
+        const webviewPanel = vscode.window.createWebviewPanel(
+            'RPlot',
+            'R Plot',
+            this.showOptions,
+            this.webviewOptions
+        );
+        webviewPanel.onDidDispose(() => this.webviewPanel = undefined);
+        webviewPanel.onDidChangeViewState(() => {
+            void this.setContextValues();
+        });
+        webviewPanel.webview.onDidReceiveMessage((e: OutMessage) => {
+            this.handleWebviewMessage(e);
+        });
+        return webviewPanel;
+    }
+    
+    handleWebviewMessage(msg: OutMessage): void {
+        if(msg.message === 'log'){
+            console.log(msg.body);
+        } else if(msg.message === 'resize'){
+            if(this.resizeBusy){
+                console.log('Resize busy');
+            } else {
+                const height = msg.height;
+                const width = msg.width;
+                const userTriggered = msg.userTriggered;
+                void this.handleResize(height, width, userTriggered);
+            }
+        }
     }
     
     makeHtml(): string {
@@ -352,8 +376,6 @@ export class HttpgdViewer implements IHttpgdViewer {
             return webViewUri.toString();            
         };
         const makeCommandUri = (command: string, ...args: any[]) => {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            args = [this.host, ...args];
             const argString = encodeURIComponent(JSON.stringify(args));
             return `command:${command}?${argString}`;
         };
@@ -362,6 +384,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             plots: this.plots,
             largePlot: this.plots[this.activeIndex],
             activePlot: this.activePlot,
+            host: this.host,
             asWebViewPath: asWebViewPath,
             makeCommandUri: makeCommandUri
         };
@@ -496,3 +519,9 @@ function findItemOfType<T = unknown>(arr: any[], type: string): T {
     return item;
 }
 
+
+function stripSize(svg: string): string {
+    const re = /<(svg.*)width="[^"]*" height="[^"]*"(.*)>/;
+    svg = svg.replace(re, '<$1 width="100%" height="100%" preserveAspectRatio="none" $2>');
+    return svg;
+}

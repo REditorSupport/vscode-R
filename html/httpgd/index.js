@@ -2,24 +2,25 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// @ts-ignore
 const vscode = acquireVsCodeApi();
 let oldHeight = -1;
 let oldWidth = -1;
-function postResizeMessage() {
+function postResizeMessage(userTriggered = false) {
     const newHeight = svgDiv.clientHeight;
     const newWidth = svgDiv.clientWidth;
     if (newHeight !== oldHeight || newWidth !== oldWidth) {
         vscode.postMessage({
             message: 'resize',
             height: newHeight,
-            width: newWidth
+            width: newWidth,
+            userTriggered: userTriggered
         });
         oldHeight = newHeight;
         oldWidth = newWidth;
     }
 }
 function postLogMessage(content) {
+    console.log(content);
     vscode.postMessage({
         message: 'log',
         body: content
@@ -69,14 +70,13 @@ document.addEventListener('mousemove', (e) => {
     const newHeightString = `${newHeight}px`;
     if (svgDiv.style.height !== newHeightString) {
         svgDiv.style.height = newHeightString;
-        svgDiv.style.flexGrow = '0';
     }
 });
 window.onresize = () => postResizeMessage();
 document.addEventListener('mouseup', () => {
     // Turn off dragging flag when user mouse is up
     if (isHandlerDragging) {
-        postResizeMessage();
+        postResizeMessage(true);
     }
     isHandlerDragging = false;
 });

@@ -103,8 +103,8 @@ export class IHttpgdViewer {
     activePlot?: PlotId;
     
     // Size of the view area:
-    height: number;
-    width: number;
+    viewHeight: number;
+    viewWidth: number;
     
     // constructor called by the session watcher if a corresponding function was called in R
     // creates a new api instance itself

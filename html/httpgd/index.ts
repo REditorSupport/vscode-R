@@ -4,39 +4,25 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 
-interface IOutMessage {
-  message: string;
-}
-interface ResizeMessage extends IOutMessage {
-  message: 'resize',
-  height: number,
-  width: number
-}
-interface LogMessage extends IOutMessage {
-  message: 'log',
-  body: any
-}
 
-type OutMessage = ResizeMessage | LogMessage;
+// postulate existence of vscode to tsc:
+declare function acquireVsCodeApi(): VsCode;
 
-interface VsCode {
-  postMessage: (msg: OutMessage) => void;
-}
 
-// @ts-ignore
-const vscode = acquireVsCodeApi() as VsCode;
+const vscode = acquireVsCodeApi();
 
 let oldHeight = -1;
 let oldWidth = -1;
 
-function postResizeMessage(){
+function postResizeMessage(userTriggered: boolean = false){
   const newHeight = svgDiv.clientHeight;
   const newWidth = svgDiv.clientWidth;
   if(newHeight !== oldHeight || newWidth !== oldWidth){
     vscode.postMessage({
       message: 'resize',
       height: newHeight,
-      width: newWidth
+      width: newWidth,
+      userTriggered: userTriggered
     });
     oldHeight = newHeight;
     oldWidth = newWidth;
@@ -44,17 +30,11 @@ function postResizeMessage(){
 }
 
 function postLogMessage(content: any){
+  console.log(content);
   vscode.postMessage({
     message: 'log',
     body: content
   });
-}
-
-interface InMessage {
-  message: 'updatePlot',
-  id: 'svg',
-  svg: string,
-  plotId: string
 }
 
 window.addEventListener('message', (ev: MessageEvent<InMessage>) => {
@@ -112,7 +92,6 @@ document.addEventListener('mousemove', (e) => {
 
   if(svgDiv.style.height !== newHeightString){
     svgDiv.style.height = newHeightString;
-    svgDiv.style.flexGrow = '0';
   }
 });
 
@@ -121,7 +100,7 @@ window.onresize = () => postResizeMessage();
 document.addEventListener('mouseup', () => {
   // Turn off dragging flag when user mouse is up
   if(isHandlerDragging){
-    postResizeMessage();
+    postResizeMessage(true);
   }
   isHandlerDragging = false;
 });

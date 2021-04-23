@@ -16,7 +16,7 @@
         <div id="handler"> </div>
         <div id="smallPlots">
             <% plots.forEach((plot)=> { %>
-                <a href="<%- makeCommandUri('r.httpgd.showIndex', plot.id) %> " title="Plot <%- plot.id %>">
+                <a href="<%- makeCommandUri('r.httpgd.showIndex', host, plot.id) %> " title="Plot <%- plot.id %>">
                     <div class="plotDiv" isActivePlot=<%- plot.id===activePlot %>>
                         <%- plot.svg %>
                     </div>

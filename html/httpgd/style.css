@@ -21,8 +21,8 @@
 }
 
 .httpgd {
-    width: 100%;
-    height: auto;
+    width: 100% !important;
+    height: 100% !important;
 }
 
 .plotDiv[isActivePlot=true] {
