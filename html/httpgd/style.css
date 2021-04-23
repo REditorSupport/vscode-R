@@ -13,7 +13,7 @@
 
 #handler {
     background-color: var(--vscode-textSeparator-foreground);
-    height: 5px;
+    height: 4px;
     cursor: ns-resize;
 }
 #handler:hover {
@@ -36,3 +36,8 @@
 :focus {
     outline: 0 !important;
 }
+
+body {
+    padding-left: 1px;
+    padding-right: 1px;
+} 
