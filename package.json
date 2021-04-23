@@ -656,12 +656,26 @@
         "category": "R Httpgd",
         "command": "r.httpgd.prevPlot",
         "enablement": "r.httpgd.canGoBack",
-        "icon": "$(arrow-left)"
+        "icon": "$(chevron-left)"
       },
       {
         "title": "Next Plot",
         "category": "R Httpgd",
         "command": "r.httpgd.nextPlot",
+        "enablement": "r.httpgd.canGoForward",
+        "icon": "$(chevron-right)"
+      },
+      {
+        "title": "First Plot",
+        "category": "R Httpgd",
+        "command": "r.httpgd.firstPlot",
+        "enablement": "r.httpgd.canGoBack",
+        "icon": "$(arrow-left)"
+      },
+      {
+        "title": "Last Plot",
+        "category": "R Httpgd",
+        "command": "r.httpgd.lastPlot",
         "enablement": "r.httpgd.canGoForward",
         "icon": "$(arrow-right)"
       }
@@ -800,12 +814,14 @@
         {
           "group": "navigation@001",
           "when": "resourceScheme =~ /webview/ && r.httpgd.active",
-          "command": "r.httpgd.prevPlot"
+          "command": "r.httpgd.prevPlot",
+          "alt": "r.httpgd.firstPlot"
         },
         {
           "group": "navigation@002",
           "when": "resourceScheme =~ /webview/ && r.httpgd.active",
-          "command": "r.httpgd.nextPlot"
+          "command": "r.httpgd.nextPlot",
+          "alt": "r.httpgd.lastPlot"
         }
       ],
       "editor/context": [

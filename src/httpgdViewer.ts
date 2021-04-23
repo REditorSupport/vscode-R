@@ -21,6 +21,8 @@ const commands = [
     'exportPlot',
     'nextPlot',
     'prevPlot',
+    'lastPlot',
+    'firstPlot',
     'hidePlot',
     'closePlot',
     'resetPlots'
@@ -139,6 +141,12 @@ export class HttpgdManager {
                 break;
             } case 'prevPlot': {
                 viewer.prevPlot(boolArg);
+                break;
+            } case 'lastPlot': {
+                viewer.nextPlot(true);
+                break;
+            } case 'firstPlot': {
+                viewer.prevPlot(true);
                 break;
             } case 'resetPlots': {
                 viewer.resetPlots();
