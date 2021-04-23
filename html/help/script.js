@@ -1,18 +1,22 @@
-// the javascript file script.js is generated from script.ts
-// used to communicate with vscode, can only be invoked once:
-// @ts-ignore
-var vscode = acquireVsCodeApi();
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const vscode = acquireVsCodeApi();
 // notify vscode when mouse buttons are clicked
 // used to implement back/forward on mouse buttons 3/4
-window.onmousedown = function (ev) {
+window.onmousedown = (ev) => {
     vscode.postMessage({
         message: 'mouseClick',
-        button: ev.button,
+        button: Number(ev.button),
         scrollY: window.scrollY
     });
 };
-window.addEventListener('message', function (ev) {
-    var message = ev.data;
+// handle back/forward requests from vscode ui
+// simulates a mousclick on key 3 or 4
+window.addEventListener('message', (ev) => {
+    const message = ev.data;
     if (message.command === 'goBack') {
         vscode.postMessage({
             message: 'mouseClick',
@@ -29,17 +33,17 @@ window.addEventListener('message', function (ev) {
     }
 });
 // do everything after loading the body
-window.document.body.onload = function () {
+window.document.body.onload = () => {
     var _a;
     // make relative path for hyperlinks
-    var relPath = (document.body.getAttribute('relPath') || '');
+    const relPath = (document.body.getAttribute('relPath') || '');
     // notify vscode, used to restore help panels between sessions
     vscode.setState(relPath);
-    var loc = document.location;
-    var url0 = new URL(loc.protocol + '//' + loc.host);
-    var url1 = new URL(relPath, url0);
+    const loc = document.location;
+    const url0 = new URL(loc.protocol + '//' + loc.host);
+    const url1 = new URL(relPath, url0);
     // scroll to desired position:
-    var scrollYTo = Number((_a = document.body.getAttribute('scrollYTo')) !== null && _a !== void 0 ? _a : -1);
+    const scrollYTo = Number((_a = document.body.getAttribute('scrollYTo')) !== null && _a !== void 0 ? _a : -1);
     if (scrollYTo >= 0) {
         window.scrollTo(0, scrollYTo);
     }
@@ -47,19 +51,19 @@ window.document.body.onload = function () {
         document.location.hash = url1.hash;
     }
     // notify vscode when links are clicked:
-    var hyperLinks = document.getElementsByTagName('a');
-    var _loop_1 = function (i) {
-        var hrefAbs = hyperLinks[i].href;
-        var hrefRel = hyperLinks[i].getAttribute('href') || '';
+    const hyperLinks = document.getElementsByTagName('a');
+    for (let i = 0; i < hyperLinks.length; i++) {
+        const hrefAbs = hyperLinks[i].href;
+        const hrefRel = hyperLinks[i].getAttribute('href') || '';
         if (hrefRel.startsWith('#')) {
-            hyperLinks[i].onclick = function () {
+            hyperLinks[i].onclick = () => {
                 document.location.hash = hrefRel;
             };
         }
         else if (hrefAbs && hrefAbs.startsWith('vscode-webview://')) {
-            hyperLinks[i].onclick = function () {
-                var url2 = new URL(hrefRel, url1);
-                var finalHref = url2.toString();
+            hyperLinks[i].onclick = () => {
+                const url2 = new URL(hrefRel, url1);
+                const finalHref = url2.toString();
                 vscode.postMessage({
                     message: 'linkClicked',
                     href: finalHref,
@@ -67,8 +71,5 @@ window.document.body.onload = function () {
                 });
             };
         }
-    };
-    for (var i = 0; i < hyperLinks.length; i++) {
-        _loop_1(i);
     }
 };

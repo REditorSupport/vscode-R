@@ -1,0 +1,14 @@
+
+{
+    "compilerOptions": {
+        "module": "commonjs",
+        "target": "es2018",
+        "lib": [
+            "es2018",
+            "DOM"
+        ],
+        "sourceMap": false,
+        "strictNullChecks": true,
+        "rootDir": "."
+    }
+}

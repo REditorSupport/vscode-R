@@ -11,6 +11,7 @@ parserOptions:
   project: 
     - ./tsconfig.json
     - ./html/httpgd/tsconfig.json
+    - ./html/help/tsconfig.json
 plugins:
   - '@typescript-eslint'
   - 'jsdoc'
