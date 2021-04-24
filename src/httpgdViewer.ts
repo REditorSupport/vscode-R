@@ -16,6 +16,7 @@ import { OutMessage } from './webviewMessages';
 
 
 const commands = [
+    'showViewers',
     'showIndex',
     'toggleStyle',
     'exportPlot',
@@ -110,6 +111,14 @@ export class HttpgdManager {
         // - calling from the command palette provides no arguments
         // - calling from a command uri provides a flexible number/type of arguments
         // below  is an attempt to handle these different combinations efficiently and (somewhat) robustly
+        // 
+
+        if(command === 'showViewers'){
+            this.viewers.forEach(viewer => {
+                viewer.show(true);
+            });
+            return;
+        }
 
         // Identify the correct viewer
         let viewer: HttpgdViewer | undefined;
@@ -461,7 +470,10 @@ export class HttpgdViewer implements IHttpgdViewer {
             ...this.showOptions,
             preserveFocus: preserveFocus
         };
-        this.webviewPanel ??= this.makeNewWebview(showOptions);
+        if(!this.webviewPanel){
+            this.webviewPanel = this.makeNewWebview(showOptions);
+            this.refreshHtml();
+        }
         this.parent.registerActiveViewer(this);
     }
     

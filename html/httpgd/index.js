@@ -49,6 +49,7 @@ document.addEventListener('mousedown', (e) => {
     if (e.target === handler) {
         isHandlerDragging = true;
         postLogMessage('mousedown');
+        handler.classList.add('dragging');
     }
 });
 document.addEventListener('mousemove', (e) => {
@@ -79,5 +80,6 @@ document.addEventListener('mouseup', () => {
     if (isHandlerDragging) {
         postResizeMessage(true);
     }
+    handler.classList.remove('dragging');
     isHandlerDragging = false;
 });

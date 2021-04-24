@@ -690,6 +690,12 @@
         "category": "R Httpgd",
         "command": "r.httpgd.zoomOut",
         "icon": "$(zoom-out)"
+      },
+      {
+        "title": "Show Viewers",
+        "category": "R Httpgd",
+        "command": "r.httpgd.showViewers",
+        "icon": "$(versions)"
       }
     ],
     "keybindings": [
