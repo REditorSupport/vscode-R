@@ -5,12 +5,6 @@
     overflow-y: hidden;
 }
 
-.plotDiv {
-    width: 20%;
-    height: auto;
-    float: left;
-}
-
 #handler {
     background-color: var(--vscode-textSeparator-foreground);
     height: 4px;
@@ -20,15 +14,14 @@
     background-color: var(--vscode-focusBorder);
 }
 
-.httpgd {
-    width: 100% !important;
-    height: 100% !important;
+.plotDiv {
+    width: 20%;
+    height: auto;
+    float: left;
 }
-
 .plotDiv[isActivePlot=true] {
     background-color: var(--vscode-list-inactiveSelectionBackground);
 }
-
 .plotDiv:hover[isActivePlot=false] {
     background-color: var(--vscode-list-hoverBackground);
 }
@@ -41,3 +34,8 @@ body {
     padding-left: 1px;
     padding-right: 1px;
 } 
+
+.httpgd {
+    width: 100% !important;
+    height: 100% !important;
+}

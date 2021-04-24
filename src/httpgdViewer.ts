@@ -25,7 +25,9 @@ const commands = [
     'firstPlot',
     'hidePlot',
     'closePlot',
-    'resetPlots'
+    'resetPlots',
+    'zoomIn',
+    'zoomOut'
 ] as const;
 
 type CommandName = typeof commands[number];
@@ -134,7 +136,7 @@ export class HttpgdManager {
         // Call corresponding method, possibly with an argument:
         switch(command) {
             case 'showIndex': {
-                viewer.focusPlot(stringArg);
+                void viewer.focusPlot(stringArg);
                 break;
             } case 'nextPlot': {
                 viewer.nextPlot(boolArg);
@@ -162,6 +164,12 @@ export class HttpgdManager {
                 break;
             } case 'exportPlot': {
                 void viewer.exportPlot(stringArg);
+                break;
+            } case 'zoomIn': {
+                void viewer.zoomIn();
+                break;
+            } case 'zoomOut': {
+                void viewer.zoomOut();
                 break;
             } default: {
                 break;
@@ -215,6 +223,8 @@ export class HttpgdViewer implements IHttpgdViewer {
     // Size of the shown plot (as computed):
     plotHeight: number;
     plotWidth: number;
+    
+    scale: number = 1;
     
     resizeTimeout?: NodeJS.Timeout;
     
@@ -281,6 +291,18 @@ export class HttpgdViewer implements IHttpgdViewer {
             void this.refreshPlots();
         }
     }
+    
+    public zoomIn(): void {
+        //pass
+        this.scale -= 0.1;
+        void this.resizePlot();
+    }
+
+    public zoomOut(): void {
+        //pass
+        this.scale += 0.1;
+        void this.resizePlot();
+    }
 
     handleResize(height: number, width: number, userTriggered: boolean = false): void {
         this.viewHeight = height;
@@ -296,8 +318,8 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
     
     async resizePlot(): Promise<void> {
-        const height = this.viewHeight;
-        const width = this.viewWidth;
+        const height = this.viewHeight * this.scale;
+        const width = this.viewWidth * this.scale;
         const plt = await this.api.getPlotContent(this.activePlot, height, width);
         plt.svg = stripSize(plt.svg);
         // this.plots[this.activeIndex] = plt;
@@ -322,7 +344,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             if(plot && id !== this.activePlot){
                 return plot;
             } else{
-                const plt = await this.api.getPlotContent(id, this.viewHeight, this.viewWidth);
+                const plt = await this.api.getPlotContent(id, this.scale * this.viewHeight, this.scale * this.viewWidth);
                 plt.svg = stripSize(plt.svg);
                 return plt;
             }
@@ -423,8 +445,12 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
     
     // focus a specific plot id
-    focusPlot(id?: PlotId): void {
+    async focusPlot(id?: PlotId): Promise<void> {
         this.activePlot = id;
+        const plt = this.plots[this.activeIndex];
+        if(plt.heigth !== this.viewHeight * this.scale || plt.width !== this.viewHeight * this.scale){
+            await this.refreshPlots();
+        }
         this.refreshHtml();
     }
     

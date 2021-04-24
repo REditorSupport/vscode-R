@@ -678,6 +678,18 @@
         "command": "r.httpgd.lastPlot",
         "enablement": "r.httpgd.canGoForward",
         "icon": "$(arrow-right)"
+      },
+      {
+        "title": "Zoom In",
+        "category": "R Httpgd",
+        "command": "r.httpgd.zoomIn",
+        "icon": "$(zoom-in)"
+      },
+      {
+        "title": "Zoom Out",
+        "category": "R Httpgd",
+        "command": "r.httpgd.zoomOut",
+        "icon": "$(zoom-out)"
       }
     ],
     "keybindings": [
@@ -822,6 +834,16 @@
           "when": "resourceScheme =~ /webview/ && r.httpgd.active",
           "command": "r.httpgd.nextPlot",
           "alt": "r.httpgd.lastPlot"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.httpgd.active",
+          "command": "r.httpgd.zoomIn"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.httpgd.active",
+          "command": "r.httpgd.zoomOut"
         }
       ],
       "editor/context": [
