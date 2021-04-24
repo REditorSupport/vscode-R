@@ -279,8 +279,8 @@ export class HttpgdViewer implements IHttpgdViewer {
             return undefined;
         }
         const dummyUri = this.webviewPanel.webview.asWebviewUri(vscode.Uri.file(''));
-        const m = /^https?:\/\/([^.]*)\./.exec(dummyUri.toString());
-        const webviewId = m[1] || '';
+        const m = /^[^.]*/.exec(dummyUri.authority);
+        const webviewId = m[0] || '';
         return `webview-panel/webview-${webviewId}`;
     }
 
