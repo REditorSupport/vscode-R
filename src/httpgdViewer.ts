@@ -189,6 +189,10 @@ interface EjsData {
     makeCommandUri: (command: string, ...args: any[]) => string;
 }
 
+interface ShowOptions {
+    viewColumn: vscode.ViewColumn,
+    preserveFocus?: boolean    
+}
 
 export class HttpgdViewer implements IHttpgdViewer {
     
@@ -224,14 +228,15 @@ export class HttpgdViewer implements IHttpgdViewer {
     plotHeight: number;
     plotWidth: number;
     
-    scale: number = 1;
+    readonly scale0: number = 1;
+    scale: number = this.scale0;
     
     resizeTimeout?: NodeJS.Timeout;
     
     htmlTemplate: string;
     htmlRoot: string;
     
-    showOptions: { viewColumn: vscode.ViewColumn, preserveFocus?: boolean };
+    showOptions: ShowOptions;
     webviewOptions: vscode.WebviewPanelOptions & vscode.WebviewOptions;
     
     private resizeBusy: boolean = false;
@@ -244,9 +249,12 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.parent = options.parent;
         this.api = new Httpgd(this.host, this.token);
         this.api.onPlotsChange(() => {
-            void this.refreshPlots();
+            console.log('Plots change!');
+            // void this.refreshPlots();
+            void this.checkState();
         });
         this.api.onConnectionChange(() => {
+            console.log('Connection change!');
             void this.refreshPlots();
         });
         this.stripStyles = !!options.stripStyles;
@@ -262,6 +270,27 @@ export class HttpgdViewer implements IHttpgdViewer {
         };
         this.api.start();
     }
+
+    public get activeIndex(): number {
+        return this.plots.findIndex((plt: HttpgdPlot) => plt.id === this.activePlot);
+    }
+    public set activeIndex(ind: number) {
+        if(this.plots.length === 0){
+            this.activePlot = undefined;
+        } else{
+            ind = Math.max(ind, 0);
+            ind = Math.min(ind, this.plots.length - 1);
+            this.activePlot = this.plots[ind].id;
+        }
+    }
+    
+    public get scaledViewHeight(): number {
+        return this.viewHeight * this.scale;
+    }
+    public get scaledViewWidth(): number {
+        return this.viewWidth * this.scale;
+    }
+
 
 	public async setContextValues(mightBeInBackground: boolean = false): Promise<void> {
         if(this.webviewPanel?.active){
@@ -284,10 +313,11 @@ export class HttpgdViewer implements IHttpgdViewer {
         return `webview-panel/webview-${webviewId}`;
     }
 
-    async checkState(): Promise<void> {
-        const oldState = this.state;
+    protected async checkState(): Promise<void> {
+        const oldUpid = this.state?.upid;
         this.state = await this.api.getState();
-        if(this.state.upid !== oldState?.upid){
+        if(this.state.upid !== oldUpid){
+            console.log('New upid');
             void this.refreshPlots();
         }
     }
@@ -304,22 +334,23 @@ export class HttpgdViewer implements IHttpgdViewer {
         void this.resizePlot();
     }
 
-    handleResize(height: number, width: number, userTriggered: boolean = false): void {
+    protected handleResize(height: number, width: number, userTriggered: boolean = false): void {
         this.viewHeight = height;
         this.viewWidth = width;
-        clearTimeout(this.resizeTimeout);
         if(userTriggered){
+            clearTimeout(this.resizeTimeout);
             void this.resizePlot();
-        } else{
+        } else if(!this.resizeTimeout){
             this.resizeTimeout = setTimeout(() => {
                 void this.resizePlot();
+                this.resizeTimeout = undefined;
             }, 100);
         }
     }
     
-    async resizePlot(): Promise<void> {
-        const height = this.viewHeight * this.scale;
-        const width = this.viewWidth * this.scale;
+    protected async resizePlot(): Promise<void> {
+        const height = this.scaledViewHeight;
+        const width = this.scaledViewWidth;
         const plt = await this.api.getPlotContent(this.activePlot, height, width);
         plt.svg = stripSize(plt.svg);
         // this.plots[this.activeIndex] = plt;
@@ -334,8 +365,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.webviewPanel?.webview.postMessage(msg);
     }
 
-    async refreshPlots(): Promise<void> {
-        const mosteRecentPlotId = this.plots[this.plots.length - 1]?.id;
+    protected async refreshPlots(): Promise<void> {
         const nPlots = this.plots.length;
         let plotIds = await this.api.getPlotIds();
         plotIds = plotIds.filter((id) => !this.hiddenPlots.includes(id));
@@ -344,7 +374,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             if(plot && id !== this.activePlot){
                 return plot;
             } else{
-                const plt = await this.api.getPlotContent(id, this.scale * this.viewHeight, this.scale * this.viewWidth);
+                const plt = await this.api.getPlotContent(id, this.scaledViewHeight, this.scaledViewWidth);
                 plt.svg = stripSize(plt.svg);
                 return plt;
             }
@@ -356,47 +386,13 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.refreshHtml();
     }
     
-    refreshHtml(): void {
-        if(!this.webviewPanel){
-            this.webviewPanel = this.makeNewWebview();
-        }
+    protected refreshHtml(): void {
+        this.webviewPanel ??= this.makeNewWebview();
         this.webviewPanel.webview.html = this.makeHtml();
         void this.setContextValues(true);
     }
-    
-    makeNewWebview(): vscode.WebviewPanel {
-        const webviewPanel = vscode.window.createWebviewPanel(
-            'RPlot',
-            'R Plot',
-            this.showOptions,
-            this.webviewOptions
-        );
-        webviewPanel.onDidDispose(() => this.webviewPanel = undefined);
-        webviewPanel.onDidChangeViewState(() => {
-            void this.setContextValues();
-        });
-        webviewPanel.webview.onDidReceiveMessage((e: OutMessage) => {
-            this.handleWebviewMessage(e);
-        });
-        return webviewPanel;
-    }
-    
-    handleWebviewMessage(msg: OutMessage): void {
-        if(msg.message === 'log'){
-            console.log(msg.body);
-        } else if(msg.message === 'resize'){
-            if(this.resizeBusy){
-                console.log('Resize busy');
-            } else {
-                const height = msg.height;
-                const width = msg.width;
-                const userTriggered = msg.userTriggered;
-                void this.handleResize(height, width, userTriggered);
-            }
-        }
-    }
-    
-    makeHtml(): string {
+
+    protected makeHtml(): string {
         const asWebViewPath = (localPath: string) => {
             if(!this.webviewPanel){
                 return localPath;
@@ -422,26 +418,51 @@ export class HttpgdViewer implements IHttpgdViewer {
         return html;
     }
     
-    get activeIndex(): number {
-        return this.plots.findIndex((plt: HttpgdPlot) => plt.id === this.activePlot);
+    protected makeNewWebview(showOptions?: ShowOptions): vscode.WebviewPanel {
+        const webviewPanel = vscode.window.createWebviewPanel(
+            'RPlot',
+            'R Plot',
+            showOptions || this.showOptions,
+            this.webviewOptions
+        );
+        webviewPanel.onDidDispose(() => this.webviewPanel = undefined);
+        webviewPanel.onDidChangeViewState(() => {
+            void this.setContextValues();
+        });
+        webviewPanel.webview.onDidReceiveMessage((e: OutMessage) => {
+            this.handleWebviewMessage(e);
+        });
+        return webviewPanel;
     }
-    set activeIndex(ind: number) {
-        if(this.plots.length === 0){
-            this.activePlot = undefined;
-        } else{
-            ind = Math.max(ind, 0);
-            ind = Math.min(ind, this.plots.length - 1);
-            this.activePlot = this.plots[ind].id;
+    
+    protected handleWebviewMessage(msg: OutMessage): void {
+        if(msg.message === 'log'){
+            console.log(msg.body);
+        } else if(msg.message === 'resize'){
+            if(this.resizeBusy){
+                console.log('Resize busy');
+            } else {
+                const height = msg.height;
+                const width = msg.width;
+                const userTriggered = msg.userTriggered;
+                void this.handleResize(height, width, userTriggered);
+            }
         }
     }
+    
 
     // Methods to interact with the webview
     // Can e.g. be called by vscode commands + menu items:
 
     // Called to create a new webview if the user closed the old one:
-    show(preserveFocus?: boolean): void {
+    public show(preserveFocus?: boolean): void {
+        preserveFocus ??= this.showOptions.preserveFocus;
+        const showOptions = {
+            ...this.showOptions,
+            preserveFocus: preserveFocus
+        };
+        this.webviewPanel ??= this.makeNewWebview(showOptions);
         this.parent.registerActiveViewer(this);
-        // pass
     }
     
     // focus a specific plot id
@@ -455,22 +476,23 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
     
     // navigate through plots (supply `true` to go to end/beginning of list)
-    nextPlot(last?: boolean): void {
+    public nextPlot(last?: boolean): void {
         this.activeIndex = last ? this.plots.length - 1 : this.activeIndex+1;
         this.refreshHtml();
     }
-    prevPlot(first?: boolean): void {
+    public prevPlot(first?: boolean): void {
         this.activeIndex = first ? 0 : this.activeIndex-1;
         this.refreshHtml();
     }
     
     // restore closed plots, show most recent plot etc.?
-    resetPlots(): void {
+    public resetPlots(): void {
         this.hiddenPlots = [];
+        this.scale = this.scale0;
         void this.refreshPlots();
     }
     
-    hidePlot(id?: PlotId): void {
+    public hidePlot(id?: PlotId): void {
         id ??= this.activePlot;
         if(id){
             const tmpIndex = this.activeIndex;
@@ -483,13 +505,13 @@ export class HttpgdViewer implements IHttpgdViewer {
         }
     }
     
-    async closePlot(id?: PlotId): Promise<void> {
+    public async closePlot(id?: PlotId): Promise<void> {
         id ??= this.activePlot;
         await this.api.closePlot(id);
         await this.refreshPlots();
     }
     
-    toggleStyle(force?: boolean): void{
+    public toggleStyle(force?: boolean): void{
         this.stripStyles = force ?? !this.stripStyles;
         this.refreshHtml();
     }
@@ -497,7 +519,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     // export plot
     // if no format supplied, show a quickpick menu etc.
     // if no filename supplied, show selector window
-    async exportPlot(id?: PlotId, format?: ExportFormat, outFile?: string): Promise<void> {
+    public async exportPlot(id?: PlotId, format?: ExportFormat, outFile?: string): Promise<void> {
         // make sure id is valid or return:
         id ||= this.activePlot || this.plots[this.plots.length-1]?.id;
         const plot = this.plots.find((plt) => plt.id === id);
@@ -539,7 +561,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     // Dispose-function to clean up when vscode closes
     // E.g. to close connections etc., notify R, ...
-    dispose(): void {
+    public dispose(): void {
         this.api.dispose();
     }
 }
@@ -556,6 +578,6 @@ function findItemOfType<T = unknown>(arr: any[], type: string): T {
 
 function stripSize(svg: string): string {
     const re = /<(svg.*)width="[^"]*" height="[^"]*"(.*)>/;
-    svg = svg.replace(re, '<$1 width="100%" height="100%" preserveAspectRatio="none" $2>');
+    svg = svg.replace(re, '<$1 preserveAspectRatio="none" $2>');
     return svg;
 }

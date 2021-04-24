@@ -14,6 +14,10 @@
     background-color: var(--vscode-focusBorder);
 }
 
+#smallPlots {
+    display: inline-block;
+}
+
 .plotDiv {
     width: 20%;
     height: auto;
@@ -36,6 +40,6 @@ body {
 } 
 
 .httpgd {
-    width: 100% !important;
-    height: 100% !important;
+    width: 100%;
+    height: 100%;
 }

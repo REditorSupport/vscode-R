@@ -92,6 +92,7 @@ document.addEventListener('mousemove', (e) => {
 
   if(svgDiv.style.height !== newHeightString){
     svgDiv.style.height = newHeightString;
+    postResizeMessage();
   }
 });
 
