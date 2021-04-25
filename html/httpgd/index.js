@@ -49,6 +49,7 @@ document.addEventListener('mousedown', (e) => {
         isHandlerDragging = true;
         postLogMessage('mousedown');
         handler.classList.add('dragging');
+        document.body.style.cursor = 'ns-resize';
     }
 });
 document.addEventListener('mousemove', (e) => {
@@ -76,6 +77,7 @@ document.addEventListener('mouseup', () => {
     // Turn off dragging flag when user mouse is up
     if (isHandlerDragging) {
         postResizeMessage(true);
+        document.body.style.cursor = '';
     }
     handler.classList.remove('dragging');
     isHandlerDragging = false;
