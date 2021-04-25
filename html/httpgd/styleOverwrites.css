@@ -10,6 +10,6 @@ svg text {
     stroke: var(--vscode-foreground) !important;
 }
 
-.httpgd line, .httpgd polyline, .httpgd polygon, .httpgd path, .httpgd rect, .httpgd circle {
+.httpgd line, .httpgd polyline, .httpgd polygon, .httpgd path, .httpgd circle, .httpgd rect:not(:first-of-type) {
     stroke: var(--vscode-foreground) !important;
 }

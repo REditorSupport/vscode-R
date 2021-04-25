@@ -46,8 +46,7 @@
 }
 
 body {
-    padding-left: 1px;
-    padding-right: 1px;
+    padding: 0;
 } 
 
 .httpgd {
