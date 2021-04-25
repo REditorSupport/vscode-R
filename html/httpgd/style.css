@@ -1,5 +1,5 @@
 
-#svgDiv {
+#largePlot {
     width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
@@ -14,6 +14,8 @@
 }
 #handler:hover, #handler.dragging {
     background-color: var(--vscode-focusBorder);
+    transition: background-color .1s ease-out;
+    transition-delay: .2s;
 }
 
 #smallPlots {
@@ -28,14 +30,14 @@
 .plotDiv {
     box-sizing: border-box;
     width: 20%;
-    height: 20vw;
+    height: 15vw;
     float: left;
     padding: 4px;
 }
-.plotDiv[isActivePlot=true] {
+.plotDiv.active {
     background-color: var(--vscode-list-inactiveSelectionBackground);
 }
-.plotDiv:hover[isActivePlot=false] {
+.plotDiv.inactive:hover {
     background-color: var(--vscode-list-hoverBackground);
 }
 

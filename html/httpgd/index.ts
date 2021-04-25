@@ -40,7 +40,7 @@ function postLogMessage(content: any){
 window.addEventListener('message', (ev: MessageEvent<InMessage>) => {
   const msg = ev.data;
   if(msg.message === 'updatePlot' && msg.id === 'svg'){
-    const elm = document.getElementById('svgDiv');
+    const elm = document.getElementById('largePlot');
     const plotId = elm?.getAttribute('plotId');
     if(!elm || msg.plotId !== plotId){
       return;
@@ -55,8 +55,7 @@ window.addEventListener('message', (ev: MessageEvent<InMessage>) => {
 ////
 
 const handler = document.querySelector('#handler') as HTMLDivElement;
-const wrapper = handler?.closest('#container') as HTMLDivElement;
-const svgDiv = wrapper?.querySelector('#svgDiv') as HTMLDivElement;
+const svgDiv = document.querySelector('#largePlot') as HTMLDivElement;
 let isHandlerDragging = false;
 
 document.addEventListener('mousedown', (e) => {
@@ -77,18 +76,16 @@ document.addEventListener('mousemove', (e) => {
   // postLogMessage('mousemove');
 
   // Get offset
-  const containerOffsetTop = wrapper?.offsetTop;
+  const containerOffsetTop = document.body.offsetTop;
 
   // Get x-coordinate of pointer relative to container
   const pointerRelativeYpos = e.clientY - containerOffsetTop;
   
   // Arbitrary minimum width set on box A, otherwise its inner content will collapse to width of 0
-  const boxAminHeight = 60;
+  const largePlotMinHeight = 60;
 
-  // Resize box A
-  // * 8px is the left/right spacing between .handler and its inner pseudo-element
-  // * Set flex-grow to 0 to prevent it from growing
-  const newHeight = Math.max(boxAminHeight, pointerRelativeYpos - 5);
+  // Resize large plot
+  const newHeight = Math.max(largePlotMinHeight, pointerRelativeYpos - 5);
   const newHeightString = `${newHeight}px`;
 
   if(svgDiv.style.height !== newHeightString){

@@ -29,7 +29,7 @@ function postLogMessage(content) {
 window.addEventListener('message', (ev) => {
     const msg = ev.data;
     if (msg.message === 'updatePlot' && msg.id === 'svg') {
-        const elm = document.getElementById('svgDiv');
+        const elm = document.getElementById('largePlot');
         const plotId = elm === null || elm === void 0 ? void 0 : elm.getAttribute('plotId');
         if (!elm || msg.plotId !== plotId) {
             return;
@@ -41,8 +41,7 @@ window.addEventListener('message', (ev) => {
 // Resize bar
 ////
 const handler = document.querySelector('#handler');
-const wrapper = handler === null || handler === void 0 ? void 0 : handler.closest('#container');
-const svgDiv = wrapper === null || wrapper === void 0 ? void 0 : wrapper.querySelector('#svgDiv');
+const svgDiv = document.querySelector('#largePlot');
 let isHandlerDragging = false;
 document.addEventListener('mousedown', (e) => {
     // If mousedown event is fired from .handler, toggle flag to true
@@ -59,15 +58,13 @@ document.addEventListener('mousemove', (e) => {
     }
     // postLogMessage('mousemove');
     // Get offset
-    const containerOffsetTop = wrapper === null || wrapper === void 0 ? void 0 : wrapper.offsetTop;
+    const containerOffsetTop = document.body.offsetTop;
     // Get x-coordinate of pointer relative to container
     const pointerRelativeYpos = e.clientY - containerOffsetTop;
     // Arbitrary minimum width set on box A, otherwise its inner content will collapse to width of 0
-    const boxAminHeight = 60;
-    // Resize box A
-    // * 8px is the left/right spacing between .handler and its inner pseudo-element
-    // * Set flex-grow to 0 to prevent it from growing
-    const newHeight = Math.max(boxAminHeight, pointerRelativeYpos - 5);
+    const largePlotMinHeight = 60;
+    // Resize large plot
+    const newHeight = Math.max(largePlotMinHeight, pointerRelativeYpos - 5);
     const newHeightString = `${newHeight}px`;
     if (svgDiv.style.height !== newHeightString) {
         svgDiv.style.height = newHeightString;
