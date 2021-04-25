@@ -1,10 +1,39 @@
 
+/* Use box-sizing: border-box everywhere: */
+html {
+    box-sizing: border-box;
+}
+*, *::before, *::after {
+    box-sizing: inherit;
+}
+
+/* General styling: */
+body {
+    padding: 0;
+} 
+
+:focus {
+    outline: 0 !important;
+}
+
+svg {
+    user-select: none;
+}
+
+/* Stretch plots during resizing: */
+.httpgd {
+    width: 100%;
+    height: 100%;
+}
+
+/* Main plot area: */
 #largePlot {
     width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
 }
 
+/* Dragbar to resize main plot: */
 #handler {
     background-color: var(--vscode-textSeparator-foreground);
     height: 4px;
@@ -18,42 +47,22 @@
     transition-delay: .2s;
 }
 
+/* Plot history: */
 #smallPlots {
     width: 100%;
 }
-
-.plotDiv svg {
-    height: 100%;
-    width: 100%;
-}
-
 .plotDiv {
-    box-sizing: border-box;
     width: 20%;
     height: 15vw;
     float: left;
     padding: 4px;
 }
+
 .plotDiv.active {
     background-color: var(--vscode-list-inactiveSelectionBackground);
+    background-clip: content-box;
 }
 .plotDiv.inactive:hover {
     background-color: var(--vscode-list-hoverBackground);
-}
-
-:focus {
-    outline: 0 !important;
-}
-
-body {
-    padding: 0;
-} 
-
-.httpgd {
-    width: 100%;
-    height: 100%;
-}
-
-svg {
-    user-select: none;
+    background-clip: content-box;
 }

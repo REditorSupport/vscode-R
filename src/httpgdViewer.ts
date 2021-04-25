@@ -448,14 +448,10 @@ export class HttpgdViewer implements IHttpgdViewer {
         if(msg.message === 'log'){
             console.log(msg.body);
         } else if(msg.message === 'resize'){
-            if(this.resizeBusy){
-                console.log('Resize busy');
-            } else {
-                const height = msg.height;
-                const width = msg.width;
-                const userTriggered = msg.userTriggered;
-                void this.handleResize(height, width, userTriggered);
-            }
+            const height = msg.height;
+            const width = msg.width;
+            const userTriggered = msg.userTriggered;
+            void this.handleResize(height, width, userTriggered);
         }
     }
     
