@@ -20,7 +20,8 @@ svg {
     user-select: none;
 }
 
-/* Stretch plots during resizing: */
+/* Stretch large plot during resizing, */
+/* Keep small plots the same size: */
 .httpgd {
     width: 100%;
     height: 100%;
@@ -28,7 +29,6 @@ svg {
 
 /* Main plot area: */
 #largePlot {
-    width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
 }
@@ -48,9 +48,6 @@ svg {
 }
 
 /* Plot history: */
-#smallPlots {
-    width: 100%;
-}
 .plotDiv {
     width: 20%;
     height: 15vw;
