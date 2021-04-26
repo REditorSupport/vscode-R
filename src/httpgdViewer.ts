@@ -163,7 +163,7 @@ export class HttpgdManager {
                 viewer.resetPlots();
                 break;
             } case 'toggleStyle': {
-                viewer.toggleStyle(boolArg);
+                void viewer.toggleStyle(boolArg);
                 break;
             } case 'closePlot': {
                 void viewer.closePlot(stringArg);
@@ -331,8 +331,10 @@ export class HttpgdViewer implements IHttpgdViewer {
     
     public zoomIn(): void {
         //pass
-        this.scale -= 0.1;
-        void this.resizePlot();
+        if(this.scale > 0){
+            this.scale -= 0.1;
+            void this.resizePlot();
+        }
     }
 
     public zoomOut(): void {
@@ -376,7 +378,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         width ||= this.scaledViewWidth;
         const plt = await this.api.getPlotContent(id, height, width);
         plt.svg = stripSize(plt.svg);
-        plt.svg = makeIdsUnique(plt.svg, plt.id, this.state?.upid || 0);
+        makeIdsUnique(plt, this.state?.upid || 0);
         return plt;
     }
 
@@ -523,9 +525,9 @@ export class HttpgdViewer implements IHttpgdViewer {
         await this.refreshPlots();
     }
     
-    public toggleStyle(force?: boolean): void{
+    public async toggleStyle(force?: boolean): Promise<void>{
         this.stripStyles = force ?? !this.stripStyles;
-        this.refreshHtml();
+        await this.refreshPlots();
     }
     
     // export plot
@@ -563,9 +565,9 @@ export class HttpgdViewer implements IHttpgdViewer {
         if(format === 'svg'){
             // do export
             fs.writeFileSync(outFile, plot.svg);
-            const uri = vscode.Uri.file(outFile);
+            // const uri = vscode.Uri.file(outFile);
             // await vscode.workspace.openTextDocument(uri);
-            void vscode.window.showTextDocument(uri);
+            // void vscode.window.showTextDocument(uri);
         } else{
             void vscode.window.showWarningMessage('Format not implemented');
         }
@@ -594,9 +596,10 @@ function stripSize(svg: string): string {
     return svg;
 }
 
-function makeIdsUnique(svg: string, plotId: string, upid: number): string {
+function makeIdsUnique(plt: HttpgdPlot, upid: number): void {
     const re = /<clipPath id="(c[0-9]+)">/g;
     const ids: string[] = [];
+    let svg = plt.svg;
     let m: RegExpExecArray;
     do {
         m = re.exec(svg);
@@ -606,7 +609,7 @@ function makeIdsUnique(svg: string, plotId: string, upid: number): string {
     } while(m);
     console.log(ids);
     for(const id of ids){
-        const newId = `${plotId}_${upid}_${id}`;
+        const newId = `$${upid}_${plt.id}_${plt.heigth}_${plt.width}_${id}`;
         const re1 = new RegExp(`<clipPath id="${id}">`);
         const replacement1 = `<clipPath id="${newId}">`;
         const re2 = new RegExp(`clip-path='url\\(#${id}\\)'`, 'g');
@@ -614,5 +617,6 @@ function makeIdsUnique(svg: string, plotId: string, upid: number): string {
         svg = svg.replace(re1, replacement1);
         svg = svg.replace(re2, replacement2);
     }
-    return svg;
+    plt.svg = svg;
+    return;
 }
