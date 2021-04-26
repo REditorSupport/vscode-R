@@ -248,8 +248,6 @@ export class HttpgdViewer implements IHttpgdViewer {
     showOptions: ShowOptions;
     webviewOptions: vscode.WebviewPanelOptions & vscode.WebviewOptions;
     
-    private resizeBusy: boolean = false;
-    
     // constructor called by the session watcher if a corresponding function was called in R
     // creates a new api instance itself
     constructor(host: string, options: HttpgdViewerOptions) {
@@ -360,8 +358,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     protected async resizePlot(): Promise<void> {
         const height = this.scaledViewHeight;
         const width = this.scaledViewWidth;
-        const plt = await this.api.getPlotContent(this.activePlot, height, width);
-        plt.svg = stripSize(plt.svg);
+        const plt = await this.getPlotContent(this.activePlot, height, width);
         // this.plots[this.activeIndex] = plt;
         const msg = {
             message: 'updatePlot',
@@ -373,6 +370,15 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.plotHeight = height;
         this.webviewPanel?.webview.postMessage(msg);
     }
+    
+    protected async getPlotContent(id: PlotId, height?: number, width?: number): Promise<HttpgdPlot> {
+        height ||= this.scaledViewHeight;
+        width ||= this.scaledViewWidth;
+        const plt = await this.api.getPlotContent(id, height, width);
+        plt.svg = stripSize(plt.svg);
+        plt.svg = makeIdsUnique(plt.svg, plt.id, this.state?.upid || 0);
+        return plt;
+    }
 
     protected async refreshPlots(): Promise<void> {
         const nPlots = this.plots.length;
@@ -383,9 +389,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             if(plot && id !== this.activePlot){
                 return plot;
             } else{
-                const plt = await this.api.getPlotContent(id, this.scaledViewHeight, this.scaledViewWidth);
-                plt.svg = stripSize(plt.svg);
-                return plt;
+                return await this.getPlotContent(id, this.scaledViewHeight, this.scaledViewWidth);
             }
         });
         this.plots = await Promise.all(newPlots);
@@ -587,5 +591,28 @@ function findItemOfType<T = unknown>(arr: any[], type: string): T {
 function stripSize(svg: string): string {
     const re = /<(svg.*)width="[^"]*" height="[^"]*"(.*)>/;
     svg = svg.replace(re, '<$1 preserveAspectRatio="none" $2>');
+    return svg;
+}
+
+function makeIdsUnique(svg: string, plotId: string, upid: number): string {
+    const re = /<clipPath id="(c[0-9]+)">/g;
+    const ids: string[] = [];
+    let m: RegExpExecArray;
+    do {
+        m = re.exec(svg);
+        if(m){
+            ids.push(m[1]);
+        }
+    } while(m);
+    console.log(ids);
+    for(const id of ids){
+        const newId = `${plotId}_${upid}_${id}`;
+        const re1 = new RegExp(`<clipPath id="${id}">`);
+        const replacement1 = `<clipPath id="${newId}">`;
+        const re2 = new RegExp(`clip-path='url\\(#${id}\\)'`, 'g');
+        const replacement2 = `clip-path='url(#${newId})'`;
+        svg = svg.replace(re1, replacement1);
+        svg = svg.replace(re2, replacement2);
+    }
     return svg;
 }
