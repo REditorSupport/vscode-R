@@ -458,6 +458,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     
     protected refreshHtml(): void {
         this.webviewPanel ??= this.makeNewWebview();
+        this.webviewPanel.webview.html = '';
         this.webviewPanel.webview.html = this.makeHtml();
         void this.setContextValues(true);
     }
@@ -577,7 +578,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     public resetPlots(): void {
         this.hiddenPlots = [];
         this.scale = this.scale0;
-        void this.refreshPlots();
+        void this.refreshPlots(true);
     }
     
     public hidePlot(id?: PlotId): void {
