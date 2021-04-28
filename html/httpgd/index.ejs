@@ -11,7 +11,7 @@
         <%- largePlot?.svg %>
     </div>
     <div id="handler"> </div>
-    <div id="smallPlots">
+    <div id="smallPlots" class="<%- useMultirow ? 'multirow' : '' %>">
         <% plots.forEach((plot)=> { %>
             <div class="wrapper">
             <%- include(asLocalPath('./smallPlot.ejs'), {plot: plot}) %>

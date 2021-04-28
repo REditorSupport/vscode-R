@@ -10,6 +10,7 @@ let oldWidth = -1;
 const handler = document.querySelector('#handler');
 const largePlotDiv = document.querySelector('#largePlot');
 const cssLink = document.querySelector('link.overwrites');
+const smallPlotDiv = document.querySelector('#smallPlots');
 function getSmallPlots() {
     const smallPlots = [];
     document.querySelectorAll('a.focusPlot').forEach(elm => {
@@ -58,7 +59,19 @@ window.addEventListener('message', (ev) => {
     else if (msg.message === 'hidePlot') {
         hidePlot(msg.plotId);
     }
+    else if (msg.message === 'addPlot') {
+        addPlot(msg.html);
+    }
+    else if (msg.message === 'toggleMultirow') {
+        toggleMultirow(msg.useMultirow);
+    }
 });
+function addPlot(html) {
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('wrapper');
+    wrapper.innerHTML = html;
+    smallPlotDiv.appendChild(wrapper);
+}
 function focusPlot(plotId) {
     const smallPlots = getSmallPlots();
     const ind = findIndex(plotId, smallPlots);
@@ -106,6 +119,14 @@ function findIndex(plotId, smallPlots) {
 }
 function toggleStyle(useOverwrites) {
     cssLink.disabled = !useOverwrites;
+}
+function toggleMultirow(useMultirow) {
+    if (useMultirow) {
+        smallPlotDiv.classList.add('multirow');
+    }
+    else {
+        smallPlotDiv.classList.remove('multirow');
+    }
 }
 ////
 // Resize bar

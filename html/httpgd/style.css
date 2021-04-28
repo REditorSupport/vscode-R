@@ -51,14 +51,21 @@ svg {
     display: flex;
     /* flex-direction: row; */
     position: relative;
-    height: 15vw;
     overflow-x: auto;
+    flex-direction: row;
     overflow-y: hidden;
 }
 
+#smallPlots.multirow {
+    overflow-x: hidden;
+    flex-wrap: wrap;
+}
+
+
 #smallPlots .wrapper {
     position: relative;
-    width: 20vw;
+    height: 15vw;
+    width: 19vw;
     flex: none;
     padding: 3px;
     padding-bottom: 12px;

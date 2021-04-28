@@ -12,13 +12,14 @@ import { config, setContext } from './util';
 
 import { extensionContext } from './extension';
 
-import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage } from './webviewMessages';
+import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, ToggleMultirowMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage } from './webviewMessages';
 
 
 const commands = [
     'showViewers',
     'showIndex',
     'toggleStyle',
+    'toggleMultirow',
     'exportPlot',
     'nextPlot',
     'prevPlot',
@@ -162,6 +163,9 @@ export class HttpgdManager {
             } case 'toggleStyle': {
                 void viewer.toggleStyle(boolArg);
                 break;
+            } case 'toggleMultirow': {
+                void viewer.toggleMultirow(boolArg);
+                break;
             } case 'closePlot': {
                 void viewer.closePlot(stringArg);
                 break;
@@ -187,6 +191,7 @@ export class HttpgdManager {
 
 interface EjsData {
     overwriteStyles: boolean;
+    useMultirow: boolean;
     activePlot?: PlotId;
     plots: HttpgdPlot[];
     largePlot: HttpgdPlot;
@@ -228,7 +233,8 @@ export class HttpgdViewer implements IHttpgdViewer {
     // Ids of plots that are not shown, but not closed inside httpgd
     hiddenPlots: PlotId[] = [];
     
-    stripStyles: boolean;
+    stripStyles: boolean = true;
+    useMultirow: boolean = true;
     
     // Size of the view area:
     viewHeight: number;
@@ -481,6 +487,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         };
         const ejsData: EjsData = {
             overwriteStyles: this.stripStyles,
+            useMultirow: this.useMultirow,
             plots: this.plots,
             largePlot: this.plots[this.activeIndex],
             activePlot: this.activePlot,
@@ -600,6 +607,15 @@ export class HttpgdViewer implements IHttpgdViewer {
         const msg: ToggleStyleMessage = {
             message: 'toggleStyle',
             useOverwrites: this.stripStyles
+        };
+        this.postWebviewMessage(msg);
+    }
+    
+    public toggleMultirow(force?: boolean): void{
+        this.useMultirow = force ?? !this.useMultirow;
+        const msg: ToggleMultirowMessage = {
+            message: 'toggleMultirow',
+            useMultirow: this.useMultirow
         };
         this.postWebviewMessage(msg);
     }

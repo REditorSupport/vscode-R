@@ -55,6 +55,11 @@ export interface ToggleStyleMessage extends IMessage {
   useOverwrites: boolean
 }
 
+export interface ToggleMultirowMessage extends IMessage {
+  message: 'toggleMultirow',
+  useMultirow: boolean
+}
+
 export interface HidePlotMessage extends IMessage {
   message: 'hidePlot',
   plotId: string
@@ -65,4 +70,4 @@ export interface AddPlotMessage extends IMessage {
   html: string
 }
 
-export type InMessage = UpdatePlotMessage | FocusPlotMessage | ToggleStyleMessage | HidePlotMessage | AddPlotMessage;
+export type InMessage = UpdatePlotMessage | FocusPlotMessage | ToggleStyleMessage | HidePlotMessage | AddPlotMessage | ToggleMultirowMessage;

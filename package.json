@@ -628,6 +628,12 @@
         "icon": "$(symbol-color)"
       },
       {
+        "title": "Toggle Multirow",
+        "category": "R Httpgd",
+        "command": "r.httpgd.toggleMultirow",
+        "icon": "$(list-flat)"
+      },
+      {
         "title": "Export Plot",
         "category": "R Httpgd",
         "command": "r.httpgd.exportPlot",
@@ -812,6 +818,11 @@
           "group": "navigation",
           "when": "resourceScheme =~ /webview/ && r.httpgd.active",
           "command": "r.httpgd.toggleStyle"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.httpgd.active",
+          "command": "r.httpgd.toggleMultirow"
         },
         {
           "group": "navigation",

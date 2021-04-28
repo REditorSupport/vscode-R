@@ -83,6 +83,8 @@ window.addEventListener('message', (ev: MessageEvent<InMessage>) => {
     hidePlot(msg.plotId);
   } else if(msg.message === 'addPlot'){
     addPlot(msg.html);
+  } else if(msg.message === 'toggleMultirow'){
+    toggleMultirow(msg.useMultirow);
   }
 });
 
@@ -156,6 +158,14 @@ function findIndex(plotId: string, smallPlots?: Element[]): number {
 
 function toggleStyle(useOverwrites: boolean): void {
   cssLink.disabled = !useOverwrites;
+}
+
+function toggleMultirow(useMultirow: boolean): void {
+  if(useMultirow){
+    smallPlotDiv.classList.add('multirow');
+  } else{
+    smallPlotDiv.classList.remove('multirow');
+  }
 }
 
 
