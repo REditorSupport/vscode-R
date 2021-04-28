@@ -15,6 +15,7 @@ export type ExportFormat = 'png' | 'jpg' | 'bmp' | 'svg';
 export interface HttpgdPlot {
     // url of the connection this plot was retrieved from
     url: string;
+    host: string;
 
     // unique ID for this plot (w.r.t. this connection/device)
     id: PlotId;
@@ -82,7 +83,6 @@ export interface HttpgdViewerOptions {
     token?: string;
     preserveFocus?: boolean;
     viewColumn?: vscode.ViewColumn;
-    htmlTemplatePath: string;
     htmlRoot: string;
     stripStyles?: boolean;
 }

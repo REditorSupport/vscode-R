@@ -32,6 +32,7 @@ interface PlotsResponse {
  * Light wrapper for httpgd API calls.
  */
 class HttpgdApi {
+    private readonly host: string;
     private readonly http: string;
     private readonly ws: string;
     private readonly httpSVG: string;
@@ -45,6 +46,7 @@ class HttpgdApi {
     private readonly token: string;
 
     public constructor(host: string, token?: string) {
+        this.host = host;
         this.http = 'http://' + host;
         this.ws = 'ws://' + host;
         this.httpSVG = this.http + '/svg';
@@ -132,6 +134,7 @@ class HttpgdApi {
         const plot = fetch(url).then(res => res.text()).then(res => {
             return {
                 url: url,
+                host: this.host,
                 id: id,
                 svg: res,
                 heigth: width,

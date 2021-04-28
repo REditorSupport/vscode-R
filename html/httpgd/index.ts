@@ -28,11 +28,16 @@ let oldWidth = -1;
 const handler = document.querySelector('#handler') as HTMLDivElement;
 const largePlotDiv = document.querySelector('#largePlot') as HTMLDivElement;
 const cssLink = document.querySelector('link.overwrites') as HTMLLinkElement;
+const smallPlotDiv = document.querySelector('#smallPlots') as HTMLDivElement;
 
-const smallPlots: Element[] = [];
-document.querySelectorAll('a.focusPlot').forEach(elm => {
-  smallPlots.push(elm);
-});
+
+function getSmallPlots(): Element[] {
+  const smallPlots: Element[] = [];
+  document.querySelectorAll('a.focusPlot').forEach(elm => {
+    smallPlots.push(elm);
+  });
+  return smallPlots;
+}
 
 let isHandlerDragging = false;
 
@@ -74,13 +79,27 @@ window.addEventListener('message', (ev: MessageEvent<InMessage>) => {
     focusPlot(String(msg.plotId));
   } else if(msg.message === 'toggleStyle'){
     toggleStyle(msg.useOverwrites);
+  } else if(msg.message === 'hidePlot'){
+    hidePlot(msg.plotId);
+  } else if(msg.message === 'addPlot'){
+    addPlot(msg.html);
   }
 });
 
-function focusPlot(plotId: string): boolean {
-  const ind = findIndex(plotId);
+function addPlot(html: string){
+  const wrapper = document.createElement('div');
+  wrapper.classList.add('wrapper');
+  wrapper.innerHTML = html;
+  smallPlotDiv.appendChild(wrapper);
+}
+
+function focusPlot(plotId: string): void {
+  
+  const smallPlots = getSmallPlots();
+
+  const ind = findIndex(plotId, smallPlots);
   if(ind < 0){
-    return false;
+    return;
   }
 
   for(const elm of smallPlots){
@@ -93,14 +112,15 @@ function focusPlot(plotId: string): boolean {
   smallPlotDiv.classList.add('active');
   
   largePlotDiv.innerHTML = smallPlotContent.innerHTML;
-
-  return true;
 }
 
-function updatePlot(plt: Plot): boolean {
-  const ind = findIndex(plt.id);
+function updatePlot(plt: Plot): void {
+  
+  const smallPlots = getSmallPlots();
+
+  const ind = findIndex(plt.id, smallPlots);
   if(ind<0){
-    return false;
+    return;
   }
   
   smallPlots[ind].innerHTML = plt.svg;
@@ -108,11 +128,25 @@ function updatePlot(plt: Plot): boolean {
   if(smallPlots[ind].classList.contains('active')){
     largePlotDiv.innerHTML = plt.svg;
   }
-
-  return true;
 }
 
-function findIndex(plotId: string): number {
+function hidePlot(plotId: string): void {
+  const smallPlots = getSmallPlots();
+
+  const ind = findIndex(plotId, smallPlots);
+  if(ind<0){
+    return;
+  }
+  
+  if(smallPlots[ind].classList.contains('active')){
+    largePlotDiv.innerHTML = '';
+  }
+  
+  smallPlots[ind].parentElement?.remove();
+}
+
+function findIndex(plotId: string, smallPlots?: Element[]): number {
+  smallPlots ||= getSmallPlots();
   const ind = smallPlots.findIndex(elm => elm.getAttribute('plotId') === String(plotId));
   if(ind<0){
     console.warn(`plotId not found: ${plotId}`);

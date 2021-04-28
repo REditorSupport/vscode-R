@@ -12,7 +12,7 @@ import { config, setContext } from './util';
 
 import { extensionContext } from './extension';
 
-import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage } from './webviewMessages';
+import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage } from './webviewMessages';
 
 
 const commands = [
@@ -52,11 +52,9 @@ export class HttpgdManager {
     
     constructor(){
         const htmlRoot = extensionContext.asAbsolutePath('html/httpgd');
-        const htmlTemplatePath = path.join(htmlRoot, 'index.ejs');
         this.viewerOptions = {
             parent: this,
             htmlRoot: htmlRoot,
-            htmlTemplatePath: htmlTemplatePath,
             preserveFocus: true,
             viewColumn: vscode.ViewColumn.Two
         };
@@ -193,8 +191,12 @@ interface EjsData {
     plots: HttpgdPlot[];
     largePlot: HttpgdPlot;
     host: string;
+    asLocalPath: (relPath: string) => string;
     asWebViewPath: (localPath: string) => string;
     makeCommandUri: (command: string, ...args: any[]) => string;
+    
+    // only used to render an individual smallPlot div:
+    plot?: HttpgdPlot;
 }
 
 interface ShowOptions {
@@ -242,6 +244,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     resizeTimeout?: NodeJS.Timeout;
     
     htmlTemplate: string;
+    smallPlotTemplate: string;
     htmlRoot: string;
     
     showOptions: ShowOptions;
@@ -264,7 +267,8 @@ export class HttpgdViewer implements IHttpgdViewer {
             void this.refreshPlots();
         });
         this.stripStyles = !!options.stripStyles;
-        this.htmlTemplate = fs.readFileSync(options.htmlTemplatePath, 'utf-8');
+        this.htmlTemplate = fs.readFileSync(path.join(options.htmlRoot, 'index.ejs'), 'utf-8');
+        this.smallPlotTemplate = fs.readFileSync(path.join(options.htmlRoot, 'smallPlot.ejs'), 'utf-8');
         this.htmlRoot = options.htmlRoot;
         this.showOptions = {
             viewColumn: options.viewColumn ?? vscode.ViewColumn.Two,
@@ -384,6 +388,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     protected async refreshPlots(redraw: boolean = false): Promise<void> {
         const nPlots = this.plots.length;
+        const oldPlotIds = this.plots.map(plt => plt.id);
         let plotIds = await this.api.getPlotIds();
         plotIds = plotIds.filter((id) => !this.hiddenPlots.includes(id));
         const newPlots = plotIds.map(async (id) => {
@@ -404,7 +409,11 @@ export class HttpgdViewer implements IHttpgdViewer {
             this.refreshHtml();
         } else{
             for(const plt of this.plots){
-                this.updatePlot(plt);
+                if(oldPlotIds.includes(plt.id)){
+                    this.updatePlot(plt);
+                } else{
+                    this.addPlot(plt);
+                }
             }
             this.focusPlot2(this.activePlot);
         }
@@ -415,6 +424,17 @@ export class HttpgdViewer implements IHttpgdViewer {
             message: 'updatePlot',
             plotId: plt.id,
             svg: plt.svg
+        };
+        this.postWebviewMessage(msg);
+    }
+    
+    protected addPlot(plt: HttpgdPlot): void {
+        const ejsData = this.makeEjsData();
+        ejsData.plot = plt;
+        const html = ejs.render(this.smallPlotTemplate, ejsData);
+        const msg: AddPlotMessage = {
+            message: 'addPlot',
+            html: html
         };
         this.postWebviewMessage(msg);
     }
@@ -434,6 +454,19 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
 
     protected makeHtml(): string {
+        const ejsData = this.makeEjsData();
+        const html = ejs.render(this.htmlTemplate, ejsData);
+        return html;
+    }
+    
+    protected makeEjsData(): EjsData {
+        const asLocalPath = (relPath: string) => {
+            if(!this.webviewPanel){
+                return relPath;
+            }
+            const localUri = vscode.Uri.file(path.join(this.htmlRoot, relPath));
+            return localUri.fsPath;
+        };
         const asWebViewPath = (localPath: string) => {
             if(!this.webviewPanel){
                 return localPath;
@@ -452,11 +485,11 @@ export class HttpgdViewer implements IHttpgdViewer {
             largePlot: this.plots[this.activeIndex],
             activePlot: this.activePlot,
             host: this.host,
+            asLocalPath: asLocalPath,
             asWebViewPath: asWebViewPath,
             makeCommandUri: makeCommandUri
         };
-        const html = ejs.render(this.htmlTemplate, ejsData);
-        return html;
+        return ejsData;
     }
     
     protected makeNewWebview(showOptions?: ShowOptions): vscode.WebviewPanel {
@@ -539,15 +572,21 @@ export class HttpgdViewer implements IHttpgdViewer {
     
     public hidePlot(id?: PlotId): void {
         id ??= this.activePlot;
-        if(id){
-            const tmpIndex = this.activeIndex;
-            this.hiddenPlots.push(id);
-            this.plots = this.plots.filter((plt) => !this.hiddenPlots.includes(plt.id));
-            if(id === this.activePlot){
-                this.activeIndex = tmpIndex;
-            }
-            this.refreshHtml();
+        if(!id){
+            return;
         }
+        const tmpIndex = this.activeIndex;
+        this.hiddenPlots.push(id);
+        this.plots = this.plots.filter((plt) => !this.hiddenPlots.includes(plt.id));
+        if(id === this.activePlot){
+            this.activeIndex = tmpIndex;
+            this.focusPlot2(this.activePlot);
+        }
+        const msg: HidePlotMessage = {
+            message: 'hidePlot',
+            plotId: id
+        };
+        this.postWebviewMessage(msg);
     }
     
     public async closePlot(id?: PlotId): Promise<void> {

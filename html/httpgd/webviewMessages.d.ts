@@ -41,5 +41,15 @@ interface ToggleStyleMessage extends IMessage {
   useOverwrites: boolean
 }
 
-type InMessage = UpdatePlotMessage | FocusPlotMessage | ToggleStyleMessage;
+interface HidePlotMessage extends IMessage {
+  message: 'hidePlot',
+  plotId: string
+}
+
+interface AddPlotMessage extends IMessage {
+  message: 'addPlot',
+  html: string
+}
+
+type InMessage = UpdatePlotMessage | FocusPlotMessage | ToggleStyleMessage | HidePlotMessage | AddPlotMessage;
 
