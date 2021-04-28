@@ -37,7 +37,7 @@ svg {
     height: 4px;
     cursor: ns-resize;
     margin-top: 6px;
-    margin-bottom: 6px;
+    margin-bottom: 10px;
 }
 #handler:hover, #handler.dragging {
     background-color: var(--vscode-focusBorder);
@@ -46,19 +46,54 @@ svg {
 }
 
 /* Plot history: */
-#smallPlots > a {
-    width: 20%;
+
+#smallPlots {
+    display: flex;
+    /* flex-direction: row; */
+    position: relative;
     height: 15vw;
-    float: left;
-    padding: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
-.plotDiv {
+#smallPlots .wrapper {
+    position: relative;
+    width: 20vw;
+    flex: none;
+    padding: 3px;
+    padding-bottom: 5px;
+}
+
+a.focusPlot {
     height: 100%;
     width: 100%;
 }
 
-.plotDiv:not(.active):hover {
+a.hidePlot {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 5px;
+    text-decoration: none;
+    font-size: 2em;
+    user-select: none;
+    color: var(--vscode-foreground);
+}
+
+#smallPlots .wrapper:hover a.hidePlot {
+    display: block;
+}
+
+#smallPlots .wrapper a.hidePlot:hover {
+    color: var(--vscode-errorForeground);
+}
+
+.plotContent {
+    height: 100%;
+    width: 100%;
+}
+
+.smallPlot:not(.active):hover {
     background-color: var(--vscode-list-hoverBackground);
     background-clip: content-box;
 }
