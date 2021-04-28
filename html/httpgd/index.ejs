@@ -3,9 +3,7 @@
 
 <head>
     <link href="<%= asWebViewPath('style.css') %> " rel="stylesheet">
-    <% if(overwriteStyles){ %>
-        <link href="<%= asWebViewPath('styleOverwrites.css') %> " rel="stylesheet">
-    <% } %>
+    <link href="<%= asWebViewPath('styleOverwrites.css') %> " rel="stylesheet" class="overwrites" <%- overwriteStyles ? '' : 'disabled' %>>
 </head>
 
 <body>
@@ -16,7 +14,7 @@
     <div id="smallPlots">
         <% plots.forEach((plot)=> { %>
             <a href="<%- makeCommandUri('r.httpgd.showIndex', host, plot.id) %> " title="Plot <%- plot.id %>">
-                <div class="plotDiv <%- plot.id===activePlot ? 'active' : 'inactive' %>">
+                <div class="plotDiv <%- plot.id===activePlot ? 'active' : '' %>" plotId="<%- plot.id %>">
                     <%- plot.svg %>
                 </div>
             </a>

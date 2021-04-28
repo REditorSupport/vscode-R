@@ -6,16 +6,16 @@ interface VsCode {
 }
 
 
-interface IOutMessage {
+interface IMessage {
   message: string;
 }
-interface ResizeMessage extends IOutMessage {
+interface ResizeMessage extends IMessage {
   message: 'resize',
   height: number,
   width: number,
   userTriggered: boolean
 }
-interface LogMessage extends IOutMessage {
+interface LogMessage extends IMessage {
   message: 'log',
   body: any
 }
@@ -24,9 +24,22 @@ type OutMessage = ResizeMessage | LogMessage;
 
 
 
-interface InMessage {
+
+interface UpdatePlotMessage extends IMessage {
   message: 'updatePlot',
-  id: 'svg',
   svg: string,
   plotId: string
 }
+
+interface FocusPlotMessage extends IMessage {
+  message: 'focusPlot',
+  plotId: string
+}
+
+interface ToggleStyleMessage extends IMessage {
+  message: 'toggleStyle',
+  useOverwrites: boolean
+}
+
+type InMessage = UpdatePlotMessage | FocusPlotMessage | ToggleStyleMessage;
+

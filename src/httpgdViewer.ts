@@ -12,7 +12,7 @@ import { config, setContext } from './util';
 
 import { extensionContext } from './extension';
 
-import { OutMessage } from './webviewMessages';
+import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage } from './webviewMessages';
 
 
 const commands = [
@@ -128,7 +128,6 @@ export class HttpgdManager {
         } else if(hostOrWebviewUri instanceof vscode.Uri){
             const uri = hostOrWebviewUri;
             viewer = this.viewers.find((viewer) => viewer.getPanelPath() === uri.path);
-            console.log('asdf');
         } else {
             viewer = this.getRecentViewer();
         }
@@ -362,15 +361,14 @@ export class HttpgdViewer implements IHttpgdViewer {
         const width = this.scaledViewWidth;
         const plt = await this.getPlotContent(this.activePlot, height, width);
         // this.plots[this.activeIndex] = plt;
-        const msg = {
+        const msg: InMessage = {
             message: 'updatePlot',
-            id: 'svg',
             svg: plt.svg,
             plotId: plt.id
         };
         this.plotWidth = width;
         this.plotHeight = height;
-        this.webviewPanel?.webview.postMessage(msg);
+        this.postWebviewMessage(msg);
     }
     
     protected async getPlotContent(id: PlotId, height?: number, width?: number): Promise<HttpgdPlot> {
@@ -382,7 +380,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         return plt;
     }
 
-    protected async refreshPlots(): Promise<void> {
+    protected async refreshPlots(redraw: boolean = false): Promise<void> {
         const nPlots = this.plots.length;
         let plotIds = await this.api.getPlotIds();
         plotIds = plotIds.filter((id) => !this.hiddenPlots.includes(id));
@@ -396,9 +394,35 @@ export class HttpgdViewer implements IHttpgdViewer {
         });
         this.plots = await Promise.all(newPlots);
         if(this.plots.length !== nPlots){
+            redraw = true;
             this.activePlot = this.plots[this.plots.length - 1]?.id;
         }
-        this.refreshHtml();
+        if(redraw){
+            console.log('redrawing');
+            this.refreshHtml();
+        } else{
+            for(const plt of this.plots){
+                this.updatePlot(plt);
+            }
+            this.focusPlot2(this.activePlot);
+        }
+    }
+    
+    protected updatePlot(plt: HttpgdPlot): void {
+        const msg: UpdatePlotMessage = {
+            message: 'updatePlot',
+            plotId: plt.id,
+            svg: plt.svg
+        };
+        this.postWebviewMessage(msg);
+    }
+    
+    protected focusPlot2(plotId: PlotId): void {
+        const msg: FocusPlotMessage = {
+            message: 'focusPlot',
+            plotId: plotId
+        };
+        this.postWebviewMessage(msg);
     }
     
     protected refreshHtml(): void {
@@ -461,6 +485,10 @@ export class HttpgdViewer implements IHttpgdViewer {
         }
     }
     
+    protected postWebviewMessage(msg: InMessage): void {
+        this.webviewPanel?.webview.postMessage(msg);
+    }
+    
 
     // Methods to interact with the webview
     // Can e.g. be called by vscode commands + menu items:
@@ -485,8 +513,9 @@ export class HttpgdViewer implements IHttpgdViewer {
         const plt = this.plots[this.activeIndex];
         if(plt.heigth !== this.viewHeight * this.scale || plt.width !== this.viewHeight * this.scale){
             await this.refreshPlots();
+        } else{
+            this.refreshHtml();
         }
-        this.refreshHtml();
     }
     
     // navigate through plots (supply `true` to go to end/beginning of list)
@@ -525,9 +554,13 @@ export class HttpgdViewer implements IHttpgdViewer {
         await this.refreshPlots();
     }
     
-    public async toggleStyle(force?: boolean): Promise<void>{
+    public toggleStyle(force?: boolean): void{
         this.stripStyles = force ?? !this.stripStyles;
-        await this.refreshPlots();
+        const msg: ToggleStyleMessage = {
+            message: 'toggleStyle',
+            useOverwrites: this.stripStyles
+        };
+        this.postWebviewMessage(msg);
     }
     
     // export plot
@@ -607,7 +640,6 @@ function makeIdsUnique(plt: HttpgdPlot, upid: number): void {
             ids.push(m[1]);
         }
     } while(m);
-    console.log(ids);
     for(const id of ids){
         const newId = `$${upid}_${plt.id}_${plt.heigth}_${plt.width}_${id}`;
         const re1 = new RegExp(`<clipPath id="${id}">`);

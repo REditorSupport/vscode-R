@@ -11,25 +11,25 @@ declare function acquireVsCodeApi(): VsCode;
 
 
 
-export interface IOutMessage {
+export interface IMessage {
   message: string;
 }
-export interface ResizeMessage extends IOutMessage {
+export interface ResizeMessage extends IMessage {
   message: 'resize',
   height: number,
   width: number,
   userTriggered: boolean
 }
-export interface LogMessage extends IOutMessage {
+export interface LogMessage extends IMessage {
   message: 'log',
   body: any
 }
-export interface MouseClickMessage extends IOutMessage {
+export interface MouseClickMessage extends IMessage {
   message: 'mouseClick',
   button: number,
   scrollY: number
 }
-export interface LinkClickedMessage extends IOutMessage {
+export interface LinkClickedMessage extends IMessage {
   message: 'linkClicked',
   href: string,
   scrollY: number
@@ -39,9 +39,20 @@ export type OutMessage = ResizeMessage | LogMessage | MouseClickMessage | LinkCl
 
 
 
-export interface InMessage {
+export interface UpdatePlotMessage extends IMessage {
   message: 'updatePlot',
-  id: 'svg',
   svg: string,
   plotId: string
 }
+
+export interface FocusPlotMessage extends IMessage {
+  message: 'focusPlot',
+  plotId: string
+}
+
+export interface ToggleStyleMessage extends IMessage {
+  message: 'toggleStyle',
+  useOverwrites: boolean
+}
+
+export type InMessage = UpdatePlotMessage | FocusPlotMessage | ToggleStyleMessage;

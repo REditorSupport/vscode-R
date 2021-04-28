@@ -12,9 +12,6 @@ body {
     padding: 0;
 } 
 
-:focus {
-    outline: 0 !important;
-}
 
 svg {
     user-select: none;
@@ -48,18 +45,19 @@ svg {
 }
 
 /* Plot history: */
-.plotDiv {
+#smallPlots > a {
     width: 20%;
     height: 15vw;
     float: left;
     padding: 4px;
 }
 
-.plotDiv.active {
-    background-color: var(--vscode-list-inactiveSelectionBackground);
-    background-clip: content-box;
+.plotDiv {
+    height: 100%;
+    width: 100%;
 }
-.plotDiv.inactive:hover {
+
+.plotDiv:not(.active):hover {
     background-color: var(--vscode-list-hoverBackground);
     background-clip: content-box;
 }
