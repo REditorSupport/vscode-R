@@ -375,7 +375,9 @@ export class HttpgdViewer implements IHttpgdViewer {
         height ||= this.scaledViewHeight;
         width ||= this.scaledViewWidth;
         const plt = await this.api.getPlotContent(id, height, width);
-        plt.svg = stripSize(plt.svg);
+        stripSize(plt);
+        this.viewHeight ??= plt.heigth;
+        this.viewWidth ??= plt.width;
         makeIdsUnique(plt, this.state?.upid || 0);
         return plt;
     }
@@ -623,10 +625,16 @@ function findItemOfType<T = unknown>(arr: any[], type: string): T {
 }
 
 
-function stripSize(svg: string): string {
-    const re = /<(svg.*)width="[^"]*" height="[^"]*"(.*)>/;
-    svg = svg.replace(re, '<$1 preserveAspectRatio="none" $2>');
-    return svg;
+function stripSize(plt: HttpgdPlot): void {
+    const re = /<(svg.*)width="([^"]*)" height="([^"]*)"(.*)>/;
+    const m = re.exec(plt.svg);
+    if(!plt.width || isNaN(plt.width)){
+        plt.width = Number(m[2]);
+    }
+    if(!plt.heigth || isNaN(plt.heigth)){
+        plt.heigth = Number(m[3]);
+    }
+    plt.svg = plt.svg.replace(re, '<$1 preserveAspectRatio="none" $4>');
 }
 
 function makeIdsUnique(plt: HttpgdPlot, upid: number): void {
