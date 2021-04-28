@@ -31,10 +31,10 @@ const cssLink = document.querySelector('link.overwrites') as HTMLLinkElement;
 const smallPlotDiv = document.querySelector('#smallPlots') as HTMLDivElement;
 
 
-function getSmallPlots(): Element[] {
-  const smallPlots: Element[] = [];
+function getSmallPlots(): HTMLAnchorElement[] {
+  const smallPlots: HTMLAnchorElement[] = [];
   document.querySelectorAll('a.focusPlot').forEach(elm => {
-    smallPlots.push(elm);
+    smallPlots.push(elm as HTMLAnchorElement);
   });
   return smallPlots;
 }
@@ -108,12 +108,11 @@ function focusPlot(plotId: string): void {
     elm.classList.remove('active');
   }
   
-  const smallPlotDiv = smallPlots[ind];
-  const smallPlotContent = smallPlots[ind];
+  const smallPlot = smallPlots[ind];
 
-  smallPlotDiv.classList.add('active');
+  smallPlot.classList.add('active');
   
-  largePlotDiv.innerHTML = smallPlotContent.innerHTML;
+  largePlotDiv.innerHTML = smallPlot.innerHTML;
 }
 
 function updatePlot(plt: Plot): void {

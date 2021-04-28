@@ -81,10 +81,9 @@ function focusPlot(plotId) {
     for (const elm of smallPlots) {
         elm.classList.remove('active');
     }
-    const smallPlotDiv = smallPlots[ind];
-    const smallPlotContent = smallPlots[ind];
-    smallPlotDiv.classList.add('active');
-    largePlotDiv.innerHTML = smallPlotContent.innerHTML;
+    const smallPlot = smallPlots[ind];
+    smallPlot.classList.add('active');
+    largePlotDiv.innerHTML = smallPlot.innerHTML;
 }
 function updatePlot(plt) {
     const smallPlots = getSmallPlots();

@@ -443,6 +443,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             html: html
         };
         this.postWebviewMessage(msg);
+        void this.setContextValues();
     }
     
     protected focusPlot2(plotId?: PlotId): void {
@@ -452,6 +453,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             plotId: plotId
         };
         this.postWebviewMessage(msg);
+        void this.setContextValues();
     }
     
     protected refreshHtml(): void {
@@ -558,7 +560,6 @@ export class HttpgdViewer implements IHttpgdViewer {
             await this.refreshPlots();
         } else{
             this.focusPlot2();
-            void this.setContextValues();
         }
     }
     
@@ -566,12 +567,10 @@ export class HttpgdViewer implements IHttpgdViewer {
     public nextPlot(last?: boolean): void {
         this.activeIndex = last ? this.plots.length - 1 : this.activeIndex+1;
         this.focusPlot2();
-        void this.setContextValues();
     }
     public prevPlot(first?: boolean): void {
         this.activeIndex = first ? 0 : this.activeIndex-1;
         this.focusPlot2();
-        void this.setContextValues();
     }
     
     // restore closed plots, show most recent plot etc.?
