@@ -282,7 +282,8 @@ export class HttpgdViewer implements IHttpgdViewer {
         };
         this.webviewOptions = {
             enableCommandUris: true,
-            enableScripts: true
+            enableScripts: true,
+            retainContextWhenHidden: true
         };
         this.api.start();
     }
@@ -411,7 +412,6 @@ export class HttpgdViewer implements IHttpgdViewer {
             this.activePlot = this.plots[this.plots.length - 1]?.id;
         }
         if(redraw){
-            console.log('redrawing');
             this.refreshHtml();
         } else{
             for(const plt of this.plots){
