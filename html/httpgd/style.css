@@ -9,7 +9,8 @@ html {
 
 /* General styling: */
 body {
-    padding: 0;
+    padding-left: 1px;
+    padding-right: 1px;
 } 
 
 
