@@ -46,13 +46,14 @@ let isHandlerDragging = false;
 function postResizeMessage(userTriggered: boolean = false){
   const newHeight = largePlotDiv.clientHeight;
   const newWidth = largePlotDiv.clientWidth;
-  if(newHeight !== oldHeight || newWidth !== oldWidth){
-    vscode.postMessage({
+  if(userTriggered || newHeight !== oldHeight || newWidth !== oldWidth){
+    const msg: ResizeMessage = {
       message: 'resize',
       height: newHeight,
       width: newWidth,
       userTriggered: userTriggered
-    });
+    };
+    vscode.postMessage(msg);
     oldHeight = newHeight;
     oldWidth = newWidth;
   }
@@ -177,7 +178,6 @@ document.addEventListener('mousedown', (e) => {
   // If mousedown event is fired from .handler, toggle flag to true
   if (e.target === handler) {
     isHandlerDragging = true;
-    postLogMessage('mousedown');
     handler.classList.add('dragging');
     document.body.style.cursor = 'ns-resize';
   }

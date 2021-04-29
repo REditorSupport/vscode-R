@@ -1126,7 +1126,7 @@
           "default": false,
           "description": "Remove hidden items when clearing workspace."
         },
-        "r.httpgd.defaultColorTheme": {
+        "r.httpgd.defaults.colorTheme": {
           "type": "string",
           "default": "vscode",
           "enum": [
@@ -1138,6 +1138,29 @@
             "Use original colors"
           ],
           "markdownDescription": "Which color theme to use when launching the plot viewer."
+        },
+        "r.httpgd.defaults.plotPreviewLayout": {
+          "type": "string",
+          "default": "multirow",
+          "enum": [
+            "multirow",
+            "scroll"
+          ],
+          "enumDescriptions": [
+            "Show in multiple rows",
+            "Show scrollbar"
+          ],
+          "markdownDescription": "How to display plot previews if more than one row required."
+        },
+        "r.httpgd.timouts.resizeTimeout": {
+          "type": "number",
+          "default": 100,
+          "markdownDescription": "Timout in ms to use between plot resizes."
+        },
+        "r.httpgd.timeouts.refreshTimeout": {
+          "type": "number",
+          "default": 10,
+          "markdownDescription": "Timout in ms to use between plot refreshs."
         }
       }
     },

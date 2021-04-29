@@ -87,8 +87,7 @@ a.hidePlot {
     color: var(--vscode-foreground);
 }
 
-.plotContent 
-{
+.plotContent {
     height: 100%;
     width: 100%;
 }

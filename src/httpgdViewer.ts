@@ -73,8 +73,13 @@ export class HttpgdManager {
             this.viewers.unshift(viewer);
             viewer.show();
         } else{
-            const colorTheme = config().get('httpgd.defaultColorTheme', 'vscode');
+            const conf = config();
+            const colorTheme = conf.get('httpgd.defaults.colorTheme', 'vscode');
+            const smallPlotLayout = conf.get('httpgd.defaults.plotPreviewLayout', 'multirow');
             this.viewerOptions.stripStyles = (colorTheme === 'vscode');
+            this.viewerOptions.useMultirow = (smallPlotLayout === 'multirow');
+            this.viewerOptions.refreshTimeoutLength = conf.get('httpgd.timeouts.refreshTimeout', 10);
+            this.viewerOptions.resizeTimeoutLength = conf.get('httpgd.timeouts.resizeTimeout', 100);
             this.viewerOptions.token = token;
             const viewer = new HttpgdViewer(host, this.viewerOptions);
             this.viewers.unshift(viewer);
@@ -233,11 +238,11 @@ export class HttpgdViewer implements IHttpgdViewer {
     // Ids of plots that are not shown, but not closed inside httpgd
     hiddenPlots: PlotId[] = [];
     
-    readonly defaultStripStyles = true;
-    stripStyles: boolean = this.defaultStripStyles;
+    readonly defaultStripStyles: boolean = true;
+    stripStyles: boolean;
     
-    readonly defaultUseMultiRow = true;
-    useMultirow: boolean = this.defaultUseMultiRow;
+    readonly defaultUseMultiRow: boolean = true;
+    useMultirow: boolean;
     
     // Size of the view area:
     viewHeight: number;
@@ -298,13 +303,11 @@ export class HttpgdViewer implements IHttpgdViewer {
             this.checkStateDelayed();
         });
         this.api.onConnectionChange(() => {
-            console.log('Connection change!');
-            void this.refreshPlots();
+            this.checkStateDelayed();
         });
-        this.stripStyles = !!options.stripStyles;
-        this.htmlTemplate = fs.readFileSync(path.join(options.htmlRoot, 'index.ejs'), 'utf-8');
-        this.smallPlotTemplate = fs.readFileSync(path.join(options.htmlRoot, 'smallPlot.ejs'), 'utf-8');
         this.htmlRoot = options.htmlRoot;
+        this.htmlTemplate = fs.readFileSync(path.join(this.htmlRoot, 'index.ejs'), 'utf-8');
+        this.smallPlotTemplate = fs.readFileSync(path.join(this.htmlRoot, 'smallPlot.ejs'), 'utf-8');
         this.showOptions = {
             viewColumn: options.viewColumn ?? vscode.ViewColumn.Two,
             preserveFocus: !!options.preserveFocus
@@ -314,6 +317,12 @@ export class HttpgdViewer implements IHttpgdViewer {
             enableScripts: true,
             retainContextWhenHidden: true
         };
+        this.defaultStripStyles = options.stripStyles ?? this.defaultStripStyles;
+        this.stripStyles = this.defaultStripStyles;
+        this.defaultUseMultiRow = options.useMultirow ?? this.defaultUseMultiRow;
+        this.useMultirow = this.defaultUseMultiRow;
+        this.resizeTimeoutLength = options.refreshTimeoutLength ?? this.resizeTimeoutLength;
+        this.refreshTimeoutLength = options.refreshTimeoutLength ?? this.refreshTimeoutLength;
         this.api.start();
     }
 
@@ -338,7 +347,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
     
     // focus a specific plot id
-    async focusPlot(id?: PlotId): Promise<void> {
+    public async focusPlot(id?: PlotId): Promise<void> {
         this.activePlot = id;
         const plt = this.plots[this.activeIndex];
         if(plt.height !== this.viewHeight * this.scale || plt.width !== this.viewHeight * this.scale){
@@ -488,6 +497,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.viewWidth = width;
         if(userTriggered || this.resizeTimeoutLength === 0){
             clearTimeout(this.resizeTimeout);
+            this.resizeTimeout = undefined;
             void this.resizePlot();
         } else if(!this.resizeTimeout){
             this.resizeTimeout = setTimeout(() => {

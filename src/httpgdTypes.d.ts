@@ -85,6 +85,9 @@ export interface HttpgdViewerOptions {
     viewColumn?: vscode.ViewColumn;
     htmlRoot: string;
     stripStyles?: boolean;
+    useMultirow?: boolean;
+    resizeTimeoutLength?: number;
+    refreshTimeoutLength?: number;
 }
 
 // Roughly combines the functionality of HttpgdNavigator and HttpgdViewer
