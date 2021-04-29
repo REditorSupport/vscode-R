@@ -12,7 +12,7 @@ interface Plot {
   // svg of the plot
   svg: string;
   
-  heigth?: number;
+  height?: number;
   width?: number;
 }
 

@@ -137,8 +137,8 @@ class HttpgdApi {
                 host: this.host,
                 id: id,
                 svg: res,
-                heigth: width,
-                width: height,
+                height: height,
+                width: width,
             };
         });
         return plot;
@@ -352,19 +352,19 @@ export class Httpgd implements IHttpgdViewerApi {
     public getPlotIds(): Promise<PlotId[]> {
         return this.connection.api.get_plots().then(res => res.plots.map(r => r.id));
     }
-    // get content of a single plot. Use sensible defaults if no heigth/width given:
+    // get content of a single plot. Use sensible defaults if no height/width given:
     public getPlotContent(id: PlotId, height?: number, width?: number, c?: string): Promise<HttpgdPlot> {
         return this.connection.api.get_plot_contents(id, width, height, c);
     }
     // get content of multiple plots:
-    // Use sensible defaults if no heigth/width given.
+    // Use sensible defaults if no height/width given.
     // Return all plots if no ids given.
-    public getPlotContents(ids?: PlotId[], heigth?: number, width?: number): Promise<HttpgdPlot[]> {
+    public getPlotContents(ids?: PlotId[], height?: number, width?: number): Promise<HttpgdPlot[]> {
         if (!ids) {
             return this.connection.api.get_plot_contents_all();
         }
         const plots = ids.map(async id => {
-            return await this.connection.api.get_plot_contents(id, width, heigth);
+            return await this.connection.api.get_plot_contents(id, width, height);
         });
         return Promise.all(plots);
     } 

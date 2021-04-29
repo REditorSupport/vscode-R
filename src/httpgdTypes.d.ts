@@ -53,12 +53,12 @@ export declare class IHttpgdViewerApi {
     public getState(): MaybePromise<HttpgdState>;
     // get list of plot Ids:
     public getPlotIds(): MaybePromise<PlotId[]>;
-    // get content of a single plot. Use sensible defaults if no heigth/width given:
+    // get content of a single plot. Use sensible defaults if no height/width given:
     public getPlotContent(id: PlotId, height?: number, width?: number): MaybePromise<HttpgdPlot>;
     // get content of multiple plots:
-    // Use sensible defaults if no heigth/width given.
+    // Use sensible defaults if no height/width given.
     // Return all plots if no ids given.
-    public getPlotContents(ids?: PlotId[], heigth?: number, width?: number): MaybePromise<HttpgdPlot[]>;
+    public getPlotContents(ids?: PlotId[], height?: number, width?: number): MaybePromise<HttpgdPlot[]>;
     
     // Export functionality could maybe also be implemented inside vscode-R?
     // Not sure which libraries produce better results...
