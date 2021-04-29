@@ -248,6 +248,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     scale: number = this.scale0;
     
     resizeTimeout?: NodeJS.Timeout;
+    resizeTimeoutLenght: number = 30;
     
     htmlTemplate: string;
     smallPlotTemplate: string;
@@ -255,7 +256,31 @@ export class HttpgdViewer implements IHttpgdViewer {
     
     showOptions: ShowOptions;
     webviewOptions: vscode.WebviewPanelOptions & vscode.WebviewOptions;
+
+    // Computed properties:
+
+    // Get/set active plot by index instead of id:
+    protected get activeIndex(): number {
+        return this.getIndex(this.activePlot);
+    }
+    protected set activeIndex(ind: number) {
+        if(this.plots.length === 0){
+            this.activePlot = undefined;
+        } else{
+            ind = Math.max(ind, 0);
+            ind = Math.min(ind, this.plots.length - 1);
+            this.activePlot = this.plots[ind].id;
+        }
+    }
     
+    // Get scaled view size:
+    protected get scaledViewHeight(): number {
+        return this.viewHeight * this.scale;
+    }
+    protected get scaledViewWidth(): number {
+        return this.viewWidth * this.scale;
+    }
+
     // constructor called by the session watcher if a corresponding function was called in R
     // creates a new api instance itself
     constructor(host: string, options: HttpgdViewerOptions) {
@@ -288,24 +313,119 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.api.start();
     }
 
-    public get activeIndex(): number {
-        return this.plots.findIndex((plt: HttpgdPlot) => plt.id === this.activePlot);
-    }
-    public set activeIndex(ind: number) {
-        if(this.plots.length === 0){
-            this.activePlot = undefined;
+
+    // Methods to interact with the webview
+    // Can e.g. be called by vscode commands + menu items:
+
+    // Called to create a new webview if the user closed the old one:
+    public show(preserveFocus?: boolean): void {
+        preserveFocus ??= this.showOptions.preserveFocus;
+        if(!this.webviewPanel){
+            const showOptions = {
+                ...this.showOptions,
+                preserveFocus: preserveFocus
+            };
+            this.webviewPanel = this.makeNewWebview(showOptions);
+            this.refreshHtml();
         } else{
-            ind = Math.max(ind, 0);
-            ind = Math.min(ind, this.plots.length - 1);
-            this.activePlot = this.plots[ind].id;
+            this.webviewPanel.reveal(undefined, preserveFocus);
+        }
+        this.parent.registerActiveViewer(this);
+    }
+    
+    // focus a specific plot id
+    async focusPlot(id?: PlotId): Promise<void> {
+        this.activePlot = id;
+        const plt = this.plots[this.activeIndex];
+        if(plt.height !== this.viewHeight * this.scale || plt.width !== this.viewHeight * this.scale){
+            await this.refreshPlots();
+        } else{
+            this._focusPlot();
+        }
+    }
+    protected _focusPlot(plotId?: PlotId): void {
+        plotId ??= this.activePlot;
+        const msg: FocusPlotMessage = {
+            message: 'focusPlot',
+            plotId: plotId
+        };
+        this.postWebviewMessage(msg);
+        void this.setContextValues();
+    }
+    
+    // navigate through plots (supply `true` to go to end/beginning of list)
+    public nextPlot(last?: boolean): void {
+        this.activeIndex = last ? this.plots.length - 1 : this.activeIndex+1;
+        this._focusPlot();
+    }
+    public prevPlot(first?: boolean): void {
+        this.activeIndex = first ? 0 : this.activeIndex-1;
+        this._focusPlot();
+    }
+    
+    // restore closed plots, reset zoom, redraw html
+    public resetPlots(): void {
+        this.hiddenPlots = [];
+        this.scale = this.scale0;
+        void this.refreshPlots(true, true);
+    }
+    
+    public hidePlot(id?: PlotId): void {
+        id ??= this.activePlot;
+        if(!id){ return; }
+        const tmpIndex = this.activeIndex;
+        this.hiddenPlots.push(id);
+        this.plots = this.plots.filter((plt) => !this.hiddenPlots.includes(plt.id));
+        if(id === this.activePlot){
+            this.activeIndex = tmpIndex;
+            this._focusPlot();
+        }
+        this._hidePlot(id);
+    }
+    protected _hidePlot(id: PlotId): void {
+        const msg: HidePlotMessage = {
+            message: 'hidePlot',
+            plotId: id
+        };
+        this.postWebviewMessage(msg);
+    }
+    
+    public async closePlot(id?: PlotId): Promise<void> {
+        id ??= this.activePlot;
+        if(id){
+            this.hidePlot(id);
+            await this.api.closePlot(id);
         }
     }
     
-    public get scaledViewHeight(): number {
-        return this.viewHeight * this.scale;
+    public toggleStyle(force?: boolean): void{
+        this.stripStyles = force ?? !this.stripStyles;
+        const msg: ToggleStyleMessage = {
+            message: 'toggleStyle',
+            useOverwrites: this.stripStyles
+        };
+        this.postWebviewMessage(msg);
     }
-    public get scaledViewWidth(): number {
-        return this.viewWidth * this.scale;
+    
+    public toggleMultirow(force?: boolean): void{
+        this.useMultirow = force ?? !this.useMultirow;
+        const msg: ToggleMultirowMessage = {
+            message: 'toggleMultirow',
+            useMultirow: this.useMultirow
+        };
+        this.postWebviewMessage(msg);
+    }
+    
+    public zoomIn(): void {
+        if(this.scale > 0){
+            this.scale -= 0.1;
+            void this.resizePlot();
+        }
+    }
+
+    public zoomOut(): void {
+        this.scale += 0.1;
+        void this.resizePlot();
     }
 
 
@@ -330,27 +450,19 @@ export class HttpgdViewer implements IHttpgdViewer {
         return `webview-panel/webview-${webviewId}`;
     }
 
+    // internal functions
+    // 
+
     protected async checkState(): Promise<void> {
         const oldUpid = this.state?.upid;
         this.state = await this.api.getState();
         if(this.state.upid !== oldUpid){
-            console.log('New upid');
             void this.refreshPlots();
         }
     }
     
-    public zoomIn(): void {
-        //pass
-        if(this.scale > 0){
-            this.scale -= 0.1;
-            void this.resizePlot();
-        }
-    }
-
-    public zoomOut(): void {
-        //pass
-        this.scale += 0.1;
-        void this.resizePlot();
+    protected getIndex(id: PlotId): number {
+        return this.plots.findIndex((plt: HttpgdPlot) => plt.id === id);
     }
 
     protected handleResize(height: number, width: number, userTriggered: boolean = false): void {
@@ -363,47 +475,32 @@ export class HttpgdViewer implements IHttpgdViewer {
             this.resizeTimeout = setTimeout(() => {
                 void this.resizePlot();
                 this.resizeTimeout = undefined;
-            }, 30);
+            }, this.resizeTimeoutLenght);
         }
     }
     
-    protected async resizePlot(): Promise<void> {
+    protected async resizePlot(id?: PlotId): Promise<void> {
+        id ??= this.activePlot;
+        if(!id){ return; }
         const height = this.scaledViewHeight;
         const width = this.scaledViewWidth;
-        const plt = await this.getPlotContent(this.activePlot, height, width);
-        // this.plots[this.activeIndex] = plt;
-        const msg: InMessage = {
-            message: 'updatePlot',
-            svg: plt.svg,
-            plotId: plt.id
-        };
-        this.plotWidth = width;
-        this.plotHeight = height;
-        this.postWebviewMessage(msg);
+        const plt = await this.getPlotContent(id, height, width);
+        this.plotWidth = plt.width;
+        this.plotHeight = plt.height;
+        this.updatePlot(plt);
     }
     
-    protected async getPlotContent(id: PlotId, height?: number, width?: number): Promise<HttpgdPlot> {
-        height ||= this.scaledViewHeight;
-        width ||= this.scaledViewWidth;
-        const plt = await this.api.getPlotContent(id, height, width);
-        stripSize(plt);
-        this.viewHeight ??= plt.heigth;
-        this.viewWidth ??= plt.width;
-        makeIdsUnique(plt, this.state?.upid || 0);
-        return plt;
-    }
-
-    protected async refreshPlots(redraw: boolean = false): Promise<void> {
+    protected async refreshPlots(redraw: boolean = false, force: boolean = false): Promise<void> {
         const nPlots = this.plots.length;
         const oldPlotIds = this.plots.map(plt => plt.id);
         let plotIds = await this.api.getPlotIds();
         plotIds = plotIds.filter((id) => !this.hiddenPlots.includes(id));
         const newPlots = plotIds.map(async (id) => {
             const plot = this.plots.find((plt) => plt.id === id);
-            if(plot && id !== this.activePlot){
-                return plot;
-            } else{
+            if(force || !plot || id === this.activePlot){
                 return await this.getPlotContent(id, this.scaledViewHeight, this.scaledViewWidth);
+            } else{
+                return plot;
             }
         });
         this.plots = await Promise.all(newPlots);
@@ -421,7 +518,7 @@ export class HttpgdViewer implements IHttpgdViewer {
                     this.addPlot(plt);
                 }
             }
-            this.focusPlot2(this.activePlot);
+            this._focusPlot();
         }
     }
     
@@ -445,16 +542,20 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.postWebviewMessage(msg);
         void this.setContextValues();
     }
-    
-    protected focusPlot2(plotId?: PlotId): void {
-        plotId ??= this.activePlot;
-        const msg: FocusPlotMessage = {
-            message: 'focusPlot',
-            plotId: plotId
-        };
-        this.postWebviewMessage(msg);
-        void this.setContextValues();
+
+    protected async getPlotContent(id: PlotId, height?: number, width?: number): Promise<HttpgdPlot> {
+        height ||= this.scaledViewHeight;
+        width ||= this.scaledViewWidth;
+        const plt = await this.api.getPlotContent(id, height, width);
+        stripSize(plt);
+        makeIdsUnique(plt, this.state?.upid || 0);
+        this.viewHeight ??= plt.height;
+        this.viewWidth ??= plt.width;
+        return plt;
     }
+
+    
+    // functions for initial or re-drawing of html:
     
     protected refreshHtml(): void {
         this.webviewPanel ??= this.makeNewWebview();
@@ -535,94 +636,6 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.webviewPanel?.webview.postMessage(msg);
     }
     
-
-    // Methods to interact with the webview
-    // Can e.g. be called by vscode commands + menu items:
-
-    // Called to create a new webview if the user closed the old one:
-    public show(preserveFocus?: boolean): void {
-        preserveFocus ??= this.showOptions.preserveFocus;
-        const showOptions = {
-            ...this.showOptions,
-            preserveFocus: preserveFocus
-        };
-        if(!this.webviewPanel){
-            this.webviewPanel = this.makeNewWebview(showOptions);
-            this.refreshHtml();
-        }
-        this.parent.registerActiveViewer(this);
-    }
-    
-    // focus a specific plot id
-    async focusPlot(id?: PlotId): Promise<void> {
-        this.activePlot = id;
-        const plt = this.plots[this.activeIndex];
-        if(plt.heigth !== this.viewHeight * this.scale || plt.width !== this.viewHeight * this.scale){
-            await this.refreshPlots();
-        } else{
-            this.focusPlot2();
-        }
-    }
-    
-    // navigate through plots (supply `true` to go to end/beginning of list)
-    public nextPlot(last?: boolean): void {
-        this.activeIndex = last ? this.plots.length - 1 : this.activeIndex+1;
-        this.focusPlot2();
-    }
-    public prevPlot(first?: boolean): void {
-        this.activeIndex = first ? 0 : this.activeIndex-1;
-        this.focusPlot2();
-    }
-    
-    // restore closed plots, show most recent plot etc.?
-    public resetPlots(): void {
-        this.hiddenPlots = [];
-        this.scale = this.scale0;
-        void this.refreshPlots(true);
-    }
-    
-    public hidePlot(id?: PlotId): void {
-        id ??= this.activePlot;
-        if(!id){
-            return;
-        }
-        const tmpIndex = this.activeIndex;
-        this.hiddenPlots.push(id);
-        this.plots = this.plots.filter((plt) => !this.hiddenPlots.includes(plt.id));
-        if(id === this.activePlot){
-            this.activeIndex = tmpIndex;
-            this.focusPlot2(this.activePlot);
-        }
-        const msg: HidePlotMessage = {
-            message: 'hidePlot',
-            plotId: id
-        };
-        this.postWebviewMessage(msg);
-    }
-    
-    public async closePlot(id?: PlotId): Promise<void> {
-        id ??= this.activePlot;
-        await this.api.closePlot(id);
-        await this.refreshPlots();
-    }
-    
-    public toggleStyle(force?: boolean): void{
-        this.stripStyles = force ?? !this.stripStyles;
-        const msg: ToggleStyleMessage = {
-            message: 'toggleStyle',
-            useOverwrites: this.stripStyles
-        };
-        this.postWebviewMessage(msg);
-    }
-    
-    public toggleMultirow(force?: boolean): void{
-        this.useMultirow = force ?? !this.useMultirow;
-        const msg: ToggleMultirowMessage = {
-            message: 'toggleMultirow',
-            useMultirow: this.useMultirow
-        };
-        this.postWebviewMessage(msg);
-    }
     
     // export plot
     // if no format supplied, show a quickpick menu etc.
@@ -690,8 +703,8 @@ function stripSize(plt: HttpgdPlot): void {
     if(!plt.width || isNaN(plt.width)){
         plt.width = Number(m[2]);
     }
-    if(!plt.heigth || isNaN(plt.heigth)){
-        plt.heigth = Number(m[3]);
+    if(!plt.height || isNaN(plt.height)){
+        plt.height = Number(m[3]);
     }
     plt.svg = plt.svg.replace(re, '<$1 preserveAspectRatio="none" $4>');
 }
@@ -708,7 +721,7 @@ function makeIdsUnique(plt: HttpgdPlot, upid: number): void {
         }
     } while(m);
     for(const id of ids){
-        const newId = `$${upid}_${plt.id}_${plt.heigth}_${plt.width}_${id}`;
+        const newId = `$${upid}_${plt.id}_${plt.height}_${plt.width}_${id}`;
         const re1 = new RegExp(`<clipPath id="${id}">`);
         const replacement1 = `<clipPath id="${newId}">`;
         const re2 = new RegExp(`clip-path='url\\(#${id}\\)'`, 'g');

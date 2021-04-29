@@ -364,7 +364,7 @@ export class Httpgd implements IHttpgdViewerApi {
             return this.connection.api.get_plot_contents_all();
         }
         const plots = ids.map(async id => {
-            return await this.connection.api.get_plot_contents(id);
+            return await this.connection.api.get_plot_contents(id, width, heigth);
         });
         return Promise.all(plots);
     } 

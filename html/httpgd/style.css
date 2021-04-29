@@ -13,7 +13,6 @@ body {
     padding-right: 1px;
 } 
 
-
 svg {
     user-select: none;
 }
@@ -61,6 +60,7 @@ svg {
     flex-wrap: wrap;
 }
 
+/* Each small plot: */
 
 #smallPlots .wrapper {
     position: relative;
@@ -87,15 +87,8 @@ a.hidePlot {
     color: var(--vscode-foreground);
 }
 
-#smallPlots .wrapper:hover a.hidePlot {
-    display: block;
-}
-
-#smallPlots .wrapper a.hidePlot:hover {
-    color: var(--vscode-errorForeground);
-}
-
-.plotContent {
+.plotContent 
+{
     height: 100%;
     width: 100%;
 }
@@ -104,3 +97,13 @@ a.hidePlot {
     background-color: var(--vscode-list-hoverBackground);
     background-clip: content-box;
 }
+
+/* Hide plot button: */
+#smallPlots .wrapper:hover a.hidePlot {
+    display: block;
+}
+
+#smallPlots .wrapper a.hidePlot:hover {
+    color: var(--vscode-errorForeground);
+}
+

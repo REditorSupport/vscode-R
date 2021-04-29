@@ -25,7 +25,7 @@ export interface HttpgdPlot {
     
     // Size when computed:
     // (displayed size might vary, if % values are used)
-    heigth: number;
+    height: number;
     width: number;
 }
 
