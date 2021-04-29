@@ -248,7 +248,10 @@ export class HttpgdViewer implements IHttpgdViewer {
     scale: number = this.scale0;
     
     resizeTimeout?: NodeJS.Timeout;
-    resizeTimeoutLenght: number = 30;
+    resizeTimeoutLength: number = 30;
+    
+    refreshTimeout?: NodeJS.Timeout;
+    refreshTimeoutLength: number = 10;
     
     htmlTemplate: string;
     smallPlotTemplate: string;
@@ -289,9 +292,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.parent = options.parent;
         this.api = new Httpgd(this.host, this.token);
         this.api.onPlotsChange(() => {
-            console.log('Plots change!');
-            // void this.refreshPlots();
-            void this.checkState();
+            this.checkStateDelayed();
         });
         this.api.onConnectionChange(() => {
             console.log('Connection change!');
@@ -453,11 +454,25 @@ export class HttpgdViewer implements IHttpgdViewer {
     // internal functions
     // 
 
+    // use a delay to avoid refreshing while a plot is incrementally drawn
+    protected checkStateDelayed(): void {
+        console.log('checking state');
+        clearTimeout(this.refreshTimeout);
+        if(this.refreshTimeoutLength <= 0){
+            void this.checkState();
+            this.refreshTimeout = undefined;
+        } else {
+            this.refreshTimeout = setTimeout(() => {
+                void this.checkState();
+            }, this.refreshTimeoutLength);
+        }
+    }
     protected async checkState(): Promise<void> {
         const oldUpid = this.state?.upid;
         this.state = await this.api.getState();
         if(this.state.upid !== oldUpid){
-            void this.refreshPlots();
+            console.log('new upid');
+            await this.refreshPlots();
         }
     }
     
@@ -475,7 +490,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             this.resizeTimeout = setTimeout(() => {
                 void this.resizePlot();
                 this.resizeTimeout = undefined;
-            }, this.resizeTimeoutLenght);
+            }, this.resizeTimeoutLength);
         }
     }
     
