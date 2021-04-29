@@ -211,17 +211,17 @@ interface ShowOptions {
 
 export class HttpgdViewer implements IHttpgdViewer {
     
-    parent: HttpgdManager;
+    readonly parent: HttpgdManager;
 
-    host: string;
-    token?: string;
+    readonly host: string;
+    readonly token?: string;
 
     // Actual webview where the plot viewer is shown
     // Will have to be created anew, if the user closes it and the plot changes
     webviewPanel?: vscode.WebviewPanel;
 
     // Api that provides plot contents etc.
-    api: Httpgd;
+    readonly api: Httpgd;
 
     // active plots
     plots: HttpgdPlot[] = [];
@@ -233,8 +233,11 @@ export class HttpgdViewer implements IHttpgdViewer {
     // Ids of plots that are not shown, but not closed inside httpgd
     hiddenPlots: PlotId[] = [];
     
-    stripStyles: boolean = true;
-    useMultirow: boolean = true;
+    readonly defaultStripStyles = true;
+    stripStyles: boolean = this.defaultStripStyles;
+    
+    readonly defaultUseMultiRow = true;
+    useMultirow: boolean = this.defaultUseMultiRow;
     
     // Size of the view area:
     viewHeight: number;
@@ -248,17 +251,17 @@ export class HttpgdViewer implements IHttpgdViewer {
     scale: number = this.scale0;
     
     resizeTimeout?: NodeJS.Timeout;
-    resizeTimeoutLength: number = 30;
+    readonly resizeTimeoutLength: number = 1300;
     
     refreshTimeout?: NodeJS.Timeout;
-    refreshTimeoutLength: number = 10;
+    readonly refreshTimeoutLength: number = 10;
     
-    htmlTemplate: string;
-    smallPlotTemplate: string;
-    htmlRoot: string;
+    readonly htmlTemplate: string;
+    readonly smallPlotTemplate: string;
+    readonly htmlRoot: string;
     
-    showOptions: ShowOptions;
-    webviewOptions: vscode.WebviewPanelOptions & vscode.WebviewOptions;
+    readonly showOptions: ShowOptions;
+    readonly webviewOptions: vscode.WebviewPanelOptions & vscode.WebviewOptions;
 
     // Computed properties:
 
@@ -483,7 +486,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     protected handleResize(height: number, width: number, userTriggered: boolean = false): void {
         this.viewHeight = height;
         this.viewWidth = width;
-        if(userTriggered){
+        if(userTriggered || this.resizeTimeoutLength === 0){
             clearTimeout(this.resizeTimeout);
             void this.resizePlot();
         } else if(!this.resizeTimeout){
