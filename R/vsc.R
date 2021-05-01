@@ -141,8 +141,18 @@ if (show_globalenv) {
 }
 
 removeTaskCallback("vsc.plot")
+use_httpgd <- identical(getOption("vsc.useHttpgd", FALSE), TRUE)
 show_plot <- !identical(getOption("vsc.plot", "Two"), FALSE)
-if (show_plot) {
+if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
+  options(device = function(...) {
+    httpgd::hgd(
+      silent = TRUE
+    )
+    .vsc$request("httpgd", url = httpgd::hgd_url())
+  })
+} else if(use_httpgd){
+  message("Install package `httpgd` to use vscode-R with httpgd!")
+} else if (show_plot) {
   dir_plot_history <- file.path(dir_session, "images")
   dir.create(dir_plot_history, showWarnings = FALSE, recursive = TRUE)
   plot_file <- file.path(dir_session, "plot.png")
