@@ -17,6 +17,8 @@ import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, ToggleMult
 
 const commands = [
     'showViewers',
+    'openUrl',
+    'openExternal',
     'showIndex',
     'toggleStyle',
     'toggleMultirow',
@@ -108,6 +110,19 @@ export class HttpgdManager {
         };
     }
     
+    public async openUrl(): Promise<void> {
+        const clipText = await vscode.env.clipboard.readText();
+        const val0 = clipText.split(/[\n ]/)[0];
+        const options: vscode.InputBoxOptions = {
+            value: val0,
+            prompt: 'Please enter the httpgd url'
+        };
+        const urlString = await vscode.window.showInputBox(options);
+        if(urlString){
+            this.showViewer(urlString);
+        }
+    }
+    
     // generic command handler
     public handleCommand(command: CommandName, hostOrWebviewUri?: string | vscode.Uri, ...args: any[]): void {
         // the number and type of arguments given to a command can vary, depending on where it was called from:
@@ -121,6 +136,9 @@ export class HttpgdManager {
             this.viewers.forEach(viewer => {
                 viewer.show(true);
             });
+            return;
+        } else if(command === 'openUrl'){
+            void this.openUrl();
             return;
         }
 
@@ -185,6 +203,9 @@ export class HttpgdManager {
                 break;
             } case 'zoomOut': {
                 void viewer.zoomOut();
+                break;
+            } case 'openExternal': {
+                void viewer.openExternal();
                 break;
             } default: {
                 break;
@@ -344,6 +365,15 @@ export class HttpgdViewer implements IHttpgdViewer {
             this.webviewPanel.reveal(undefined, preserveFocus);
         }
         this.parent.registerActiveViewer(this);
+    }
+    
+    public openExternal(): void {
+        let urlString = `http://${this.host}/live`;
+        if(this.token){
+            urlString += `?token=${this.token}`;
+        }
+        const uri = vscode.Uri.parse(urlString);
+        void vscode.env.openExternal(uri);
     }
     
     // focus a specific plot id

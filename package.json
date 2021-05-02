@@ -702,6 +702,18 @@
         "category": "R Httpgd",
         "command": "r.httpgd.showViewers",
         "icon": "$(versions)"
+      },
+      {
+        "title": "Open Httpgd Url",
+        "category": "R Httpgd",
+        "command": "r.httpgd.openUrl",
+        "icon": "$(link)"
+      },
+      {
+        "title": "Open in External Browser",
+        "category": "R Httpgd",
+        "command": "r.httpgd.openExternal",
+        "icon": "$(link-external)"
       }
     ],
     "keybindings": [
@@ -861,6 +873,16 @@
           "group": "navigation",
           "when": "resourceScheme =~ /webview/ && r.httpgd.active",
           "command": "r.httpgd.zoomOut"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.httpgd.active",
+          "command": "r.httpgd.openExternal"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.httpgd.active",
+          "command": "r.httpgd.openUrl"
         }
       ],
       "editor/context": [
