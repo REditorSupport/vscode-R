@@ -867,12 +867,14 @@
         {
           "group": "navigation",
           "when": "resourceScheme =~ /webview/ && r.httpgd.active",
-          "command": "r.httpgd.zoomIn"
+          "command": "r.httpgd.zoomIn",
+          "alt": "r.httpgd.zoomOut"
         },
         {
           "group": "navigation",
           "when": "resourceScheme =~ /webview/ && r.httpgd.active",
-          "command": "r.httpgd.zoomOut"
+          "command": "r.httpgd.zoomOut",
+          "alt": "r.httpgd.zoomIn"
         },
         {
           "group": "navigation",
