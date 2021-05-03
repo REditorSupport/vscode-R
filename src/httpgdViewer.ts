@@ -345,6 +345,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.resizeTimeoutLength = options.refreshTimeoutLength ?? this.resizeTimeoutLength;
         this.refreshTimeoutLength = options.refreshTimeoutLength ?? this.refreshTimeoutLength;
         this.api.start();
+        void this.checkState();
     }
 
 
