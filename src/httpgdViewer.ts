@@ -112,7 +112,7 @@ export class HttpgdManager {
     
     public async openUrl(): Promise<void> {
         const clipText = await vscode.env.clipboard.readText();
-        const val0 = clipText.split(/[\n ]/)[0];
+        const val0 = clipText.trim().split(/[\n ]/)[0];
         const options: vscode.InputBoxOptions = {
             value: val0,
             prompt: 'Please enter the httpgd url'
