@@ -1,19 +1,27 @@
 # Change Log
 
-# Latest updates
+## Latest updates
 
-From v1.6.6, You can check all of our changes from [Releae Page](https://github.com/Ikuyadeu/vscode-R/releases)
+You can check all of our changes from [Release Page](https://github.com/Ikuyadeu/vscode-R/releases)
 
-# [1.6.6](https://github.com/Ikuyadeu/vscode-R/releases/tag/v1.6.6)
+## [1.6.6](https://github.com/Ikuyadeu/vscode-R/releases/tag/v1.6.6)
 
-Thank you for contributors
-* @krlmlr 
+Highlight
+
+* Clarify error messages
+* Being more conservative to call object.size() in task callback
+* Send code to debug repl
+* shim the rstudioapi if it has already been loaded
+
+Thank you for your contributions.
+
+* @krlmlr
   * Update vscode engine #586
   * Satisfy markdownlint #587
 * @danielbasso
   * Initial Workspace Viewer str() functionality #583
 
-# 1.6.5
+## 1.6.5
 
 * Add links to help pages in hover #578
 * Move `r.runSource` and `r.knitRmd` to `editor/title/run` #573 (Fix #572)
@@ -24,23 +32,10 @@ Thank you for contributors
 * add option vsc.hover.str.max.level #545
 * Change workspace tooltip #544 (Thank you @ElianHugh)
 
-
-# 1.6.5
-
-* Add links to help pages in hover #578
-* Move `r.runSource` and `r.knitRmd` to `editor/title/run` #573 (Fix #572)
-* Fix so code can be run after creating terminal #567
-* Add option to keep terminal hidden after running code #566
-* Scroll to bottom after running a command #559 (Thank you @samkimhis)
-* Refactoring and implementation of webviewPanelSerializer #556
-* add option vsc.hover.str.max.level #545
-* Change workspace tooltip #544 (Thank you @ElianHugh)
-
-
-## 1,6,4
+## 1.6.4
 
 * Better error message when reading aliases (#518)
-* Keep promises and active bindings in globalenv (#521) 
+* Keep promises and active bindings in globalenv (#521)
 * Refactor extension.ts (#525)
 * Write aliases to file (#526)
 * add sendToConsole to rstudioapi emulation (#535)
@@ -48,6 +43,7 @@ Thank you for contributors
 * Add initial pipeline completion support (#530)
 * Add updatePackage command (#532)
 * Add option to preserve focus when opening help view (#541)
+
 ## 1.6.3
 
 * Add browser WebView command buttons #494
@@ -58,7 +54,7 @@ Thank you for contributors
 * Improve release action #505 (Fix #503)
 * Improve help view #502 (Follow up to #497)
 
-### Thank you for contributors works
+### Thank you for contributors works 1.6.3
 
 * @ElianHugh
   * Implement R workspace viewer #476 (Fix #416)
@@ -80,9 +76,10 @@ Thank you for contributors
 
 * Fix whole of style (Extends #361) (#474)
 
-### Thank you for contributors works
+### Thank you for contributors works 1.6.2
+
 * @markbaas: Fix The Ctrl+Enter shortcut does not work properly when a non-comment line in a function definition contains the "#" character. #462 (Fix #443)  
-* @kar9222: 
+* @kar9222:
   * Update README #480 (Fix #465)
   * RMarkdown: Add run & navigation commands. More customization. Refactor. #465
 
@@ -127,7 +124,6 @@ This version includes minor fix to stable new functions
   * The usage is added on the [wiki page](https://github.com/Ikuyadeu/vscode-R/wiki/RStudio-addin-support)
 
 * Recommend radian in README #420
-
 
 ## 1.4.6
 
@@ -174,7 +170,7 @@ This version includes minor fix to stable new functions
 
 * Add syntax highlight for DESCRIPTION and .Rproj #342 (Thank you @qinwf)
 * A lot of works (Thank you @gowerc)
-  * Enable default R location to be used on mac/linux if none is supplied #340 
+  * Enable default R location to be used on mac/linux if none is supplied #340
   * Added functionality to switch to an existing R terminal #338
   * Expose send text delay as a parameter #336
   * Supress auto-opening quote in roxygen comment #328
@@ -185,13 +181,12 @@ This version includes minor fix to stable new functions
 * Convert language files to Json #333 (Thank you @gowerc)
 * Define lint in package.json and use it in GitHub Actions #344
 
-
 ## 1.3.0
 
 * Change so setting changes take effect immediately (Fix #301)
 * Fix package volunerability
 * Improve .Rprofile
-* Remove --no-site-file from default r.rterm.option 
+* Remove --no-site-file from default r.rterm.option
 
 ## 1.2.8
 
@@ -203,7 +198,7 @@ This version includes minor fix to stable new functions
 * Add [new wiki page](https://github.com/Ikuyadeu/vscode-R/wiki) !
 * Use Windows registry to find R path
 * Fix handling grouped_df in dataview_table
-* Use GitHub Actions for linting 
+* Use GitHub Actions for linting
 
 ## 1.2.6
 
@@ -222,6 +217,7 @@ This version includes minor fix to stable new functions
 * Inject R Markdown features into Markdown grammar (Fixed #220, #116, #48, #36)
 
 ## 1.2.3
+
 * Fixed the function snippet (Fixed #230) (Thank you @stanmart)
 * Update activationEvents
 * Add more logging to session watcher
@@ -231,13 +227,13 @@ This version includes minor fix to stable new functions
 ## 1.2.2
 
 * View improvement (Thank you @renkun-ken)
-    * Fix dataview_table handling single row data
-    * Show WebView triggered by page_viewer in Active column
-    * Fix WebView Uri replacing
-    * Add row hover and select
-    * Improve session watcher initialization
-    * Use dev.args option when creating png device before replay
-    * Show plot history
+  * Fix dataview_table handling single row data
+  * Show WebView triggered by page_viewer in Active column
+  * Fix WebView Uri replacing
+  * Add row hover and select
+  * Improve session watcher initialization
+  * Use dev.args option when creating png device before replay
+  * Show plot history
 
 ## 1.2.1
 
@@ -247,12 +243,12 @@ This version includes minor fix to stable new functions
 ## 1.2.0
 
 * R session watcher (Thank you @renkun-ken). Usage is written on the README.md
-    * Attach Active Terminal (by command or clicking status bar item)
-    * Auto attach on R session startup: if init.R is sourced in .Rprofile, starting an R session will notify vscode-R to automatically attach to it.
-    * Provide hover to global symbol in attached session
-    * Show plot file on the fly
-    * Show WebView to present htmlwidgets and shiny apps
-    * Show WebView for data.frame and list object when calling View()
+  * Attach Active Terminal (by command or clicking status bar item)
+  * Auto attach on R session startup: if init.R is sourced in .Rprofile, starting an R session will notify vscode-R to automatically attach to it.
+  * Provide hover to global symbol in attached session
+  * Show plot file on the fly
+  * Show WebView to present htmlwidgets and shiny apps
+  * Show WebView for data.frame and list object when calling View()
 
 ## 1.1.9
 
@@ -289,7 +285,7 @@ This version includes minor fix to stable new functions
 
 ## v1.1.2
 
-* Fix send code for newlines and Radian #114 #117 
+* Fix send code for newlines and Radian #114 #117
 
 ## v1.1.1
 
@@ -318,7 +314,6 @@ This version includes minor fix to stable new functions
 
 * Shortcuts with R functions #101
 (fix #100) (Thank you @MaTo04)
-
 
 ## v1.0.3
 
