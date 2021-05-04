@@ -1176,15 +1176,15 @@
           ],
           "markdownDescription": "How to display plot previews if more than one row required."
         },
-        "r.httpgd.timouts.resizeTimeout": {
+        "r.httpgd.timeouts.resizeTimeout": {
           "type": "number",
           "default": 100,
-          "markdownDescription": "Timout in ms to use between plot resizes."
+          "markdownDescription": "timeout in ms to use between plot resizes."
         },
         "r.httpgd.timeouts.refreshTimeout": {
           "type": "number",
           "default": 10,
-          "markdownDescription": "Timout in ms to use between plot refreshs."
+          "markdownDescription": "timeout in ms to use between plot refreshs."
         }
       }
     },
