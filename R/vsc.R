@@ -141,7 +141,7 @@ if (show_globalenv) {
 }
 
 removeTaskCallback("vsc.plot")
-use_httpgd <- identical(getOption("vsc.useHttpgd", FALSE), TRUE)
+use_httpgd <- identical(getOption("vsc.use_httpgd", FALSE), TRUE)
 show_plot <- !identical(getOption("vsc.plot", "Two"), FALSE)
 if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
   options(device = function(...) {
