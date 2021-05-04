@@ -150,7 +150,7 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
     )
     .vsc$request("httpgd", url = httpgd::hgd_url())
   })
-} else if(use_httpgd){
+} else if (use_httpgd) {
   message("Install package `httpgd` to use vscode-R with httpgd!")
 } else if (show_plot) {
   dir_plot_history <- file.path(dir_session, "images")
