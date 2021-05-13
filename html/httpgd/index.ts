@@ -29,6 +29,7 @@ const handler = document.querySelector('#handler') as HTMLDivElement;
 const largePlotDiv = document.querySelector('#largePlot') as HTMLDivElement;
 const cssLink = document.querySelector('link.overwrites') as HTMLLinkElement;
 const smallPlotDiv = document.querySelector('#smallPlots') as HTMLDivElement;
+const placeholderDiv = document.querySelector('#placeholder') as HTMLDivElement;
 
 
 function getSmallPlots(): HTMLAnchorElement[] {
@@ -195,13 +196,13 @@ document.addEventListener('mousemove', (e) => {
   const containerOffsetTop = document.body.offsetTop;
 
   // Get x-coordinate of pointer relative to container
-  const pointerRelativeYpos = e.clientY - containerOffsetTop;
+  const pointerRelativeYpos = e.clientY - containerOffsetTop + window.scrollY;
   
   // Arbitrary minimum width set on box A, otherwise its inner content will collapse to width of 0
   const largePlotMinHeight = 60;
 
   // Resize large plot
-  const newHeight = Math.max(largePlotMinHeight, pointerRelativeYpos - 5);
+  const newHeight = Math.max(largePlotMinHeight, pointerRelativeYpos - 5); // <- why 5?
   const newHeightString = `${newHeight}px`;
 
   if(largePlotDiv.style.height !== newHeightString){

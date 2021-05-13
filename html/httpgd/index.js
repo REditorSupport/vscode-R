@@ -11,6 +11,7 @@ const handler = document.querySelector('#handler');
 const largePlotDiv = document.querySelector('#largePlot');
 const cssLink = document.querySelector('link.overwrites');
 const smallPlotDiv = document.querySelector('#smallPlots');
+const placeholderDiv = document.querySelector('#placeholder');
 function getSmallPlots() {
     const smallPlots = [];
     document.querySelectorAll('a.focusPlot').forEach(elm => {
@@ -148,11 +149,11 @@ document.addEventListener('mousemove', (e) => {
     // Get offset
     const containerOffsetTop = document.body.offsetTop;
     // Get x-coordinate of pointer relative to container
-    const pointerRelativeYpos = e.clientY - containerOffsetTop;
+    const pointerRelativeYpos = e.clientY - containerOffsetTop + window.scrollY;
     // Arbitrary minimum width set on box A, otherwise its inner content will collapse to width of 0
     const largePlotMinHeight = 60;
     // Resize large plot
-    const newHeight = Math.max(largePlotMinHeight, pointerRelativeYpos - 5);
+    const newHeight = Math.max(largePlotMinHeight, pointerRelativeYpos - 5); // <- why 5?
     const newHeightString = `${newHeight}px`;
     if (largePlotDiv.style.height !== newHeightString) {
         largePlotDiv.style.height = newHeightString;

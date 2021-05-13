@@ -44,6 +44,10 @@ svg {
     transition-delay: .2s;
 }
 
+#placeholder {
+    height: 95vh;
+}
+
 /* Plot history: */
 
 #smallPlots {
