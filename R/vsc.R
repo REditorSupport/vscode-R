@@ -418,7 +418,11 @@ attach <- function() {
   }
   request("attach",
     tempdir = tempdir,
-    plot = getOption("vsc.plot", "Two"))
+    plot = getOption("vsc.plot", "Two")
+  )
+  if (identical(names(dev.cur()), "httpgd")) {
+    .vsc$request("httpgd", url = httpgd::hgd_url())
+  }
 }
 
 path_to_uri <- function(path) {
