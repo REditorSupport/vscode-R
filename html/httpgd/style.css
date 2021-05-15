@@ -28,6 +28,7 @@ svg {
 #largePlot {
     overflow-x: auto;
     overflow-y: hidden;
+    padding: 10px;
 }
 
 /* Dragbar to resize main plot: */
@@ -35,8 +36,6 @@ svg {
     background-color: var(--vscode-textSeparator-foreground);
     height: 4px;
     cursor: ns-resize;
-    margin-top: 6px;
-    margin-bottom: 10px;
 }
 #handler:hover, #handler.dragging {
     background-color: var(--vscode-focusBorder);
@@ -57,6 +56,7 @@ svg {
     overflow-x: auto;
     flex-direction: row;
     overflow-y: hidden;
+    padding: 10px;
 }
 
 #smallPlots.multirow {

@@ -9,6 +9,7 @@ let oldHeight = -1;
 let oldWidth = -1;
 const handler = document.querySelector('#handler');
 const largePlotDiv = document.querySelector('#largePlot');
+const largeSvg = largePlotDiv.querySelector('svg');
 const cssLink = document.querySelector('link.overwrites');
 const smallPlotDiv = document.querySelector('#smallPlots');
 const placeholderDiv = document.querySelector('#placeholder');
@@ -129,6 +130,13 @@ function toggleMultirow(useMultirow) {
         smallPlotDiv.classList.remove('multirow');
     }
 }
+////
+// On window load
+////
+window.onload = () => {
+    largePlotDiv.style.height = `${largeSvg.clientHeight}px`;
+    postResizeMessage(true);
+};
 ////
 // Resize bar
 ////

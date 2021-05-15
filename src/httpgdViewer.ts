@@ -499,7 +499,6 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     // use a delay to avoid refreshing while a plot is incrementally drawn
     protected checkStateDelayed(): void {
-        console.log('checking state');
         clearTimeout(this.refreshTimeout);
         if(this.refreshTimeoutLength <= 0){
             void this.checkState();
@@ -514,7 +513,6 @@ export class HttpgdViewer implements IHttpgdViewer {
         const oldUpid = this.state?.upid;
         this.state = await this.api.getState();
         if(this.state.upid !== oldUpid){
-            console.log('new upid');
             await this.refreshPlots();
         }
     }
