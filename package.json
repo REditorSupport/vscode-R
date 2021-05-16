@@ -1176,15 +1176,15 @@
           ],
           "markdownDescription": "How to display plot previews if more than one row required."
         },
-        "r.plot.timeouts.resizeTimeout": {
+        "r.plot.timeouts.resizeInterval": {
           "type": "number",
           "default": 100,
-          "markdownDescription": "timeout in ms to use between plot resizes."
+          "markdownDescription": "Interval in ms to wait between plot resizes."
         },
-        "r.plot.timeouts.refreshTimeout": {
+        "r.plot.timeouts.refreshInterval": {
           "type": "number",
           "default": 10,
-          "markdownDescription": "timeout in ms to use between plot refreshs."
+          "markdownDescription": "Interval in ms to wait between plot refreshs."
         }
       }
     },
