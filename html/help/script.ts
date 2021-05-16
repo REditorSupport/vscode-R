@@ -1,7 +1,11 @@
-// the javascript file script.js is generated from script.ts
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
-// used to communicate with vscode, can only be invoked once:
-// @ts-ignore
+declare function acquireVsCodeApi(): VsCode;
+
 const vscode = acquireVsCodeApi(); 
 
 // notify vscode when mouse buttons are clicked
@@ -9,12 +13,14 @@ const vscode = acquireVsCodeApi();
 window.onmousedown = (ev) => {
     vscode.postMessage({
         message: 'mouseClick',
-        button: ev.button,
+        button: Number(ev.button),
         scrollY: window.scrollY
     });
 };
 
 
+// handle back/forward requests from vscode ui
+// simulates a mousclick on key 3 or 4
 window.addEventListener('message', (ev) => {
     const message = ev.data;
     if(message.command === 'goBack'){
@@ -30,7 +36,7 @@ window.addEventListener('message', (ev) => {
             scrollY: window.scrollY
         });
     }
-})
+});
 
 
 // do everything after loading the body

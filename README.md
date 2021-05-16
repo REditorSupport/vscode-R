@@ -234,6 +234,10 @@ options(vsc.str.max.level = 0 | 2 )
 # The R session could become laggy if there are large character vectors in
 #   objects in the global environment when this option is `TRUE`.
 options(vsc.show_object_size = FALSE | TRUE)
+
+# Use the httpgd-based plot viewer.
+# Requires the R package `httpgd` to be installed.
+options(vsc.use_httpgd= FALSE | TRUE)
 ```
 
 The first values are the default and all subsequent values after `|` are available choices.

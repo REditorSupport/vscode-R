@@ -314,3 +314,10 @@ export class DummyMemento implements vscode.Memento {
 		this.items.set(key, value);
 	}
 }
+
+// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any
+export async function setContext(key: string, value: any): Promise<void> {
+    await vscode.commands.executeCommand(
+        'setContext', key, value
+    );
+}
