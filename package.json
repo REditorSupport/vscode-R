@@ -1195,6 +1195,7 @@
     ]
   },
   "scripts": {
+    "vscode:prepublish": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
     "compile": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
     "watch": "tsc -p . --watch",
     "pretest": "tsc -p ./",
