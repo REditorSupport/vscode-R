@@ -1,5 +1,5 @@
 <a
-    href="<%- makeCommandUri('r.httpgd.showIndex', plot.host, plot.id) %> "
+    href="<%- makeCommandUri('r.plot.showIndex', plot.host, plot.id) %> "
     title="Plot <%- plot.id %>"
     class="focusPlot <%- plot.id === activePlot ? 'active' : '' %> "
     plotId="<%- plot.id %>"
@@ -7,7 +7,7 @@
     <%- plot.svg %>
 </a>
 <a
-    href="<%- makeCommandUri('r.httpgd.hidePlot', plot.host, plot.id) %>"
+    href="<%- makeCommandUri('r.plot.hidePlot', plot.host, plot.id) %>"
     title="Hide Plot"
     class="hidePlot"
 >

@@ -39,7 +39,7 @@ type CommandName = typeof commands[number];
 export function initializeHttpgd(): HttpgdManager {
     const httpgdManager = new HttpgdManager();
     for(const cmd of commands){
-        const fullCommand = `r.httpgd.${cmd}`;
+        const fullCommand = `r.plot.${cmd}`;
         const cb = httpgdManager.getCommandHandler(cmd);
         vscode.commands.registerCommand(fullCommand, cb);
     }
@@ -76,12 +76,12 @@ export class HttpgdManager {
             viewer.show();
         } else{
             const conf = config();
-            const colorTheme = conf.get('httpgd.defaults.colorTheme', 'vscode');
-            const smallPlotLayout = conf.get('httpgd.defaults.plotPreviewLayout', 'multirow');
+            const colorTheme = conf.get('plot.defaults.colorTheme', 'vscode');
+            const smallPlotLayout = conf.get('plot.defaults.plotPreviewLayout', 'multirow');
             this.viewerOptions.stripStyles = (colorTheme === 'vscode');
             this.viewerOptions.useMultirow = (smallPlotLayout === 'multirow');
-            this.viewerOptions.refreshTimeoutLength = conf.get('httpgd.timeouts.refreshTimeout', 10);
-            this.viewerOptions.resizeTimeoutLength = conf.get('httpgd.timeouts.resizeTimeout', 100);
+            this.viewerOptions.refreshTimeoutLength = conf.get('plot.timeouts.refreshTimeout', 10);
+            this.viewerOptions.resizeTimeoutLength = conf.get('plot.timeouts.resizeTimeout', 100);
             this.viewerOptions.token = token;
             const viewer = new HttpgdViewer(host, this.viewerOptions);
             this.viewers.unshift(viewer);
@@ -476,11 +476,11 @@ export class HttpgdViewer implements IHttpgdViewer {
 	public async setContextValues(mightBeInBackground: boolean = false): Promise<void> {
         if(this.webviewPanel?.active){
             this.parent.registerActiveViewer(this);
-            await setContext('r.httpgd.active', true);
-            await setContext('r.httpgd.canGoBack', this.activeIndex > 0);
-            await setContext('r.httpgd.canGoForward', this.activeIndex < this.plots.length - 1);
+            await setContext('r.plot.active', true);
+            await setContext('r.plot.canGoBack', this.activeIndex > 0);
+            await setContext('r.plot.canGoForward', this.activeIndex < this.plots.length - 1);
         } else if (!mightBeInBackground){
-            await setContext('r.httpgd.active', false);
+            await setContext('r.plot.active', false);
         }
 	}
     
