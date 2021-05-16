@@ -15,7 +15,7 @@
       "outFiles": [
         "${workspaceRoot}/out/src/**/*.js"
       ],
-      "preLaunchTask": "npm: compile"
+      "preLaunchTask": "npm: watch"
     },
     {
       "name": "Launch Extension (--disable-extensions)",
@@ -29,7 +29,7 @@
       "outFiles": [
         "${workspaceRoot}/out/src/**/*.js"
       ],
-      "preLaunchTask": "npm: compile"
+      "preLaunchTask": "npm: watch"
     },
     {
       "name": "Extension Tests",

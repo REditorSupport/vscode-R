@@ -65,7 +65,8 @@ export class HelpPanel {
 		if(!this.panel){
 			const webViewOptions: vscode.WebviewOptions & vscode.WebviewPanelOptions = {
 				enableScripts: true,
-				enableFindWidget: true
+				enableFindWidget: true,
+				retainContextWhenHidden: true // keep scroll position when not focussed
 			};
 			const showOptions = {
 				viewColumn: this.viewColumn,
