@@ -562,10 +562,9 @@ export class HttpgdViewer implements IHttpgdViewer {
         });
         this.plots = await Promise.all(newPlots);
         if(this.plots.length !== nPlots){
-            redraw = true;
             this.activePlot = this.plots[this.plots.length - 1]?.id;
         }
-        if(redraw){
+        if(redraw || !this.webviewPanel){
             this.refreshHtml();
         } else{
             for(const plt of this.plots){
