@@ -80,8 +80,8 @@ export class HttpgdManager {
             const smallPlotLayout = conf.get('plot.defaults.plotPreviewLayout', 'multirow');
             this.viewerOptions.stripStyles = (colorTheme === 'vscode');
             this.viewerOptions.useMultirow = (smallPlotLayout === 'multirow');
-            this.viewerOptions.refreshTimeoutLength = conf.get('plot.timeouts.refreshInterval', 10);
-            this.viewerOptions.resizeTimeoutLength = conf.get('plot.timeouts.resizeInterval', 100);
+            this.viewerOptions.refreshTimeoutLength = conf.get('plot.timing.refreshInterval', 10);
+            this.viewerOptions.resizeTimeoutLength = conf.get('plot.timing.resizeInterval', 100);
             this.viewerOptions.token = token;
             const viewer = new HttpgdViewer(host, this.viewerOptions);
             this.viewers.unshift(viewer);
