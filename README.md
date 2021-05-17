@@ -237,7 +237,7 @@ options(vsc.show_object_size = FALSE | TRUE)
 
 # Use the httpgd-based plot viewer.
 # Requires the R package `httpgd` to be installed.
-options(vsc.use_httpgd= FALSE | TRUE)
+options(vsc.use_httpgd = FALSE | TRUE)
 ```
 
 The first values are the default and all subsequent values after `|` are available choices.
