@@ -142,7 +142,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     vscode.languages.registerCompletionItemProvider('r', new completions.StaticCompletionItemProvider(), '@');
 
     // deploy liveshare listener
-    void rShare.initLiveShare(context);
+    await rShare.initLiveShare(context);
 
     // register task provider
     const type = 'R';
@@ -167,7 +167,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // deploy session watcher (if configured by user)
     if (enableSessionWatcher) {
-        if (!(await rShare.isGuest())) {
+        if (!(rShare.isGuest())) {
             console.info('Initialize session watcher');
             void session.deploySessionWatcher(context.extensionPath);
 

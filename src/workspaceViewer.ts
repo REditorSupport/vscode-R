@@ -235,8 +235,8 @@ export function loadWorkspace(): void {
 	}
 }
 
-export async function viewItem(node: string): Promise<void> {
-	if (await isLiveShare()) {
+export function viewItem(node: string): void {
+	if (isLiveShare()) {
 		void runTextInTerm(`View(${node}, .UUID = ${UUID})`);
 	} else {
 		void runTextInTerm(`View(${node})`);

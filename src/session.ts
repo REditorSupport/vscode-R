@@ -158,7 +158,7 @@ async function updatePlot() {
                 viewColumn: ViewColumn[plotView],
             });
             console.info('[updatePlot] Done');
-            if (await isLiveShare() === true) {
+            if (isLiveShare() === true) {
                 void rHostService.notifyPlot(plotFile);
             }
         } else {
@@ -179,7 +179,7 @@ async function updateGlobalenv() {
             globalenv = JSON.parse(content);
             void rWorkspace?.refresh();
             console.info('[updateGlobalenv] Done');
-            if (await isLiveShare() === true) {
+            if (isLiveShare() === true) {
                 rHostService.notifyGlobalenv(globalenvFile);
             }
         } else {
@@ -207,7 +207,7 @@ export async function showBrowser(url: string, title: string, viewer: string | b
                 enableScripts: true,
                 retainContextWhenHidden: true,
             });
-        if (await isHost()) {
+        if (isHost()) {
             await shareBrowser(url, title);
         }
         panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
@@ -222,11 +222,11 @@ export async function showBrowser(url: string, title: string, viewer: string | b
             }
             void commands.executeCommand('setContext', 'r.browser.active', e.webviewPanel.active);
         });
-        panel.onDidDispose(async () => {
+        panel.onDidDispose(() => {
             activeBrowserPanel = undefined;
             activeBrowserUri = undefined;
             activeBrowserExternalUri = undefined;
-            if (await isHost()) {
+            if (isHost()) {
                 closeBrowser(url);
             }
             void commands.executeCommand('setContext', 'r.browser.active', false);
@@ -603,7 +603,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         } else {
             console.info(`[updateRequest] Ignored request outside workspace`);
         }
-        if (await isLiveShare() === true) {
+        if (isLiveShare() === true) {
             void rHostService.notifyRequest(requestFile);
         }
     }

@@ -139,8 +139,8 @@ export const Commands: ICommands = {
 // aggregated under these two methods. This is because the host service
 // has no request methods, and for *most* purposes, there is little functional
 // difference between request and notify.
-export async function onRequest(name: string, command: unknown, service: vsls.SharedService | vsls.SharedServiceProxy | null): Promise<void> {
-    if (await isGuest()) {
+export function onRequest(name: string, command: unknown, service: vsls.SharedService | vsls.SharedServiceProxy | null): void {
+    if (isGuest()) {
         // is guest service
         (service as vsls.SharedServiceProxy).onNotify(name, command as vsls.NotifyHandler);
     } else {
@@ -149,8 +149,8 @@ export async function onRequest(name: string, command: unknown, service: vsls.Sh
     }
 }
 
-export async function request(name: string, ...rest: unknown[]): Promise<unknown> {
-    if (await isGuest()) {
+export function request(name: string, ...rest: unknown[]): unknown {
+    if (isGuest()) {
         if (rest !== undefined) {
             return (service as vsls.SharedServiceProxy).request(name, rest);
         } else {

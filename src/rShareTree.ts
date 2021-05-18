@@ -123,8 +123,8 @@ class CommandNode extends ToggleNode {
         treeProvider.refresh();
     }
 
-    public label: string = 'Forward guest commands';
-    public tooltip: string = 'Whether R commands should be forwarded from the guest to the host terminal (bypasses terminal permissions)';
+    public label: string = 'Allow guests to interact with host R extension';
+    public tooltip: string = 'Whether commands to interact with the R extension should be forwarded from the guest to the host (bypasses permissions); shared R terminal (command line) permissions can be toggled in the Live Share extension';
     public contextValue: string = 'commandNode';
     public iconPath: vscode.ThemeIcon = new vscode.ThemeIcon('debug-step-over');
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None;

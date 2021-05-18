@@ -27,35 +27,27 @@ export const UUID = Math.floor(Math.random() * Date.now());
 
 /// state-tracking bools
 // Bool to check if live share is loaded and active
-export async function isLiveShare(): Promise<boolean> {
-    const shareStarted = (await vsls.getApi())?.session.id;
+export function isLiveShare(): boolean {
+    const shareStarted = liveSession?.session?.id;
     // If there is a hosted session*, return true
     // else return false
     // * using vsls.getApi() instead of vsls.getApi().session.id
     // * will always return true, even if a session is not active
     // * (a session id will only exist if a session is active)
-    if (shareStarted) {
-        return true;
+    return !!shareStarted;
+}
+
+export function isGuest(): boolean {
+    if (isLiveShare() === true) {
+        return liveSession.session.role === vsls.Role.Guest;
     } else {
         return false;
     }
 }
 
-export async function isGuest(): Promise<boolean> {
-    if ((await isLiveShare()) === true) {
-        return liveSession.session.role === vsls.Role.Guest ?
-            true :
-            false;
-    } else {
-        return false;
-    }
-}
-
-export async function isHost(): Promise<boolean> {
-    if ((await isLiveShare()) === true) {
-        return liveSession.session.role === vsls.Role.Host ?
-            true :
-            false;
+export function isHost(): boolean {
+    if (isLiveShare() === true) {
+        return liveSession.session.role === vsls.Role.Host;
     } else {
         return false;
     }
@@ -66,7 +58,7 @@ export async function isHost(): Promise<boolean> {
 export async function initLiveShare(context: vscode.ExtensionContext): Promise<void> {
     if (enableSessionWatcher) {
         await LiveSessionListener();
-        isGuestSession = await isGuest();
+        isGuestSession = isGuest();
         if (!isGuestSession) {
             // Construct tree view for host
             initTreeView();
@@ -186,22 +178,22 @@ export class HostService {
     // watcher, and can rely on the host to tell when something needs to be
     // updated
     public notifyGlobalenv(file: string): void {
-        if (this.isStarted) {
+        if (this._isStarted) {
             void request(Callback.NotifyEnvUpdate, file);
         }
     }
     public notifyRequest(file: string, force: boolean = false): void {
-        if (this.isStarted) {
+        if (this._isStarted) {
             void request(Callback.NotifyRequestUpdate, file, force);
         }
     }
     public notifyPlot(file: string): void {
-        if (this.isStarted) {
+        if (this._isStarted) {
             void request(Callback.NotifyPlotUpdate, file);
         }
     }
     public orderGuestDetach(): void {
-        if (this.isStarted) {
+        if (this._isStarted) {
             void request(Callback.OrderDetach);
         }
     }
@@ -210,11 +202,7 @@ export class HostService {
 export class GuestService {
     private _isStarted: boolean = false;
     public isStarted(): boolean {
-        if (this._isStarted === true) {
-            return true;
-        } else {
-            return false;
-        }
+        return this._isStarted;
     }
     public async startService(): Promise<void> {
         service = await liveSession.getSharedService(ShareProviderName);
@@ -236,7 +224,7 @@ export class GuestService {
     // This ensures that guests without read/write access can still view the
     // R workspace
     public requestAttach(): void {
-        if (this.isStarted) {
+        if (this._isStarted) {
             void request(Callback.RequestAttachGuest);
             // focus guest term
             const rTermNameOptions = ['R [Shared]', 'R Interactive [Shared]'];
@@ -279,7 +267,7 @@ export class GuestService {
                 }
             } else {
                 const content: Buffer | unknown = await request(Callback.GetFileContent, file);
-                if (content !== undefined) {
+                if (content) {
                     return content as Buffer;
                 } else {
                     console.error('[GuestService] failed to retrieve file content (not of type "Buffer")');
@@ -290,7 +278,7 @@ export class GuestService {
 
     public async requestHelpContent(file: string): Promise<HelpFile> {
         const content: string | null | unknown = await request(Callback.GetHelpFileContent, file);
-        if (content !== undefined) {
+        if (content) {
             return content as HelpFile;
         }
     }
