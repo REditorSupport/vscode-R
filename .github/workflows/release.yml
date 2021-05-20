@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - run: node $SCRIPT_DIR/enableWebpack.js
       - run: npm install
       - uses: lannonbr/vsce-action@master
         with:
@@ -49,10 +50,10 @@ jobs:
   publish:
     name: Publish
     timeout-minutes: 30
-    needs: release # doesn't really need these, just to make sure that packaging etc worked
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - run: node $SCRIPT_DIR/enableWebpack.js
       - run: npm install
       - uses: lannonbr/vsce-action@master
         with:
