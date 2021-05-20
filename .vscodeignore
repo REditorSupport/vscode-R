@@ -1,9 +1,3 @@
-
-dist
-# node_modules #withWebpack
-# out/ #withWebpack
-# !dist #withWebpack
-
 .csv
 .github/**
 .gitignore
@@ -24,3 +18,7 @@ vsc-extension-quickstart.md
 webpack.config.js
 .markdownlint.json
 .eslintignore
+
+dist #withoutWebpack
+# node_modules #withWebpack
+# out/ #withWebpack

@@ -6,6 +6,7 @@ const fileVscodeignore = './.vscodeignore';
 
 let vscodeignore = fs.readFileSync(fileVscodeignore, 'utf-8');
 vscodeignore = vscodeignore.replace(/^#(.*)#\s*withWebpack\s*$/gm, '$1');
+vscodeignore = vscodeignore.replace(/^(.*#\s*withoutWebpack\s*)$/gm, '# $1');
 fs.writeFileSync(fileVscodeignore, vscodeignore);
 
 
