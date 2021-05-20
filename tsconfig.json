@@ -15,6 +15,6 @@
         "html",
         "node_modules",
         ".vscode-test",
-        "scripts"
+        ".github"
     ]
 }
