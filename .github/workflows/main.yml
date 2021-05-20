@@ -1,5 +1,8 @@
 name: main
 on: [push, pull_request]
+env:
+  SCRIPT_DIR: ./.github/scripts
+
 jobs:
   test:
     strategy:
@@ -23,6 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: npm install
+      - run: node $SCRIPT_DIR/enableWebpack.js
       - uses: lannonbr/vsce-action@master
         with:
           args: "package -o $VSIX_FILE"
