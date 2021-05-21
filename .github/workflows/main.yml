@@ -77,6 +77,6 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: "13.x"
-      - run: yarn ci
+      - run: yarn install
       - name: Run devreplay
         run: ./node_modules/.bin/devreplay ./src devreplay.json
