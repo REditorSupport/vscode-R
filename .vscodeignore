@@ -19,6 +19,9 @@ webpack.config.js
 .markdownlint.json
 .eslintignore
 
-dist #withoutWebpack
 # node_modules #withWebpack
 # out/ #withWebpack
+
+# withoutWebpack:
+dist
+# /withoutWebpack
