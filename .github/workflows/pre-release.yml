@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: node $SCRIPT_DIR/enableWebpack.js
-      - run: npm install
+      - run: yarn install
       - uses: lannonbr/vsce-action@master
         with:
           args: "package -o $FILE_OUT"

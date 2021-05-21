@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: "13.x"
-      - run: npm install
+      - run: yarn install
       - name: Run tests
         uses: GabrielBB/xvfb-action@v1.0
         with:
@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - run: node $SCRIPT_DIR/enableWebpack.js
-      - run: npm install
+      - run: yarn install
       - uses: lannonbr/vsce-action@master
         with:
           args: "package -o $VSIX_FILE"
@@ -41,8 +41,8 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: "13.x"
-      - run: npm install
-      - run: npm run lint
+      - run: yarn install
+      - run: yarn run lint
   markdownlint-cli:
     runs-on: ubuntu-latest
     steps:
@@ -77,6 +77,6 @@ jobs:
       - uses: actions/setup-node@v1
         with:
           node-version: "13.x"
-      - run: npm ci
+      - run: yarn ci
       - name: Run devreplay
         run: ./node_modules/.bin/devreplay ./src devreplay.json
