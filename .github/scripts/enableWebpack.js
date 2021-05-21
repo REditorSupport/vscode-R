@@ -5,7 +5,7 @@ var fs = require("fs");
 var fileVscodeignore = './.vscodeignore';
 var vscodeignore = fs.readFileSync(fileVscodeignore, 'utf-8');
 vscodeignore = vscodeignore.replace(/^#(.*)#\s*withWebpack\s*$/gm, '$1');
-vscodeignore = vscodeignore.replace(/^\s*#\s*withoutWebpack(?:.|\n)*?^\s*#\s*\/withoutWebpack/gm, '');
+vscodeignore = vscodeignore.replace(/^\s*#\s*withoutWebpack(?:.|\r|\n)*?^\s*#\s*\/withoutWebpack/gm, '');
 fs.writeFileSync(fileVscodeignore, vscodeignore);
 // adjust package.json
 var filePkgJson = './package.json';
