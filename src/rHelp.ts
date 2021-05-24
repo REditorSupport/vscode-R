@@ -11,7 +11,7 @@ import { HelpPanel } from './rHelpPanel';
 import { HelpProvider, AliasProvider } from './rHelpProvider';
 import { HelpTreeWrapper } from './rHelpTree';
 import { PackageManager } from './rHelpPackages';
-import { isGuestSession, rGuestService } from './rShare';
+import { isGuestSession, rGuestService } from './liveshare/share';
 
 
 // Initialization function that is called once when activating the extension

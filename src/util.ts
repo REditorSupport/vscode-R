@@ -6,7 +6,7 @@ import winreg = require('winreg');
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
-import { rGuestService, isGuestSession } from './rShare';
+import { rGuestService, isGuestSession } from './liveshare/share';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -68,7 +68,7 @@ export function getRPathConfigEntry(term: boolean = false): string {
 
 export async function getRpath(quote=false, overwriteConfig?: string): Promise<string> {
     let rpath = '';
-    
+
     // try the config entry specified in the function arg:
     if(overwriteConfig){
         rpath = config().get<string>(overwriteConfig);

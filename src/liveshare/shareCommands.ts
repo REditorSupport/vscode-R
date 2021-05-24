@@ -2,14 +2,14 @@ import * as vsls from 'vsls';
 import * as vscode from 'vscode';
 import * as fs from 'fs-extra';
 
-import { rHostService, isGuest, service } from './rShare';
-import { updateGuestRequest, updateGuestGlobalenv, updateGuestPlot, detachGuest } from './rShareSession';
-import { forwardCommands, shareWorkspace } from './rShareTree';
-import { runTextInTerm } from './rTerminal';
-import { requestFile } from './session';
-import { doesTermExist } from './util';
-import { HelpFile } from './rHelp';
-import { globalRHelp } from './extension';
+import { rHostService, isGuest, service } from './share';
+import { updateGuestRequest, updateGuestGlobalenv, updateGuestPlot, detachGuest } from './shareSession';
+import { forwardCommands, shareWorkspace } from './shareTree';
+import { runTextInTerm } from '../rTerminal';
+import { requestFile } from '../session';
+import { doesTermExist } from '../util';
+import { HelpFile } from '../rHelp';
+import { globalRHelp } from '../extension';
 
 // used in sending messages to the guest service,
 // distinguishes the type of vscode message to show

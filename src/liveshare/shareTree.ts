@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
-import { config } from './util';
-import { isLiveShare, rHostService } from './rShare';
+import { config } from '../util';
+import { isLiveShare, rHostService } from './share';
 
 export let forwardCommands: boolean;
 export let shareWorkspace: boolean;
@@ -36,20 +36,20 @@ export class LiveShareTreeProvider implements vscode.TreeDataProvider<Node> {
 
     // If a node needs to be collapsible,
     // change the element condition & return value
-    async getChildren(element?: Node): Promise<Node[]> {
+    getChildren(element?: Node): Node[] {
         if (element) {
             return;
         } else {
-            return await this.getNodes();
+            return this.getNodes();
         }
     }
 
     // To add a tree item to the LiveShare R view,
     // write a class object that extends Node and
     // add it to the list of nodes here
-    private async getNodes(): Promise<Node[]> {
+    private getNodes(): Node[] {
         let items: Node[] = undefined;
-        if (await isLiveShare()) {
+        if (isLiveShare()) {
             items = [
                 new ShareNode(),
                 new CommandNode(),

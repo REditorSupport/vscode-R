@@ -2,11 +2,11 @@ import * as vscode from 'vscode';
 import * as vsls from 'vsls';
 import * as fs from 'fs-extra';
 
-import { enableSessionWatcher, extensionContext } from './extension';
-import { attachActiveGuest, browserDisposables, initGuest, removeGuestFiles } from './rShareSession';
-import { initTreeView, rLiveShareProvider, ToggleNode } from './rShareTree';
-import { Commands, Callback, onRequest, request } from './rShareCommands';
-import { HelpFile } from './rHelp';
+import { enableSessionWatcher, extensionContext } from '../extension';
+import { attachActiveGuest, browserDisposables, initGuest, removeGuestFiles } from './shareSession';
+import { initTreeView, rLiveShareProvider, ToggleNode } from './shareTree';
+import { Commands, Callback, onRequest, request } from './shareCommands';
+import { HelpFile } from '../rHelp';
 
 /// LiveShare
 export let rHostService: HostService = undefined;

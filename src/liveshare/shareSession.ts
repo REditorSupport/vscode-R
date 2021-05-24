@@ -3,11 +3,11 @@ import * as vscode from 'vscode';
 import * as fs from 'fs-extra';
 import * as vsls from 'vsls';
 
-import { globalRHelp, rWorkspace } from './extension';
-import { config, readContent } from './util';
-import { removeDirectory, showBrowser, showDataView, showWebView } from './session';
-import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from './rShare';
-import { autoShareBrowser } from './rShareTree';
+import { globalRHelp, rWorkspace } from '../extension';
+import { config, readContent } from '../util';
+import { removeDirectory, showBrowser, showDataView, showWebView } from '../session';
+import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from './share';
+import { autoShareBrowser } from './shareTree';
 
 // Workspace Vars
 let guestPid: string;

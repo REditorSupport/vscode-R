@@ -15,8 +15,8 @@ import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { rWorkspace, globalRHelp } from './extension';
-import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession } from './rShare';
-import { closeBrowser, guestResDir, shareBrowser } from './rShareSession';
+import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession } from './liveshare/share';
+import { closeBrowser, guestResDir, shareBrowser } from './liveshare/shareSession';
 
 export let globalenv: any;
 let resDir: string;
