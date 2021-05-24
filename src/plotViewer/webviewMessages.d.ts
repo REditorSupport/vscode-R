@@ -14,6 +14,7 @@ declare function acquireVsCodeApi(): VsCode;
 export interface IMessage {
   message: string;
 }
+
 export interface ResizeMessage extends IMessage {
   message: 'resize',
   height: number,
@@ -24,18 +25,8 @@ export interface LogMessage extends IMessage {
   message: 'log',
   body: any
 }
-export interface MouseClickMessage extends IMessage {
-  message: 'mouseClick',
-  button: number,
-  scrollY: number
-}
-export interface LinkClickedMessage extends IMessage {
-  message: 'linkClicked',
-  href: string,
-  scrollY: number
-}
 
-export type OutMessage = ResizeMessage | LogMessage | MouseClickMessage | LinkClickedMessage;
+export type OutMessage = ResizeMessage | LogMessage;
 
 
 

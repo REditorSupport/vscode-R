@@ -1,7 +1,7 @@
 
 
 import * as vscode from 'vscode';
-import { HttpgdManager } from './httpgdViewer';
+import { HttpgdManager } from '.';
 
 export type MaybePromise<T> = T | Promise<T>;
 

@@ -4,13 +4,13 @@ import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 import * as hljs from 'highlight.js';
 
-import * as api from './api';
+import * as api from '../api';
 
-import { config, getRpath, doWithProgress, DummyMemento, getRPathConfigEntry } from './util';
-import { HelpPanel } from './rHelpPanel';
-import { HelpProvider, AliasProvider } from './rHelpProvider';
-import { HelpTreeWrapper } from './rHelpTree';
-import { PackageManager } from './rHelpPackages';
+import { config, getRpath, doWithProgress, DummyMemento, getRPathConfigEntry } from '../util';
+import { HelpPanel } from './panel';
+import { HelpProvider, AliasProvider } from './helpProvider';
+import { HelpTreeWrapper } from './treeView';
+import { PackageManager } from './packages';
 
 
 // Initialization function that is called once when activating the extension

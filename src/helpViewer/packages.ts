@@ -4,9 +4,9 @@ import * as https from 'https';
 import * as http from 'http';
 import * as vscode from 'vscode';
 
-import { RHelp } from './rHelp';
-import { getRpath, getConfirmation, executeAsTask, doWithProgress, getCranUrl } from './util';
-import { AliasProvider } from './rHelpProvider';
+import { RHelp } from '.';
+import { getRpath, getConfirmation, executeAsTask, doWithProgress, getCranUrl } from '../util';
+import { AliasProvider } from './helpProvider';
 
 
 // This file implements a rudimentary 'package manager'

@@ -8,9 +8,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as ejs from 'ejs';
 
-import { config, setContext } from './util';
+import { config, setContext } from '../util';
 
-import { extensionContext } from './extension';
+import { extensionContext } from '../extension';
 
 import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, ToggleMultirowMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage } from './webviewMessages';
 

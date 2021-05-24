@@ -3,8 +3,8 @@
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 
-import { HelpFile, RHelp } from './rHelp';
-import { setContext } from './util';
+import { HelpFile, RHelp } from '.';
+import { setContext } from '../util';
 
 
 //// Declaration of interfaces used/implemented by the Help Panel class
