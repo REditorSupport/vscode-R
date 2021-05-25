@@ -18,7 +18,7 @@ export interface IHelpProviderOptions {
 
 export interface IHelpProvider {
     refresh(): void;
-	getHelpFileFromRequestPath(requestPath: string): Promise<null|HelpFile>;
+	getHelpFileFromRequestPath(requestPath: string): Promise<undefined|HelpFile>;
 }
 
 // Class to forward help requests to a backgorund R instance that is running a help server
@@ -80,12 +80,12 @@ export class HelpProvider implements IHelpProvider {
         return port;
     }
 
-	public async getHelpFileFromRequestPath(requestPath: string): Promise<null|HelpFile> {
+	public async getHelpFileFromRequestPath(requestPath: string): Promise<undefined|HelpFile> {
         // make sure the server is actually running
         this.port = await this.port;
 
         if(!this.port || typeof this.port !== 'number'){
-            return null;
+            return undefined;
         }
 
         // remove leading '/'
@@ -177,8 +177,14 @@ interface PackageAliases {
     }
 }
 
+export interface IAliasProvider {
+    refresh(): void;
+    getAliasesForName(name: string, pkgName?: string): Alias[] | undefined;
+    getAllAliases(): Alias[] | undefined;
+}
+
 // Implements the aliasProvider required by the help panel
-export class AliasProvider {
+export class AliasProvider implements IAliasProvider {
 
     private readonly rPath: string;
     private readonly cwd?: string;

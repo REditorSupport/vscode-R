@@ -8,7 +8,8 @@ import * as api from '../api';
 
 import { config, getRpath, doWithProgress, DummyMemento, getRPathConfigEntry } from '../util';
 import { HelpPanel } from './panel';
-import { IHelpProvider, HelpProvider, AliasProvider } from './helpProvider';
+import { IHelpProvider, HelpProvider, IAliasProvider, AliasProvider } from './helpProvider';
+import { HelpProvider as HelpProvider2 } from './helpProvider2';
 import { HelpTreeWrapper } from './treeView';
 import { PackageManager } from './packages';
 
@@ -152,7 +153,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	readonly helpProvider: IHelpProvider;
 
 	// Provides a list of aliases:
-	readonly aliasProvider: AliasProvider;
+	readonly aliasProvider: IAliasProvider;
 
 	// Show/Install/Remove packages:
 	readonly packageManager: PackageManager;
@@ -176,8 +177,9 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	constructor(options: HelpOptions){
 		this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
 		this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
-		this.helpProvider = new HelpProvider(options);
-		this.aliasProvider = new AliasProvider(options);
+		const prv = new HelpProvider2(options);
+		this.helpProvider = prv;
+		this.aliasProvider = prv;
 		this.packageManager = new PackageManager({...options, rHelp: this});
 		this.treeViewWrapper = new HelpTreeWrapper(this);
 		this.helpPanelOptions = options;
