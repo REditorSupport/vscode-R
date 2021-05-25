@@ -8,7 +8,7 @@ import * as api from '../api';
 
 import { config, getRpath, doWithProgress, DummyMemento, getRPathConfigEntry } from '../util';
 import { HelpPanel } from './panel';
-import { HelpProvider, AliasProvider } from './helpProvider';
+import { IHelpProvider, HelpProvider, AliasProvider } from './helpProvider';
 import { HelpTreeWrapper } from './treeView';
 import { PackageManager } from './packages';
 
@@ -98,6 +98,8 @@ export interface HelpFile {
 	hash?: string;
     // if the file is a real file
 	isRealFile?: boolean;
+	// path of the file if it is a real file
+	filePath?: string;
 	// can be used to scroll the document to a certain position when loading
 	// useful to remember scroll position when going back/forward
 	scrollY?: number;
@@ -147,7 +149,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	readonly cwd?: string;
 
 	// Provides the content of help pages:
-	readonly helpProvider: HelpProvider;
+	readonly helpProvider: IHelpProvider;
 
 	// Provides a list of aliases:
 	readonly aliasProvider: AliasProvider;

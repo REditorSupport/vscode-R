@@ -108,7 +108,7 @@ export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
 
 // Abstract base class for nodes of the treeview
 // Is a rather technical base class to handle the intricacies of vscode's treeview API
-// All the 'interesting' stuff hapens in the derived classes
+// All the 'interesting' stuff happens in the derived classes
 // New commands should (if possible) be implemented by defining a new derived class,
 // rather than modifying this class!
 abstract class Node extends vscode.TreeItem{
