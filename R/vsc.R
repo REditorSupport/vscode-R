@@ -47,6 +47,24 @@ capture_str <- function(object) {
   )
 }
 
+rebind <- function(sym, value, ns) {
+  if (is.character(ns)) {
+    Recall(sym, value, getNamespace(ns))
+    pkg <- paste0("package:", ns)
+    if (pkg %in% search()) {
+      Recall(sym, value, as.environment(pkg))
+    }
+  } else if (is.environment(ns)) {
+    if (bindingIsLocked(sym, ns)) {
+      unlockBinding(sym, ns)
+      on.exit(lockBinding(sym, ns))
+    }
+    assign(sym, value, ns)
+  } else {
+    stop("ns must be a string or environment")
+  }
+}
+
 address <- function(x) {
   info <- utils::capture.output(.Internal(inspect(x, 0L)))
   gsub("@([a-z0-9]+)\\s+.+", "\\1", info[[1]])
@@ -141,8 +159,18 @@ if (show_globalenv) {
 }
 
 removeTaskCallback("vsc.plot")
+use_httpgd <- identical(getOption("vsc.use_httpgd", FALSE), TRUE)
 show_plot <- !identical(getOption("vsc.plot", "Two"), FALSE)
-if (show_plot) {
+if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
+  options(device = function(...) {
+    httpgd::hgd(
+      silent = TRUE
+    )
+    .vsc$request("httpgd", url = httpgd::hgd_url())
+  })
+} else if (use_httpgd) {
+  message("Install package `httpgd` to use vscode-R with httpgd!")
+} else if (show_plot) {
   dir_plot_history <- file.path(dir_session, "images")
   dir.create(dir_plot_history, showWarnings = FALSE, recursive = TRUE)
   plot_file <- file.path(dir_session, "plot.png")
@@ -202,13 +230,13 @@ if (show_plot) {
   setHook("plot.new", new_plot, "replace")
   setHook("grid.newpage", new_plot, "replace")
 
-  .External.graphics <- function(...) {
+  rebind(".External.graphics", function(...) {
     out <- .Primitive(".External.graphics")(...)
     if (check_null_dev()) {
       plot_updated <<- TRUE
     }
     out
-  }
+  }, "base")
 
   update_plot()
   addTaskCallback(update_plot, name = "vsc.plot")
@@ -390,7 +418,11 @@ attach <- function() {
   }
   request("attach",
     tempdir = tempdir,
-    plot = getOption("vsc.plot", "Two"))
+    plot = getOption("vsc.plot", "Two")
+  )
+  if (identical(names(dev.cur()), "httpgd")) {
+    .vsc$request("httpgd", url = httpgd::hgd_url())
+  }
 }
 
 path_to_uri <- function(path) {
@@ -560,6 +592,14 @@ if (rstudioapi_enabled()) {
       rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
     }
   )
+  if ("rstudioapi" %in% loadedNamespaces()) {
+    # if the rstudioapi is already loaded, for example via a call to
+    # library(tidyverse) in the user's profile, we need to shim it now.
+    # There's no harm in having also registered the hook in this case. It can
+    # work in the event that the namespace is unloaded and reloaded.
+    rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
+  }
+
 }
 
 print.help_files_with_topic <- function(h, ...) {

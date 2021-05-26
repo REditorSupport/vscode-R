@@ -30,6 +30,9 @@ const roxygenTagCompletionItems = [
 
 export class HoverProvider implements vscode.HoverProvider {
     provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.Hover {
+        if(!session.globalenv){
+            return null;
+        }
         const wordRange = document.getWordRangeAtPosition(position);
         const text = document.getText(wordRange);
         return new vscode.Hover(`\`\`\`\n${session.globalenv[text].str}\n\`\`\``);
