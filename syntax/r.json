@@ -189,6 +189,10 @@
                     "name": "keyword.operator.logical.r"
                 },
                 {
+                    "match": "(\\|>)",
+                    "name": "keyword.operator.pipe.r"
+                },
+                {
                     "match": "(%between%|%chin%|%like%|%\\+%|%\\+replace%|%:%|%do%|%dopar%|%>%|%<>%|%T>%|%\\$%)",
                     "name": "keyword.operator.other.r"
                 },
@@ -362,6 +366,47 @@
             "patterns": [
                 {
                     "begin": "\\b(function)\\s*(\\()",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "keyword.control.r"
+                        },
+                        "2": {
+                            "name": "punctuation.section.parens.begin.r"
+                        }
+                    },
+                    "end": "\\)",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.section.parens.end.r"
+                        }
+                    },
+                    "name": "meta.function.r",
+                    "contentName": "meta.function.parameters.r",
+                    "patterns": [
+                        {
+                            "include": "#comments"
+                        },
+                        {
+                            "match": "(?:[a-zA-Z._][\\w.]*|`[^`]+`)",
+                            "name": "variable.parameter.r"
+                        },
+                        {
+                            "begin": "(?==)",
+                            "end": "(?=[,)])",
+                            "patterns": [
+                                {
+                                    "include": "source.r"
+                                }
+                            ]
+                        },
+                        {
+                            "match": ",",
+                            "name": "punctuation.separator.parameters.r"
+                        }
+                    ]
+                },
+                {
+                    "begin": "\\b(\\)\\s*(\\()",
                     "beginCaptures": {
                         "1": {
                             "name": "keyword.control.r"
