@@ -64,6 +64,10 @@
     "onWebviewPanel:rhelp"
   ],
   "main": "./dist/extension",
+  "extensionKind": [
+    "ui",
+    "workspace"
+  ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -111,7 +115,13 @@
       },
       {
         "view": "rLiveShare",
-        "contents": "R Live Share not active."
+        "contents": "R Live Share not active.",
+        "when": "!r.liveShare:aborted"
+      },
+      {
+        "view": "rLiveShare",
+        "contents": "Could not connect to Live Share service.",
+        "when": "r.liveShare:aborted"
       }
     ],
     "languages": [
@@ -636,6 +646,11 @@
       {
         "command": "r.liveShare.toggle",
         "title": "Toggle"
+      },
+      {
+        "command": "r.liveShare.retry",
+        "title": "Retry connection to Live Share service",
+        "icon": "$(refresh)"
       }
     ],
     "keybindings": [
@@ -875,6 +890,11 @@
           "command": "r.helpPanel.showQuickPick",
           "group": "navigation",
           "when": "view == rHelpPages"
+        },
+        {
+          "command": "r.liveShare.retry",
+          "group": "navigation@3",
+          "when": "view == rLiveShare && r.liveShare:aborted"
         }
       ]
     },
@@ -1015,6 +1035,11 @@
           "type": "boolean",
           "default": false,
           "description": "Remove hidden items when clearing workspace."
+        },
+        "r.liveShare.timeout": {
+          "type": "integer",
+          "default": 3000,
+          "description": "Time in milliseconds before aborting attempt to connect to Live Share API"
         },
         "r.liveShare.commandForwardDefault": {
           "type": "boolean",

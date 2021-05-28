@@ -7,7 +7,6 @@ import { updateGuestRequest, updateGuestGlobalenv, updateGuestPlot, detachGuest 
 import { forwardCommands, shareWorkspace } from './shareTree';
 import { runTextInTerm } from '../rTerminal';
 import { requestFile } from '../session';
-import { doesTermExist } from '../util';
 import { HelpFile } from '../rHelp';
 import { globalRHelp } from '../extension';
 
@@ -61,30 +60,21 @@ export const Commands: ICommands = {
         // Command arguments are sent from the guest to the host,
         // and then the host sends the arguments to the console
         [Callback.RequestAttachGuest]: (): void => {
-            if (shareWorkspace === true) {
-                if (doesTermExist() === true) {
-                    const req = requestFile;
-                    void rHostService.notifyRequest(req, true);
-                } else {
-                    void request(Callback.NotifyMessage, 'Cannot attach guest terminal. Must have active host R terminal.', MessageType.error);
-                }
+            if (shareWorkspace) {
+                void rHostService.notifyRequest(requestFile, true);
             } else {
                 void request(Callback.NotifyMessage, 'The host has not enabled guest attach.', MessageType.warning);
             }
         },
         [Callback.RequestRunTextInTerm]: (args: [text: string]): void => {
-            if (forwardCommands === true) {
-                if (doesTermExist() === true) {
-                    void runTextInTerm(`${args[0]}`);
-                } else {
-                    void request(Callback.NotifyMessage, 'Cannot call command. Must have active host R terminal.', MessageType.warning);
-                }
+            if (forwardCommands) {
+                void runTextInTerm(`${args[0]}`);
             } else {
                 void request(Callback.NotifyMessage, 'The host has not enabled command forwarding. Command was not sent.', MessageType.warning);
             }
 
         },
-        [Callback.GetHelpFileContent]: (args: [text: string]): Promise<HelpFile | null >  => {
+        [Callback.GetHelpFileContent]: (args: [text: string]): Promise<HelpFile | null> => {
             return globalRHelp.getHelpFileForPath(args[0]);
         },
         /// File Handling ///
@@ -100,7 +90,7 @@ export const Commands: ICommands = {
         [Callback.NotifyRequestUpdate]: (args: [file: string, force: boolean]): void => {
             void updateGuestRequest(args[0], args[1]);
         },
-        [Callback.NotifyEnvUpdate]: (args: [file: string]): void => {
+        [Callback.NotifyEnvUpdate]: (args: [hostEnv: string]): void => {
             void updateGuestGlobalenv(args[0]);
         },
         [Callback.NotifyPlotUpdate]: (args: [file: string]): void => {

@@ -3,10 +3,12 @@ import * as vsls from 'vsls';
 import * as fs from 'fs-extra';
 
 import { enableSessionWatcher, extensionContext } from '../extension';
-import { attachActiveGuest, browserDisposables, initGuest, removeGuestFiles } from './shareSession';
-import { initTreeView, rLiveShareProvider, ToggleNode } from './shareTree';
+import { attachActiveGuest, browserDisposables, initGuest } from './shareSession';
+import { initTreeView, rLiveShareProvider, shareWorkspace, ToggleNode } from './shareTree';
 import { Commands, Callback, onRequest, request } from './shareCommands';
 import { HelpFile } from '../rHelp';
+import { globalenv } from '../session';
+import { config } from '../util';
 
 /// LiveShare
 export let rHostService: HostService = undefined;
@@ -38,7 +40,7 @@ export function isLiveShare(): boolean {
 }
 
 export function isGuest(): boolean {
-    if (isLiveShare() === true) {
+    if (isLiveShare()) {
         return liveSession.session.role === vsls.Role.Guest;
     } else {
         return false;
@@ -46,7 +48,7 @@ export function isGuest(): boolean {
 }
 
 export function isHost(): boolean {
-    if (isLiveShare() === true) {
+    if (isLiveShare()) {
         return liveSession.session.role === vsls.Role.Host;
     } else {
         return false;
@@ -71,12 +73,20 @@ export async function initLiveShare(context: vscode.ExtensionContext): Promise<v
         void vscode.commands.executeCommand('setContext', 'r.liveShare:isGuest', isGuestSession);
 
         // push commands
-        context.subscriptions.push(
-            vscode.commands.registerCommand('r.attachActiveGuest', () => attachActiveGuest()),
-            vscode.commands.registerCommand(
-                'r.liveShare.toggle', (node: ToggleNode) => node.toggle(rLiveShareProvider)
-            )
-        );
+        if (!isGuestSession) {
+            context.subscriptions.push(
+                vscode.commands.registerCommand(
+                    'r.liveShare.toggle', (node: ToggleNode) => node.toggle(rLiveShareProvider)
+                ),
+                vscode.commands.registerCommand(
+                    'r.liveShare.retry', async () => await LiveSessionListener()
+                )
+            );
+        } else {
+            context.subscriptions.push(
+                vscode.commands.registerCommand('r.attachActiveGuest', () => attachActiveGuest())
+            );
+        }
     }
 }
 
@@ -87,9 +97,19 @@ export async function LiveSessionListener(): Promise<void> {
 
     // Return out when the vsls extension isn't
     // installed/available
-    const liveSessionStatus = await vsls.getApi();
-    if (!liveSessionStatus) { return; }
-    liveSession = liveSessionStatus;
+    const liveSessionStatus = await Promise.race([
+        vsls.getApi(),
+        new Promise((res) => setTimeout(() => res(null), config().get<number>('liveShare.timeout')))
+    ]);
+
+    void vscode.commands.executeCommand('setContext', 'r.liveShare:aborted', !liveSessionStatus);
+
+    if (!liveSessionStatus) {
+        console.log('[LiveSessionListener] aborted');
+        return;
+    }
+
+    liveSession = liveSessionStatus as vsls.LiveShare;
     console.log('[LiveSessionListener] started');
 
     // When the session state changes, attempt to
@@ -117,8 +137,8 @@ export async function LiveSessionListener(): Promise<void> {
         }
     }, null, extensionContext.subscriptions);
 
-    // onDidChangeSession does not seem to be activating for anyone
-    // other than host, seems to be a regression in the vsls api
+    // onDidChangeSession seems to only activate when the host joins/leaves,
+    // or roles are changed somehow - may be a regression in API,
     // this is a workaround for the time being
     switch (liveSession.session.role) {
         case vsls.Role.None:
@@ -177,18 +197,19 @@ export class HostService {
     // This way, we don't have to re-create a guest version of the session
     // watcher, and can rely on the host to tell when something needs to be
     // updated
-    public notifyGlobalenv(file: string): void {
-        if (this._isStarted) {
-            void request(Callback.NotifyEnvUpdate, file);
+    public notifyGlobalenv(hostEnv: string): void {
+        if (this._isStarted && shareWorkspace) {
+            void request(Callback.NotifyEnvUpdate, hostEnv);
         }
     }
     public notifyRequest(file: string, force: boolean = false): void {
-        if (this._isStarted) {
+        if (this._isStarted && shareWorkspace) {
             void request(Callback.NotifyRequestUpdate, file, force);
+            void this.notifyGlobalenv(globalenv);
         }
     }
     public notifyPlot(file: string): void {
-        if (this._isStarted) {
+        if (this._isStarted && shareWorkspace) {
             void request(Callback.NotifyPlotUpdate, file);
         }
     }
@@ -286,10 +307,10 @@ export class GuestService {
 
 // Clear up any listeners & disposables, so that vscode-R
 // isn't slowed down if liveshare is ended
-// This is used instead of pushing to the context disposables,
+// This is used instead of relying on context disposables,
 // as an R session can continue even when liveshare is ended
 async function sessionCleanup(): Promise<void> {
-    if (rHostService.isStarted() === true) {
+    if (rHostService.isStarted()) {
         console.log('[HostService] stopping service');
         await rHostService.stopService();
         for (const disposable of browserDisposables) {
@@ -297,11 +318,6 @@ async function sessionCleanup(): Promise<void> {
             disposable.Disposable.dispose();
         }
         rLiveShareProvider.refresh();
-    }
-
-    if (rGuestService.isStarted() === true) {
-        console.log('[GuestService] stopping service');
-        removeGuestFiles();
     }
 
     for (const disposable of disposables) {

@@ -1,18 +1,17 @@
 import path = require('path');
 import * as vscode from 'vscode';
-import * as fs from 'fs-extra';
 import * as vsls from 'vsls';
 
-import { globalRHelp, rWorkspace } from '../extension';
+import { extensionContext, globalRHelp, rWorkspace } from '../extension';
 import { config, readContent } from '../util';
-import { removeDirectory, showBrowser, showDataView, showWebView } from '../session';
+import { showBrowser, showDataView, showWebView } from '../session';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from './share';
 import { autoShareBrowser } from './shareTree';
+import { docProvider, docScheme } from './virtualDocs';
 
 // Workspace Vars
 let guestPid: string;
 let guestPlotView: string;
-let guestSessionDir: string;
 export let guestGlobalenv: unknown;
 export let guestResDir: string;
 
@@ -40,10 +39,6 @@ interface IRequest {
     tempdir?: string;
 }
 
-function guestHasAccess(): boolean {
-    return sessionStatusBarItem.text === 'Guest R: (not attached)' ? false : true;
-}
-
 export function initGuest(context: vscode.ExtensionContext): void {
     // create status bar item that contains info about the *guest* session watcher
     console.info('Create guestSessionStatusBarItem');
@@ -52,7 +47,10 @@ export function initGuest(context: vscode.ExtensionContext): void {
     sessionStatusBarItem.text = 'Guest R: (not attached)';
     sessionStatusBarItem.tooltip = 'Attach to Host Terminal';
     sessionStatusBarItem.show();
-    context.subscriptions.push(sessionStatusBarItem);
+    context.subscriptions.push(
+        sessionStatusBarItem,
+        vscode.workspace.registerTextDocumentContentProvider(docScheme, docProvider)
+    );
     rGuestService.setStatusBarItem(sessionStatusBarItem);
     guestResDir = path.join(context.extensionPath, 'dist', 'resources');
 }
@@ -61,7 +59,7 @@ export function detachGuest(): void {
     console.info('[Guest Service] detach guest from workspace');
     sessionStatusBarItem.text = 'Guest R: (not attached)';
     guestGlobalenv = undefined;
-    rWorkspace.refresh();
+    rWorkspace?.refresh();
 }
 
 export function attachActiveGuest(): void {
@@ -76,52 +74,50 @@ export function attachActiveGuest(): void {
 // Guest version of session.ts updateRequest(), no need to check for changes in files
 // as this is handled by the session.ts variant
 // the force parameter is used for ensuring that the 'attach' case is appropriately called on guest join
-export async function updateGuestRequest(file : string, force: boolean = false): Promise<void> {
+export async function updateGuestRequest(file: string, force: boolean = false): Promise<void> {
     const requestContent: string = await readContent(file, 'utf8');
     console.info(`[updateGuestRequest] request: ${requestContent}`);
     if (typeof (requestContent) === 'string') {
         const request: IRequest = JSON.parse(requestContent) as IRequest;
         if (request && !force) {
-            if (guestHasAccess()) {
-                if (request.UUID === null || request.UUID === undefined || request.UUID === UUID) {
-                    switch (request.command) {
-                        case 'help': {
-                            if (globalRHelp) {
-                                console.log(request.requestPath);
-                                void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
-                            }
-                            break;
+            if (request.UUID === null || request.UUID === undefined || request.UUID === UUID) {
+                switch (request.command) {
+                    case 'help': {
+                        if (globalRHelp) {
+                            console.log(request.requestPath);
+                            void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
                         }
-                        case 'attach': {
-                            guestPid = String(request.pid);
-                            guestPlotView = String(request.plot);
-                            guestSessionDir = path.join(request.tempdir, 'vscode-R');
-                            console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
-                            sessionStatusBarItem.text = `Guest R: ${guestPid}`;
-                            sessionStatusBarItem.show();
-                            break;
-                        }
-                        case 'browser': {
-                            await showBrowser(request.url, request.title, request.viewer);
-                            break;
-                        }
-                        case 'webview': {
-                            void showWebView(request.file, request.title, request.viewer);
-                            break;
-                        }
-                        case 'dataview': {
-                            void showDataView(request.source,
-                                request.type, request.title, request.file, request.viewer);
-                            break;
-                        }
-                        case 'rstudioapi': {
-                            console.error(`[GuestService] ${request.command} not supported`);
-                            break;
-                        }
-                        default:
-                            console.error(`[updateRequest] Unsupported command: ${request.command}`);
+                        break;
                     }
+                    case 'attach': {
+                        guestPid = String(request.pid);
+                        guestPlotView = String(request.plot);
+                        console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
+                        sessionStatusBarItem.text = `Guest R: ${guestPid}`;
+                        sessionStatusBarItem.show();
+                        break;
+                    }
+                    case 'browser': {
+                        await showBrowser(request.url, request.title, request.viewer);
+                        break;
+                    }
+                    case 'webview': {
+                        void showWebView(request.file, request.title, request.viewer);
+                        break;
+                    }
+                    case 'dataview': {
+                        void showDataView(request.source,
+                            request.type, request.title, request.file, request.viewer);
+                        break;
+                    }
+                    case 'rstudioapi': {
+                        console.error(`[GuestService] ${request.command} not supported`);
+                        break;
+                    }
+                    default:
+                        console.error(`[updateRequest] Unsupported command: ${request.command}`);
                 }
+
             }
         } else {
             guestPid = String(request.pid);
@@ -133,33 +129,47 @@ export async function updateGuestRequest(file : string, force: boolean = false):
     }
 }
 
-// Call from host, pass globalenvfile
-export async function updateGuestGlobalenv(file: string): Promise<void> {
-    if (guestHasAccess()) {
-        const content: string = await readContent(file, 'utf8');
-        if (typeof content === 'string') {
-            guestGlobalenv = JSON.parse(content);
-            void rWorkspace?.refresh();
-            console.info('[updateGuestGlobalenv] Done');
-        }
+// Call from host, pass parsed globalenvfile
+export function updateGuestGlobalenv(hostEnv: string): void {
+    if (hostEnv) {
+        guestGlobalenv = hostEnv;
+        void rWorkspace?.refresh();
+        console.info('[updateGuestGlobalenv] Done');
     }
 }
 
+// Instead of creating a file, we pass the base64 of the plot image
+// to the guest, and read that into an html page
+let panel: vscode.WebviewPanel = undefined;
 export async function updateGuestPlot(file: string): Promise<void> {
     const plotContent = await readContent(file, 'base64');
     if (plotContent !== undefined) {
-        fs.outputFileSync(
-            file,
-            plotContent,
-            'base64'
-        );
-        void vscode.commands.executeCommand('vscode.open', vscode.Uri.file(file), {
-            preserveFocus: true,
-            preview: true,
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            viewColumn: vscode.ViewColumn[guestPlotView],
-        });
-
+        if (panel) {
+            panel.webview.html = getGuestImageHtml(panel.webview, plotContent);
+            panel.reveal(vscode.ViewColumn[guestPlotView], true);
+        } else {
+            panel = vscode.window.createWebviewPanel('dataview', 'R Guest Plot',
+                {
+                    preserveFocus: true,
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                    viewColumn: vscode.ViewColumn[guestPlotView],
+                },
+                {
+                    enableScripts: true,
+                    enableFindWidget: true,
+                    retainContextWhenHidden: true,
+                    localResourceRoots: [vscode.Uri.file(guestResDir)],
+                });
+            const content = getGuestImageHtml(panel.webview, plotContent);
+            panel.webview.html = content;
+            panel.onDidDispose(
+                () => {
+                    panel = undefined;
+                },
+                undefined,
+                extensionContext.subscriptions
+            );
+        }
     }
 }
 
@@ -192,10 +202,31 @@ export function closeBrowser(url: string): void {
     }
 }
 
-export function removeGuestFiles(): void {
-    console.info('[removeGuestFiles] ', guestSessionDir);
-    if (fs.existsSync(guestSessionDir)) {
-        removeDirectory(guestSessionDir);
+function getGuestImageHtml(webview: vscode.Webview, content: string) {
+    return `
+<!doctype HTML>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style type="text/css">
+    body {
+        color: black;
+        background-color: var(--vscode-editor-background);
     }
-    console.info('[removeSessionFiles] Done');
+    img {
+        position: absolute;
+        top:0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        margin: auto;
+    }
+  </style>
+</head>
+<body>
+  <img src = "data:image/png;base64, ${String(content)}">
+</body>
+</html>
+`;
 }

@@ -17,6 +17,8 @@ import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 import { rWorkspace, globalRHelp } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession } from './liveshare/share';
 import { closeBrowser, guestResDir, shareBrowser } from './liveshare/shareSession';
+import { openVirtualDoc } from './liveshare/virtualDocs';
+import { shareWorkspace } from './liveshare/shareTree';
 
 export let globalenv: any;
 let resDir: string;
@@ -76,6 +78,9 @@ export function attachActive(): void {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
         void runTextInTerm('.vsc.attach()');
+        if (isLiveShare() && shareWorkspace) {
+            rHostService.notifyRequest(requestFile, true);
+        }
     } else {
         void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }
@@ -158,7 +163,7 @@ async function updatePlot() {
                 viewColumn: ViewColumn[plotView],
             });
             console.info('[updatePlot] Done');
-            if (isLiveShare() === true) {
+            if (isLiveShare()) {
                 void rHostService.notifyPlot(plotFile);
             }
         } else {
@@ -179,8 +184,8 @@ async function updateGlobalenv() {
             globalenv = JSON.parse(content);
             void rWorkspace?.refresh();
             console.info('[updateGlobalenv] Done');
-            if (isLiveShare() === true) {
-                rHostService.notifyGlobalenv(globalenvFile);
+            if (isLiveShare()) {
+                rHostService.notifyGlobalenv(globalenv);
             }
         } else {
             console.info('[updateGlobalenv] File not found');
@@ -258,7 +263,7 @@ function getBrowserHtml(uri: Uri) {
 `;
 }
 
-export function refreshBrowser():void {
+export function refreshBrowser(): void {
     console.log('[refreshBrowser]');
     if (activeBrowserPanel) {
         activeBrowserPanel.webview.html = '';
@@ -266,7 +271,7 @@ export function refreshBrowser():void {
     }
 }
 
-export function openExternalBrowser():void {
+export function openExternalBrowser(): void {
     console.log('[openExternalBrowser]');
     if (activeBrowserUri) {
         void env.openExternal(activeBrowserUri);
@@ -277,6 +282,7 @@ export async function showWebView(file: string, title: string, viewer: string | 
     console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
     if (viewer === false) {
         void env.openExternal(Uri.parse(file));
+        void window.showInformationMessage('viewer is false');
     } else {
         const dir = path.dirname(file);
         const panel = window.createWebviewPanel('webview', title,
@@ -290,7 +296,7 @@ export async function showWebView(file: string, title: string, viewer: string | 
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(dir)],
             });
-        const content = await readContent(file);
+        const content = await readContent(file, 'utf8');
         const html = content.toString()
             .replace('<body>', '<body style="color: black;">')
             .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
@@ -302,12 +308,8 @@ export async function showWebView(file: string, title: string, viewer: string | 
 
 export async function showDataView(source: string, type: string, title: string, file: string, viewer: string) {
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}`);
+
     if (isGuestSession) {
-        const fileContent = await rGuestService.requestFileContent(file, 'utf8');
-        await fs.outputFile(
-            file,
-            fileContent
-        );
         resDir = guestResDir;
     }
 
@@ -340,11 +342,16 @@ export async function showDataView(source: string, type: string, title: string, 
         const content = await getListHtml(panel.webview, file);
         panel.webview.html = content;
     } else {
-        await commands.executeCommand('vscode.open', Uri.file(file), {
-            preserveFocus: true,
-            preview: true,
-            viewColumn: ViewColumn[viewer],
-        });
+        if (isGuestSession) {
+            const fileContent = await rGuestService.requestFileContent(file, 'utf8');
+            await openVirtualDoc(fileContent, true, true, ViewColumn[viewer]);
+        } else {
+            await commands.executeCommand('vscode.open', Uri.file(file), {
+                preserveFocus: true,
+                preview: true,
+                viewColumn: ViewColumn[viewer],
+            });
+        }
     }
     console.info('[showDataView] Done');
 }
@@ -560,7 +567,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
             if (request.UUID === null || request.UUID === undefined || request.UUID === UUID) {
                 switch (request.command) {
                     case 'help': {
-                        if(globalRHelp){
+                        if (globalRHelp) {
                             console.log(request.requestPath);
                             void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
                         }
@@ -603,7 +610,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         } else {
             console.info(`[updateRequest] Ignored request outside workspace`);
         }
-        if (isLiveShare() === true) {
+        if (isLiveShare()) {
             void rHostService.notifyRequest(requestFile);
         }
     }
