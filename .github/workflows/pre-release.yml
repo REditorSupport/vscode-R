@@ -8,6 +8,7 @@ on:
 
 env:
   FILE_OUT: r-latest.vsix
+  SCRIPT_DIR: ./.github/scripts
 
 jobs:
   build:

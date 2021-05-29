@@ -7,6 +7,9 @@ on:
   push:
     tags: ["v*"]
 
+env:
+  SCRIPT_DIR: ./.github/scripts
+
 jobs:
   build:
     runs-on: ubuntu-latest
