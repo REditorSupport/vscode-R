@@ -14,9 +14,9 @@ import * as rstudioapi from './rstudioapi';
 import * as rmarkdown from './rmarkdown';
 import * as workspaceViewer from './workspaceViewer';
 import * as apiImplementation from './apiImplementation';
-import * as rHelp from './rHelp';
+import * as rHelp from './helpViewer';
 import * as completions from './completions';
-import * as httpgdViewer from './httpgdViewer';
+import * as httpgdViewer from './plotViewer';
 
 
 // global objects used in other files

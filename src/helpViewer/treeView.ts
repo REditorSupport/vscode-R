@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
-import { RHelp } from './rHelp';
-import { Package, Topic, TopicType } from './rHelpPackages';
+import { RHelp } from '.';
+import { Package, Topic, TopicType } from './packages';
 
 // this enum is re-assigned just for code readability
 const CollapsibleState = vscode.TreeItemCollapsibleState;

@@ -3,8 +3,8 @@
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 
-import { HelpFile, RHelp } from './rHelp';
-import { setContext } from './util';
+import { HelpFile, RHelp } from '.';
+import { setContext } from '../util';
 
 
 //// Declaration of interfaces used/implemented by the Help Panel class
@@ -65,7 +65,8 @@ export class HelpPanel {
 		if(!this.panel){
 			const webViewOptions: vscode.WebviewOptions & vscode.WebviewPanelOptions = {
 				enableScripts: true,
-				enableFindWidget: true
+				enableFindWidget: true,
+				retainContextWhenHidden: true // keep scroll position when not focussed
 			};
 			const showOptions = {
 				viewColumn: this.viewColumn,

@@ -63,7 +63,7 @@
     "onCommand:r.helpPanel.openForSelection",
     "onWebviewPanel:rhelp"
   ],
-  "main": "./dist/extension",
+  "main": "./out/extension",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -1195,12 +1195,23 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "webpack --mode production",
-    "compile": "webpack --mode none",
-    "watch": "webpack --mode none --watch",
+    "vscode:prepublish": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
+    "compile": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
+    "watch": "tsc -p . --watch",
     "pretest": "tsc -p ./",
     "test": "node ./out/test/runTest.js",
     "lint": "eslint src --ext ts"
+  },
+  "withWebpack": {
+    "scripts": {
+      "vscode:prepublish": "webpack --mode production",
+      "compile": "webpack --mode none",
+      "watch": "webpack --mode none --watch",
+      "pretest": "tsc -p ./",
+      "test": "node ./out/test/runTest.js",
+      "lint": "eslint src --ext ts"
+    },
+    "main": "./dist/extension"
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.28",
