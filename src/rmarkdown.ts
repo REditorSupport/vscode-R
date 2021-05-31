@@ -314,7 +314,9 @@ export async function runAboveChunks(chunks: RMarkdownChunk[] = _getChunks(),
 
   for (let i = firstChunkId ; i <= previousChunkId ; i++) {
     const chunk = chunks.filter(e => e.id === i)[0];
-    codeRanges.push(chunk.codeRange);
+    if (chunk.eval) {
+      codeRanges.push(chunk.codeRange);
+    }
   }
   await runChunksInTerm(codeRanges);
 }
@@ -330,7 +332,9 @@ export async function runBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
 
   for (let i = nextChunkId ; i <= lastChunkId ; i++) {
     const chunk = chunks.filter(e => e.id === i)[0];
-    codeRanges.push(chunk.codeRange);
+    if (chunk.eval) {
+      codeRanges.push(chunk.codeRange);
+    }
   }
   await runChunksInTerm(codeRanges);
 }
@@ -359,7 +363,9 @@ export async function runAllChunks(chunks: RMarkdownChunk[] = _getChunks()): Pro
 
   for (let i = firstChunkId ; i <= lastChunkId ; i++) {
     const chunk = chunks.filter(e => e.id === i)[0];
-    codeRanges.push(chunk.codeRange);
+    if (chunk.eval) {
+      codeRanges.push(chunk.codeRange);
+    }
   }
   await runChunksInTerm(codeRanges);
 }
