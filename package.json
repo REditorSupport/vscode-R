@@ -1249,7 +1249,7 @@
     "ejs": "^3.1.6",
     "fotorama": "^4.6.4",
     "fs-extra": "^10.0.0",
-    "highlight.js": "^11.0.0",
+    "highlight.js": "^10.7.2",
     "jquery": "^3.6.0",
     "jquery.json-viewer": "^1.4.0",
     "node-fetch": "^2.6.1",
