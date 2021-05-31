@@ -67,7 +67,7 @@ export function cleanLine(text: string): string {
 }
 
 function doesLineEndInOperator(text: string) {
-    const endingOperatorIndex = text.search(/(,|\+|!|\$|\^|&|\*|-|=|:|~|\||\/|\?|%.*%)(\s*|\s*#.*)$/);
+    const endingOperatorIndex = text.search(/(,|\+|!|\$|\^|&|\*|-|=|:|~|\||\/|\?|<|>|%.*%)(\s*|\s*#.*)$/);
     const spacesOnlyIndex = text.search(/^\s*$/);
 
     return ((endingOperatorIndex >= 0) || (spacesOnlyIndex >= 0));
