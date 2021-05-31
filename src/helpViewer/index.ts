@@ -343,11 +343,15 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 
 		let pickedAlias: Alias | undefined;
 		if(matchingAliases.length === 0){
-			pickedAlias = undefined;
+			return false;
 		} else if(matchingAliases.length === 1){
 			pickedAlias = matchingAliases[0];
 		} else{
 			pickedAlias = await this.pickAlias(matchingAliases);
+			if(!pickedAlias){
+				// aborted by user -> return successful
+				return true;
+			}
 		}
 		if(pickedAlias){
 			return await this.showHelpForAlias(pickedAlias, preserveFocus);
