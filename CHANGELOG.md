@@ -4,6 +4,18 @@
 
 You can check all of our changes from [Release Page](https://github.com/Ikuyadeu/vscode-R/releases)
 
+## [1.6.7](https://github.com/Ikuyadeu/vscode-R/releases/tag/v1.6.7)
+
+* Update R syntax #647
+* Fix replacing base::.External.graphics #625
+
+Thank you for your contributions.
+
+* @jolars
+  * Don't run chunks with eval = FALSE #653 (Fix #651)
+* @nx10
+  * Integrate httpgd #620
+
 ## [1.6.6](https://github.com/Ikuyadeu/vscode-R/releases/tag/v1.6.6)
 
 Highlight
