@@ -150,9 +150,10 @@ export class HttpgdManager {
         } else if(hostOrWebviewUri instanceof vscode.Uri){
             const uri = hostOrWebviewUri;
             viewer = this.viewers.find((viewer) => viewer.getPanelPath() === uri.path);
-        } else {
-            viewer = this.getRecentViewer();
         }
+        
+        // fall back to most recent viewer
+        viewer ||= this.getRecentViewer();
 
         // Abort if no viewer identified
         if(!viewer){
