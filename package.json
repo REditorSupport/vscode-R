@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "R language support (run, snippet, viewer)",
-  "version": "1.6.6",
+  "version": "1.6.8",
   "author": "Yuki Ueda",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
@@ -26,7 +26,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.55.0"
+    "vscode": "^1.56.0"
   },
   "activationEvents": [
     "onLanguage:r",
@@ -63,11 +63,7 @@
     "onCommand:r.helpPanel.openForSelection",
     "onWebviewPanel:rhelp"
   ],
-  "main": "./dist/extension",
-  "extensionKind": [
-    "ui",
-    "workspace"
-  ],
+  "main": "./out/extension",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -651,6 +647,100 @@
         "command": "r.liveShare.retry",
         "title": "Retry connection to Live Share service",
         "icon": "$(refresh)"
+      },
+      {
+        "title": "Toggle Style",
+        "category": "R Plot",
+        "command": "r.plot.toggleStyle",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "title": "Toggle Multirow",
+        "category": "R Plot",
+        "command": "r.plot.toggleMultirow",
+        "icon": "$(list-flat)"
+      },
+      {
+        "title": "Export Plot",
+        "category": "R Plot",
+        "command": "r.plot.exportPlot",
+        "icon": "$(clone)"
+      },
+      {
+        "title": "Close Plot",
+        "category": "R Plot",
+        "command": "r.plot.closePlot",
+        "icon": "$(trash)"
+      },
+      {
+        "title": "Hide Plot",
+        "category": "R Plot",
+        "command": "r.plot.hidePlot",
+        "icon": "$(close)"
+      },
+      {
+        "title": "Restore Plots",
+        "category": "R Plot",
+        "command": "r.plot.resetPlots",
+        "icon": "$(discard)"
+      },
+      {
+        "title": "Previous Plot",
+        "category": "R Plot",
+        "command": "r.plot.prevPlot",
+        "enablement": "r.plot.canGoBack",
+        "icon": "$(chevron-left)"
+      },
+      {
+        "title": "Next Plot",
+        "category": "R Plot",
+        "command": "r.plot.nextPlot",
+        "enablement": "r.plot.canGoForward",
+        "icon": "$(chevron-right)"
+      },
+      {
+        "title": "First Plot",
+        "category": "R Plot",
+        "command": "r.plot.firstPlot",
+        "enablement": "r.plot.canGoBack",
+        "icon": "$(arrow-left)"
+      },
+      {
+        "title": "Last Plot",
+        "category": "R Plot",
+        "command": "r.plot.lastPlot",
+        "enablement": "r.plot.canGoForward",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "title": "Zoom In",
+        "category": "R Plot",
+        "command": "r.plot.zoomIn",
+        "icon": "$(zoom-in)"
+      },
+      {
+        "title": "Zoom Out",
+        "category": "R Plot",
+        "command": "r.plot.zoomOut",
+        "icon": "$(zoom-out)"
+      },
+      {
+        "title": "Show Viewers",
+        "category": "R Plot",
+        "command": "r.plot.showViewers",
+        "icon": "$(versions)"
+      },
+      {
+        "title": "Open Httpgd Url",
+        "category": "R Plot",
+        "command": "r.plot.openUrl",
+        "icon": "$(link)"
+      },
+      {
+        "title": "Open in External Browser",
+        "category": "R Plot",
+        "command": "r.plot.openExternal",
+        "icon": "$(link-external)"
       }
     ],
     "keybindings": [
@@ -762,6 +852,66 @@
           "command": "r.helpPanel.openExternal",
           "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.toggleStyle"
+        },
+        {
+          "group": "httpgd",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.toggleMultirow"
+        },
+        {
+          "group": "httpgd",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.exportPlot"
+        },
+        {
+          "group": "navigation@01",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.prevPlot",
+          "alt": "r.plot.firstPlot"
+        },
+        {
+          "group": "navigation@02",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.nextPlot",
+          "alt": "r.plot.lastPlot"
+        },
+        {
+          "group": "navigation@03",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.hidePlot",
+          "alt": "r.plot.closePlot"
+        },
+        {
+          "group": "navigation@04",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.resetPlots"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.zoomIn",
+          "alt": "r.plot.zoomOut"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.zoomOut",
+          "alt": "r.plot.zoomIn"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.openExternal"
+        },
+        {
+          "group": "httpgd",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.openUrl"
         }
       ],
       "editor/context": [
@@ -1055,6 +1205,42 @@
           "type": "boolean",
           "default": false,
           "description": "Default boolean value for automatically sharing R browser ports with guests."
+        },
+        "r.plot.defaults.colorTheme": {
+          "type": "string",
+          "default": "original",
+          "enum": [
+            "vscode",
+            "original"
+          ],
+          "enumDescriptions": [
+            "Match background and primary stroke color to the current color theme",
+            "Use original colors"
+          ],
+          "markdownDescription": "Which color theme to use when launching the plot viewer."
+        },
+        "r.plot.defaults.plotPreviewLayout": {
+          "type": "string",
+          "default": "multirow",
+          "enum": [
+            "multirow",
+            "scroll"
+          ],
+          "enumDescriptions": [
+            "Show in multiple rows",
+            "Show scrollbar"
+          ],
+          "markdownDescription": "How to display plot previews if more than one row required."
+        },
+        "r.plot.timing.resizeInterval": {
+          "type": "number",
+          "default": 100,
+          "markdownDescription": "Interval in ms to wait between plot resizes."
+        },
+        "r.plot.timing.refreshInterval": {
+          "type": "number",
+          "default": 10,
+          "markdownDescription": "Interval in ms to wait between plot refreshs."
         }
       }
     },
@@ -1065,52 +1251,69 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "webpack --mode production",
-    "compile": "webpack --mode none",
-    "watch": "webpack --mode none --watch",
+    "vscode:prepublish": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
+    "compile": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
+    "watch": "tsc -p . --watch",
     "pretest": "tsc -p ./",
     "test": "node ./out/test/runTest.js",
     "lint": "eslint src --ext ts"
   },
+  "withWebpack": {
+    "scripts": {
+      "vscode:prepublish": "webpack --mode production",
+      "compile": "webpack --mode none",
+      "watch": "webpack --mode none --watch",
+      "pretest": "tsc -p ./",
+      "test": "node ./out/test/runTest.js",
+      "lint": "eslint src --ext ts"
+    },
+    "main": "./dist/extension"
+  },
   "devDependencies": {
-    "@types/cheerio": "^0.22.28",
-    "@types/express": "^4.17.11",
-    "@types/fs-extra": "^9.0.10",
+    "@types/cheerio": "^0.22.29",
+    "@types/ejs": "^3.0.6",
+    "@types/express": "^4.17.12",
+    "@types/fs-extra": "^9.0.11",
     "@types/highlight.js": "^10.1.0",
     "@types/mocha": "^8.2.2",
-    "@types/node": "^14.14.37",
+    "@types/node": "^14.17.1",
+    "@types/node-fetch": "^2.5.10",
     "@types/showdown": "^1.9.3",
-    "@types/vscode": "^1.55.0",
+    "@types/vscode": "^1.56.0",
     "@types/winreg": "^1.2.30",
-    "@typescript-eslint/eslint-plugin": "^4.21.0",
-    "@typescript-eslint/parser": "^4.21.0",
-    "copy-webpack-plugin": "^8.1.1",
-    "devreplay": "^1.9.29",
-    "eslint": "^7.24.0",
-    "eslint-plugin-jsdoc": "^32.3.0",
-    "mocha": "^8.3.2",
-    "ts-loader": "^8.1.0",
-    "typescript": "^4.2.4",
+    "@types/ws": "^7.4.4",
+    "@typescript-eslint/eslint-plugin": "^4.25.0",
+    "@typescript-eslint/parser": "^4.25.0",
+    "copy-webpack-plugin": "^9.0.0",
+    "devreplay": "^1.9.31",
+    "eslint": "^7.27.0",
+    "eslint-plugin-jsdoc": "^35.1.0",
+    "mocha": "^8.4.0",
+    "ts-loader": "^9.2.2",
+    "typescript": "^4.3.2",
     "vscode-test": "^1.5.2",
-    "webpack": "^5.31.2",
-    "webpack-cli": "^4.6.0",
+    "webpack": "^5.38.1",
+    "webpack-cli": "^4.7.0",
     "yamljs": "^0.3.0"
   },
   "dependencies": {
-    "bootstrap": "^4.6.0",
-    "cheerio": "1.0.0-rc.6",
+    "bootstrap": "^5.0.1",
+    "cheerio": "1.0.0-rc.9",
     "datatables.net": "^1.10.24",
     "datatables.net-bs4": "^1.10.24",
     "datatables.net-fixedheader-jqui": "^3.1.8",
+    "ejs": "^3.1.6",
     "fotorama": "^4.6.4",
-    "fs-extra": "^9.1.0",
+    "fs-extra": "^10.0.0",
     "highlight.js": "^10.7.2",
     "jquery": "^3.6.0",
     "jquery.json-viewer": "^1.4.0",
+    "node-fetch": "^2.6.1",
     "popper.js": "^1.16.1",
     "showdown": "^1.9.1",
     "tree-kill": "^1.2.2",
     "vsls": "^1.0.3015",
-    "winreg": "^1.2.4"
+    "winreg": "^1.2.4",
+    "ws": "^7.4.6"
   }
 }

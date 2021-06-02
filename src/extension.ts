@@ -14,15 +14,19 @@ import * as rstudioapi from './rstudioapi';
 import * as rmarkdown from './rmarkdown';
 import * as workspaceViewer from './workspaceViewer';
 import * as apiImplementation from './apiImplementation';
-import * as rHelp from './rHelp';
+import * as rHelp from './helpViewer';
 import * as completions from './completions';
 import * as rShare from './liveshare/share';
+import * as httpgdViewer from './plotViewer';
+
 
 // global objects used in other files
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
-export let extensionContext: vscode.ExtensionContext | undefined = undefined;
+export let extensionContext: vscode.ExtensionContext;
 export let enableSessionWatcher: boolean = undefined;
+export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
+
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -91,7 +95,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.launchAddinPicker': rstudioapi.launchAddinPicker,
 
         // workspace viewer
-        'r.workspaceViewer.refreshEntry': () => rWorkspace.refresh(),
+        'r.workspaceViewer.refreshEntry': () => rWorkspace?.refresh(),
         'r.workspaceViewer.view': (node: workspaceViewer.WorkspaceItem) => workspaceViewer.viewItem(node.label),
         'r.workspaceViewer.remove': (node: workspaceViewer.WorkspaceItem) => workspaceViewer.removeItem(node.label),
         'r.workspaceViewer.clear': workspaceViewer.clearWorkspace,
@@ -126,6 +130,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         wordPattern,
     });
 
+    // initialize httpgd viewer
+    globalHttpgdManager = httpgdViewer.initializeHttpgd();
 
     // initialize the package/help related functions
     globalRHelp = await rHelp.initializeHelp(context, rExtension);

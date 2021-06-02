@@ -14,7 +14,7 @@ import { FSWatcher } from 'fs-extra';
 import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { rWorkspace, globalRHelp } from './extension';
+import { rWorkspace, globalRHelp, globalHttpgdManager } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession } from './liveshare/share';
 import { closeBrowser, guestResDir, shareBrowser } from './liveshare/shareSession';
 import { openVirtualDoc } from './liveshare/virtualDocs';
@@ -570,6 +570,12 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         if (globalRHelp) {
                             console.log(request.requestPath);
                             void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
+                        }
+                        break;
+                    }
+                    case 'httpgd': {
+                        if(request.url){
+                            globalHttpgdManager?.showViewer(request.url);
                         }
                         break;
                     }

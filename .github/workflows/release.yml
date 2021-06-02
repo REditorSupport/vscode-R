@@ -7,12 +7,16 @@ on:
   push:
     tags: ["v*"]
 
+env:
+  SCRIPT_DIR: ./.github/scripts
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - run: npm install
+      - run: node $SCRIPT_DIR/enableWebpack.js
+      - run: yarn install
       - uses: lannonbr/vsce-action@master
         with:
           args: "package"
@@ -49,11 +53,11 @@ jobs:
   publish:
     name: Publish
     timeout-minutes: 30
-    needs: release # doesn't really need these, just to make sure that packaging etc worked
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - run: npm install
+      - run: node $SCRIPT_DIR/enableWebpack.js
+      - run: yarn install
       - uses: lannonbr/vsce-action@master
         with:
           args: "publish -p $VSCE_TOKEN"

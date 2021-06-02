@@ -189,6 +189,10 @@
                     "name": "keyword.operator.logical.r"
                 },
                 {
+                    "match": "(\\|>)",
+                    "name": "keyword.operator.pipe.r"
+                },
+                {
                     "match": "(%between%|%chin%|%like%|%\\+%|%\\+replace%|%:%|%do%|%dopar%|%>%|%<>%|%T>%|%\\$%)",
                     "name": "keyword.operator.other.r"
                 },

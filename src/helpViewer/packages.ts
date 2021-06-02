@@ -4,9 +4,9 @@ import * as https from 'https';
 import * as http from 'http';
 import * as vscode from 'vscode';
 
-import { RHelp } from './rHelp';
-import { getRpath, getConfirmation, executeAsTask, doWithProgress, getCranUrl } from './util';
-import { AliasProvider } from './rHelpProvider';
+import { RHelp } from '.';
+import { getRpath, getConfirmation, executeAsTask, doWithProgress, getCranUrl } from '../util';
+import { AliasProvider } from './helpProvider';
 
 
 // This file implements a rudimentary 'package manager'
@@ -196,7 +196,7 @@ export class PackageManager {
     // let the user pick and install a package from CRAN 
     public async pickAndInstallPackages(pickMany: boolean = false): Promise<boolean> {
         const pkgs = await this.pickPackages('Please selecte a package.', true, pickMany);
-        if(pkgs?.length > 1){
+        if(pkgs?.length >= 1){
             const pkgsConfirmed = await this.confirmPackages('Are you sure you want to install these packages?', pkgs);
             if(pkgsConfirmed?.length){
                 const names = pkgsConfirmed.map(v => v.name);

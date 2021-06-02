@@ -1,6 +1,6 @@
 name: pre-release
 
-# creates a pre-release with the .vsix 
+# creates/updates a pre-release with the .vsix 
 
 on:
   push:
@@ -8,13 +8,15 @@ on:
 
 env:
   FILE_OUT: r-latest.vsix
+  SCRIPT_DIR: ./.github/scripts
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - run: npm install
+      - run: node $SCRIPT_DIR/enableWebpack.js
+      - run: yarn install
       - uses: lannonbr/vsce-action@master
         with:
           args: "package -o $FILE_OUT"

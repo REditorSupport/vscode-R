@@ -4,15 +4,14 @@ import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 import * as hljs from 'highlight.js';
 
-import * as api from './api';
+import * as api from '../api';
 
-import { config, getRpath, doWithProgress, DummyMemento, getRPathConfigEntry } from './util';
-import { HelpPanel } from './rHelpPanel';
-import { HelpProvider, AliasProvider } from './rHelpProvider';
-import { HelpTreeWrapper } from './rHelpTree';
-import { PackageManager } from './rHelpPackages';
-import { isGuestSession, rGuestService } from './liveshare/share';
-
+import { config, getRpath, doWithProgress, DummyMemento, getRPathConfigEntry } from '../util';
+import { HelpPanel } from './panel';
+import { HelpProvider, AliasProvider } from './helpProvider';
+import { HelpTreeWrapper } from './treeView';
+import { PackageManager } from './packages';
+import { isGuestSession, rGuestService } from '../liveshare/share';
 
 // Initialization function that is called once when activating the extension
 export async function initializeHelp(context: vscode.ExtensionContext, rExtension: api.RExtension): Promise<RHelp|undefined> {
@@ -40,8 +39,8 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 
 	// Gather options used in r help related files
     const rHelpOptions: HelpOptions = {
-        webviewScriptPath: context.asAbsolutePath('/html/script.js'),
-        webviewStylePath: context.asAbsolutePath('html/theme.css'),
+        webviewScriptPath: context.asAbsolutePath('/html/help/script.js'),
+        webviewStylePath: context.asAbsolutePath('html/help/theme.css'),
 		rScriptFile: context.asAbsolutePath('R/getAliases.R'),
         rPath: rPath,
         cwd: cwd,
@@ -344,11 +343,15 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 
 		let pickedAlias: Alias | undefined;
 		if(matchingAliases.length === 0){
-			pickedAlias = undefined;
+			return false;
 		} else if(matchingAliases.length === 1){
 			pickedAlias = matchingAliases[0];
 		} else{
 			pickedAlias = await this.pickAlias(matchingAliases);
+			if(!pickedAlias){
+				// aborted by user -> return successful
+				return true;
+			}
 		}
 		if(pickedAlias){
 			return await this.showHelpForAlias(pickedAlias, preserveFocus);

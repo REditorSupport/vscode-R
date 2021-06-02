@@ -36,7 +36,9 @@ export async function getRpathFromSystem(): Promise<string> {
     let rpath = '';
     const platform: string = process.platform;
 
-    if (platform === 'win32') {
+    rpath ||= getRfromEnvPath(platform);
+
+    if ( !rpath && platform === 'win32') {
         // Find path from registry
         try {
             const key = new winreg({
@@ -50,8 +52,6 @@ export async function getRpathFromSystem(): Promise<string> {
             rpath = '';
         }
     }
-
-    rpath ||= getRfromEnvPath(platform);
 
     return rpath;
 }
@@ -330,4 +330,11 @@ export class DummyMemento implements vscode.Memento {
     public async update(key: string, value: any): Promise<void> {
         this.items.set(key, value);
     }
+}
+
+// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any
+export async function setContext(key: string, value: any): Promise<void> {
+    await vscode.commands.executeCommand(
+        'setContext', key, value
+    );
 }

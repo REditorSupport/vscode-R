@@ -3,16 +3,33 @@
   // for the documentation about the tasks.json format
   "version": "2.0.0",
   "tasks": [
-		{
-			"label": "Package and install Extension",
-			"type": "shell",
-			"problemMatcher": [],
-			"command": "vsce package -o ${workspaceFolderBasename}.vsix && code --install-extension ${workspaceFolderBasename}.vsix --force",
-			"group": {
-				"kind": "build",
-				"isDefault": true
-			}
-		},
+    {
+      "label": "Package Extension",
+      "type": "shell",
+      "problemMatcher": [],
+      "command": "vsce",
+      "args": [
+        "package",
+        "-o",
+        "${workspaceFolderBasename}.vsix"
+      ]
+    },
+    {
+      "label": "Install Extension",
+      "type": "shell",
+      "problemMatcher": [],
+      "command": "code",
+      "args": [
+        "--install-extension",
+        "${workspaceFolderBasename}.vsix",
+        "--force"
+      ],
+      "dependsOn": ["Package Extension"],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
     {
       "type": "npm",
       "script": "compile",
@@ -43,7 +60,7 @@
      "group": {
        "kind": "test",
        "isDefault": true
-     }
+     },
     }
   ]
 }
