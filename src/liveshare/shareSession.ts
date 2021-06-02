@@ -89,6 +89,12 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                         }
                         break;
                     }
+                    case 'httpgd': {
+                        if (request.url) {
+                            await showBrowser(request.url, 'R Plots', 'Two');
+                        }
+                        break;
+                    }
                     case 'attach': {
                         guestPid = String(request.pid);
                         guestPlotView = String(request.plot);
@@ -177,8 +183,8 @@ export async function updateGuestPlot(file: string): Promise<void> {
 // host session
 // Automates sharing browser sessions through the
 // shareServer method
-export async function shareBrowser(url: string, name: string): Promise<void> {
-    if (autoShareBrowser) {
+export async function shareBrowser(url: string, name: string, force: boolean = false): Promise<void> {
+    if (autoShareBrowser || force) {
         const _url = new URL(url);
         const server: vsls.Server = {
             port: parseInt(_url.port),

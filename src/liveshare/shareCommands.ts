@@ -7,7 +7,7 @@ import { updateGuestRequest, updateGuestGlobalenv, updateGuestPlot, detachGuest 
 import { forwardCommands, shareWorkspace } from './shareTree';
 import { runTextInTerm } from '../rTerminal';
 import { requestFile } from '../session';
-import { HelpFile } from '../rHelp';
+import { HelpFile } from '../helpViewer/index';
 import { globalRHelp } from '../extension';
 
 // used in sending messages to the guest service,

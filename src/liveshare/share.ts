@@ -6,7 +6,7 @@ import { enableSessionWatcher, extensionContext } from '../extension';
 import { attachActiveGuest, browserDisposables, initGuest } from './shareSession';
 import { initTreeView, rLiveShareProvider, shareWorkspace, ToggleNode } from './shareTree';
 import { Commands, Callback, onRequest, request } from './shareCommands';
-import { HelpFile } from '../rHelp';
+import { HelpFile } from '../helpViewer/index';
 import { globalenv } from '../session';
 import { config } from '../util';
 
