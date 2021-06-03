@@ -79,7 +79,10 @@ export async function initLiveShare(context: vscode.ExtensionContext): Promise<v
                     'r.liveShare.toggle', (node: ToggleNode) => node.toggle(rLiveShareProvider)
                 ),
                 vscode.commands.registerCommand(
-                    'r.liveShare.retry', async () => await LiveSessionListener()
+                    'r.liveShare.retry', async () => {
+                        await LiveSessionListener();
+                        rLiveShareProvider.refresh();
+                    }
                 )
             );
         } else {
