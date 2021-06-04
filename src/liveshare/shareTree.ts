@@ -11,9 +11,9 @@ export let rLiveShareProvider: LiveShareTreeProvider;
 
 export function initTreeView(): void {
     // get default bool values from settings
-    shareWorkspace = config().get('liveShare.shareWorkspaceDefault');
-    forwardCommands = config().get('liveShare.commandForwardDefault');
-    autoShareBrowser = config().get('liveShare.shareBrowserDefault');
+    shareWorkspace = config().get('liveShare.defaults.shareWorkspace');
+    forwardCommands = config().get('liveShare.defaults.commandForward');
+    autoShareBrowser = config().get('liveShare.defaults.shareBrowser');
 
     // create tree view for host controls
     rLiveShareProvider = new LiveShareTreeProvider();
@@ -128,7 +128,7 @@ class CommandNode extends ToggleNode {
         treeProvider.refresh();
     }
 
-    public label: string = 'Allow guests to interact with host R extension';
+    public label: string = 'Allow guest interaction with host R extension';
     public tooltip: string = 'Whether commands to interact with the R extension should be forwarded from the guest to the host (bypasses permissions); shared R terminal (command line) permissions can be toggled in the Live Share extension';
     public contextValue: string = 'commandNode';
     public iconPath: vscode.ThemeIcon = new vscode.ThemeIcon('debug-step-over');

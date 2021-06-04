@@ -1191,17 +1191,17 @@
           "default": 3000,
           "description": "Time in milliseconds before aborting attempt to connect to Live Share API"
         },
-        "r.liveShare.commandForwardDefault": {
+        "r.liveShare.defaults.commandForward": {
           "type": "boolean",
           "default": false,
           "description": "Default boolean value for guest command forwarding."
         },
-        "r.liveShare.shareWorkspaceDefault": {
+        "r.liveShare.defaults.shareWorkspace": {
           "type": "boolean",
           "default": true,
           "description": "Default boolean value for sharing the R workspace with guests."
         },
-        "r.liveShare.shareBrowserDefault": {
+        "r.liveShare.defaults.shareBrowser": {
           "type": "boolean",
           "default": false,
           "description": "Default boolean value for automatically sharing R browser ports with guests."

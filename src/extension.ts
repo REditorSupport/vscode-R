@@ -173,7 +173,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // deploy session watcher (if configured by user)
     if (enableSessionWatcher) {
-        if (!(rShare.isGuest())) {
+        if (!rShare.isGuestSession) {
             console.info('Initialize session watcher');
             void session.deploySessionWatcher(context.extensionPath);
 
