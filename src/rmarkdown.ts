@@ -7,7 +7,7 @@ import { runChunksInTerm } from './rTerminal';
 import { config } from './util';
 
 function isRDocument(document: TextDocument) {
-  return (languages.match('r', document) > 0);
+  return (document.languageId === 'r');
 }
 
 function isRChunkLine(text: string) {
