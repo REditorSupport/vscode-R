@@ -1,7 +1,7 @@
 import {
   CancellationToken, CodeLens, CodeLensProvider,
   CompletionItem, CompletionItemProvider,
-  Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window, Selection, languages
+  Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window, Selection
 } from 'vscode';
 import { runChunksInTerm } from './rTerminal';
 import { config } from './util';
