@@ -6,18 +6,28 @@ import {
 import { runChunksInTerm } from './rTerminal';
 import { config } from './util';
 
-function isChunkStartLine(text: string) {
-  if (text.match(/^\s*```+\s*\{\w+\s*.*$/g)) {
-    return true;
-  }
-  return false;
+function isRDocument(document: TextDocument) {
+  return (document.languageId === 'r');
 }
 
-function isChunkEndLine(text: string) {
-  if (text.match(/^\s*```+\s*$/g)) {
-    return true;
+function isRChunkLine(text: string) {
+  return (!!text.match(/^#+\s*%%/g));
+}
+
+function isChunkStartLine(text: string, isRDoc: boolean) {
+  if (isRDoc) {
+    return (isRChunkLine(text));
+  } else {
+    return (!!text.match(/^\s*```+\s*\{\w+\s*.*$/g));
   }
-  return false;
+}
+
+function isChunkEndLine(text: string, isRDoc: boolean) {
+  if (isRDoc) {
+    return (isRChunkLine(text));
+  } else {
+    return (!!text.match(/^\s*```+\s*$/g));
+  }
 }
 
 function getChunkLanguage(text: string) {
@@ -55,14 +65,14 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
     const rmdCodeLensCommands: string[] = config().get('rmarkdown.codeLensCommands');
 
     // Iterate through all code chunks for getting chunk information for both CodeLens and chunk background color (set by `editor.setDecorations`)
-    for (let i = 1 ; i <= chunks.length ; i++) {
+    for (let i = 1; i <= chunks.length; i++) {
       const chunk = chunks.filter(e => e.id === i)[0];
       const chunkRange = chunk.chunkRange;
       const line = chunk.startLine;
       chunkRanges.push(chunkRange);
 
       // Enable/disable only CodeLens, without affecting chunk background color.
-      if (config().get<boolean>('rmarkdown.enableCodeLens') && chunk.language === 'r') {
+      if (config().get<boolean>('rmarkdown.enableCodeLens') && (chunk.language === 'r') || isRDocument(document)) {
         if (token.isCancellationRequested) {
           break;
         }
@@ -141,9 +151,9 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
     // For user-specified options, both options and sort order are based on options specified in settings UI or settings.json.
     return this.codeLenses.
       filter(e => rmdCodeLensCommands.includes(e.command.command)).
-      sort(function(a, b) {
+      sort(function (a, b) {
         const sorted = rmdCodeLensCommands.indexOf(a.command.command) -
-                       rmdCodeLensCommands.indexOf(b.command.command);
+          rmdCodeLensCommands.indexOf(b.command.command);
         return sorted;
       });
   }
@@ -176,10 +186,11 @@ function getChunks(document: TextDocument): RMarkdownChunk[] {
   let chunkLanguage: string = undefined;
   let chunkOptions: string = undefined;
   let chunkEval: boolean = undefined;
+  const isRDoc = isRDocument(document);
 
   while (line < lines.length) {
     if (chunkStartLine === undefined) {
-      if (isChunkStartLine(lines[line])) {
+      if (isChunkStartLine(lines[line], isRDoc)) {
         chunkId++;
         chunkStartLine = line;
         chunkLanguage = getChunkLanguage(lines[line]);
@@ -187,7 +198,7 @@ function getChunks(document: TextDocument): RMarkdownChunk[] {
         chunkEval = getChunkEval(chunkOptions);
       }
     } else {
-      if (isChunkEndLine(lines[line])) {
+      if (isChunkEndLine(lines[line], isRDoc)) {
         chunkEndLine = line;
 
         const chunkRange = new Range(
@@ -211,10 +222,10 @@ function getChunks(document: TextDocument): RMarkdownChunk[] {
         });
 
         chunkStartLine = undefined;
-        }
       }
-      line++;
     }
+    line++;
+  }
   return chunks;
 }
 
@@ -225,11 +236,13 @@ function getCurrentChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk
   // `- 1` to cover edge case when cursor is at 'chunk end line'
   let chunkEndLineAbove = line - 1;
 
-  while (chunkStartLineAtOrAbove >= 0 && !isChunkStartLine(lines[chunkStartLineAtOrAbove])) {
+  const isRDoc = isRDocument(window.activeTextEditor.document);
+
+  while (chunkStartLineAtOrAbove >= 0 && !isChunkStartLine(lines[chunkStartLineAtOrAbove], isRDoc)) {
     chunkStartLineAtOrAbove--;
   }
 
-  while (chunkEndLineAbove >= 0 && !isChunkEndLine(lines[chunkEndLineAbove])) {
+  while (chunkEndLineAbove >= 0 && !isChunkEndLine(lines[chunkEndLineAbove], isRDoc)) {
     chunkEndLineAbove--;
   }
 
@@ -237,9 +250,9 @@ function getCurrentChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk
   if (chunkEndLineAbove < chunkStartLineAtOrAbove) {
     line = chunkStartLineAtOrAbove;
   } else {
-  // Cases: Cursor is above the first chunk, at the first chunk or outside of chunk. Find the 'chunk start line' of the next chunk below the cursor.
+    // Cases: Cursor is above the first chunk, at the first chunk or outside of chunk. Find the 'chunk start line' of the next chunk below the cursor.
     let chunkStartLineBelow = line + 1;
-    while (!isChunkStartLine(lines[chunkStartLineBelow])) {
+    while (!isChunkStartLine(lines[chunkStartLineBelow], isRDoc)) {
       chunkStartLineBelow++;
     }
     line = chunkStartLineBelow;
@@ -287,32 +300,32 @@ function _getStartLine() {
 }
 
 export async function runCurrentChunk(chunks: RMarkdownChunk[] = _getChunks(),
-                                      line: number = _getStartLine()): Promise<void> {
+  line: number = _getStartLine()): Promise<void> {
   const currentChunk = getCurrentChunk(chunks, line);
   await runChunksInTerm([currentChunk.codeRange]);
 }
 
 export async function runPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
-                                       line: number = _getStartLine()): Promise<void> {
+  line: number = _getStartLine()): Promise<void> {
   const previousChunk = getPreviousChunk(chunks, line);
   await runChunksInTerm([previousChunk.codeRange]);
 }
 
 export async function runNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
-                                   line: number = _getStartLine()): Promise<void> {
+  line: number = _getStartLine()): Promise<void> {
   const nextChunk = getNextChunk(chunks, line);
   await runChunksInTerm([nextChunk.codeRange]);
 }
 
 export async function runAboveChunks(chunks: RMarkdownChunk[] = _getChunks(),
-                                     line: number = _getStartLine()): Promise<void> {
+  line: number = _getStartLine()): Promise<void> {
   const previousChunk = getPreviousChunk(chunks, line);
   const firstChunkId = 1;
   const previousChunkId = previousChunk.id;
 
   const codeRanges: Range[] = [];
 
-  for (let i = firstChunkId ; i <= previousChunkId ; i++) {
+  for (let i = firstChunkId; i <= previousChunkId; i++) {
     const chunk = chunks.filter(e => e.id === i)[0];
     if (chunk.eval) {
       codeRanges.push(chunk.codeRange);
@@ -322,7 +335,7 @@ export async function runAboveChunks(chunks: RMarkdownChunk[] = _getChunks(),
 }
 
 export async function runBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
-                                     line: number = _getStartLine()): Promise<void> {
+  line: number = _getStartLine()): Promise<void> {
 
   const nextChunk = getNextChunk(chunks, line);
   const nextChunkId = nextChunk.id;
@@ -330,7 +343,7 @@ export async function runBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
 
   const codeRanges: Range[] = [];
 
-  for (let i = nextChunkId ; i <= lastChunkId ; i++) {
+  for (let i = nextChunkId; i <= lastChunkId; i++) {
     const chunk = chunks.filter(e => e.id === i)[0];
     if (chunk.eval) {
       codeRanges.push(chunk.codeRange);
@@ -340,14 +353,14 @@ export async function runBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
 }
 
 export async function runCurrentAndBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
-                                               line: number = _getStartLine()): Promise<void> {
+  line: number = _getStartLine()): Promise<void> {
   const currentChunk = getCurrentChunk(chunks, line);
   const currentChunkId = currentChunk.id;
   const lastChunkId = chunks.length;
 
   const codeRanges: Range[] = [];
 
-  for (let i = currentChunkId ; i <= lastChunkId ; i++) {
+  for (let i = currentChunkId; i <= lastChunkId; i++) {
     const chunk = chunks.filter(e => e.id === i)[0];
     codeRanges.push(chunk.codeRange);
   }
@@ -361,7 +374,7 @@ export async function runAllChunks(chunks: RMarkdownChunk[] = _getChunks()): Pro
 
   const codeRanges: Range[] = [];
 
-  for (let i = firstChunkId ; i <= lastChunkId ; i++) {
+  for (let i = firstChunkId; i <= lastChunkId; i++) {
     const chunk = chunks.filter(e => e.id === i)[0];
     if (chunk.eval) {
       codeRanges.push(chunk.codeRange);
@@ -377,19 +390,19 @@ function goToChunk(chunk: RMarkdownChunk) {
 }
 
 export function goToPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
-                                        line: number = _getStartLine()): void {
+  line: number = _getStartLine()): void {
   const previousChunk = getPreviousChunk(chunks, line);
   goToChunk(previousChunk);
 }
 
 export function goToNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
-                                    line: number = _getStartLine()): void {
+  line: number = _getStartLine()): void {
   const nextChunk = getNextChunk(chunks, line);
   goToChunk(nextChunk);
 }
 
 export function selectCurrentChunk(chunks: RMarkdownChunk[] = _getChunks(),
-                                         line: number = _getStartLine()): void {
+  line: number = _getStartLine()): void {
   const editor = window.activeTextEditor;
   const currentChunk = getCurrentChunk__CursorWithinChunk(chunks, line);
   const lines = editor.document.getText().split(/\r?\n/);
@@ -426,7 +439,7 @@ export class RMarkdownCompletionItemProvider implements CompletionItemProvider {
 
   public provideCompletionItems(document: TextDocument, position: Position): CompletionItem[] {
     const line = document.lineAt(position).text;
-    if (isChunkStartLine(line) && getChunkLanguage(line) === 'r') {
+    if (isChunkStartLine(line, false) && getChunkLanguage(line) === 'r') {
       return this.chunkOptionCompletionItems;
     }
 
