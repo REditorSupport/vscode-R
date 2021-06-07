@@ -32,7 +32,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // is used to export an interface to the help panel
     // this export is used e.g. by vscode-r-debugger to show the help panel from within debug sessions
     const rExtension = new apiImplementation.RExtensionImplementation();
-    
+
     // assign extension context to global variable
     extensionContext = context;
 
@@ -41,7 +41,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // create R terminal
         'r.createRTerm': rTerminal.createRTerm,
 
-        // run code from editor in terminal 
+        // run code from editor in terminal
         'r.nrow': () => rTerminal.runSelectionOrWord(['nrow']),
         'r.length': () => rTerminal.runSelectionOrWord(['length']),
         'r.head': () => rTerminal.runSelectionOrWord(['head']),
@@ -103,7 +103,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // (help related commands are registered in rHelp.initializeHelp)
     };
-    for(const key in commands){
+    for (const key in commands) {
         context.subscriptions.push(vscode.commands.registerCommand(key, commands[key]));
     }
 
@@ -115,15 +115,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // register on-enter rule for roxygen comments
     const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
     vscode.languages.setLanguageConfiguration('r', {
-		onEnterRules: [
-			{
-				// Automatically continue roxygen comments: #'
-				action: { indentAction: vscode.IndentAction.None, appendText: '#\' ' },
-				beforeText: /^#'.*/,
-			},
-		],
-		wordPattern,
-	});
+        onEnterRules: [
+            {
+                // Automatically continue roxygen comments: #'
+                action: { indentAction: vscode.IndentAction.None, appendText: '#\' ' },
+                beforeText: /^#'.*/,
+            },
+        ],
+        wordPattern,
+    });
 
     // initialize httpgd viewer
     globalHttpgdManager = httpgdViewer.initializeHttpgd();
@@ -133,7 +133,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
 
     // register codelens and complmetion providers for r markdown
-    vscode.languages.registerCodeLensProvider('rmd', new rmarkdown.RMarkdownCodeLensProvider());
+    vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());
     vscode.languages.registerCompletionItemProvider('rmd', new rmarkdown.RMarkdownCompletionItemProvider(), ' ', ',');
 
 
@@ -148,13 +148,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     vscode.tasks.registerTaskProvider(type, {
         provideTasks() {
             return [
-                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Check', 'R',
+                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Check', 'R',
                     new vscode.ShellExecution('Rscript -e "devtools::check()"')),
-                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Document', 'R',
+                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Document', 'R',
                     new vscode.ShellExecution('Rscript -e "devtools::document()"')),
-                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Install', 'R',
+                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Install', 'R',
                     new vscode.ShellExecution('Rscript -e "devtools::install()"')),
-                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Test', 'R',
+                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Test', 'R',
                     new vscode.ShellExecution('Rscript -e "devtools::test()"')),
             ];
         },
@@ -195,10 +195,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
 
         // if session watcher is active, register dyamic completion provider
-        const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\'' ];
+        const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
         vscode.languages.registerCompletionItemProvider('r', new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
 
     return rExtension;
 }
-
