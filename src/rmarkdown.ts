@@ -39,10 +39,7 @@ function getChunkOptions(text: string) {
 }
 
 function getChunkEval(chunkOptions: string) {
-  if (chunkOptions.match(/eval\s*=\s*(F|FALSE)/g)) {
-    return false;
-  }
-  return true;
+  return (!chunkOptions.match(/eval\s*=\s*(F|FALSE)/g));
 }
 
 export class RMarkdownCodeLensProvider implements CodeLensProvider {
@@ -179,7 +176,6 @@ function getChunks(document: TextDocument): RMarkdownChunk[] {
   const chunks: RMarkdownChunk[] = [];
 
   let line = 0;
-
   let chunkId = 0;  // One-based index
   let chunkStartLine: number = undefined;
   let chunkEndLine: number = undefined;
@@ -277,18 +273,27 @@ function getCurrentChunk__CursorWithinChunk(chunks: RMarkdownChunk[], line: numb
 
 function getPreviousChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
   const currentChunk = getCurrentChunk(chunks, line);
-  // When cursor is below the last 'chunk end line', the definition of the previous chunk is the last chunk
-  const previousChunkId = currentChunk.endLine < line ? currentChunk.id : currentChunk.id - 1;
-  const previousChunk = chunks.filter(i => i.id === previousChunkId)[0];
-  return previousChunk;
+  if (currentChunk.id !== 1) {
+    // When cursor is below the last 'chunk end line', the definition of the previous chunk is the last chunk
+    const previousChunkId = currentChunk.endLine < line ? currentChunk.id : currentChunk.id - 1;
+    const previousChunk = chunks.filter(i => i.id === previousChunkId)[0];
+    return previousChunk;
+  } else {
+    return (currentChunk);
+  }
 }
 
 function getNextChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
   const currentChunk = getCurrentChunk(chunks, line);
-  // When cursor is above the first 'chunk start line', the definition of the next chunk is the first chunk
-  const nextChunkId = line < currentChunk.startLine ? currentChunk.id : currentChunk.id + 1;
-  const nextChunk = chunks.filter(i => i.id === nextChunkId)[0];
-  return nextChunk;
+  if (currentChunk.id !== chunks.length) {
+    // When cursor is above the first 'chunk start line', the definition of the next chunk is the first chunk
+    const nextChunkId = line < currentChunk.startLine ? currentChunk.id : currentChunk.id + 1;
+    const nextChunk = chunks.filter(i => i.id === nextChunkId)[0];
+    return nextChunk;
+  } else {
+    return currentChunk;
+  }
+
 }
 
 // Helpers
@@ -307,49 +312,63 @@ export async function runCurrentChunk(chunks: RMarkdownChunk[] = _getChunks(),
 
 export async function runPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
   line: number = _getStartLine()): Promise<void> {
+  const currentChunk = getCurrentChunk(chunks, line);
   const previousChunk = getPreviousChunk(chunks, line);
-  await runChunksInTerm([previousChunk.codeRange]);
+
+  if (previousChunk !== currentChunk) {
+    await runChunksInTerm([previousChunk.codeRange]);
+  }
+
 }
 
 export async function runNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
   line: number = _getStartLine()): Promise<void> {
+  const currentChunk = getCurrentChunk(chunks, line);
   const nextChunk = getNextChunk(chunks, line);
-  await runChunksInTerm([nextChunk.codeRange]);
+
+  if (nextChunk !== currentChunk) {
+    await runChunksInTerm([nextChunk.codeRange]);
+  }
 }
 
 export async function runAboveChunks(chunks: RMarkdownChunk[] = _getChunks(),
   line: number = _getStartLine()): Promise<void> {
+  const currentChunk = getCurrentChunk(chunks, line);
   const previousChunk = getPreviousChunk(chunks, line);
   const firstChunkId = 1;
   const previousChunkId = previousChunk.id;
 
   const codeRanges: Range[] = [];
 
-  for (let i = firstChunkId; i <= previousChunkId; i++) {
-    const chunk = chunks.filter(e => e.id === i)[0];
-    if (chunk.eval) {
-      codeRanges.push(chunk.codeRange);
+  if (previousChunk !== currentChunk) {
+    for (let i = firstChunkId; i <= previousChunkId; i++) {
+      const chunk = chunks.filter(e => e.id === i)[0];
+      if (chunk.eval) {
+        codeRanges.push(chunk.codeRange);
+      }
     }
+    await runChunksInTerm(codeRanges);
   }
-  await runChunksInTerm(codeRanges);
 }
 
 export async function runBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
   line: number = _getStartLine()): Promise<void> {
 
+  const currentChunk = getCurrentChunk(chunks, line);
   const nextChunk = getNextChunk(chunks, line);
   const nextChunkId = nextChunk.id;
   const lastChunkId = chunks.length;
 
   const codeRanges: Range[] = [];
-
-  for (let i = nextChunkId; i <= lastChunkId; i++) {
-    const chunk = chunks.filter(e => e.id === i)[0];
-    if (chunk.eval) {
-      codeRanges.push(chunk.codeRange);
+  if (nextChunk !== currentChunk) {
+    for (let i = nextChunkId; i <= lastChunkId; i++) {
+      const chunk = chunks.filter(e => e.id === i)[0];
+      if (chunk.eval) {
+        codeRanges.push(chunk.codeRange);
+      }
     }
+    await runChunksInTerm(codeRanges);
   }
-  await runChunksInTerm(codeRanges);
 }
 
 export async function runCurrentAndBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
