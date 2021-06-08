@@ -63,7 +63,7 @@ export class RMarkdownCodeLensProvider implements CodeLensProvider {
 
     // Iterate through all code chunks for getting chunk information for both CodeLens and chunk background color (set by `editor.setDecorations`)
     for (let i = 1; i <= chunks.length; i++) {
-      const chunk = chunks.filter(e => e.id === i)[0];
+      const chunk = chunks.find(e => e.id === i);
       const chunkRange = chunk.chunkRange;
       const line = chunk.startLine;
       chunkRanges.push(chunkRange);
@@ -253,7 +253,7 @@ function getCurrentChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk
     }
     line = chunkStartLineBelow;
   }
-  const currentChunk = chunks.filter(i => i.startLine === line)[0];
+  const currentChunk = chunks.find(i => i.startLine <= line && i.endLine >= line);
   return currentChunk;
 }
 
@@ -261,14 +261,7 @@ function getCurrentChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk
 // - commands (e.g. `selectCurrentChunk`) only make sense when cursor is within chunk
 // - when cursor is outside of chunk, no response is triggered for chunk navigation commands (e.g. `goToPreviousChunk`) and chunk running commands (e.g. `runAboveChunks`)
 function getCurrentChunk__CursorWithinChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
-  const ids = chunks.map(e => e.id);
-
-  for (const id of ids) {
-    const chunk = chunks.filter(e => e.id === id)[0];
-    if (chunk.startLine <= line && line <= chunk.endLine) {
-      return chunk;
-    }
-  }
+  return chunks.find(i => i.startLine <= line && i.endLine >= line);
 }
 
 function getPreviousChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
@@ -276,7 +269,7 @@ function getPreviousChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChun
   if (currentChunk.id !== 1) {
     // When cursor is below the last 'chunk end line', the definition of the previous chunk is the last chunk
     const previousChunkId = currentChunk.endLine < line ? currentChunk.id : currentChunk.id - 1;
-    const previousChunk = chunks.filter(i => i.id === previousChunkId)[0];
+    const previousChunk = chunks.find(i => i.id === previousChunkId);
     return previousChunk;
   } else {
     return (currentChunk);
@@ -288,7 +281,7 @@ function getNextChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk {
   if (currentChunk.id !== chunks.length) {
     // When cursor is above the first 'chunk start line', the definition of the next chunk is the first chunk
     const nextChunkId = line < currentChunk.startLine ? currentChunk.id : currentChunk.id + 1;
-    const nextChunk = chunks.filter(i => i.id === nextChunkId)[0];
+    const nextChunk = chunks.find(i => i.id === nextChunkId);
     return nextChunk;
   } else {
     return currentChunk;
@@ -342,7 +335,7 @@ export async function runAboveChunks(chunks: RMarkdownChunk[] = _getChunks(),
 
   if (previousChunk !== currentChunk) {
     for (let i = firstChunkId; i <= previousChunkId; i++) {
-      const chunk = chunks.filter(e => e.id === i)[0];
+      const chunk = chunks.find(e => e.id === i);
       if (chunk.eval) {
         codeRanges.push(chunk.codeRange);
       }
@@ -362,7 +355,7 @@ export async function runBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
   const codeRanges: Range[] = [];
   if (nextChunk !== currentChunk) {
     for (let i = nextChunkId; i <= lastChunkId; i++) {
-      const chunk = chunks.filter(e => e.id === i)[0];
+      const chunk = chunks.find(e => e.id === i);
       if (chunk.eval) {
         codeRanges.push(chunk.codeRange);
       }
@@ -380,7 +373,7 @@ export async function runCurrentAndBelowChunks(chunks: RMarkdownChunk[] = _getCh
   const codeRanges: Range[] = [];
 
   for (let i = currentChunkId; i <= lastChunkId; i++) {
-    const chunk = chunks.filter(e => e.id === i)[0];
+    const chunk = chunks.find(e => e.id === i);
     codeRanges.push(chunk.codeRange);
   }
   await runChunksInTerm(codeRanges);
@@ -394,7 +387,7 @@ export async function runAllChunks(chunks: RMarkdownChunk[] = _getChunks()): Pro
   const codeRanges: Range[] = [];
 
   for (let i = firstChunkId; i <= lastChunkId; i++) {
-    const chunk = chunks.filter(e => e.id === i)[0];
+    const chunk = chunks.find(e => e.id === i);
     if (chunk.eval) {
       codeRanges.push(chunk.codeRange);
     }
