@@ -1,7 +1,7 @@
 import {
   CancellationToken, CodeLens, CodeLensProvider,
   CompletionItem, CompletionItemProvider,
-  Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window, Selection
+  Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window, Selection, commands
 } from 'vscode';
 import { runChunksInTerm } from './rTerminal';
 import { config } from './util';
@@ -402,22 +402,23 @@ export async function runAllChunks(chunks: RMarkdownChunk[] = _getChunks()): Pro
   await runChunksInTerm(codeRanges);
 }
 
-function goToChunk(chunk: RMarkdownChunk) {
+async function goToChunk(chunk: RMarkdownChunk) {
   // Move cursor 1 line below 'chunk start line'
   const line = chunk.startLine + 1;
   window.activeTextEditor.selection = new Selection(line, 0, line, 0);
+  await commands.executeCommand('revealLine', { lineNumber: line, at: 'center'});
 }
 
 export function goToPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
   line: number = _getStartLine()): void {
   const previousChunk = getPreviousChunk(chunks, line);
-  goToChunk(previousChunk);
+  void goToChunk(previousChunk);
 }
 
 export function goToNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
   line: number = _getStartLine()): void {
   const nextChunk = getNextChunk(chunks, line);
-  goToChunk(nextChunk);
+  void goToChunk(nextChunk);
 }
 
 export function selectCurrentChunk(chunks: RMarkdownChunk[] = _getChunks(),
