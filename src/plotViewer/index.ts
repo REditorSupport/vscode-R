@@ -13,6 +13,7 @@ import { config, setContext } from '../util';
 import { extensionContext } from '../extension';
 
 import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, ToggleMultirowMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage } from './webviewMessages';
+
 import { isHost, rHostService } from '../liveshare/share';
 import { shareBrowser } from '../liveshare/shareSession';
 
@@ -48,7 +49,7 @@ export function initializeHttpgd(): HttpgdManager {
     return httpgdManager;
 }
 
-let shareUrl = undefined;
+export let shareUrl = undefined;
 
 export class HttpgdManager {
     viewers: HttpgdViewer[] = [];
@@ -69,7 +70,6 @@ export class HttpgdManager {
 
     public showViewer(urlString: string): void {
         const url = new URL(urlString);
-
         shareUrl = urlString;
 
         const host = url.host;
@@ -518,8 +518,8 @@ export class HttpgdViewer implements IHttpgdViewer {
         }
 
         if (isHost()) {
-            void shareBrowser(shareUrl, 'R Plot', true);
-            void rHostService.notifyHttpgdPlot(shareUrl);
+            void shareBrowser(shareUrl, '[VSC-R] R Plot', true);
+            void rHostService.notifyGuestPlotManager(shareUrl);
         }
     }
     protected async checkState(): Promise<void> {

@@ -3,12 +3,13 @@ import * as vscode from 'vscode';
 import * as fs from 'fs-extra';
 
 import { rHostService, isGuest, service } from './share';
-import { updateGuestRequest, updateGuestGlobalenv, updateGuestPlot, detachGuest, openPlotViewer } from './shareSession';
+import { updateGuestRequest, updateGuestGlobalenv, updateGuestPlot, detachGuest } from './shareSession';
 import { forwardCommands, shareWorkspace } from './shareTree';
+
 import { runTextInTerm } from '../rTerminal';
 import { requestFile } from '../session';
 import { HelpFile } from '../helpViewer/index';
-import { globalRHelp } from '../extension';
+import { globalHttpgdManager, globalRHelp } from '../extension';
 
 // used in sending messages to the guest service,
 // distinguishes the type of vscode message to show
@@ -32,14 +33,14 @@ interface ICommands {
 export const enum Callback {
     NotifyEnvUpdate = 'NotifyEnvUpdate',
     NotifyPlotUpdate = 'NotifyPlotUpdate',
-    NotifyHttpgdPlotUpdate = 'NotifyHttpgdPlotUpdate',
     NotifyRequestUpdate = 'NotifyRequestUpdate',
     NotifyMessage = 'NotifyMessage',
     RequestAttachGuest = 'RequestAttachGuest',
     RequestRunTextInTerm = 'RequestRunTextInTerm',
     GetFileContent = 'GetFileContent',
     OrderDetach = 'OrderDetach',
-    GetHelpFileContent = 'GetHelpFileContent'
+    GetHelpFileContent = 'GetHelpFileContent',
+    NotifyGuestPlotManager = 'NotifyGuestPlotManager'
 }
 
 // To contribute a request between the host and guest,
@@ -97,8 +98,8 @@ export const Commands: ICommands = {
         [Callback.NotifyPlotUpdate]: (args: [file: string]): void => {
             void updateGuestPlot(args[0]);
         },
-        [Callback.NotifyHttpgdPlotUpdate]: (args: [url: string]): void => {
-            void openPlotViewer(args[0]);
+        [Callback.NotifyGuestPlotManager]: (args: [url: string]): void => {
+            globalHttpgdManager?.showViewer(args[0]);
         },
         [Callback.OrderDetach]: (): void => {
             void detachGuest();

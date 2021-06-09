@@ -216,9 +216,9 @@ export class HostService {
             void request(Callback.NotifyPlotUpdate, file);
         }
     }
-    public notifyHttpgdPlot(url: string): void {
+    public notifyGuestPlotManager(url: string): void {
         if (this._isStarted) {
-            void request(Callback.NotifyHttpgdPlotUpdate, url);
+            void request(Callback.NotifyGuestPlotManager, url);
         }
     }
     public orderGuestDetach(): void {
@@ -311,6 +311,7 @@ export class GuestService {
             return content as HelpFile;
         }
     }
+
 }
 
 // Clear up any listeners & disposables, so that vscode-R

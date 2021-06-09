@@ -4,7 +4,7 @@ import * as vsls from 'vsls';
 
 import { extensionContext, globalRHelp, rWorkspace } from '../extension';
 import { config, readContent } from '../util';
-import { getBrowserHtml, showBrowser, showDataView, showWebView } from '../session';
+import { showBrowser, showDataView, showWebView } from '../session';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from './share';
 import { autoShareBrowser } from './shareTree';
 import { docProvider, docScheme } from './virtualDocs';
@@ -18,7 +18,8 @@ export let guestResDir: string;
 // Browser Vars
 // Used to keep track of shared browsers
 export const browserDisposables: { Disposable: vscode.Disposable, url: string, name: string }[] = [];
-
+// for guest purposes
+export const sharedBrowsers: { url: string, name: string }[] = [];
 
 interface IRequest {
     command: string;
@@ -88,6 +89,9 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                             console.log(request.requestPath);
                             void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
                         }
+                        break;
+                    }
+                    case 'httpgd': {
                         break;
                     }
                     case 'attach': {
@@ -174,35 +178,9 @@ export async function updateGuestPlot(file: string): Promise<void> {
     }
 }
 
-// Share and close browser are called from the
-// host session
-// Automates sharing browser sessions through the
-// shareServer method
-export async function shareBrowser(url: string, name: string, force: boolean = false): Promise<void> {
-    if (autoShareBrowser || force) {
-        const _url = new URL(url);
-        const server: vsls.Server = {
-            port: parseInt(_url.port),
-            displayName: name,
-            browseUrl: url,
-        };
-        const disposable = await liveSession.shareServer(server);
-        browserDisposables.push({ Disposable: disposable, url, name });
-    }
-}
 
-export function closeBrowser(url: string): void {
-    browserDisposables.find(
-        e => e.url === url
-    )?.Disposable.dispose();
-
-    for (const [key, item] of browserDisposables.entries()) {
-        if (item.url === url) {
-            browserDisposables.splice(key, 1);
-        }
-    }
-}
-
+// Purely used in order to decode a base64 string into
+// an image format, bypassing saving a file onto the guest's system
 function getGuestImageHtml(webview: vscode.Webview, content: string) {
     return `
 <!doctype HTML>
@@ -232,36 +210,32 @@ function getGuestImageHtml(webview: vscode.Webview, content: string) {
 `;
 }
 
-let plotPanel: vscode.WebviewPanel = undefined;
-export async function guestPlotViewer(url: string): Promise<void> {
-    if (plotPanel === undefined) {
-        const uri = vscode.Uri.parse(url);
-        const externalUri = await vscode.env.asExternalUri(uri);
-        const panel = vscode.window.createWebviewPanel(
-            'RPlot',
-            'R Plot',
-            {
-                preserveFocus: true,
-                viewColumn: 2,
-            },
-            {
-                enableFindWidget: true,
-                enableScripts: true,
-                retainContextWhenHidden: true,
-            });
-        panel.onDidDispose(() => {
-            plotPanel = undefined;
-        });
-        plotPanel = panel;
-        panel.webview.html = getBrowserHtml(externalUri);
-    } else {
-        plotPanel.reveal(
-            vscode.ViewColumn.Two,
-            true
-        );
+// Share and close browser are called from the
+// host session
+// Automates sharing browser sessions through the
+// shareServer method
+export async function shareBrowser(url: string, name: string, force: boolean = false): Promise<void> {
+    if (autoShareBrowser || force) {
+        const _url = new URL(url);
+        const server: vsls.Server = {
+            port: parseInt(_url.port),
+            displayName: name,
+            browseUrl: url,
+        };
+        const disposable = await liveSession.shareServer(server);
+        console.log(`[HostService] shared ${name} at ${url}`);
+        browserDisposables.push({ Disposable: disposable, url, name });
     }
 }
 
-export async function openPlotViewer(url: string): Promise<void> {
-    await guestPlotViewer(url);
+export function closeBrowser(url: string): void {
+    browserDisposables.find(
+        e => e.url === url
+    )?.Disposable.dispose();
+
+    for (const [key, item] of browserDisposables.entries()) {
+        if (item.url === url) {
+            browserDisposables.splice(key, 1);
+        }
+    }
 }
