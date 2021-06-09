@@ -17,7 +17,7 @@ Full document is on the [Wiki page](https://github.com/Ikuyadeu/vscode-R/wiki)
 
 ## Features
 
-* Run Source(`Ctrl+Shift+S` or Push icon![icon](images/FileDownload.png)) and Run Selected Line (`Ctrl+Enter`) (Mac: `Ctrl` to `⌘`)
+* Run Source (`Ctrl+Shift+S`) and Run Selected Line (`Ctrl+Enter`) (Mac: `Ctrl` to `⌘`)
 * Run functions:
   * `nrow` (`Show number of rows for selected object`)
   * `length` (`Show length for a selected object`)

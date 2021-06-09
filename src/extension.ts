@@ -137,8 +137,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     globalRHelp = await rHelp.initializeHelp(context, rExtension);
 
 
-    // register codelens and completion providers for r markdown
-    vscode.languages.registerCodeLensProvider('rmd', new rmarkdown.RMarkdownCodeLensProvider());
+    // register codelens and complmetion providers for r markdown
+    vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());
     vscode.languages.registerCompletionItemProvider('rmd', new rmarkdown.RMarkdownCompletionItemProvider(), ' ', ',');
 
 
@@ -155,13 +155,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     vscode.tasks.registerTaskProvider(type, {
         provideTasks() {
             return [
-                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Check', 'R',
+                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Check', 'R',
                     new vscode.ShellExecution('Rscript -e "devtools::check()"')),
-                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Document', 'R',
+                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Document', 'R',
                     new vscode.ShellExecution('Rscript -e "devtools::document()"')),
-                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Install', 'R',
+                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Install', 'R',
                     new vscode.ShellExecution('Rscript -e "devtools::install()"')),
-                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Test', 'R',
+                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Test', 'R',
                     new vscode.ShellExecution('Rscript -e "devtools::test()"')),
             ];
         },
@@ -202,7 +202,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         );
         void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
 
-        // if session watcher is active, register dynamic completion provider
+        // if session watcher is active, register dyamic completion provider
         const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
         vscode.languages.registerCompletionItemProvider('r', new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
@@ -210,4 +210,3 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     return rExtension;
 }
-

@@ -116,16 +116,21 @@ inspect_env <- function(env, cache) {
         info$size <- scalar(cobj$size)
       }
 
-      if ((is.list(obj) ||
-        is.environment(obj)) &&
-        !is.null(names(obj))) {
-        info$names <- names(obj)
+      obj_names <- if (is.object(obj)) {
+        .DollarNames(obj)
+      } else if (is.recursive(obj)) {
+        names(obj)
+      } else NULL
+
+      if (length(obj_names)) {
+        info$names <- obj_names
       }
+
       if (isS4(obj)) {
         info$slots <- slotNames(obj)
       }
-      if (is.list(obj) &&
-        !is.null(dim(obj))) {
+
+      if (is.list(obj) && !is.null(dim(obj))) {
         info$dim <- dim(obj)
       }
     }
