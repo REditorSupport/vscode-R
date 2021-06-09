@@ -320,19 +320,13 @@
         "title": "Run Source",
         "category": "R",
         "command": "r.runSource",
-        "icon": {
-          "light": "./images/DownloadFile.ico",
-          "dark": "./images/DownloadFile_inverse.ico"
-        }
+        "icon": "$(run)"
       },
       {
         "title": "Knit Rmd",
         "category": "R",
         "command": "r.knitRmd",
-        "icon": {
-          "light": "./images/DownloadFile.ico",
-          "dark": "./images/DownloadFile_inverse.ico"
-        }
+        "icon": "$(run-below)"
       },
       {
         "title": "Knit Rmd To PDF",
