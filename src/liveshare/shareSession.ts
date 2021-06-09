@@ -4,7 +4,7 @@ import * as vsls from 'vsls';
 
 import { extensionContext, globalRHelp, rWorkspace } from '../extension';
 import { config, readContent } from '../util';
-import { showBrowser, showDataView, showWebView } from '../session';
+import { getBrowserHtml, showBrowser, showDataView, showWebView } from '../session';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from './share';
 import { autoShareBrowser } from './shareTree';
 import { docProvider, docScheme } from './virtualDocs';
@@ -17,7 +17,8 @@ export let guestResDir: string;
 
 // Browser Vars
 // Used to keep track of shared browsers
-export const browserDisposables: { Disposable: vscode.Disposable, url: string }[] = [];
+export const browserDisposables: { Disposable: vscode.Disposable, url: string, name: string }[] = [];
+
 
 interface IRequest {
     command: string;
@@ -86,12 +87,6 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                         if (globalRHelp) {
                             console.log(request.requestPath);
                             void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
-                        }
-                        break;
-                    }
-                    case 'httpgd': {
-                        if (request.url) {
-                            await showBrowser(request.url, 'R Plots', 'Two');
                         }
                         break;
                     }
@@ -192,7 +187,7 @@ export async function shareBrowser(url: string, name: string, force: boolean = f
             browseUrl: url,
         };
         const disposable = await liveSession.shareServer(server);
-        browserDisposables.push({ Disposable: disposable, url });
+        browserDisposables.push({ Disposable: disposable, url, name });
     }
 }
 
@@ -235,4 +230,38 @@ function getGuestImageHtml(webview: vscode.Webview, content: string) {
 </body>
 </html>
 `;
+}
+
+let plotPanel: vscode.WebviewPanel = undefined;
+export async function guestPlotViewer(url: string): Promise<void> {
+    if (plotPanel === undefined) {
+        const uri = vscode.Uri.parse(url);
+        const externalUri = await vscode.env.asExternalUri(uri);
+        const panel = vscode.window.createWebviewPanel(
+            'RPlot',
+            'R Plot',
+            {
+                preserveFocus: true,
+                viewColumn: 2,
+            },
+            {
+                enableFindWidget: true,
+                enableScripts: true,
+                retainContextWhenHidden: true,
+            });
+        panel.onDidDispose(() => {
+            plotPanel = undefined;
+        });
+        plotPanel = panel;
+        panel.webview.html = getBrowserHtml(externalUri);
+    } else {
+        plotPanel.reveal(
+            vscode.ViewColumn.Two,
+            true
+        );
+    }
+}
+
+export async function openPlotViewer(url: string): Promise<void> {
+    await guestPlotViewer(url);
 }

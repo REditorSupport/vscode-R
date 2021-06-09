@@ -216,6 +216,11 @@ export class HostService {
             void request(Callback.NotifyPlotUpdate, file);
         }
     }
+    public notifyHttpgdPlot(url: string): void {
+        if (this._isStarted) {
+            void request(Callback.NotifyHttpgdPlotUpdate, url);
+        }
+    }
     public orderGuestDetach(): void {
         if (this._isStarted) {
             void request(Callback.OrderDetach);
@@ -316,9 +321,10 @@ async function sessionCleanup(): Promise<void> {
     if (rHostService.isStarted()) {
         console.log('[HostService] stopping service');
         await rHostService.stopService();
-        for (const disposable of browserDisposables) {
-            console.log(`[HostService] disposing of browser ${disposable.url}`);
-            disposable.Disposable.dispose();
+        for (const [key, item] of browserDisposables.entries()) {
+            console.log(`[HostService] disposing of browser ${item.url}`);
+            item.Disposable.dispose();
+            browserDisposables.splice(key);
         }
         rLiveShareProvider.refresh();
     }

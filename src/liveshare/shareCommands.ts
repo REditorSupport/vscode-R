@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs-extra';
 
 import { rHostService, isGuest, service } from './share';
-import { updateGuestRequest, updateGuestGlobalenv, updateGuestPlot, detachGuest } from './shareSession';
+import { updateGuestRequest, updateGuestGlobalenv, updateGuestPlot, detachGuest, openPlotViewer } from './shareSession';
 import { forwardCommands, shareWorkspace } from './shareTree';
 import { runTextInTerm } from '../rTerminal';
 import { requestFile } from '../session';
@@ -32,6 +32,7 @@ interface ICommands {
 export const enum Callback {
     NotifyEnvUpdate = 'NotifyEnvUpdate',
     NotifyPlotUpdate = 'NotifyPlotUpdate',
+    NotifyHttpgdPlotUpdate = 'NotifyHttpgdPlotUpdate',
     NotifyRequestUpdate = 'NotifyRequestUpdate',
     NotifyMessage = 'NotifyMessage',
     RequestAttachGuest = 'RequestAttachGuest',
@@ -95,6 +96,9 @@ export const Commands: ICommands = {
         },
         [Callback.NotifyPlotUpdate]: (args: [file: string]): void => {
             void updateGuestPlot(args[0]);
+        },
+        [Callback.NotifyHttpgdPlotUpdate]: (args: [url: string]): void => {
+            void openPlotViewer(args[0]);
         },
         [Callback.OrderDetach]: (): void => {
             void detachGuest();
