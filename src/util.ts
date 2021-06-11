@@ -321,7 +321,7 @@ export class DummyMemento implements vscode.Memento {
     items = new Map<string, any>()
     public get<T>(key: string, defaultValue?: T): T | undefined {
         if (this.items.has(key)) {
-            return <T>this.items.get(key);
+            return <T>this.items.get(key) || defaultValue;
         } else {
             return defaultValue;
         }

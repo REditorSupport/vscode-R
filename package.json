@@ -1182,7 +1182,7 @@
         },
         "r.liveShare.timeout": {
           "type": "integer",
-          "default": 3000,
+          "default": 10000,
           "description": "Time in milliseconds before aborting attempt to connect to Live Share API"
         },
         "r.liveShare.defaults.commandForward": {

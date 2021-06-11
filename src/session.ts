@@ -282,7 +282,6 @@ export async function showWebView(file: string, title: string, viewer: string | 
     console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
     if (viewer === false) {
         void env.openExternal(Uri.parse(file));
-        void window.showInformationMessage('viewer is false');
     } else {
         const dir = path.dirname(file);
         const panel = window.createWebviewPanel('webview', title,
