@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { requestFile } from '../session';
 
 import { config } from '../util';
-import { isLiveShare, rHostService } from './share';
+import { isLiveShare, rHostService } from '.';
 
 export let forwardCommands: boolean;
 export let shareWorkspace: boolean;

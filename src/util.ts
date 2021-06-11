@@ -6,7 +6,7 @@ import winreg = require('winreg');
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
-import { rGuestService, isGuestSession } from './liveshare/share';
+import { rGuestService, isGuestSession } from './liveshare';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');

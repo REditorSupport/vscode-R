@@ -16,7 +16,7 @@ import * as workspaceViewer from './workspaceViewer';
 import * as apiImplementation from './apiImplementation';
 import * as rHelp from './helpViewer';
 import * as completions from './completions';
-import * as rShare from './liveshare/share';
+import * as rShare from './liveshare';
 import * as httpgdViewer from './plotViewer';
 
 

@@ -3,8 +3,7 @@ import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Eve
 import { runTextInTerm } from './rTerminal';
 import { globalenv, workingDir } from './session';
 import { config } from './util';
-import { isGuestSession, isLiveShare, UUID } from './liveshare/share';
-import { guestGlobalenv } from './liveshare/shareSession';
+import { isGuestSession, isLiveShare, UUID, guestGlobalenv } from './liveshare';
 
 interface WorkspaceAttr {
 	[key: string]: {

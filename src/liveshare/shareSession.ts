@@ -5,7 +5,7 @@ import * as vsls from 'vsls';
 import { extensionContext, globalRHelp, rWorkspace } from '../extension';
 import { config, readContent } from '../util';
 import { showBrowser, showDataView, showWebView } from '../session';
-import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from './share';
+import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from '.';
 import { autoShareBrowser } from './shareTree';
 import { docProvider, docScheme } from './virtualDocs';
 

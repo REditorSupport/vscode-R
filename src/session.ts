@@ -15,10 +15,7 @@ import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { rWorkspace, globalRHelp, globalHttpgdManager } from './extension';
-import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession } from './liveshare/share';
-import { closeBrowser, guestResDir, shareBrowser } from './liveshare/shareSession';
-import { openVirtualDoc } from './liveshare/virtualDocs';
-import { shareWorkspace } from './liveshare/shareTree';
+import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveshare';
 
 export let globalenv: any;
 let resDir: string;

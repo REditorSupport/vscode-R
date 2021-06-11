@@ -14,9 +14,7 @@ import { extensionContext } from '../extension';
 
 import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, ToggleMultirowMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage } from './webviewMessages';
 
-import { isHost, rHostService } from '../liveshare/share';
-import { shareBrowser } from '../liveshare/shareSession';
-
+import { isHost, rHostService, shareBrowser } from '../liveshare';
 
 const commands = [
     'showViewers',
@@ -49,8 +47,6 @@ export function initializeHttpgd(): HttpgdManager {
     return httpgdManager;
 }
 
-export let shareUrl = undefined;
-
 export class HttpgdManager {
     viewers: HttpgdViewer[] = [];
 
@@ -70,7 +66,6 @@ export class HttpgdManager {
 
     public showViewer(urlString: string): void {
         const url = new URL(urlString);
-        shareUrl = urlString;
 
         const host = url.host;
         const token = url.searchParams.get('token') || undefined;
@@ -523,8 +518,13 @@ export class HttpgdViewer implements IHttpgdViewer {
         if(this.state.upid !== oldUpid){
             await this.refreshPlots();
             if (isHost()) {
-                void shareBrowser(shareUrl, '[VSC-R] R Plot', true);
-                void rHostService.notifyGuestPlotManager(shareUrl);
+                const urlString = `http://${this.host}/live?token=${this.token}`;
+                void shareBrowser(
+                    urlString,
+                    '[VSC-R] R Plot',
+                    true
+                );
+                void rHostService.notifyGuestPlotManager(urlString);
             }
         }
     }

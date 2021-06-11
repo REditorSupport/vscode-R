@@ -2,7 +2,7 @@ import * as vsls from 'vsls';
 import * as vscode from 'vscode';
 import * as fs from 'fs-extra';
 
-import { rHostService, isGuest, service } from './share';
+import { rHostService, isGuest, service } from '.';
 import { updateGuestRequest, updateGuestGlobalenv, updateGuestPlot, detachGuest } from './shareSession';
 import { forwardCommands, shareWorkspace } from './shareTree';
 
@@ -65,14 +65,14 @@ export const Commands: ICommands = {
             if (shareWorkspace) {
                 void rHostService.notifyRequest(requestFile, true);
             } else {
-                void request(Callback.NotifyMessage, 'The host has not enabled guest attach.', MessageType.warning);
+                void liveShareRequest(Callback.NotifyMessage, 'The host has not enabled guest attach.', MessageType.warning);
             }
         },
         [Callback.RequestRunTextInTerm]: (args: [text: string]): void => {
             if (forwardCommands) {
                 void runTextInTerm(`${args[0]}`);
             } else {
-                void request(Callback.NotifyMessage, 'The host has not enabled command forwarding. Command was not sent.', MessageType.warning);
+                void liveShareRequest(Callback.NotifyMessage, 'The host has not enabled command forwarding. Command was not sent.', MessageType.warning);
             }
 
         },
@@ -134,7 +134,7 @@ export const Commands: ICommands = {
 // aggregated under these two methods. This is because the host service
 // has no request methods, and for *most* purposes, there is little functional
 // difference between request and notify.
-export function onRequest(name: string, command: unknown, service: vsls.SharedService | vsls.SharedServiceProxy | null): void {
+export function liveShareOnRequest(name: string, command: unknown, service: vsls.SharedService | vsls.SharedServiceProxy | null): void {
     if (isGuest()) {
         // is guest service
         (service as vsls.SharedServiceProxy).onNotify(name, command as vsls.NotifyHandler);
@@ -144,7 +144,7 @@ export function onRequest(name: string, command: unknown, service: vsls.SharedSe
     }
 }
 
-export function request(name: string, ...rest: unknown[]): unknown {
+export function liveShareRequest(name: string, ...rest: unknown[]): unknown {
     if (isGuest()) {
         if (rest !== undefined) {
             return (service as vsls.SharedServiceProxy).request(name, rest);

@@ -1,3 +1,9 @@
+// re-exported variables
+export * from './shareCommands';
+export * from './shareSession';
+export * from './shareTree';
+export * from './virtualDocs';
+
 import * as vscode from 'vscode';
 import * as vsls from 'vsls';
 import * as fs from 'fs-extra';
@@ -5,8 +11,9 @@ import * as fs from 'fs-extra';
 import { enableSessionWatcher, extensionContext } from '../extension';
 import { attachActiveGuest, browserDisposables, initGuest } from './shareSession';
 import { initTreeView, rLiveShareProvider, shareWorkspace, ToggleNode } from './shareTree';
-import { Commands, Callback, onRequest, request } from './shareCommands';
-import { HelpFile } from '../helpViewer/index';
+import { Commands, Callback, liveShareOnRequest, liveShareRequest } from './shareCommands';
+
+import { HelpFile } from '../helpViewer';
 import { globalenv } from '../session';
 import { config } from '../util';
 
@@ -182,7 +189,7 @@ export class HostService {
         if (service) {
             this._isStarted = true;
             for (const command in Commands.host) {
-                void onRequest(command, Commands.host[command], service);
+                void liveShareOnRequest(command, Commands.host[command], service);
                 console.log(`[HostService] added ${command} callback`);
             }
         } else {
@@ -202,28 +209,28 @@ export class HostService {
     // updated
     public notifyGlobalenv(hostEnv: string): void {
         if (this._isStarted && shareWorkspace) {
-            void request(Callback.NotifyEnvUpdate, hostEnv);
+            void liveShareRequest(Callback.NotifyEnvUpdate, hostEnv);
         }
     }
     public notifyRequest(file: string, force: boolean = false): void {
         if (this._isStarted && shareWorkspace) {
-            void request(Callback.NotifyRequestUpdate, file, force);
+            void liveShareRequest(Callback.NotifyRequestUpdate, file, force);
             void this.notifyGlobalenv(globalenv);
         }
     }
     public notifyPlot(file: string): void {
         if (this._isStarted && shareWorkspace) {
-            void request(Callback.NotifyPlotUpdate, file);
+            void liveShareRequest(Callback.NotifyPlotUpdate, file);
         }
     }
     public notifyGuestPlotManager(url: string): void {
         if (this._isStarted) {
-            void request(Callback.NotifyGuestPlotManager, url);
+            void liveShareRequest(Callback.NotifyGuestPlotManager, url);
         }
     }
     public orderGuestDetach(): void {
         if (this._isStarted) {
-            void request(Callback.OrderDetach);
+            void liveShareRequest(Callback.OrderDetach);
         }
     }
 }
@@ -239,7 +246,7 @@ export class GuestService {
             this._isStarted = true;
             this.requestAttach();
             for (const command in Commands.guest) {
-                void onRequest(command, Commands.guest[command], service);
+                void liveShareOnRequest(command, Commands.guest[command], service);
                 console.log(`[GuestService] added ${command} callback`);
             }
         } else {
@@ -254,7 +261,7 @@ export class GuestService {
     // R workspace
     public requestAttach(): void {
         if (this._isStarted) {
-            void request(Callback.RequestAttachGuest);
+            void liveShareRequest(Callback.RequestAttachGuest);
             // focus guest term
             const rTermNameOptions = ['R [Shared]', 'R Interactive [Shared]'];
             const activeTerminalName = vscode.window.activeTerminal.name;
@@ -274,7 +281,7 @@ export class GuestService {
     // * Permissions are handled host-side
     public requestRunTextInTerm(text: string): void {
         if (this._isStarted) {
-            void request(Callback.RequestRunTextInTerm, text);
+            void liveShareRequest(Callback.RequestRunTextInTerm, text);
         }
     }
     // The session watcher relies on files for providing many functions to vscode-R.
@@ -288,14 +295,14 @@ export class GuestService {
     public async requestFileContent(file: fs.PathLike | number, encoding?: string): Promise<string | Buffer> {
         if (this._isStarted) {
             if (encoding !== undefined) {
-                const content: string | unknown = await request(Callback.GetFileContent, file, encoding);
+                const content: string | unknown = await liveShareRequest(Callback.GetFileContent, file, encoding);
                 if (typeof content === 'string') {
                     return content;
                 } else {
                     console.error('[GuestService] failed to retrieve file content (not of type "string")');
                 }
             } else {
-                const content: Buffer | unknown = await request(Callback.GetFileContent, file);
+                const content: Buffer | unknown = await liveShareRequest(Callback.GetFileContent, file);
                 if (content) {
                     return content as Buffer;
                 } else {
@@ -306,7 +313,7 @@ export class GuestService {
     }
 
     public async requestHelpContent(file: string): Promise<HelpFile> {
-        const content: string | null | unknown = await request(Callback.GetHelpFileContent, file);
+        const content: string | null | unknown = await liveShareRequest(Callback.GetHelpFileContent, file);
         if (content) {
             return content as HelpFile;
         }
