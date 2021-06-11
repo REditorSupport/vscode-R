@@ -516,17 +516,16 @@ export class HttpgdViewer implements IHttpgdViewer {
                 void this.checkState();
             }, this.refreshTimeoutLength);
         }
-
-        if (isHost()) {
-            void shareBrowser(shareUrl, '[VSC-R] R Plot', true);
-            void rHostService.notifyGuestPlotManager(shareUrl);
-        }
     }
     protected async checkState(): Promise<void> {
         const oldUpid = this.state?.upid;
         this.state = await this.api.getState();
         if(this.state.upid !== oldUpid){
             await this.refreshPlots();
+            if (isHost()) {
+                void shareBrowser(shareUrl, '[VSC-R] R Plot', true);
+                void rHostService.notifyGuestPlotManager(shareUrl);
+            }
         }
     }
 
