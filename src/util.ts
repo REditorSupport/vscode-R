@@ -1,11 +1,12 @@
 'use strict';
 
-import { existsSync } from 'fs-extra';
+import { existsSync, PathLike, readFile } from 'fs-extra';
 import * as fs from 'fs';
 import winreg = require('winreg');
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
+import { rGuestService, isGuestSession } from './liveshare';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -14,13 +15,13 @@ export function config(): vscode.WorkspaceConfiguration {
 function getRfromEnvPath(platform: string) {
     let splitChar = ':';
     let fileExtension = '';
-    
+
     if (platform === 'win32') {
         splitChar = ';';
         fileExtension = '.exe';
     }
-    
-    const os_paths: string[]|string = process.env.PATH.split(splitChar);
+
+    const os_paths: string[] | string = process.env.PATH.split(splitChar);
     for (const os_path of os_paths) {
         const os_r_path: string = path.join(os_path, 'R' + fileExtension);
         if (fs.existsSync(os_r_path)) {
@@ -31,10 +32,10 @@ function getRfromEnvPath(platform: string) {
 }
 
 export async function getRpathFromSystem(): Promise<string> {
-    
+
     let rpath = '';
     const platform: string = process.platform;
-    
+
     rpath ||= getRfromEnvPath(platform);
 
     if ( !rpath && platform === 'win32') {
@@ -59,17 +60,17 @@ export function getRPathConfigEntry(term: boolean = false): string {
     const trunc = (term ? 'rterm' : 'rpath');
     const platform = (
         process.platform === 'win32' ? 'windows' :
-        process.platform === 'darwin' ? 'mac' :
-        'linux'
+            process.platform === 'darwin' ? 'mac' :
+                'linux'
     );
     return `${trunc}.${platform}`;
 }
 
-export async function getRpath(quote=false, overwriteConfig?: string): Promise<string> {
+export async function getRpath(quote = false, overwriteConfig?: string): Promise<string> {
     let rpath = '';
-    
+
     // try the config entry specified in the function arg:
-    if(overwriteConfig){
+    if (overwriteConfig) {
         rpath = config().get<string>(overwriteConfig);
     }
 
@@ -83,13 +84,13 @@ export async function getRpath(quote=false, overwriteConfig?: string): Promise<s
     // represent all invalid paths (undefined, '', null) as undefined:
     rpath ||= undefined;
 
-    if(!rpath){
+    if (!rpath) {
         // inform user about missing R path:
         void vscode.window.showErrorMessage(`Cannot find R to use for help, package installation etc. Change setting r.${configEntry} to R path.`);
-    } else if(quote && /^[^'"].* .*[^'"]$/.exec(rpath)){
+    } else if (quote && /^[^'"].* .*[^'"]$/.exec(rpath)) {
         // if requested and rpath contains spaces, add quotes:
         rpath = `"${rpath}"`;
-    } else if(process.platform === 'win32' && /^'.* .*'$/.exec(rpath)){
+    } else if (process.platform === 'win32' && /^'.* .*'$/.exec(rpath)) {
         // replace single quotes with double quotes on windows
         rpath = rpath.replace(/^'(.*)'$/, '"$1"');
     }
@@ -97,12 +98,12 @@ export async function getRpath(quote=false, overwriteConfig?: string): Promise<s
     return rpath;
 }
 
-export async function getRterm(): Promise<string|undefined> {
+export async function getRterm(): Promise<string | undefined> {
     const configEntry = getRPathConfigEntry(true);
     let rpath = config().get<string>(configEntry);
 
     rpath ||= await getRpathFromSystem();
-    
+
     if (rpath !== '') {
         return rpath;
     }
@@ -110,7 +111,6 @@ export async function getRterm(): Promise<string|undefined> {
     void vscode.window.showErrorMessage(`Cannot find R for creating R terminal. Change setting r.${configEntry} to R path.`);
     return undefined;
 }
-
 
 export function ToRStringLiteral(s: string, quote: string): string {
     if (s === undefined) {
@@ -140,6 +140,23 @@ export function checkForSpecialCharacters(text: string): boolean {
 
 export function checkIfFileExists(filePath: string): boolean {
     return existsSync(filePath);
+}
+
+// Drop-in replacement for fs-extra.readFile (),
+// passes to guest service if the caller is a guest
+// This can be used wherever fs.readFile() is used,
+// particularly if a guest can access the function
+//
+// If it is a guest, the guest service requests the host
+// to read the file, and pass back its contents to the guest
+export function readContent(file: PathLike | number): Promise<Buffer>;
+export function readContent(file: PathLike | number, encoding: string): Promise<string>;
+export function readContent(file: PathLike | number, encoding?: string): Promise<string | Buffer> {
+    if (isGuestSession) {
+        return encoding === undefined ? rGuestService.requestFileContent(file) : rGuestService.requestFileContent(file, encoding);
+    } else {
+        return encoding === undefined ? readFile(file) : readFile(file, encoding);
+    }
 }
 
 
@@ -183,8 +200,8 @@ export async function getConfirmation(prompt: string, confirmation?: string, det
 // is more transparent thatn background processes without littering the integrated terminals
 // is not intended for actual user interaction
 export async function executeAsTask(name: string, command: string, args?: string[]): Promise<void> {
-    const taskDefinition = {type: 'shell'};
-    const quotedArgs = args.map<vscode.ShellQuotedString>(arg => {return {value: arg, quoting: vscode.ShellQuoting.Weak};});
+    const taskDefinition = { type: 'shell' };
+    const quotedArgs = args.map<vscode.ShellQuotedString>(arg => { return { value: arg, quoting: vscode.ShellQuoting.Weak }; });
     const taskExecution = new vscode.ShellExecution(
         command,
         quotedArgs
@@ -201,7 +218,7 @@ export async function executeAsTask(name: string, command: string, args?: string
 
     const taskDonePromise = new Promise<void>((resolve) => {
         vscode.tasks.onDidEndTask(e => {
-            if(e.execution === taskExecutionRunning){
+            if (e.execution === taskExecutionRunning) {
                 resolve();
             }
         });
@@ -214,20 +231,20 @@ export async function executeAsTask(name: string, command: string, args?: string
 // synchronous callbacks are converted to async to properly render the progress bar
 // default location is in the help pages tree view
 export async function doWithProgress<T>(cb: () => T | Promise<T>, location: string | vscode.ProgressLocation = 'rHelpPages'): Promise<T> {
-	const location2 = (typeof location === 'string' ? {viewId: location} : location);
-	const options: vscode.ProgressOptions = {
-		location: location2,
-		cancellable: false
-	};
-	let ret: T;
-	await vscode.window.withProgress(options, async () => {
-		const retPromise = new Promise<T>((resolve) => setTimeout(() => {
-			const ret = cb();
-			resolve(ret);
-		}));
-		ret = await retPromise;
-	});
-	return ret;
+    const location2 = (typeof location === 'string' ? { viewId: location } : location);
+    const options: vscode.ProgressOptions = {
+        location: location2,
+        cancellable: false
+    };
+    let ret: T;
+    await vscode.window.withProgress(options, async () => {
+        const retPromise = new Promise<T>((resolve) => setTimeout(() => {
+            const ret = cb();
+            resolve(ret);
+        }));
+        ret = await retPromise;
+    });
+    return ret;
 }
 
 
@@ -240,9 +257,9 @@ export async function getCranUrl(path?: string, cwd?: string): Promise<string> {
     // get cran URL from R. Returns empty string if option is not set.
     const baseUrl = await executeRCommand('cat(getOption(\'repos\')[\'CRAN\'])', undefined, cwd);
     let url: string;
-    try{
+    try {
         url = new URL(path, baseUrl).toString();
-    } catch(e){
+    } catch (e) {
         url = new URL(path, defaultCranUrl).toString();
     }
     return url;
@@ -258,7 +275,7 @@ export async function getCranUrl(path?: string, cwd?: string): Promise<string> {
 // WARNING: Cannot handle double quotes in the R command! (e.g. `print("hello world")`)
 // Single quotes are ok.
 //
-export async function executeRCommand(rCommand: string, fallBack?: string, cwd?: string): Promise<string|undefined> {
+export async function executeRCommand(rCommand: string, fallBack?: string, cwd?: string): Promise<string | undefined> {
     const lim = '---vsc---';
     const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
 
@@ -282,13 +299,13 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
 
     let ret: string = undefined;
 
-    try{
+    try {
         const stdout = cp.execSync(cmd, options);
         ret = stdout.replace(re, '$1');
-    } catch(e){
-        if(fallBack){
+    } catch (e) {
+        if (fallBack) {
             ret = fallBack;
-        } else{
+        } else {
             console.warn(e);
         }
     }
@@ -300,19 +317,19 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
 // This class is a wrapper around Map<string, any> that implements vscode.Memento
 // Can be used in place of vscode.ExtensionContext.globalState or .workspaceState when no caching is desired
 export class DummyMemento implements vscode.Memento {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	items = new Map<string, any>()
-	public get<T>(key: string, defaultValue?: T): T | undefined {
-		if(this.items.has(key)){
-			return <T>this.items.get(key) || defaultValue;
-		} else{
-			return defaultValue;
-		}
-	}
-	// eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any
-	public async update(key: string, value: any): Promise<void> {
-		this.items.set(key, value);
-	}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    items = new Map<string, any>()
+    public get<T>(key: string, defaultValue?: T): T | undefined {
+        if (this.items.has(key)) {
+            return <T>this.items.get(key) || defaultValue;
+        } else {
+            return defaultValue;
+        }
+    }
+    // eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any
+    public async update(key: string, value: any): Promise<void> {
+        this.items.set(key, value);
+    }
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any

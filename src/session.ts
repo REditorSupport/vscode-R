@@ -11,22 +11,23 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
-import { config } from './util';
+import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { rWorkspace, globalRHelp, globalHttpgdManager } from './extension';
+import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveshare';
 
 export let globalenv: any;
 let resDir: string;
 export let watcherDir: string;
-let requestFile: string;
-let requestLockFile: string;
+export let requestFile: string;
+export let requestLockFile: string;
 let requestTimeStamp: number;
 let responseTimeStamp: number;
 export let sessionDir: string;
 export let workingDir: string;
 let pid: string;
-let globalenvFile: string;
+export let globalenvFile: string;
 let globalenvLockFile: string;
 let globalenvTimeStamp: number;
 let plotView: string;
@@ -44,6 +45,7 @@ export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
     watcherDir = path.join(os.homedir(), '.vscode-R');
+
     console.info(`[deploySessionWatcher] watcherDir: ${watcherDir}`);
     if (!fs.existsSync(watcherDir)) {
         console.info('[deploySessionWatcher] watcherDir not exists, create directory');
@@ -73,12 +75,15 @@ export function attachActive(): void {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
         void runTextInTerm('.vsc.attach()');
+        if (isLiveShare() && shareWorkspace) {
+            rHostService.notifyRequest(requestFile, true);
+        }
     } else {
         void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }
 }
 
-function removeDirectory(dir: string) {
+export function removeDirectory(dir: string): void {
     console.info(`[removeDirectory] dir: ${dir}`);
     if (fs.existsSync(dir)) {
         console.info('[removeDirectory] dir exists');
@@ -155,6 +160,9 @@ async function updatePlot() {
                 viewColumn: ViewColumn[plotView],
             });
             console.info('[updatePlot] Done');
+            if (isLiveShare()) {
+                void rHostService.notifyPlot(plotFile);
+            }
         } else {
             console.info('[updatePlot] File not found');
         }
@@ -163,6 +171,7 @@ async function updatePlot() {
 
 async function updateGlobalenv() {
     console.info(`[updateGlobalenv] ${globalenvFile}`);
+
     const lockContent = await fs.readFile(globalenvLockFile, 'utf8');
     const newTimeStamp = Number.parseFloat(lockContent);
     if (newTimeStamp !== globalenvTimeStamp) {
@@ -170,15 +179,18 @@ async function updateGlobalenv() {
         if (fs.existsSync(globalenvFile)) {
             const content = await fs.readFile(globalenvFile, 'utf8');
             globalenv = JSON.parse(content);
-            rWorkspace?.refresh();
+            void rWorkspace?.refresh();
             console.info('[updateGlobalenv] Done');
+            if (isLiveShare()) {
+                rHostService.notifyGlobalenv(globalenv);
+            }
         } else {
             console.info('[updateGlobalenv] File not found');
         }
     }
 }
 
-async function showBrowser(url: string, title: string, viewer: string | boolean) {
+export async function showBrowser(url: string, title: string, viewer: string | boolean): Promise<void> {
     console.info(`[showBrowser] uri: ${url}, viewer: ${viewer.toString()}`);
     const uri = Uri.parse(url);
     if (viewer === false) {
@@ -197,6 +209,9 @@ async function showBrowser(url: string, title: string, viewer: string | boolean)
                 enableScripts: true,
                 retainContextWhenHidden: true,
             });
+        if (isHost()) {
+            await shareBrowser(url, title);
+        }
         panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
             if (e.webviewPanel.active) {
                 activeBrowserPanel = panel;
@@ -213,6 +228,9 @@ async function showBrowser(url: string, title: string, viewer: string | boolean)
             activeBrowserPanel = undefined;
             activeBrowserUri = undefined;
             activeBrowserExternalUri = undefined;
+            if (isHost()) {
+                closeBrowser(url);
+            }
             void commands.executeCommand('setContext', 'r.browser.active', false);
         });
         panel.webview.html = getBrowserHtml(externalUri);
@@ -242,7 +260,7 @@ function getBrowserHtml(uri: Uri) {
 `;
 }
 
-export function refreshBrowser():void {
+export function refreshBrowser(): void {
     console.log('[refreshBrowser]');
     if (activeBrowserPanel) {
         activeBrowserPanel.webview.html = '';
@@ -250,14 +268,14 @@ export function refreshBrowser():void {
     }
 }
 
-export function openExternalBrowser():void {
+export function openExternalBrowser(): void {
     console.log('[openExternalBrowser]');
     if (activeBrowserUri) {
         void env.openExternal(activeBrowserUri);
     }
 }
 
-async function showWebView(file: string, title: string, viewer: string | boolean) {
+export async function showWebView(file: string, title: string, viewer: string | boolean): Promise<void> {
     console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
     if (viewer === false) {
         void env.openExternal(Uri.parse(file));
@@ -274,7 +292,7 @@ async function showWebView(file: string, title: string, viewer: string | boolean
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(dir)],
             });
-        const content = await fs.readFile(file);
+        const content = await readContent(file, 'utf8');
         const html = content.toString()
             .replace('<body>', '<body style="color: black;">')
             .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
@@ -284,8 +302,13 @@ async function showWebView(file: string, title: string, viewer: string | boolean
     console.info('[showWebView] Done');
 }
 
-async function showDataView(source: string, type: string, title: string, file: string, viewer: string) {
+export async function showDataView(source: string, type: string, title: string, file: string, viewer: string): Promise<void> {
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}`);
+
+    if (isGuestSession) {
+        resDir = guestResDir;
+    }
+
     if (source === 'table') {
         const panel = window.createWebviewPanel('dataview', title,
             {
@@ -315,17 +338,23 @@ async function showDataView(source: string, type: string, title: string, file: s
         const content = await getListHtml(panel.webview, file);
         panel.webview.html = content;
     } else {
-        await commands.executeCommand('vscode.open', Uri.file(file), {
-            preserveFocus: true,
-            preview: true,
-            viewColumn: ViewColumn[viewer],
-        });
+        if (isGuestSession) {
+            const fileContent = await rGuestService.requestFileContent(file, 'utf8');
+            await openVirtualDoc(fileContent, true, true, ViewColumn[viewer]);
+        } else {
+            await commands.executeCommand('vscode.open', Uri.file(file), {
+                preserveFocus: true,
+                preview: true,
+                viewColumn: ViewColumn[viewer],
+            });
+        }
     }
     console.info('[showDataView] Done');
 }
 
-async function getTableHtml(webview: Webview, file: string) {
-    const content = await fs.readFile(file);
+export async function getTableHtml(webview: Webview, file: string): Promise<string> {
+    resDir = isGuestSession ? guestResDir : resDir;
+    const content = await readContent(file, 'utf8');
 
     return `
 <!DOCTYPE html>
@@ -376,8 +405,9 @@ async function getTableHtml(webview: Webview, file: string) {
 `;
 }
 
-async function getListHtml(webview: Webview, file: string) {
-    const content = await fs.readFile(file);
+export async function getListHtml(webview: Webview, file: string): Promise<string> {
+    resDir = isGuestSession ? guestResDir : resDir;
+    const content = await readContent(file, 'utf8');
 
     return `
 <!doctype HTML>
@@ -530,55 +560,60 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         console.info(`[updateRequest] request: ${requestContent}`);
         const request = JSON.parse(requestContent);
         if (isFromWorkspace(request.wd)) {
-            switch (request.command) {
-                case 'httpgd': {
-                    if(request.url){
-                        globalHttpgdManager?.showViewer(request.url);
+            if (request.uuid === null || request.uuid === undefined || request.uuid === UUID) {
+                switch (request.command) {
+                    case 'help': {
+                        if (globalRHelp) {
+                            console.log(request.requestPath);
+                            void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
+                        }
+                        break;
                     }
-                    break;
-                }
-                case 'help': {
-                    if(globalRHelp){
-                        console.log(request.requestPath);
-                        void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
+                    case 'httpgd': {
+                        if(request.url){
+                            globalHttpgdManager?.showViewer(request.url);
+                        }
+                        break;
                     }
-                    break;
+                    case 'attach': {
+                        pid = String(request.pid);
+                        sessionDir = path.join(request.tempdir, 'vscode-R');
+                        workingDir = request.wd;
+                        plotDir = path.join(sessionDir, 'images');
+                        plotView = String(request.plot);
+                        console.info(`[updateRequest] attach PID: ${pid}`);
+                        sessionStatusBarItem.text = `R: ${pid}`;
+                        sessionStatusBarItem.show();
+                        updateSessionWatcher();
+                        purgeAddinPickerItems();
+                        break;
+                    }
+                    case 'browser': {
+                        await showBrowser(request.url, request.title, request.viewer);
+                        break;
+                    }
+                    case 'webview': {
+                        void showWebView(request.file, request.title, request.viewer);
+                        break;
+                    }
+                    case 'dataview': {
+                        void showDataView(request.source,
+                            request.type, request.title, request.file, request.viewer);
+                        break;
+                    }
+                    case 'rstudioapi': {
+                        await dispatchRStudioAPICall(request.action, request.args, request.sd);
+                        break;
+                    }
+                    default:
+                        console.error(`[updateRequest] Unsupported command: ${request.command}`);
                 }
-                case 'attach': {
-                    pid = String(request.pid);
-                    sessionDir = path.join(request.tempdir, 'vscode-R');
-                    workingDir = request.wd;
-                    plotDir = path.join(sessionDir, 'images');
-                    plotView = String(request.plot);
-                    console.info(`[updateRequest] attach PID: ${pid}`);
-                    sessionStatusBarItem.text = `R: ${pid}`;
-                    sessionStatusBarItem.show();
-                    updateSessionWatcher();
-                    purgeAddinPickerItems();
-                    break;
-                }
-                case 'browser': {
-                    await showBrowser(request.url, request.title, request.viewer);
-                    break;
-                }
-                case 'webview': {
-                    void showWebView(request.file, request.title, request.viewer);
-                    break;
-                }
-                case 'dataview': {
-                    void showDataView(request.source,
-                        request.type, request.title, request.file, request.viewer);
-                    break;
-                }
-                case 'rstudioapi': {
-                    await dispatchRStudioAPICall(request.action, request.args, request.sd);
-                    break;
-                }
-                default:
-                    console.error(`[updateRequest] Unsupported command: ${request.command}`);
             }
         } else {
             console.info(`[updateRequest] Ignored request outside workspace`);
+        }
+        if (isLiveShare()) {
+            void rHostService.notifyRequest(requestFile);
         }
     }
 }

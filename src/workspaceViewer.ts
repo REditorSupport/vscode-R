@@ -3,15 +3,16 @@ import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Eve
 import { runTextInTerm } from './rTerminal';
 import { globalenv, workingDir } from './session';
 import { config } from './util';
+import { isGuestSession, isLiveShare, UUID, guestGlobalenv } from './liveshare';
 
 interface WorkspaceAttr {
-    [key: string]: {
-        class: string[];
-        type: string;
+	[key: string]: {
+		class: string[];
+		type: string;
 		str: string;
 		size?: number;
 		dim?: number[]
-    }
+	}
 }
 
 export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
@@ -19,7 +20,11 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 	readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
 
 	refresh(): void {
-		this.data = <WorkspaceAttr> globalenv;
+		if (isGuestSession) {
+			this.data = <WorkspaceAttr>guestGlobalenv;
+		} else {
+			this.data = <WorkspaceAttr>globalenv;
+		}
 		this._onDidChangeTreeData.fire();
 	}
 
@@ -34,13 +39,13 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 			return element.str
 				.split('\n')
 				.filter((elem, index) => {return index > 0;})
-				.map(strItem => 
+				.map(strItem =>
 					new WorkspaceItem(
-						'', 
-						'', 
-						strItem.replace(/\s+/g,' ').trim(), 
-						'', 
-						0, 
+						'',
+						'',
+						strItem.replace(/\s+/g,' ').trim(),
+						'',
+						0,
 						element.treeLevel + 1
 					)
 				);
@@ -128,7 +133,7 @@ export class WorkspaceItem extends TreeItem {
 		if (dim !== undefined) {
 			if (dim[1] === 1) {
 				return `${rClass}: ${dim[0]} obs. of ${dim[1]} variable`;
-			}  else {
+			} else {
 				return `${rClass}: ${dim[0]} obs. of ${dim[1]} variables`;
 			}
 		} else {
@@ -145,7 +150,7 @@ export class WorkspaceItem extends TreeItem {
 		}
 	}
 
-	private getTooltip(label:string, rClass: string, 
+	private getTooltip(label:string, rClass: string,
 				size: number, treeLevel: number): string {
 		if (size !== undefined && treeLevel === 0) {
 			return `${label} (${rClass}, ${this.getSizeString(size)})`;
@@ -161,28 +166,30 @@ export class WorkspaceItem extends TreeItem {
 	of what elements can have have 'child' nodes os not. It can be expanded
 	in the futere for more tree levels.*/
 
-	private static setCollapsibleState(treeLevel: number, type: string, str: string) { 
+	private static setCollapsibleState(treeLevel: number, type: string, str: string) {
 		if (treeLevel === 0 && type === 'list' && str.includes('\n')){
 			return TreeItemCollapsibleState.Collapsed;
 		} else {
 			return TreeItemCollapsibleState.None;
-		} 
+		}
 	}
 }
 
 export function clearWorkspace(): void {
 	const removeHiddenItems: boolean = config().get('workspaceViewer.removeHiddenItems');
-	if (globalenv !== undefined) {
+	if ((isGuestSession ? guestGlobalenv : globalenv) !== undefined) {
 		void window.showInformationMessage(
 			'Are you sure you want to clear the workspace? This cannot be reversed.',
 			'Confirm',
 			'Cancel'
 		).then(selection => {
 			if (selection === 'Confirm') {
+				const hiddenText = 'rm(list = ls(all.names = TRUE))';
+				const text = 'rm(list = ls())';
 				if (removeHiddenItems) {
-					return runTextInTerm(`rm(list = ls(all.names = TRUE))`);
+					void runTextInTerm(`${hiddenText}`);
 				} else {
-					return runTextInTerm(`rm(list = ls())`);
+					void runTextInTerm(`${text}`);
 				}
 			}
 		});
@@ -198,7 +205,7 @@ export function saveWorkspace(): void {
 			},
 			title: 'Save workspace'
 		}
-		).then((uri: Uri | undefined) => {
+		).then(async (uri: Uri | undefined) => {
 			if (uri) {
 				return runTextInTerm(
 					`save.image("${(uri.fsPath.split(path.sep).join(path.posix.sep))}")`
@@ -215,13 +222,26 @@ export function loadWorkspace(): void {
 			filters: {
 				'Data': ['RData'],
 			},
-			title : 'Load workspace'
-		}).then((uri: Uri[] | undefined) => {
+			title: 'Load workspace'
+		}).then(async (uri: Uri[] | undefined) => {
 			if (uri) {
+				const savePath = uri[0].fsPath.split(path.sep).join(path.posix.sep);
 				return runTextInTerm(
-					`load("${(uri[0].fsPath.split(path.sep).join(path.posix.sep))}")`
+					`load("${(savePath)}")`
 				);
 			}
 		});
 	}
+}
+
+export function viewItem(node: string): void {
+	if (isLiveShare()) {
+		void runTextInTerm(`View(${node}, uuid = ${UUID})`);
+	} else {
+		void runTextInTerm(`View(${node})`);
+	}
+}
+
+export function removeItem(node: string): void {
+	void runTextInTerm(`rm(${node})`);
 }

@@ -11,7 +11,7 @@ import { HelpPanel } from './panel';
 import { HelpProvider, AliasProvider } from './helpProvider';
 import { HelpTreeWrapper } from './treeView';
 import { PackageManager } from './packages';
-
+import { isGuestSession, rGuestService } from '../liveshare';
 
 // Initialization function that is called once when activating the extension
 export async function initializeHelp(context: vscode.ExtensionContext, rExtension: api.RExtension): Promise<RHelp|undefined> {
@@ -74,7 +74,7 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 				}
 			})
 		);
-		
+
 		vscode.window.registerWebviewPanelSerializer('rhelp', rHelp);
 	}
 
@@ -180,7 +180,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 		this.treeViewWrapper = new HelpTreeWrapper(this);
 		this.helpPanelOptions = options;
 	}
-	
+
 
 	async deserializeWebviewPanel(webviewPanel: vscode.WebviewPanel, path: string): Promise<void>{
 		const panel = this.makeNewHelpPanel(webviewPanel);
@@ -295,7 +295,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 		}
 		return false;
 	}
-	
+
 	// quickly open help for selection
 	public async openHelpForSelection(preserveFocus: boolean = false): Promise<boolean> {
 		// only use if we failed to show help page:
@@ -358,7 +358,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 		}
 		return false;
 	}
-	
+
 	public async getMatchingAliases(token: string): Promise<Alias[]> {
 		const aliases = await this.getAllAliases();
 		if(!aliases){
@@ -370,7 +370,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 			|| token === `${alias.package}::${alias.name}`
 			|| token === `${alias.package}:::${alias.name}`
 		));
-		
+
 		return matchingAliases;
 	}
 
@@ -440,7 +440,9 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	public async getHelpFileForPath(requestPath: string, modify: boolean = true): Promise<HelpFile | null> {
 		// get helpFile from helpProvider if not cached
 		if(!this.cachedHelpFiles.has(requestPath)){
-			const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
+			const helpFile = (!isGuestSession ?
+				await this.helpProvider.getHelpFileFromRequestPath(requestPath) :
+				await rGuestService.requestHelpContent(requestPath));
 			this.cachedHelpFiles.set(requestPath, helpFile);
 		}
 

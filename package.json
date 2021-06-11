@@ -89,6 +89,14 @@
           "icon": "./images/Rlogo.svg",
           "contextualTitle": "R",
           "when": "r.helpViewer.show"
+        },
+        {
+          "id": "rLiveShare",
+          "name": "Live Share Controls",
+          "icon": "./images/Rlogo.svg",
+          "contextualTitle": "R",
+          "when": "r.WorkspaceViewer:show && !r.liveShare:isGuest",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -100,6 +108,16 @@
       {
         "view": "rHelpPages",
         "contents": "R Help Pages"
+      },
+      {
+        "view": "rLiveShare",
+        "contents": "R Live Share not active.",
+        "when": "!r.liveShare:aborted"
+      },
+      {
+        "view": "rLiveShare",
+        "contents": "Could not connect to Live Share service.",
+        "when": "r.liveShare:aborted"
       }
     ],
     "languages": [
@@ -616,6 +634,15 @@
         "command": "r.helpPanel.openForPath"
       },
       {
+        "command": "r.liveShare.toggle",
+        "title": "Toggle"
+      },
+      {
+        "command": "r.liveShare.retry",
+        "title": "Retry connection to Live Share service",
+        "icon": "$(refresh)"
+      },
+      {
         "title": "Toggle Style",
         "category": "R Plot",
         "command": "r.plot.toggleStyle",
@@ -976,18 +1003,22 @@
           "command": "r.helpPanel.summarizeTopics",
           "group": "inline@8",
           "when": "view == rHelpPages && viewItem =~ /_summarizeTopics_/"
+        },
+        {
+          "command": "r.liveShare.toggle",
+          "when": "view == rLiveShare"
         }
       ],
       "view/title": [
         {
           "command": "r.workspaceViewer.load",
           "group": "navigation@0",
-          "when": "view == workspaceViewer"
+          "when": "view == workspaceViewer && !r.liveShare:isGuest"
         },
         {
           "command": "r.workspaceViewer.save",
           "group": "navigation@1",
-          "when": "view == workspaceViewer"
+          "when": "view == workspaceViewer && !r.liveShare:isGuest"
         },
         {
           "command": "r.workspaceViewer.clear",
@@ -1003,6 +1034,11 @@
           "command": "r.helpPanel.showQuickPick",
           "group": "navigation",
           "when": "view == rHelpPages"
+        },
+        {
+          "command": "r.liveShare.retry",
+          "group": "navigation@3",
+          "when": "view == rLiveShare && r.liveShare:aborted"
         }
       ]
     },
@@ -1144,6 +1180,26 @@
           "default": false,
           "description": "Remove hidden items when clearing workspace."
         },
+        "r.liveShare.timeout": {
+          "type": "integer",
+          "default": 10000,
+          "description": "Time in milliseconds before aborting attempt to connect to Live Share API"
+        },
+        "r.liveShare.defaults.commandForward": {
+          "type": "boolean",
+          "default": false,
+          "description": "Default boolean value for guest command forwarding."
+        },
+        "r.liveShare.defaults.shareWorkspace": {
+          "type": "boolean",
+          "default": true,
+          "description": "Default boolean value for sharing the R workspace with guests."
+        },
+        "r.liveShare.defaults.shareBrowser": {
+          "type": "boolean",
+          "default": false,
+          "description": "Default boolean value for automatically sharing R browser ports with guests."
+        },
         "r.plot.defaults.colorTheme": {
           "type": "string",
           "default": "original",
@@ -1250,6 +1306,7 @@
     "popper.js": "^1.16.1",
     "showdown": "^1.9.1",
     "tree-kill": "^1.2.2",
+    "vsls": "^1.0.3015",
     "winreg": "^1.2.4",
     "ws": "^7.4.6"
   }

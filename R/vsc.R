@@ -323,7 +323,7 @@ if (show_view) {
     list(columns = columns, data = data)
   }
 
-  show_dataview <- function(x, title,
+  show_dataview <- function(x, title, uuid = NULL,
                             viewer = getOption("vsc.view", "Two")) {
     if (missing(title)) {
       sub <- substitute(x)
@@ -387,19 +387,19 @@ if (show_view) {
       file <- tempfile(tmpdir = tempdir, fileext = ".json")
       jsonlite::write_json(data, file, matrix = "rowmajor")
       request("dataview", source = "table", type = "json",
-        title = title, file = file, viewer = viewer)
+        title = title, file = file, viewer = viewer, uuid = uuid)
     } else if (is.list(x)) {
       tryCatch({
         file <- tempfile(tmpdir = tempdir, fileext = ".json")
         jsonlite::write_json(x, file, auto_unbox = TRUE)
         request("dataview", source = "list", type = "json",
-          title = title, file = file, viewer = viewer)
+          title = title, file = file, viewer = viewer, uuid = uuid)
       }, error = function(e) {
         file <- file.path(tempdir, paste0(make.names(title), ".txt"))
         text <- utils::capture.output(print(x))
         writeLines(text, file)
         request("dataview", source = "object", type = "txt",
-          title = title, file = file, viewer = viewer)
+          title = title, file = file, viewer = viewer, uuid = uuid)
       })
     } else {
       file <- file.path(tempdir, paste0(make.names(title), ".R"))
@@ -410,7 +410,7 @@ if (show_view) {
       }
       writeLines(code, file)
       request("dataview", source = "object", type = "R",
-        title = title, file = file, viewer = viewer)
+        title = title, file = file, viewer = viewer, uuid = uuid)
     }
   }
 

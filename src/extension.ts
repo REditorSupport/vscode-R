@@ -16,6 +16,7 @@ import * as workspaceViewer from './workspaceViewer';
 import * as apiImplementation from './apiImplementation';
 import * as rHelp from './helpViewer';
 import * as completions from './completions';
+import * as rShare from './liveshare';
 import * as httpgdViewer from './plotViewer';
 
 
@@ -23,6 +24,7 @@ import * as httpgdViewer from './plotViewer';
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
+export let enableSessionWatcher: boolean = undefined;
 export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
 
 
@@ -35,6 +37,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // assign extension context to global variable
     extensionContext = context;
+
+    // assign session watcher setting to global variable
+    enableSessionWatcher = util.config().get<boolean>('sessionWatcher', false);
 
     // register commands specified in package.json
     const commands = {
@@ -91,15 +96,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // workspace viewer
         'r.workspaceViewer.refreshEntry': () => rWorkspace?.refresh(),
-        'r.workspaceViewer.view': (node: workspaceViewer.WorkspaceItem) => rTerminal.runTextInTerm(`View(${node.label})`),
-        'r.workspaceViewer.remove': (node: workspaceViewer.WorkspaceItem) => rTerminal.runTextInTerm(`rm(${node.label})`),
+        'r.workspaceViewer.view': (node: workspaceViewer.WorkspaceItem) => workspaceViewer.viewItem(node.label),
+        'r.workspaceViewer.remove': (node: workspaceViewer.WorkspaceItem) => workspaceViewer.removeItem(node.label),
         'r.workspaceViewer.clear': workspaceViewer.clearWorkspace,
         'r.workspaceViewer.load': workspaceViewer.loadWorkspace,
         'r.workspaceViewer.save': workspaceViewer.saveWorkspace,
 
         // browser controls
         'r.browser.refresh': session.refreshBrowser,
-        'r.browser.openExternal': session.openExternalBrowser
+        'r.browser.openExternal': session.openExternalBrowser,
 
         // (help related commands are registered in rHelp.initializeHelp)
     };
@@ -142,6 +147,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     vscode.languages.registerHoverProvider('r', new completions.HelpLinkHoverProvider());
     vscode.languages.registerCompletionItemProvider('r', new completions.StaticCompletionItemProvider(), '@');
 
+    // deploy liveshare listener
+    await rShare.initLiveShare(context);
 
     // register task provider
     const type = 'R';
@@ -165,20 +172,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
 
     // deploy session watcher (if configured by user)
-    const enableSessionWatcher = util.config().get<boolean>('sessionWatcher', false);
     if (enableSessionWatcher) {
-        console.info('Initialize session watcher');
-        session.deploySessionWatcher(context.extensionPath);
+        if (!rShare.isGuestSession) {
+            console.info('Initialize session watcher');
+            void session.deploySessionWatcher(context.extensionPath);
 
-        // create status bar item that contains info about the session watcher
-        console.info('Create sessionStatusBarItem');
-        const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
-        sessionStatusBarItem.command = 'r.attachActive';
-        sessionStatusBarItem.text = 'R: (not attached)';
-        sessionStatusBarItem.tooltip = 'Attach Active Terminal';
-        sessionStatusBarItem.show();
-        context.subscriptions.push(sessionStatusBarItem);
-        session.startRequestWatcher(sessionStatusBarItem);
+            // create status bar item that contains info about the session watcher
+            console.info('Create sessionStatusBarItem');
+            const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+            sessionStatusBarItem.command = 'r.attachActive';
+            sessionStatusBarItem.text = 'R: (not attached)';
+            sessionStatusBarItem.tooltip = 'Attach Active Terminal';
+            sessionStatusBarItem.show();
+            context.subscriptions.push(sessionStatusBarItem);
+            void session.startRequestWatcher(sessionStatusBarItem);
+        }
 
         // track active text editor
         rstudioapi.trackLastActiveTextEditor(vscode.window.activeTextEditor);
@@ -198,6 +206,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
         vscode.languages.registerCompletionItemProvider('r', new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
+
 
     return rExtension;
 }
