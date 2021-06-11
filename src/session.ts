@@ -83,7 +83,7 @@ export function attachActive(): void {
     }
 }
 
-export function removeDirectory(dir: string) {
+export function removeDirectory(dir: string): void {
     console.info(`[removeDirectory] dir: ${dir}`);
     if (fs.existsSync(dir)) {
         console.info('[removeDirectory] dir exists');
@@ -190,7 +190,7 @@ async function updateGlobalenv() {
     }
 }
 
-export async function showBrowser(url: string, title: string, viewer: string | boolean) {
+export async function showBrowser(url: string, title: string, viewer: string | boolean): Promise<void> {
     console.info(`[showBrowser] uri: ${url}, viewer: ${viewer.toString()}`);
     const uri = Uri.parse(url);
     if (viewer === false) {
@@ -275,7 +275,7 @@ export function openExternalBrowser(): void {
     }
 }
 
-export async function showWebView(file: string, title: string, viewer: string | boolean) {
+export async function showWebView(file: string, title: string, viewer: string | boolean): Promise<void> {
     console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
     if (viewer === false) {
         void env.openExternal(Uri.parse(file));
@@ -302,7 +302,7 @@ export async function showWebView(file: string, title: string, viewer: string | 
     console.info('[showWebView] Done');
 }
 
-export async function showDataView(source: string, type: string, title: string, file: string, viewer: string) {
+export async function showDataView(source: string, type: string, title: string, file: string, viewer: string): Promise<void> {
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}`);
 
     if (isGuestSession) {
@@ -352,7 +352,7 @@ export async function showDataView(source: string, type: string, title: string, 
     console.info('[showDataView] Done');
 }
 
-export async function getTableHtml(webview: Webview, file: string) {
+export async function getTableHtml(webview: Webview, file: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
     const content = await readContent(file, 'utf8');
 
@@ -405,7 +405,7 @@ export async function getTableHtml(webview: Webview, file: string) {
 `;
 }
 
-export async function getListHtml(webview: Webview, file: string) {
+export async function getListHtml(webview: Webview, file: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
     const content = await readContent(file, 'utf8');
 

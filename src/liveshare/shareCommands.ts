@@ -8,7 +8,7 @@ import { forwardCommands, shareWorkspace } from './shareTree';
 
 import { runTextInTerm } from '../rTerminal';
 import { requestFile } from '../session';
-import { HelpFile } from '../helpViewer/index';
+import { HelpFile } from '../helpViewer';
 import { globalHttpgdManager, globalRHelp } from '../extension';
 
 // used in sending messages to the guest service,

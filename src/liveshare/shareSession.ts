@@ -33,7 +33,7 @@ interface IRequest {
     viewer?: string;
     plot?: string;
     action?: string;
-    args?: any;
+    args?: unknown;
     sd?: string;
     url?: string;
     requestPath?: string;
