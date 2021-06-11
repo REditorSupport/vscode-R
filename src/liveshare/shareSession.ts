@@ -37,7 +37,7 @@ interface IRequest {
     sd?: string;
     url?: string;
     requestPath?: string;
-    UUID?: number;
+    uuid?: number;
     tempdir?: string;
 }
 
@@ -82,7 +82,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
     if (typeof (requestContent) === 'string') {
         const request: IRequest = JSON.parse(requestContent) as IRequest;
         if (request && !force) {
-            if (request.UUID === null || request.UUID === undefined || request.UUID === UUID) {
+            if (request.uuid === null || request.uuid === undefined || request.uuid === UUID) {
                 switch (request.command) {
                     case 'help': {
                         if (globalRHelp) {

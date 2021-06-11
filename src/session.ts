@@ -563,7 +563,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         console.info(`[updateRequest] request: ${requestContent}`);
         const request = JSON.parse(requestContent);
         if (isFromWorkspace(request.wd)) {
-            if (request.UUID === null || request.UUID === undefined || request.UUID === UUID) {
+            if (request.uuid === null || request.uuid === undefined || request.uuid === UUID) {
                 switch (request.command) {
                     case 'help': {
                         if (globalRHelp) {

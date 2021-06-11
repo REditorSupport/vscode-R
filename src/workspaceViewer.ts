@@ -237,7 +237,7 @@ export function loadWorkspace(): void {
 
 export function viewItem(node: string): void {
 	if (isLiveShare()) {
-		void runTextInTerm(`View(${node}, .UUID = ${UUID})`);
+		void runTextInTerm(`View(${node}, uuid = ${UUID})`);
 	} else {
 		void runTextInTerm(`View(${node})`);
 	}
