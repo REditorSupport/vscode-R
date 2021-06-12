@@ -372,6 +372,7 @@ I hope you will join us.
 * [@renkun-ken](https://github.com/renkun-ken)
 * [@MilesMcBain](https://github.com/MilesMcBain)
 * [@ManuelHentschel](https://github.com/ManuelHentschel)
+* [@ElianHugh](https://github.com/ElianHugh)
 
 ## FAQ
 
