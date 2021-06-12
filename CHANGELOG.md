@@ -4,6 +4,18 @@
 
 You can check all of our changes from [Release Page](https://github.com/Ikuyadeu/vscode-R/releases)
 
+## [2.0.0](https://github.com/Ikuyadeu/vscode-R/releases/tag/v1.8.0)
+
+Highlight
+
+* Thank you for join new collaborator: Elian H. Thiele-Evans(@ElianHugh)
+  * LiveShare Functionality #626
+    * More detail about LiveShare: <https://code.visualstudio.com/learn/collaboration/live-share>
+  * rmarkdown bug squashing and minor changes #663
+  * Code cells in .R files #662
+
+* Use .DollarNames for object with class in completion #660
+
 ## [1.6.7](https://github.com/Ikuyadeu/vscode-R/releases/tag/v1.6.7)
 
 * Update R syntax #647
