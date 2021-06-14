@@ -1167,8 +1167,8 @@
         },
         "r.sessionWatcher": {
           "type": "boolean",
-          "default": false,
-          "description": "Enable R session watcher (experimental). Required for workspace viewer. Restart required to take effect."
+          "default": true,
+          "description": "Enable R session watcher. Required for workspace viewer and most features to work with an R session. Restart required to take effect."
         },
         "r.rtermSendDelay": {
           "type": "integer",
