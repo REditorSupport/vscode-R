@@ -67,7 +67,7 @@ Note that the above steps only provide basic code editing functionalities and fe
 
 ## Questions, issues, feature requests, and contributions
 
-* If you have a question about how to accomplist something in general with the extension, please [ask on Stack Overflow](https://stackoverflow.com/questions/tagged/visual-studio-code+r).
+* If you have a question about how to accomplish something in general with the extension, please [ask on Stack Overflow](https://stackoverflow.com/questions/tagged/visual-studio-code+r).
 
 * If you find a problem or have a feature request with the extension, please [find out](https://github.com/Ikuyadeu/vscode-R/issues) if there is an existing issue so that you may upvote or otherwise [file an issue](https://github.com/Ikuyadeu/vscode-R/issues/new/choose).
 
