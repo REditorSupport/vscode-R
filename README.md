@@ -3,7 +3,7 @@
 [![Badge](https://aka.ms/vsls-badge)](https://aka.ms/vsls)
 
 This [VS Code](https://code.visualstudio.com/) extension provides support for the [R programming language](https://www.r-project.org), including features such as
-extended syntax highlighting, interacting with R terminals, viewing data, plots, workspace variables, help pages, managing packages, and working with R Markdown documents.
+extended syntax highlighting, interacting with R terminals, viewing data, plots, workspace variables, help pages, managing packages, and working with [R Markdown](https://rmarkdown.rstudio.com/) documents.
 
 ## Getting started
 
@@ -55,7 +55,7 @@ Note that the above steps only provide basic code editing functionalities and fe
 
 * [Webpage viewer](https://github.com/Ikuyadeu/vscode-R/wiki/Interactive-viewers#webpage-viewer): Viewing [htmlwidgets](www.htmlwidgets.org) such as interactive graphics and visual profiling results.
 
-* [Browser viewer](https://github.com/Ikuyadeu/vscode-R/wiki/Interactive-viewers#browser-viewer): Viewing interactive shiny apps.
+* [Browser viewer](https://github.com/Ikuyadeu/vscode-R/wiki/Interactive-viewers#browser-viewer): Viewing interactive [shiny](https://shiny.rstudio.com) apps.
 
 * [R Markdown support](https://github.com/Ikuyadeu/vscode-R/wiki/R-Markdown): R Markdown chunk highlighting, chunk navigation, and execute commands.
 
