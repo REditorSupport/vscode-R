@@ -8,6 +8,7 @@ extended syntax highlighting, interacting with R terminals, viewing data, plots,
 ## Getting started
 
 1. [Install R](https://cloud.r-project.org/) (>= 3.4.0) on your system. For Windows users, Writing R Path to registry is recommended in the installation.
+
 2. Install [`jsonlite`](https://github.com/jeroen/jsonlite) and [`rlang`](https://github.com/r-lib/rlang) packages in R.
 
     ```r
@@ -33,20 +34,35 @@ Note that the above steps only provide basic code editing functionalities and fe
 ## Features
 
 * Extended syntax highlighting for R, R Markdown and R Documentation.
+
 * Snippets for R and R Markdown.
+
 * [Interacting with R terminals](https://github.com/Ikuyadeu/vscode-R/wiki/Interacting-with-R-terminals): Sending code to terminals, running multiple terminals, working with remote servers.
+
 * [Keyboard shortcuts](https://github.com/Ikuyadeu/vscode-R/wiki/Keyboard-shortcuts): Built-in and customizable keyboard shortcuts.
+
 * [Workspace viewer](https://github.com/Ikuyadeu/vscode-R/wiki/Sidebar-user-interface#workspace-viewer): Environment pane to show global variables in attached R session.
+
 * [Help pages viewer](https://github.com/Ikuyadeu/vscode-R/wiki/Sidebar-user-interface#help-pages-viewer): Viewing R help pages and searching help topics.
+
 * [Package management](https://github.com/Ikuyadeu/vscode-R/wiki/Sidebar-user-interface#package-management): Installing and removing R packages.
+
 * Session symbol hover and completion.
+
 * [Data viewer](https://github.com/Ikuyadeu/vscode-R/wiki/Interactive-viewers#data-viewer): Viewing `data.frame` or `matrix` in a grid or a list strucutre in a treeview.
+
 * [Plot viewer](https://github.com/Ikuyadeu/vscode-R/wiki/Plot-viewer): PNG file viewer and SVG plot viewer based on [httpgd](https://github.com/nx10/httpgd).
+
 * [Webpage viewer](https://github.com/Ikuyadeu/vscode-R/wiki/Interactive-viewers#webpage-viewer): Viewing [htmlwidgets](www.htmlwidgets.org) such as interactive graphics and visual profiling results.
+
 * [Browser viewer](https://github.com/Ikuyadeu/vscode-R/wiki/Interactive-viewers#browser-viewer): Viewing interactive shiny apps.
+
 * [R Markdown support](https://github.com/Ikuyadeu/vscode-R/wiki/R-Markdown): R Markdown chunk highlighing, chunk navigation and execution commands.
+
 * [RStudio addin support](https://github.com/Ikuyadeu/vscode-R/wiki/RStudio-addin-support): Run supported RStudio addins in VS Code with a live R session.
+
 * Full support of [Remote Development](https://code.visualstudio.com/docs/remote/remote-overview) via [SSH](https://code.visualstudio.com/docs/remote/ssh), [Containers](https://code.visualstudio.com/docs/remote/containers) and [WSL](https://code.visualstudio.com/docs/remote/wsl).
+
 * [Live share collaboration](https://github.com/Ikuyadeu/vscode-R/wiki/Live-share-collaboration): Shared workspace, terminal, and viewer in R pair programming.
 
 ## Questions, issues, feature requests, and contributions
