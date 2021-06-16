@@ -304,3 +304,64 @@ export async function sendRangeToRepl(rng: vscode.Range): Promise<void> {
     await vscode.commands.executeCommand('editor.debug.action.selectionToRepl');
     editor.selections = sel0;
 }
+
+export class rTerminalLinkProvider implements vscode.TerminalLinkProvider {
+    provideTerminalLinks(context: vscode.TerminalLinkContext, token: vscode.CancellationToken): vscode.ProviderResult<vscode.TerminalLink[]> {
+        const matches: vscode.TerminalLink[] = [];
+        const regex = /[-_a-zA-Z]+\.r(:[0-9]+)?(:[0-9]+)?/gi;
+        let result: RegExpExecArray;
+
+        while ((result = regex.exec(context.line))) {
+            if (token.isCancellationRequested) {
+                break;
+            }
+            const res = {
+                startIndex: result.index,
+                length: result[0].length,
+                tooltip: 'Open file in editor',
+                data: result[0]
+            };
+            matches.push(res);
+        }
+
+        if (!matches) {
+            return [];
+        }
+
+        return matches;
+    }
+    async handleTerminalLink(link: unknown): Promise<void> {
+        if (link['data']) {
+            const url = (link['data'] as string).replace(/:[0-9]+/g, '');
+            const range = (link['data'] as string).match(/(?<=:)[0-9]+/g);
+            const loc = await vscode.workspace.findFiles(`**/${url}`, null, 1);
+            if (loc) {
+                await vscode.commands.executeCommand(
+                    'vscode.open',
+                    vscode.Uri.file(loc[0].fsPath),
+                    {
+                        preserveFocus: false,
+                        preview: false,
+                        selection: range ? new vscode.Selection(
+                            Number(range[0]) - 1,
+                            Number(range[1] ?? 1) - 1,
+                            Number(range[0]) - 1,
+                            Number(range[1] ?? 1) - 1
+                        ) : null
+                    }
+                );
+
+                if (range) {
+                    await vscode.commands.executeCommand(
+                        'revealLine',
+                        {
+                            lineNumber: Number(range[0]) - 1,
+                            at: 'center'
+                        }
+                    );
+                }
+            }
+        }
+    }
+
+}

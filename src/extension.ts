@@ -146,6 +146,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     vscode.languages.registerHoverProvider('r', new completions.HoverProvider());
     vscode.languages.registerHoverProvider('r', new completions.HelpLinkHoverProvider());
     vscode.languages.registerCompletionItemProvider('r', new completions.StaticCompletionItemProvider(), '@');
+    vscode.window.registerTerminalLinkProvider(new rTerminal.rTerminalLinkProvider);
 
     // deploy liveshare listener
     await rShare.initLiveShare(context);
@@ -206,7 +207,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
         vscode.languages.registerCompletionItemProvider('r', new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
-
 
     return rExtension;
 }
