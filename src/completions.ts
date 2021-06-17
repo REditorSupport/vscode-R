@@ -35,7 +35,13 @@ export class HoverProvider implements vscode.HoverProvider {
         }
         const wordRange = document.getWordRangeAtPosition(position);
         const text = document.getText(wordRange);
-        return new vscode.Hover(`\`\`\`\n${session.globalenv[text].str}\n\`\`\``);
+        // use juggling check here for both
+        // null and undefined
+        // eslint-disable-next-line eqeqeq
+        if (session.globalenv[text]?.str == null) {
+            return null;
+        }
+        return new vscode.Hover(`\`\`\`\n${session.globalenv[text]?.str}\n\`\`\``);
     }
 }
 
@@ -58,7 +64,7 @@ export class HelpLinkHoverProvider implements vscode.HoverProvider {
         });
         const md = new vscode.MarkdownString(mds.join('  \n'));
         md.isTrusted = true;
-        return new vscode.Hover(md, wordRange);        
+        return new vscode.Hover(md, wordRange);
     }
 }
 
@@ -200,7 +206,7 @@ function getPipelineCompletionItems(document: vscode.TextDocument, position: vsc
         if (line.isEmptyOrWhitespace) {
             continue;
         }
-        
+
         const cleanedLine = cleanLine(line.text);
         if (cleanedLine.length === 0) {
             continue;
@@ -220,7 +226,7 @@ function getPipelineCompletionItems(document: vscode.TextDocument, position: vsc
 
         break;
     }
-    
+
     if (!token.isCancellationRequested && symbol !== undefined) {
         const obj = session.globalenv[symbol];
         if (obj !== undefined && obj.names !== undefined) {
