@@ -35,7 +35,10 @@ export class HoverProvider implements vscode.HoverProvider {
         }
         const wordRange = document.getWordRangeAtPosition(position);
         const text = document.getText(wordRange);
-        if (!session.globalenv[text]?.str) {
+        // use juggling check here for both
+        // null and undefined
+        // eslint-disable-next-line eqeqeq
+        if (session.globalenv[text]?.str == null) {
             return null;
         }
         return new vscode.Hover(`\`\`\`\n${session.globalenv[text]?.str}\n\`\`\``);
