@@ -1180,6 +1180,11 @@
           "default": false,
           "description": "Remove hidden items when clearing workspace."
         },
+        "r.workspaceViewer.clearPrompt": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prompt the user for confirmation when clearing the workspace."
+        },
         "r.liveShare.timeout": {
           "type": "integer",
           "default": 10000,
