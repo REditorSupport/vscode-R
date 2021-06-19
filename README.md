@@ -5,6 +5,8 @@
 This [VS Code](https://code.visualstudio.com/) extension provides support for the [R programming language](https://www.r-project.org), including features such as
 extended syntax highlighting, interacting with R terminals, viewing data, plots, workspace variables, help pages, managing packages, and working with [R Markdown](https://rmarkdown.rstudio.com/) documents.
 
+Go to the [wiki](https://github.com/Ikuyadeu/vscode-R/wiki) to view the documentation of the extension.
+
 ## Getting started
 
 1. [Install R](https://cloud.r-project.org/) (>= 3.4.0) on your system. For Windows users, Writing R Path to the registry is recommended in the installation.
