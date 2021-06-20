@@ -65,8 +65,8 @@ window.addEventListener('message', (ev) => {
     else if (msg.message === 'addPlot') {
         addPlot(msg.html);
     }
-    else if (msg.message === 'toggleMultirow') {
-        toggleMultirow(msg.useMultirow);
+    else if (msg.message === 'togglePreviewPlotLayout') {
+        togglePreviewPlotLayout(msg.style);
     }
 });
 function addPlot(html) {
@@ -122,13 +122,9 @@ function findIndex(plotId, smallPlots) {
 function toggleStyle(useOverwrites) {
     cssLink.disabled = !useOverwrites;
 }
-function toggleMultirow(useMultirow) {
-    if (useMultirow) {
-        smallPlotDiv.classList.add('multirow');
-    }
-    else {
-        smallPlotDiv.classList.remove('multirow');
-    }
+function togglePreviewPlotLayout(newStyle) {
+    smallPlotDiv.classList.remove('multirow', 'scroll', 'hidden');
+    smallPlotDiv.classList.add(newStyle);
 }
 ////
 // On window load

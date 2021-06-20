@@ -64,6 +64,10 @@ svg {
     flex-wrap: wrap;
 }
 
+#smallPlots.hidden {
+    display: none;
+}
+
 /* Each small plot: */
 
 #smallPlots .wrapper {
