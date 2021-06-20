@@ -227,6 +227,7 @@ interface EjsData {
     asLocalPath: (relPath: string) => string;
     asWebViewPath: (localPath: string) => string;
     makeCommandUri: (command: string, ...args: any[]) => string;
+    overwriteCssPath: string;
 
     // only used to render an individual smallPlot div:
     plot?: HttpgdPlot;
@@ -266,6 +267,9 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     readonly defaultPreviewPlotLayout: PreviewPlotLayout = 'multirow';
     previewPlotLayout: PreviewPlotLayout;
+
+    // Custom file to be used instead of `styleOverwrites.css`
+    customOverwriteCssPath?: string;
 
     // Size of the view area:
     viewHeight: number;
@@ -328,6 +332,12 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.api.onConnectionChange(() => {
             this.checkStateDelayed();
         });
+        this.customOverwriteCssPath = config().get('plot.customStyleOverwrites', '');
+        const localResourceRoots = (
+            this.customOverwriteCssPath ?
+            [extensionContext.extensionUri, vscode.Uri.file(path.dirname(this.customOverwriteCssPath))] :
+            undefined
+        );
         this.htmlRoot = options.htmlRoot;
         this.htmlTemplate = fs.readFileSync(path.join(this.htmlRoot, 'index.ejs'), 'utf-8');
         this.smallPlotTemplate = fs.readFileSync(path.join(this.htmlRoot, 'smallPlot.ejs'), 'utf-8');
@@ -338,7 +348,8 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.webviewOptions = {
             enableCommandUris: true,
             enableScripts: true,
-            retainContextWhenHidden: true
+            retainContextWhenHidden: true,
+            localResourceRoots: localResourceRoots
         };
         this.defaultStripStyles = options.stripStyles ?? this.defaultStripStyles;
         this.stripStyles = this.defaultStripStyles;
@@ -665,6 +676,13 @@ export class HttpgdViewer implements IHttpgdViewer {
             const argString = encodeURIComponent(JSON.stringify(args));
             return `command:${command}?${argString}`;
         };
+        let overwriteCssPath = '';
+        if(this.customOverwriteCssPath){
+            const uri = vscode.Uri.file(this.customOverwriteCssPath);
+            overwriteCssPath = this.webviewPanel.webview.asWebviewUri(uri).toString();
+        } else{
+            overwriteCssPath = asWebViewPath('styleOverwrites.css');
+        }
         const ejsData: EjsData = {
             overwriteStyles: this.stripStyles,
             previewPlotLayout: this.previewPlotLayout,
@@ -674,7 +692,8 @@ export class HttpgdViewer implements IHttpgdViewer {
             host: this.host,
             asLocalPath: asLocalPath,
             asWebViewPath: asWebViewPath,
-            makeCommandUri: makeCommandUri
+            makeCommandUri: makeCommandUri,
+            overwriteCssPath: overwriteCssPath
         };
         return ejsData;
     }

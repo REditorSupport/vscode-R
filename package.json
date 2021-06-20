@@ -1242,6 +1242,11 @@
           "type": "number",
           "default": 10,
           "markdownDescription": "Interval in ms to wait between plot refreshs."
+        },
+        "r.plot.customStyleOverwrites": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to a custom CSS file to be used for `r.plot.toggleStyle`. WARNING: replaces default CSS overwrites!"
         }
       }
     },
