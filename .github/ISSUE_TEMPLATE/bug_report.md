@@ -57,8 +57,8 @@ Yes / No
 // Use bracketed paste mode
 "r.bracketedPaste": false,
 
-// Enable R session watcher (experimental)
-"r.sessionWatcher": false,
+// Enable R session watcher
+"r.sessionWatcher": true,
 
 // Delay in milliseconds before sending each line to rterm (only applies if r.bracketedPaste is false)
 "r.rtermSendDelay": 8,
