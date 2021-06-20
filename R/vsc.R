@@ -34,11 +34,11 @@ request <- function(command, ...) {
   cat(get_timestamp(), file = request_lock_file)
 }
 
-capture_str <- function(object) {
+capture_str <- function(object, max.level = getOption("vsc.str.max.level", 0)) {
   paste0(
     utils::capture.output(
       utils::str(object,
-        max.level = getOption("vsc.str.max.level", 0),
+        max.level = max.level,
         give.attr = FALSE,
         vec.len = 1
       )
@@ -361,7 +361,7 @@ if (show_view) {
             type = typeof(obj),
             length = length(obj),
             size = as.integer(object.size(obj)),
-            value = trimws(capture_str(obj)),
+            value = trimws(capture_str(obj, 0)),
             stringsAsFactors = FALSE,
             check.names = FALSE
           )
