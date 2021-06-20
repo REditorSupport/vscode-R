@@ -2,6 +2,7 @@
 
 import * as vscode from 'vscode';
 import { HttpgdManager } from '.';
+import { PreviewPlotLayout } from './webviewMessages';
 
 export type MaybePromise<T> = T | Promise<T>;
 
@@ -85,7 +86,7 @@ export interface HttpgdViewerOptions {
     viewColumn?: vscode.ViewColumn;
     htmlRoot: string;
     stripStyles?: boolean;
-    useMultirow?: boolean;
+    previewPlotLayout?: PreviewPlotLayout,
     resizeTimeoutLength?: number;
     refreshTimeoutLength?: number;
 }

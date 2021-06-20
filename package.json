@@ -649,9 +649,9 @@
         "icon": "$(symbol-color)"
       },
       {
-        "title": "Toggle Multirow",
+        "title": "Toggle Preview Plot Layout",
         "category": "R Plot",
-        "command": "r.plot.toggleMultirow",
+        "command": "r.plot.togglePreviewPlots",
         "icon": "$(list-flat)"
       },
       {
@@ -855,7 +855,7 @@
         {
           "group": "httpgd",
           "when": "resourceScheme =~ /webview/ && r.plot.active",
-          "command": "r.plot.toggleMultirow"
+          "command": "r.plot.togglePreviewPlots"
         },
         {
           "group": "httpgd",
@@ -1223,11 +1223,13 @@
           "default": "multirow",
           "enum": [
             "multirow",
-            "scroll"
+            "scroll",
+            "hidden"
           ],
           "enumDescriptions": [
             "Show in multiple rows",
-            "Show scrollbar"
+            "Show scrollbar",
+            "Don't show preview plots"
           ],
           "markdownDescription": "How to display plot previews if more than one row required."
         },

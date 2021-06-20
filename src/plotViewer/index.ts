@@ -12,7 +12,7 @@ import { config, setContext } from '../util';
 
 import { extensionContext } from '../extension';
 
-import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, ToggleMultirowMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage } from './webviewMessages';
+import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage, PreviewPlotLayout, PreviewPlotLayoutMessage } from './webviewMessages';
 
 import { isHost, rHostService, shareBrowser } from '../liveshare';
 
@@ -22,7 +22,7 @@ const commands = [
     'openExternal',
     'showIndex',
     'toggleStyle',
-    'toggleMultirow',
+    'togglePreviewPlots',
     'exportPlot',
     'nextPlot',
     'prevPlot',
@@ -79,9 +79,8 @@ export class HttpgdManager {
         } else{
             const conf = config();
             const colorTheme = conf.get('plot.defaults.colorTheme', 'vscode');
-            const smallPlotLayout = conf.get('plot.defaults.plotPreviewLayout', 'multirow');
             this.viewerOptions.stripStyles = (colorTheme === 'vscode');
-            this.viewerOptions.useMultirow = (smallPlotLayout === 'multirow');
+            this.viewerOptions.previewPlotLayout = conf.get<PreviewPlotLayout>('plot.defaults.plotPreviewLayout', 'multirow');
             this.viewerOptions.refreshTimeoutLength = conf.get('plot.timing.refreshInterval', 10);
             this.viewerOptions.resizeTimeoutLength = conf.get('plot.timing.resizeInterval', 100);
             this.viewerOptions.token = token;
@@ -189,8 +188,8 @@ export class HttpgdManager {
             } case 'toggleStyle': {
                 void viewer.toggleStyle(boolArg);
                 break;
-            } case 'toggleMultirow': {
-                void viewer.toggleMultirow(boolArg);
+            } case 'togglePreviewPlots': {
+                void viewer.togglePreviewPlots(stringArg as PreviewPlotLayout);
                 break;
             } case 'closePlot': {
                 void viewer.closePlot(stringArg);
@@ -220,7 +219,7 @@ export class HttpgdManager {
 
 interface EjsData {
     overwriteStyles: boolean;
-    useMultirow: boolean;
+    previewPlotLayout: PreviewPlotLayout;
     activePlot?: PlotId;
     plots: HttpgdPlot[];
     largePlot: HttpgdPlot;
@@ -265,8 +264,8 @@ export class HttpgdViewer implements IHttpgdViewer {
     readonly defaultStripStyles: boolean = true;
     stripStyles: boolean;
 
-    readonly defaultUseMultiRow: boolean = true;
-    useMultirow: boolean;
+    readonly defaultPreviewPlotLayout: PreviewPlotLayout = 'multirow';
+    previewPlotLayout: PreviewPlotLayout;
 
     // Size of the view area:
     viewHeight: number;
@@ -343,8 +342,8 @@ export class HttpgdViewer implements IHttpgdViewer {
         };
         this.defaultStripStyles = options.stripStyles ?? this.defaultStripStyles;
         this.stripStyles = this.defaultStripStyles;
-        this.defaultUseMultiRow = options.useMultirow ?? this.defaultUseMultiRow;
-        this.useMultirow = this.defaultUseMultiRow;
+        this.defaultPreviewPlotLayout = options.previewPlotLayout ?? this.defaultPreviewPlotLayout;
+        this.previewPlotLayout = this.defaultPreviewPlotLayout;
         this.resizeTimeoutLength = options.refreshTimeoutLength ?? this.resizeTimeoutLength;
         this.refreshTimeoutLength = options.refreshTimeoutLength ?? this.refreshTimeoutLength;
         this.api.start();
@@ -454,11 +453,19 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.postWebviewMessage(msg);
     }
 
-    public toggleMultirow(force?: boolean): void{
-        this.useMultirow = force ?? !this.useMultirow;
-        const msg: ToggleMultirowMessage = {
-            message: 'toggleMultirow',
-            useMultirow: this.useMultirow
+    public togglePreviewPlots(force?: PreviewPlotLayout): void{
+        if(force){
+            this.previewPlotLayout = force;
+        } else if(this.previewPlotLayout === 'multirow'){
+            this.previewPlotLayout = 'scroll';
+        } else if(this.previewPlotLayout === 'scroll'){
+            this.previewPlotLayout = 'hidden';
+        } else if(this.previewPlotLayout === 'hidden'){
+            this.previewPlotLayout = 'multirow';
+        }
+        const msg: PreviewPlotLayoutMessage = {
+            message: 'togglePreviewPlotLayout',
+            style: this.previewPlotLayout
         };
         this.postWebviewMessage(msg);
     }
@@ -660,7 +667,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         };
         const ejsData: EjsData = {
             overwriteStyles: this.stripStyles,
-            useMultirow: this.useMultirow,
+            previewPlotLayout: this.previewPlotLayout,
             plots: this.plots,
             largePlot: this.plots[this.activeIndex],
             activePlot: this.activePlot,
