@@ -18,8 +18,6 @@ export let guestResDir: string;
 // Browser Vars
 // Used to keep track of shared browsers
 export const browserDisposables: { Disposable: vscode.Disposable, url: string, name: string }[] = [];
-// for guest purposes
-export const sharedBrowsers: { url: string, name: string }[] = [];
 
 interface IRequest {
     command: string;
@@ -148,9 +146,9 @@ export function updateGuestGlobalenv(hostEnv: string): void {
 let panel: vscode.WebviewPanel = undefined;
 export async function updateGuestPlot(file: string): Promise<void> {
     const plotContent = await readContent(file, 'base64');
-    if (plotContent !== undefined) {
+    if (plotContent) {
         if (panel) {
-            panel.webview.html = getGuestImageHtml(panel.webview, plotContent);
+            panel.webview.html = getGuestImageHtml(plotContent);
             panel.reveal(vscode.ViewColumn[guestPlotView], true);
         } else {
             panel = vscode.window.createWebviewPanel('dataview', 'R Guest Plot',
@@ -165,7 +163,7 @@ export async function updateGuestPlot(file: string): Promise<void> {
                     retainContextWhenHidden: true,
                     localResourceRoots: [vscode.Uri.file(guestResDir)],
                 });
-            const content = getGuestImageHtml(panel.webview, plotContent);
+            const content = getGuestImageHtml(plotContent);
             panel.webview.html = content;
             panel.onDidDispose(
                 () => {
@@ -181,7 +179,7 @@ export async function updateGuestPlot(file: string): Promise<void> {
 
 // Purely used in order to decode a base64 string into
 // an image format, bypassing saving a file onto the guest's system
-function getGuestImageHtml(webview: vscode.Webview, content: string) {
+function getGuestImageHtml(content: string) {
     return `
 <!doctype HTML>
 <html>

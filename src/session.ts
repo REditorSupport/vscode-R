@@ -340,7 +340,7 @@ export async function showDataView(source: string, type: string, title: string, 
     } else {
         if (isGuestSession) {
             const fileContent = await rGuestService.requestFileContent(file, 'utf8');
-            await openVirtualDoc(fileContent, true, true, ViewColumn[viewer]);
+            await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer]);
         } else {
             await commands.executeCommand('vscode.open', Uri.file(file), {
                 preserveFocus: true,
