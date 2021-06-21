@@ -71,14 +71,12 @@ function postLogMessage(content: any){
 
 window.addEventListener('message', (ev: MessageEvent<InMessage>) => {
   const msg = ev.data;
-  console.info(msg);
   if(msg.message === 'updatePlot'){
     updatePlot({
       id: String(msg.plotId),
       svg: msg.svg
     });
   } else if(msg.message === 'focusPlot'){
-    console.log('focussing plot');
     focusPlot(String(msg.plotId));
   } else if(msg.message === 'toggleStyle'){
     toggleStyle(msg.useOverwrites);

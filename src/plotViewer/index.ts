@@ -250,7 +250,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     webviewPanel?: vscode.WebviewPanel;
 
     // Api that provides plot contents etc.
-    readonly api: Httpgd;
+    api?: Httpgd;
 
     // active plots
     plots: HttpgdPlot[] = [];
@@ -329,8 +329,13 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.api.onPlotsChange(() => {
             this.checkStateDelayed();
         });
-        this.api.onConnectionChange(() => {
-            this.checkStateDelayed();
+        this.api.onConnectionChange((disconnected: boolean) => {
+            if(disconnected){
+                this.api?.dispose();
+                this.api = undefined;
+            } else{
+                this.checkStateDelayed();
+            }
         });
         this.customOverwriteCssPath = config().get('plot.customStyleOverwrites', '');
         const localResourceRoots = (
@@ -451,7 +456,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         id ??= this.activePlot;
         if(id){
             this.hidePlot(id);
-            await this.api.closePlot(id);
+            await this.api?.closePlot(id);
         }
     }
 
@@ -531,6 +536,9 @@ export class HttpgdViewer implements IHttpgdViewer {
         }
     }
     protected async checkState(): Promise<void> {
+        if(!this.api){
+            return;
+        }
         const oldUpid = this.state?.upid;
         this.state = await this.api.getState();
         if(this.state.upid !== oldUpid){
@@ -560,8 +568,9 @@ export class HttpgdViewer implements IHttpgdViewer {
             void this.resizePlot();
         } else if(!this.resizeTimeout){
             this.resizeTimeout = setTimeout(() => {
-                void this.resizePlot();
-                this.resizeTimeout = undefined;
+                void this.resizePlot().then(() =>
+                    this.resizeTimeout = undefined
+                );
             }, this.resizeTimeoutLength);
         }
     }
@@ -572,12 +581,17 @@ export class HttpgdViewer implements IHttpgdViewer {
         const height = this.scaledViewHeight;
         const width = this.scaledViewWidth;
         const plt = await this.getPlotContent(id, height, width);
-        this.plotWidth = plt.width;
-        this.plotHeight = plt.height;
-        this.updatePlot(plt);
+        if(plt){
+            this.plotWidth = plt.width;
+            this.plotHeight = plt.height;
+            this.updatePlot(plt);
+        }
     }
 
     protected async refreshPlots(redraw: boolean = false, force: boolean = false): Promise<void> {
+        if(!this.api){
+            return;
+        }
         const nPlots = this.plots.length;
         const oldPlotIds = this.plots.map(plt => plt.id);
         let plotIds = await this.api.getPlotIds();
@@ -629,7 +643,10 @@ export class HttpgdViewer implements IHttpgdViewer {
         void this.setContextValues();
     }
 
-    protected async getPlotContent(id: PlotId, height?: number, width?: number): Promise<HttpgdPlot> {
+    protected async getPlotContent(id: PlotId, height?: number, width?: number): Promise<HttpgdPlot | undefined> {
+        if(!this.api){
+            return undefined;
+        }
         height ||= this.scaledViewHeight;
         width ||= this.scaledViewWidth;
         const plt = await this.api.getPlotContent(id, height, width);
@@ -777,7 +794,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     // Dispose-function to clean up when vscode closes
     // E.g. to close connections etc., notify R, ...
     public dispose(): void {
-        this.api.dispose();
+        this.api?.dispose();
     }
 }
 

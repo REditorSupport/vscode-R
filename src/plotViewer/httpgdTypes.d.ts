@@ -98,7 +98,7 @@ export class IHttpgdViewer {
     webviewPanel?: vscode.WebviewPanel;
 
     // Api that provides plot contents etc.
-    api: IHttpgdViewerApi;
+    api?: IHttpgdViewerApi;
 
     // active plots
     plots: HttpgdPlot[];
