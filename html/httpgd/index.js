@@ -45,7 +45,6 @@ function postLogMessage(content) {
 }
 window.addEventListener('message', (ev) => {
     const msg = ev.data;
-    console.info(msg);
     if (msg.message === 'updatePlot') {
         updatePlot({
             id: String(msg.plotId),
@@ -53,7 +52,6 @@ window.addEventListener('message', (ev) => {
         });
     }
     else if (msg.message === 'focusPlot') {
-        console.log('focussing plot');
         focusPlot(String(msg.plotId));
     }
     else if (msg.message === 'toggleStyle') {
