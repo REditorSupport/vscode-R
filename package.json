@@ -1212,8 +1212,8 @@
             "vscode",
             "original"
           ],
-          "enumDescriptions": [
-            "Match background and primary stroke color to the current color theme",
+          "markdownEnumDescriptions": [
+            "Match background and primary stroke color to the current color theme (Or apply custom CSS overwrites, if specified in `#r.plot.customStyleOverwrites#`)",
             "Use original colors"
           ],
           "markdownDescription": "Which color theme to use when launching the plot viewer."
@@ -1246,7 +1246,7 @@
         "r.plot.customStyleOverwrites": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to a custom CSS file to be used for `r.plot.toggleStyle`. WARNING: replaces default CSS overwrites!"
+          "markdownDescription": "Path to a custom CSS file to be used when `#r.plot.defaults.colorTheme#` is `vscode`. Replaces the default CSS overwrites!"
         }
       }
     },
