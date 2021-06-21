@@ -560,8 +560,9 @@ export class HttpgdViewer implements IHttpgdViewer {
             void this.resizePlot();
         } else if(!this.resizeTimeout){
             this.resizeTimeout = setTimeout(() => {
-                void this.resizePlot();
-                this.resizeTimeout = undefined;
+                void this.resizePlot().then(() =>
+                    this.resizeTimeout = undefined
+                );
             }, this.resizeTimeoutLength);
         }
     }
