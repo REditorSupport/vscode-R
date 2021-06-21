@@ -7,7 +7,7 @@
 
 svg text {
     font-family: var(--vscode-editor-font-family) !important;
-    stroke: var(--vscode-foreground) !important;
+    fill: var(--vscode-foreground) !important;
 }
 
 .httpgd line, .httpgd polyline, .httpgd polygon, .httpgd path, .httpgd circle, .httpgd rect:not(:first-of-type) {
