@@ -305,7 +305,7 @@ export async function sendRangeToRepl(rng: vscode.Range): Promise<void> {
     editor.selections = sel0;
 }
 
-export class rTerminalLinkProvider implements vscode.TerminalLinkProvider {
+export class TerminalLinkProvider implements vscode.TerminalLinkProvider {
     provideTerminalLinks(context: vscode.TerminalLinkContext, token: vscode.CancellationToken): vscode.ProviderResult<vscode.TerminalLink[]> {
         const matches: vscode.TerminalLink[] = [];
         const regex = /[-_a-zA-Z]+\.r(:[0-9]+)?(:[0-9]+)?/gi;

@@ -146,7 +146,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     vscode.languages.registerHoverProvider('r', new completions.HoverProvider());
     vscode.languages.registerHoverProvider('r', new completions.HelpLinkHoverProvider());
     vscode.languages.registerCompletionItemProvider('r', new completions.StaticCompletionItemProvider(), '@');
-    vscode.window.registerTerminalLinkProvider(new rTerminal.rTerminalLinkProvider);
+    vscode.window.registerTerminalLinkProvider(new rTerminal.TerminalLinkProvider);
 
     // deploy liveshare listener
     await rShare.initLiveShare(context);
