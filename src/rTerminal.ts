@@ -331,11 +331,12 @@ export class rTerminalLinkProvider implements vscode.TerminalLinkProvider {
         return matches;
     }
     async handleTerminalLink(link: unknown): Promise<void> {
-        if (link['data']) {
-            const url = (link['data'] as string).replace(/:[0-9]+/g, '');
-            const range = (link['data'] as string).match(/(?<=:)[0-9]+/g);
+        const data: unknown = link['data'];
+        if (typeof data === 'string') {
+            const url = data.replace(/:[0-9]+/g, '');
             const loc = await vscode.workspace.findFiles(`**/${url}`, null, 1);
-            if (loc) {
+            if (loc?.length > 0) {
+                const range = (data.match(/(?<=:)[0-9]+/g))?.map(num => Number(num) - 1);
                 await vscode.commands.executeCommand(
                     'vscode.open',
                     vscode.Uri.file(loc[0].fsPath),
@@ -343,19 +344,18 @@ export class rTerminalLinkProvider implements vscode.TerminalLinkProvider {
                         preserveFocus: false,
                         preview: false,
                         selection: range ? new vscode.Selection(
-                            Number(range[0]) - 1,
-                            Number(range[1] ?? 1) - 1,
-                            Number(range[0]) - 1,
-                            Number(range[1] ?? 1) - 1
+                            range[0],
+                            range[1] ?? 1,
+                            range[0],
+                            range[1] ?? 1
                         ) : null
                     }
                 );
-
                 if (range) {
                     await vscode.commands.executeCommand(
                         'revealLine',
                         {
-                            lineNumber: Number(range[0]) - 1,
+                            lineNumber: range[0],
                             at: 'center'
                         }
                     );
