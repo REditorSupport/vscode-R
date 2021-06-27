@@ -15,15 +15,20 @@ interface WorkspaceAttr {
 	}
 }
 
+const priorityAttr: string[] = [
+	'list',
+	'environment'
+];
+
 export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 	private _onDidChangeTreeData: EventEmitter<void> = new EventEmitter();
 	readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
 
 	refresh(): void {
 		if (isGuestSession) {
-			this.data = <WorkspaceAttr>guestGlobalenv;
+			this.data = guestGlobalenv as WorkspaceAttr;
 		} else {
-			this.data = <WorkspaceAttr>globalenv;
+			this.data = globalenv as WorkspaceAttr;
 		}
 		this._onDidChangeTreeData.fire();
 	}
@@ -86,11 +91,6 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 			)) : [];
 
 		function sortItems(a: WorkspaceItem, b: WorkspaceItem) {
-			const priorityAttr: string[] = [
-				'list',
-				'environment'
-			];
-
 			if (priorityAttr.includes(a.contextValue) > priorityAttr.includes(b.contextValue)) {
 				return -1;
 			} else if (priorityAttr.includes(b.contextValue) > priorityAttr.includes(a.contextValue)) {
@@ -167,7 +167,7 @@ export class WorkspaceItem extends TreeItem {
 	in the futere for more tree levels.*/
 
 	private static setCollapsibleState(treeLevel: number, type: string, str: string) {
-		if (treeLevel === 0 && type === 'list' && str.includes('\n')){
+		if (treeLevel === 0 && priorityAttr.includes(type) && str.includes('\n')){
 			return TreeItemCollapsibleState.Collapsed;
 		} else {
 			return TreeItemCollapsibleState.None;
@@ -177,22 +177,32 @@ export class WorkspaceItem extends TreeItem {
 
 export function clearWorkspace(): void {
 	const removeHiddenItems: boolean = config().get('workspaceViewer.removeHiddenItems');
+	const promptUser: boolean = config().get('workspaceViewer.clearPrompt');
+
 	if ((isGuestSession ? guestGlobalenv : globalenv) !== undefined) {
-		void window.showInformationMessage(
-			'Are you sure you want to clear the workspace? This cannot be reversed.',
-			'Confirm',
-			'Cancel'
-		).then(selection => {
-			if (selection === 'Confirm') {
-				const hiddenText = 'rm(list = ls(all.names = TRUE))';
-				const text = 'rm(list = ls())';
-				if (removeHiddenItems) {
-					void runTextInTerm(`${hiddenText}`);
-				} else {
-					void runTextInTerm(`${text}`);
+		if (promptUser) {
+			void window.showInformationMessage(
+				'Are you sure you want to clear the workspace? This cannot be reversed.',
+				'Confirm',
+				'Cancel'
+			).then(selection => {
+				if (selection === 'Confirm') {
+					clear();
 				}
-			}
-		});
+			});
+		} else {
+			clear();
+		}
+	}
+
+	function clear() {
+		const hiddenText = 'rm(list = ls(all.names = TRUE))';
+		const text = 'rm(list = ls())';
+		if (removeHiddenItems) {
+			void runTextInTerm(`${hiddenText}`);
+		} else {
+			void runTextInTerm(`${text}`);
+		}
 	}
 }
 

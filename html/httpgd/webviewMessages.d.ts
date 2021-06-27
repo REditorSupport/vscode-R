@@ -40,9 +40,11 @@ interface ToggleStyleMessage extends IMessage {
   message: 'toggleStyle',
   useOverwrites: boolean
 }
-interface ToggleMultirowMessage extends IMessage {
-  message: 'toggleMultirow',
-  useMultirow: boolean
+
+type PreviewPlotLayout = 'multirow' | 'scroll' | 'hidden';
+interface PreviewPlotLayoutMessage extends IMessage {
+  message: 'togglePreviewPlotLayout',
+  style: PreviewPlotLayout
 }
 
 interface HidePlotMessage extends IMessage {
@@ -55,5 +57,5 @@ interface AddPlotMessage extends IMessage {
   html: string
 }
 
-type InMessage = UpdatePlotMessage | FocusPlotMessage | ToggleStyleMessage | HidePlotMessage | AddPlotMessage | ToggleMultirowMessage;
+type InMessage = UpdatePlotMessage | FocusPlotMessage | ToggleStyleMessage | HidePlotMessage | AddPlotMessage | PreviewPlotLayoutMessage;
 

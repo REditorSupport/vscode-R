@@ -71,14 +71,12 @@ function postLogMessage(content: any){
 
 window.addEventListener('message', (ev: MessageEvent<InMessage>) => {
   const msg = ev.data;
-  console.info(msg);
   if(msg.message === 'updatePlot'){
     updatePlot({
       id: String(msg.plotId),
       svg: msg.svg
     });
   } else if(msg.message === 'focusPlot'){
-    console.log('focussing plot');
     focusPlot(String(msg.plotId));
   } else if(msg.message === 'toggleStyle'){
     toggleStyle(msg.useOverwrites);
@@ -86,8 +84,8 @@ window.addEventListener('message', (ev: MessageEvent<InMessage>) => {
     hidePlot(msg.plotId);
   } else if(msg.message === 'addPlot'){
     addPlot(msg.html);
-  } else if(msg.message === 'toggleMultirow'){
-    toggleMultirow(msg.useMultirow);
+  } else if(msg.message === 'togglePreviewPlotLayout'){
+    togglePreviewPlotLayout(msg.style);
   }
 });
 
@@ -162,12 +160,9 @@ function toggleStyle(useOverwrites: boolean): void {
   cssLink.disabled = !useOverwrites;
 }
 
-function toggleMultirow(useMultirow: boolean): void {
-  if(useMultirow){
-    smallPlotDiv.classList.add('multirow');
-  } else{
-    smallPlotDiv.classList.remove('multirow');
-  }
+function togglePreviewPlotLayout(newStyle: PreviewPlotLayout): void {
+  smallPlotDiv.classList.remove('multirow', 'scroll', 'hidden');
+  smallPlotDiv.classList.add(newStyle);
 }
 
 

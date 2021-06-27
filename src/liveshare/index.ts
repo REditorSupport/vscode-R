@@ -23,7 +23,6 @@ export let rGuestService: GuestService = undefined;
 export let liveSession: vsls.LiveShare;
 export let isGuestSession: boolean;
 export let _sessionStatusBarItem: vscode.StatusBarItem;
-const disposables: vscode.Disposable[] = [];
 
 // service vars
 export const ShareProviderName = 'vscode-r';
@@ -105,12 +104,23 @@ export async function LiveSessionListener(): Promise<void> {
     rHostService = new HostService;
     rGuestService = new GuestService;
 
+    // catch errors in case of issues with the
+    // LiveShare extension/API (see #671)
+    async function tryAPI(): Promise<unknown> {
+        try {
+            return await Promise.race([
+                vsls.getApi(),
+                new Promise((res) => setTimeout(() => res(null), config().get<number>('liveShare.timeout')))
+            ]);
+        } catch(e: unknown) {
+            console.log('[LiveSessionListener] an error occured when attempting to access the Live Share API.', e);
+            return null;
+        }
+    }
+
     // Return out when the vsls extension isn't
     // installed/available
-    const liveSessionStatus = await Promise.race([
-        vsls.getApi(),
-        new Promise((res) => setTimeout(() => res(null), config().get<number>('liveShare.timeout')))
-    ]);
+    const liveSessionStatus = await tryAPI();
 
     void vscode.commands.executeCommand('setContext', 'r.liveShare:aborted', !liveSessionStatus);
 
@@ -175,6 +185,11 @@ export async function LiveSessionListener(): Promise<void> {
 // request to the HostService, which is picked up the HostService
 // callback and * returned * to the GuestService
 // e.g. rGuestService.requestFileContent
+//
+// Note: If you are wanting the guest/host to run code, you must either ensure that
+// the code is accessible from the guest/host, or the guest/host is notified of the
+// method by the other role. Calling, for instance, a GuestService method from
+// a method only accessible to the host will NOT call the method for the guest.
 export class HostService {
     private _isStarted: boolean = false;
     // Service state getter
@@ -262,7 +277,7 @@ export class GuestService {
     public requestAttach(): void {
         if (this._isStarted) {
             void liveShareRequest(Callback.RequestAttachGuest);
-            // focus guest term
+            // focus guest term if it exists
             const rTermNameOptions = ['R [Shared]', 'R Interactive [Shared]'];
             const activeTerminalName = vscode.window.activeTerminal.name;
             if (!rTermNameOptions.includes(activeTerminalName)) {
@@ -287,9 +302,7 @@ export class GuestService {
     // The session watcher relies on files for providing many functions to vscode-R.
     // As LiveShare does not allow for exposing files outside a given workspace,
     // the guest must rely on the host sending the content of a given file, in place
-    // of having their own /tmp/ files*
-    // * in some cases, creating a file on the guest side is necessary,
-    // * such as dataview files or plot images
+    // of having their own /tmp/ files
     public async requestFileContent(file: fs.PathLike | number): Promise<Buffer>;
     public async requestFileContent(file: fs.PathLike | number, encoding: string): Promise<string>;
     public async requestFileContent(file: fs.PathLike | number, encoding?: string): Promise<string | Buffer> {
@@ -316,6 +329,8 @@ export class GuestService {
         const content: string | null | unknown = await liveShareRequest(Callback.GetHelpFileContent, file);
         if (content) {
             return content as HelpFile;
+        } else {
+            console.error('[GuestService] failed to retrieve help content from host');
         }
     }
 
@@ -335,9 +350,5 @@ async function sessionCleanup(): Promise<void> {
             browserDisposables.splice(key);
         }
         rLiveShareProvider.refresh();
-    }
-
-    for (const disposable of disposables) {
-        disposable.dispose();
     }
 }

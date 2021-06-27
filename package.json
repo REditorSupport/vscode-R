@@ -649,9 +649,9 @@
         "icon": "$(symbol-color)"
       },
       {
-        "title": "Toggle Multirow",
+        "title": "Toggle Preview Plot Layout",
         "category": "R Plot",
-        "command": "r.plot.toggleMultirow",
+        "command": "r.plot.togglePreviewPlots",
         "icon": "$(list-flat)"
       },
       {
@@ -855,7 +855,7 @@
         {
           "group": "httpgd",
           "when": "resourceScheme =~ /webview/ && r.plot.active",
-          "command": "r.plot.toggleMultirow"
+          "command": "r.plot.togglePreviewPlots"
         },
         {
           "group": "httpgd",
@@ -1167,8 +1167,8 @@
         },
         "r.sessionWatcher": {
           "type": "boolean",
-          "default": false,
-          "description": "Enable R session watcher (experimental). Required for workspace viewer. Restart required to take effect."
+          "default": true,
+          "description": "Enable R session watcher. Required for workspace viewer and most features to work with an R session. Restart required to take effect."
         },
         "r.rtermSendDelay": {
           "type": "integer",
@@ -1179,6 +1179,11 @@
           "type": "boolean",
           "default": false,
           "description": "Remove hidden items when clearing workspace."
+        },
+        "r.workspaceViewer.clearPrompt": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prompt the user for confirmation when clearing the workspace."
         },
         "r.liveShare.timeout": {
           "type": "integer",
@@ -1207,8 +1212,8 @@
             "vscode",
             "original"
           ],
-          "enumDescriptions": [
-            "Match background and primary stroke color to the current color theme",
+          "markdownEnumDescriptions": [
+            "Match background and primary stroke color to the current color theme (Or apply custom CSS overwrites, if specified in `#r.plot.customStyleOverwrites#`)",
             "Use original colors"
           ],
           "markdownDescription": "Which color theme to use when launching the plot viewer."
@@ -1218,11 +1223,13 @@
           "default": "multirow",
           "enum": [
             "multirow",
-            "scroll"
+            "scroll",
+            "hidden"
           ],
           "enumDescriptions": [
             "Show in multiple rows",
-            "Show scrollbar"
+            "Show scrollbar",
+            "Don't show preview plots"
           ],
           "markdownDescription": "How to display plot previews if more than one row required."
         },
@@ -1235,6 +1242,11 @@
           "type": "number",
           "default": 10,
           "markdownDescription": "Interval in ms to wait between plot refreshs."
+        },
+        "r.plot.customStyleOverwrites": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to a custom CSS file to be used when `#r.plot.defaults.colorTheme#` is `vscode`. Replaces the default CSS overwrites!"
         }
       }
     },

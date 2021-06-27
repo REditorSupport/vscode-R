@@ -5,47 +5,56 @@ import { commands, extensions, window, workspace } from 'vscode';
 
 import { runTextInTerm } from './rTerminal';
 import { getWordOrSelection } from './selection';
-import { checkForSpecialCharacters, checkIfFileExists, delay } from './util';
+import { config, checkForSpecialCharacters, checkIfFileExists, delay } from './util';
 
 export async function previewEnvironment(): Promise<void> {
-    if (!checkcsv()) {
-        return;
+    if (config().get('sessionWatcher')) {
+        await runTextInTerm('View(globalenv())');
+    } else {
+        if (!checkcsv()) {
+            return;
+        }
+        const tmpDir = makeTmpDir();
+        const pathToTmpCsv = `${tmpDir}/environment.csv`;
+        const envName = 'name=ls()';
+        const envClass = 'class=sapply(ls(), function(x) {class(get(x, envir = parent.env(environment())))[1]})';
+        const envOut = 'out=sapply(ls(), function(x) {capture.output(str(get(x, envir = parent.env(environment()))), silent = T)[1]})';
+        const rWriteCsvCommand = 'write.csv(data.frame('
+            + `${envName},`
+            + `${envClass},`
+            + `${envOut}), '`
+            + `${pathToTmpCsv}', row.names=FALSE, quote = TRUE)`;
+        await runTextInTerm(rWriteCsvCommand);
+        await openTmpCSV(pathToTmpCsv, tmpDir);
     }
-    const tmpDir = makeTmpDir();
-    const pathToTmpCsv = `${tmpDir}/environment.csv`;
-    const envName = 'name=ls()';
-    const envClass = 'class=sapply(ls(), function(x) {class(get(x, envir = parent.env(environment())))[1]})';
-    const envOut = 'out=sapply(ls(), function(x) {capture.output(str(get(x, envir = parent.env(environment()))), silent = T)[1]})';
-    const rWriteCsvCommand = 'write.csv(data.frame('
-                             + `${envName},`
-                             + `${envClass},`
-                             + `${envOut}), '`
-                             + `${pathToTmpCsv}', row.names=FALSE, quote = TRUE)`;
-    await runTextInTerm(rWriteCsvCommand);
-    await openTmpCSV(pathToTmpCsv, tmpDir);
 }
 
 export async function previewDataframe(): Promise<boolean> {
-    if (!checkcsv()) {
-        return undefined;
+    if (config().get('sessionWatcher')) {
+        const symbol = getWordOrSelection();
+        await runTextInTerm(`View(${symbol})`);
+    } else {
+        if (!checkcsv()) {
+            return undefined;
+        }
+
+        const dataframeName = getWordOrSelection();
+
+        if (!checkForSpecialCharacters(dataframeName)) {
+            void window.showInformationMessage('This does not appear to be a dataframe.');
+
+            return false;
+        }
+
+        const tmpDir = makeTmpDir();
+
+        // Create R write CSV command.  Turn off row names and quotes, they mess with Excel Viewer.
+        const pathToTmpCsv = `${tmpDir}/${dataframeName}.csv`;
+        const rWriteCsvCommand = `write.csv(${dataframeName}, `
+            + `'${pathToTmpCsv}', row.names = FALSE, quote = FALSE)`;
+        await runTextInTerm(rWriteCsvCommand);
+        await openTmpCSV(pathToTmpCsv, tmpDir);
     }
-
-    const dataframeName = getWordOrSelection();
-
-    if (!checkForSpecialCharacters(dataframeName)) {
-        void window.showInformationMessage('This does not appear to be a dataframe.');
-
-        return false;
-    }
-
-    const tmpDir = makeTmpDir();
-
-    // Create R write CSV command.  Turn off row names and quotes, they mess with Excel Viewer.
-    const pathToTmpCsv = `${tmpDir}/${dataframeName}.csv`;
-    const rWriteCsvCommand = `write.csv(${dataframeName}, `
-                            + `'${pathToTmpCsv}', row.names = FALSE, quote = FALSE)`;
-    await runTextInTerm(rWriteCsvCommand);
-    await openTmpCSV(pathToTmpCsv, tmpDir);
 }
 
 async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
