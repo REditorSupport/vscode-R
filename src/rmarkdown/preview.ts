@@ -101,18 +101,29 @@ export class PreviewProvider {
 
         // destroy process on closing window
         panel.onDidDispose(() => {
-            if (isHost()) {
-                closeBrowser(url);
-            }
+            void vscode.commands.executeCommand('setContext', 'r.preview.active', false);
             kill(cp.pid);
             for (const [key, item] of this.openProcesses.entries()) {
                 if (item.file === title) {
-                    this.openProcesses.splice(key);
+                    this.openProcesses.splice(key, 1);
                 }
+            }
+            if (isHost()) {
+                closeBrowser(url);
             }
         });
 
+        panel.onDidChangeViewState(({ webviewPanel }) => {
+            void vscode.commands.executeCommand('setContext', 'r.preview.active', webviewPanel.active);
+        });
+
         panel.webview.html = getBrowserHtml(externalUri);
+    }
+
+    public refreshPanel(panel: vscode.WebviewPanel): void {
+        const refreshPanel = this.openProcesses.filter(e => e.panel === panel)[0];
+        refreshPanel.panel.webview.html = '';
+        refreshPanel.panel.webview.html = getBrowserHtml(refreshPanel.externalUri);
     }
 
 }

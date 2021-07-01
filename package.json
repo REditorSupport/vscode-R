@@ -544,6 +544,11 @@
         "category": "R"
       },
       {
+        "command": "r.markdown.refresh",
+        "title": "Refresh preview",
+        "category": "R"
+      },
+      {
         "title": "Launch RStudio Addin",
         "category": "R",
         "command": "r.launchAddinPicker"
