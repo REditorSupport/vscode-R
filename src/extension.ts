@@ -19,6 +19,7 @@ import * as completions from './completions';
 import * as rShare from './liveshare';
 import * as httpgdViewer from './plotViewer';
 
+import { PreviewProvider } from './rmarkdown/preview';
 
 // global objects used in other files
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
@@ -26,7 +27,7 @@ export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
 export let enableSessionWatcher: boolean = undefined;
 export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
-
+export const rPreviewProvider = new PreviewProvider();
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -78,6 +79,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.goToPreviousChunk': rmarkdown.goToPreviousChunk,
         'r.goToNextChunk': rmarkdown.goToNextChunk,
         'r.runChunks': rTerminal.runChunksInTerm,
+
+        'r.markdown.previewSide': (viewer = vscode.ViewColumn.Beside) => rPreviewProvider.previewRmd(viewer),
+        'r.markdown.preview': (viewer = vscode.ViewColumn.Active) => rPreviewProvider.previewRmd(viewer),
+        'r.markdown.explorerPreview': (uri: vscode.Uri, viewer = vscode.ViewColumn.Active) => rPreviewProvider.previewRmd(viewer, uri),
 
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
@@ -135,7 +140,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // initialize the package/help related functions
     globalRHelp = await rHelp.initializeHelp(context, rExtension);
-
 
     // register codelens and complmetion providers for r markdown
     vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());

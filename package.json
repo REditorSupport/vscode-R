@@ -527,6 +527,23 @@
         "command": "r.goToNextChunk"
       },
       {
+        "command": "r.markdown.previewSide",
+        "title": "Open preview to the side",
+        "icon": "$(open-preview)",
+        "category": "R"
+      },
+      {
+        "command": "r.markdown.preview",
+        "title": "Open preview",
+        "icon": "$(open-preview)",
+        "category": "R"
+      },
+      {
+        "command": "r.markdown.explorerPreview",
+        "title": "Open preview",
+        "category": "R"
+      },
+      {
         "title": "Launch RStudio Addin",
         "category": "R",
         "command": "r.launchAddinPicker"
@@ -797,6 +814,18 @@
         "key": "Ctrl+alt+e",
         "mac": "cmd+alt+e",
         "when": "editorTextFocus && editorLangId == 'r'"
+      },
+      {
+        "command": "r.markdown.previewSide",
+        "key": "Ctrl+k v",
+        "mac": "cmd+k v",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
+        "command": "r.markdown.preview",
+        "key": "Ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "editorTextFocus && editorLangId == 'rmd'"
       }
     ],
     "menus": {
@@ -906,6 +935,12 @@
           "group": "httpgd",
           "when": "resourceScheme =~ /webview/ && r.plot.active",
           "command": "r.plot.openUrl"
+        },
+        {
+          "command": "r.markdown.previewSide",
+          "alt": "r.markdown.preview",
+          "when": "editorLangId == rmd",
+          "group": "navigation"
         }
       ],
       "editor/context": [
@@ -1040,6 +1075,19 @@
           "group": "navigation@3",
           "when": "view == rLiveShare && r.liveShare:aborted"
         }
+      ],
+      "explorer/context": [
+        {
+          "command": "r.markdown.explorerPreview",
+          "when": "resourceLangId == rmd",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "r.markdown.explorerPreview",
+          "when": "false"
+        }
       ]
     },
     "configuration": {
@@ -1107,6 +1155,19 @@
           "type": "string",
           "default": "rgba(128, 128, 128, 0.1)",
           "description": "RMarkdown chunk background color in RGBA or RGB value. Defaults to rgba(128, 128, 128, 0.1). Leave it empty to disable it (use default editor background color). Reload VS Code after changing settings.\n\nLearn how to set colors: https://www.w3schools.com/css/css_colors_rgb.asp.\n\nExamples for syntax rgba(<red>, <green>, <blue>, <alpha>):\nrgba(128, 128, 128, 0.1)\nrgba(128, 128, 128, 0.3)\nrgba(255, 165, 0, 0.1)\n\n"
+        },
+        "r.rmarkdown.previewEngine": {
+          "type": "string",
+          "enum": [
+            "rmarkdown::run",
+            "xaringan::infinite_moon_reader"
+          ],
+          "enumDescriptions": [
+            "Use rmarkdown::run() to preview documents",
+            "Use xaringan::infinite_moon_reader() to preview documents"
+          ],
+          "description": "What package command to use for previewing R Markdown documents.",
+          "default": "rmarkdown::run"
         },
         "r.helpPanel.enableSyntaxHighlighting": {
           "type": "boolean",
