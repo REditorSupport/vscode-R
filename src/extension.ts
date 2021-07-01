@@ -80,9 +80,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.goToNextChunk': rmarkdown.goToNextChunk,
         'r.runChunks': rTerminal.runChunksInTerm,
 
-        'r.markdown.previewSide': (viewer = vscode.ViewColumn.Beside) => rPreviewProvider.previewRmd(viewer),
-        'r.markdown.preview': (viewer = vscode.ViewColumn.Active) => rPreviewProvider.previewRmd(viewer),
-        'r.markdown.explorerPreview': (uri: vscode.Uri, viewer = vscode.ViewColumn.Active) => rPreviewProvider.previewRmd(viewer, uri),
+        'r.markdown.previewSide': () => rPreviewProvider.previewRmd(vscode.ViewColumn.Beside, null),
+        'r.markdown.preview': () => rPreviewProvider.previewRmd(vscode.ViewColumn.Active, null),
+        'r.markdown.explorerPreview': (uri: vscode.Uri) => rPreviewProvider.previewRmd(vscode.ViewColumn.Active, uri),
         'r.markdown.refresh': () => rPreviewProvider.refreshPanel(),
         'r.markdown.openExternal': () => rPreviewProvider.openExternal(),
         'r.markdown.showSource': () => rPreviewProvider.showSource(),

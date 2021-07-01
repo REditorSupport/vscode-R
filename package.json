@@ -528,36 +528,36 @@
       },
       {
         "command": "r.markdown.previewSide",
-        "title": "Open preview to the side",
+        "title": "Open Preview to the Side",
         "icon": "$(open-preview)",
         "category": "R"
       },
       {
         "command": "r.markdown.preview",
-        "title": "Open preview",
+        "title": "Open Preview",
         "icon": "$(open-preview)",
         "category": "R"
       },
       {
         "command": "r.markdown.explorerPreview",
-        "title": "Open preview",
+        "title": "Open Preview",
         "category": "R"
       },
       {
         "command": "r.markdown.refresh",
-        "title": "Refresh preview",
+        "title": "Refresh Preview",
         "icon": "$(refresh)",
         "category": "R"
       },
       {
         "command": "r.markdown.openExternal",
-        "title": "Open in external browser",
+        "title": "Open in External Browser",
         "icon": "$(link-external)",
         "category": "R"
       },
       {
         "command": "r.markdown.showSource",
-        "title": "Show source",
+        "title": "Show Source",
         "icon": "$(go-to-file)",
         "category": "R"
       },

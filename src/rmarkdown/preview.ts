@@ -11,8 +11,6 @@ interface IPreviewProcess {
     cp: cp.ChildProcessWithoutNullStreams,
     file: string,
     panel: vscode.WebviewPanel,
-    externalUri: vscode.Uri,
-    browserUri: vscode.Uri
 }
 
 export class PreviewProvider {
@@ -81,10 +79,11 @@ export class PreviewProvider {
 
     public async showSource(): Promise<void> {
         if (this.activeResource) {
+            const viewCol = vscode.window.visibleTextEditors.filter(e => e.document.uri === this.activeResource)[0]?.viewColumn;
             await vscode.commands.executeCommand('vscode.open', this.activeResource, {
                 preserveFocus: false,
                 preview: false,
-                viewColumn: vscode.ViewColumn.Active
+                viewColumn: viewCol ?? vscode.ViewColumn.Active
             });
         }
     }
@@ -116,9 +115,7 @@ export class PreviewProvider {
             {
                 cp: cp,
                 file: title,
-                panel: panel,
-                externalUri: externalUri,
-                browserUri: uri
+                panel: panel
             }
         );
 
