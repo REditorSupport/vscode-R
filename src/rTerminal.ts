@@ -203,7 +203,7 @@ export async function chooseTerminal(): Promise<vscode.Terminal> {
                     msg += `Terminal ${i}: ${vscode.window.terminals[i].name} `;
                 }
                 console.info(msg);
-                void vscode.window.showErrorMessage('Error identifying terminal! Please run command "Developer: Toggle Developer Tools", find the message starting with "[chooseTerminal]", and copy the message to https://github.com/Ikuyadeu/vscode-R/issues');
+                void vscode.window.showErrorMessage('Error identifying terminal! Please run command "Developer: Toggle Developer Tools", find the message starting with "[chooseTerminal]", and copy the message to https://github.com/REditorSupport/vscode-R/issues');
 
                 return undefined;
             }

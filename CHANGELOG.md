@@ -2,9 +2,9 @@
 
 ## Latest updates
 
-You can check all of our changes from [Release Page](https://github.com/Ikuyadeu/vscode-R/releases)
+You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
-## [2.0.0](https://github.com/Ikuyadeu/vscode-R/releases/tag/v1.8.0)
+## [2.0.0](https://github.com/REditorSupport/vscode-R/releases/tag/v1.8.0)
 
 Highlight
 
@@ -16,7 +16,7 @@ Highlight
 
 * Use .DollarNames for object with class in completion #660
 
-## [1.6.7](https://github.com/Ikuyadeu/vscode-R/releases/tag/v1.6.7)
+## [1.6.7](https://github.com/REditorSupport/vscode-R/releases/tag/v1.6.7)
 
 * Update R syntax #647
 * Fix replacing base::.External.graphics #625
@@ -28,7 +28,7 @@ Thank you for your contributions.
 * @nx10
   * Integrate httpgd #620
 
-## [1.6.6](https://github.com/Ikuyadeu/vscode-R/releases/tag/v1.6.6)
+## [1.6.6](https://github.com/REditorSupport/vscode-R/releases/tag/v1.6.6)
 
 Highlight
 
@@ -145,7 +145,7 @@ This version includes minor fix to stable new functions
 ## 1.5.0
 
 * RStudio Addin Support #408 (Implemented by the new collabolator @MilesMcBain)
-  * The usage is added on the [wiki page](https://github.com/Ikuyadeu/vscode-R/wiki/RStudio-addin-support)
+  * The usage is added on the [wiki page](https://github.com/REditorSupport/vscode-R/wiki/RStudio-addin-support)
 
 * Recommend radian in README #420
 
@@ -159,7 +159,7 @@ This version includes minor fix to stable new functions
 
 * Remove shortcuts Ctrl + 1, 2, 3, 4, 5 #401 (Fix #368)
 
-    These conflicted with default Visual Studio Code keyboard shortcuts. If you would like to restore them, see the [instructions in the Wiki](https://github.com/Ikuyadeu/vscode-R/wiki/Keyboard-shortcuts#removed-keyboard-shortcuts).
+    These conflicted with default Visual Studio Code keyboard shortcuts. If you would like to restore them, see the [instructions in the Wiki](https://github.com/REditorSupport/vscode-R/wiki/Keyboard-shortcuts#removed-keyboard-shortcuts).
 
 * Restore R_PROFILE_USER #392 (Fix #391)
 * Fix so rTerm is undefined when deleting terminal #403 (Fix #402)
@@ -219,7 +219,7 @@ This version includes minor fix to stable new functions
 
 ## 1.2.7
 
-* Add [new wiki page](https://github.com/Ikuyadeu/vscode-R/wiki) !
+* Add [new wiki page](https://github.com/REditorSupport/vscode-R/wiki) !
 * Use Windows registry to find R path
 * Fix handling grouped_df in dataview_table
 * Use GitHub Actions for linting

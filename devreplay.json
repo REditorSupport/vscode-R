@@ -72,7 +72,7 @@
       "  return workspace.getConfiguration('$2');",
       "}"
     ],
-    "description": "It is fixed on https://github.com/Ikuyadeu/vscode-R/pull/301",
+    "description": "It is fixed on https://github.com/REditorSupport/vscode-R/pull/301",
     "severity": "Error"
   },
   {
