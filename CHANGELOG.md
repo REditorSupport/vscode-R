@@ -4,7 +4,7 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
-## [2.0.0](https://github.com/REditorSupport/vscode-R/releases/tag/v1.8.0)
+## [2.0.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.0.0)
 
 Highlight
 
