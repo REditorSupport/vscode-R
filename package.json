@@ -546,6 +546,19 @@
       {
         "command": "r.markdown.refresh",
         "title": "Refresh preview",
+        "icon": "$(refresh)",
+        "category": "R"
+      },
+      {
+        "command": "r.markdown.openExternal",
+        "title": "Open in external browser",
+        "icon": "$(link-external)",
+        "category": "R"
+      },
+      {
+        "command": "r.markdown.showSource",
+        "title": "Show source",
+        "icon": "$(go-to-file)",
         "category": "R"
       },
       {
@@ -846,6 +859,21 @@
         }
       ],
       "editor/title": [
+        {
+          "command": "r.markdown.refresh",
+          "when": "resourceScheme =~ /webview/ && r.preview.active",
+          "group": "navigation@3"
+        },
+        {
+          "command": "r.markdown.openExternal",
+          "when": "resourceScheme =~ /webview/ && r.preview.active",
+          "group": "navigation@1"
+        },
+        {
+          "command": "r.markdown.showSource",
+          "when": "resourceScheme =~ /webview/ && r.preview.active",
+          "group": "navigation@2"
+        },
         {
           "command": "r.browser.refresh",
           "when": "resourceScheme =~ /webview/ && r.browser.active",

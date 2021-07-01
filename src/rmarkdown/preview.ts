@@ -17,6 +17,10 @@ interface IPreviewProcess {
 
 export class PreviewProvider {
     private openProcesses: IPreviewProcess[] = [];
+    private activePreview: vscode.WebviewPanel;
+    private activeResource: vscode.Uri;
+    private activeExternalResource: vscode.Uri;
+
     public previewRmd(viewer: vscode.ViewColumn, uri?: vscode.Uri): void {
         const fileUri = uri ?? vscode.window.activeTextEditor.document.uri;
         const fileName = fileUri.path.substring(fileUri.path.lastIndexOf('/') + 1);
@@ -62,13 +66,36 @@ export class PreviewProvider {
                     const match = reg.exec(dat)?.[0];
                     const previewUrl = previewEngine === 'rmarkdown::run' ? `http://${match}/${fileName}` : `http://${match}.html`;
                     if (match) {
-                        void this.showPreview(previewUrl, fileName, call, viewer);
+                        void this.showPreview(previewUrl, fileName, call, viewer, fileUri);
                     }
                 });
         }
     }
 
-    private async showPreview(url: string, title: string, cp: cp.ChildProcessWithoutNullStreams, viewer: vscode.ViewColumn): Promise<void> {
+    public refreshPanel(): void {
+        if (this.activePreview) {
+            this.activePreview.webview.html = '';
+            this.activePreview.webview.html = getBrowserHtml(this.activeExternalResource);
+        }
+    }
+
+    public async showSource(): Promise<void> {
+        if (this.activeResource) {
+            await vscode.commands.executeCommand('vscode.open', this.activeResource, {
+                preserveFocus: false,
+                preview: false,
+                viewColumn: vscode.ViewColumn.Active
+            });
+        }
+    }
+
+    public openExternal(): void {
+        if (this.activeExternalResource) {
+            void vscode.env.openExternal(this.activeExternalResource);
+        }
+    }
+
+    private async showPreview(url: string, title: string, cp: cp.ChildProcessWithoutNullStreams, viewer: vscode.ViewColumn, fileUri: vscode.Uri): Promise<void> {
         console.info(`[showPreview] uri: ${url}`);
         const uri = vscode.Uri.parse(url);
         const externalUri = await vscode.env.asExternalUri(uri);
@@ -99,15 +126,17 @@ export class PreviewProvider {
             await shareBrowser(url, title);
         }
 
-        // destroy process on closing window
         panel.onDidDispose(() => {
-            void vscode.commands.executeCommand('setContext', 'r.preview.active', false);
+            // destroy process on closing window
             kill(cp.pid);
+
+            void vscode.commands.executeCommand('setContext', 'r.preview.active', false);
             for (const [key, item] of this.openProcesses.entries()) {
                 if (item.file === title) {
                     this.openProcesses.splice(key, 1);
                 }
             }
+
             if (isHost()) {
                 closeBrowser(url);
             }
@@ -115,15 +144,14 @@ export class PreviewProvider {
 
         panel.onDidChangeViewState(({ webviewPanel }) => {
             void vscode.commands.executeCommand('setContext', 'r.preview.active', webviewPanel.active);
+            if (webviewPanel.active) {
+                this.activePreview = webviewPanel;
+                this.activeResource = fileUri;
+                this.activeExternalResource = externalUri;
+            }
         });
 
         panel.webview.html = getBrowserHtml(externalUri);
-    }
-
-    public refreshPanel(panel: vscode.WebviewPanel): void {
-        const refreshPanel = this.openProcesses.filter(e => e.panel === panel)[0];
-        refreshPanel.panel.webview.html = '';
-        refreshPanel.panel.webview.html = getBrowserHtml(refreshPanel.externalUri);
     }
 
 }

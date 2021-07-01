@@ -83,6 +83,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.markdown.previewSide': (viewer = vscode.ViewColumn.Beside) => rPreviewProvider.previewRmd(viewer),
         'r.markdown.preview': (viewer = vscode.ViewColumn.Active) => rPreviewProvider.previewRmd(viewer),
         'r.markdown.explorerPreview': (uri: vscode.Uri, viewer = vscode.ViewColumn.Active) => rPreviewProvider.previewRmd(viewer, uri),
+        'r.markdown.refresh': () => rPreviewProvider.refreshPanel(),
+        'r.markdown.openExternal': () => rPreviewProvider.openExternal(),
+        'r.markdown.showSource': () => rPreviewProvider.showSource(),
 
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
