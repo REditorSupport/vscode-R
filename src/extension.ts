@@ -18,6 +18,7 @@ import * as rHelp from './helpViewer';
 import * as completions from './completions';
 import * as rShare from './liveshare';
 import * as httpgdViewer from './plotViewer';
+import * as languageService from './languageService';
 
 
 // global objects used in other files
@@ -116,6 +117,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // keep track of terminals
     context.subscriptions.push(vscode.window.onDidCloseTerminal(rTerminal.deleteTerminal));
 
+    // start language service
+    context.subscriptions.push(new languageService.LanguageService());
 
     // register on-enter rule for roxygen comments
     const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
