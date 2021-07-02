@@ -527,36 +527,31 @@
         "command": "r.goToNextChunk"
       },
       {
-        "command": "r.markdown.previewSide",
+        "command": "r.markdown.showPreviewToSide",
         "title": "Open Preview to the Side",
         "icon": "$(open-preview)",
         "category": "R"
       },
       {
-        "command": "r.markdown.preview",
+        "command": "r.markdown.showPreview",
         "title": "Open Preview",
         "icon": "$(open-preview)",
         "category": "R"
       },
       {
-        "command": "r.markdown.explorerPreview",
-        "title": "Open Preview",
-        "category": "R"
-      },
-      {
-        "command": "r.markdown.refresh",
+        "command": "r.markdown.preview.refresh",
         "title": "Refresh Preview",
         "icon": "$(refresh)",
         "category": "R"
       },
       {
-        "command": "r.markdown.openExternal",
+        "command": "r.markdown.preview.openExternal",
         "title": "Open in External Browser",
         "icon": "$(link-external)",
         "category": "R"
       },
       {
-        "command": "r.markdown.showSource",
+        "command": "r.markdown.preview.showSource",
         "title": "Show Source",
         "icon": "$(go-to-file)",
         "category": "R"
@@ -834,13 +829,13 @@
         "when": "editorTextFocus && editorLangId == 'r'"
       },
       {
-        "command": "r.markdown.previewSide",
+        "command": "r.markdown.showPreviewToSide",
         "key": "Ctrl+k v",
         "mac": "cmd+k v",
         "when": "editorTextFocus && editorLangId == 'rmd'"
       },
       {
-        "command": "r.markdown.preview",
+        "command": "r.markdown.showPreview",
         "key": "Ctrl+shift+v",
         "mac": "cmd+shift+v",
         "when": "editorTextFocus && editorLangId == 'rmd'"
@@ -860,17 +855,17 @@
       ],
       "editor/title": [
         {
-          "command": "r.markdown.refresh",
+          "command": "r.markdown.preview.refresh",
           "when": "resourceScheme =~ /webview/ && r.preview.active",
           "group": "navigation@3"
         },
         {
-          "command": "r.markdown.openExternal",
+          "command": "r.markdown.preview.openExternal",
           "when": "resourceScheme =~ /webview/ && r.preview.active",
           "group": "navigation@1"
         },
         {
-          "command": "r.markdown.showSource",
+          "command": "r.markdown.preview.showSource",
           "when": "resourceScheme =~ /webview/ && r.preview.active",
           "group": "navigation@2"
         },
@@ -970,8 +965,8 @@
           "command": "r.plot.openUrl"
         },
         {
-          "command": "r.markdown.previewSide",
-          "alt": "r.markdown.preview",
+          "command": "r.markdown.showPreviewToSide",
+          "alt": "r.markdown.showPreview",
           "when": "editorLangId == rmd",
           "group": "navigation"
         }
@@ -1111,15 +1106,9 @@
       ],
       "explorer/context": [
         {
-          "command": "r.markdown.explorerPreview",
+          "command": "r.markdown.showPreview",
           "when": "resourceLangId == rmd",
           "group": "navigation"
-        }
-      ],
-      "commandPalette": [
-        {
-          "command": "r.markdown.explorerPreview",
-          "when": "false"
         }
       ]
     },

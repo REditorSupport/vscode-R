@@ -12,7 +12,7 @@ interface IPreviewProcess {
     panel: vscode.WebviewPanel,
 }
 
-export class PreviewProvider {
+export class RMarkdownPreviewManager {
     private openProcesses: IPreviewProcess[] = [];
     private activePreview: vscode.WebviewPanel;
     private activeResource: vscode.Uri;
@@ -77,7 +77,7 @@ export class PreviewProvider {
         }
     }
 
-    public openExternal(): void {
+    public openExternalBrowser(): void {
         if (this.activeExternalResource) {
             void vscode.env.openExternal(this.activeExternalResource);
         }

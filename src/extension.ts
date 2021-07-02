@@ -19,7 +19,7 @@ import * as completions from './completions';
 import * as rShare from './liveshare';
 import * as httpgdViewer from './plotViewer';
 
-import { PreviewProvider } from './rmarkdown/preview';
+import { RMarkdownPreviewManager } from './rmarkdown/preview';
 
 // global objects used in other files
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
@@ -27,7 +27,7 @@ export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
 export let enableSessionWatcher: boolean = undefined;
 export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
-export let rPreviewProvider: PreviewProvider | undefined = undefined;
+export let rMarkdownPreview: RMarkdownPreviewManager | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -80,12 +80,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.goToNextChunk': rmarkdown.goToNextChunk,
         'r.runChunks': rTerminal.runChunksInTerm,
 
-        'r.markdown.previewSide': () => rPreviewProvider.previewRmd(vscode.ViewColumn.Beside, null),
-        'r.markdown.preview': () => rPreviewProvider.previewRmd(vscode.ViewColumn.Active, null),
-        'r.markdown.explorerPreview': (uri: vscode.Uri) => rPreviewProvider.previewRmd(vscode.ViewColumn.Active, uri),
-        'r.markdown.refresh': () => rPreviewProvider.refreshPanel(),
-        'r.markdown.openExternal': () => rPreviewProvider.openExternal(),
-        'r.markdown.showSource': () => rPreviewProvider.showSource(),
+        'r.markdown.showPreviewToSide': () => rMarkdownPreview.previewRmd(vscode.ViewColumn.Beside),
+        'r.markdown.showPreview': (uri: vscode.Uri) => rMarkdownPreview.previewRmd(vscode.ViewColumn.Active, uri),
+        'r.markdown.preview.refresh': () => rMarkdownPreview.refreshPanel(),
+        'r.markdown.preview.openExternal': () => rMarkdownPreview.openExternalBrowser(),
+        'r.markdown.preview.showSource': () => rMarkdownPreview.showSource(),
 
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
@@ -145,8 +144,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     globalRHelp = await rHelp.initializeHelp(context, rExtension);
 
     // init preview provider
-    rPreviewProvider = new PreviewProvider();
-    await rPreviewProvider.init();
+    rMarkdownPreview = new RMarkdownPreviewManager();
+    await rMarkdownPreview.init();
 
     // register codelens and complmetion providers for r markdown
     vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());

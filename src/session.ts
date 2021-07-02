@@ -238,7 +238,7 @@ export async function showBrowser(url: string, title: string, viewer: string | b
     console.info('[showBrowser] Done');
 }
 
-export function getBrowserHtml(uri: Uri) {
+export function getBrowserHtml(uri: Uri): string {
     return `
 <!DOCTYPE html>
 <html lang="en">
