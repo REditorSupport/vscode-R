@@ -4,8 +4,7 @@ import * as kill from 'tree-kill';
 import * as vscode from 'vscode';
 import { getBrowserHtml } from '../session';
 import { closeBrowser, isHost, shareBrowser } from '../liveshare';
-import { config } from '../util';
-
+import { config, doWithProgress, getRpath,  setContext } from '../util';
 
 interface IPreviewProcess {
     cp: cp.ChildProcessWithoutNullStreams,
@@ -18,55 +17,45 @@ export class PreviewProvider {
     private activePreview: vscode.WebviewPanel;
     private activeResource: vscode.Uri;
     private activeExternalResource: vscode.Uri;
+    private rPath: string;
 
-    public previewRmd(viewer: vscode.ViewColumn, uri?: vscode.Uri): void {
+    public async init(): Promise<void> {
+        this.rPath = await getRpath(false);
+    }
+
+    public async previewRmd(viewer: vscode.ViewColumn, uri?: vscode.Uri): Promise<void> {
         const fileUri = uri ?? vscode.window.activeTextEditor.document.uri;
         const fileName = fileUri.path.substring(fileUri.path.lastIndexOf('/') + 1);
         const previewEngine: string = config().get('rmarkdown.previewEngine');
         const cmd = (
-            `R --silent --slave --no-save --no-restore -e "${previewEngine}('${fileUri.path}')"`
+            `${this.rPath} --silent --slave --no-save --no-restore -e "${previewEngine}('${fileUri.path}')"`
         );
-
-        let reg: RegExp = undefined;
+        const reg: RegExp = this.constructRegex(previewEngine);
         let call = undefined;
-
-        // the regex can be extended in the future for other
-        // calls
-        switch (previewEngine) {
-            // the rmarkdown::run url is of the structure:
-            // http://127.0.0.1:port/file.Rmd
-            case 'rmarkdown::run': {
-                reg = /(?<=http:\/\/)[0-9.:]*/g;
-                break;
-            }
-            // the inf_mr output url is of the structure:
-            // http://127.0.0.1:port/path/to/file.html
-            case 'xaringan::inf_mr' || 'xaringan::infinite_moon_reader': {
-                reg = /(?<=http:\/\/)(.*)(?=\.html)/g;
-                break;
-            }
-            default: break;
-        }
 
 
         if (this.openProcesses.some(e => e.file === fileName)) {
             this.openProcesses.filter(e => e.file === fileName)[0].panel.reveal();
         } else {
-            try {
-                call = cp.spawn(cmd, null, { shell: true });
-            } catch (e) {
-                console.error((e as unknown).toString());
-            }
-
-            (call as cp.ChildProcessWithoutNullStreams).stderr.on('data',
-                (data: Buffer) => {
-                    const dat = data.toString('utf8');
-                    const match = reg.exec(dat)?.[0];
-                    const previewUrl = previewEngine === 'rmarkdown::run' ? `http://${match}/${fileName}` : `http://${match}.html`;
-                    if (match) {
-                        void this.showPreview(previewUrl, fileName, call, viewer, fileUri);
-                    }
-                });
+            await doWithProgress(() => {
+                try {
+                    call = cp.spawn(cmd, null, { shell: true });
+                } catch (e) {
+                    console.warn((e as string));
+                }
+                (call as cp.ChildProcessWithoutNullStreams).stderr.on('data',
+                    (data: Buffer) => {
+                        const dat = data.toString('utf8');
+                        const match = reg.exec(dat)?.[0];
+                        const previewUrl = this.constructUrl(previewEngine, match, fileName);
+                        if (match) {
+                            void this.showPreview(previewUrl, fileName, call, viewer, fileUri);
+                        }
+                    });
+            },
+                vscode.ProgressLocation.Notification,
+                `Rendering ${fileName}...`
+            );
         }
     }
 
@@ -95,6 +84,7 @@ export class PreviewProvider {
     }
 
     private async showPreview(url: string, title: string, cp: cp.ChildProcessWithoutNullStreams, viewer: vscode.ViewColumn, fileUri: vscode.Uri): Promise<void> {
+        // construct webview and its related html
         console.info(`[showPreview] uri: ${url}`);
         const uri = vscode.Uri.parse(url);
         const externalUri = await vscode.env.asExternalUri(uri);
@@ -110,7 +100,10 @@ export class PreviewProvider {
                 enableScripts: true,
                 retainContextWhenHidden: true,
             });
+        panel.webview.html = getBrowserHtml(externalUri);
 
+        // Push the new rmd webview to the open proccesses array,
+        // to keep track of running child processes
         this.openProcesses.push(
             {
                 cp: cp,
@@ -123,11 +116,12 @@ export class PreviewProvider {
             await shareBrowser(url, title);
         }
 
+        // state change
         panel.onDidDispose(() => {
             // destroy process on closing window
             kill(cp.pid);
 
-            void vscode.commands.executeCommand('setContext', 'r.preview.active', false);
+            void setContext('r.preview.active', false);
             for (const [key, item] of this.openProcesses.entries()) {
                 if (item.file === title) {
                     this.openProcesses.splice(key, 1);
@@ -140,15 +134,46 @@ export class PreviewProvider {
         });
 
         panel.onDidChangeViewState(({ webviewPanel }) => {
-            void vscode.commands.executeCommand('setContext', 'r.preview.active', webviewPanel.active);
+            void setContext('r.preview.active', webviewPanel.active);
             if (webviewPanel.active) {
                 this.activePreview = webviewPanel;
                 this.activeResource = fileUri;
                 this.activeExternalResource = externalUri;
             }
         });
-
-        panel.webview.html = getBrowserHtml(externalUri);
     }
 
+    private constructUrl(previewEngine: string, match: string, fileName?: string): string {
+        switch (previewEngine) {
+            case 'rmarkdown::run': {
+                return `http://${match}/${fileName}`;
+            }
+            case 'xaringan::infinite_moon_reader': {
+                return `http://${match}.html`;
+            }
+            default: {
+                console.error(`[PreviewProvider] unsupported preview engine supplied as argument: ${previewEngine}`);
+                break;
+            }
+        }
+    }
+
+    private constructRegex(previewEngine: string): RegExp {
+        switch (previewEngine) {
+            // the rmarkdown::run url is of the structure:
+            // http://127.0.0.1:port/file.Rmd
+            case 'rmarkdown::run': {
+                return /(?<=http:\/\/)[0-9.:]*/g;
+            }
+            // the inf_mr output url is of the structure:
+            // http://127.0.0.1:port/path/to/file.html
+            case 'xaringan::infinite_moon_reader': {
+                return /(?<=http:\/\/)(.*)(?=\.html)/g;
+            }
+            default: {
+                console.error(`[PreviewProvider] unsupported preview engine supplied as argument: ${previewEngine}`);
+                break;
+            }
+        }
+    }
 }

@@ -27,7 +27,7 @@ export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
 export let enableSessionWatcher: boolean = undefined;
 export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
-export const rPreviewProvider = new PreviewProvider();
+export let rPreviewProvider: PreviewProvider | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -143,6 +143,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // initialize the package/help related functions
     globalRHelp = await rHelp.initializeHelp(context, rExtension);
+
+    // init preview provider
+    rPreviewProvider = new PreviewProvider();
+    await rPreviewProvider.init();
 
     // register codelens and complmetion providers for r markdown
     vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());
