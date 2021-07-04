@@ -855,11 +855,6 @@
       ],
       "editor/title": [
         {
-          "command": "r.markdown.preview.refresh",
-          "when": "resourceScheme =~ /webview/ && r.preview.active",
-          "group": "navigation@3"
-        },
-        {
           "command": "r.markdown.preview.openExternal",
           "when": "resourceScheme =~ /webview/ && r.preview.active",
           "group": "navigation@1"
@@ -868,6 +863,11 @@
           "command": "r.markdown.preview.showSource",
           "when": "resourceScheme =~ /webview/ && r.preview.active",
           "group": "navigation@2"
+        },
+        {
+          "command": "r.markdown.preview.refresh",
+          "when": "resourceScheme =~ /webview/ && r.preview.active",
+          "group": "1_rMarkdown"
         },
         {
           "command": "r.browser.refresh",
