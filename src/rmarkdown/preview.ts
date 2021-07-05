@@ -42,17 +42,17 @@ class RMarkdownChildStore extends vscode.Disposable {
         });
     }
 
-    public add(child: RMarkdownChild): void {
-        this.store.add(child);
+    public add(child: RMarkdownChild): Set<RMarkdownChild> {
+        return this.store.add(child);
     }
 
-    // dispose child and remove from it from set
-    public delete(child: RMarkdownChild): void {
+    // dispose child and remove it from set
+    public delete(child: RMarkdownChild): boolean {
         child.dispose();
-        this.store.delete(child);
+        return this.store.delete(child);
     }
 
-    public get(uri: vscode.Uri) {
+    public get(uri: vscode.Uri): RMarkdownChild {
         for (const child of this.store) {
             if (child.uri === uri) {
                 return child;
@@ -61,7 +61,7 @@ class RMarkdownChildStore extends vscode.Disposable {
         return undefined;
     }
 
-    public has(uri: vscode.Uri) {
+    public has(uri: vscode.Uri): boolean {
         for (const child of this.store) {
             if (child.uri === uri) {
                 return true;
@@ -77,16 +77,19 @@ class RMarkdownChildStore extends vscode.Disposable {
 
 export class RMarkdownPreviewManager {
     private rPath: string;
-    private ChildStore: RMarkdownChildStore = new RMarkdownChildStore;
-    private activePreview: RMarkdownChild;
     private rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel('R Markdown');
+
+    // the currently selected RMarkdown preview
+    private activePreview: RMarkdownChild;
+    // store of all open RMarkdown previews
+    private childStore: RMarkdownChildStore = new RMarkdownChildStore;
     // uri that are in the process of knitting
-    // so that we can't spam the button
-    private busyUri: vscode.Uri[] = [];
+    // so that we can't spam the preview button
+    private busyUriStore: Set<vscode.Uri> = new Set<vscode.Uri>();
 
     public async init(): Promise<void> {
         this.rPath = await getRpath(false);
-        extensionContext.subscriptions.push(this.ChildStore);
+        extensionContext.subscriptions.push(this.childStore);
     }
 
     public async previewRmd(viewer: vscode.ViewColumn, uri?: vscode.Uri): Promise<void> {
@@ -99,12 +102,12 @@ export class RMarkdownPreviewManager {
         );
         const reg: RegExp = this.constructRegex(previewEngine);
 
-        if (this.busyUri.includes(fileUri)) {
+        if (this.busyUriStore.has(fileUri)) {
             return;
-        } else if (this.ChildStore.has(fileUri)) {
-            this.ChildStore.get(fileUri).panel.reveal();
+        } else if (this.childStore.has(fileUri)) {
+            this.childStore.get(fileUri).panel.reveal();
         } else {
-            this.busyUri.push(fileUri);
+            this.busyUriStore.add(fileUri);
             await doWithProgress(async (token: vscode.CancellationToken) => {
                 await this.spawnProcess(cmd, reg, previewEngine, fileName, viewer, fileUri, currentViewColumn, token)
                     .catch((rejection: {
@@ -113,9 +116,12 @@ export class RMarkdownPreviewManager {
                     }) => {
                         if (!rejection.wasCancelled) {
                             void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
+                            this.rMarkdownOutput.show(true);
                         }
-                        if (this.ChildStore.has(uri)) {
-                            this.ChildStore.delete(this.ChildStore.get(uri));
+                        // this can occur when a successfuly knitted document is later altered (while still being previewed)
+                        // and subsequently fails to knit
+                        if (this.childStore.has(uri)) {
+                            this.childStore.delete(this.childStore.get(uri));
                         } else {
                             rejection.cp.kill('SIGKILL');
                         }
@@ -126,11 +132,7 @@ export class RMarkdownPreviewManager {
                 `Knitting ${fileName}...`,
                 true
             );
-            this.busyUri.forEach((item, index) => {
-                if (item === fileUri) {
-                    this.busyUri.splice(index, 1);
-                }
-            });
+            this.busyUriStore.delete(fileUri);
         }
     }
 
@@ -141,9 +143,16 @@ export class RMarkdownPreviewManager {
         }
     }
 
+    // show the source uri for the current preview.
+    // has a few idiosyncracies with view columns due to some limitations with
+    // vscode api. the view column will be set in order of priority:
+    //    1. the original document's view column when the preview button was pressed
+    //    2. the current webview's view column
+    //    3. the current active editor
+    // this is because we cannot tell the view column of a file if it is not visible
+    // (e.g., is an unopened tab)
     public async showSource(): Promise<void> {
         if (this.activePreview) {
-            // to fix, kind of buggy
             await vscode.commands.executeCommand('vscode.open', this.activePreview.uri, {
                 preserveFocus: false,
                 preview: false,
@@ -182,7 +191,7 @@ export class RMarkdownPreviewManager {
         // (primarily used in killing the child process, but also
         // general state tracking)
         const childProcess = new RMarkdownChild(title, cp, panel, resourceViewColumn, fileUri, externalUri);
-        this.ChildStore.add(childProcess);
+        this.childStore.add(childProcess);
 
         if (isHost()) {
             await shareBrowser(url, title);
@@ -193,7 +202,7 @@ export class RMarkdownPreviewManager {
             // clear values
             this.activePreview === childProcess ? undefined : this.activePreview;
             void setContext('r.preview.active', false);
-            this.ChildStore.delete(childProcess);
+            this.childStore.delete(childProcess);
 
             if (isHost()) {
                 closeBrowser(url);
@@ -223,6 +232,9 @@ export class RMarkdownPreviewManager {
         }
     }
 
+    // construct a regex that is used in getting the path to the
+    // *served* rmd file. this can differ depending on the
+    // engine used, and can be expanded in the future.
     private constructRegex(previewEngine: string): RegExp {
         switch (previewEngine) {
             // the rmarkdown::run url is of the structure:
@@ -242,6 +254,7 @@ export class RMarkdownPreviewManager {
         }
     }
 
+    // spawn a nodejs child process for knitting, and return the output's url for webview purposes
     private async spawnProcess(cmd: string, reg: RegExp, previewEngine: string, fileName: string, viewer: vscode.ViewColumn, fileUri: vscode.Uri, resourceViewColumn: vscode.ViewColumn, token: vscode.CancellationToken): Promise<cp.ChildProcessWithoutNullStreams> {
         return await new Promise<cp.ChildProcessWithoutNullStreams>((resolve, reject) => {
             let childProcess: cp.ChildProcessWithoutNullStreams;
