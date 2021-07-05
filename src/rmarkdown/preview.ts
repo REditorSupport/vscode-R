@@ -46,6 +46,7 @@ class RMarkdownChildStore extends vscode.Disposable {
         this.store.add(child);
     }
 
+    // dispose child and remove from it from set
     public delete(child: RMarkdownChild): void {
         child.dispose();
         this.store.delete(child);
@@ -102,7 +103,11 @@ export class RMarkdownPreviewManager {
                 await this.spawnProcess(cmd, reg, previewEngine, fileName, viewer, fileUri, currentViewColumn)
                     .catch((cp: cp.ChildProcessWithoutNullStreams) => {
                         void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
-                        cp.kill('SIGKILL');
+                        if (this.ChildStore.has(uri)) {
+                            this.ChildStore.delete(this.ChildStore.get(uri));
+                        } else {
+                            cp.kill('SIGKILL');
+                        }
                     }
                     );
             },
@@ -115,7 +120,7 @@ export class RMarkdownPreviewManager {
     public refreshPanel(): void {
         if (this.activePreview) {
             this.activePreview.panel.webview.html = '';
-            this.activePreview.panel.webview.html = getBrowserHtml(this.activePreview.uri);
+            this.activePreview.panel.webview.html = getBrowserHtml(this.activePreview.externalUri);
         }
     }
 
@@ -243,25 +248,25 @@ export class RMarkdownPreviewManager {
                 reject(childProcess);
             });
 
+            childProcess.on('exit', (code, signal) => {
+                this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process exited ` +
+                    (signal ? `from signal '${signal}'` : `with exit code ${code}`));
+            });
+
             childProcess.stderr.on('data',
                 (data: Buffer) => {
                     const dat = data.toString('utf8');
                     this.rMarkdownOutput.appendLine(dat);
                     const match = reg.exec(dat)?.[0];
                     const previewUrl = this.constructUrl(previewEngine, match, fileName);
-                    if (match) {
+                    if (dat.includes('Execution halted')) {
+                        reject(childProcess);
+                    } else if (match) {
                         void this.showPreview(previewUrl, fileName, childProcess, viewer, fileUri, resourceViewColumn);
                         resolve(childProcess);
-                    } else if (dat.includes('Execution halted')) {
-                        reject(childProcess);
                     }
                 }
             );
-
-            childProcess.on('exit', (code, signal) => {
-                this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process exited ` +
-                    (signal ? `from signal '${signal}'` : `with exit code ${code}`));
-            });
         });
     }
 }
