@@ -80,6 +80,9 @@ export class RMarkdownPreviewManager {
     private ChildStore: RMarkdownChildStore = new RMarkdownChildStore;
     private activePreview: RMarkdownChild;
     private rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel('R Markdown');
+    // uri that are in the process of knitting
+    // so that we can't spam the button
+    private busyUri: vscode.Uri[] = [];
 
     public async init(): Promise<void> {
         this.rPath = await getRpath(false);
@@ -96,24 +99,38 @@ export class RMarkdownPreviewManager {
         );
         const reg: RegExp = this.constructRegex(previewEngine);
 
-        if (this.ChildStore.has(fileUri)) {
+        if (this.busyUri.includes(fileUri)) {
+            return;
+        } else if (this.ChildStore.has(fileUri)) {
             this.ChildStore.get(fileUri).panel.reveal();
         } else {
-            await doWithProgress(async () => {
-                await this.spawnProcess(cmd, reg, previewEngine, fileName, viewer, fileUri, currentViewColumn)
-                    .catch((cp: cp.ChildProcessWithoutNullStreams) => {
-                        void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
+            this.busyUri.push(fileUri);
+            await doWithProgress(async (token: vscode.CancellationToken) => {
+                await this.spawnProcess(cmd, reg, previewEngine, fileName, viewer, fileUri, currentViewColumn, token)
+                    .catch((rejection: {
+                        cp: cp.ChildProcessWithoutNullStreams,
+                        wasCancelled?: boolean
+                    }) => {
+                        if (!rejection.wasCancelled) {
+                            void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
+                        }
                         if (this.ChildStore.has(uri)) {
                             this.ChildStore.delete(this.ChildStore.get(uri));
                         } else {
-                            cp.kill('SIGKILL');
+                            rejection.cp.kill('SIGKILL');
                         }
                     }
                     );
             },
                 vscode.ProgressLocation.Notification,
-                `Knitting ${fileName}...`
+                `Knitting ${fileName}...`,
+                true
             );
+            this.busyUri.forEach((item, index) => {
+                if (item === fileUri) {
+                    this.busyUri.splice(index, 1);
+                }
+            });
         }
     }
 
@@ -225,14 +242,14 @@ export class RMarkdownPreviewManager {
         }
     }
 
-    private async spawnProcess(cmd: string, reg: RegExp, previewEngine: string, fileName: string, viewer: vscode.ViewColumn, fileUri: vscode.Uri, resourceViewColumn: vscode.ViewColumn): Promise<cp.ChildProcessWithoutNullStreams> {
+    private async spawnProcess(cmd: string, reg: RegExp, previewEngine: string, fileName: string, viewer: vscode.ViewColumn, fileUri: vscode.Uri, resourceViewColumn: vscode.ViewColumn, token: vscode.CancellationToken): Promise<cp.ChildProcessWithoutNullStreams> {
         return await new Promise<cp.ChildProcessWithoutNullStreams>((resolve, reject) => {
             let childProcess: cp.ChildProcessWithoutNullStreams;
             try {
                 childProcess = cp.spawn(cmd, null, { shell: true });
             } catch (e: unknown) {
                 console.warn(`[VSC-R] error: ${e as string}`);
-                reject(childProcess);
+                reject({ cp: childProcess, wasCancelled: false });
             }
 
             this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process started`);
@@ -245,7 +262,7 @@ export class RMarkdownPreviewManager {
 
             childProcess.stderr.on('error', (e: Error) => {
                 this.rMarkdownOutput.appendLine(`[VSC-R] knitting error: ${e.message}`);
-                reject(childProcess);
+                reject({ cp: childProcess, wasCancelled: false });
             });
 
             childProcess.on('exit', (code, signal) => {
@@ -260,13 +277,17 @@ export class RMarkdownPreviewManager {
                     const match = reg.exec(dat)?.[0];
                     const previewUrl = this.constructUrl(previewEngine, match, fileName);
                     if (dat.includes('Execution halted')) {
-                        reject(childProcess);
+                        reject({ cp: childProcess, wasCancelled: false });
                     } else if (match) {
                         void this.showPreview(previewUrl, fileName, childProcess, viewer, fileUri, resourceViewColumn);
                         resolve(childProcess);
                     }
                 }
             );
+
+            token.onCancellationRequested(() => {
+                reject({cp: childProcess, wasCancelled: true});
+            });
         });
     }
 }

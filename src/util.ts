@@ -230,17 +230,17 @@ export async function executeAsTask(name: string, command: string, args?: string
 // executes a callback and shows a 'busy' progress bar during the execution
 // synchronous callbacks are converted to async to properly render the progress bar
 // default location is in the help pages tree view
-export async function doWithProgress<T>(cb: () => T | Promise<T>, location: string | vscode.ProgressLocation = 'rHelpPages', title?: string): Promise<T> {
+export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken) => T | Promise<T>, location: string | vscode.ProgressLocation = 'rHelpPages', title?: string, cancellable?: boolean): Promise<T> {
     const location2 = (typeof location === 'string' ? { viewId: location } : location);
     const options: vscode.ProgressOptions = {
         location: location2,
-        cancellable: false,
+        cancellable: cancellable ?? false,
         title: title
     };
     let ret: T;
-    await vscode.window.withProgress(options, async () => {
+    await vscode.window.withProgress(options, async (_progress, token) => {
         const retPromise = new Promise<T>((resolve) => setTimeout(() => {
-            const ret = cb();
+            const ret = cb(token);
             resolve(ret);
         }));
         ret = await retPromise;
