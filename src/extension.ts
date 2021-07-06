@@ -3,6 +3,9 @@
 
 // interfaces, functions, etc. provided by vscode
 import * as vscode from 'vscode';
+import * as os from 'os';
+import path = require('path');
+import fs = require('fs');
 
 // functions etc. implemented in this extension
 import * as preview from './preview';
@@ -22,6 +25,8 @@ import * as httpgdViewer from './plotViewer';
 import { RMarkdownPreviewManager } from './rmarkdown/preview';
 
 // global objects used in other files
+export const extDir: string = path.join(os.homedir(), '.vscode-R');
+export const tmpDir: string = path.join(extDir, 'tmp');
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
@@ -31,6 +36,14 @@ export let rMarkdownPreview: RMarkdownPreviewManager | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
+    if (!fs.existsSync(extDir)) {
+        fs.mkdirSync(extDir);
+    }
+
+    if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir);
+    }
+
     // create a new instance of RExtensionImplementation
     // is used to export an interface to the help panel
     // this export is used e.g. by vscode-r-debugger to show the help panel from within debug sessions

@@ -2,11 +2,11 @@
 import * as cp from 'child_process';
 import * as vscode from 'vscode';
 import * as fs from 'fs-extra';
-import * as os from 'os';
 
 import { doWithProgress, getRpath, readContent, setContext } from '../util';
-import { extensionContext } from '../extension';
+import { extensionContext, tmpDir } from '../extension';
 import path = require('path');
+import crypto = require('crypto');
 
 class RMarkdownChild extends vscode.Disposable {
     title: string;
@@ -95,7 +95,6 @@ class RMarkdownChildStore extends vscode.Disposable {
 export class RMarkdownPreviewManager {
     private rPath: string;
     private rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel('R Markdown');
-    private watcherDir = path.join(os.homedir(), '.vscode-R');
 
     // the currently selected RMarkdown preview
     private activePreview: RMarkdownChild;
@@ -189,9 +188,10 @@ export class RMarkdownPreviewManager {
         return await new Promise<cp.ChildProcessWithoutNullStreams>((resolve, reject) => {
             const lim = '---vsc---';
             const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
+            const outputFile = path.join(tmpDir, crypto.createHash('sha256').update(fileUri.fsPath).digest('hex') + '.html');
             const cmd = (
                 `${this.rPath} --silent --slave --no-save --no-restore -e ` +
-                `"cat('${lim}', rmarkdown::render('${String(fileUri.path)}', output_dir = '${this.watcherDir}'), '${lim}', sep=''); while(TRUE) Sys.sleep(1)" `
+                `"cat('${lim}', rmarkdown::render('${String(fileUri.path)}', output_file = '${outputFile}'), '${lim}', sep='')"`
             );
 
             let childProcess: cp.ChildProcessWithoutNullStreams;

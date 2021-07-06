@@ -14,12 +14,11 @@ import { FSWatcher } from 'fs-extra';
 import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { rWorkspace, globalRHelp, globalHttpgdManager } from './extension';
+import { extDir, rWorkspace, globalRHelp, globalHttpgdManager } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveshare';
 
 export let globalenv: any;
 let resDir: string;
-export let watcherDir: string;
 export let requestFile: string;
 export let requestLockFile: string;
 let requestTimeStamp: number;
@@ -44,22 +43,16 @@ let activeBrowserExternalUri: Uri;
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
-    watcherDir = path.join(os.homedir(), '.vscode-R');
 
-    console.info(`[deploySessionWatcher] watcherDir: ${watcherDir}`);
-    if (!fs.existsSync(watcherDir)) {
-        console.info('[deploySessionWatcher] watcherDir not exists, create directory');
-        fs.mkdirSync(watcherDir);
-    }
     const initPath = path.join(extensionPath, 'R', 'init.R');
-    const linkPath = path.join(watcherDir, 'init.R');
+    const linkPath = path.join(extDir, 'init.R');
     fs.writeFileSync(linkPath, `local(source("${initPath.replace(/\\/g, '\\\\')}", chdir = TRUE, local = TRUE))\n`);
 }
 
 export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
     console.info('[startRequestWatcher] Starting');
-    requestFile = path.join(watcherDir, 'request.log');
-    requestLockFile = path.join(watcherDir, 'request.lock');
+    requestFile = path.join(extDir, 'request.log');
+    requestLockFile = path.join(extDir, 'request.lock');
     requestTimeStamp = 0;
     responseTimeStamp = 0;
     if (!fs.existsSync(requestLockFile)) {

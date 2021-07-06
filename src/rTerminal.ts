@@ -6,11 +6,11 @@ import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
 
-import { extensionContext } from './extension';
+import { extensionContext, extDir } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { removeSessionFiles, watcherDir } from './session';
+import { removeSessionFiles } from './session';
 import { config, delay, getRterm } from './util';
 import { rGuestService, isGuestSession } from './liveshare';
 export let rTerm: vscode.Terminal;
@@ -124,7 +124,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
                     R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
                     R_PROFILE_USER: newRprofile,
                     VSCODE_INIT_R: initR,
-                    VSCODE_WATCHER_DIR: watcherDir
+                    VSCODE_WATCHER_DIR: extDir
                 };
             }
             rTerm = vscode.window.createTerminal(termOptions);
