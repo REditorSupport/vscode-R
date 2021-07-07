@@ -96,7 +96,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.markdown.showPreviewToSide': () => rMarkdownPreview.previewRmd(vscode.ViewColumn.Beside),
         'r.markdown.showPreview': (uri: vscode.Uri) => rMarkdownPreview.previewRmd(vscode.ViewColumn.Active, uri),
         'r.markdown.preview.refresh': () => rMarkdownPreview.refreshPanel(),
-        'r.markdown.preview.openExternal': async () => await rMarkdownPreview.openExternalBrowser(),
+        'r.markdown.preview.openExternal': () => rMarkdownPreview.openExternalBrowser(),
         'r.markdown.preview.showSource': () => rMarkdownPreview.showSource(),
         'r.markdown.preview.toggleStyle': () => rMarkdownPreview.toggleTheme(),
 
