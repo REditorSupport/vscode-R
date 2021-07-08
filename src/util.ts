@@ -339,3 +339,16 @@ export async function setContext(key: string, value: any): Promise<void> {
         'setContext', key, value
     );
 }
+
+// Helper function used to convert raw text files to html
+export function escapeHtml(source: string): string {
+    const entityMap = new Map<string, string>(Object.entries({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        '\'': '&#39;',
+        '/': '&#x2F;'
+    }));
+    return String(source).replace(/[&<>"'/]/g, (s: string) => entityMap.get(s) || '');
+}
