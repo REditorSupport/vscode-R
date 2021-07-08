@@ -3,8 +3,10 @@ import * as cp from 'child_process';
 import * as vscode from 'vscode';
 import * as fs from 'fs-extra';
 import * as cheerio from 'cheerio';
+
 import path = require('path');
 import crypto = require('crypto');
+
 
 import { config, doWithProgress, getRpath, readContent, setContext, escapeHtml } from '../util';
 import { extensionContext, tmpDir } from '../extension';
@@ -74,22 +76,33 @@ class RMarkdownPreview extends vscode.Disposable {
         }
 
         const $ = cheerio.load(this.htmlLightContent);
-        $('head style').remove();
+        const chunkCol = String(config().get('rmarkdown.chunkBackgroundColor'));
 
-        // todo, potentially emulate vscode syntax highlighting?
+        // make the output chunks a little lighter to stand out
+        const colReg = /[0-9.]+/g;
+        const regOut = chunkCol.match(colReg);
+        const outCol = `rgba(${regOut[0] ?? 100}, ${regOut[1] ?? 100}, ${regOut[2] ?? 100}, ${Number(regOut[3]) + 0.05 ?? .5})`;
+
         const style =
             `<style>
             body {
                 color: var(--vscode-editor-foreground);
                 background: var(--vscode-editor-background);
             }
-            .r, code {
-                color: inherit;
-                background: ${String(config().get('rmarkdown.chunkBackgroundColor'))};
-                border-color: ${String(config().get('rmarkdown.chunkBackgroundColor'))};
-            }
             .hljs {
                 color: var(--vscode-editor-foreground);
+            }
+            code, pre {
+                color: inherit;
+                background: ${chunkCol};
+                border-color: ${chunkCol};
+            }
+            pre:not([class]) {
+                color: inherit;
+                background: ${outCol};
+            }
+            pre > code {
+                background: transparent;
             }
         </style>
         `;
@@ -212,9 +225,14 @@ export class RMarkdownPreviewManager {
 
     public openExternalBrowser(): void {
         if (this.activePreview) {
-            void vscode.env.openExternal(
-                this.activePreview?.preview?.outputUri
-            );
+            // void open(
+            //     this.activePreview.preview.outputUri.fsPath,
+            //     {
+            //         app: {
+            //             name: 'firefox'
+            //         }
+            //     }
+            // );
         }
     }
 
@@ -270,7 +288,7 @@ export class RMarkdownPreviewManager {
             const cmd = (
                 `${this.rPath} --silent --slave --no-save --no-restore -e ` +
                 `"cat('${lim}',
-                rmarkdown::render('${String(fileUri.path)}', output_format = rmarkdown::html_document(), output_file = '${outputFile}'),
+                rmarkdown::render('${String(fileUri.path)}', output_format = rmarkdown::html_document(), output_file = '${outputFile}', intermediates_dir = '${tmpDir}'),
                 '${lim}', sep='')"`
             );
 
