@@ -121,7 +121,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     const lsp = vscode.extensions.getExtension('reditorsupport.r-lsp');
     if (lsp) {
         void vscode.window.showInformationMessage('The R language server extension has been integrated into vscode-R. You need to disable or uninstall REditorSupport.r-lsp and reload window to use the new version.');
-        void vscode.commands.executeCommand('workbench.extensions.action.showEnabledExtensions');
+        void vscode.commands.executeCommand('workbench.extensions.search', '@installed r-lsp');
     } else {
         context.subscriptions.push(new languageService.LanguageService());
     }
