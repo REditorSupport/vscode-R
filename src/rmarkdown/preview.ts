@@ -71,7 +71,7 @@ class RMarkdownPreview extends vscode.Disposable {
         const isHtml = !!re.exec(content);
 
         if (!isHtml) {
-            const html: string = escapeHtml(content);
+            const html = escapeHtml(content);
             content = `<html><head></head><body><pre>${html}</pre></body></html>`;
         }
 
@@ -299,19 +299,23 @@ export class RMarkdownPreviewManager {
                 (data: Buffer) => {
                     const dat = data.toString('utf8');
                     this.rMarkdownOutput.appendLine(dat);
-                    const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
-                    if (outputUrl) {
-                        if (viewer !== undefined) {
-                            void this.openPreview(
-                                vscode.Uri.parse(outputUrl),
-                                fileUri,
-                                fileName,
-                                childProcess,
-                                viewer,
-                                currentViewColumn
-                            );
-                        }
+                    if (token?.isCancellationRequested) {
                         resolve(childProcess);
+                    } else {
+                        const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
+                        if (outputUrl) {
+                            if (viewer !== undefined) {
+                                void this.openPreview(
+                                    vscode.Uri.parse(outputUrl),
+                                    fileUri,
+                                    fileName,
+                                    childProcess,
+                                    viewer,
+                                    currentViewColumn
+                                );
+                            }
+                            resolve(childProcess);
+                        }
                     }
                 }
             );
