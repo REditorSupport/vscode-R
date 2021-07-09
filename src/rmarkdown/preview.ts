@@ -71,7 +71,7 @@ class RMarkdownPreview extends vscode.Disposable {
         const isHtml = !!re.exec(content);
 
         if (!isHtml) {
-            const html = escapeHtml(content);
+            const html: string = escapeHtml(content);
             content = `<html><head></head><body><pre>${html}</pre></body></html>`;
         }
 
