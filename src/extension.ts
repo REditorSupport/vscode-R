@@ -118,7 +118,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     context.subscriptions.push(vscode.window.onDidCloseTerminal(rTerminal.deleteTerminal));
 
     // start language service
-    context.subscriptions.push(new languageService.LanguageService());
+    const lsp = vscode.extensions.getExtension('reditorsupport.r-lsp');
+    if (lsp) {
+        void vscode.window.showInformationMessage('The R language server extension has been integrated into vscode-R. You need to disable or uninstall REditorSupport.r-lsp and reload window to use the new version.');
+        void vscode.commands.executeCommand('workbench.extensions.action.showEnabledExtensions');
+    } else {
+        context.subscriptions.push(new languageService.LanguageService());
+    }
 
     // register on-enter rule for roxygen comments
     const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
