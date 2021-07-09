@@ -565,12 +565,14 @@
       {
         "title": "Enable Auto Refresh",
         "category": "R",
-        "command": "r.markdown.preview.enableAutoRefresh"
+        "command": "r.markdown.preview.enableAutoRefresh",
+        "icon": "$(sync)"
       },
       {
         "title": "Disable Auto Refresh",
         "category": "R",
-        "command": "r.markdown.preview.disableAutoRefresh"
+        "command": "r.markdown.preview.disableAutoRefresh",
+        "icon": "$(sync-ignored)"
       },
       {
         "title": "Launch RStudio Addin",
@@ -888,17 +890,17 @@
         {
           "command": "r.markdown.preview.refresh",
           "when": "resourceScheme =~ /webview/ && r.preview.active",
-          "group": "1_rMarkdown"
+          "group": "navigation@4"
         },
         {
           "command": "r.markdown.preview.enableAutoRefresh",
           "when": "resourceScheme =~ /webview/ && r.preview.active && !r.preview.autoRefresh",
-          "group": "1_rMarkdown"
+          "group": "navigation@5"
         },
         {
           "command": "r.markdown.preview.disableAutoRefresh",
           "when": "resourceScheme =~ /webview/ && r.preview.active && r.preview.autoRefresh",
-          "group": "1_rMarkdown"
+          "group": "navigation@5"
         },
         {
           "command": "r.browser.refresh",
