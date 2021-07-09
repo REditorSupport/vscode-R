@@ -563,6 +563,16 @@
         "icon": "$(symbol-color)"
       },
       {
+        "title": "Enable Auto Refresh",
+        "category": "R",
+        "command": "r.markdown.preview.enableAutoRefresh"
+      },
+      {
+        "title": "Disable Auto Refresh",
+        "category": "R",
+        "command": "r.markdown.preview.disableAutoRefresh"
+      },
+      {
         "title": "Launch RStudio Addin",
         "category": "R",
         "command": "r.launchAddinPicker"
@@ -881,6 +891,16 @@
           "group": "1_rMarkdown"
         },
         {
+          "command": "r.markdown.preview.enableAutoRefresh",
+          "when": "resourceScheme =~ /webview/ && r.preview.active && !r.preview.autoRefresh",
+          "group": "1_rMarkdown"
+        },
+        {
+          "command": "r.markdown.preview.disableAutoRefresh",
+          "when": "resourceScheme =~ /webview/ && r.preview.active && r.preview.autoRefresh",
+          "group": "1_rMarkdown"
+        },
+        {
           "command": "r.browser.refresh",
           "when": "resourceScheme =~ /webview/ && r.browser.active",
           "group": "navigation"
@@ -1188,6 +1208,11 @@
           "type": "string",
           "default": "rgba(128, 128, 128, 0.1)",
           "description": "RMarkdown chunk background color in RGBA or RGB value. Defaults to rgba(128, 128, 128, 0.1). Leave it empty to disable it (use default editor background color). Reload VS Code after changing settings.\n\nLearn how to set colors: https://www.w3schools.com/css/css_colors_rgb.asp.\n\nExamples for syntax rgba(<red>, <green>, <blue>, <alpha>):\nrgba(128, 128, 128, 0.1)\nrgba(128, 128, 128, 0.3)\nrgba(255, 165, 0, 0.1)\n\n"
+        },
+        "r.rmarkdown.preview.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic refresh of R Markdown preview on file update."
         },
         "r.helpPanel.enableSyntaxHighlighting": {
           "type": "boolean",

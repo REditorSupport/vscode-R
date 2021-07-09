@@ -20,8 +20,11 @@ class RMarkdownPreview extends vscode.Disposable {
     htmlDarkContent: string;
     htmlLightContent: string;
     fileWatcher: fs.FSWatcher;
+    autoRefresh: boolean;
 
-    constructor(title: string, cp: cp.ChildProcessWithoutNullStreams, panel: vscode.WebviewPanel, resourceViewColumn: vscode.ViewColumn, outputUri: vscode.Uri, uri: vscode.Uri, RMarkdownPreviewManager: RMarkdownPreviewManager, themeBool: boolean) {
+    constructor(title: string, cp: cp.ChildProcessWithoutNullStreams, panel: vscode.WebviewPanel,
+        resourceViewColumn: vscode.ViewColumn, outputUri: vscode.Uri, uri: vscode.Uri,
+        RMarkdownPreviewManager: RMarkdownPreviewManager, themeBool: boolean, autoRefresh: boolean) {
         super(() => {
             this.cp?.kill('SIGKILL');
             this.panel?.dispose();
@@ -34,6 +37,7 @@ class RMarkdownPreview extends vscode.Disposable {
         this.panel = panel;
         this.resourceViewColumn = resourceViewColumn;
         this.outputUri = outputUri;
+        this.autoRefresh = autoRefresh;
         void this.refreshContent(themeBool);
         this.startFileWatcher(RMarkdownPreviewManager, uri);
     }
@@ -54,7 +58,7 @@ class RMarkdownPreview extends vscode.Disposable {
     private startFileWatcher(RMarkdownPreviewManager: RMarkdownPreviewManager, uri: vscode.Uri) {
         let fsTimeout: NodeJS.Timeout;
         const fileWatcher = fs.watch(uri.path, {}, () => {
-            if (!fsTimeout) {
+            if (this.autoRefresh && !fsTimeout) {
                 fsTimeout = setTimeout(() => { fsTimeout = null; }, 1000);
                 void RMarkdownPreviewManager.updatePreview(this);
             }
@@ -198,6 +202,24 @@ export class RMarkdownPreviewManager {
         }
     }
 
+    public enableAutoRefresh(preview?: RMarkdownPreview): void {
+        if (preview) {
+            preview.autoRefresh = true;
+        } else if (this.activePreview?.preview) {
+            this.activePreview.preview.autoRefresh = true;
+            void setContext('r.preview.autoRefresh', true);
+        }
+    }
+
+    public disableAutoRefresh(preview?: RMarkdownPreview): void {
+        if (preview) {
+            preview.autoRefresh = false;
+        } else if (this.activePreview?.preview) {
+            this.activePreview.preview.autoRefresh = false;
+            void setContext('r.preview.autoRefresh', false);
+        }
+    }
+
     public toggleTheme(): void {
         this.vscodeTheme = !this.vscodeTheme;
         for (const preview of this.previewStore) {
@@ -305,13 +327,15 @@ export class RMarkdownPreviewManager {
                         const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
                         if (outputUrl) {
                             if (viewer !== undefined) {
+                                const autoRefresh = config().get<boolean>('rmarkdown.preview.autoRefresh');
                                 void this.openPreview(
                                     vscode.Uri.parse(outputUrl),
                                     fileUri,
                                     fileName,
                                     childProcess,
                                     viewer,
-                                    currentViewColumn
+                                    currentViewColumn,
+                                    autoRefresh
                                 );
                             }
                             resolve(childProcess);
@@ -339,7 +363,7 @@ export class RMarkdownPreviewManager {
         });
     }
 
-    private openPreview(outputUri: vscode.Uri, fileUri: vscode.Uri, title: string, cp: cp.ChildProcessWithoutNullStreams, viewer: vscode.ViewColumn, resourceViewColumn: vscode.ViewColumn): void {
+    private openPreview(outputUri: vscode.Uri, fileUri: vscode.Uri, title: string, cp: cp.ChildProcessWithoutNullStreams, viewer: vscode.ViewColumn, resourceViewColumn: vscode.ViewColumn, autoRefresh:boolean): void {
         const panel = vscode.window.createWebviewPanel(
             'previewRmd',
             `Preview ${title}`,
@@ -366,7 +390,8 @@ export class RMarkdownPreviewManager {
             outputUri,
             fileUri,
             this,
-            this.vscodeTheme
+            this.vscodeTheme,
+            autoRefresh
         );
         this.previewStore.add(fileUri, preview);
 
@@ -383,6 +408,7 @@ export class RMarkdownPreviewManager {
             if (webviewPanel.active) {
                 this.activePreview.preview = preview;
                 this.activePreview.uri = fileUri;
+                void setContext('r.preview.autoRefresh', preview.autoRefresh);
             }
         });
     }

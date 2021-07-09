@@ -99,6 +99,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.markdown.preview.openExternal': () => void rMarkdownPreview.openExternalBrowser(),
         'r.markdown.preview.showSource': () => rMarkdownPreview.showSource(),
         'r.markdown.preview.toggleStyle': () => rMarkdownPreview.toggleTheme(),
+        'r.markdown.preview.enableAutoRefresh': () => rMarkdownPreview.enableAutoRefresh(),
+        'r.markdown.preview.disableAutoRefresh': () => rMarkdownPreview.disableAutoRefresh(),
 
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
