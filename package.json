@@ -1087,6 +1087,11 @@
             "type": "string"
           }
         },
+        "r.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the R language service to provide code analysis features (completion, signature, hover, diagnostics, definition, etc.)"
+        },
         "r.lsp.args": {
           "type": "array",
           "default": [],
