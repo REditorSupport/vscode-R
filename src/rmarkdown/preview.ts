@@ -223,16 +223,9 @@ export class RMarkdownPreviewManager {
         }
     }
 
-    public openExternalBrowser(): void {
+    public async openExternalBrowser(): Promise<void> {
         if (this.activePreview) {
-            // void open(
-            //     this.activePreview.preview.outputUri.fsPath,
-            //     {
-            //         app: {
-            //             name: 'firefox'
-            //         }
-            //     }
-            // );
+            await vscode.env.openExternal(this.activePreview?.preview?.outputUri);
         }
     }
 
