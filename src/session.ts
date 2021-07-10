@@ -14,7 +14,7 @@ import { FSWatcher } from 'fs-extra';
 import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { extDir, rWorkspace, globalRHelp, globalHttpgdManager } from './extension';
+import { extensionDirectory, rWorkspace, globalRHelp, globalHttpgdManager } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveshare';
 
 export let globalenv: any;
@@ -45,14 +45,14 @@ export function deploySessionWatcher(extensionPath: string): void {
     resDir = path.join(extensionPath, 'dist', 'resources');
 
     const initPath = path.join(extensionPath, 'R', 'init.R');
-    const linkPath = path.join(extDir, 'init.R');
+    const linkPath = path.join(extensionDirectory, 'init.R');
     fs.writeFileSync(linkPath, `local(source("${initPath.replace(/\\/g, '\\\\')}", chdir = TRUE, local = TRUE))\n`);
 }
 
 export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
     console.info('[startRequestWatcher] Starting');
-    requestFile = path.join(extDir, 'request.log');
-    requestLockFile = path.join(extDir, 'request.lock');
+    requestFile = path.join(extensionDirectory, 'request.log');
+    requestLockFile = path.join(extensionDirectory, 'request.lock');
     requestTimeStamp = 0;
     responseTimeStamp = 0;
     if (!fs.existsSync(requestLockFile)) {

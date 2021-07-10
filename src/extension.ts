@@ -25,8 +25,8 @@ import * as httpgdViewer from './plotViewer';
 import { RMarkdownPreviewManager } from './rmarkdown/preview';
 
 // global objects used in other files
-export const extDir: string = path.join(os.homedir(), '.vscode-R');
-export const tmpDir: string = path.join(extDir, 'tmp');
+export const extensionDirectory: string = path.join(os.homedir(), '.vscode-R');
+export const temporaryDirectory: string = path.join(extensionDirectory, 'tmp');
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
@@ -36,12 +36,12 @@ export let rMarkdownPreview: RMarkdownPreviewManager | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
-    if (!fs.existsSync(extDir)) {
-        fs.mkdirSync(extDir);
+    if (!fs.existsSync(extensionDirectory)) {
+        fs.mkdirSync(extensionDirectory);
     }
 
-    if (!fs.existsSync(tmpDir)) {
-        fs.mkdirSync(tmpDir);
+    if (!fs.existsSync(temporaryDirectory)) {
+        fs.mkdirSync(temporaryDirectory);
     }
 
     // create a new instance of RExtensionImplementation
