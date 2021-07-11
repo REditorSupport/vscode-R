@@ -9,7 +9,7 @@ import crypto = require('crypto');
 
 
 import { config, doWithProgress, getRpath, readContent, setContext, escapeHtml } from '../util';
-import { extensionContext, temporaryDirectory } from '../extension';
+import { extensionContext, tmpDir } from '../extension';
 
 class RMarkdownPreview extends vscode.Disposable {
     title: string;
@@ -68,7 +68,7 @@ class RMarkdownPreview extends vscode.Disposable {
 
     private getHtmlContent(htmlContent: string): void {
         let content = htmlContent.replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
-            `<$1 $2="${String(this.panel.webview.asWebviewUri(vscode.Uri.file(temporaryDirectory())))}/`);
+            `<$1 $2="${String(this.panel.webview.asWebviewUri(vscode.Uri.file(tmpDir())))}/`);
 
         const re = new RegExp('<html[^\\n]*>.*</html>', 'ms');
         const isHtml = !!re.exec(content);
@@ -182,6 +182,11 @@ export class RMarkdownPreviewManager {
         const fileUri = uri ?? vscode.window.activeTextEditor.document.uri;
         const fileName = fileUri.fsPath.substring(fileUri.fsPath.lastIndexOf(path.sep) + 1);
         const currentViewColumn: vscode.ViewColumn = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.Active ?? vscode.ViewColumn.One;
+        // abort if the file is untitled
+        if (!uri && vscode.window.activeTextEditor.document.isUntitled) {
+            void vscode.window.showWarningMessage('Cannot knit an untitled file. Please save the document and try again.');
+            return;
+        }
         if (this.busyUriStore.has(fileUri)) {
             return;
         } else if (this.previewStore.has(fileUri)) {
@@ -296,14 +301,14 @@ export class RMarkdownPreviewManager {
         return await new Promise<cp.ChildProcessWithoutNullStreams>((resolve, reject) => {
             const lim = '---vsc---';
             const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
-            const outputFile = path.join(temporaryDirectory(), crypto.createHash('sha256').update(fileUri.fsPath).digest('hex') + '.html');
+            const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(fileUri.fsPath).digest('hex') + '.html');
             const cmd = (
                 `${this.rPath} --silent --slave --no-save --no-restore -e ` +
                 `"cat('${lim}', rmarkdown::render(` +
                 `'${fileUri.fsPath.replace(/\\/g, '/')}',` +
                 `output_format = rmarkdown::html_document(),` +
                 `output_file = '${outputFile.replace(/\\/g, '/')}',` +
-                `intermediates_dir = '${temporaryDirectory().replace(/\\/g, '/')}'), '${lim}',` +
+                `intermediates_dir = '${tmpDir().replace(/\\/g, '/')}'), '${lim}',` +
                 `sep='')"`
             );
 
@@ -375,7 +380,7 @@ export class RMarkdownPreviewManager {
                 enableFindWidget: true,
                 enableScripts: true,
                 retainContextWhenHidden: true,
-                localResourceRoots: [vscode.Uri.file(temporaryDirectory())],
+                localResourceRoots: [vscode.Uri.file(tmpDir())],
             });
 
         // Push the new rmd webview to the open proccesses array,

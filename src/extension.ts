@@ -24,8 +24,8 @@ import * as httpgdViewer from './plotViewer';
 import { RMarkdownPreviewManager } from './rmarkdown/preview';
 
 // global objects used in other files
-export const extensionDirectory = (): string => util.getDir(path.join(os.homedir(), '.vscode-R'));
-export const temporaryDirectory = (): string => util.getDir(path.join(extensionDirectory(), 'tmp'));
+export const homeExtDir = (): string => util.getDir(path.join(os.homedir(), '.vscode-R'));
+export const tmpDir = (): string => util.getDir(path.join(homeExtDir(), 'tmp'));
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
