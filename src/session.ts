@@ -45,14 +45,14 @@ export function deploySessionWatcher(extensionPath: string): void {
     resDir = path.join(extensionPath, 'dist', 'resources');
 
     const initPath = path.join(extensionPath, 'R', 'init.R');
-    const linkPath = path.join(extensionDirectory, 'init.R');
+    const linkPath = path.join(extensionDirectory(), 'init.R');
     fs.writeFileSync(linkPath, `local(source("${initPath.replace(/\\/g, '\\\\')}", chdir = TRUE, local = TRUE))\n`);
 }
 
 export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
     console.info('[startRequestWatcher] Starting');
-    requestFile = path.join(extensionDirectory, 'request.log');
-    requestLockFile = path.join(extensionDirectory, 'request.lock');
+    requestFile = path.join(extensionDirectory(), 'request.log');
+    requestLockFile = path.join(extensionDirectory(), 'request.lock');
     requestTimeStamp = 0;
     responseTimeStamp = 0;
     if (!fs.existsSync(requestLockFile)) {

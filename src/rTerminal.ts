@@ -124,7 +124,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
                     R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
                     R_PROFILE_USER: newRprofile,
                     VSCODE_INIT_R: initR,
-                    VSCODE_WATCHER_DIR: extensionDirectory
+                    VSCODE_WATCHER_DIR: extensionDirectory()
                 };
             }
             rTerm = vscode.window.createTerminal(termOptions);

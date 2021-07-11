@@ -352,3 +352,12 @@ export function escapeHtml(source: string): string {
     }));
     return String(source).replace(/[&<>"'/]/g, (s: string) => entityMap.get(s) || '');
 }
+
+// creates a directory if it doesn't exist,
+// returns the input string
+export function getDir(dirPath: string): string {
+    if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath);
+    }
+    return dirPath;
+}

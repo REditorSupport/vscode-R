@@ -24,7 +24,7 @@ class RMarkdownPreview extends vscode.Disposable {
 
     constructor(title: string, cp: cp.ChildProcessWithoutNullStreams, panel: vscode.WebviewPanel,
         resourceViewColumn: vscode.ViewColumn, outputUri: vscode.Uri, uri: vscode.Uri,
-        RMarkdownPreviewManager: RMarkdownPreviewManager, useDarkTheme: boolean, autoRefresh: boolean) {
+        RMarkdownPreviewManager: RMarkdownPreviewManager, useCodeTheme: boolean, autoRefresh: boolean) {
         super(() => {
             this.cp?.kill('SIGKILL');
             this.panel?.dispose();
@@ -38,21 +38,21 @@ class RMarkdownPreview extends vscode.Disposable {
         this.resourceViewColumn = resourceViewColumn;
         this.outputUri = outputUri;
         this.autoRefresh = autoRefresh;
-        void this.refreshContent(useDarkTheme);
+        void this.refreshContent(useCodeTheme);
         this.startFileWatcher(RMarkdownPreviewManager, uri);
     }
 
-    public styleHtml(useDarkTheme: boolean) {
-        if (useDarkTheme) {
+    public styleHtml(useCodeTheme: boolean) {
+        if (useCodeTheme) {
             this.panel.webview.html = this.htmlDarkContent;
         } else {
             this.panel.webview.html = this.htmlLightContent;
         }
     }
 
-    public async refreshContent(useDarkTheme: boolean) {
+    public async refreshContent(useCodeTheme: boolean) {
         this.getHtmlContent(await readContent(this.outputUri.fsPath, 'utf8'));
-        this.styleHtml(useDarkTheme);
+        this.styleHtml(useCodeTheme);
     }
 
     private startFileWatcher(RMarkdownPreviewManager: RMarkdownPreviewManager, uri: vscode.Uri) {
@@ -68,7 +68,7 @@ class RMarkdownPreview extends vscode.Disposable {
 
     private getHtmlContent(htmlContent: string): void {
         let content = htmlContent.replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
-            `<$1 $2="${String(this.panel.webview.asWebviewUri(vscode.Uri.file(temporaryDirectory)))}/`);
+            `<$1 $2="${String(this.panel.webview.asWebviewUri(vscode.Uri.file(temporaryDirectory())))}/`);
 
         const re = new RegExp('<html[^\\n]*>.*</html>', 'ms');
         const isHtml = !!re.exec(content);
@@ -171,7 +171,7 @@ export class RMarkdownPreviewManager {
     // uri that are in the process of knitting
     // so that we can't spam the preview button
     private busyUriStore: Set<vscode.Uri> = new Set<vscode.Uri>();
-    private useDarkTheme = true;
+    private useCodeTheme = true;
 
     public async init(): Promise<void> {
         this.rPath = await getRpath(true);
@@ -195,9 +195,9 @@ export class RMarkdownPreviewManager {
 
     public refreshPanel(preview?: RMarkdownPreview): void {
         if (preview) {
-            void preview.refreshContent(this.useDarkTheme);
+            void preview.refreshContent(this.useCodeTheme);
         } else if (this.activePreview) {
-            void this.activePreview?.preview?.refreshContent(this.useDarkTheme);
+            void this.activePreview?.preview?.refreshContent(this.useCodeTheme);
         }
     }
 
@@ -220,9 +220,9 @@ export class RMarkdownPreviewManager {
     }
 
     public toggleTheme(): void {
-        this.useDarkTheme = !this.useDarkTheme;
+        this.useCodeTheme = !this.useCodeTheme;
         for (const preview of this.previewStore) {
-            void preview[1].styleHtml(this.useDarkTheme);
+            void preview[1].styleHtml(this.useCodeTheme);
         }
     }
 
@@ -296,10 +296,15 @@ export class RMarkdownPreviewManager {
         return await new Promise<cp.ChildProcessWithoutNullStreams>((resolve, reject) => {
             const lim = '---vsc---';
             const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
-            const outputFile = path.join(temporaryDirectory, crypto.createHash('sha256').update(fileUri.fsPath).digest('hex') + '.html');
+            const outputFile = path.join(temporaryDirectory(), crypto.createHash('sha256').update(fileUri.fsPath).digest('hex') + '.html');
             const cmd = (
                 `${this.rPath} --silent --slave --no-save --no-restore -e ` +
-                `"cat('${lim}', rmarkdown::render('${fileUri.fsPath}', output_format = rmarkdown::html_document(), output_file = '${outputFile}', intermediates_dir = '${temporaryDirectory}'), '${lim}', sep='')"`
+                `"cat('${lim}', rmarkdown::render(` +
+                `'${fileUri.fsPath.replace(/\\/g, '/')}',` +
+                `output_format = rmarkdown::html_document(),` +
+                `output_file = '${outputFile.replace(/\\/g, '/')}',` +
+                `intermediates_dir = '${temporaryDirectory().replace(/\\/g, '/')}'), '${lim}',` +
+                `sep='')"`
             );
 
             let childProcess: cp.ChildProcessWithoutNullStreams;
@@ -370,7 +375,7 @@ export class RMarkdownPreviewManager {
                 enableFindWidget: true,
                 enableScripts: true,
                 retainContextWhenHidden: true,
-                localResourceRoots: [vscode.Uri.file(temporaryDirectory)],
+                localResourceRoots: [vscode.Uri.file(temporaryDirectory())],
             });
 
         // Push the new rmd webview to the open proccesses array,
@@ -385,7 +390,7 @@ export class RMarkdownPreviewManager {
             outputUri,
             fileUri,
             this,
-            this.useDarkTheme,
+            this.useCodeTheme,
             autoRefresh
         );
         this.previewStore.add(fileUri, preview);
