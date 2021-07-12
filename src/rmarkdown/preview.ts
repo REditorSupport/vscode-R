@@ -182,9 +182,13 @@ export class RMarkdownPreviewManager {
         const fileUri = uri ?? vscode.window.activeTextEditor.document.uri;
         const fileName = fileUri.fsPath.substring(fileUri.fsPath.lastIndexOf(path.sep) + 1);
         const currentViewColumn: vscode.ViewColumn = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.Active ?? vscode.ViewColumn.One;
-        // abort if the file is untitled
         if (!uri && vscode.window.activeTextEditor.document.isUntitled) {
-            void vscode.window.showWarningMessage('Cannot knit an untitled file. Please save the document and try again.');
+            void vscode.window.showWarningMessage('Cannot knit an untitled file. Please save the document.');
+            void vscode.commands.executeCommand('workbench.action.files.save').then(async () => {
+                if (!vscode.window.activeTextEditor.document.isUntitled) {
+                    await this.previewRmd(viewer);
+                }
+            });
             return;
         }
         if (this.busyUriStore.has(fileUri)) {
@@ -198,20 +202,12 @@ export class RMarkdownPreviewManager {
         }
     }
 
-    public refreshPanel(preview?: RMarkdownPreview): void {
-        if (preview) {
-            void preview.refreshContent(this.useCodeTheme);
-        } else if (this.activePreview) {
-            void this.activePreview?.preview?.refreshContent(this.useCodeTheme);
-        }
-    }
-
     public enableAutoRefresh(preview?: RMarkdownPreview): void {
         if (preview) {
             preview.autoRefresh = true;
         } else if (this.activePreview?.preview) {
             this.activePreview.preview.autoRefresh = true;
-            void setContext('r.preview.autoRefresh', true);
+            void setContext('r.markdown.preview.autoRefresh', true);
         }
     }
 
@@ -220,7 +216,7 @@ export class RMarkdownPreviewManager {
             preview.autoRefresh = false;
         } else if (this.activePreview?.preview) {
             this.activePreview.preview.autoRefresh = false;
-            void setContext('r.preview.autoRefresh', false);
+            void setContext('r.markdown.preview.autoRefresh', false);
         }
     }
 
@@ -255,21 +251,22 @@ export class RMarkdownPreviewManager {
         }
     }
 
-    public async updatePreview(preview: RMarkdownPreview): Promise<void> {
-        const previewUri = this.previewStore?.getUri(preview);
-        preview.cp?.kill('SIGKILL');
+    public async updatePreview(preview?: RMarkdownPreview): Promise<void> {
+        const toUpdate = preview ?? this.activePreview?.preview;
+        const previewUri = this.previewStore?.getUri(toUpdate);
+        toUpdate.cp?.kill('SIGKILL');
 
-        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.knitDocument(previewUri, preview.title).catch(() => {
+        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.knitDocument(previewUri, toUpdate.title).catch(() => {
             void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
             this.rMarkdownOutput.show(true);
             this.previewStore.delete(previewUri);
         });
 
         if (childProcess) {
-            preview.cp = childProcess;
+            toUpdate.cp = childProcess;
         }
 
-        this.refreshPanel(preview);
+        this.refreshPanel(toUpdate);
     }
 
     private async knitWithProgress(fileUri: vscode.Uri, fileName: string, viewer: vscode.ViewColumn, currentViewColumn: vscode.ViewColumn, uri?: vscode.Uri) {
@@ -404,18 +401,22 @@ export class RMarkdownPreviewManager {
         panel.onDidDispose(() => {
             // clear values
             this.activePreview = this.activePreview?.preview === preview ? { uri: null, preview: null } : this.activePreview;
-            void setContext('r.preview.active', false);
+            void setContext('r.markdown.preview.active', false);
             this.previewStore.delete(fileUri);
         });
 
         panel.onDidChangeViewState(({ webviewPanel }) => {
-            void setContext('r.preview.active', webviewPanel.active);
+            void setContext('r.markdown.preview.active', webviewPanel.active);
             if (webviewPanel.active) {
                 this.activePreview.preview = preview;
                 this.activePreview.uri = fileUri;
-                void setContext('r.preview.autoRefresh', preview.autoRefresh);
+                void setContext('r.markdown.preview.autoRefresh', preview.autoRefresh);
             }
         });
+    }
+
+    private refreshPanel(preview?: RMarkdownPreview): void {
+        void preview.refreshContent(this.useCodeTheme);
     }
 }
 

@@ -874,32 +874,32 @@
       "editor/title": [
         {
           "command": "r.markdown.preview.openExternal",
-          "when": "resourceScheme =~ /webview/ && r.preview.active",
+          "when": "resourceScheme =~ /webview/ && r.markdown.preview.active",
           "group": "navigation@1"
         },
         {
           "command": "r.markdown.preview.showSource",
-          "when": "resourceScheme =~ /webview/ && r.preview.active",
+          "when": "resourceScheme =~ /webview/ && r.markdown.preview.active",
           "group": "navigation@2"
         },
         {
           "command": "r.markdown.preview.toggleStyle",
-          "when": "resourceScheme =~ /webview/ && r.preview.active",
+          "when": "resourceScheme =~ /webview/ && r.markdown.preview.active",
           "group": "navigation@3"
         },
         {
           "command": "r.markdown.preview.refresh",
-          "when": "resourceScheme =~ /webview/ && r.preview.active",
+          "when": "resourceScheme =~ /webview/ && r.markdown.preview.active",
           "group": "navigation@4"
         },
         {
           "command": "r.markdown.preview.enableAutoRefresh",
-          "when": "resourceScheme =~ /webview/ && r.preview.active && !r.preview.autoRefresh",
+          "when": "resourceScheme =~ /webview/ && r.markdown.preview.active && !r.markdown.preview.autoRefresh",
           "group": "navigation@5"
         },
         {
           "command": "r.markdown.preview.disableAutoRefresh",
-          "when": "resourceScheme =~ /webview/ && r.preview.active && r.preview.autoRefresh",
+          "when": "resourceScheme =~ /webview/ && r.markdown.preview.active && r.markdown.preview.autoRefresh",
           "group": "navigation@5"
         },
         {
