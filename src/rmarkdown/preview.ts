@@ -182,21 +182,25 @@ export class RMarkdownPreviewManager {
         const fileUri = uri ?? vscode.window.activeTextEditor.document.uri;
         const fileName = fileUri.fsPath.substring(fileUri.fsPath.lastIndexOf(path.sep) + 1);
         const currentViewColumn: vscode.ViewColumn = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.Active ?? vscode.ViewColumn.One;
+
+        // handle untitled rmd files
         if (!uri && vscode.window.activeTextEditor.document.isUntitled) {
             void vscode.window.showWarningMessage('Cannot knit an untitled file. Please save the document.');
-            void vscode.commands.executeCommand('workbench.action.files.save').then(async () => {
+            await vscode.commands.executeCommand('workbench.action.files.save').then(() => {
                 if (!vscode.window.activeTextEditor.document.isUntitled) {
-                    await this.previewRmd(viewer);
+                    void this.previewRmd(viewer);
                 }
             });
             return;
         }
+        // don't knit if the current uri is already being knit
         if (this.busyUriStore.has(fileUri)) {
             return;
         } else if (this.previewStore.has(fileUri)) {
             this.previewStore.get(fileUri)?.panel.reveal();
         } else {
             this.busyUriStore.add(fileUri);
+            await vscode.commands.executeCommand('workbench.action.files.save');
             await this.knitWithProgress(fileUri, fileName, viewer, currentViewColumn, uri);
             this.busyUriStore.delete(fileUri);
         }
@@ -256,7 +260,7 @@ export class RMarkdownPreviewManager {
         const previewUri = this.previewStore?.getUri(toUpdate);
         toUpdate.cp?.kill('SIGKILL');
 
-        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.knitDocument(previewUri, toUpdate.title).catch(() => {
+        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.knitWithProgress(previewUri, toUpdate.title).catch(() => {
             void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
             this.rMarkdownOutput.show(true);
             this.previewStore.delete(previewUri);
@@ -269,9 +273,10 @@ export class RMarkdownPreviewManager {
         this.refreshPanel(toUpdate);
     }
 
-    private async knitWithProgress(fileUri: vscode.Uri, fileName: string, viewer: vscode.ViewColumn, currentViewColumn: vscode.ViewColumn, uri?: vscode.Uri) {
+    private async knitWithProgress(fileUri: vscode.Uri, fileName: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn, uri?: vscode.Uri) {
+        let childProcess:cp.ChildProcessWithoutNullStreams = undefined;
         await doWithProgress(async (token: vscode.CancellationToken) => {
-            await this.knitDocument(fileUri, fileName, token, viewer, currentViewColumn);
+            childProcess = await this.knitDocument(fileUri, fileName, token, viewer, currentViewColumn);
         },
             vscode.ProgressLocation.Notification,
             `Knitting ${fileName}...`,
@@ -292,6 +297,7 @@ export class RMarkdownPreviewManager {
                 rejection.cp.kill('SIGKILL');
             }
         });
+        return childProcess;
     }
 
     private async knitDocument(fileUri: vscode.Uri, fileName: string, token?: vscode.CancellationToken, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn) {
@@ -415,7 +421,7 @@ export class RMarkdownPreviewManager {
         });
     }
 
-    private refreshPanel(preview?: RMarkdownPreview): void {
+    private refreshPanel(preview: RMarkdownPreview): void {
         void preview.refreshContent(this.useCodeTheme);
     }
 }
