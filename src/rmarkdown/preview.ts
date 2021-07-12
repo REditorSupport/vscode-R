@@ -21,6 +21,7 @@ class RMarkdownPreview extends vscode.Disposable {
     htmlLightContent: string;
     fileWatcher: fs.FSWatcher;
     autoRefresh: boolean;
+    mtime: number;
 
     constructor(title: string, cp: cp.ChildProcessWithoutNullStreams, panel: vscode.WebviewPanel,
         resourceViewColumn: vscode.ViewColumn, outputUri: vscode.Uri, uri: vscode.Uri,
@@ -38,6 +39,7 @@ class RMarkdownPreview extends vscode.Disposable {
         this.resourceViewColumn = resourceViewColumn;
         this.outputUri = outputUri;
         this.autoRefresh = autoRefresh;
+        this.mtime = fs.statSync(uri.fsPath).mtime.getTime();
         void this.refreshContent(useCodeTheme);
         this.startFileWatcher(RMarkdownPreviewManager, uri);
     }
@@ -58,8 +60,10 @@ class RMarkdownPreview extends vscode.Disposable {
     private startFileWatcher(RMarkdownPreviewManager: RMarkdownPreviewManager, uri: vscode.Uri) {
         let fsTimeout: NodeJS.Timeout;
         const fileWatcher = fs.watch(uri.fsPath, {}, () => {
-            if (this.autoRefresh && !fsTimeout) {
+            const mtime = fs.statSync(uri.fsPath).mtime.getTime();
+            if (this.autoRefresh && !fsTimeout && mtime !== this.mtime) {
                 fsTimeout = setTimeout(() => { fsTimeout = null; }, 1000);
+                this.mtime = mtime;
                 void RMarkdownPreviewManager.updatePreview(this);
             }
         });
@@ -193,6 +197,7 @@ export class RMarkdownPreviewManager {
             });
             return;
         }
+
         // don't knit if the current uri is already being knit
         if (this.busyUriStore.has(fileUri)) {
             return;
