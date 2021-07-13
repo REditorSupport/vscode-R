@@ -360,14 +360,14 @@ export class RMarkdownPreviewManager {
             childProcess.stderr.on('data', (data: Buffer) => {
                 const dat = data.toString('utf8');
                 this.rMarkdownOutput.appendLine(dat);
-                if (dat.includes('Execution halted')) {
-                    reject({ cp: childProcess, wasCancelled: false });
-                }
             });
 
             childProcess.on('exit', (code, signal) => {
                 this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process exited ` +
                     (signal ? `from signal '${signal}'` : `with exit code ${code}`));
+                if (code !== 0) {
+                    reject({ cp: childProcess, wasCancelled: false });
+                }
             });
 
             token?.onCancellationRequested(() => {
