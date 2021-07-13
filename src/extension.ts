@@ -84,14 +84,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.goToNextChunk': rmarkdown.goToNextChunk,
         'r.runChunks': rTerminal.runChunksInTerm,
 
-        'r.markdown.showPreviewToSide': () => rMarkdownPreview.previewRmd(vscode.ViewColumn.Beside),
-        'r.markdown.showPreview': (uri: vscode.Uri) => rMarkdownPreview.previewRmd(vscode.ViewColumn.Active, uri),
-        'r.markdown.preview.refresh': () => rMarkdownPreview.updatePreview(),
-        'r.markdown.preview.openExternal': () => void rMarkdownPreview.openExternalBrowser(),
-        'r.markdown.preview.showSource': () => rMarkdownPreview.showSource(),
-        'r.markdown.preview.toggleStyle': () => rMarkdownPreview.toggleTheme(),
-        'r.markdown.preview.enableAutoRefresh': () => rMarkdownPreview.enableAutoRefresh(),
-        'r.markdown.preview.disableAutoRefresh': () => rMarkdownPreview.disableAutoRefresh(),
+        'r.rmarkdown.showPreviewToSide': () => rMarkdownPreview.previewRmd(vscode.ViewColumn.Beside),
+        'r.rmarkdown.showPreview': (uri: vscode.Uri) => rMarkdownPreview.previewRmd(vscode.ViewColumn.Active, uri),
+        'r.rmarkdown.preview.refresh': () => rMarkdownPreview.updatePreview(),
+        'r.rmarkdown.preview.openExternal': () => void rMarkdownPreview.openExternalBrowser(),
+        'r.rmarkdown.preview.showSource': () => rMarkdownPreview.showSource(),
+        'r.rmarkdown.preview.toggleStyle': () => rMarkdownPreview.toggleTheme(),
+        'r.rmarkdown.preview.enableAutoRefresh': () => rMarkdownPreview.enableAutoRefresh(),
+        'r.rmarkdown.preview.disableAutoRefresh': () => rMarkdownPreview.disableAutoRefresh(),
 
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,

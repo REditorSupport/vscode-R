@@ -132,21 +132,21 @@ class RMarkdownPreviewStore extends vscode.Disposable {
         });
     }
 
-    public add(fsPath: string, preview: RMarkdownPreview): Map<string, RMarkdownPreview> {
-        return this.store.set(fsPath, preview);
+    public add(filePath: string, preview: RMarkdownPreview): Map<string, RMarkdownPreview> {
+        return this.store.set(filePath, preview);
     }
 
     // dispose child and remove it from set
-    public delete(fsPath: string): boolean {
-        this.store.get(fsPath).dispose();
-        return this.store.delete(fsPath);
+    public delete(filePath: string): boolean {
+        this.store.get(filePath).dispose();
+        return this.store.delete(filePath);
     }
 
-    public get(fsPath: string): RMarkdownPreview {
-        return this.store.get(fsPath);
+    public get(filePath: string): RMarkdownPreview {
+        return this.store.get(filePath);
     }
 
-    public getFsPath(preview: RMarkdownPreview): string {
+    public getFilePath(preview: RMarkdownPreview): string {
         for (const _preview of this.store) {
             if (_preview[1] === preview) {
                 return _preview[0];
@@ -155,8 +155,8 @@ class RMarkdownPreviewStore extends vscode.Disposable {
         return undefined;
     }
 
-    public has(fsPath: string): boolean {
-        return this.store.has(fsPath);
+    public has(filePath: string): boolean {
+        return this.store.has(filePath);
     }
 
     [Symbol.iterator]() {
@@ -184,7 +184,7 @@ export class RMarkdownPreviewManager {
 
     public async previewRmd(viewer: vscode.ViewColumn, uri?: vscode.Uri): Promise<void> {
         const filePath = uri ? uri.fsPath : vscode.window.activeTextEditor.document.uri.fsPath;
-        const fileName = filePath.substring(filePath.lastIndexOf(path.sep) + 1);
+        const fileName = path.basename(filePath);
         const currentViewColumn: vscode.ViewColumn = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.Active ?? vscode.ViewColumn.One;
 
         // handle untitled rmd files
@@ -216,7 +216,7 @@ export class RMarkdownPreviewManager {
             preview.autoRefresh = true;
         } else if (this.activePreview?.preview) {
             this.activePreview.preview.autoRefresh = true;
-            void setContext('r.markdown.preview.autoRefresh', true);
+            void setContext('r.rmarkdown.preview.autoRefresh', true);
         }
     }
 
@@ -225,7 +225,7 @@ export class RMarkdownPreviewManager {
             preview.autoRefresh = false;
         } else if (this.activePreview?.preview) {
             this.activePreview.preview.autoRefresh = false;
-            void setContext('r.markdown.preview.autoRefresh', false);
+            void setContext('r.rmarkdown.preview.autoRefresh', false);
         }
     }
 
@@ -262,7 +262,7 @@ export class RMarkdownPreviewManager {
 
     public async updatePreview(preview?: RMarkdownPreview): Promise<void> {
         const toUpdate = preview ?? this.activePreview?.preview;
-        const previewUri = this.previewStore?.getFsPath(toUpdate);
+        const previewUri = this.previewStore?.getFilePath(toUpdate);
         toUpdate.cp?.kill('SIGKILL');
 
         const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.knitWithProgress(previewUri, toUpdate.title).catch(() => {
@@ -412,16 +412,16 @@ export class RMarkdownPreviewManager {
         panel.onDidDispose(() => {
             // clear values
             this.activePreview = this.activePreview?.preview === preview ? { filePath: null, preview: null } : this.activePreview;
-            void setContext('r.markdown.preview.active', false);
+            void setContext('r.rmarkdown.preview.active', false);
             this.previewStore.delete(filePath);
         });
 
         panel.onDidChangeViewState(({ webviewPanel }) => {
-            void setContext('r.markdown.preview.active', webviewPanel.active);
+            void setContext('r.rmarkdown.preview.active', webviewPanel.active);
             if (webviewPanel.active) {
                 this.activePreview.preview = preview;
                 this.activePreview.filePath = filePath;
-                void setContext('r.markdown.preview.autoRefresh', preview.autoRefresh);
+                void setContext('r.rmarkdown.preview.autoRefresh', preview.autoRefresh);
             }
         });
     }
