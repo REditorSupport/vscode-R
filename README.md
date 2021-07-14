@@ -61,7 +61,7 @@ Note that the above steps only provide basic code editing functionalities and fe
 
 * [Browser viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#browser-viewer): Viewing interactive [shiny](https://shiny.rstudio.com) apps.
 
-* [R Markdown support](https://github.com/REditorSupport/vscode-R/wiki/R-Markdown): R Markdown chunk highlighting, chunk navigation, and execute commands.
+* [R Markdown support](https://github.com/REditorSupport/vscode-R/wiki/R-Markdown): R Markdown chunk highlighting, chunk navigation, execute commands, and preview.
 
 * [RStudio add-in support](https://github.com/REditorSupport/vscode-R/wiki/RStudio-addin-support): Run supported RStudio add-ins in VS Code with a live R session.
 

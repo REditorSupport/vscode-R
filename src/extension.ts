@@ -5,7 +5,6 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
 import path = require('path');
-import fs = require('fs');
 
 // functions etc. implemented in this extension
 import * as preview from './preview';
@@ -25,8 +24,8 @@ import * as httpgdViewer from './plotViewer';
 import { RMarkdownPreviewManager } from './rmarkdown/preview';
 
 // global objects used in other files
-export const extDir: string = path.join(os.homedir(), '.vscode-R');
-export const tmpDir: string = path.join(extDir, 'tmp');
+export const homeExtDir = (): string => util.getDir(path.join(os.homedir(), '.vscode-R'));
+export const tmpDir = (): string => util.getDir(path.join(homeExtDir(), 'tmp'));
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
@@ -36,14 +35,6 @@ export let rMarkdownPreview: RMarkdownPreviewManager | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
-    if (!fs.existsSync(extDir)) {
-        fs.mkdirSync(extDir);
-    }
-
-    if (!fs.existsSync(tmpDir)) {
-        fs.mkdirSync(tmpDir);
-    }
-
     // create a new instance of RExtensionImplementation
     // is used to export an interface to the help panel
     // this export is used e.g. by vscode-r-debugger to show the help panel from within debug sessions
@@ -93,14 +84,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.goToNextChunk': rmarkdown.goToNextChunk,
         'r.runChunks': rTerminal.runChunksInTerm,
 
-        'r.markdown.showPreviewToSide': () => rMarkdownPreview.previewRmd(vscode.ViewColumn.Beside),
-        'r.markdown.showPreview': (uri: vscode.Uri) => rMarkdownPreview.previewRmd(vscode.ViewColumn.Active, uri),
-        'r.markdown.preview.refresh': () => rMarkdownPreview.refreshPanel(),
-        'r.markdown.preview.openExternal': () => void rMarkdownPreview.openExternalBrowser(),
-        'r.markdown.preview.showSource': () => rMarkdownPreview.showSource(),
-        'r.markdown.preview.toggleStyle': () => rMarkdownPreview.toggleTheme(),
-        'r.markdown.preview.enableAutoRefresh': () => rMarkdownPreview.enableAutoRefresh(),
-        'r.markdown.preview.disableAutoRefresh': () => rMarkdownPreview.disableAutoRefresh(),
+        'r.rmarkdown.showPreviewToSide': () => rMarkdownPreview.previewRmd(vscode.ViewColumn.Beside),
+        'r.rmarkdown.showPreview': (uri: vscode.Uri) => rMarkdownPreview.previewRmd(vscode.ViewColumn.Active, uri),
+        'r.rmarkdown.preview.refresh': () => rMarkdownPreview.updatePreview(),
+        'r.rmarkdown.preview.openExternal': () => void rMarkdownPreview.openExternalBrowser(),
+        'r.rmarkdown.preview.showSource': () => rMarkdownPreview.showSource(),
+        'r.rmarkdown.preview.toggleStyle': () => rMarkdownPreview.toggleTheme(),
+        'r.rmarkdown.preview.enableAutoRefresh': () => rMarkdownPreview.enableAutoRefresh(),
+        'r.rmarkdown.preview.disableAutoRefresh': () => rMarkdownPreview.disableAutoRefresh(),
 
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
