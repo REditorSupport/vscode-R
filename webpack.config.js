@@ -50,10 +50,6 @@ module.exports = {
       { from: './node_modules/datatables.net-fixedheader/js/dataTables.fixedHeader.min.js', to: 'resources' },
       { from: './node_modules/datatables.net-fixedheader-jqui/js/fixedHeader.jqueryui.min.js', to: 'resources' },
       { from: './node_modules/datatables.net-fixedheader-jqui/css/fixedHeader.jqueryui.min.css', to: 'resources' },
-      { from: './node_modules/fotorama/fotorama.js', to: 'resources' },
-      { from: './node_modules/fotorama/fotorama.css', to: 'resources' },
-      { from: './node_modules/fotorama/fotorama.png', to: 'resources' },
-      { from: './node_modules/fotorama/fotorama@2x.png', to: 'resources' },
     ]
   }),
   ],
