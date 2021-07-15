@@ -393,11 +393,13 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     const gridOptions = {
       defaultColDef: {
         sortable: true,
-        resizable: true
+        resizable: true,
+        filter: true
       },
       columnDefs: data.columns,
       rowData: data.data,
       rowSelection: 'multiple',
+      rowMultiSelectWithClick: true,
       pagination: true,
       onGridReady: function (params) {
         gridOptions.api.sizeColumnsToFit();
