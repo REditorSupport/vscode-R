@@ -442,11 +442,6 @@
         "command": "r.attachActive"
       },
       {
-        "title": "Show Plot History",
-        "category": "R",
-        "command": "r.showPlotHistory"
-      },
-      {
         "title": "Run Command With Selection or Word in Terminal",
         "category": "R",
         "command": "r.runCommandWithSelectionOrWord"
@@ -1418,7 +1413,6 @@
     "datatables.net-bs4": "^1.10.25",
     "datatables.net-fixedheader-jqui": "^3.1.9",
     "ejs": "^3.1.6",
-    "fotorama": "^4.6.4",
     "fs-extra": "^10.0.0",
     "highlight.js": "^10.7.2",
     "jquery": "^3.6.0",
