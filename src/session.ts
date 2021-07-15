@@ -347,7 +347,6 @@ export async function showDataView(source: string, type: string, title: string, 
 export async function getTableHtml(webview: Webview, file: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
     const content = await readContent(file, 'utf8');
-    const theme = window.activeColorTheme.kind === ColorThemeKind.Light ? 'ag-theme-balham' : 'ag-theme-balham-dark';
 
     return `
 <!DOCTYPE html>
@@ -379,9 +378,18 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
   </style>
   <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
   <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, theme + '.min.css'))))}" rel="stylesheet">
+  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham.min.css'))))}" rel="stylesheet">
+  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham-dark.min.css'))))}" rel="stylesheet">
   <script>
     const data = ${String(content)};
+    function updateTheme() {
+        const gridDiv = document.querySelector('#myGrid');
+        if (document.body.classList.contains('vscode-light')) {
+            gridDiv.className = 'ag-theme-balham';
+        } else {
+            gridDiv.className = 'ag-theme-balham-dark';
+        }
+    }
     function autoSizeAll(skipHeader) {
       var allColumnIds = [];
       gridOptions.columnApi.getAllColumns().forEach(function (column) {
@@ -409,10 +417,22 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
       const gridDiv = document.querySelector('#myGrid');
       new agGrid.Grid(gridDiv, gridOptions);
     });
+    function onload() {
+        updateTheme();
+        const observer = new MutationObserver(function (event) {
+            updateTheme();
+        });
+        observer.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class'],
+            childList: false,
+            characterData: false
+        });
+    }
   </script>
 </head>
-<body>
-  <div id="myGrid" class="${theme}" style="height: 100%;"></div>
+<body onload='onload()'>
+  <div id="myGrid" style="height: 100%;"></div>
 </body>
 </html>
 `;
