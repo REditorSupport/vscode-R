@@ -1327,7 +1327,19 @@
         "r.libPaths": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "r.selectCurrentChunk",
+              "r.runCurrentChunk",
+              "r.runAboveChunks",
+              "r.runCurrentAndBelowChunks",
+              "r.runBelowChunks",
+              "r.runAllChunks",
+              "r.runPreviousChunk",
+              "r.runNextChunk",
+              "r.goToPreviousChunk",
+              "r.goToNextChunk"
+            ]
           },
           "default": [],
           "markdownDescription": "Additional library paths to launch R background processes (R languageserver, help server, etc.). These paths will be appended to `.libPaths()` on process startup. It could be useful for projects with [renv](https://rstudio.github.io/renv/index.html) enabled."
