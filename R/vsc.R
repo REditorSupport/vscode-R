@@ -266,8 +266,6 @@ if (show_view) {
     list(
       headerName = name,
       field = field,
-      sortable = TRUE,
-      resizable = TRUE,
       type = type,
       filter = filter
     )

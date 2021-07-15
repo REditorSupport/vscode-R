@@ -373,7 +373,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     }
 
     body {
-        padding: 0;
+        padding: 1rem;
         overflow: auto;
     }
   </style>
@@ -382,24 +382,30 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
   <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-alpine.min.css'))))}" rel="stylesheet">
   <script>
     const data = ${String(content)};
+    function autoSizeAll(skipHeader) {
+      var allColumnIds = [];
+      gridOptions.columnApi.getAllColumns().forEach(function (column) {
+        allColumnIds.push(column.colId);
+      });
+      gridOptions.columnApi.autoSizeColumns(allColumnIds, skipHeader);
+    }
     const gridOptions = {
+      defaultColDef: {
+        sortable: true,
+        resizable: true
+      },
       columnDefs: data.columns,
       rowData: data.data,
       rowSelection: 'multiple',
       pagination: true,
       onGridReady: function (params) {
-        params.api.sizeColumnsToFit();
-        window.addEventListener('resize', function () {
-          setTimeout(function () {
-            params.api.sizeColumnsToFit();
-          });
-        });
+        gridOptions.api.sizeColumnsToFit();
+        autoSizeAll(false);
       }
     };
     document.addEventListener('DOMContentLoaded', () => {
       const gridDiv = document.querySelector('#myGrid');
       new agGrid.Grid(gridDiv, gridOptions);
-      gridOptions.api.sizeColumnsToFit();
     });
   </script>
 </head>
