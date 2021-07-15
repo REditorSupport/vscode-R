@@ -48,10 +48,6 @@ module.exports = {
       { from: './node_modules/ag-grid-community/dist/styles/ag-grid.min.css', to: 'resources' },
       { from: './node_modules/ag-grid-community/dist/styles/ag-theme-balham.min.css', to: 'resources' },
       { from: './node_modules/ag-grid-community/dist/styles/ag-theme-balham-dark.min.css', to: 'resources' },
-      { from: './node_modules/fotorama/fotorama.js', to: 'resources' },
-      { from: './node_modules/fotorama/fotorama.css', to: 'resources' },
-      { from: './node_modules/fotorama/fotorama.png', to: 'resources' },
-      { from: './node_modules/fotorama/fotorama@2x.png', to: 'resources' },
     ]
   }),
   ],

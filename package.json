@@ -442,11 +442,6 @@
         "command": "r.attachActive"
       },
       {
-        "title": "Show Plot History",
-        "category": "R",
-        "command": "r.showPlotHistory"
-      },
-      {
         "title": "Run Command With Selection or Word in Terminal",
         "category": "R",
         "command": "r.runCommandWithSelectionOrWord"
@@ -1193,13 +1188,25 @@
         "r.rmarkdown.codeLensCommands": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "r.selectCurrentChunk",
+              "r.runCurrentChunk",
+              "r.runAboveChunks",
+              "r.runCurrentAndBelowChunks",
+              "r.runBelowChunks",
+              "r.runAllChunks",
+              "r.runPreviousChunk",
+              "r.runNextChunk",
+              "r.goToPreviousChunk",
+              "r.goToNextChunk"
+            ]
           },
           "default": [
             "r.runCurrentChunk",
             "r.runAboveChunks"
           ],
-          "description": "Customize RMarkdown CodeLens, which are inline commands/buttons e.g. 'Run Chunk' shown on the first line of each code chunk. Available commands:\n\nr.selectCurrentChunk\nr.runCurrentChunk\nr.runAboveChunks\nr.runCurrentAndBelowChunks\nr.runBelowChunks\nr.runAllChunks\nr.runPreviousChunk\nr.runNextChunk\nr.goToPreviousChunk\nr.goToNextChunk\n\n----------------------------------\nCustomize both the commands AND its orders (that is, CodeLens respect user-specified orders):"
+          "description": "Customize RMarkdown CodeLens, which are inline commands/buttons e.g. 'Run Chunk' shown on the first line of each code chunk. \nCustomize both the commands AND its orders (that is, CodeLens respect user-specified orders):"
         },
         "r.rmarkdown.enableCodeLens": {
           "type": "boolean",
@@ -1416,7 +1423,6 @@
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
     "ejs": "^3.1.6",
-    "fotorama": "^4.6.4",
     "fs-extra": "^10.0.0",
     "highlight.js": "^10.7.2",
     "jquery": "^3.6.0",

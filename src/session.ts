@@ -33,7 +33,6 @@ let plotView: string;
 let plotFile: string;
 let plotLockFile: string;
 let plotTimeStamp: number;
-let plotDir: string;
 let globalEnvWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
 let activeBrowserPanel: WebviewPanel;
@@ -461,68 +460,6 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 `;
 }
 
-export async function showPlotHistory(): Promise<void> {
-    if (config().get<boolean>('sessionWatcher')) {
-        if (plotDir === undefined) {
-            void window.showErrorMessage('No session is attached.');
-        } else {
-            const files = await fs.readdir(plotDir);
-            if (files.length > 0) {
-                const panel = window.createWebviewPanel('plotHistory', 'Plot History',
-                    {
-                        preserveFocus: true,
-                        viewColumn: ViewColumn.Active,
-                    },
-                    {
-                        retainContextWhenHidden: true,
-                        enableScripts: true,
-                        localResourceRoots: [Uri.file(resDir), Uri.file(plotDir)],
-                    });
-                const html = getPlotHistoryHtml(panel.webview, files);
-                panel.webview.html = html;
-            } else {
-                void window.showInformationMessage('There is no plot to show yet.');
-            }
-        }
-    } else {
-        void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
-    }
-}
-
-function getPlotHistoryHtml(webview: Webview, files: string[]) {
-    const imgs = files
-        .map((file) => `<img src="${String(webview.asWebviewUri(Uri.file(path.join(plotDir, file))))}" />`)
-        .join('\n');
-
-    return `
-<!doctype HTML>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'bootstrap.min.css'))))}" rel="stylesheet">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'fotorama.css'))))}" rel="stylesheet">
-  <style type="text/css">
-    body {
-        background-color: white;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="text-center">
-      <div class="fotorama" data-width="100%" data-maxheight="100%" data-nav="thumbs" data-keyboard="true">
-        ${imgs}
-      </div>
-    </div>
-  </div>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'fotorama.js'))))}"></script>
-</body>
-</html>
-`;
-}
-
 function isFromWorkspace(dir: string) {
     if (workspace.workspaceFolders === undefined) {
         const rel = path.relative(os.homedir(), dir);
@@ -593,7 +530,6 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         pid = String(request.pid);
                         sessionDir = path.join(request.tempdir, 'vscode-R');
                         workingDir = request.wd;
-                        plotDir = path.join(sessionDir, 'images');
                         plotView = String(request.plot);
                         console.info(`[updateRequest] attach PID: ${pid}`);
                         sessionStatusBarItem.text = `R: ${pid}`;

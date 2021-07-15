@@ -176,13 +176,10 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
 } else if (use_httpgd) {
   message("Install package `httpgd` to use vscode-R with httpgd!")
 } else if (show_plot) {
-  dir_plot_history <- file.path(dir_session, "images")
-  dir.create(dir_plot_history, showWarnings = FALSE, recursive = TRUE)
   plot_file <- file.path(dir_session, "plot.png")
   plot_lock_file <- file.path(dir_session, "plot.lock")
   file.create(plot_file, plot_lock_file, showWarnings = FALSE)
 
-  plot_history_file <- NULL
   plot_updated <- FALSE
   null_dev_id <- c(pdf = 2L)
   null_dev_size <- c(7 + pi, 7 + pi)
@@ -194,8 +191,6 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
 
   new_plot <- function() {
     if (check_null_dev()) {
-      plot_history_file <<- file.path(dir_plot_history,
-        format(Sys.time(), "%Y%m%d-%H%M%OS6.png"))
       plot_updated <<- TRUE
     }
   }
@@ -221,9 +216,6 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
           on.exit({
             dev.off()
             cat(get_timestamp(), file = plot_lock_file)
-            if (!is.null(plot_history_file)) {
-              file.copy(plot_file, plot_history_file, overwrite = TRUE)
-            }
           })
           replayPlot(record)
         }
