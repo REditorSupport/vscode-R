@@ -265,9 +265,6 @@ if (show_view) {
 
   dataview_table <- function(data) {
     if (is.matrix(data)) {
-      if (is.factor(data)) {
-        data <- format(data)
-      }
       data <- as.data.frame.matrix(data)
     }
 
