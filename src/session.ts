@@ -394,12 +394,12 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
       defaultColDef: {
         sortable: true,
         resizable: true,
-        filter: true
+        filter: true,
+        editable: true
       },
       columnDefs: data.columns,
       rowData: data.data,
       rowSelection: 'multiple',
-      rowMultiSelectWithClick: true,
       pagination: true,
       onGridReady: function (params) {
         gridOptions.api.sizeColumnsToFit();
