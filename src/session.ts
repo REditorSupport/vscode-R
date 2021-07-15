@@ -355,6 +355,28 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style media="only screen">
+    html, body {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    html {
+        position: absolute;
+        top: 0;
+        left: 0;
+        padding: 0;
+        overflow: auto;
+    }
+
+    body {
+        padding: 0;
+        overflow: auto;
+    }
+  </style>
   <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
   <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
   <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-alpine.min.css'))))}" rel="stylesheet">
@@ -362,18 +384,27 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     const data = ${String(content)};
     const gridOptions = {
       columnDefs: data.columns,
-      rowData: data.rows,
+      rowData: data.data,
       rowSelection: 'multiple',
-      pagination: true
+      pagination: true,
+      onGridReady: function (params) {
+        params.api.sizeColumnsToFit();
+        window.addEventListener('resize', function () {
+          setTimeout(function () {
+            params.api.sizeColumnsToFit();
+          });
+        });
+      }
     };
     document.addEventListener('DOMContentLoaded', () => {
       const gridDiv = document.querySelector('#myGrid');
       new agGrid.Grid(gridDiv, gridOptions);
+      gridOptions.api.sizeColumnsToFit();
     });
   </script>
 </head>
 <body>
-  <div id="myGrid" style="height: 500px; width: 1280px;" class="ag-theme-alpine"></div>
+  <div id="myGrid" class="ag-theme-alpine" style="height: 100%;"></div>
 </body>
 </html>
 `;
