@@ -12,7 +12,7 @@ import { config, setContext } from '../util';
 
 import { extensionContext } from '../extension';
 
-import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage, PreviewPlotLayout, PreviewPlotLayoutMessage } from './webviewMessages';
+import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage, PreviewPlotLayout, PreviewPlotLayoutMessage, ToggleFullWindowMessage } from './webviewMessages';
 
 import { isHost, rHostService, shareBrowser } from '../liveshare';
 
@@ -22,6 +22,7 @@ const commands = [
     'openExternal',
     'showIndex',
     'toggleStyle',
+    'toggleFullWindow',
     'togglePreviewPlots',
     'exportPlot',
     'nextPlot',
@@ -209,6 +210,9 @@ export class HttpgdManager {
             } case 'openExternal': {
                 void viewer.openExternal();
                 break;
+            } case 'toggleFullWindow': {
+                void viewer.toggleFullWindow();
+                break;
             } default: {
                 break;
             }
@@ -267,6 +271,9 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     readonly defaultPreviewPlotLayout: PreviewPlotLayout = 'multirow';
     previewPlotLayout: PreviewPlotLayout;
+    
+    readonly defaultFullWindow: boolean = false;
+    fullWindow: boolean;
 
     // Custom file to be used instead of `styleOverwrites.css`
     customOverwriteCssPath?: string;
@@ -360,6 +367,8 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.stripStyles = this.defaultStripStyles;
         this.defaultPreviewPlotLayout = options.previewPlotLayout ?? this.defaultPreviewPlotLayout;
         this.previewPlotLayout = this.defaultPreviewPlotLayout;
+        this.defaultFullWindow = options.fullWindow ?? this.defaultFullWindow;
+        this.fullWindow = this.defaultFullWindow;
         this.resizeTimeoutLength = options.refreshTimeoutLength ?? this.resizeTimeoutLength;
         this.refreshTimeoutLength = options.refreshTimeoutLength ?? this.refreshTimeoutLength;
         this.api.start();
@@ -465,6 +474,15 @@ export class HttpgdViewer implements IHttpgdViewer {
         const msg: ToggleStyleMessage = {
             message: 'toggleStyle',
             useOverwrites: this.stripStyles
+        };
+        this.postWebviewMessage(msg);
+    }
+    
+    public toggleFullWindow(force?: boolean): void {
+        this.fullWindow = force ?? !this.fullWindow;
+        const msg: ToggleFullWindowMessage = {
+            message: 'toggleFullWindow',
+            useFullWindow: this.fullWindow
         };
         this.postWebviewMessage(msg);
     }

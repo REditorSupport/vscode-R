@@ -21,9 +21,14 @@ function getSmallPlots() {
     return smallPlots;
 }
 let isHandlerDragging = false;
+let isFullWindow = false;
 function postResizeMessage(userTriggered = false) {
-    const newHeight = largePlotDiv.clientHeight;
-    const newWidth = largePlotDiv.clientWidth;
+    let newHeight = largePlotDiv.clientHeight;
+    let newWidth = largePlotDiv.clientWidth;
+    if (isFullWindow) {
+        newHeight = window.innerHeight;
+        newWidth = window.innerWidth;
+    }
     if (userTriggered || newHeight !== oldHeight || newWidth !== oldWidth) {
         const msg = {
             message: 'resize',
@@ -65,6 +70,9 @@ window.addEventListener('message', (ev) => {
     }
     else if (msg.message === 'togglePreviewPlotLayout') {
         togglePreviewPlotLayout(msg.style);
+    }
+    else if (msg.message === 'toggleFullWindow') {
+        toggleFullWindowMode(msg.useFullWindow);
     }
 });
 function addPlot(html) {
@@ -124,10 +132,21 @@ function togglePreviewPlotLayout(newStyle) {
     smallPlotDiv.classList.remove('multirow', 'scroll', 'hidden');
     smallPlotDiv.classList.add(newStyle);
 }
+function toggleFullWindowMode(useFullWindow) {
+    isFullWindow = useFullWindow;
+    if (useFullWindow) {
+        document.body.classList.add('fullWindow');
+    }
+    else {
+        document.body.classList.remove('fullWindow');
+    }
+    postResizeMessage(true);
+}
 ////
 // On window load
 ////
 window.onload = () => {
+    isFullWindow = document.body.classList.contains('fullWindow');
     largePlotDiv.style.height = `${largeSvg.clientHeight}px`;
     postResizeMessage(true);
 };
@@ -136,7 +155,7 @@ window.onload = () => {
 ////
 document.addEventListener('mousedown', (e) => {
     // If mousedown event is fired from .handler, toggle flag to true
-    if (e.target === handler) {
+    if (!isFullWindow && e.target === handler) {
         isHandlerDragging = true;
         handler.classList.add('dragging');
         document.body.style.cursor = 'ns-resize';
@@ -144,7 +163,7 @@ document.addEventListener('mousedown', (e) => {
 });
 document.addEventListener('mousemove', (e) => {
     // Don't do anything if dragging flag is false
-    if (!isHandlerDragging) {
+    if (isFullWindow || !isHandlerDragging) {
         return false;
     }
     // postLogMessage('mousemove');

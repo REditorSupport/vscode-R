@@ -46,6 +46,12 @@ export interface ToggleStyleMessage extends IMessage {
   useOverwrites: boolean
 }
 
+export interface ToggleFullWindowMessage extends IMessage {
+  message: 'toggleFullWindow',
+  useFullWindow: boolean
+}
+
+
 export type PreviewPlotLayout = 'multirow' | 'scroll' | 'hidden';
 export interface PreviewPlotLayoutMessage extends IMessage {
   message: 'togglePreviewPlotLayout',
@@ -62,4 +68,4 @@ export interface AddPlotMessage extends IMessage {
   html: string
 }
 
-export type InMessage = UpdatePlotMessage | FocusPlotMessage | ToggleStyleMessage | HidePlotMessage | AddPlotMessage | PreviewPlotLayoutMessage;
+export type InMessage = UpdatePlotMessage | FocusPlotMessage | ToggleStyleMessage | HidePlotMessage | AddPlotMessage | PreviewPlotLayoutMessage | ToggleFullWindowMessage;

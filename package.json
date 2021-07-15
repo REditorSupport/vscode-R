@@ -692,6 +692,12 @@
         "icon": "$(symbol-color)"
       },
       {
+        "title": "Toggle Full Window Mode",
+        "category": "R Plot",
+        "command": "r.plot.toggleFullWindow",
+        "icon": "$(screen-full)"
+      },
+      {
         "title": "Toggle Preview Plot Layout",
         "category": "R Plot",
         "command": "r.plot.togglePreviewPlots",
@@ -936,6 +942,11 @@
           "group": "navigation",
           "when": "resourceScheme =~ /webview/ && r.plot.active",
           "command": "r.plot.toggleStyle"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.toggleFullWindow"
         },
         {
           "group": "httpgd",
