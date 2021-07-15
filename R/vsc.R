@@ -282,7 +282,7 @@ if (show_view) {
       } else {
         rownames <- seq_len(nrow)
       }
-      colnames <- c(" ", colnames)
+      colnames <- c("(row)", colnames)
       fields <- sprintf("x%d", seq_along(colnames))
       data <- c(list(" " = rownames), .subset(data))
       names(data) <- fields
