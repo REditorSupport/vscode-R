@@ -7,7 +7,7 @@
 import * as fs from 'fs-extra';
 import * as os from 'os';
 import * as path from 'path';
-import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
+import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel, ColorThemeKind } from 'vscode';
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
@@ -348,6 +348,7 @@ export async function showDataView(source: string, type: string, title: string, 
 export async function getTableHtml(webview: Webview, file: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
     const content = await readContent(file, 'utf8');
+    const theme = window.activeColorTheme.kind === ColorThemeKind.Light ? 'ag-theme-balham' : 'ag-theme-balham-dark';
 
     return `
 <!DOCTYPE html>
@@ -373,13 +374,13 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     }
 
     body {
-        padding: 1rem;
+        padding: 0;
         overflow: auto;
     }
   </style>
   <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
   <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-alpine.min.css'))))}" rel="stylesheet">
+  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, theme + '.min.css'))))}" rel="stylesheet">
   <script>
     const data = ${String(content)};
     function autoSizeAll(skipHeader) {
@@ -410,7 +411,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
   </script>
 </head>
 <body>
-  <div id="myGrid" class="ag-theme-alpine" style="height: 100%;"></div>
+  <div id="myGrid" class="${theme}" style="height: 100%;"></div>
 </body>
 </html>
 `;
