@@ -401,8 +401,11 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
       defaultColDef: {
         sortable: true,
         resizable: true,
+        editable: true,
         filter: true,
-        editable: true
+        filterParams: {
+          buttons: ['reset', 'apply']
+        }
       },
       columnDefs: data.columns,
       rowData: data.data,
