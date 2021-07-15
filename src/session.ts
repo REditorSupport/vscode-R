@@ -355,44 +355,25 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'bootstrap.min.css'))))}" rel="stylesheet">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'dataTables.bootstrap4.min.css'))))}" rel="stylesheet">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'fixedHeader.jqueryui.min.css'))))}" rel="stylesheet">
-  <style type="text/css">
-    body {
-        color: black;
-        background-color: white;
-    }
-    table {
-        font-size: 0.75em;
-    }
-  </style>
-</head>
-<body>
-  <div class="container-fluid">
-    <table id="data-table" class="display table table-sm table-striped table-condensed table-hover"></table>
-  </div>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.dataTables.min.js'))))}"></script>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'dataTables.bootstrap4.min.js'))))}"></script>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'dataTables.fixedHeader.min.js'))))}"></script>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'fixedHeader.jqueryui.min.js'))))}"></script>
+  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
+  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
+  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-alpine.min.css'))))}" rel="stylesheet">
   <script>
-    var data = ${String(content)};
-    $(document).ready(function () {
-      $("#data-table").DataTable({
-        data: data.data,
-        columns: data.columns,
-        paging: false,
-        autoWidth: false,
-        order: [],
-        fixedHeader: true
-      });
-      $("#data-table tbody").on("click", "tr", function() {
-        $(this).toggleClass("table-active");
-      });
+    const data = ${String(content)};
+    const gridOptions = {
+      columnDefs: data.columns,
+      rowData: data.rows,
+      rowSelection: 'multiple',
+      pagination: true
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const gridDiv = document.querySelector('#myGrid');
+      new agGrid.Grid(gridDiv, gridOptions);
     });
   </script>
+</head>
+<body>
+  <div id="myGrid" style="height: 500px; width: 1280px;" class="ag-theme-alpine"></div>
 </body>
 </html>
 `;
