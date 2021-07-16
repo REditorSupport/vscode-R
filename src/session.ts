@@ -466,11 +466,16 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
     }
 
     ul.json-dict, ol.json-array {
+        color: var(--vscode-symbolIcon-fieldForeground);
         border-left: 1px dotted var(--vscode-editorLineNumber-foreground);
     }
 
     .json-literal {
-        color: var(--vscode-symbolIcon-variableForeground)
+        color: var(--vscode-symbolIcon-variableForeground);
+    }
+
+    .json-string {
+        color: var(--vscode-symbolIcon-stringForeground);
     }
   </style>
   <script>
