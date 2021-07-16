@@ -457,12 +457,18 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
   <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.css'))))}" rel="stylesheet">
   <style type="text/css">
     body {
-        color: var(--vscode-editor-foreground);;
-        background-color: var(--vscode-editor-background);;
+        color: var(--vscode-editor-foreground);
+        background-color: var(--vscode-editor-background);
     }
+
     pre#json-renderer {
-      border: 1px solid #aaa;
+        border: 1px solid var(--vscode-editorLineNumber-foreground);
     }
+
+    ul.json-dict, ol.json-array {
+        border-left: 1px dotted var(--vscode-editorLineNumber-foreground);
+    }
+
     .json-literal {
         color: var(--vscode-symbolIcon-variableForeground)
     }
