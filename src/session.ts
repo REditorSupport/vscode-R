@@ -401,7 +401,6 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
       defaultColDef: {
         sortable: true,
         resizable: true,
-        editable: true,
         filter: true,
         filterParams: {
           buttons: ['reset', 'apply']
@@ -411,6 +410,8 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
       rowData: data.data,
       rowSelection: 'multiple',
       pagination: true,
+      enableCellTextSelection: true,
+      ensureDomOrder: true,
       onGridReady: function (params) {
         gridOptions.api.sizeColumnsToFit();
         autoSizeAll(false);
