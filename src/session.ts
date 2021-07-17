@@ -461,8 +461,12 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
         background-color: var(--vscode-editor-background);
     }
 
+    .json-document {
+        padding: 0 0;
+    }
+
     pre#json-renderer {
-        border: 1px solid var(--vscode-editorLineNumber-foreground);
+        border: 0;
     }
 
     ul.json-dict, ol.json-array {
@@ -476,6 +480,18 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 
     .json-string {
         color: var(--vscode-symbolIcon-stringForeground);
+    }
+
+    a.json-toggle:before {
+        color: var(--vscode-button-secondaryBackground);
+    }
+
+    a.json-toggle:hover:before {
+        color: var(--vscode-button-secondaryHoverBackground);
+    }
+
+    a.json-placeholder {
+        color: var(--vscode-input-placeholderForeground);
     }
   </style>
   <script>
