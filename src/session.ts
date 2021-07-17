@@ -466,6 +466,7 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
     }
 
     pre#json-renderer {
+        font-family: var(--vscode-editor-font-family);
         border: 0;
     }
 
