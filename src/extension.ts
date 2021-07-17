@@ -3,6 +3,8 @@
 
 // interfaces, functions, etc. provided by vscode
 import * as vscode from 'vscode';
+import * as os from 'os';
+import path = require('path');
 
 // functions etc. implemented in this extension
 import * as preview from './preview';
@@ -20,14 +22,17 @@ import * as rShare from './liveshare';
 import * as httpgdViewer from './plotViewer';
 import * as languageService from './languageService';
 
+import { RMarkdownPreviewManager } from './rmarkdown/preview';
 
 // global objects used in other files
+export const homeExtDir = (): string => util.getDir(path.join(os.homedir(), '.vscode-R'));
+export const tmpDir = (): string => util.getDir(path.join(homeExtDir(), 'tmp'));
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
 export let enableSessionWatcher: boolean = undefined;
 export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
-
+export let rMarkdownPreview: RMarkdownPreviewManager | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -80,6 +85,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.goToNextChunk': rmarkdown.goToNextChunk,
         'r.runChunks': rTerminal.runChunksInTerm,
 
+        'r.rmarkdown.showPreviewToSide': () => rMarkdownPreview.previewRmd(vscode.ViewColumn.Beside),
+        'r.rmarkdown.showPreview': (uri: vscode.Uri) => rMarkdownPreview.previewRmd(vscode.ViewColumn.Active, uri),
+        'r.rmarkdown.preview.refresh': () => rMarkdownPreview.updatePreview(),
+        'r.rmarkdown.preview.openExternal': () => void rMarkdownPreview.openExternalBrowser(),
+        'r.rmarkdown.preview.showSource': () => rMarkdownPreview.showSource(),
+        'r.rmarkdown.preview.toggleStyle': () => rMarkdownPreview.toggleTheme(),
+        'r.rmarkdown.preview.enableAutoRefresh': () => rMarkdownPreview.enableAutoRefresh(),
+        'r.rmarkdown.preview.disableAutoRefresh': () => rMarkdownPreview.disableAutoRefresh(),
+
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
         'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
@@ -92,7 +106,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.previewDataframe': preview.previewDataframe,
         'r.previewEnvironment': preview.previewEnvironment,
         'r.attachActive': session.attachActive,
-        'r.showPlotHistory': session.showPlotHistory,
         'r.launchAddinPicker': rstudioapi.launchAddinPicker,
 
         // workspace viewer
@@ -147,6 +160,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // initialize the package/help related functions
     globalRHelp = await rHelp.initializeHelp(context, rExtension);
 
+    // init preview provider
+    rMarkdownPreview = new RMarkdownPreviewManager();
+    await rMarkdownPreview.init();
 
     // register codelens and complmetion providers for r markdown
     vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());

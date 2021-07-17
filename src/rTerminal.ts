@@ -6,11 +6,11 @@ import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
 
-import { extensionContext } from './extension';
+import { extensionContext, homeExtDir } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { removeSessionFiles, watcherDir } from './session';
+import { removeSessionFiles } from './session';
 import { config, delay, getRterm } from './util';
 import { rGuestService, isGuestSession } from './liveshare';
 export let rTerm: vscode.Terminal;
@@ -124,7 +124,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
                     R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
                     R_PROFILE_USER: newRprofile,
                     VSCODE_INIT_R: initR,
-                    VSCODE_WATCHER_DIR: watcherDir
+                    VSCODE_WATCHER_DIR: homeExtDir()
                 };
             }
             rTerm = vscode.window.createTerminal(termOptions);
@@ -203,7 +203,7 @@ export async function chooseTerminal(): Promise<vscode.Terminal> {
                     msg += `Terminal ${i}: ${vscode.window.terminals[i].name} `;
                 }
                 console.info(msg);
-                void vscode.window.showErrorMessage('Error identifying terminal! Please run command "Developer: Toggle Developer Tools", find the message starting with "[chooseTerminal]", and copy the message to https://github.com/Ikuyadeu/vscode-R/issues');
+                void vscode.window.showErrorMessage('Error identifying terminal! Please run command "Developer: Toggle Developer Tools", find the message starting with "[chooseTerminal]", and copy the message to https://github.com/REditorSupport/vscode-R/issues');
 
                 return undefined;
             }

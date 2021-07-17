@@ -6,7 +6,7 @@ import * as hljs from 'highlight.js';
 
 import * as api from '../api';
 
-import { config, getRpath, doWithProgress, DummyMemento, getRPathConfigEntry } from '../util';
+import { config, getRpath, doWithProgress, DummyMemento, getRPathConfigEntry, escapeHtml } from '../util';
 import { HelpPanel } from './panel';
 import { HelpProvider, AliasProvider } from './helpProvider';
 import { HelpTreeWrapper } from './treeView';
@@ -524,15 +524,3 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	}
 }
 
-// Helper function used to convert raw text files to html
-function escapeHtml(source: string) {
-	const entityMap = new Map<string, string>(Object.entries({
-		'&': '&amp;',
-		'<': '&lt;',
-		'>': '&gt;',
-		'"': '&quot;',
-		'\'': '&#39;',
-		'/': '&#x2F;'
-	}));
-    return String(source).replace(/[&<>"'/]/g, (s: string) => entityMap.get(s) || '');
-}

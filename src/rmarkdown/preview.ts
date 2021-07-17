@@ -1,0 +1,433 @@
+
+import * as cp from 'child_process';
+import * as vscode from 'vscode';
+import * as fs from 'fs-extra';
+import * as cheerio from 'cheerio';
+
+import path = require('path');
+import crypto = require('crypto');
+
+
+import { config, doWithProgress, getRpath, readContent, setContext, escapeHtml } from '../util';
+import { extensionContext, tmpDir } from '../extension';
+
+class RMarkdownPreview extends vscode.Disposable {
+    title: string;
+    cp: cp.ChildProcessWithoutNullStreams;
+    panel: vscode.WebviewPanel;
+    resourceViewColumn: vscode.ViewColumn;
+    outputUri: vscode.Uri;
+    htmlDarkContent: string;
+    htmlLightContent: string;
+    fileWatcher: fs.FSWatcher;
+    autoRefresh: boolean;
+    mtime: number;
+
+    constructor(title: string, cp: cp.ChildProcessWithoutNullStreams, panel: vscode.WebviewPanel,
+        resourceViewColumn: vscode.ViewColumn, outputUri: vscode.Uri, filePath: string,
+        RMarkdownPreviewManager: RMarkdownPreviewManager, useCodeTheme: boolean, autoRefresh: boolean) {
+        super(() => {
+            this.cp?.kill('SIGKILL');
+            this.panel?.dispose();
+            this.fileWatcher?.close();
+            fs.removeSync(this.outputUri.fsPath);
+        });
+
+        this.title = title;
+        this.cp = cp;
+        this.panel = panel;
+        this.resourceViewColumn = resourceViewColumn;
+        this.outputUri = outputUri;
+        this.autoRefresh = autoRefresh;
+        this.mtime = fs.statSync(filePath).mtime.getTime();
+        void this.refreshContent(useCodeTheme);
+        this.startFileWatcher(RMarkdownPreviewManager, filePath);
+    }
+
+    public styleHtml(useCodeTheme: boolean) {
+        if (useCodeTheme) {
+            this.panel.webview.html = this.htmlDarkContent;
+        } else {
+            this.panel.webview.html = this.htmlLightContent;
+        }
+    }
+
+    public async refreshContent(useCodeTheme: boolean) {
+        this.getHtmlContent(await readContent(this.outputUri.fsPath, 'utf8'));
+        this.styleHtml(useCodeTheme);
+    }
+
+    private startFileWatcher(RMarkdownPreviewManager: RMarkdownPreviewManager, filePath: string) {
+        let fsTimeout: NodeJS.Timeout;
+        const fileWatcher = fs.watch(filePath, {}, () => {
+            const mtime = fs.statSync(filePath).mtime.getTime();
+            if (this.autoRefresh && !fsTimeout && mtime !== this.mtime) {
+                fsTimeout = setTimeout(() => { fsTimeout = null; }, 1000);
+                this.mtime = mtime;
+                void RMarkdownPreviewManager.updatePreview(this);
+            }
+        });
+        this.fileWatcher = fileWatcher;
+    }
+
+    private getHtmlContent(htmlContent: string): void {
+        let content = htmlContent.replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
+            `<$1 $2="${String(this.panel.webview.asWebviewUri(vscode.Uri.file(tmpDir())))}/`);
+
+        const re = new RegExp('<html[^\\n]*>.*</html>', 'ms');
+        const isHtml = !!re.exec(content);
+
+        if (!isHtml) {
+            const html = escapeHtml(content);
+            content = `<html><head></head><body><pre>${html}</pre></body></html>`;
+        }
+
+        this.htmlLightContent = content;
+
+        const $ = cheerio.load(content);
+        const chunkCol = String(config().get('rmarkdown.chunkBackgroundColor'));
+
+        // make the output chunks a little lighter to stand out
+        const colReg = /[0-9.]+/g;
+        const regOut = chunkCol.match(colReg);
+        const outCol = `rgba(${regOut[0] ?? 100}, ${regOut[1] ?? 100}, ${regOut[2] ?? 100}, ${Number(regOut[3]) + 0.05 ?? .5})`;
+
+        const style =
+            `<style>
+            body {
+                color: var(--vscode-editor-foreground);
+                background: var(--vscode-editor-background);
+            }
+            .hljs {
+                color: var(--vscode-editor-foreground);
+            }
+            code, pre {
+                color: inherit;
+                background: ${chunkCol};
+                border-color: ${chunkCol};
+            }
+            pre:not([class]) {
+                color: inherit;
+                background: ${outCol};
+            }
+            pre > code {
+                background: transparent;
+            }
+        </style>
+        `;
+        $('head').append(style);
+        this.htmlDarkContent = $.html();
+    }
+}
+
+class RMarkdownPreviewStore extends vscode.Disposable {
+    private store: Map<string, RMarkdownPreview> = new Map<string, RMarkdownPreview>();
+
+    constructor() {
+        super((): void => {
+            for (const preview of this.store) {
+                preview[1].dispose();
+            }
+            this.store.clear();
+        });
+    }
+
+    public add(filePath: string, preview: RMarkdownPreview): Map<string, RMarkdownPreview> {
+        return this.store.set(filePath, preview);
+    }
+
+    // dispose child and remove it from set
+    public delete(filePath: string): boolean {
+        this.store.get(filePath).dispose();
+        return this.store.delete(filePath);
+    }
+
+    public get(filePath: string): RMarkdownPreview {
+        return this.store.get(filePath);
+    }
+
+    public getFilePath(preview: RMarkdownPreview): string {
+        for (const _preview of this.store) {
+            if (_preview[1] === preview) {
+                return _preview[0];
+            }
+        }
+        return undefined;
+    }
+
+    public has(filePath: string): boolean {
+        return this.store.has(filePath);
+    }
+
+    [Symbol.iterator]() {
+        return this.store[Symbol.iterator]();
+    }
+}
+
+export class RMarkdownPreviewManager {
+    private rPath: string;
+    private rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel('R Markdown');
+
+    // the currently selected RMarkdown preview
+    private activePreview: { filePath: string, preview: RMarkdownPreview } = { filePath: null, preview: null };
+    // store of all open RMarkdown previews
+    private previewStore: RMarkdownPreviewStore = new RMarkdownPreviewStore;
+    // uri that are in the process of knitting
+    // so that we can't spam the preview button
+    private busyUriStore: Set<string> = new Set<string>();
+    private useCodeTheme = true;
+
+    public async init(): Promise<void> {
+        this.rPath = await getRpath(true);
+        extensionContext.subscriptions.push(this.previewStore);
+    }
+
+    public async previewRmd(viewer: vscode.ViewColumn, uri?: vscode.Uri): Promise<void> {
+        const filePath = uri ? uri.fsPath : vscode.window.activeTextEditor.document.uri.fsPath;
+        const fileName = path.basename(filePath);
+        const currentViewColumn: vscode.ViewColumn = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.Active ?? vscode.ViewColumn.One;
+
+        // handle untitled rmd files
+        if (!uri && vscode.window.activeTextEditor.document.isUntitled) {
+            void vscode.window.showWarningMessage('Cannot knit an untitled file. Please save the document.');
+            await vscode.commands.executeCommand('workbench.action.files.save').then(() => {
+                if (!vscode.window.activeTextEditor.document.isUntitled) {
+                    void this.previewRmd(viewer);
+                }
+            });
+            return;
+        }
+
+        // don't knit if the current uri is already being knit
+        if (this.busyUriStore.has(filePath)) {
+            return;
+        } else if (this.previewStore.has(filePath)) {
+            this.previewStore.get(filePath)?.panel.reveal();
+        } else {
+            this.busyUriStore.add(filePath);
+            await vscode.commands.executeCommand('workbench.action.files.save');
+            await this.knitWithProgress(filePath, fileName, viewer, currentViewColumn);
+            this.busyUriStore.delete(filePath);
+        }
+    }
+
+    public enableAutoRefresh(preview?: RMarkdownPreview): void {
+        if (preview) {
+            preview.autoRefresh = true;
+        } else if (this.activePreview?.preview) {
+            this.activePreview.preview.autoRefresh = true;
+            void setContext('r.rmarkdown.preview.autoRefresh', true);
+        }
+    }
+
+    public disableAutoRefresh(preview?: RMarkdownPreview): void {
+        if (preview) {
+            preview.autoRefresh = false;
+        } else if (this.activePreview?.preview) {
+            this.activePreview.preview.autoRefresh = false;
+            void setContext('r.rmarkdown.preview.autoRefresh', false);
+        }
+    }
+
+    public toggleTheme(): void {
+        this.useCodeTheme = !this.useCodeTheme;
+        for (const preview of this.previewStore) {
+            void preview[1].styleHtml(this.useCodeTheme);
+        }
+    }
+
+    // show the source uri for the current preview.
+    // has a few idiosyncracies with view columns due to some limitations with
+    // vscode api. the view column will be set in order of priority:
+    //    1. the original document's view column when the preview button was pressed
+    //    2. the current webview's view column
+    //    3. the current active editor
+    // this is because we cannot tell the view column of a file if it is not visible
+    // (e.g., is an unopened tab)
+    public async showSource(): Promise<void> {
+        if (this.activePreview?.filePath) {
+            await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(this.activePreview.filePath), {
+                preserveFocus: false,
+                preview: false,
+                viewColumn: this.activePreview?.preview?.resourceViewColumn ?? this.activePreview?.preview?.panel.viewColumn ?? vscode.ViewColumn.Active
+            });
+        }
+    }
+
+    public async openExternalBrowser(): Promise<void> {
+        if (this.activePreview) {
+            await vscode.env.openExternal(this.activePreview?.preview?.outputUri);
+        }
+    }
+
+    public async updatePreview(preview?: RMarkdownPreview): Promise<void> {
+        const toUpdate = preview ?? this.activePreview?.preview;
+        const previewUri = this.previewStore?.getFilePath(toUpdate);
+        toUpdate.cp?.kill('SIGKILL');
+
+        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.knitWithProgress(previewUri, toUpdate.title).catch(() => {
+            void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
+            this.rMarkdownOutput.show(true);
+            this.previewStore.delete(previewUri);
+        });
+
+        if (childProcess) {
+            toUpdate.cp = childProcess;
+        }
+
+        this.refreshPanel(toUpdate);
+    }
+
+    private async knitWithProgress(filePath: string, fileName: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn) {
+        let childProcess:cp.ChildProcessWithoutNullStreams = undefined;
+        await doWithProgress(async (token: vscode.CancellationToken) => {
+            childProcess = await this.knitDocument(filePath, fileName, token, viewer, currentViewColumn);
+        },
+            vscode.ProgressLocation.Notification,
+            `Knitting ${fileName}...`,
+            true
+        ).catch((rejection: {
+            cp: cp.ChildProcessWithoutNullStreams,
+            wasCancelled?: boolean
+        }) => {
+            if (!rejection.wasCancelled) {
+                void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
+                this.rMarkdownOutput.show(true);
+            }
+            // this can occur when a successfuly knitted document is later altered (while still being previewed)
+            // and subsequently fails to knit
+            if (this.previewStore.has(filePath)) {
+                this.previewStore.delete(filePath);
+            } else {
+                rejection.cp.kill('SIGKILL');
+            }
+        });
+        return childProcess;
+    }
+
+    private async knitDocument(filePath: string, fileName: string, token?: vscode.CancellationToken, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn) {
+        return await new Promise<cp.ChildProcessWithoutNullStreams>((resolve, reject) => {
+            const lim = '---vsc---';
+            const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
+            const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
+            const cmd = (
+                `${this.rPath} --silent --slave --no-save --no-restore -e ` +
+                `"cat('${lim}', rmarkdown::render(` +
+                `'${filePath.replace(/\\/g, '/')}',` +
+                `output_format = rmarkdown::html_document(),` +
+                `output_file = '${outputFile.replace(/\\/g, '/')}',` +
+                `intermediates_dir = '${tmpDir().replace(/\\/g, '/')}'), '${lim}',` +
+                `sep='')"`
+            );
+
+            let childProcess: cp.ChildProcessWithoutNullStreams;
+            try {
+                childProcess = cp.exec(cmd);
+            } catch (e: unknown) {
+                console.warn(`[VSC-R] error: ${e as string}`);
+                reject({ cp: childProcess, wasCancelled: false });
+            }
+
+            this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process started`);
+
+            childProcess.stdout.on('data',
+                (data: Buffer) => {
+                    const dat = data.toString('utf8');
+                    this.rMarkdownOutput.appendLine(dat);
+                    if (token?.isCancellationRequested) {
+                        resolve(childProcess);
+                    } else {
+                        const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
+                        if (outputUrl) {
+                            if (viewer !== undefined) {
+                                const autoRefresh = config().get<boolean>('rmarkdown.preview.autoRefresh');
+                                void this.openPreview(
+                                    vscode.Uri.parse(outputUrl),
+                                    filePath,
+                                    fileName,
+                                    childProcess,
+                                    viewer,
+                                    currentViewColumn,
+                                    autoRefresh
+                                );
+                            }
+                            resolve(childProcess);
+                        }
+                    }
+                }
+            );
+
+            childProcess.stderr.on('data', (data: Buffer) => {
+                const dat = data.toString('utf8');
+                this.rMarkdownOutput.appendLine(dat);
+            });
+
+            childProcess.on('exit', (code, signal) => {
+                this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process exited ` +
+                    (signal ? `from signal '${signal}'` : `with exit code ${code}`));
+                if (code !== 0) {
+                    reject({ cp: childProcess, wasCancelled: false });
+                }
+            });
+
+            token?.onCancellationRequested(() => {
+                reject({ cp: childProcess, wasCancelled: true });
+            });
+        });
+    }
+
+    private openPreview(outputUri: vscode.Uri, filePath: string, title: string, cp: cp.ChildProcessWithoutNullStreams, viewer: vscode.ViewColumn, resourceViewColumn: vscode.ViewColumn, autoRefresh: boolean): void {
+        const panel = vscode.window.createWebviewPanel(
+            'previewRmd',
+            `Preview ${title}`,
+            {
+                preserveFocus: true,
+                viewColumn: viewer
+            },
+            {
+                enableFindWidget: true,
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [vscode.Uri.file(tmpDir())],
+            });
+
+        // Push the new rmd webview to the open proccesses array,
+        // to keep track of running child processes
+        // (primarily used in killing the child process, but also
+        // general state tracking)
+        const preview = new RMarkdownPreview(
+            title,
+            cp,
+            panel,
+            resourceViewColumn,
+            outputUri,
+            filePath,
+            this,
+            this.useCodeTheme,
+            autoRefresh
+        );
+        this.previewStore.add(filePath, preview);
+
+        // state change
+        panel.onDidDispose(() => {
+            // clear values
+            this.activePreview = this.activePreview?.preview === preview ? { filePath: null, preview: null } : this.activePreview;
+            void setContext('r.rmarkdown.preview.active', false);
+            this.previewStore.delete(filePath);
+        });
+
+        panel.onDidChangeViewState(({ webviewPanel }) => {
+            void setContext('r.rmarkdown.preview.active', webviewPanel.active);
+            if (webviewPanel.active) {
+                this.activePreview.preview = preview;
+                this.activePreview.filePath = filePath;
+                void setContext('r.rmarkdown.preview.autoRefresh', preview.autoRefresh);
+            }
+        });
+    }
+
+    private refreshPanel(preview: RMarkdownPreview): void {
+        void preview.refreshContent(this.useCodeTheme);
+    }
+}
+

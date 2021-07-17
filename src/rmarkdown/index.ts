@@ -3,8 +3,8 @@ import {
   CompletionItem, CompletionItemProvider,
   Event, EventEmitter, Position, Range, TextDocument, TextEditorDecorationType, window, Selection, commands
 } from 'vscode';
-import { runChunksInTerm } from './rTerminal';
-import { config } from './util';
+import { runChunksInTerm } from '../rTerminal';
+import { config } from '../util';
 
 function isRDocument(document: TextDocument) {
   return (document.languageId === 'r');
