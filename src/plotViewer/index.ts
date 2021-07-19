@@ -84,6 +84,7 @@ export class HttpgdManager {
             this.viewerOptions.previewPlotLayout = conf.get<PreviewPlotLayout>('plot.defaults.plotPreviewLayout', 'multirow');
             this.viewerOptions.refreshTimeoutLength = conf.get('plot.timing.refreshInterval', 10);
             this.viewerOptions.resizeTimeoutLength = conf.get('plot.timing.resizeInterval', 100);
+            this.viewerOptions.fullWindow = conf.get('plot.defaults.fullWindowMode', false);
             this.viewerOptions.token = token;
             const viewer = new HttpgdViewer(host, this.viewerOptions);
             this.viewers.unshift(viewer);
@@ -172,16 +173,16 @@ export class HttpgdManager {
                 void viewer.focusPlot(stringArg);
                 break;
             } case 'nextPlot': {
-                viewer.nextPlot(boolArg);
+                void viewer.nextPlot(boolArg);
                 break;
             } case 'prevPlot': {
-                viewer.prevPlot(boolArg);
+                void viewer.prevPlot(boolArg);
                 break;
             } case 'lastPlot': {
-                viewer.nextPlot(true);
+                void viewer.nextPlot(true);
                 break;
             } case 'firstPlot': {
-                viewer.prevPlot(true);
+                void viewer.prevPlot(true);
                 break;
             } case 'resetPlots': {
                 viewer.resetPlots();
@@ -406,7 +407,9 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     // focus a specific plot id
     public async focusPlot(id?: PlotId): Promise<void> {
-        this.activePlot = id;
+        if(id){
+            this.activePlot = id;
+        }
         const plt = this.plots[this.activeIndex];
         if(plt.height !== this.viewHeight * this.scale || plt.width !== this.viewHeight * this.scale){
             await this.refreshPlots();
@@ -425,13 +428,13 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
 
     // navigate through plots (supply `true` to go to end/beginning of list)
-    public nextPlot(last?: boolean): void {
+    public async nextPlot(last?: boolean): Promise<void> {
         this.activeIndex = last ? this.plots.length - 1 : this.activeIndex+1;
-        this._focusPlot();
+        await this.focusPlot();
     }
-    public prevPlot(first?: boolean): void {
+    public async prevPlot(first?: boolean): Promise<void> {
         this.activeIndex = first ? 0 : this.activeIndex-1;
-        this._focusPlot();
+        await this.focusPlot();
     }
 
     // restore closed plots, reset zoom, redraw html
@@ -682,6 +685,8 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.webviewPanel ??= this.makeNewWebview();
         this.webviewPanel.webview.html = '';
         this.webviewPanel.webview.html = this.makeHtml();
+        // make sure that fullWindow is set correctly:
+        this.toggleFullWindow(this.fullWindow);
         void this.setContextValues(true);
     }
 

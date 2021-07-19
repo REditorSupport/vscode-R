@@ -136,6 +136,7 @@ function toggleFullWindowMode(useFullWindow) {
     isFullWindow = useFullWindow;
     if (useFullWindow) {
         document.body.classList.add('fullWindow');
+        window.scrollTo(0, 0);
     }
     else {
         document.body.classList.remove('fullWindow');
@@ -146,7 +147,6 @@ function toggleFullWindowMode(useFullWindow) {
 // On window load
 ////
 window.onload = () => {
-    isFullWindow = document.body.classList.contains('fullWindow');
     largePlotDiv.style.height = `${largeSvg.clientHeight}px`;
     postResizeMessage(true);
 };

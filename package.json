@@ -1359,6 +1359,11 @@
           ],
           "markdownDescription": "How to display plot previews if more than one row required."
         },
+        "r.plot.defaults.fullWindowMode": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Whether to use full window mode when launching the plot viewer."
+        },
         "r.plot.timing.resizeInterval": {
           "type": "number",
           "default": 100,
