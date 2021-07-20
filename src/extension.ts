@@ -20,6 +20,7 @@ import * as rHelp from './helpViewer';
 import * as completions from './completions';
 import * as rShare from './liveshare';
 import * as httpgdViewer from './plotViewer';
+import * as languageService from './languageService';
 
 import { RMarkdownPreviewManager } from './rmarkdown/preview';
 
@@ -44,7 +45,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     extensionContext = context;
 
     // assign session watcher setting to global variable
-    enableSessionWatcher = util.config().get<boolean>('sessionWatcher', false);
+    enableSessionWatcher = util.config().get<boolean>('sessionWatcher');
 
     // register commands specified in package.json
     const commands = {
@@ -129,6 +130,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // keep track of terminals
     context.subscriptions.push(vscode.window.onDidCloseTerminal(rTerminal.deleteTerminal));
 
+    // start language service
+    if (util.config().get<boolean>('lsp.enabled')) {
+        const lsp = vscode.extensions.getExtension('reditorsupport.r-lsp');
+        if (lsp) {
+            void vscode.window.showInformationMessage('The R language server extension has been integrated into vscode-R. You need to disable or uninstall REditorSupport.r-lsp and reload window to use the new version.');
+            void vscode.commands.executeCommand('workbench.extensions.search', '@installed r-lsp');
+        } else {
+            context.subscriptions.push(new languageService.LanguageService());
+        }
+    }
 
     // register on-enter rule for roxygen comments
     const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;

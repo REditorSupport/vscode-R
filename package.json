@@ -1196,6 +1196,36 @@
             "type": "string"
           }
         },
+        "r.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the R language service to provide code analysis features (completion, signature, hover, diagnostics, definition, etc.)"
+        },
+        "r.lsp.args": {
+          "type": "array",
+          "default": [],
+          "description": "The command line arguments to use when launching R Language Server"
+        },
+        "r.lsp.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Debug R Language Server"
+        },
+        "r.lsp.diagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Diagnostics"
+        },
+        "r.lsp.lang": {
+          "type": "string",
+          "default": "",
+          "description": "Override default LANG environment variable"
+        },
+        "r.lsp.use_stdio": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use STDIO connection instead of TCP. (Unix/macOS users only)"
+        },
         "r.rmarkdown.codeLensCommands": {
           "type": "array",
           "items": {
@@ -1449,6 +1479,7 @@
     "tree-kill": "^1.2.2",
     "vsls": "^1.0.3015",
     "winreg": "^1.2.4",
-    "ws": "^7.4.6"
+    "ws": "^7.4.6",
+    "vscode-languageclient": "^7.0.0"
   }
 }
