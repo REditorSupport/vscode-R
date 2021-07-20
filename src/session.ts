@@ -391,6 +391,11 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
 
     /* Styling for rows and cells */
 
+    [class*="vscode"] .ag-row-hover {
+        background-color: var(--vscode-list-hoverBackground) !important;
+        color: var(--vscode-list-hoverForeground);
+    }
+
     [class*="vscode"] .ag-row-selected {
         background-color: var(--vscode-editor-selectionBackground) !important;
         color: var(--vscode-editor-selectionForeground);
