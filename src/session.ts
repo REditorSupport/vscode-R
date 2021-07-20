@@ -391,6 +391,10 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
 
     /* Styling for rows and cells */
 
+    [class*="vscode"] div.ag-row {
+        color: var(--vscode-editor-foreground);
+    }
+
     [class*="vscode"] .ag-row-hover {
         background-color: var(--vscode-list-hoverBackground) !important;
         color: var(--vscode-list-hoverForeground);
@@ -398,7 +402,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
 
     [class*="vscode"] .ag-row-selected {
         background-color: var(--vscode-editor-selectionBackground) !important;
-        color: var(--vscode-editor-selectionForeground);
+        color: var(--vscode-editor-selectionForeground) !important;
     }
 
     [class*="vscode"] div.ag-row-even {
@@ -413,10 +417,6 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
 
     [class*="vscode"] div.ag-ltr div.ag-has-focus div.ag-cell-focus:not(div.ag-cell-range-selected) {
         border-color: var(--vscode-editorCursor-foreground);
-    }
-
-    [class*="vscode"] div.ag-cell {
-        color: var(--vscode-editor-foreground);
     }
 
     /* Styling for the filter pop-up */
