@@ -241,26 +241,38 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
 
 show_view <- !identical(getOption("vsc.view", "Two"), FALSE)
 if (show_view) {
-  dataview_data_type <- function(x) {
-    if (is.numeric(x)) {
-      if (is.null(attr(x, "class"))) {
-        "num"
-      } else {
-        "num-fmt"
+  get_column_def <- function(name, field, value) {
+    filter <- TRUE
+    if (is.numeric(value)) {
+      type <- "numericColumn"
+      if (is.null(attr(value, "class"))) {
+        filter <- "agNumberColumnFilter"
       }
-    } else if (inherits(x, "Date")) {
-      "date"
+    } else if (inherits(value, "Date")) {
+      type <- "dateColumn"
+      filter <- "agDateColumnFilter"
     } else {
-      "string"
+      type <- "textColumn"
+      filter <- "agTextColumnFilter"
     }
+    list(
+      headerName = name,
+      field = field,
+      type = type,
+      filter = filter
+    )
   }
 
   dataview_table <- function(data) {
+    if (is.matrix(data)) {
+      data <- as.data.frame.matrix(data)
+    }
+
     if (is.data.frame(data)) {
       nrow <- nrow(data)
       colnames <- colnames(data)
       if (is.null(colnames)) {
-        colnames <- sprintf("(X%d)", seq_len(ncol(data)))
+        colnames <- sprintf("V%d", seq_len(ncol(data)))
       } else {
         colnames <- trimws(colnames)
       }
@@ -270,49 +282,23 @@ if (show_view) {
       } else {
         rownames <- seq_len(nrow)
       }
+      colnames <- c("(row)", colnames)
+      fields <- sprintf("x%d", seq_along(colnames))
       data <- c(list(" " = rownames), .subset(data))
-      colnames <- c(" ", colnames)
-      types <- vapply(data, dataview_data_type,
-        character(1L), USE.NAMES = FALSE)
-      data <- vapply(data, function(x) {
-        trimws(format(x))
-      }, character(nrow), USE.NAMES = FALSE)
-      dim(data) <- c(length(rownames), length(colnames))
-    } else if (is.matrix(data)) {
-      if (is.factor(data)) {
-        data <- format(data)
-      }
-      types <- rep(dataview_data_type(data), ncol(data))
-      colnames <- colnames(data)
-      colnames(data) <- NULL
-      if (is.null(colnames)) {
-        colnames <- sprintf("(X%d)", seq_len(ncol(data)))
-      } else {
-        colnames <- trimws(colnames)
-      }
-      rownames <- rownames(data)
-      rownames(data) <- NULL
-      data <- trimws(format(data))
-      if (is.null(rownames)) {
-        types <- c("num", types)
-        rownames <- seq_len(nrow(data))
-      } else {
-        types <- c("string", types)
-        rownames <- trimws(rownames)
-      }
-      dim(data) <- c(length(rownames), length(colnames))
-      colnames <- c(" ", colnames)
-      data <- cbind(rownames, data)
+      names(data) <- fields
+      class(data) <- "data.frame"
+      attr(data, "row.names") <- .set_row_names(nrow)
+      columns <- .mapply(get_column_def,
+        list(colnames, fields, data),
+        NULL
+      )
+      list(
+        columns = columns,
+        data = data
+      )
     } else {
-      stop("data must be data.frame or matrix")
+      stop("data must be a data.frame or a matrix")
     }
-    columns <- .mapply(function(title, type) {
-      class <- if (type == "string") "text-left" else "text-right"
-      list(title = scalar(title),
-        className = scalar(class),
-        type = scalar(type))
-    }, list(colnames, types), NULL)
-    list(columns = columns, data = data)
   }
 
   show_dataview <- function(x, title, uuid = NULL,
@@ -377,7 +363,7 @@ if (show_view) {
     if (is.data.frame(x) || is.matrix(x)) {
       data <- dataview_table(x)
       file <- tempfile(tmpdir = tempdir, fileext = ".json")
-      jsonlite::write_json(data, file, matrix = "rowmajor")
+      jsonlite::write_json(data, file, auto_unbox = TRUE)
       request("dataview", source = "table", type = "json",
         title = title, file = file, viewer = viewer, uuid = uuid)
     } else if (is.list(x)) {
