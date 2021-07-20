@@ -347,7 +347,6 @@ export async function showDataView(source: string, type: string, title: string, 
 export async function getTableHtml(webview: Webview, file: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
     const content = await readContent(file, 'utf8');
-
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -374,6 +373,71 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     body {
         padding: 0;
         overflow: auto;
+    }
+
+    /* Styling for wrapper and header */
+
+    [class*="vscode"] div.ag-root-wrapper {
+        background-color: var(--vscode-editor-background);
+    }
+
+    [class*="vscode"] div.ag-header {
+        background-color: var(--vscode-sideBar-background);
+    }
+
+    [class*="vscode"] div.ag-header-cell[aria-sort="ascending"], div.ag-header-cell[aria-sort="descending"] {
+        color: var(--vscode-textLink-activeForeground);
+    }
+
+    /* Styling for rows and cells */
+
+    [class*="vscode"] .ag-row-selected {
+        background-color: var(--vscode-editor-selectionBackground) !important;
+        color: var(--vscode-editor-selectionForeground);
+    }
+
+    [class*="vscode"] div.ag-row-even {
+        border: 0px;
+        background-color: var(--vscode-editor-background);
+    }
+
+    [class*="vscode"] div.ag-row-odd {
+        border: 0px;
+        background-color: var(--vscode-sideBar-background);
+    }
+
+    [class*="vscode"] div.ag-ltr div.ag-has-focus div.ag-cell-focus:not(div.ag-cell-range-selected) {
+        border-color: var(--vscode-editorCursor-foreground);
+    }
+
+    [class*="vscode"] div.ag-cell {
+        color: var(--vscode-editor-foreground);
+    }
+
+    /* Styling for the filter pop-up */
+
+    [class*="vscode"] div.ag-menu {
+        background-color: var(--vscode-notifications-background);
+        color: var(--vscode-notifications-foreground);
+        border-color: var(--vscode-notifications-border);
+    }
+
+    [class*="vscode"] div.ag-filter-apply-panel-button {
+        background-color: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        border: 0;
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+
+    [class*="vscode"] div.ag-picker-field-wrapper {
+        background-color: var(--vscode-editor-background);
+        color: var(--vscode-editor-foreground);
+        border-color: var(--vscode-notificationCenter-border);
+    }
+
+    [class*="vscode"] input[class^=ag-] {
+        border-color: var(--vscode-notificationCenter-border) !important;
     }
   </style>
   <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
