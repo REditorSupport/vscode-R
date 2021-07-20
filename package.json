@@ -1467,6 +1467,7 @@
     "ag-grid-community": "^25.3.0",
     "bootstrap": "^5.0.1",
     "cheerio": "1.0.0-rc.10",
+    "crypto": "^1.0.1",
     "ejs": "^3.1.6",
     "fs-extra": "^10.0.0",
     "highlight.js": "^10.7.2",
@@ -1476,9 +1477,9 @@
     "popper.js": "^1.16.1",
     "showdown": "^1.9.1",
     "tree-kill": "^1.2.2",
-    "vscode-languageclient": "^7.0.0",
     "vsls": "^1.0.3015",
     "winreg": "^1.2.4",
-    "ws": "^7.4.6"
+    "ws": "^7.4.6",
+    "vscode-languageclient": "^7.0.0"
   }
 }
