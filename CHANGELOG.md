@@ -4,6 +4,45 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.1.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.1.0)
+
+Important changes
+
+* The project is migrated to [REditorSupport](https://github.com/REditorSupport) organization on
+GitHub. (#98)
+* The R language service (completion, document outline, definition, etc.,
+formerly implemented in [vscode-r-lsp](https://github.com/REditorSupport/vscode-r-lsp)) is now
+integrated into vscode-R (#695). The vscode-r-lsp extension will be unpublished from the
+VS Code marketplace
+at some point.
+  * Search `r-lsp` extension, uninstall it and vscode-R will start the R langauge service
+  automatically.
+  * The language service still depends on the R package [`languageserver`](https://github.com/REditorSupport/languageserver). Make sure the package is installed before using vscode-R.
+  * To opt-out the language service, set `"r.lsp.enabled": false` in your user settings.
+* R session watcher is now enabled by default. (#670)
+  * `r.previewDataframe` and `r.previewEnvironment` will use the session watcher if enabled.
+  * To opt-out, set `"r.sessionWatcher": false` in your user settings.
+
+New Features
+
+* Preview R Markdown documents via background process with auto-refresh and dark theme support. (#692, #699)
+
+Enhancements
+
+* Several enhancements of the workspace viewer. (#672)
+* The plot viewer now supports customizable CSS file via `r.plot.customStyleOverwrites` and
+ `r.plot.togglePreviewPlots` now cycles through mutlirow/scroll/hidden. (#678, #681)
+* The data viewer is now based on [ag-grid](https://github.com/ag-grid/ag-grid) with better performance and better support for filtering and dark theme. (#708)
+  * The data viewer might not work with existing R sessions started before the extension update.
+  A restart of sessions is needed to use the new data viewer.
+* Command `r.showPlotHistory` is removed in favor of the httpgd-based plot viewer. (#706)
+* The plot viewer now supports full window mode. (#709)
+
+Fixes
+
+* LiveShare API bug fix and enhancements. (#679)
+* Fix syntax highlighting of integers in scientific notation. (#683)
+
 ## [2.0.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.0.0)
 
 Highlight

@@ -86,6 +86,7 @@ export interface HttpgdViewerOptions {
     viewColumn?: vscode.ViewColumn;
     htmlRoot: string;
     stripStyles?: boolean;
+    fullWindow?: boolean;
     previewPlotLayout?: PreviewPlotLayout,
     resizeTimeoutLength?: number;
     refreshTimeoutLength?: number;

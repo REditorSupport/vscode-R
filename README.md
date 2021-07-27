@@ -3,7 +3,7 @@
 [![Badge](https://aka.ms/vsls-badge)](https://aka.ms/vsls)
 
 This [VS Code](https://code.visualstudio.com/) extension provides support for the [R programming language](https://www.r-project.org), including features such as
-extended syntax highlighting, interacting with R terminals, viewing data, plots, workspace variables, help pages, managing packages, and working with [R Markdown](https://rmarkdown.rstudio.com/) documents.
+extended syntax highlighting, R language service based on code analysis, interacting with R terminals, viewing data, plots, workspace variables, help pages, managing packages, and working with [R Markdown](https://rmarkdown.rstudio.com/) documents.
 
 Go to the [wiki](https://github.com/REditorSupport/vscode-R/wiki) to view the documentation of the extension.
 
@@ -11,33 +11,33 @@ Go to the [wiki](https://github.com/REditorSupport/vscode-R/wiki) to view the do
 
 1. [Install R](https://cloud.r-project.org/) (>= 3.4.0) on your system. For Windows users, Writing R Path to the registry is recommended in the installation.
 
-2. Install [`jsonlite`](https://github.com/jeroen/jsonlite) and [`rlang`](https://github.com/r-lib/rlang) packages in R.
+2. Install [`languageserver`](https://github.com/REditorSupport/languageserver) in R.
 
     ```r
-    install.packages(c("jsonlite", "rlang"))
+    install.packages("languageserver")
     ```
 
 3. Install the [R extension for Visual Studio Code](https://marketplace.visualstudio.com/items?itemName=Ikuyadeu.r).
 
 4. Create an R file and start coding.
 
-Note that the above steps only provide basic code editing functionalities and features of interacting with R sessions. To get full R development experience such as code completion, linting, formatting, debugging, etc., go to the installation wiki pages ([Windows](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Windows) | [macOS](https://github.com/REditorSupport/vscode-R/wiki/Installation:-macOS) | [Linux](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Linux)) for detailed instructions of installing the following recommended software and extensions:
+The following software or extensions are recommended to enhance the experience of using R in VS Code:
 
 * [radian](https://github.com/randy3k/radian): A modern R console that corrects many limitations of the official R terminal and supports many features such as syntax highlighting and auto-completion.
-
-* [languageserver](https://github.com/REditorSupport/languageserver): An R package that implements the Language Server Protocol for R to provide a wide range of language analysis features such as auto-completion, function signature, documentation, symbol highlight, document outline, code formatting, symbol hover, diagnostics, go to definition, find references, etc.
-
-* [vscode-r-lsp](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r-lsp): A VS Code extension of R LSP Client to communicate between VS Code and R Language Server.
 
 * [VSCode-R-Debugger](https://github.com/ManuelHentschel/VSCode-R-Debugger): A VS Code extension to support R debugging capabilities.
 
 * [httpgd](https://github.com/nx10/httpgd): An R package to provide a graphics device that asynchronously serves SVG graphics via HTTP and WebSockets.
+
+Go to the installation wiki pages ([Windows](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Windows) | [macOS](https://github.com/REditorSupport/vscode-R/wiki/Installation:-macOS) | [Linux](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Linux)) for more detailed instructions.
 
 ## Features
 
 * Extended syntax highlighting for R, R Markdown, and R Documentation.
 
 * Snippets for R and R Markdown.
+
+* [R Language Service](https://github.com/REditorSupport/vscode-R/wiki/R-Language-Service): Code completion, function signature, symbol highlight, document outline, formatting, definition, refere
 
 * [Interacting with R terminals](https://github.com/REditorSupport/vscode-R/wiki/Interacting-with-R-terminals): Sending code to terminals, running multiple terminals, working with remote servers.
 

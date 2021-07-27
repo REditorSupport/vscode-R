@@ -41,6 +41,11 @@ interface ToggleStyleMessage extends IMessage {
   useOverwrites: boolean
 }
 
+interface ToggleFullWindowMessage extends IMessage {
+  message: 'toggleFullWindow',
+  useFullWindow: boolean
+}
+
 type PreviewPlotLayout = 'multirow' | 'scroll' | 'hidden';
 interface PreviewPlotLayoutMessage extends IMessage {
   message: 'togglePreviewPlotLayout',
@@ -57,5 +62,5 @@ interface AddPlotMessage extends IMessage {
   html: string
 }
 
-type InMessage = UpdatePlotMessage | FocusPlotMessage | ToggleStyleMessage | HidePlotMessage | AddPlotMessage | PreviewPlotLayoutMessage;
+type InMessage = UpdatePlotMessage | FocusPlotMessage | ToggleStyleMessage | HidePlotMessage | AddPlotMessage | PreviewPlotLayoutMessage | ToggleFullWindowMessage;
 

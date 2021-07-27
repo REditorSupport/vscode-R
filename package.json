@@ -1,8 +1,8 @@
 {
   "name": "r",
   "displayName": "R",
-  "description": "R language support (run, snippet, viewer)",
-  "version": "2.0.0",
+  "description": "R Extension for Visual Studio Code",
+  "version": "2.1.0",
   "author": "REditorSupport",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
@@ -442,11 +442,6 @@
         "command": "r.attachActive"
       },
       {
-        "title": "Show Plot History",
-        "category": "R",
-        "command": "r.showPlotHistory"
-      },
-      {
         "title": "Run Command With Selection or Word in Terminal",
         "category": "R",
         "command": "r.runCommandWithSelectionOrWord"
@@ -697,6 +692,12 @@
         "icon": "$(symbol-color)"
       },
       {
+        "title": "Toggle Full Window Mode",
+        "category": "R Plot",
+        "command": "r.plot.toggleFullWindow",
+        "icon": "$(screen-full)"
+      },
+      {
         "title": "Toggle Preview Plot Layout",
         "category": "R Plot",
         "command": "r.plot.togglePreviewPlots",
@@ -941,6 +942,11 @@
           "group": "navigation",
           "when": "resourceScheme =~ /webview/ && r.plot.active",
           "command": "r.plot.toggleStyle"
+        },
+        {
+          "group": "navigation",
+          "when": "resourceScheme =~ /webview/ && r.plot.active",
+          "command": "r.plot.toggleFullWindow"
         },
         {
           "group": "httpgd",
@@ -1190,6 +1196,36 @@
             "type": "string"
           }
         },
+        "r.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the R language service to provide code analysis features (completion, signature, hover, diagnostics, definition, etc.)"
+        },
+        "r.lsp.args": {
+          "type": "array",
+          "default": [],
+          "description": "The command line arguments to use when launching R Language Server"
+        },
+        "r.lsp.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Debug R Language Server"
+        },
+        "r.lsp.diagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Diagnostics"
+        },
+        "r.lsp.lang": {
+          "type": "string",
+          "default": "",
+          "description": "Override default LANG environment variable"
+        },
+        "r.lsp.use_stdio": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use STDIO connection instead of TCP. (Unix/macOS users only)"
+        },
         "r.rmarkdown.codeLensCommands": {
           "type": "array",
           "items": {
@@ -1353,6 +1389,11 @@
           ],
           "markdownDescription": "How to display plot previews if more than one row required."
         },
+        "r.plot.defaults.fullWindowMode": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Whether to use full window mode when launching the plot viewer."
+        },
         "r.plot.timing.resizeInterval": {
           "type": "number",
           "default": 100,
@@ -1423,14 +1464,11 @@
     "yamljs": "^0.3.0"
   },
   "dependencies": {
+    "ag-grid-community": "^25.3.0",
     "bootstrap": "^5.0.1",
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
-    "datatables.net": "^1.10.25",
-    "datatables.net-bs4": "^1.10.25",
-    "datatables.net-fixedheader-jqui": "^3.1.9",
     "ejs": "^3.1.6",
-    "fotorama": "^4.6.4",
     "fs-extra": "^10.0.0",
     "highlight.js": "^10.7.2",
     "jquery": "^3.6.0",
@@ -1441,6 +1479,7 @@
     "tree-kill": "^1.2.2",
     "vsls": "^1.0.3015",
     "winreg": "^1.2.4",
-    "ws": "^7.4.6"
+    "ws": "^7.4.6",
+    "vscode-languageclient": "^7.0.0"
   }
 }
