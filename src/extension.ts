@@ -36,6 +36,11 @@ export let rMarkdownPreview: RMarkdownPreviewManager | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
+    if (vscode.extensions.getExtension('mikhail-arkhipov.r')) {
+        void vscode.window.showInformationMessage('The R Tools (Mikhail-Arkhipov.r) extension is enabled and will have conflicts with vscode-R. To use vscode-R, please disable or uninstall the extension.');
+        void vscode.commands.executeCommand('workbench.extensions.search', '@installed R Tools');
+    }
+
     // create a new instance of RExtensionImplementation
     // is used to export an interface to the help panel
     // this export is used e.g. by vscode-r-debugger to show the help panel from within debug sessions
