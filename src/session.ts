@@ -13,8 +13,9 @@ import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
 import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
+import { newWebview } from './webview';
 
-import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager } from './extension';
+import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveshare';
 
 export let globalenv: any;
@@ -269,27 +270,11 @@ export function openExternalBrowser(): void {
 
 export async function showWebView(file: string, title: string, viewer: string | boolean): Promise<void> {
     console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
+    console.log(file);
     if (viewer === false) {
         void env.openExternal(Uri.parse(file));
     } else {
-        const dir = path.dirname(file);
-        const panel = window.createWebviewPanel('webview', title,
-            {
-                preserveFocus: true,
-                viewColumn: ViewColumn[String(viewer)],
-            },
-            {
-                enableScripts: true,
-                enableFindWidget: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [Uri.file(dir)],
-            });
-        const content = await readContent(file, 'utf8');
-        const html = content.toString()
-            .replace('<body>', '<body style="color: black;">')
-            .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
-                `<$1 $2="${String(panel.webview.asWebviewUri(Uri.file(dir)))}/`);
-        panel.webview.html = html;
+        await newWebview(file, title, viewer);
     }
     console.info('[showWebView] Done');
 }
@@ -645,7 +630,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         break;
                     }
                     case 'httpgd': {
-                        if(request.url){
+                        if (request.url) {
                             globalHttpgdManager?.showViewer(request.url);
                         }
                         break;
@@ -667,6 +652,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         break;
                     }
                     case 'webview': {
+                        console.log(request);
                         void showWebView(request.file, request.title, request.viewer);
                         break;
                     }
