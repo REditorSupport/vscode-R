@@ -33,9 +33,9 @@ export async function newWebview(file: string, title: string, viewer: string | b
             <title>${title}</title>
         </head>
         <body>
-            <pre>
+            <span>
                 ${body}
-            </pre>
+            </span>
         </body>
         <script src = ${String(panel.webview.asWebviewUri(observerPath))}></script>
     </html>`;
