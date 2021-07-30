@@ -13,8 +13,8 @@ const observer = new MutationObserver(function (mutations) {
   }
 });
 
-observer.observe(document, {
+observer.observe(document.getElementById("webview-content"), {
   subtree: true,
   attributes: true,
-  attributeFilter: ["src", "href", "style", "class"]
+  attributeFilter: ["src", "href", "style", "class"],
 });
