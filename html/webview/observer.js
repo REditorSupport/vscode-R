@@ -2,8 +2,9 @@ const reg = /vscode-webview:\/\//g;
 const MutationObserver = window.MutationObserver || window.WebKitMutationObserver;
 
 const observer = new MutationObserver(function (mutations) {
-  for (const mut in mutations) {
-    const targ = mutations[mut].target;
+  const len = mutations.length;
+  for (let i = 0; i < len; i++) {
+    const targ = mutations[i].target;
     if (reg.test(targ.src)) {
         const newSrc = targ.src.replace(reg, 'https://');
         console.log(`[VSC-R] ${targ.src} changed to ${newSrc}`);

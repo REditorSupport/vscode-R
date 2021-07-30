@@ -274,7 +274,44 @@ export async function showWebView(file: string, title: string, viewer: string | 
     if (viewer === false) {
         void env.openExternal(Uri.parse(file));
     } else {
-        await newWebview(file, title, viewer);
+        const dir = path.dirname(file);
+        const webviewDir = extensionContext.asAbsolutePath('html/webview/');
+        const panel = window.createWebviewPanel('webview', title,
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn[String(viewer)],
+            },
+            {
+                enableScripts: true,
+                enableFindWidget: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [Uri.file(dir), Uri.file(webviewDir)],
+            });
+
+        const observerPath = Uri.file(path.join(webviewDir, 'observer.js'));
+        const body = (await readContent(file, 'utf8')).toString()
+            .replace('<body>', '<body style="color: black;">')
+            .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
+                `<$1 $2="${String(panel.webview.asWebviewUri(Uri.file(dir)))}/`);
+
+        const htmlOut =
+        `<!DOCTYPE html>
+        <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests; default-src https: data: filesystem: 'unsafe-inline';">
+                <title>${title}</title>
+            </head>
+            <body>
+                <span>
+                    ${body}
+                </span>
+            </body>
+            <script src = ${String(panel.webview.asWebviewUri(observerPath))}></script>
+        </html>`;
+
+        panel.webview.html = htmlOut;
     }
     console.info('[showWebView] Done');
 }
