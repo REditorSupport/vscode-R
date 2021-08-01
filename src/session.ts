@@ -589,21 +589,31 @@ export async function getWebviewHtml(webview: Webview, file: string, title: stri
         .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
             `<$1 $2="${String(webview.asWebviewUri(Uri.file(dir)))}/`);
 
+    // define the content security policy for the webview
+    // * whilst it is recommended to be strict as possible,
+    // * there are several packages that require unsafe requests
+    const CSP = `
+        upgrade-insecure-requests;
+        default-src https: data: filesystem:;
+        style-src https: data: filesystem: 'unsafe-inline';
+        script-src https: data: filesystem: 'unsafe-eval';
+    `;
+
     return `
     <!DOCTYPE html>
         <html lang="en">
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests; default-src https: data: filesystem: 'unsafe-inline';">
+                <meta http-equiv="Content-Security-Policy" content="${CSP}">
                 <title>${title}</title>
             </head>
             <body>
                 <span id = "webview-content">
                     ${body}
                 </span>
-                <script src = ${String(webview.asWebviewUri(observerPath))}></script>
             </body>
+            <script src = ${String(webview.asWebviewUri(observerPath))}></script>
         </html>`;
 }
 
@@ -690,7 +700,6 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         break;
                     }
                     case 'webview': {
-                        console.log(request);
                         void showWebView(request.file, request.title, request.viewer);
                         break;
                     }
