@@ -269,7 +269,6 @@ export function openExternalBrowser(): void {
 
 export async function showWebView(file: string, title: string, viewer: string | boolean): Promise<void> {
     console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
-    console.log(file);
     if (viewer === false) {
         void env.openExternal(Uri.parse(file));
     } else {
