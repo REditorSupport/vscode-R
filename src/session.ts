@@ -585,7 +585,6 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 export async function getWebviewHtml(webview: Webview, file: string, title: string, dir: string, webviewDir: string): Promise<string> {
     const observerPath = Uri.file(path.join(webviewDir, 'observer.js'));
     const body = (await readContent(file, 'utf8')).toString()
-        .replace('<body>', '<body style="color: black;">')
         .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
             `<$1 $2="${String(webview.asWebviewUri(Uri.file(dir)))}/`);
 
@@ -607,13 +606,18 @@ export async function getWebviewHtml(webview: Webview, file: string, title: stri
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <meta http-equiv="Content-Security-Policy" content="${CSP}">
                 <title>${title}</title>
+                <style>
+                    body {
+                        color: black;
+                    }
+                </style>
             </head>
             <body>
-                <span id = "webview-content">
+                <span id="webview-content">
                     ${body}
                 </span>
             </body>
-            <script src = ${String(webview.asWebviewUri(observerPath))}></script>
+            <script src="${String(webview.asWebviewUri(observerPath))}"></script>
         </html>`;
 }
 
