@@ -11,7 +11,7 @@ import { HelpPanel } from './panel';
 import { HelpProvider, AliasProvider } from './helpProvider';
 import { HelpTreeWrapper } from './treeView';
 import { PackageManager } from './packages';
-import { isGuestSession, rGuestService } from '../liveshare';
+import { isGuestSession, rGuestService } from '../liveShare';
 
 // Initialization function that is called once when activating the extension
 export async function initializeHelp(context: vscode.ExtensionContext, rExtension: api.RExtension): Promise<RHelp|undefined> {

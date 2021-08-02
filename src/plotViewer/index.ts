@@ -14,7 +14,7 @@ import { extensionContext } from '../extension';
 
 import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage, PreviewPlotLayout, PreviewPlotLayoutMessage, ToggleFullWindowMessage } from './webviewMessages';
 
-import { isHost, rHostService, shareBrowser } from '../liveshare';
+import { isHost, rHostService, shareBrowser } from '../liveShare';
 
 const commands = [
     'showViewers',

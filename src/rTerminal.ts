@@ -12,7 +12,7 @@ import * as selection from './selection';
 import { getSelection } from './selection';
 import { removeSessionFiles } from './session';
 import { config, delay, getRterm } from './util';
-import { rGuestService, isGuestSession } from './liveshare';
+import { rGuestService, isGuestSession } from './liveShare';
 export let rTerm: vscode.Terminal;
 
 export async function runSource(echo: boolean): Promise<void>  {
