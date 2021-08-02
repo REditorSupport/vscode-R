@@ -273,7 +273,7 @@ export async function showWebView(file: string, title: string, viewer: string | 
         void env.openExternal(Uri.parse(file));
     } else {
         const dir = path.dirname(file);
-        const webviewDir = extensionContext.asAbsolutePath('html/webview/');
+        const webviewDir = extensionContext.asAbsolutePath('html/session/webview/');
         const panel = window.createWebviewPanel('webview', title,
             {
                 preserveFocus: true,
