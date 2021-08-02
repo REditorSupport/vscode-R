@@ -1,6 +1,6 @@
 const MutationObserver = window.MutationObserver || window.WebKitMutationObserver;
-const replaceReg = /vscode-webview:\/\//g;
-const testReg = /vscode-webview:\/\/.*\.[A-Za-z/0-9]*?\/[A-Za-z/0-9]+/;
+const replaceReg = /vscode-webview:\/\//;
+const testReg = /vscode-webview:\/\/.*\.[A-Za-z/0-9_-]*?\/.+/;
 
 const observer = new MutationObserver(mutations => {
   const len = mutations.length;
@@ -22,6 +22,6 @@ const observer = new MutationObserver(mutations => {
 observer.observe(document.getElementById("webview-content"), {
   subtree: true,
   attributes: true,
-  attributeFilter: ["src", "href", "style", "class"],
+  attributeFilter: ["src", "href", "style"],
   characterData: false
 });

@@ -607,8 +607,8 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 export async function getWebviewHtml(webview: Webview, file: string, title: string, dir: string, webviewDir: string): Promise<string> {
     const observerPath = Uri.file(path.join(webviewDir, 'observer.js'));
     const body = (await readContent(file, 'utf8')).toString()
-        .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
-            `<$1 $2="${String(webview.asWebviewUri(Uri.file(dir)))}/`);
+        .replace(/<(\w+)(.*)\s+(href|src)="(?!\w+:)/g,
+            `<$1 $2 $3="${String(webview.asWebviewUri(Uri.file(dir)))}/`);
 
     // define the content security policy for the webview
     // * whilst it is recommended to be strict as possible,
