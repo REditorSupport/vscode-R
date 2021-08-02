@@ -14,8 +14,8 @@ import { FSWatcher } from 'fs-extra';
 import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
-import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveshare';
+import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager } from './extension';
+import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
 export let globalenv: any;
 let resDir: string;
@@ -447,7 +447,45 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
   <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham.min.css'))))}" rel="stylesheet">
   <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham-dark.min.css'))))}" rel="stylesheet">
   <script>
+    const dateFilterParams = {
+        browserDatePicker: true,
+        comparator: function (filterLocalDateAtMidnight, cellValue) {
+            var dateAsString = cellValue;
+            if (dateAsString == null) return -1;
+            var dateParts = dateAsString.split('-');
+            var cellDate = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2].substr(0, 2)));
+            if (filterLocalDateAtMidnight.getTime() == cellDate.getTime()) {
+                return 0;
+            }
+            if (cellDate < filterLocalDateAtMidnight) {
+                return -1;
+            }
+            if (cellDate > filterLocalDateAtMidnight) {
+                return 1;
+            }
+        }
+    };
     const data = ${String(content)};
+    const gridOptions = {
+        defaultColDef: {
+            sortable: true,
+            resizable: true,
+            filter: true,
+            filterParams: {
+            buttons: ['reset', 'apply']
+            }
+        },
+        columnDefs: data.columns,
+        rowData: data.data,
+        rowSelection: 'multiple',
+        pagination: true,
+        enableCellTextSelection: true,
+        ensureDomOrder: true,
+        onGridReady: function (params) {
+            gridOptions.api.sizeColumnsToFit();
+            autoSizeAll(false);
+        }
+    };
     function updateTheme() {
         const gridDiv = document.querySelector('#myGrid');
         if (document.body.classList.contains('vscode-light')) {
@@ -457,35 +495,20 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         }
     }
     function autoSizeAll(skipHeader) {
-      var allColumnIds = [];
-      gridOptions.columnApi.getAllColumns().forEach(function (column) {
-        allColumnIds.push(column.colId);
-      });
-      gridOptions.columnApi.autoSizeColumns(allColumnIds, skipHeader);
+        var allColumnIds = [];
+        gridOptions.columnApi.getAllColumns().forEach(function (column) {
+            allColumnIds.push(column.colId);
+        });
+        gridOptions.columnApi.autoSizeColumns(allColumnIds, skipHeader);
     }
-    const gridOptions = {
-      defaultColDef: {
-        sortable: true,
-        resizable: true,
-        filter: true,
-        filterParams: {
-          buttons: ['reset', 'apply']
-        }
-      },
-      columnDefs: data.columns,
-      rowData: data.data,
-      rowSelection: 'multiple',
-      pagination: true,
-      enableCellTextSelection: true,
-      ensureDomOrder: true,
-      onGridReady: function (params) {
-        gridOptions.api.sizeColumnsToFit();
-        autoSizeAll(false);
-      }
-    };
     document.addEventListener('DOMContentLoaded', () => {
-      const gridDiv = document.querySelector('#myGrid');
-      new agGrid.Grid(gridDiv, gridOptions);
+        gridOptions.columnDefs.forEach(function(column) {
+            if (column.type === 'dateColumn') {
+                column.filterParams = dateFilterParams;
+            }
+        });
+        const gridDiv = document.querySelector('#myGrid');
+        new agGrid.Grid(gridDiv, gridOptions);
     });
     function onload() {
         updateTheme();
