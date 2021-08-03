@@ -6,12 +6,26 @@ const watchedTags = [
   "A",
   "LINK",
   "SCRIPT"
-]
+];
+const mutationQueue = [];
 
 const observer = new MutationObserver(mutations => {
-  const len = mutations.length;
-  for (let i = 0; i < len; i++) {
-    const targ = mutations[i].target;
+  if (!mutationQueue.length) {
+    requestAnimationFrame(setSrc);
+  }
+  mutationQueue.push(mutations);
+});
+
+observer.observe(document.getElementById("webview-content"), {
+  subtree: true,
+  attributes: true,
+  attributeFilter: ["src", "href", "style", "class"],
+  characterData: false
+});
+
+function setSrc() {
+  for (const mutations of mutationQueue) {
+    const targ = mutations[0].target;
     if (watchedTags.includes(targ.tagName) && testReg.test(targ.src)) {
       const newSrc = targ.src.replace(replaceReg, 'https://');
       console.log(
@@ -23,11 +37,5 @@ const observer = new MutationObserver(mutations => {
       targ.src = newSrc;
     }
   }
-});
-
-observer.observe(document.getElementById("webview-content"), {
-  subtree: true,
-  attributes: true,
-  attributeFilter: ["src", "href", "style"],
-  characterData: false
-});
+  mutationQueue.length = 0;
+}
