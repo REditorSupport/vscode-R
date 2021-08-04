@@ -14,7 +14,7 @@ import { FSWatcher } from 'fs-extra';
 import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager } from './extension';
+import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
 export let globalenv: any;
@@ -273,6 +273,7 @@ export async function showWebView(file: string, title: string, viewer: string | 
         void env.openExternal(Uri.parse(file));
     } else {
         const dir = path.dirname(file);
+        const webviewDir = extensionContext.asAbsolutePath('html/session/webview/');
         const panel = window.createWebviewPanel('webview', title,
             {
                 preserveFocus: true,
@@ -282,14 +283,10 @@ export async function showWebView(file: string, title: string, viewer: string | 
                 enableScripts: true,
                 enableFindWidget: true,
                 retainContextWhenHidden: true,
-                localResourceRoots: [Uri.file(dir)],
+                localResourceRoots: [Uri.file(dir), Uri.file(webviewDir)],
             });
-        const content = await readContent(file, 'utf8');
-        const html = content.toString()
-            .replace('<body>', '<body style="color: black;">')
-            .replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
-                `<$1 $2="${String(panel.webview.asWebviewUri(Uri.file(dir)))}/`);
-        panel.webview.html = html;
+
+        panel.webview.html = await getWebviewHtml(panel.webview, file, title, dir, webviewDir);
     }
     console.info('[showWebView] Done');
 }
@@ -607,6 +604,45 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 `;
 }
 
+export async function getWebviewHtml(webview: Webview, file: string, title: string, dir: string, webviewDir: string): Promise<string> {
+    const observerPath = Uri.file(path.join(webviewDir, 'observer.js'));
+    const body = (await readContent(file, 'utf8')).toString()
+        .replace(/<(\w+)(.*)\s+(href|src)="(?!\w+:)/g,
+            `<$1 $2 $3="${String(webview.asWebviewUri(Uri.file(dir)))}/`);
+
+    // define the content security policy for the webview
+    // * whilst it is recommended to be strict as possible,
+    // * there are several packages that require unsafe requests
+    const CSP = `
+        upgrade-insecure-requests;
+        default-src https: data: filesystem:;
+        style-src https: data: filesystem: 'unsafe-inline';
+        script-src https: data: filesystem: 'unsafe-eval';
+    `;
+
+    return `
+    <!DOCTYPE html>
+        <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <meta http-equiv="Content-Security-Policy" content="${CSP}">
+                <title>${title}</title>
+                <style>
+                    body {
+                        color: black;
+                    }
+                </style>
+            </head>
+            <body>
+                <span id="webview-content">
+                    ${body}
+                </span>
+            </body>
+            <script src="${String(webview.asWebviewUri(observerPath))}"></script>
+        </html>`;
+}
+
 function isFromWorkspace(dir: string) {
     if (workspace.workspaceFolders === undefined) {
         const rel = path.relative(os.homedir(), dir);
@@ -668,7 +704,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         break;
                     }
                     case 'httpgd': {
-                        if(request.url){
+                        if (request.url) {
                             globalHttpgdManager?.showViewer(request.url);
                         }
                         break;
