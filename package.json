@@ -1408,6 +1408,104 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Path to a custom CSS file to be used when `#r.plot.defaults.colorTheme#` is `vscode`. Replaces the default CSS overwrites!"
+        },
+        "r.rOptions": {
+          "type": "object",
+          "default": {
+            "vsc.plot": "Two",
+            "vsc.browser": "Two",
+            "vsc.viewer": "Two",
+            "vsc.pageViewer": "Two",
+            "vsc.view": "Two",
+            "vsc.helpPanel": "Two",
+            "vsc.strMaxLevel": "2",
+            "vsc.showObjectSize": true,
+            "vsc.useHttpgd": false,
+            "vsc.globalEnv": true
+          },
+          "properties": {
+            "vsc.plot": {
+              "type": "string",
+                "enum": [
+                  "Two",
+                  "Active",
+                  "Beside",
+                  "FALSE"
+                ],
+                "default": "Two"
+            },
+            "vsc.browser": {
+              "type": "string",
+              "enum": [
+                "Two",
+                "Active",
+                "Beside",
+                "FALSE"
+              ],
+              "default": "Two"
+            },
+            "vsc.viewer": {
+              "type": "string",
+              "enum": [
+                "Two",
+                "Active",
+                "Beside",
+                "FALSE"
+              ],
+              "default": "Two"
+            },
+            "vsc.pageViewer": {
+              "type": "string",
+              "enum": [
+                "Two",
+                "Active",
+                "Beside",
+                "FALSE"
+              ],
+              "default": "Two"
+            },
+            "vsc.view": {
+              "type": "string",
+              "enum": [
+                "Two",
+                "Active",
+                "Beside",
+                "FALSE"
+              ],
+              "default": "Two"
+            },
+            "vsc.helpPanel": {
+              "type": "string",
+              "enum": [
+                "Two",
+                "Active",
+                "Beside",
+                "FALSE"
+              ],
+              "default": "Two"
+            },
+            "vsc.strMaxLevel": {
+              "type": "string",
+              "enum": [
+                "0",
+                "2"
+              ],
+              "default": "2"
+            },
+            "vsc.useHttpgd": {
+              "type": "boolean",
+              "default": false
+            },
+            "vsc.globalEnv": {
+              "type": "boolean",
+              "default": true
+            },
+            "vsc.showObjectSize": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          "additionalProperties": false
         }
       }
     },
