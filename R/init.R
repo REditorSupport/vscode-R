@@ -104,8 +104,6 @@ init_last <- function() {
   # Attach to vscode
   exports$.vsc.attach()
 
-  source(file.path(dir_init, "getSettings.R"), local = TRUE)
-
   invisible()
 }
 
