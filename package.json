@@ -1409,13 +1409,14 @@
           "default": "",
           "markdownDescription": "Path to a custom CSS file to be used when `#r.plot.defaults.colorTheme#` is `vscode`. Replaces the default CSS overwrites!"
         },
-        "r.rOption.bools": {
+        "r.rOptions.bools": {
           "type": "object",
+          "markdownDescription": "Toggle vsc bools",
           "default": {
             "vsc.rstudioapi": false,
             "vsc.useHttpgd": false,
             "vsc.globalenv": true,
-            "vsc.showObjectSize": true
+            "vsc.showObjectSize": false
           },
           "properties": {
             "vsc.rstudioapi": {
@@ -1432,24 +1433,22 @@
             },
             "vsc.showObjectSize": {
               "type": "boolean",
-              "default": true
+              "default": false
             }
           },
           "additionalProperties": false
         },
-        "r.rOptions": {
+        "r.rOptions.arrays": {
           "type": "object",
+          "markdownDescription": "Set vsc options",
           "default": {
             "vsc.plot": "Two",
-            "vsc.browser": "Two",
+            "vsc.browser": "Active",
             "vsc.viewer": "Two",
-            "vsc.pageViewer": "Two",
+            "vsc.pageViewer": "Active",
             "vsc.view": "Two",
             "vsc.helpPanel": "Two",
-            "vsc.strMaxLevel": "2",
-            "vsc.showObjectSize": true,
-            "vsc.useHttpgd": false,
-            "vsc.globalEnv": true
+            "vsc.strMaxLevel": "0"
           },
           "properties": {
             "vsc.plot": {
@@ -1470,7 +1469,7 @@
                 "Beside",
                 "FALSE"
               ],
-              "default": "Two"
+              "default": "Active"
             },
             "vsc.viewer": {
               "type": "string",
@@ -1490,7 +1489,7 @@
                 "Beside",
                 "FALSE"
               ],
-              "default": "Two"
+              "default": "Active"
             },
             "vsc.view": {
               "type": "string",
@@ -1518,19 +1517,7 @@
                 "0",
                 "2"
               ],
-              "default": "2"
-            },
-            "vsc.useHttpgd": {
-              "type": "boolean",
-              "default": false
-            },
-            "vsc.globalEnv": {
-              "type": "boolean",
-              "default": true
-            },
-            "vsc.showObjectSize": {
-              "type": "boolean",
-              "default": true
+              "default": "0"
             }
           },
           "additionalProperties": false
