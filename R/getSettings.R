@@ -18,12 +18,24 @@ fileCon <- if (file.exists("~/.config/Code/User/settings.json")) {
 vsc_settings <- jsonlite::fromJSON(paste(readLines(fileCon), collapse = ""))
 ops <- vsc_settings[grep("r.rOptions", names(vsc_settings))]$r.rOptions
 
+get_val <- function(x) {
+    switch(EXPR = x,
+        "Two" = "Two",
+        "Active" = "Active",
+        "Beside" = "Beside",
+        "FALSE" = FALSE,
+        "TRUE" = TRUE,
+        "0" = 0,
+        "2" = 2,
+        x
+    )
+}
 
-lapply(names(ops), function(x) {
-    val <- ops[[x]]
-    switch(x,
+suppressMessages(lapply(names(ops), function(x) {
+    val <- get_val(ops[[x]])
+    switch(EXPR = x,
         "vsc.plot" = options("vsc.plot" = val),
         "vsc.globalenv" = options("vsc.globalenv" = val)
         # etc.
     )
-})
+}))

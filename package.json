@@ -1409,6 +1409,34 @@
           "default": "",
           "markdownDescription": "Path to a custom CSS file to be used when `#r.plot.defaults.colorTheme#` is `vscode`. Replaces the default CSS overwrites!"
         },
+        "r.rOption.bools": {
+          "type": "object",
+          "default": {
+            "vsc.rstudioapi": false,
+            "vsc.useHttpgd": false,
+            "vsc.globalenv": true,
+            "vsc.showObjectSize": true
+          },
+          "properties": {
+            "vsc.rstudioapi": {
+              "type": "boolean",
+              "default": false
+            },
+            "vsc.useHttpgd": {
+              "type": "boolean",
+              "default": false
+            },
+            "vsc.globalEnv": {
+              "type": "boolean",
+              "default": true
+            },
+            "vsc.showObjectSize": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          "additionalProperties": false
+        },
         "r.rOptions": {
           "type": "object",
           "default": {
