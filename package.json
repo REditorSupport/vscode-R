@@ -1411,7 +1411,7 @@
         },
         "r.rOptions.bools": {
           "type": "object",
-          "markdownDescription": "Toggle vsc bools TODO",
+          "markdownDescription": "Toggle vsc bools TODO. \n\n\n*Can be overwritten by options defined in a user's `.Rprofile`*",
           "default": {
             "vsc.rstudioapi": false,
             "vsc.useHttpgd": false,
@@ -1444,7 +1444,7 @@
         },
         "r.rOptions.arrays": {
           "type": "object",
-          "markdownDescription": "Set vsc options TODO",
+          "markdownDescription": "Set vsc options TODO. \n\n\n*Can be overwritten by options defined in a user's `.Rprofile`*",
           "default": {
             "vsc.plot": "Two",
             "vsc.browser": "Active",
@@ -1458,19 +1458,19 @@
             "vsc.plot": {
               "type": "string",
               "description": "Which view column to show the plot file on graphics update?",
-                "enum": [
-                  "Two",
-                  "Active",
-                  "Beside",
-                  "FALSE"
-                ],
-                "enumDescriptions": [
-                  "Display plots in editor group 2.",
-                  "Display plots in the active editor.",
-                  "Display plots beside the active editor.",
-                  "Do not use the VSCode-R plot viewer."
-                ],
-                "default": "Two"
+              "enum": [
+                "Two",
+                "Active",
+                "Beside",
+                "FALSE"
+              ],
+              "enumDescriptions": [
+                "Display plots in editor group 2.",
+                "Display plots in the active editor.",
+                "Display plots beside the active editor.",
+                "Do not use the VSCode-R plot viewer."
+              ],
+              "default": "Two"
             },
             "vsc.browser": {
               "type": "string",
@@ -1482,11 +1482,11 @@
                 "FALSE"
               ],
               "enumDescriptions": [
-                  "Display browser in editor group 2.",
-                  "Display browser in the active editor.",
-                  "Display browser beside the active editor.",
-                  "Do not use the VSCode-R browser."
-                ],
+                "Display browser in editor group 2.",
+                "Display browser in the active editor.",
+                "Display browser beside the active editor.",
+                "Do not use the VSCode-R browser."
+              ],
               "default": "Active"
             },
             "vsc.viewer": {
@@ -1499,11 +1499,11 @@
                 "FALSE"
               ],
               "enumDescriptions": [
-                  "Display viewer in editor group 2.",
-                  "Display viewer in the active editor.",
-                  "Display viewer beside the active editor.",
-                  "Do not use the VSCode-R viewer."
-                ],
+                "Display viewer in editor group 2.",
+                "Display viewer in the active editor.",
+                "Display viewer beside the active editor.",
+                "Do not use the VSCode-R viewer."
+              ],
               "default": "Two"
             },
             "vsc.pageViewer": {
@@ -1516,11 +1516,11 @@
                 "FALSE"
               ],
               "enumDescriptions": [
-                  "Display page viewer in editor group 2.",
-                  "Display page viewer in the active editor.",
-                  "Display page viewer beside the active editor.",
-                  "Do not use the VSCode-R page viewer."
-                ],
+                "Display page viewer in editor group 2.",
+                "Display page viewer in the active editor.",
+                "Display page viewer beside the active editor.",
+                "Do not use the VSCode-R page viewer."
+              ],
               "default": "Active"
             },
             "vsc.view": {
@@ -1533,11 +1533,11 @@
                 "FALSE"
               ],
               "enumDescriptions": [
-                  "Display view output in editor group 2.",
-                  "Display view output in the active editor.",
-                  "Display view output beside the active editor.",
-                  "Do not use the VSCode-R view command."
-                ],
+                "Display view output in editor group 2.",
+                "Display view output in the active editor.",
+                "Display view output beside the active editor.",
+                "Do not use the VSCode-R view command."
+              ],
               "default": "Two"
             },
             "vsc.helpPanel": {
@@ -1550,11 +1550,11 @@
                 "FALSE"
               ],
               "enumDescriptions": [
-                  "Display help panel in editor group 2.",
-                  "Display help panel in the active editor.",
-                  "Display help panel beside the active editor.",
-                  "Do not use the VSCode-R help panel."
-                ],
+                "Display help panel in editor group 2.",
+                "Display help panel in the active editor.",
+                "Display help panel beside the active editor.",
+                "Do not use the VSCode-R help panel."
+              ],
               "default": "Two"
             },
             "vsc.strMaxLevel": {
@@ -1565,9 +1565,9 @@
                 "2"
               ],
               "enumDescriptions": [
-                  "Display literal values and object types only",
-                  "Display list content, data frame column values, and example values"
-                ],
+                "Display literal values and object types only",
+                "Display list content, data frame column values, and example values"
+              ],
               "default": "0"
             }
           },
