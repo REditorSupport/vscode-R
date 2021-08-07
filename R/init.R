@@ -104,6 +104,78 @@ init_last <- function() {
   # Attach to vscode
   exports$.vsc.attach()
 
+  # Import VSC-R settings
+  local({
+    homedir <- Sys.getenv(
+      if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME"
+    )
+
+    fileCon <- if (file.exists(file.path(homedir, ".vscode-R", "settings.json"))) {
+      file(file.path(homedir, ".vscode-R", "settings.json"))
+    } else {
+      NULL
+    }
+
+    if (!is.null(fileCon)) {
+      # settings.json can result in errors if read via fromJSON
+      vsc_settings <- suppressWarnings(
+        jsonlite::fromJSON(paste(readLines(fileCon), collapse = ""))[["rOptions"]]
+      )
+      ops <- Reduce(c, vsc_settings)
+
+      # non-string values have to be converted from
+      # strings due to VSC settings limitations
+      get_val <- function(x) {
+        if (is.logical(x)) {
+          x
+        } else {
+          switch(EXPR = x,
+            "Two" = "Two",
+            "Active" = "Active",
+            "Beside" = "Beside",
+            "FALSE" = FALSE,
+            "TRUE" = TRUE,
+            "0" = 0,
+            "2" = 2,
+            x
+          )
+        }
+      }
+
+      setOption <- function(lhs, rhs) {
+        if (is.null(options()[[lhs]])) {
+          ops <- list(rhs)
+          names(ops) <- lhs
+          options(ops)
+        }
+      }
+
+      lapply(names(ops), function(x) {
+        val <- get_val(ops[[x]])
+
+        # lhs = vscode setting name
+        # rhs name = R options name
+        switch(EXPR = x,
+          # arrays
+          "vsc.plot" = setOption("vsc.plot", val),
+          "vsc.browser" = setOption("vsc.browser", val),
+          "vsc.viewer" = setOption("vsc.viewer", val),
+          "vsc.pageViewer" = setOption("vsc.page_viewer", val),
+          "vsc.view" = setOption("vsc.view", val),
+          "vsc.helpPanel" = setOption("vsc.helpPanel", val),
+          "vsc.strMaxLevel" = setOption("vsc.str.max.level", val),
+          # bools
+          "vsc.rstudioapi" = setOption("vsc.rstudioapi", val),
+          "vsc.useHttpgd" = setOption("vsc.use_httpgd", val),
+          "vsc.globalEnv" = setOption("vsc.globalenv", val),
+          "vsc.showObjectSize" = setOption("vsc.show_object_size", val)
+        )
+      })
+
+      close(fileCon)
+    }
+  })
+
   invisible()
 }
 

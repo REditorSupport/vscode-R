@@ -1411,7 +1411,7 @@
         },
         "r.rOptions.bools": {
           "type": "object",
-          "markdownDescription": "Toggle vsc bools",
+          "markdownDescription": "Toggle vsc bools TODO",
           "default": {
             "vsc.rstudioapi": false,
             "vsc.useHttpgd": false,
@@ -1421,26 +1421,30 @@
           "properties": {
             "vsc.rstudioapi": {
               "type": "boolean",
-              "default": false
+              "default": false,
+              "description": "Emulate rstudioapi for addin support"
             },
             "vsc.useHttpgd": {
               "type": "boolean",
-              "default": false
+              "default": false,
+              "description": "Use the httpgd-based plot viewer"
             },
-            "vsc.globalEnv": {
+            "vsc.globalenv": {
               "type": "boolean",
-              "default": true
+              "default": true,
+              "description": "Watch global environment symbols to provide hover and autocompletions"
             },
             "vsc.showObjectSize": {
               "type": "boolean",
-              "default": false
+              "default": false,
+              "description": "Show object size when hovering over a workspace viewer item"
             }
           },
           "additionalProperties": false
         },
         "r.rOptions.arrays": {
           "type": "object",
-          "markdownDescription": "Set vsc options",
+          "markdownDescription": "Set vsc options TODO",
           "default": {
             "vsc.plot": "Two",
             "vsc.browser": "Active",
@@ -1453,70 +1457,117 @@
           "properties": {
             "vsc.plot": {
               "type": "string",
+              "description": "Which view column to show the plot file on graphics update?",
                 "enum": [
                   "Two",
                   "Active",
                   "Beside",
                   "FALSE"
                 ],
+                "enumDescriptions": [
+                  "Display plots in editor group 2.",
+                  "Display plots in the active editor.",
+                  "Display plots beside the active editor.",
+                  "Do not use the VSCode-R plot viewer."
+                ],
                 "default": "Two"
             },
             "vsc.browser": {
               "type": "string",
+              "description": "Which view column to show the WebView triggered by browser (e.g. shiny apps)?",
               "enum": [
                 "Two",
                 "Active",
                 "Beside",
                 "FALSE"
               ],
+              "enumDescriptions": [
+                  "Display browser in editor group 2.",
+                  "Display browser in the active editor.",
+                  "Display browser beside the active editor.",
+                  "Do not use the VSCode-R browser."
+                ],
               "default": "Active"
             },
             "vsc.viewer": {
               "type": "string",
+              "description": "Which view column to show the WebView triggered by viewer (e.g. htmlwidgets)?",
               "enum": [
                 "Two",
                 "Active",
                 "Beside",
                 "FALSE"
               ],
+              "enumDescriptions": [
+                  "Display viewer in editor group 2.",
+                  "Display viewer in the active editor.",
+                  "Display viewer beside the active editor.",
+                  "Do not use the VSCode-R viewer."
+                ],
               "default": "Two"
             },
             "vsc.pageViewer": {
               "type": "string",
+              "description": "Which view column to show the WebView triggered by the page viewer (e.g. profvis)?",
               "enum": [
                 "Two",
                 "Active",
                 "Beside",
                 "FALSE"
               ],
+              "enumDescriptions": [
+                  "Display page viewer in editor group 2.",
+                  "Display page viewer in the active editor.",
+                  "Display page viewer beside the active editor.",
+                  "Do not use the VSCode-R page viewer."
+                ],
               "default": "Active"
             },
             "vsc.view": {
               "type": "string",
+              "description": "Which view column to show the WebView triggered by View()?",
               "enum": [
                 "Two",
                 "Active",
                 "Beside",
                 "FALSE"
               ],
+              "enumDescriptions": [
+                  "Display view output in editor group 2.",
+                  "Display view output in the active editor.",
+                  "Display view output beside the active editor.",
+                  "Do not use the VSCode-R view command."
+                ],
               "default": "Two"
             },
             "vsc.helpPanel": {
               "type": "string",
+              "description": "Which view column to show the WebView triggered by the help panel?",
               "enum": [
                 "Two",
                 "Active",
                 "Beside",
                 "FALSE"
               ],
+              "enumDescriptions": [
+                  "Display help panel in editor group 2.",
+                  "Display help panel in the active editor.",
+                  "Display help panel beside the active editor.",
+                  "Do not use the VSCode-R help panel."
+                ],
               "default": "Two"
             },
             "vsc.strMaxLevel": {
               "type": "string",
+              "description": "How much of the object to show on hover, autocompletion, and in the workspace viewer?",
               "enum": [
                 "0",
                 "2"
               ],
+              "enumDescriptions": [
+                  "Display literal values and object types only",
+                  "Display list content, data frame column values, and example values"
+                ],
               "default": "0"
             }
           },
