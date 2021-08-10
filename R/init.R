@@ -117,11 +117,27 @@ init_last <- function() {
     }
 
     if (!is.null(fileCon)) {
+      rSettings <- c(
+        "plot.useHttpgd",
+        "workspaceViewer.showObjectSize",
+        "session.emulateRStudioAPI",
+        "session.levelOfObjectDetail",
+        "session.watchGlobalEnvironment",
+        "session.viewers.Plot Column",
+        "session.viewers.Browser Column",
+        "session.viewers.Viewer Column",
+        "session.viewers.Page Viewer Column",
+        "session.viewers.View Column",
+        "session.viewers.Help Panel Column"
+      )
+
       # settings.json can result in errors if read via fromJSON
       vsc_settings <- suppressWarnings(
-        jsonlite::fromJSON(paste(readLines(fileCon), collapse = ""))[["rOptions"]]
+        unlist(
+          jsonlite::fromJSON(paste(readLines(fileCon), collapse = ""))
+        )
       )
-      ops <- Reduce(c, vsc_settings)
+      ops <- na.omit(vsc_settings[rSettings])
 
       # non-string values have to be converted from
       # strings due to VSC settings limitations
@@ -133,10 +149,11 @@ init_last <- function() {
             "Two" = "Two",
             "Active" = "Active",
             "Beside" = "Beside",
+            "Disable" = FALSE,
             "FALSE" = FALSE,
             "TRUE" = TRUE,
-            "0" = 0,
-            "2" = 2,
+            "Minimal" = 0,
+            "Detailed" = 2,
             x
           )
         }
@@ -157,18 +174,18 @@ init_last <- function() {
         # rhs name = R options name
         switch(EXPR = x,
           # arrays
-          "vsc.plot" = setOption("vsc.plot", val),
-          "vsc.browser" = setOption("vsc.browser", val),
-          "vsc.viewer" = setOption("vsc.viewer", val),
-          "vsc.pageViewer" = setOption("vsc.page_viewer", val),
-          "vsc.view" = setOption("vsc.view", val),
-          "vsc.helpPanel" = setOption("vsc.helpPanel", val),
-          "vsc.strMaxLevel" = setOption("vsc.str.max.level", val),
+          `session.viewers.Plot Column` = setOption("vsc.plot", val),
+          `session.viewers.Browser Column` = setOption("vsc.browser", val),
+          `session.viewers.Viewer Column` = setOption("vsc.viewer", val),
+          `session.viewers.Page Viewer Column` = setOption("vsc.page_viewer", val),
+          `session.viewers.View Column` = setOption("vsc.view", val),
+          `session.viewers.Help Panel Column` = setOption("vsc.helpPanel", val),
+          `session.levelOfObjectDetail` = setOption("vsc.str.max.level", val),
           # bools
-          "vsc.rstudioapi" = setOption("vsc.rstudioapi", val),
-          "vsc.useHttpgd" = setOption("vsc.use_httpgd", val),
-          "vsc.globalEnv" = setOption("vsc.globalenv", val),
-          "vsc.showObjectSize" = setOption("vsc.show_object_size", val)
+          `plot.useHttpgd` = setOption("vsc.use_httpgd", val),
+          `session.emulateRStudioAPI` = setOption("vsc.rstudioapi", val),
+          `session.watchGlobalEnvironment` = setOption("vsc.globalenv", val),
+          `workspaceViewer.showObjectSize` = setOption("vsc.show_object_size", val)
         )
       })
 
