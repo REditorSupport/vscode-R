@@ -7,6 +7,91 @@ homedir <- Sys.getenv(
 dir_watcher <- Sys.getenv("VSCODE_WATCHER_DIR", file.path(homedir, ".vscode-R"))
 request_file <- file.path(dir_watcher, "request.log")
 request_lock_file <- file.path(dir_watcher, "request.lock")
+settings_file <- file.path(dir_watcher, "settings.json")
+user_options <- names(options())
+
+load_settings <- function() {
+  if (!file.exists(settings_file)) {
+    return(FALSE)
+  }
+
+  rSettings <- c(
+    "plot.useHttpgd",
+    "workspaceViewer.showObjectSize",
+    "session.emulateRStudioAPI",
+    "session.levelOfObjectDetail",
+    "session.watchGlobalEnvironment",
+    "session.viewers.viewColumn.plot",
+    "session.viewers.viewColumn.browser",
+    "session.viewers.viewColumn.viewer",
+    "session.viewers.viewColumn.pageViewer",
+    "session.viewers.viewColumn.view",
+    "session.viewers.viewColumn.helpPanel "
+  )
+
+  # settings.json can result in errors if read via fromJSON
+  vsc_settings <- suppressWarnings(
+    unlist(
+      jsonlite::fromJSON(paste(readLines(settings_file), collapse = ""))
+    )
+  )
+  ops <- na.omit(vsc_settings[rSettings])
+
+  # non-string values have to be converted from
+  # strings due to VSC settings limitations
+  get_val <- function(x) {
+    if (is.logical(x)) {
+      x
+    } else {
+      switch(EXPR = x,
+        "Two" = "Two",
+        "Active" = "Active",
+        "Beside" = "Beside",
+        "Disable" = FALSE,
+        "FALSE" = FALSE,
+        "TRUE" = TRUE,
+        "Minimal" = 0,
+        "Detailed" = 2,
+        x
+      )
+    }
+  }
+
+  setOption <- function(lhs, rhs) {
+    if (!(lhs %in% user_options)) {
+      ops <- list(rhs)
+      names(ops) <- lhs
+      options(ops)
+    }
+  }
+
+  lapply(names(ops), function(x) {
+    val <- get_val(ops[[x]])
+
+    # lhs = vscode setting name
+    # rhs name = R options name
+    switch(EXPR = x,
+      # arrays
+      `session.viewers.viewColumn.plot` = setOption("vsc.plot", val),
+      `session.viewers.viewColumn.browser` = setOption("vsc.browser", val),
+      `session.viewers.viewColumn.viewer` = setOption("vsc.viewer", val),
+      `session.viewers.viewColumn.pageViewer` = setOption("vsc.page_viewer", val),
+      `session.viewers.viewColumn.view` = setOption("vsc.view", val),
+      `session.viewers.viewColumn.helpPanel` = setOption("vsc.helpPanel", val),
+      `session.levelOfObjectDetail` = setOption("vsc.str.max.level", val),
+      # bools
+      `plot.useHttpgd` = setOption("vsc.use_httpgd", val),
+      `session.emulateRStudioAPI` = setOption("vsc.rstudioapi", val),
+      `session.watchGlobalEnvironment` = setOption("vsc.globalenv", val),
+      `workspaceViewer.showObjectSize` = setOption("vsc.show_object_size", val)
+    )
+    NULL
+  })
+
+  options()
+}
+
+load_settings()
 
 if (is.null(getOption("help_type"))) {
   options(help_type = "html")
@@ -396,6 +481,7 @@ if (show_view) {
 }
 
 attach <- function() {
+  load_settings()
   if (rstudioapi_enabled()) {
     rstudioapi_util_env$update_addin_registry(addin_registry)
   }
