@@ -1349,19 +1349,19 @@
           "default": false,
           "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Changes the option `vsc.rstudioapi` in R.Requires `#r.sessionWatcher#` to be set to `true`."
         },
-        "r.session.viewers": {
+        "r.session.viewers.viewColumn": {
           "type": "object",
           "markdownDescription": "Set vsc options TODO. Requires `#r.sessionWatcher#` to be set to `true`.",
           "default": {
-            "Plot Column": "Two",
-            "Browser Column": "Active",
-            "Viewer Column": "Two",
-            "Page Viewer Column": "Active",
-            "View Column": "Two",
-            "Help Panel Column": "Two"
+            "plot": "Two",
+            "browser": "Active",
+            "viewer": "Two",
+            "pageViewer": "Active",
+            "view": "Two",
+            "helpPanel": "Two"
           },
           "properties": {
-            "Plot Column": {
+            "plot": {
               "type": "string",
               "description": "Which view column to show the plot file on graphics update? \n\nChanges the option 'vsc.plot' in R",
               "enum": [
@@ -1378,7 +1378,7 @@
               ],
               "default": "Two"
             },
-            "Browser Column": {
+            "browser": {
               "type": "string",
               "description": "Which view column to show the WebView triggered by browser (e.g. shiny apps)? \n\nChanges the option 'vsc.browser' in R",
               "enum": [
@@ -1395,7 +1395,7 @@
               ],
               "default": "Active"
             },
-            "Viewer Column": {
+            "viewer": {
               "type": "string",
               "description": "Which view column to show the WebView triggered by viewer (e.g. htmlwidgets)? \n\nChanges the option 'vsc.viewer' in R.",
               "enum": [
@@ -1412,7 +1412,7 @@
               ],
               "default": "Two"
             },
-            "Page Viewer Column": {
+            "pageViewer": {
               "type": "string",
               "description": "Which view column to show the WebView triggered by the page viewer (e.g. profvis)? \n\nChanges the option 'vsc.page_viewer' in R.",
               "enum": [
@@ -1429,7 +1429,7 @@
               ],
               "default": "Active"
             },
-            "View Column": {
+            "view": {
               "type": "string",
               "description": "Which view column to show the WebView triggered by View()? \n\nChanges the option 'vsc.plot' in R.",
               "enum": [
@@ -1446,7 +1446,7 @@
               ],
               "default": "Two"
             },
-            "Help Panel Column": {
+            "helpPanel": {
               "type": "string",
               "description": "Which view column to show the WebView triggered by the help panel? \n\nChanges the option 'vsc.help_panel' in R",
               "enum": [
@@ -1474,7 +1474,7 @@
         "r.workspaceViewer.showObjectSize": {
           "type": "boolean",
           "default": false,
-          "description": "Show object size when hovering over a workspace viewer item \n\nChanges the option `vsc.show_object_size` in R."
+          "markdownDescription": "Show object size when hovering over a workspace viewer item. Changes the option `vsc.show_object_size` in R."
         },
         "r.workspaceViewer.removeHiddenItems": {
           "type": "boolean",
@@ -1509,7 +1509,7 @@
         "r.plot.useHttpgd": {
           "type": "boolean",
           "default": false,
-          "description": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer \n\nChanges the option 'vsc.use_httpgd' in R"
+          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer. Changes the option `vsc.use_httpgd` in R."
         },
         "r.plot.defaults.colorTheme": {
           "type": "string",

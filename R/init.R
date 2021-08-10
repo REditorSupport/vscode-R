@@ -123,12 +123,12 @@ init_last <- function() {
         "session.emulateRStudioAPI",
         "session.levelOfObjectDetail",
         "session.watchGlobalEnvironment",
-        "session.viewers.Plot Column",
-        "session.viewers.Browser Column",
-        "session.viewers.Viewer Column",
-        "session.viewers.Page Viewer Column",
-        "session.viewers.View Column",
-        "session.viewers.Help Panel Column"
+        "session.viewers.viewColumn.plot",
+        "session.viewers.viewColumn.browser",
+        "session.viewers.viewColumn.viewer",
+        "session.viewers.viewColumn.pageViewer",
+        "session.viewers.viewColumn.view",
+        "session.viewers.viewColumn.helpPanel "
       )
 
       # settings.json can result in errors if read via fromJSON
@@ -174,12 +174,12 @@ init_last <- function() {
         # rhs name = R options name
         switch(EXPR = x,
           # arrays
-          `session.viewers.Plot Column` = setOption("vsc.plot", val),
-          `session.viewers.Browser Column` = setOption("vsc.browser", val),
-          `session.viewers.Viewer Column` = setOption("vsc.viewer", val),
-          `session.viewers.Page Viewer Column` = setOption("vsc.page_viewer", val),
-          `session.viewers.View Column` = setOption("vsc.view", val),
-          `session.viewers.Help Panel Column` = setOption("vsc.helpPanel", val),
+          `session.viewers.viewColumn.plot` = setOption("vsc.plot", val),
+          `session.viewers.viewColumn.browser` = setOption("vsc.browser", val),
+          `session.viewers.viewColumn.viewer` = setOption("vsc.viewer", val),
+          `session.viewers.viewColumn.pageViewer` = setOption("vsc.page_viewer", val),
+          `session.viewers.viewColumn.view` = setOption("vsc.view", val),
+          `session.viewers.viewColumn.helpPanel` = setOption("vsc.helpPanel", val),
           `session.levelOfObjectDetail` = setOption("vsc.str.max.level", val),
           # bools
           `plot.useHttpgd` = setOption("vsc.use_httpgd", val),
