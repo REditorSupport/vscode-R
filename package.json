@@ -1351,7 +1351,7 @@
         },
         "r.session.viewers.viewColumn": {
           "type": "object",
-          "markdownDescription": "Set vsc options TODO. Requires `#r.sessionWatcher#` to be set to `true`.",
+          "markdownDescription": "which view column should R-related webviews be displayed?. Requires `#r.sessionWatcher#` to be set to `true`.",
           "default": {
             "plot": "Two",
             "browser": "Active",
