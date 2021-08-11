@@ -15,80 +15,53 @@ load_settings <- function() {
     return(FALSE)
   }
 
-  rSettings <- c(
-    "plot.useHttpgd",
-    "workspaceViewer.showObjectSize",
-    "session.emulateRStudioAPI",
-    "session.levelOfObjectDetail",
-    "session.watchGlobalEnvironment",
-    "session.viewers.viewColumn.plot",
-    "session.viewers.viewColumn.browser",
-    "session.viewers.viewColumn.viewer",
-    "session.viewers.viewColumn.pageViewer",
-    "session.viewers.viewColumn.view",
-    "session.viewers.viewColumn.helpPanel "
+  mapping <- c(
+    "plot.useHttpgd" = "vsc.use_httpgd",
+    "workspaceViewer.showObjectSize" = "vsc.show_object_size",
+    "session.emulateRStudioAPI" = "vsc.rstudioapi",
+    "session.levelOfObjectDetail" = "vsc.str.max.level",
+    "session.watchGlobalEnvironment" = "vsc.globalenv",
+    "session.viewers.viewColumn.plot" = "vsc.plot",
+    "session.viewers.viewColumn.browser" = "vsc.browser",
+    "session.viewers.viewColumn.viewer" = "vsc.viewer",
+    "session.viewers.viewColumn.pageViewer" = "vsc.page_viewer",
+    "session.viewers.viewColumn.view" = "vsc.view",
+    "session.viewers.viewColumn.helpPanel" = "vsc.helpPanel"
   )
 
-  # settings.json can result in errors if read via fromJSON
-  vsc_settings <- suppressWarnings(
-    unlist(
-      jsonlite::fromJSON(paste(readLines(settings_file), collapse = ""))
-    )
-  )
-  ops <- na.omit(vsc_settings[rSettings])
-
-  # non-string values have to be converted from
-  # strings due to VSC settings limitations
-  get_val <- function(x) {
-    if (is.logical(x)) {
-      x
-    } else {
-      switch(EXPR = x,
-        "Two" = "Two",
-        "Active" = "Active",
-        "Beside" = "Beside",
-        "Disable" = FALSE,
-        "FALSE" = FALSE,
-        "TRUE" = TRUE,
-        "Minimal" = 0,
-        "Detailed" = 2,
-        x
-      )
-    }
-  }
-
-  setOption <- function(lhs, rhs) {
-    if (!(lhs %in% user_options)) {
-      ops <- list(rhs)
-      names(ops) <- lhs
-      options(ops)
-    }
-  }
-
-  lapply(names(ops), function(x) {
-    val <- get_val(ops[[x]])
-
-    # lhs = vscode setting name
-    # rhs name = R options name
-    switch(EXPR = x,
-      # arrays
-      `session.viewers.viewColumn.plot` = setOption("vsc.plot", val),
-      `session.viewers.viewColumn.browser` = setOption("vsc.browser", val),
-      `session.viewers.viewColumn.viewer` = setOption("vsc.viewer", val),
-      `session.viewers.viewColumn.pageViewer` = setOption("vsc.page_viewer", val),
-      `session.viewers.viewColumn.view` = setOption("vsc.view", val),
-      `session.viewers.viewColumn.helpPanel` = setOption("vsc.helpPanel", val),
-      `session.levelOfObjectDetail` = setOption("vsc.str.max.level", val),
-      # bools
-      `plot.useHttpgd` = setOption("vsc.use_httpgd", val),
-      `session.emulateRStudioAPI` = setOption("vsc.rstudioapi", val),
-      `session.watchGlobalEnvironment` = setOption("vsc.globalenv", val),
-      `workspaceViewer.showObjectSize` = setOption("vsc.show_object_size", val)
-    )
-    NULL
+  vsc_settings <- tryCatch(jsonlite::read_json(settings_file), error = function(e) {
+    message("Error occurs when reading VS Code settings: ", conditionMessage(e))
   })
 
-  options()
+  if (is.null(vsc_settings)) {
+    return(FALSE)
+  }
+
+  vsc_settings <- as.character(unlist(vsc_settings))
+  ops <- vsc_settings[names(vsc_settings) %in% names(mapping)]
+
+  # map VS Code settings to R options
+  names(ops) <- mapping[names(ops)]
+
+  # exclude options set by user on startup
+  ops <- ops[!(names(ops) %in% user_options)]
+
+  # translate VS Code setting values to R option values
+  r_options <- lapply(ops, function(x) {
+    switch(EXPR = x,
+      "Two" = "Two",
+      "Active" = "Active",
+      "Beside" = "Beside",
+      "Disable" = FALSE,
+      "FALSE" = FALSE,
+      "TRUE" = TRUE,
+      "Minimal" = 0,
+      "Detailed" = 2,
+      x
+    )
+  })
+
+  options(r_options)
 }
 
 load_settings()
