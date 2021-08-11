@@ -37,7 +37,7 @@ load_settings <- function() {
     return(FALSE)
   }
 
-  vsc_settings <- as.character(unlist(vsc_settings))
+  vsc_settings <- unlist(vsc_settings)
   ops <- vsc_settings[names(vsc_settings) %in% names(mapping)]
 
   # map VS Code settings to R options
