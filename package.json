@@ -1326,10 +1326,155 @@
           "default": true,
           "description": "Enable R session watcher. Required for workspace viewer and most features to work with an R session. Restart required to take effect."
         },
+        "r.session.watchGlobalEnvironment": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Watch the global environment to provide hover, autocompletions, and workspace viewer information. Changes the option `vsc.globalenv` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+        },
+        "r.session.levelOfObjectDetail": {
+          "type": "string",
+          "markdownDescription": "How much of the object to show on hover, autocompletion, and in the workspace viewer? Changes the option `vsc.str.max.level` in R. Requires `#r.sessionWatcher#` to be set to `true`.",
+          "default": "Minimal",
+          "enum": [
+            "Minimal",
+            "Detailed"
+          ],
+          "enumDescriptions": [
+            "Display literal values and object types only.",
+            "Display list content, data frame column values, and example values."
+          ]
+        },
+        "r.session.emulateRStudioAPI": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Changes the option `vsc.rstudioapi` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+        },
+        "r.session.viewers.viewColumn": {
+          "type": "object",
+          "markdownDescription": "Which view column should R-related webviews be displayed? Requires `#r.sessionWatcher#` to be set to `true`.",
+          "default": {
+            "plot": "Two",
+            "browser": "Active",
+            "viewer": "Two",
+            "pageViewer": "Active",
+            "view": "Two",
+            "helpPanel": "Two"
+          },
+          "properties": {
+            "plot": {
+              "type": "string",
+              "description": "Which view column to show the plot file on graphics update? \n\nChanges the option 'vsc.plot' in R.",
+              "enum": [
+                "Two",
+                "Active",
+                "Beside",
+                "Disable"
+              ],
+              "enumDescriptions": [
+                "Display plots in editor group 2.",
+                "Display plots in the active editor.",
+                "Display plots beside the active editor.",
+                "Do not use the VSCode-R plot viewer."
+              ],
+              "default": "Two"
+            },
+            "browser": {
+              "type": "string",
+              "description": "Which view column to show the WebView triggered by browser (e.g. shiny apps)? \n\nChanges the option 'vsc.browser' in R.",
+              "enum": [
+                "Two",
+                "Active",
+                "Beside",
+                "Disable"
+              ],
+              "enumDescriptions": [
+                "Display browser in editor group 2.",
+                "Display browser in the active editor.",
+                "Display browser beside the active editor.",
+                "Do not use the VSCode-R browser."
+              ],
+              "default": "Active"
+            },
+            "viewer": {
+              "type": "string",
+              "description": "Which view column to show the WebView triggered by viewer (e.g. htmlwidgets)? \n\nChanges the option 'vsc.viewer' in R.",
+              "enum": [
+                "Two",
+                "Active",
+                "Beside",
+                "Disable"
+              ],
+              "enumDescriptions": [
+                "Display viewer in editor group 2.",
+                "Display viewer in the active editor.",
+                "Display viewer beside the active editor.",
+                "Do not use the VSCode-R viewer."
+              ],
+              "default": "Two"
+            },
+            "pageViewer": {
+              "type": "string",
+              "description": "Which view column to show the WebView triggered by the page viewer (e.g. profvis)? \n\nChanges the option 'vsc.page_viewer' in R.",
+              "enum": [
+                "Two",
+                "Active",
+                "Beside",
+                "Disable"
+              ],
+              "enumDescriptions": [
+                "Display page viewer in editor group 2.",
+                "Display page viewer in the active editor.",
+                "Display page viewer beside the active editor.",
+                "Do not use the VSCode-R page viewer."
+              ],
+              "default": "Active"
+            },
+            "view": {
+              "type": "string",
+              "description": "Which view column to show the WebView triggered by View()? \n\nChanges the option 'vsc.plot' in R.",
+              "enum": [
+                "Two",
+                "Active",
+                "Beside",
+                "Disable"
+              ],
+              "enumDescriptions": [
+                "Display view output in editor group 2.",
+                "Display view output in the active editor.",
+                "Display view output beside the active editor.",
+                "Do not use the VSCode-R view command."
+              ],
+              "default": "Two"
+            },
+            "helpPanel": {
+              "type": "string",
+              "description": "Which view column to show the WebView triggered by the help panel? \n\nChanges the option 'vsc.help_panel' in R.",
+              "enum": [
+                "Two",
+                "Active",
+                "Beside",
+                "Disable"
+              ],
+              "enumDescriptions": [
+                "Display help panel in editor group 2.",
+                "Display help panel in the active editor.",
+                "Display help panel beside the active editor.",
+                "Do not use the VSCode-R help panel."
+              ],
+              "default": "Two"
+            }
+          },
+          "additionalProperties": false
+        },
         "r.rtermSendDelay": {
           "type": "integer",
           "default": 8,
           "description": "Delay in milliseconds before sending each line to rterm (only applies if r.bracketedPaste is false)"
+        },
+        "r.workspaceViewer.showObjectSize": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Show object size when hovering over a workspace viewer item. Changes the option `vsc.show_object_size` in R."
         },
         "r.workspaceViewer.removeHiddenItems": {
           "type": "boolean",
@@ -1360,6 +1505,11 @@
           "type": "boolean",
           "default": false,
           "description": "Default boolean value for automatically sharing R browser ports with guests."
+        },
+        "r.plot.useHttpgd": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer. Changes the option `vsc.use_httpgd` in R."
         },
         "r.plot.defaults.colorTheme": {
           "type": "string",
