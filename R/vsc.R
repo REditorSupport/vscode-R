@@ -7,6 +7,59 @@ homedir <- Sys.getenv(
 dir_watcher <- Sys.getenv("VSCODE_WATCHER_DIR", file.path(homedir, ".vscode-R"))
 request_file <- file.path(dir_watcher, "request.log")
 request_lock_file <- file.path(dir_watcher, "request.lock")
+settings_file <- file.path(dir_watcher, "settings.json")
+user_options <- names(options())
+
+load_settings <- function() {
+  if (!file.exists(settings_file)) {
+    return(FALSE)
+  }
+
+  mapping <- quote(list(
+    vsc.use_httpgd = plot$useHttpgd,
+    vsc.show_object_size = workspaceViewer$showObjectSize,
+    vsc.rstudioapi = session$emulateRStudioAPI,
+    vsc.str.max.level = session$levelOfObjectDetail,
+    vsc.globalenv = session$watchGlobalEnvironment,
+    vsc.plot = session$viewers$viewColumn$plot,
+    vsc.browser = session$viewers$viewColumn$browser,
+    vsc.viewer = session$viewers$viewColumn$viewer,
+    vsc.page_viewer = session$viewers$viewColumn$pageViewer,
+    vsc.view = session$viewers$viewColumn$view,
+    vsc.helpPanel = session$viewers$viewColumn$helpPanel
+  ))
+
+  vsc_settings <- tryCatch(jsonlite::read_json(settings_file), error = function(e) {
+    message("Error occurs when reading VS Code settings: ", conditionMessage(e))
+  })
+
+  if (is.null(vsc_settings)) {
+    return(FALSE)
+  }
+
+  ops <- eval(mapping, vsc_settings)
+
+  # exclude options set by user on startup
+  ops <- ops[!(names(ops) %in% user_options)]
+
+  # translate VS Code setting values to R option values
+  r_options <- lapply(ops, function(x) {
+    if (is.character(x) && length(x) == 1) {
+      switch(EXPR = x,
+        "Disable" = FALSE,
+        "Minimal" = 0,
+        "Detailed" = 2,
+        x
+      )
+    } else {
+      x
+    }
+  })
+
+  options(r_options)
+}
+
+load_settings()
 
 if (is.null(getOption("help_type"))) {
   options(help_type = "html")
@@ -396,6 +449,7 @@ if (show_view) {
 }
 
 attach <- function() {
+  load_settings()
   if (rstudioapi_enabled()) {
     rstudioapi_util_env$update_addin_registry(addin_registry)
   }

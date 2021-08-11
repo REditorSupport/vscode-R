@@ -46,6 +46,13 @@ export function deploySessionWatcher(extensionPath: string): void {
     const initPath = path.join(extensionPath, 'R', 'init.R');
     const linkPath = path.join(homeExtDir(), 'init.R');
     fs.writeFileSync(linkPath, `local(source("${initPath.replace(/\\/g, '\\\\')}", chdir = TRUE, local = TRUE))\n`);
+
+    writeSettings();
+    workspace.onDidChangeConfiguration(event => {
+        if (event.affectsConfiguration('r')) {
+            writeSettings();
+        }
+    });
 }
 
 export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
@@ -101,6 +108,11 @@ export function removeSessionFiles(): void {
         removeDirectory(sessionDir);
     }
     console.info('[removeSessionFiles] Done');
+}
+
+function writeSettings() {
+    const settingPath = path.join(homeExtDir(), 'settings.json');
+    fs.writeFileSync(settingPath, JSON.stringify(config()));
 }
 
 function updateSessionWatcher() {
