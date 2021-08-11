@@ -15,18 +15,18 @@ load_settings <- function() {
     return(FALSE)
   }
 
-  mapping <- c(
-    "plot.useHttpgd" = "vsc.use_httpgd",
-    "workspaceViewer.showObjectSize" = "vsc.show_object_size",
-    "session.emulateRStudioAPI" = "vsc.rstudioapi",
-    "session.levelOfObjectDetail" = "vsc.str.max.level",
-    "session.watchGlobalEnvironment" = "vsc.globalenv",
-    "session.viewers.viewColumn.plot" = "vsc.plot",
-    "session.viewers.viewColumn.browser" = "vsc.browser",
-    "session.viewers.viewColumn.viewer" = "vsc.viewer",
-    "session.viewers.viewColumn.pageViewer" = "vsc.page_viewer",
-    "session.viewers.viewColumn.view" = "vsc.view",
-    "session.viewers.viewColumn.helpPanel" = "vsc.helpPanel"
+  mapping <- alist(
+    vsc.use_httpgd = plot$useHttpgd,
+    vsc.show_object_size = workspaceViewer$showObjectSize,
+    vsc.rstudioapi = session$emulateRStudioAPI,
+    vsc.str.max.level = session$levelOfObjectDetail,
+    vsc.globalenv = session$watchGlobalEnvironment,
+    vsc.plot = session$viewers$viewColumn$plot,
+    vsc.browser = session$viewers$viewColumn$browser,
+    vsc.viewer = session$viewers$viewColumn$viewer,
+    vsc.page_viewer = session$viewers$viewColumn$pageViewer,
+    vsc.view = session$viewers$viewColumn$view,
+    vsc.helpPanel = session$viewers$viewColumn$helpPanel
   )
 
   vsc_settings <- tryCatch(jsonlite::read_json(settings_file), error = function(e) {
@@ -37,28 +37,23 @@ load_settings <- function() {
     return(FALSE)
   }
 
-  vsc_settings <- unlist(vsc_settings)
-  ops <- vsc_settings[names(vsc_settings) %in% names(mapping)]
-
-  # map VS Code settings to R options
-  names(ops) <- mapping[names(ops)]
+  ops <- lapply(mapping, eval, vsc_settings)
 
   # exclude options set by user on startup
   ops <- ops[!(names(ops) %in% user_options)]
 
   # translate VS Code setting values to R option values
   r_options <- lapply(ops, function(x) {
-    switch(EXPR = x,
-      "Two" = "Two",
-      "Active" = "Active",
-      "Beside" = "Beside",
-      "Disable" = FALSE,
-      "FALSE" = FALSE,
-      "TRUE" = TRUE,
-      "Minimal" = 0,
-      "Detailed" = 2,
+    if (is.character(x) && length(x) == 1) {
+      switch(EXPR = x,
+        "Disable" = FALSE,
+        "Minimal" = 0,
+        "Detailed" = 2,
+        x
+      )
+    } else {
       x
-    )
+    }
   })
 
   options(r_options)
