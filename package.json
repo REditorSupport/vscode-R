@@ -1340,18 +1340,18 @@
             "Detailed"
           ],
           "enumDescriptions": [
-            "Display literal values and object types only",
-            "Display list content, data frame column values, and example values"
+            "Display literal values and object types only.",
+            "Display list content, data frame column values, and example values."
           ]
         },
         "r.session.emulateRStudioAPI": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Changes the option `vsc.rstudioapi` in R.Requires `#r.sessionWatcher#` to be set to `true`."
+          "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Changes the option `vsc.rstudioapi` in R. Requires `#r.sessionWatcher#` to be set to `true`."
         },
         "r.session.viewers.viewColumn": {
           "type": "object",
-          "markdownDescription": "which view column should R-related webviews be displayed?. Requires `#r.sessionWatcher#` to be set to `true`.",
+          "markdownDescription": "Which view column should R-related webviews be displayed? Requires `#r.sessionWatcher#` to be set to `true`.",
           "default": {
             "plot": "Two",
             "browser": "Active",
@@ -1363,7 +1363,7 @@
           "properties": {
             "plot": {
               "type": "string",
-              "description": "Which view column to show the plot file on graphics update? \n\nChanges the option 'vsc.plot' in R",
+              "description": "Which view column to show the plot file on graphics update? \n\nChanges the option 'vsc.plot' in R.",
               "enum": [
                 "Two",
                 "Active",
@@ -1380,7 +1380,7 @@
             },
             "browser": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by browser (e.g. shiny apps)? \n\nChanges the option 'vsc.browser' in R",
+              "description": "Which view column to show the WebView triggered by browser (e.g. shiny apps)? \n\nChanges the option 'vsc.browser' in R.",
               "enum": [
                 "Two",
                 "Active",
@@ -1448,7 +1448,7 @@
             },
             "helpPanel": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by the help panel? \n\nChanges the option 'vsc.help_panel' in R",
+              "description": "Which view column to show the WebView triggered by the help panel? \n\nChanges the option 'vsc.help_panel' in R.",
               "enum": [
                 "Two",
                 "Active",
