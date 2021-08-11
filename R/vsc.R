@@ -15,7 +15,7 @@ load_settings <- function() {
     return(FALSE)
   }
 
-  mapping <- alist(
+  mapping <- quote(list(
     vsc.use_httpgd = plot$useHttpgd,
     vsc.show_object_size = workspaceViewer$showObjectSize,
     vsc.rstudioapi = session$emulateRStudioAPI,
@@ -27,7 +27,7 @@ load_settings <- function() {
     vsc.page_viewer = session$viewers$viewColumn$pageViewer,
     vsc.view = session$viewers$viewColumn$view,
     vsc.helpPanel = session$viewers$viewColumn$helpPanel
-  )
+  ))
 
   vsc_settings <- tryCatch(jsonlite::read_json(settings_file), error = function(e) {
     message("Error occurs when reading VS Code settings: ", conditionMessage(e))
@@ -37,7 +37,7 @@ load_settings <- function() {
     return(FALSE)
   }
 
-  ops <- lapply(mapping, eval, vsc_settings)
+  ops <- eval(mapping, vsc_settings)
 
   # exclude options set by user on startup
   ops <- ops[!(names(ops) %in% user_options)]
