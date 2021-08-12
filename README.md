@@ -37,7 +37,7 @@ Go to the installation wiki pages ([Windows](https://github.com/REditorSupport/v
 
 * Snippets for R and R Markdown.
 
-* [R Language Service](https://github.com/REditorSupport/vscode-R/wiki/R-Language-Service): Code completion, function signature, symbol highlight, document outline, formatting, definition, refere
+* [R Language Service](https://github.com/REditorSupport/vscode-R/wiki/R-Language-Service): Code completion, function signature, symbol highlight, document outline, formatting, definition, diagnostics, references, and more.
 
 * [Interacting with R terminals](https://github.com/REditorSupport/vscode-R/wiki/Interacting-with-R-terminals): Sending code to terminals, running multiple terminals, working with remote servers.
 
