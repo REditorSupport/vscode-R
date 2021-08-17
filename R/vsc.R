@@ -88,30 +88,18 @@ request <- function(command, ...) {
 }
 
 capture_str <- function(object, max.level = getOption("vsc.str.max.level", 0)) {
-  text <- tryCatch(
-    utils::capture.output(
+  tryCatch(
+    paste0(utils::capture.output(
       utils::str(object,
         max.level = max.level,
         give.attr = FALSE,
         vec.len = 1
       )
-    ),
+    ), collapse = "\n"),
     error = function(e) {
-      tryCatch(
-        utils::capture.output(
-          utils::str(object,
-            max.level = 0,
-            give.attr = FALSE,
-            vec.len = 1
-          )
-        ),
-        error = function(e) {
-          paste0(class(object), collapse = ", ")
-        }
-      )
+      paste0(class(object), collapse = ", ")
     }
   )
-  paste0(text, collapse = "\n")
 }
 
 rebind <- function(sym, value, ns) {
@@ -167,7 +155,7 @@ inspect_env <- function(env, cache) {
         class = class(obj),
         type = scalar(typeof(obj)),
         length = scalar(length(obj)),
-        str = scalar(trimws(capture_str(obj)[[1L]]))
+        str = scalar(trimws(capture_str(obj)))
       )
 
       if (show_object_size) {
