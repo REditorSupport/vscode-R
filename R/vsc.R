@@ -88,15 +88,17 @@ request <- function(command, ...) {
 }
 
 capture_str <- function(object, max.level = getOption("vsc.str.max.level", 0)) {
-  paste0(
-    utils::capture.output(
+  tryCatch(
+    paste0(utils::capture.output(
       utils::str(object,
         max.level = max.level,
         give.attr = FALSE,
         vec.len = 1
       )
-    ),
-    collapse = "\n"
+    ), collapse = "\n"),
+    error = function(e) {
+      paste0(class(object), collapse = ", ")
+    }
   )
 }
 
@@ -153,7 +155,7 @@ inspect_env <- function(env, cache) {
         class = class(obj),
         type = scalar(typeof(obj)),
         length = scalar(length(obj)),
-        str = scalar(trimws(capture_str(obj)[[1L]]))
+        str = scalar(trimws(capture_str(obj)))
       )
 
       if (show_object_size) {
