@@ -361,3 +361,4 @@ export function getDir(dirPath: string): string {
     }
     return dirPath;
 }
+

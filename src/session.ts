@@ -14,7 +14,7 @@ import { FSWatcher } from 'fs-extra';
 import { config, readContent } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
+import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext, iconPaths } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
 export let globalenv: any;
@@ -323,6 +323,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 localResourceRoots: [Uri.file(resDir)],
             });
         const content = await getTableHtml(panel.webview, file);
+        panel.iconPath = iconPaths?.dataView;
         panel.webview.html = content;
     } else if (source === 'list') {
         const panel = window.createWebviewPanel('dataview', title,
@@ -337,6 +338,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 localResourceRoots: [Uri.file(resDir)],
             });
         const content = await getListHtml(panel.webview, file);
+        panel.iconPath = iconPaths?.dataView;
         panel.webview.html = content;
     } else {
         if (isGuestSession) {

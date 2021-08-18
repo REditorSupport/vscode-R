@@ -10,7 +10,7 @@ import * as ejs from 'ejs';
 
 import { config, setContext } from '../util';
 
-import { extensionContext } from '../extension';
+import { extensionContext, iconPaths } from '../extension';
 
 import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage, PreviewPlotLayout, PreviewPlotLayoutMessage, ToggleFullWindowMessage } from './webviewMessages';
 
@@ -272,7 +272,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     readonly defaultPreviewPlotLayout: PreviewPlotLayout = 'multirow';
     previewPlotLayout: PreviewPlotLayout;
-    
+
     readonly defaultFullWindow: boolean = false;
     fullWindow: boolean;
 
@@ -480,7 +480,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         };
         this.postWebviewMessage(msg);
     }
-    
+
     public toggleFullWindow(force?: boolean): void {
         this.fullWindow = force ?? !this.fullWindow;
         const msg: ToggleFullWindowMessage = {
@@ -745,6 +745,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             showOptions || this.showOptions,
             this.webviewOptions
         );
+        webviewPanel.iconPath = iconPaths?.plot;
         webviewPanel.onDidDispose(() => this.webviewPanel = undefined);
         webviewPanel.onDidChangeViewState(() => {
             void this.setContextValues();

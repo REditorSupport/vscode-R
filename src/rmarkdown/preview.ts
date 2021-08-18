@@ -9,7 +9,7 @@ import crypto = require('crypto');
 
 
 import { config, doWithProgress, getRpath, readContent, setContext, escapeHtml } from '../util';
-import { extensionContext, tmpDir } from '../extension';
+import { extensionContext, tmpDir, iconPaths } from '../extension';
 
 class RMarkdownPreview extends vscode.Disposable {
     title: string;
@@ -377,6 +377,7 @@ export class RMarkdownPreviewManager {
     }
 
     private openPreview(outputUri: vscode.Uri, filePath: string, title: string, cp: cp.ChildProcessWithoutNullStreams, viewer: vscode.ViewColumn, resourceViewColumn: vscode.ViewColumn, autoRefresh: boolean): void {
+
         const panel = vscode.window.createWebviewPanel(
             'previewRmd',
             `Preview ${title}`,
@@ -390,6 +391,8 @@ export class RMarkdownPreviewManager {
                 retainContextWhenHidden: true,
                 localResourceRoots: [vscode.Uri.file(tmpDir())],
             });
+
+        panel.iconPath = iconPaths?.preview;
 
         // Push the new rmd webview to the open proccesses array,
         // to keep track of running child processes

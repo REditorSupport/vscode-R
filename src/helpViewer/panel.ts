@@ -5,6 +5,7 @@ import * as cheerio from 'cheerio';
 
 import { HelpFile, RHelp } from '.';
 import { setContext } from '../util';
+import { iconPaths } from '../extension';
 
 
 //// Declaration of interfaces used/implemented by the Help Panel class
@@ -73,7 +74,6 @@ export class HelpPanel {
 				preserveFocus: preserveFocus
 			};
 			this.panel = vscode.window.createWebviewPanel('rhelp', 'R Help', showOptions, webViewOptions);
-
 			this.initializePanel();
 		}
 
@@ -82,8 +82,9 @@ export class HelpPanel {
 
 		return this.panel.webview;
     }
-	
-	private initializePanel(){
+
+	private initializePanel() {
+		this.panel.iconPath = iconPaths?.help;
 		// virtual uris used to access local files
 		this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);
 		this.webviewStyleUri = this.panel.webview.asWebviewUri(this.webviewStyleFile);
@@ -109,7 +110,7 @@ export class HelpPanel {
 			void this.setContextValues();
 		});
 	}
-	
+
 
 	public async setContextValues(): Promise<void> {
 		await setContext('r.helpPanel.active', !!this.panel?.active);
