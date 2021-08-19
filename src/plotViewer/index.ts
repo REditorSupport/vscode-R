@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as ejs from 'ejs';
 
-import { config, setContext } from '../util';
+import { config, setContext, UriIcon } from '../util';
 
 import { extensionContext } from '../extension';
 
@@ -272,7 +272,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     readonly defaultPreviewPlotLayout: PreviewPlotLayout = 'multirow';
     previewPlotLayout: PreviewPlotLayout;
-    
+
     readonly defaultFullWindow: boolean = false;
     fullWindow: boolean;
 
@@ -480,7 +480,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         };
         this.postWebviewMessage(msg);
     }
-    
+
     public toggleFullWindow(force?: boolean): void {
         this.fullWindow = force ?? !this.fullWindow;
         const msg: ToggleFullWindowMessage = {
@@ -745,6 +745,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             showOptions || this.showOptions,
             this.webviewOptions
         );
+        webviewPanel.iconPath = new UriIcon('graph');
         webviewPanel.onDidDispose(() => this.webviewPanel = undefined);
         webviewPanel.onDidChangeViewState(() => {
             void this.setContextValues();

@@ -52,6 +52,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // assign session watcher setting to global variable
     enableSessionWatcher = util.config().get<boolean>('sessionWatcher');
 
+
     // register commands specified in package.json
     const commands = {
         // create R terminal
