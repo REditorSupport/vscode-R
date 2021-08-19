@@ -7,6 +7,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
+import { extensionContext } from './extension';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -362,3 +363,12 @@ export function getDir(dirPath: string): string {
     return dirPath;
 }
 
+export class UriIcon {
+    dark: vscode.Uri;
+    light: vscode.Uri;
+    constructor(id: string) {
+        const extIconPath = extensionContext.asAbsolutePath('images/icons');
+        this.dark = vscode.Uri.file(path.join(extIconPath, 'dark', id + '.svg'));
+        this.light = vscode.Uri.file(path.join(extIconPath, 'light', id + '.svg'));
+    }
+}

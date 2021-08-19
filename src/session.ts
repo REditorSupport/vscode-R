@@ -11,10 +11,10 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
-import { config, readContent } from './util';
+import { config, readContent, UriIcon } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
-import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext, iconPaths } from './extension';
+import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
 export let globalenv: any;
@@ -237,6 +237,7 @@ export async function showBrowser(url: string, title: string, viewer: string | b
             }
             void commands.executeCommand('setContext', 'r.browser.active', false);
         });
+        panel.iconPath = new UriIcon('globe');
         panel.webview.html = getBrowserHtml(externalUri);
     }
     console.info('[showBrowser] Done');
@@ -297,7 +298,7 @@ export async function showWebView(file: string, title: string, viewer: string | 
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(dir), Uri.file(webviewDir)],
             });
-
+        panel.iconPath = new UriIcon('globe');
         panel.webview.html = await getWebviewHtml(panel.webview, file, title, dir, webviewDir);
     }
     console.info('[showWebView] Done');
@@ -323,7 +324,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 localResourceRoots: [Uri.file(resDir)],
             });
         const content = await getTableHtml(panel.webview, file);
-        panel.iconPath = iconPaths?.dataView;
+        panel.iconPath = new UriIcon('open-preview');
         panel.webview.html = content;
     } else if (source === 'list') {
         const panel = window.createWebviewPanel('dataview', title,
@@ -338,7 +339,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 localResourceRoots: [Uri.file(resDir)],
             });
         const content = await getListHtml(panel.webview, file);
-        panel.iconPath = iconPaths?.dataView;
+        panel.iconPath = new UriIcon('open-preview');
         panel.webview.html = content;
     } else {
         if (isGuestSession) {

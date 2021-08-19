@@ -8,9 +8,9 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as ejs from 'ejs';
 
-import { config, setContext } from '../util';
+import { config, setContext, UriIcon } from '../util';
 
-import { extensionContext, iconPaths } from '../extension';
+import { extensionContext } from '../extension';
 
 import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage, PreviewPlotLayout, PreviewPlotLayoutMessage, ToggleFullWindowMessage } from './webviewMessages';
 
@@ -745,7 +745,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             showOptions || this.showOptions,
             this.webviewOptions
         );
-        webviewPanel.iconPath = iconPaths?.plot;
+        webviewPanel.iconPath = new UriIcon('graph');
         webviewPanel.onDidDispose(() => this.webviewPanel = undefined);
         webviewPanel.onDidChangeViewState(() => {
             void this.setContextValues();

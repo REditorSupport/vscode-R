@@ -33,12 +33,6 @@ export let extensionContext: vscode.ExtensionContext;
 export let enableSessionWatcher: boolean = undefined;
 export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
 export let rMarkdownPreview: RMarkdownPreviewManager | undefined = undefined;
-export let iconPaths: {
-   [key: string]: {
-    light: vscode.Uri;
-    dark: vscode.Uri;
-  };
-};
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -55,29 +49,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // assign extension context to global variable
     extensionContext = context;
 
-    // set icon paths
-    const extIconPath = path.join(extensionContext.extensionPath, 'images', 'icons');
-    iconPaths = {
-        plot: {
-            light: vscode.Uri.file(path.join(extIconPath, 'light', 'graph.svg')),
-            dark: vscode.Uri.file(path.join(extIconPath, 'dark', 'graph.svg')),
-        },
-        preview: {
-            light: vscode.Uri.file(path.join(extIconPath, 'light', 'preview.svg')),
-            dark: vscode.Uri.file(path.join(extIconPath, 'dark', 'preview.svg')),
-        },
-        dataView: {
-            light: vscode.Uri.file(path.join(extIconPath, 'light', 'search.svg')),
-            dark: vscode.Uri.file(path.join(extIconPath, 'dark', 'search.svg')),
-        },
-        help: {
-            light: vscode.Uri.file(path.join(extIconPath, 'light', 'help.svg')),
-            dark: vscode.Uri.file(path.join(extIconPath, 'dark', 'help.svg'))
-        }
-    };
-
     // assign session watcher setting to global variable
     enableSessionWatcher = util.config().get<boolean>('sessionWatcher');
+
 
     // register commands specified in package.json
     const commands = {

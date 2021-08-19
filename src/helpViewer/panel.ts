@@ -4,9 +4,7 @@ import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 
 import { HelpFile, RHelp } from '.';
-import { setContext } from '../util';
-import { iconPaths } from '../extension';
-
+import { setContext, UriIcon } from '../util';
 
 //// Declaration of interfaces used/implemented by the Help Panel class
 // specified when creating a new help panel
@@ -84,7 +82,7 @@ export class HelpPanel {
     }
 
 	private initializePanel() {
-		this.panel.iconPath = iconPaths?.help;
+		this.panel.iconPath = new UriIcon('help');
 		// virtual uris used to access local files
 		this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);
 		this.webviewStyleUri = this.panel.webview.asWebviewUri(this.webviewStyleFile);
