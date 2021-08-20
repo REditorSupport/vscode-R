@@ -30,25 +30,6 @@ export async function runSource(echo: boolean): Promise<void>  {
     }
 }
 
-export async function knitRmd(echo: boolean, outputFormat?: string): Promise<void>  {
-    const wad: vscode.TextDocument = vscode.window.activeTextEditor.document;
-    const isSaved = await util.saveDocument(wad);
-    if (isSaved) {
-        let rPath = util.ToRStringLiteral(wad.fileName, '"');
-        let encodingParam = util.config().get<string>('source.encoding');
-        encodingParam = `encoding = "${encodingParam}"`;
-        rPath = [rPath, encodingParam].join(', ');
-        if (echo) {
-            rPath = [rPath, 'echo = TRUE'].join(', ');
-        }
-        if (outputFormat === undefined) {
-            void runTextInTerm(`rmarkdown::render(${rPath})`);
-        } else {
-            void runTextInTerm(`rmarkdown::render(${rPath}, "${outputFormat}")`);
-        }
-    }
-}
-
 export async function runSelection(): Promise<void> {
     await runSelectionInTerm(true);
 }

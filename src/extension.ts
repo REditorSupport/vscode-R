@@ -23,6 +23,7 @@ import * as httpgdViewer from './plotViewer';
 import * as languageService from './languageService';
 
 import { RMarkdownPreviewManager } from './rmarkdown/preview';
+import { RMarkdownKnitManager } from './rmarkdown/knitting';
 
 // global objects used in other files
 export const homeExtDir = (): string => util.getDir(path.join(os.homedir(), '.vscode-R'));
@@ -33,6 +34,7 @@ export let extensionContext: vscode.ExtensionContext;
 export let enableSessionWatcher: boolean = undefined;
 export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
 export let rMarkdownPreview: RMarkdownPreviewManager | undefined = undefined;
+export let rMarkdownKnit: RMarkdownKnitManager | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -51,6 +53,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // assign session watcher setting to global variable
     enableSessionWatcher = util.config().get<boolean>('sessionWatcher');
+    rMarkdownKnit = new RMarkdownKnitManager();
 
 
     // register commands specified in package.json
@@ -75,10 +78,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.runSourcewithEcho': () => { void rTerminal.runSource(true); },
 
         // rmd related
-        'r.knitRmd': () => { void rTerminal.knitRmd(false, undefined); },
-        'r.knitRmdToPdf': () => { void rTerminal.knitRmd(false, 'pdf_document'); },
-        'r.knitRmdToHtml': () => { void rTerminal.knitRmd(false, 'html_document'); },
-        'r.knitRmdToAll': () => { void rTerminal.knitRmd(false, 'all'); },
+        'r.knitRmd': () => { void rMarkdownKnit.knitRmd(false, undefined); },
+        'r.knitRmdToPdf': () => { void rMarkdownKnit.knitRmd(false, 'pdf_document'); },
+        'r.knitRmdToHtml': () => { void rMarkdownKnit.knitRmd(false, 'html_document'); },
+        'r.knitRmdToAll': () => { void rMarkdownKnit.knitRmd(false, 'all'); },
         'r.selectCurrentChunk': rmarkdown.selectCurrentChunk,
         'r.runCurrentChunk': rmarkdown.runCurrentChunk,
         'r.runPreviousChunk': rmarkdown.runPreviousChunk,
@@ -91,6 +94,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.goToNextChunk': rmarkdown.goToNextChunk,
         'r.runChunks': rTerminal.runChunksInTerm,
 
+        'r.rmarkdown.setKnitDirectory': () => rMarkdownKnit.setKnitDir(),
         'r.rmarkdown.showPreviewToSide': () => rMarkdownPreview.previewRmd(vscode.ViewColumn.Beside),
         'r.rmarkdown.showPreview': (uri: vscode.Uri) => rMarkdownPreview.previewRmd(vscode.ViewColumn.Active, uri),
         'r.rmarkdown.preview.refresh': () => rMarkdownPreview.updatePreview(),
@@ -202,7 +206,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
             return task;
         }
     });
-
 
     // deploy session watcher (if configured by user)
     if (enableSessionWatcher) {

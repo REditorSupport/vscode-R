@@ -522,6 +522,12 @@
         "command": "r.goToNextChunk"
       },
       {
+        "command": "r.rmarkdown.setKnitDirectory",
+        "title": "R: Set Knit directory",
+        "icon": "$(zap)",
+        "category": "R Markdown"
+      },
+      {
         "command": "r.rmarkdown.showPreviewToSide",
         "title": "Open Preview to the Side",
         "icon": "$(open-preview)",
@@ -1008,6 +1014,11 @@
           "alt": "r.rmarkdown.showPreview",
           "when": "editorLangId == rmd",
           "group": "navigation"
+        },
+        {
+          "command": "r.rmarkdown.setKnitDirectory",
+          "when": "editorLangId == rmd",
+          "group": "@1"
         }
       ],
       "editor/context": [
@@ -1263,6 +1274,21 @@
           "type": "boolean",
           "default": true,
           "description": "Enable automatic refresh of R Markdown preview on file update."
+        },
+        "r.rmarkdown.defaults.knitDirectory": {
+          "type": "string",
+          "default": "document",
+          "enum": [
+            "document directory",
+            "workspace root",
+            "current directory"
+          ],
+          "enumDescriptions": [
+            "Use the document's directory as the knit directory",
+            "Use the workspace root as the knit directory",
+            "Use the terminal's current working directory as the knit directory"
+          ],
+          "description": "What directory should R Markdown chunks be knitted in? Default knit behaviour is to use the document's directory as root."
         },
         "r.helpPanel.enableSyntaxHighlighting": {
           "type": "boolean",
@@ -1592,6 +1618,7 @@
     "@types/express": "^4.17.12",
     "@types/fs-extra": "^9.0.11",
     "@types/highlight.js": "^10.1.0",
+    "@types/js-yaml": "^4.0.2",
     "@types/mocha": "^8.2.2",
     "@types/node": "^14.17.3",
     "@types/node-fetch": "^2.5.10",
@@ -1623,13 +1650,14 @@
     "highlight.js": "^10.7.2",
     "jquery": "^3.6.0",
     "jquery.json-viewer": "^1.4.0",
+    "js-yaml": "^4.1.0",
     "node-fetch": "^2.6.1",
     "popper.js": "^1.16.1",
     "showdown": "^1.9.1",
     "tree-kill": "^1.2.2",
+    "vscode-languageclient": "^7.0.0",
     "vsls": "^1.0.3015",
     "winreg": "^1.2.4",
-    "ws": "^7.4.6",
-    "vscode-languageclient": "^7.0.0"
+    "ws": "^7.4.6"
   }
 }
