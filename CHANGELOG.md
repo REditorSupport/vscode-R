@@ -4,6 +4,26 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.2.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.2.0)
+
+New Features
+
+* VS Code settings are now accessible from R and all vscode-specifc R options (`vsc.*`) now have
+corresponding VS Code settings. (#743)
+
+Enhancements
+
+* Check conflict extension `mikhail-arkhipov.r` on activation. (#733)
+* Add icons to WebViews. (#759)
+
+Fixes
+
+* Fix date filter in data viewer. (#736)
+* Fix htmlwidget resource path in WebView. (#739)
+* Use `.DollarNames` with default pattern. (#750)
+* Fix syntax highlighting for `c()` in function args. (#751)
+* Handle error in `capture_str()`. (#756)
+
 ## [2.1.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.1.0)
 
 Important changes
