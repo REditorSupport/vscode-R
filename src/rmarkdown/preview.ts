@@ -8,8 +8,9 @@ import path = require('path');
 import crypto = require('crypto');
 
 
-import { config, doWithProgress, getRpath, readContent, setContext, escapeHtml, UriIcon } from '../util';
+import { config, readContent, setContext, escapeHtml, UriIcon } from '../util';
 import { extensionContext, tmpDir } from '../extension';
+import { knitDir, RMarkdownManager } from './knitting';
 
 class RMarkdownPreview extends vscode.Disposable {
     title: string;
@@ -164,10 +165,7 @@ class RMarkdownPreviewStore extends vscode.Disposable {
     }
 }
 
-export class RMarkdownPreviewManager {
-    private rPath: string;
-    private rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel('R Markdown');
-
+export class RMarkdownPreviewManager extends RMarkdownManager {
     // the currently selected RMarkdown preview
     private activePreview: { filePath: string, preview: RMarkdownPreview } = { filePath: null, preview: null };
     // store of all open RMarkdown previews
@@ -177,14 +175,14 @@ export class RMarkdownPreviewManager {
     private busyUriStore: Set<string> = new Set<string>();
     private useCodeTheme = true;
 
-    public async init(): Promise<void> {
-        this.rPath = await getRpath(true);
+    constructor() {
+        super();
         extensionContext.subscriptions.push(this.previewStore);
     }
 
+
     public async previewRmd(viewer: vscode.ViewColumn, uri?: vscode.Uri): Promise<void> {
         const filePath = uri ? uri.fsPath : vscode.window.activeTextEditor.document.uri.fsPath;
-        const fileName = path.basename(filePath);
         const currentViewColumn: vscode.ViewColumn = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.Active ?? vscode.ViewColumn.One;
 
         // handle untitled rmd files
@@ -206,7 +204,7 @@ export class RMarkdownPreviewManager {
         } else {
             this.busyUriStore.add(filePath);
             await vscode.commands.executeCommand('workbench.action.files.save');
-            await this.knitWithProgress(filePath, fileName, viewer, currentViewColumn);
+            await this.previewDocument(filePath, viewer, currentViewColumn);
             this.busyUriStore.delete(filePath);
         }
     }
@@ -265,7 +263,7 @@ export class RMarkdownPreviewManager {
         const previewUri = this.previewStore?.getFilePath(toUpdate);
         toUpdate.cp?.kill('SIGKILL');
 
-        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.knitWithProgress(previewUri, toUpdate.title).catch(() => {
+        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.previewDocument(previewUri, null, null, toUpdate.title).catch(() => {
             void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
             this.rMarkdownOutput.show(true);
             this.previewStore.delete(previewUri);
@@ -278,102 +276,58 @@ export class RMarkdownPreviewManager {
         this.refreshPanel(toUpdate);
     }
 
-    private async knitWithProgress(filePath: string, fileName: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn) {
-        let childProcess:cp.ChildProcessWithoutNullStreams = undefined;
-        await doWithProgress(async (token: vscode.CancellationToken) => {
-            childProcess = await this.knitDocument(filePath, fileName, token, viewer, currentViewColumn);
-        },
-            vscode.ProgressLocation.Notification,
-            `Knitting ${fileName}...`,
-            true
-        ).catch((rejection: {
-            cp: cp.ChildProcessWithoutNullStreams,
-            wasCancelled?: boolean
-        }) => {
-            if (!rejection.wasCancelled) {
-                void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
-                this.rMarkdownOutput.show(true);
+    private async previewDocument(filePath: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn, title?: string) {
+        const dirOpts = this.getKnitDir(knitDir);
+        const lim = '---vsc---';
+        const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
+        const fileName = title ?? path.basename(filePath);
+        const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
+        const cmd = (
+            `${this.rPath} --silent --slave --no-save --no-restore -e ` +
+            `"${dirOpts.replace(/"/g, '\\"')};"` +
+            `"cat('${lim}', rmarkdown::render(` +
+            `'${filePath.replace(/\\/g, '/')}',` +
+            `output_format = rmarkdown::html_document(),` +
+            `output_file = '${outputFile.replace(/\\/g, '/')}',` +
+            `intermediates_dir = '${tmpDir().replace(/\\/g, '/')}'), '${lim}',` +
+            `sep='')"`
+        );
+
+        const callback = (dat: string, childProcess: cp.ChildProcessWithoutNullStreams) => {
+            const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
+            if (outputUrl) {
+                if (viewer !== undefined) {
+                    const autoRefresh = config().get<boolean>('rmarkdown.preview.autoRefresh');
+                    void this.openPreview(
+                        vscode.Uri.parse(outputUrl),
+                        filePath,
+                        fileName,
+                        childProcess,
+                        viewer,
+                        currentViewColumn,
+                        autoRefresh
+                    );
+                }
+                return true;
             }
-            // this can occur when a successfuly knitted document is later altered (while still being previewed)
-            // and subsequently fails to knit
+            return false;
+        };
+
+        const onRejected = (filePath: string) => {
             if (this.previewStore.has(filePath)) {
                 this.previewStore.delete(filePath);
-            } else {
-                rejection.cp.kill('SIGKILL');
             }
-        });
-        return childProcess;
-    }
+        };
 
-    private async knitDocument(filePath: string, fileName: string, token?: vscode.CancellationToken, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn) {
-        return await new Promise<cp.ChildProcessWithoutNullStreams>((resolve, reject) => {
-            const lim = '---vsc---';
-            const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
-            const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
-            const cmd = (
-                `${this.rPath} --silent --slave --no-save --no-restore -e ` +
-                `"cat('${lim}', rmarkdown::render(` +
-                `'${filePath.replace(/\\/g, '/')}',` +
-                `output_format = rmarkdown::html_document(),` +
-                `output_file = '${outputFile.replace(/\\/g, '/')}',` +
-                `intermediates_dir = '${tmpDir().replace(/\\/g, '/')}'), '${lim}',` +
-                `sep='')"`
-            );
-
-            let childProcess: cp.ChildProcessWithoutNullStreams;
-            try {
-                childProcess = cp.exec(cmd);
-            } catch (e: unknown) {
-                console.warn(`[VSC-R] error: ${e as string}`);
-                reject({ cp: childProcess, wasCancelled: false });
+        return await this.knitWithProgress(
+            {
+                fileName: fileName,
+                filePath: filePath,
+                cmd: cmd,
+                cb: callback,
+                onRejection: onRejected
             }
-
-            this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process started`);
-
-            childProcess.stdout.on('data',
-                (data: Buffer) => {
-                    const dat = data.toString('utf8');
-                    this.rMarkdownOutput.appendLine(dat);
-                    if (token?.isCancellationRequested) {
-                        resolve(childProcess);
-                    } else {
-                        const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
-                        if (outputUrl) {
-                            if (viewer !== undefined) {
-                                const autoRefresh = config().get<boolean>('rmarkdown.preview.autoRefresh');
-                                void this.openPreview(
-                                    vscode.Uri.parse(outputUrl),
-                                    filePath,
-                                    fileName,
-                                    childProcess,
-                                    viewer,
-                                    currentViewColumn,
-                                    autoRefresh
-                                );
-                            }
-                            resolve(childProcess);
-                        }
-                    }
-                }
-            );
-
-            childProcess.stderr.on('data', (data: Buffer) => {
-                const dat = data.toString('utf8');
-                this.rMarkdownOutput.appendLine(dat);
-            });
-
-            childProcess.on('exit', (code, signal) => {
-                this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process exited ` +
-                    (signal ? `from signal '${signal}'` : `with exit code ${code}`));
-                if (code !== 0) {
-                    reject({ cp: childProcess, wasCancelled: false });
-                }
-            });
-
-            token?.onCancellationRequested(() => {
-                reject({ cp: childProcess, wasCancelled: true });
-            });
-        });
+        );
     }
 
     private openPreview(outputUri: vscode.Uri, filePath: string, title: string, cp: cp.ChildProcessWithoutNullStreams, viewer: vscode.ViewColumn, resourceViewColumn: vscode.ViewColumn, autoRefresh: boolean): void {
