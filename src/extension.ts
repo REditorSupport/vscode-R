@@ -23,7 +23,7 @@ import * as httpgdViewer from './plotViewer';
 import * as languageService from './languageService';
 
 import { RMarkdownPreviewManager } from './rmarkdown/preview';
-import { RMarkdownKnitManager } from './rmarkdown/knitting';
+import { RMarkdownKnitManager } from './rmarkdown/knit';
 
 // global objects used in other files
 export const homeExtDir = (): string => util.getDir(path.join(os.homedir(), '.vscode-R'));

@@ -10,7 +10,8 @@ import crypto = require('crypto');
 
 import { config, readContent, setContext, escapeHtml, UriIcon } from '../util';
 import { extensionContext, tmpDir } from '../extension';
-import { knitDir, RMarkdownManager } from './knitting';
+import { knitDir } from './knit';
+import { IKnitRejection, RMarkdownManager } from './manager';
 
 class RMarkdownPreview extends vscode.Disposable {
     title: string;
@@ -183,6 +184,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
 
     public async previewRmd(viewer: vscode.ViewColumn, uri?: vscode.Uri): Promise<void> {
         const filePath = uri ? uri.fsPath : vscode.window.activeTextEditor.document.uri.fsPath;
+        const fileName = path.basename(filePath);
         const currentViewColumn: vscode.ViewColumn = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.Active ?? vscode.ViewColumn.One;
 
         // handle untitled rmd files
@@ -204,7 +206,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         } else {
             this.busyUriStore.add(filePath);
             await vscode.commands.executeCommand('workbench.action.files.save');
-            await this.previewDocument(filePath, viewer, currentViewColumn);
+            await this.previewDocument(filePath, fileName, viewer, currentViewColumn);
             this.busyUriStore.delete(filePath);
         }
     }
@@ -263,7 +265,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         const previewUri = this.previewStore?.getFilePath(toUpdate);
         toUpdate.cp?.kill('SIGKILL');
 
-        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.previewDocument(previewUri, null, null, toUpdate.title).catch(() => {
+        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.previewDocument(previewUri, toUpdate.title).catch(() => {
             void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
             this.rMarkdownOutput.show(true);
             this.previewStore.delete(previewUri);
@@ -276,11 +278,10 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         this.refreshPanel(toUpdate);
     }
 
-    private async previewDocument(filePath: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn, title?: string) {
+    private async previewDocument(filePath: string, fileName?: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn) {
         const dirOpts = this.getKnitDir(knitDir);
         const lim = '---vsc---';
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
-        const fileName = title ?? path.basename(filePath);
         const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
         const cmd = (
             `${this.rPath} --silent --slave --no-save --no-restore -e ` +
@@ -313,13 +314,15 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             return false;
         };
 
-        const onRejected = (filePath: string) => {
+        const onRejected = (filePath: string, rejection: IKnitRejection) => {
             if (this.previewStore.has(filePath)) {
                 this.previewStore.delete(filePath);
+            } else {
+                rejection.cp.kill('SIGKILL');
             }
         };
 
-        return await this.knitWithProgress(
+        const childProcess = await this.knitWithProgress(
             {
                 fileName: fileName,
                 filePath: filePath,
@@ -328,6 +331,8 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
                 onRejection: onRejected
             }
         );
+
+        return childProcess;
     }
 
     private openPreview(outputUri: vscode.Uri, filePath: string, title: string, cp: cp.ChildProcessWithoutNullStreams, viewer: vscode.ViewColumn, resourceViewColumn: vscode.ViewColumn, autoRefresh: boolean): void {
