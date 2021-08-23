@@ -1,9 +1,6 @@
 import * as util from '../util';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
-
-import { readFileSync } from 'fs';
-import yaml = require('js-yaml');
 import path = require('path');
 
 
@@ -28,26 +25,6 @@ export abstract class RMarkdownManager {
 
 	public async init(): Promise<void> {
 		this.rPath = await util.getRpath(true);
-	}
-
-	protected getKnitParams(docPath: string): Record<string, unknown> {
-		const parseData = readFileSync(docPath, 'utf8');
-		const yamlDat = /(?<=(---)).*(?=(---))/gs.exec(
-			parseData
-		);
-
-		let paramObj = {};
-		if (yamlDat) {
-			try {
-				paramObj = yaml.load(
-					yamlDat[0]
-				);
-			} catch (e) {
-				console.error(`Could not parse YAML frontmatter for "${docPath}". Error: ${String(e)}`);
-			}
-		}
-
-		return paramObj;
 	}
 
 	protected getKnitDir(knitDir: string): string {
@@ -127,10 +104,7 @@ export abstract class RMarkdownManager {
 			vscode.ProgressLocation.Notification,
 			`Knitting ${args.fileName}...`,
 			true
-		).catch((rejection: {
-			cp: cp.ChildProcessWithoutNullStreams,
-			wasCancelled?: boolean
-		}) => {
+		).catch((rejection: IKnitRejection) => {
 			if (!rejection.wasCancelled) {
 				void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
 				this.rMarkdownOutput.show(true);

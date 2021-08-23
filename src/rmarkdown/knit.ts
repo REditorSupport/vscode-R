@@ -2,6 +2,8 @@ import * as util from '../util';
 import * as vscode from 'vscode';
 
 import path = require('path');
+import { readFileSync } from 'fs';
+import yaml = require('js-yaml');
 import { RMarkdownManager } from './manager';
 
 export let knitDir: string = util.config().get<string>('rmarkdown.defaults.knitDirectory') ?? undefined;
@@ -60,6 +62,26 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 			}
 		);
 
+	}
+
+	private getKnitParams(docPath: string): Record<string, unknown> {
+		const parseData = readFileSync(docPath, 'utf8');
+		const yamlDat = /(?<=(---)).*(?=(---))/gs.exec(
+			parseData
+		);
+
+		let paramObj = {};
+		if (yamlDat) {
+			try {
+				paramObj = yaml.load(
+					yamlDat[0]
+				);
+			} catch (e) {
+				console.error(`Could not parse YAML frontmatter for "${docPath}". Error: ${String(e)}`);
+			}
+		}
+
+		return paramObj;
 	}
 
 	// alters the working directory for evaluating chunks
