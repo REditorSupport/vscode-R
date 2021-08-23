@@ -1016,6 +1016,11 @@
           "group": "navigation"
         },
         {
+          "submenu": "r.knitCommands",
+          "when": "editorLangId == rmd",
+          "group": "@1"
+        },
+        {
           "command": "r.rmarkdown.setKnitDirectory",
           "when": "editorLangId == rmd",
           "group": "@1"
@@ -1160,8 +1165,29 @@
           "when": "resourceLangId == rmd",
           "group": "navigation"
         }
+      ],
+      "r.knitCommands": [
+        {
+          "command": "r.knitRmd"
+        },
+        {
+          "command": "r.knitRmdToPdf"
+        },
+        {
+          "command": "r.knitRmdToHtml"
+        },
+        {
+          "command": "r.knitRmdToAll"
+        }
       ]
     },
+    "submenus": [
+      {
+        "id": "r.knitCommands",
+        "label": "R: Knit",
+        "icon": "$(zap)"
+      }
+    ],
     "configuration": {
       "type": "object",
       "title": "R",
@@ -1288,7 +1314,8 @@
             "Use the workspace root as the knit directory",
             "Use the terminal's current working directory as the knit directory"
           ],
-          "description": "What directory should R Markdown chunks be knitted in? Default knit behaviour is to use the document's directory as root."
+          "description": "What directory should R Markdown chunks be knitted in? Default knit behaviour is to use the document's directory as root.",
+          "additionalItems": false
         },
         "r.helpPanel.enableSyntaxHighlighting": {
           "type": "boolean",

@@ -1,61 +1,78 @@
 import * as util from '../util';
 import * as vscode from 'vscode';
+
 import path = require('path');
 import { readFileSync } from 'fs';
 import yaml = require('js-yaml');
 
 
-interface IQuickPickItem {
+interface IKnitQuickPickItem {
 	label: string,
 	description: string,
 	value: string
 }
 
 export class RMarkdownKnitManager {
-	knitDir: string;
+	private knitDir: string;
 
 	constructor() {
 		this.knitDir = util.config().get<string>('rmarkdown.defaults.knitDirectory') ?? undefined;
 	}
 
-	getKnitDir(): string {
+	private getKnitDir(): string {
 		switch (this.knitDir) {
+			// the directory containing the R Markdown document
 			case 'document directory': {
-				return `knitr::opts_knit$set(root.dir = "${path.dirname(vscode.window.activeTextEditor.document.uri.fsPath)}")`;
+				return `knitr::opts_knit[["set"]](root.dir = "${path.dirname(vscode.window.activeTextEditor.document.uri.fsPath)}")`;
 			}
+			// the root of the current workspace
 			case 'workspace root': {
-				return `knitr::opts_knit$set(root.dir = "${vscode.workspace.workspaceFolders[0].uri.fsPath}")`;
+				return `knitr::opts_knit[["set"]](root.dir = "${vscode.workspace.workspaceFolders[0].uri.fsPath}")`;
 			}
+			// the working directory of the attached terminal
 			case 'current directory': {
-				return 'knitr::opts_knit$set(root.dir = getwd())';
+				return 'knitr::opts_knit[["set"]](root.dir = getwd())';
 			}
-			default: return 'knitr::opts_knit$set(root.dir = NULL)';
+			default: return 'knitr::opts_knit[["set"]](root.dir = NULL)';
 		}
 	}
 
-	knitDocument(docPath: string, params: Record<string, any>, outputFormat?: string): void {
+	private knitDocument(docPath: string, params: Record<string, unknown>, outputFormat?: string): void {
 		const dirOpts = this.getKnitDir();
 		let knitCommand: string;
-		console.log(params);
-		// knit param should have precedence
+
+		// precedence:
+		// knit > site > none
 		if (params?.['knit']) {
-			knitCommand = `${dirOpts}; ${String(params['knit'])}(${docPath});`;
+			const knitParam = String(params['knit']);
+			knitCommand = outputFormat ?
+				`out <- ${knitParam}(${docPath}, output_format = ${outputFormat}())` :
+				`out <- ${knitParam}(${docPath})`;
 		} else if (params?.['site']) {
-			knitCommand = `${dirOpts}; rmarkdown::render_site(${docPath});`;
+			knitCommand = `out <- rmarkdown::render_site(${docPath})`;
 		} else {
 			knitCommand = outputFormat ?
-				`${dirOpts}; rmarkdown::render(${docPath}, ${outputFormat});` :
-				`${dirOpts}; rmarkdown::render(${docPath});`;
+				`out <- rmarkdown::render(${docPath}, output_format = ${outputFormat}())` :
+				`out <- rmarkdown::render(${docPath})`;
 		}
 
-		const knitTask: vscode.Task = new vscode.Task({ type: 'R' }, vscode.TaskScope.Workspace, 'Knit', 'R', new vscode.ShellExecution(`Rscript -e "${knitCommand}"`));
+		const knitTask: vscode.Task = new vscode.Task(
+			{ type: 'R' },
+			vscode.TaskScope.Workspace,
+			'Knit',
+			'R',
+			new vscode.ShellExecution(
+				`Rscript --verbose -e "library(rmarkdown); ${dirOpts.replace(/"/g, '\\"')}" -e "${knitCommand.replace(/"/g, '\\"')
+				}; browseURL(out)"`
+			)
+		);
 
 		void vscode.tasks.executeTask(
 			knitTask
 		);
 	}
 
-	getParams(docPath: string) {
+	private getParams(docPath: string): Record<string, unknown> {
 		const parseData = readFileSync(docPath, 'utf8');
 		const delims = /(?<=(---)).*(?=(---))/gs.exec(
 			parseData
@@ -73,24 +90,9 @@ export class RMarkdownKnitManager {
 		return paramObj;
 	}
 
-	public async knitRmd(echo: boolean, outputFormat?: string): Promise<void> {
-		const wad: vscode.TextDocument = vscode.window.activeTextEditor.document;
-		const isSaved = await util.saveDocument(wad);
-		if (isSaved) {
-			let rPath = util.ToRStringLiteral(wad.fileName, '"');
-			let encodingParam = util.config().get<string>('source.encoding');
-			encodingParam = `encoding = "${encodingParam}"`;
-			rPath = [rPath, encodingParam].join(', ');
-			if (echo) {
-				rPath = [rPath, 'echo = TRUE'].join(', ');
-			}
-			const params = this.getParams(wad.uri.fsPath);
-			this.knitDocument(rPath, params, outputFormat);
-		}
-	}
-
+	// alters the working directory for evaluating chunks
 	public setKnitDir(): void {
-		const items: IQuickPickItem[] = [
+		const items: IKnitQuickPickItem[] = [
 			{
 				label: this.knitDir === 'document directory' ? '$(check) document directory' : 'document directory',
 				value: 'document directory',
@@ -111,7 +113,7 @@ export class RMarkdownKnitManager {
 		const ops: vscode.QuickPickOptions = {
 			title: 'Set knit directory',
 			canPickMany: false,
-			onDidSelectItem: (item: IQuickPickItem) => {
+			onDidSelectItem: (item: IKnitQuickPickItem) => {
 				this.knitDir = item.value;
 			}
 		};
@@ -122,5 +124,20 @@ export class RMarkdownKnitManager {
 		);
 	}
 
+	public async knitRmd(echo: boolean, outputFormat?: string): Promise<void> {
+		const wad: vscode.TextDocument = vscode.window.activeTextEditor.document;
+		const isSaved = await util.saveDocument(wad);
+		if (isSaved) {
+			const params = this.getParams(wad.uri.fsPath);
+			let rPath = util.ToRStringLiteral(wad.fileName, '"');
+			let encodingParam = util.config().get<string>('source.encoding');
+			encodingParam = `encoding = "${encodingParam}"`;
+			rPath = [rPath, encodingParam].join(', ');
+			if (echo) {
+				rPath = [rPath, 'echo = TRUE'].join(', ');
+			}
 
+			this.knitDocument(rPath, params, outputFormat);
+		}
+	}
 }
