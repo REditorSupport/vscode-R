@@ -3,12 +3,11 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import path = require('path');
 
-
 interface IKnitArgs {
 	filePath: string;
 	fileName: string;
 	cmd: string;
-	cb: (...args: unknown[]) => boolean;
+	callback: (...args: unknown[]) => boolean;
 	onRejection?: (...args: unknown[]) => unknown;
 }
 
@@ -37,9 +36,9 @@ export abstract class RMarkdownManager {
 			case 'workspace root': {
 				return `knitr::opts_knit[["set"]](root.dir = "${vscode.workspace.workspaceFolders[0].uri.fsPath}")`;
 			}
-			// the working directory of the attached terminal
+			// the working directory of the attached terminal, NYI
 			case 'current directory': {
-				return 'knitr::opts_knit[["set"]](root.dir = getwd())';
+				return `knitr::opts_knit[["set"]](root.dir = NULL)`;
 			}
 			default: return 'knitr::opts_knit[["set"]](root.dir = NULL)';
 		}
@@ -68,7 +67,7 @@ export abstract class RMarkdownManager {
 						if (token?.isCancellationRequested) {
 							resolve(childProcess);
 						} else {
-							if (args?.cb(dat, childProcess)) {
+							if (args?.callback(dat, childProcess)) {
 								resolve(childProcess);
 							}
 						}

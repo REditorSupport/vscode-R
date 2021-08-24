@@ -1301,7 +1301,17 @@
           "default": true,
           "description": "Enable automatic refresh of R Markdown preview on file update."
         },
-        "r.rmarkdown.defaults.knitDirectory": {
+        "r.rmarkdown.knit.focusOutputChannel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Should the R Markdown output channel be focused when knitting?"
+        },
+        "r.rmarkdown.knit.openOutputFile": {
+          "type": "boolean",
+          "default": false,
+          "description": "Should the output file be opened automatically on knit?"
+        },
+        "r.rmarkdown.knit.defaults.knitDirectory": {
           "type": "string",
           "default": "document",
           "enum": [

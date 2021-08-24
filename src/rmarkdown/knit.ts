@@ -4,13 +4,14 @@ import * as vscode from 'vscode';
 import path = require('path');
 import { readFileSync } from 'fs';
 import yaml = require('js-yaml');
-import { RMarkdownManager } from './manager';
+import { IKnitRejection, RMarkdownManager } from './manager';
 
-export let knitDir: string = util.config().get<string>('rmarkdown.defaults.knitDirectory') ?? undefined;
+export let knitDir: string = util.config().get<string>('rmarkdown.knit.defaults.knitDirectory') ?? undefined;
 
 interface IKnitQuickPickItem {
 	label: string,
 	description: string,
+	detail: string,
 	value: string
 }
 
@@ -18,6 +19,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 	private async renderDocument(docPath: string, docName: string, yamlParams: Record<string, unknown>, outputFormat?: string) {
 		const dirOpts = this.getKnitDir(knitDir);
+		const openOutfile: boolean = util.config().get<boolean>('rmarkdown.knit.openOutputFile') ?? false;
 		let knitCommand: string;
 
 		// precedence:
@@ -45,20 +47,29 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		const callback = (dat: string) => {
 			const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
 			if (outputUrl) {
-				const outFile = (vscode.Uri.file(outputUrl));
-				void vscode.commands.executeCommand('vscode.open', outFile);
+				if (openOutfile) {
+					const outFile = (vscode.Uri.file(outputUrl));
+					void vscode.commands.executeCommand('vscode.open', outFile);
+				}
 				return true;
 			} else {
 				return false;
 			}
 		};
 
+		if (util.config().get<boolean>('rmarkdown.knit.focusOutputChannel')) {
+			this.rMarkdownOutput.show();
+		}
+
 		await this.knitWithProgress(
 			{
 				fileName: docName,
 				filePath: docPath,
 				cmd: cmd,
-				cb: callback
+				callback: callback,
+				onRejection: (_filePath: string, rejection: IKnitRejection) => {
+					rejection.cp.kill('SIGKILL');
+				}
 			}
 		);
 
@@ -90,17 +101,21 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 			{
 				label: knitDir === 'document directory' ? '$(check) document directory' : 'document directory',
 				value: 'document directory',
-				description: 'Use the document\'s directory as the knit directory'
+				detail: 'Use the document\'s directory as the knit directory',
+				description: path.dirname(vscode.window.activeTextEditor.document.uri.fsPath)
+
 			},
 			{
 				label: knitDir === 'workspace root' ? '$(check) workspace root' : 'workspace root',
 				value: 'workspace root',
-				description: 'Use the workspace root as the knit directory'
+				detail: 'Use the workspace root as the knit directory',
+				description: vscode.workspace.workspaceFolders[0].uri.fsPath
 			},
 			{
 				label: knitDir === 'current directory' ? '$(check) current directory' : 'current directory',
 				value: 'current directory',
-				description: 'Use the terminal\'s current working directory as the knit directory'
+				detail: 'Use the terminal\'s current working directory as the knit directory',
+				description: 'Not yet implemented'
 			}
 		];
 

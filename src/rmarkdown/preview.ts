@@ -327,7 +327,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
                 fileName: fileName,
                 filePath: filePath,
                 cmd: cmd,
-                cb: callback,
+                callback: callback,
                 onRejection: onRejected
             }
         );
