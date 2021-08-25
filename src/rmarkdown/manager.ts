@@ -37,14 +37,17 @@ export abstract class RMarkdownManager {
 				return `knitr::opts_knit[["set"]](root.dir = "${vscode.workspace.workspaceFolders[0].uri.fsPath}")`;
 			}
 			// the working directory of the attached terminal, NYI
-			case 'current directory': {
-				return `knitr::opts_knit[["set"]](root.dir = NULL)`;
-			}
+			// case 'current directory': {
+			// 	return `knitr::opts_knit[["set"]](root.dir = NULL)`;
+			// }
 			default: return 'knitr::opts_knit[["set"]](root.dir = NULL)';
 		}
 	}
 
-	protected async knitDocument(args: IKnitArgs, token?: vscode.CancellationToken): Promise<cp.ChildProcessWithoutNullStreams | IKnitRejection> {
+	protected async knitDocument(args: IKnitArgs, token?: vscode.CancellationToken, progress?: vscode.Progress<unknown>): Promise<cp.ChildProcessWithoutNullStreams | IKnitRejection> {
+		// vscode.Progress auto-increments progress, so we use this
+		// variable to set progress to a specific number
+		let currentProgress = 0;
 		return await new Promise<cp.ChildProcessWithoutNullStreams>(
 			(resolve, reject) => {
 				const cmd = args.cmd;
@@ -53,6 +56,10 @@ export abstract class RMarkdownManager {
 
 				try {
 					childProcess = cp.exec(cmd);
+					progress.report({
+						increment: 0,
+						message: '0%'
+					});
 				} catch (e: unknown) {
 					console.warn(`[VSC-R] error: ${e as string}`);
 					reject({ cp: childProcess, wasCancelled: false });
@@ -64,6 +71,20 @@ export abstract class RMarkdownManager {
 					(data: Buffer) => {
 						const dat = data.toString('utf8');
 						this.rMarkdownOutput.appendLine(dat);
+						const percentRegex = /[0-9]+(?=%)/g;
+						const percentRegOutput = dat.match(percentRegex);
+						if (percentRegOutput) {
+							for (const item of percentRegOutput) {
+								const perc = Number(item);
+								progress.report(
+									{
+										increment: perc - currentProgress,
+										message: `${Math.round(perc)}%`
+									}
+								);
+								currentProgress = perc;
+							}
+						}
 						if (token?.isCancellationRequested) {
 							resolve(childProcess);
 						} else {
@@ -97,11 +118,11 @@ export abstract class RMarkdownManager {
 	protected async knitWithProgress(args: IKnitArgs): Promise<cp.ChildProcessWithoutNullStreams> {
 		let childProcess: cp.ChildProcessWithoutNullStreams = undefined;
 
-		await util.doWithProgress(async (token: vscode.CancellationToken) => {
-			childProcess = await this.knitDocument(args, token) as cp.ChildProcessWithoutNullStreams;
+		await util.doWithProgress(async (token: vscode.CancellationToken, progress: vscode.Progress<unknown>) => {
+			childProcess = await this.knitDocument(args, token, progress) as cp.ChildProcessWithoutNullStreams;
 		},
 			vscode.ProgressLocation.Notification,
-			`Knitting ${args.fileName}...`,
+			`Knitting ${args.fileName}`,
 			true
 		).catch((rejection: IKnitRejection) => {
 			if (!rejection.wasCancelled) {

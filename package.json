@@ -1316,13 +1316,11 @@
           "default": "document",
           "enum": [
             "document directory",
-            "workspace root",
-            "current directory"
+            "workspace root"
           ],
           "enumDescriptions": [
             "Use the document's directory as the knit directory",
-            "Use the workspace root as the knit directory",
-            "Use the terminal's current working directory as the knit directory"
+            "Use the workspace root as the knit directory"
           ],
           "description": "What directory should R Markdown chunks be knitted in? Default knit behaviour is to use the document's directory as root.",
           "additionalItems": false

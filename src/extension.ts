@@ -22,9 +22,6 @@ import * as rShare from './liveShare';
 import * as httpgdViewer from './plotViewer';
 import * as languageService from './languageService';
 
-import { RMarkdownPreviewManager } from './rmarkdown/preview';
-import { RMarkdownKnitManager } from './rmarkdown/knit';
-
 // global objects used in other files
 export const homeExtDir = (): string => util.getDir(path.join(os.homedir(), '.vscode-R'));
 export const tmpDir = (): string => util.getDir(path.join(homeExtDir(), 'tmp'));
@@ -33,8 +30,8 @@ export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
 export let enableSessionWatcher: boolean = undefined;
 export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
-export let rMarkdownPreviewManager: RMarkdownPreviewManager | undefined = undefined;
-export let rMarkdownKnitManager: RMarkdownKnitManager | undefined = undefined;
+export let rMarkdownPreviewManager: rmarkdown.RMarkdownPreviewManager | undefined = undefined;
+export let rMarkdownKnitManager: rmarkdown.RMarkdownKnitManager | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -53,8 +50,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // assign session watcher setting to global variable
     enableSessionWatcher = util.config().get<boolean>('sessionWatcher');
-    rMarkdownKnitManager = new RMarkdownKnitManager();
-    rMarkdownPreviewManager = new RMarkdownPreviewManager();
+    rMarkdownKnitManager = new rmarkdown.RMarkdownKnitManager();
+    rMarkdownPreviewManager = new rmarkdown.RMarkdownPreviewManager();
     await rMarkdownKnitManager.init();
     await rMarkdownPreviewManager.init();
 

@@ -110,13 +110,13 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 				value: 'workspace root',
 				detail: 'Use the workspace root as the knit directory',
 				description: vscode.workspace.workspaceFolders[0].uri.fsPath
-			},
-			{
-				label: knitDir === 'current directory' ? '$(check) current directory' : 'current directory',
-				value: 'current directory',
-				detail: 'Use the terminal\'s current working directory as the knit directory',
-				description: 'Not yet implemented'
 			}
+			// {
+			// 	label: knitDir === 'current directory' ? '$(check) current directory' : 'current directory',
+			// 	value: 'current directory',
+			// 	detail: 'Use the terminal\'s current working directory as the knit directory',
+			// 	description: 'Not yet implemented'
+			// }
 		];
 
 		const ops: vscode.QuickPickOptions = {

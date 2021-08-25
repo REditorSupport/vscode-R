@@ -6,6 +6,10 @@ import {
 import { runChunksInTerm } from '../rTerminal';
 import { config } from '../util';
 
+// reexports
+export { knitDir, RMarkdownKnitManager } from './knit';
+export { RMarkdownPreviewManager } from './preview';
+
 function isRDocument(document: TextDocument) {
   return (document.languageId === 'r');
 }
