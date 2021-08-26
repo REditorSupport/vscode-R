@@ -7,6 +7,8 @@ interface IKnitArgs {
 	filePath: string;
 	fileName: string;
 	cmd: string;
+	rCmd?: string;
+	rOutputFormat?: string;
 	callback: (...args: unknown[]) => boolean;
 	onRejection?: (...args: unknown[]) => unknown;
 }
@@ -21,6 +23,9 @@ const rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel(
 export abstract class RMarkdownManager {
 	protected rPath: string;
 	protected rMarkdownOutput: vscode.OutputChannel = rMarkdownOutput;
+	// uri that are in the process of knitting
+	// so that we can't spam the knit/preview button
+	protected busyUriStore: Set<string> = new Set<string>();
 
 	public async init(): Promise<void> {
 		this.rPath = await util.getRpath(true);
@@ -66,6 +71,9 @@ export abstract class RMarkdownManager {
 				}
 
 				this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process started`);
+				if (args.rCmd) {
+					this.rMarkdownOutput.appendLine(`==> ${args.rCmd}`);
+				}
 
 				childProcess.stdout.on('data',
 					(data: Buffer) => {
@@ -88,7 +96,7 @@ export abstract class RMarkdownManager {
 						if (token?.isCancellationRequested) {
 							resolve(childProcess);
 						} else {
-							if (args?.callback(dat, childProcess)) {
+							if (args.callback(dat, childProcess)) {
 								resolve(childProcess);
 							}
 						}
@@ -122,7 +130,7 @@ export abstract class RMarkdownManager {
 			childProcess = await this.knitDocument(args, token, progress) as cp.ChildProcessWithoutNullStreams;
 		},
 			vscode.ProgressLocation.Notification,
-			`Knitting ${args.fileName}`,
+			`Knitting ${args.fileName} ${args.rOutputFormat ? 'to ' + args.rOutputFormat : ''} `,
 			true
 		).catch((rejection: IKnitRejection) => {
 			if (!rejection.wasCancelled) {
@@ -130,7 +138,8 @@ export abstract class RMarkdownManager {
 				this.rMarkdownOutput.show(true);
 			}
 			// this can occur when a successfuly knitted document is later altered (while still being previewed) and subsequently fails to knit
-			args?.onRejection(args.filePath, rejection);
+			args?.onRejection ? args.onRejection(args.filePath, rejection) :
+				rejection?.cp.kill('SIGKILL');
 		});
 		return childProcess;
 	}

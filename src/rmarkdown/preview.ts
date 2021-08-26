@@ -8,7 +8,7 @@ import path = require('path');
 import crypto = require('crypto');
 
 
-import { config, readContent, setContext, escapeHtml, UriIcon } from '../util';
+import { config, readContent, setContext, escapeHtml, UriIcon, saveDocument } from '../util';
 import { extensionContext, tmpDir } from '../extension';
 import { knitDir } from './knit';
 import { IKnitRejection, RMarkdownManager } from './manager';
@@ -171,9 +171,6 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     private activePreview: { filePath: string, preview: RMarkdownPreview } = { filePath: null, preview: null };
     // store of all open RMarkdown previews
     private previewStore: RMarkdownPreviewStore = new RMarkdownPreviewStore;
-    // uri that are in the process of knitting
-    // so that we can't spam the preview button
-    private busyUriStore: Set<string> = new Set<string>();
     private useCodeTheme = true;
 
     constructor() {
@@ -198,16 +195,21 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             return;
         }
 
-        // don't knit if the current uri is already being knit
-        if (this.busyUriStore.has(filePath)) {
-            return;
-        } else if (this.previewStore.has(filePath)) {
-            this.previewStore.get(filePath)?.panel.reveal();
-        } else {
-            this.busyUriStore.add(filePath);
-            await vscode.commands.executeCommand('workbench.action.files.save');
-            await this.previewDocument(filePath, fileName, viewer, currentViewColumn);
-            this.busyUriStore.delete(filePath);
+        const isSaved = uri ?
+            true :
+            await saveDocument(vscode.window.activeTextEditor.document);
+
+        if (isSaved) {
+            // don't knit if the current uri is already being knit
+            if (this.busyUriStore.has(filePath)) {
+                return;
+            } else if (this.previewStore.has(filePath)) {
+                this.previewStore.get(filePath)?.panel.reveal();
+            } else {
+                this.busyUriStore.add(filePath);
+                await this.previewDocument(filePath, fileName, viewer, currentViewColumn);
+                this.busyUriStore.delete(filePath);
+            }
         }
     }
 
@@ -279,13 +281,14 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     }
 
     private async previewDocument(filePath: string, fileName?: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn) {
-        const dirOpts = this.getKnitDir(knitDir);
+        const knitWorkingDir = this.getKnitDir(knitDir);
+
         const lim = '---vsc---';
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
         const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
         const cmd = (
             `${this.rPath} --silent --slave --no-save --no-restore -e ` +
-            `"${dirOpts.replace(/"/g, '\\"')};"` +
+            `"${knitWorkingDir.replace(/"/g, '\\"')};"` +
             `"cat('${lim}', rmarkdown::render(` +
             `'${filePath.replace(/\\/g, '/')}',` +
             `output_format = rmarkdown::html_document(),` +
@@ -322,17 +325,16 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             }
         };
 
-        const childProcess = await this.knitWithProgress(
+        return await this.knitWithProgress(
             {
                 fileName: fileName,
                 filePath: filePath,
                 cmd: cmd,
+                rOutputFormat: 'html',
                 callback: callback,
                 onRejection: onRejected
             }
         );
-
-        return childProcess;
     }
 
     private openPreview(outputUri: vscode.Uri, filePath: string, title: string, cp: cp.ChildProcessWithoutNullStreams, viewer: vscode.ViewColumn, resourceViewColumn: vscode.ViewColumn, autoRefresh: boolean): void {
