@@ -1299,19 +1299,19 @@
         "r.rmarkdown.preview.autoRefresh": {
           "type": "boolean",
           "default": true,
-          "description": "Enable automatic refresh of R Markdown preview on file update."
+          "markdownDescription": "Enable automatic refresh of R Markdown preview on file update."
         },
         "r.rmarkdown.knit.focusOutputChannel": {
           "type": "boolean",
           "default": true,
-          "description": "Should the R Markdown output channel be focused when knitting?"
+          "markdownDescription": "Should the R Markdown output channel be focused when knitting?\n\n*Does not affect manual document knitting*."
         },
         "r.rmarkdown.knit.openOutputFile": {
           "type": "boolean",
           "default": false,
-          "description": "Should the output file be opened automatically on knit?"
+          "markdownDescription": "Should the output file be opened automatically when using knit?\n\n*Does not affect manual document knitting*."
         },
-        "r.rmarkdown.knit.defaults.knitDirectory": {
+        "r.rmarkdown.knit.defaults.knitWorkingDirectory": {
           "type": "string",
           "default": "document",
           "enum": [
@@ -1322,7 +1322,7 @@
             "Use the document's directory as the knit directory",
             "Use the workspace root as the knit directory"
           ],
-          "description": "What directory should R Markdown chunks be knitted in? Default knit behaviour is to use the document's directory as root.",
+          "markdownDescription": "What working directory should R Markdown chunks be evaluated in? Default knit behaviour is to use the document's directory as root.\n\n*Does not affect manual document knitting*.",
           "additionalItems": false
         },
         "r.helpPanel.enableSyntaxHighlighting": {

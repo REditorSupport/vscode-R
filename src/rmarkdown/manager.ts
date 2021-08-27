@@ -35,17 +35,17 @@ export abstract class RMarkdownManager {
 		switch (knitDir) {
 			// the directory containing the R Markdown document
 			case 'document directory': {
-				return `knitr::opts_knit[["set"]](root.dir = "${path.dirname(vscode.window.activeTextEditor.document.uri.fsPath)}")`;
+				return path.dirname(vscode.window.activeTextEditor.document.uri.fsPath).replace(/"/g, '\\"');
 			}
 			// the root of the current workspace
 			case 'workspace root': {
-				return `knitr::opts_knit[["set"]](root.dir = "${vscode.workspace.workspaceFolders[0].uri.fsPath}")`;
+				return vscode.workspace.workspaceFolders[0].uri.fsPath.replace(/"/g, '\\"');
 			}
 			// the working directory of the attached terminal, NYI
 			// case 'current directory': {
 			// 	return `knitr::opts_knit[["set"]](root.dir = NULL)`;
 			// }
-			default: return 'knitr::opts_knit[["set"]](root.dir = NULL)';
+			default: return vscode.workspace.workspaceFolders[0].uri.fsPath.replace(/"/g, '\\"');
 		}
 	}
 
