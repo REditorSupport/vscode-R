@@ -88,7 +88,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		const yamlParams = frontmatter;
 		let knitCommand: string;
 
-		if (!yamlParams['site']) {
+		if (!yamlParams?.['site']) {
 			yamlParams['site'] = await this.findSiteParam();
 		}
 
@@ -113,16 +113,19 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 	// check if the workspace of the document is a R Markdown site
 	private async findSiteParam(): Promise<string|undefined> {
 		const rootFolder = vscode.workspace.workspaceFolders[0].uri.fsPath;
+		const wad = vscode.window.activeTextEditor.document.uri.fsPath;
 		const indexFile = (await vscode.workspace.findFiles(new vscode.RelativePattern(rootFolder, 'index.{Rmd,rmd, md}'), null, 1))?.[0];
-		const siteYaml = path.join(rootFolder, '_site.yml');
+		const siteYaml = path.join(path.dirname(wad), '_site.yml');
 
-		if (indexFile) {
+		// 'Simple' R Markdown websites require all docs to be in the root folder
+		if (fs.existsSync(siteYaml)) {
+			return 'rmarkdown::render_site';
+		// Other generators may allow for docs in subdirs
+		} else if (indexFile) {
 			const indexData = this.getYamlFrontmatter(indexFile.fsPath);
-			if (indexData['site']) {
+			if (indexData?.['site']) {
 				return indexData['site'] as string;
 			}
-		} else if (fs.existsSync(siteYaml)) {
-			return 'rmarkdown::render_site';
 		}
 
 		return undefined;
@@ -185,7 +188,6 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 		const isSaved = await util.saveDocument(wad);
 		if (isSaved) {
-
 			let rPath = util.ToRStringLiteral(wad.fileName, '"');
 			let encodingParam = util.config().get<string>('source.encoding');
 			encodingParam = `encoding = "${encodingParam}"`;
