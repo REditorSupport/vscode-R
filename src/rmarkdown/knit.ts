@@ -15,11 +15,19 @@ interface IKnitQuickPickItem {
 	value: string
 }
 
+interface IYamlFrontmatter {
+	title?: string,
+	author?: string,
+	knit?: string,
+	site?: string,
+	[key: string]: unknown
+}
+
 export class RMarkdownKnitManager extends RMarkdownManager {
-	private async renderDocument(docPath: string, docName: string, yamlParams: Record<string, unknown>, outputFormat?: string) {
+	private async renderDocument(rPath: string, docPath: string, docName: string, yamlParams: IYamlFrontmatter, outputFormat?: string) {
 		const openOutfile: boolean = util.config().get<boolean>('rmarkdown.knit.openOutputFile') ?? false;
-		const knitWorkingDir = this.getKnitDir(knitDir);
-		const knitCommand = await this.getKnitCommand(yamlParams, docPath, outputFormat);
+		const knitWorkingDir = this.getKnitDir(knitDir, docPath);
+		const knitCommand = await this.getKnitCommand(yamlParams, rPath, outputFormat);
 
 		const lim = '---vsc---';
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'gms');
@@ -54,7 +62,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		return await this.knitWithProgress(
 			{
 				fileName: docName,
-				filePath: docPath,
+				filePath: rPath,
 				cmd: cmd,
 				rCmd: knitCommand,
 				rOutputFormat: outputFormat,
@@ -64,7 +72,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 	}
 
-	private getYamlFrontmatter(docPath: string) {
+	private getYamlFrontmatter(docPath: string): IYamlFrontmatter {
 		const parseData = fs.readFileSync(docPath, 'utf8');
 		const yamlDat = /(?<=(---)).*(?=(---))/gs.exec(
 			parseData
@@ -84,8 +92,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		return paramObj;
 	}
 
-	private async getKnitCommand(frontmatter: Record<string, unknown>, docPath: string, outputFormat: string): Promise<string> {
-		const yamlParams = frontmatter;
+	private async getKnitCommand(yamlParams: IYamlFrontmatter, docPath: string, outputFormat: string): Promise<string> {
 		let knitCommand: string;
 
 		if (!yamlParams?.['site']) {
@@ -95,8 +102,10 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		// precedence:
 		// knit > site > none
 		if (yamlParams?.['knit']) {
-			const knitParam = String(yamlParams['knit']);
-			knitCommand = `${knitParam}(${docPath})`;
+			const knitParam = yamlParams['knit'];
+			knitCommand = outputFormat ?
+				`${knitParam}(${docPath}, output_format = '${outputFormat}')`:
+				`${knitParam}(${docPath})`;
 		} else if (!this.isREADME(docPath) && yamlParams?.['site']) {
 			knitCommand = outputFormat ?
 				`rmarkdown::render_site(${docPath}, output_format = '${outputFormat}')` :
@@ -110,21 +119,23 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		return knitCommand.replace(/"/g, '\\"');
 	}
 
-	// check if the workspace of the document is a R Markdown site
+	// check if the workspace of the document is a R Markdown site.
+	// the definition of what constitutes an R Markdown site differs
+	// depending on the type of R Markdown site (i.e., "simple" vs. blogdown sites)
 	private async findSiteParam(): Promise<string|undefined> {
 		const rootFolder = vscode.workspace.workspaceFolders[0].uri.fsPath;
 		const wad = vscode.window.activeTextEditor.document.uri.fsPath;
 		const indexFile = (await vscode.workspace.findFiles(new vscode.RelativePattern(rootFolder, 'index.{Rmd,rmd, md}'), null, 1))?.[0];
-		const siteYaml = path.join(path.dirname(wad), '_site.yml');
+		const siteRoot = path.join(path.dirname(wad), '_site.yml');
 
 		// 'Simple' R Markdown websites require all docs to be in the root folder
-		if (fs.existsSync(siteYaml)) {
+		if (fs.existsSync(siteRoot)) {
 			return 'rmarkdown::render_site';
 		// Other generators may allow for docs in subdirs
 		} else if (indexFile) {
 			const indexData = this.getYamlFrontmatter(indexFile.fsPath);
 			if (indexData?.['site']) {
-				return indexData['site'] as string;
+				return indexData['site'];
 			}
 		}
 
@@ -133,7 +144,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 	// readme files should not be knitted via render_site
 	private isREADME(docPath: string) {
-		return path.basename(docPath, '.Rmd') === 'README';
+		return !!path.basename(docPath).includes('README');
 	}
 
 	// alters the working directory for evaluating chunks
@@ -203,6 +214,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 				this.busyUriStore.add(busyPath);
 				await this.renderDocument(
 					rPath,
+					wad.uri.fsPath,
 					path.basename(wad.uri.fsPath),
 					this.getYamlFrontmatter(wad.uri.fsPath),
 					outputFormat

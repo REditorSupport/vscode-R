@@ -31,11 +31,11 @@ export abstract class RMarkdownManager {
 		this.rPath = await util.getRpath(true);
 	}
 
-	protected getKnitDir(knitDir: string): string {
+	protected getKnitDir(knitDir: string, docPath?: string): string {
 		switch (knitDir) {
 			// the directory containing the R Markdown document
 			case 'document directory': {
-				return path.dirname(vscode.window.activeTextEditor.document.uri.fsPath).replace(/"/g, '\\"');
+				return path.dirname(docPath).replace(/"/g, '\\"');
 			}
 			// the root of the current workspace
 			case 'workspace root': {
@@ -43,7 +43,7 @@ export abstract class RMarkdownManager {
 			}
 			// the working directory of the attached terminal, NYI
 			// case 'current directory': {
-			// 	return `knitr::opts_knit[["set"]](root.dir = NULL)`;
+			// 	return NULL
 			// }
 			default: return vscode.workspace.workspaceFolders[0].uri.fsPath.replace(/"/g, '\\"');
 		}
@@ -87,7 +87,7 @@ export abstract class RMarkdownManager {
 								progress.report(
 									{
 										increment: perc - currentProgress,
-										message: `${Math.round(perc)}%`
+										message: `${perc}%`
 									}
 								);
 								currentProgress = perc;

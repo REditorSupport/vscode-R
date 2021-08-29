@@ -267,7 +267,8 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         const previewUri = this.previewStore?.getFilePath(toUpdate);
         toUpdate.cp?.kill('SIGKILL');
 
-        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.previewDocument(previewUri, toUpdate.title).catch(() => {
+        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.previewDocument(previewUri, toUpdate.title).catch((e: unknown) => {
+            console.log(e);
             void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
             this.rMarkdownOutput.show(true);
             this.previewStore.delete(previewUri);
@@ -281,7 +282,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     }
 
     private async previewDocument(filePath: string, fileName?: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn) {
-        const knitWorkingDir = this.getKnitDir(knitDir);
+        const knitWorkingDir = this.getKnitDir(knitDir, filePath);
 
         const lim = '---vsc---';
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
@@ -330,7 +331,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
                 fileName: fileName,
                 filePath: filePath,
                 cmd: cmd,
-                rOutputFormat: 'html',
+                rOutputFormat: 'html preview',
                 callback: callback,
                 onRejection: onRejected
             }
