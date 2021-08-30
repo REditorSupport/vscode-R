@@ -1323,7 +1323,8 @@
             "Use the workspace root as the knit directory"
           ],
           "markdownDescription": "What working directory should R Markdown chunks be evaluated in? Default knit behaviour is to use the document's directory as root.\n\n*Does not affect manual document knitting*.",
-          "additionalItems": false
+          "additionalItems": false,
+          "additionalProperties": false
         },
         "r.helpPanel.enableSyntaxHighlighting": {
           "type": "boolean",

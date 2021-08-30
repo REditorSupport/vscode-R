@@ -267,8 +267,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         const previewUri = this.previewStore?.getFilePath(toUpdate);
         toUpdate.cp?.kill('SIGKILL');
 
-        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.previewDocument(previewUri, toUpdate.title).catch((e: unknown) => {
-            console.log(e);
+        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.previewDocument(previewUri, toUpdate.title).catch(() => {
             void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
             this.rMarkdownOutput.show(true);
             this.previewStore.delete(previewUri);
