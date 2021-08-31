@@ -149,6 +149,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 	// alters the working directory for evaluating chunks
 	public setKnitDir(): void {
+		const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri);
 		const items: IKnitQuickPickItem[] = [
 			{
 				label: knitDir === 'document directory' ? '$(check) document directory' : 'document directory',
@@ -161,7 +162,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 				label: knitDir === 'workspace root' ? '$(check) workspace root' : 'workspace root',
 				value: 'workspace root',
 				detail: 'Use the workspace root as the knit working directory',
-				description: vscode.workspace.workspaceFolders[0].uri.fsPath
+				description: currentDocumentWorkspace.uri.fsPath
 			}
 			// {
 			// 	label: knitDir === 'current directory' ? '$(check) current directory' : 'current directory',
