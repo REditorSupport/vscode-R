@@ -8,7 +8,7 @@ import path = require('path');
 import crypto = require('crypto');
 
 
-import { config, readContent, setContext, escapeHtml, UriIcon, saveDocument } from '../util';
+import { config, readContent, setContext, escapeHtml, UriIcon, saveDocument, getRpath } from '../util';
 import { extensionContext, tmpDir } from '../extension';
 import { knitDir } from './knit';
 import { IKnitRejection, RMarkdownManager } from './manager';
@@ -282,7 +282,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
 
     private async previewDocument(filePath: string, fileName?: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn) {
         const knitWorkingDir = this.getKnitDir(knitDir, filePath);
-
+        this.rPath = await getRpath(true);
         const lim = '---vsc---';
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
         const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');

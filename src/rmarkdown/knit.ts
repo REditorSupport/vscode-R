@@ -28,7 +28,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		const openOutfile: boolean = util.config().get<boolean>('rmarkdown.knit.openOutputFile') ?? false;
 		const knitWorkingDir = this.getKnitDir(knitDir, docPath);
 		const knitCommand = await this.getKnitCommand(yamlParams, rPath, outputFormat);
-
+		this.rPath = await util.getRpath(true);
 		const lim = '---vsc---';
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'gms');
 		const cmd = (

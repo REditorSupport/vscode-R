@@ -53,8 +53,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     enableSessionWatcher = util.config().get<boolean>('sessionWatcher');
     rmdPreviewManager = new rmarkdown.RMarkdownPreviewManager();
     rmdKnitManager = new rmarkdown.RMarkdownKnitManager();
-    await rmdKnitManager.init();
-    await rmdPreviewManager.init();
 
 
     // register commands specified in package.json

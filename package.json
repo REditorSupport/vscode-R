@@ -873,7 +873,7 @@
           "command": "r.runSource"
         },
         {
-          "when": "editorLangId == rmd",
+          "when": "editorLangId == rmd && editorFocus",
           "command": "r.knitRmd",
           "group": "navigation"
         }
@@ -1012,17 +1012,17 @@
         {
           "command": "r.rmarkdown.showPreviewToSide",
           "alt": "r.rmarkdown.showPreview",
-          "when": "editorLangId == rmd",
+          "when": "editorLangId == rmd && editorFocus",
           "group": "navigation"
         },
         {
           "submenu": "r.knitCommands",
-          "when": "editorLangId == rmd",
+          "when": "editorLangId == rmd && editorFocus",
           "group": "@1"
         },
         {
           "command": "r.rmarkdown.setKnitDirectory",
-          "when": "editorLangId == rmd",
+          "when": "editorLangId == rmd && editorFocus",
           "group": "@1"
         }
       ],

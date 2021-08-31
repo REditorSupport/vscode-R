@@ -21,15 +21,11 @@ export interface IKnitRejection {
 const rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel('R Markdown');
 
 export abstract class RMarkdownManager {
-	protected rPath: string;
+	protected rPath: string = undefined;
 	protected rMarkdownOutput: vscode.OutputChannel = rMarkdownOutput;
 	// uri that are in the process of knitting
 	// so that we can't spam the knit/preview button
 	protected busyUriStore: Set<string> = new Set<string>();
-
-	public async init(): Promise<void> {
-		this.rPath = await util.getRpath(true);
-	}
 
 	protected getKnitDir(knitDir: string, docPath?: string): string {
 		switch (knitDir) {
@@ -125,7 +121,6 @@ export abstract class RMarkdownManager {
 
 	protected async knitWithProgress(args: IKnitArgs): Promise<cp.ChildProcessWithoutNullStreams> {
 		let childProcess: cp.ChildProcessWithoutNullStreams = undefined;
-
 		await util.doWithProgress(async (token: vscode.CancellationToken, progress: vscode.Progress<unknown>) => {
 			childProcess = await this.knitDocument(args, token, progress) as cp.ChildProcessWithoutNullStreams;
 		},
