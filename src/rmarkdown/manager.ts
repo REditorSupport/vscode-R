@@ -28,21 +28,27 @@ export abstract class RMarkdownManager {
 	protected busyUriStore: Set<string> = new Set<string>();
 
 	protected getKnitDir(knitDir: string, docPath?: string): string {
-		const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(docPath) ?? vscode.window.activeTextEditor.document.uri);
+		const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(docPath) ?? vscode.window.activeTextEditor.document.uri).uri.fsPath ?? undefined;
 		switch (knitDir) {
 			// the directory containing the R Markdown document
 			case 'document directory': {
-				return path.dirname(docPath).replace(/"/g, '\\"');
+				return util.ToRStringLiteral(
+					path.dirname(docPath),
+					'\\"'
+				);
 			}
 			// the root of the current workspace
 			case 'workspace root': {
-				return currentDocumentWorkspace.uri.fsPath.replace(/"/g, '\\"');
+				return util.ToRStringLiteral(
+					currentDocumentWorkspace,
+					'\''
+				);
 			}
 			// the working directory of the attached terminal, NYI
 			// case 'current directory': {
 			// 	return NULL
 			// }
-			default: return currentDocumentWorkspace.uri.fsPath.replace(/"/g, '\\"');
+			default: return 'NULL';
 		}
 	}
 
@@ -68,6 +74,7 @@ export abstract class RMarkdownManager {
 				}
 
 				this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process started`);
+
 				if (args.rCmd) {
 					this.rMarkdownOutput.appendLine(`==> ${args.rCmd}`);
 				}

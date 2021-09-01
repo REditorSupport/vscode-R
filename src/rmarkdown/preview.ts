@@ -288,7 +288,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
         const cmd = (
             `${this.rPath} --silent --slave --no-save --no-restore -e ` +
-            `"knitr::opts_knit[['set']](root.dir = '${knitWorkingDir}');` +
+            `"knitr::opts_knit[['set']](root.dir = ${knitWorkingDir});` +
             `cat('${lim}', rmarkdown::render(` +
             `'${filePath.replace(/\\/g, '/')}',` +
             `output_format = rmarkdown::html_document(),` +

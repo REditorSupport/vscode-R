@@ -33,7 +33,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'gms');
 		const cmd = (
 			`${this.rPath} --silent --slave --no-save --no-restore -e ` +
-			`"knitr::opts_knit[['set']](root.dir = '${knitWorkingDir}');` +
+			`"knitr::opts_knit[['set']](root.dir = ${knitWorkingDir});` +
 			`cat('${lim}', ${knitCommand},` +
 			`'${lim}',` +
 			`sep = '')"`
@@ -149,20 +149,26 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 	// alters the working directory for evaluating chunks
 	public setKnitDir(): void {
-		const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri);
+		let currentDocumentWorkspacePath: string = null;
+		let currentDocumentFolderPath: string = null;
+		if (!vscode.window.activeTextEditor?.document?.isUntitled) {
+			currentDocumentWorkspacePath = vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor?.document?.uri)?.uri?.fsPath;
+			currentDocumentFolderPath = path.dirname(vscode.window?.activeTextEditor.document?.uri?.fsPath);
+		}
+
 		const items: IKnitQuickPickItem[] = [
 			{
 				label: knitDir === 'document directory' ? '$(check) document directory' : 'document directory',
 				value: 'document directory',
 				detail: 'Use the document\'s directory as the knit working directory',
-				description: path.dirname(vscode.window.activeTextEditor.document.uri.fsPath)
+				description: currentDocumentFolderPath ?? 'No folder available'
 
 			},
 			{
 				label: knitDir === 'workspace root' ? '$(check) workspace root' : 'workspace root',
 				value: 'workspace root',
 				detail: 'Use the workspace root as the knit working directory',
-				description: currentDocumentWorkspace.uri.fsPath
+				description: currentDocumentWorkspacePath ?? currentDocumentFolderPath ?? 'No available workspace'
 			}
 			// {
 			// 	label: knitDir === 'current directory' ? '$(check) current directory' : 'current directory',
