@@ -149,45 +149,47 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 	// alters the working directory for evaluating chunks
 	public setKnitDir(): void {
-		let currentDocumentWorkspacePath: string = null;
-		let currentDocumentFolderPath: string = null;
-		if (!vscode.window.activeTextEditor?.document?.isUntitled) {
-			currentDocumentWorkspacePath = vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor?.document?.uri)?.uri?.fsPath;
-			currentDocumentFolderPath = path.dirname(vscode.window?.activeTextEditor.document?.uri?.fsPath);
-		}
+		const currentDocumentWorkspacePath: string = vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor?.document?.uri)?.uri?.fsPath;
+		const currentDocumentFolderPath: string = path.dirname(vscode.window?.activeTextEditor.document?.uri?.fsPath);
+		const items: IKnitQuickPickItem[] = [];
 
-		const items: IKnitQuickPickItem[] = [
-			{
+		if (currentDocumentWorkspacePath) {
+			items.push(
+				{
+				label: knitDir === 'workspace root' ? '$(check) workspace root' : 'workspace root',
+				value: 'workspace root',
+				detail: 'Use the workspace root as the knit working directory',
+				description: currentDocumentWorkspacePath ?? currentDocumentFolderPath ?? 'No available workspace'
+				}
+			);
+		}
+		if (currentDocumentFolderPath && currentDocumentFolderPath !== '.') {
+			items.push(
+				{
 				label: knitDir === 'document directory' ? '$(check) document directory' : 'document directory',
 				value: 'document directory',
 				detail: 'Use the document\'s directory as the knit working directory',
 				description: currentDocumentFolderPath ?? 'No folder available'
 
-			},
-			{
-				label: knitDir === 'workspace root' ? '$(check) workspace root' : 'workspace root',
-				value: 'workspace root',
-				detail: 'Use the workspace root as the knit working directory',
-				description: currentDocumentWorkspacePath ?? currentDocumentFolderPath ?? 'No available workspace'
-			}
-			// {
-			// 	label: knitDir === 'current directory' ? '$(check) current directory' : 'current directory',
-			// 	value: 'current directory',
-			// 	detail: 'Use the terminal\'s current working directory as the knit directory',
-			// 	description: 'Not yet implemented'
-			// }
-		];
-
-		void vscode.window.showQuickPick(
-			items,
-			{
-				title: 'Set knit working directory',
-				canPickMany: false,
-				onDidSelectItem: (item: IKnitQuickPickItem) => {
-					knitDir = item.value;
 				}
-			}
-		);
+			);
+		}
+
+		if (items.length > 0) {
+			void vscode.window.showQuickPick(
+				items,
+				{
+					title: 'Set knit working directory',
+					canPickMany: false,
+					onDidSelectItem: (item: IKnitQuickPickItem) => {
+						knitDir = item.value;
+					}
+				}
+			);
+		} else {
+			void vscode.window.showInformationMessage('Cannot set knit directory for untitled documents.');
+		}
+
 	}
 
 	public async knitRmd(echo: boolean, outputFormat?: string): Promise<void> {
