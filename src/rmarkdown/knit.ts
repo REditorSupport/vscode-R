@@ -4,7 +4,7 @@ import * as fs from 'fs-extra';
 import path = require('path');
 import yaml = require('js-yaml');
 
-import { RMarkdownManager } from './manager';
+import { RMarkdownManager, KnitWorkingDirectory } from './manager';
 
 export let knitDir: string = util.config().get<string>('rmarkdown.knit.defaults.knitWorkingDirectory') ?? undefined;
 
@@ -156,20 +156,21 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		if (currentDocumentWorkspacePath) {
 			items.push(
 				{
-				label: knitDir === 'workspace root' ? '$(check) workspace root' : 'workspace root',
-				value: 'workspace root',
-				detail: 'Use the workspace root as the knit working directory',
-				description: currentDocumentWorkspacePath ?? currentDocumentFolderPath ?? 'No available workspace'
+					label: (knitDir === KnitWorkingDirectory.workspaceRoot ? '$(check)' : '') + KnitWorkingDirectory.workspaceRoot,
+					value: KnitWorkingDirectory.workspaceRoot,
+					detail: 'Use the workspace root as the knit working directory',
+					description: currentDocumentWorkspacePath ?? currentDocumentFolderPath ?? 'No available workspace'
 				}
 			);
 		}
+
 		if (currentDocumentFolderPath && currentDocumentFolderPath !== '.') {
 			items.push(
 				{
-				label: knitDir === 'document directory' ? '$(check) document directory' : 'document directory',
-				value: 'document directory',
-				detail: 'Use the document\'s directory as the knit working directory',
-				description: currentDocumentFolderPath ?? 'No folder available'
+					label: (knitDir === KnitWorkingDirectory.documentDirectory ? '$(check)' : '') + KnitWorkingDirectory.documentDirectory,
+					value: KnitWorkingDirectory.documentDirectory,
+					detail: 'Use the document\'s directory as the knit working directory',
+					description: currentDocumentFolderPath ?? 'No folder available'
 
 				}
 			);

@@ -3,6 +3,11 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import path = require('path');
 
+export enum KnitWorkingDirectory {
+	documentDirectory = 'document directory',
+	workspaceRoot = 'workspace root',
+}
+
 interface IKnitArgs {
 	filePath: string;
 	fileName: string;
@@ -31,14 +36,14 @@ export abstract class RMarkdownManager {
 		const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(docPath) ?? vscode.window.activeTextEditor.document.uri).uri.fsPath ?? undefined;
 		switch (knitDir) {
 			// the directory containing the R Markdown document
-			case 'document directory': {
+			case KnitWorkingDirectory.documentDirectory: {
 				return util.ToRStringLiteral(
 					path.dirname(docPath),
 					'\\"'
 				);
 			}
 			// the root of the current workspace
-			case 'workspace root': {
+			case KnitWorkingDirectory.workspaceRoot: {
 				return util.ToRStringLiteral(
 					currentDocumentWorkspace,
 					'\''
