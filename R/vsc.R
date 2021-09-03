@@ -578,7 +578,7 @@ options(
 
 # rstudioapi
 rstudioapi_enabled <- function() {
-  isTRUE(getOption("vsc.rstudioapi"))
+  isTRUE(getOption("vsc.rstudioapi", TRUE))
 }
 
 if (rstudioapi_enabled()) {
