@@ -632,7 +632,7 @@ export async function getWebviewHtml(webview: Webview, file: string, title: stri
         upgrade-insecure-requests;
         default-src https: data: filesystem:;
         style-src https: data: filesystem: 'unsafe-inline';
-        script-src https: data: filesystem: 'unsafe-eval';
+        script-src https: data: filesystem: 'unsafe-inline';
     `;
 
     return `
