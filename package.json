@@ -1346,7 +1346,7 @@
         },
         "r.session.emulateRStudioAPI": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Changes the option `vsc.rstudioapi` in R. Requires `#r.sessionWatcher#` to be set to `true`."
         },
         "r.session.viewers.viewColumn": {
