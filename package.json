@@ -1318,7 +1318,7 @@
         },
         "r.rmarkdown.knit.defaults.knitWorkingDirectory": {
           "type": "string",
-          "default": "document",
+          "default": "document directory",
           "enum": [
             "document directory",
             "workspace root"

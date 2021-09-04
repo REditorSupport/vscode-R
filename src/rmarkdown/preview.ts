@@ -168,7 +168,7 @@ class RMarkdownPreviewStore extends vscode.Disposable {
 
 export class RMarkdownPreviewManager extends RMarkdownManager {
     // the currently selected RMarkdown preview
-    private activePreview: { filePath: string, preview: RMarkdownPreview } = { filePath: null, preview: null };
+    private activePreview: { filePath: string, preview: RMarkdownPreview, title: string } = { filePath: null, preview: null, title: null };
     // store of all open RMarkdown previews
     private previewStore: RMarkdownPreviewStore = new RMarkdownPreviewStore;
     private useCodeTheme = true;
@@ -265,19 +265,22 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     public async updatePreview(preview?: RMarkdownPreview): Promise<void> {
         const toUpdate = preview ?? this.activePreview?.preview;
         const previewUri = this.previewStore?.getFilePath(toUpdate);
-        toUpdate.cp?.kill('SIGKILL');
+        toUpdate?.cp?.kill('SIGKILL');
 
-        const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.previewDocument(previewUri, toUpdate.title).catch(() => {
-            void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
-            this.rMarkdownOutput.show(true);
-            this.previewStore.delete(previewUri);
-        });
+        if (toUpdate) {
+            const childProcess: cp.ChildProcessWithoutNullStreams | void = await this.previewDocument(previewUri, toUpdate.title).catch(() => {
+                void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
+                this.rMarkdownOutput.show(true);
+                this.previewStore.delete(previewUri);
+            });
 
-        if (childProcess) {
-            toUpdate.cp = childProcess;
+            if (childProcess) {
+                toUpdate.cp = childProcess;
+            }
+
+            this.refreshPanel(toUpdate);
         }
 
-        this.refreshPanel(toUpdate);
     }
 
     private async previewDocument(filePath: string, fileName?: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn) {
@@ -377,7 +380,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         // state change
         panel.onDidDispose(() => {
             // clear values
-            this.activePreview = this.activePreview?.preview === preview ? { filePath: null, preview: null } : this.activePreview;
+            this.activePreview = this.activePreview?.preview === preview ? { filePath: null, preview: null, title: null } : this.activePreview;
             void setContext('r.rmarkdown.preview.active', false);
             this.previewStore.delete(filePath);
         });
@@ -387,6 +390,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             if (webviewPanel.active) {
                 this.activePreview.preview = preview;
                 this.activePreview.filePath = filePath;
+                this.activePreview.title = title;
                 void setContext('r.rmarkdown.preview.autoRefresh', preview.autoRefresh);
             }
         });

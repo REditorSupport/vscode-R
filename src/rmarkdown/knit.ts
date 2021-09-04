@@ -6,14 +6,15 @@ import yaml = require('js-yaml');
 
 import { RMarkdownManager, KnitWorkingDirectory } from './manager';
 import { runTextInTerm } from '../rTerminal';
+import { rmdPreviewManager } from '../extension';
 
-export let knitDir: string = util.config().get<string>('rmarkdown.knit.defaults.knitWorkingDirectory') ?? undefined;
+export let knitDir: KnitWorkingDirectory = util.config().get<KnitWorkingDirectory>('rmarkdown.knit.defaults.knitWorkingDirectory') ?? undefined;
 
 interface IKnitQuickPickItem {
 	label: string,
 	description: string,
 	detail: string,
-	value: string
+	value: KnitWorkingDirectory
 }
 
 interface IYamlFrontmatter {
@@ -186,12 +187,14 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 				items,
 				{
 					title: 'Set knit working directory',
-					canPickMany: false,
-					onDidSelectItem: (item: IKnitQuickPickItem) => {
-						knitDir = item.value;
-					}
+					canPickMany: false
 				}
-			);
+			).then(async choice => {
+				if (choice?.value && knitDir !== choice.value) {
+					knitDir = choice.value;
+					await rmdPreviewManager.updatePreview();
+				}
+			});
 		} else {
 			void vscode.window.showInformationMessage('Cannot set knit directory for untitled documents.');
 		}
