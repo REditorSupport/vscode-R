@@ -282,14 +282,16 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
 
     private async previewDocument(filePath: string, fileName?: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn) {
         const knitWorkingDir = this.getKnitDir(knitDir, filePath);
+        const knitWorkingDirText = knitWorkingDir ? `'${knitWorkingDir}'` : `NULL`;
         this.rPath = await getRpath(true);
+
         const lim = '---vsc---';
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
         const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
         const cmd = (
-            `${this.rPath} --silent --slave --no-save --no-restore -e ` +
-            `"knitr::opts_knit[['set']](root.dir = ${knitWorkingDir});` +
-            `cat('${lim}', rmarkdown::render(` +
+            `${this.rPath} --silent --slave --no-save --no-restore ` +
+            `-e "knitr::opts_knit[['set']](root.dir = ${knitWorkingDirText})" ` +
+            `-e "cat('${lim}', rmarkdown::render(` +
             `'${filePath.replace(/\\/g, '/')}',` +
             `output_format = rmarkdown::html_document(),` +
             `output_file = '${outputFile.replace(/\\/g, '/')}',` +

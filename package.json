@@ -1301,15 +1301,20 @@
           "default": true,
           "markdownDescription": "Enable automatic refresh of R Markdown preview on file update."
         },
+        "r.rmarkdown.knit.useBackgroundProcess": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Should knitting occur in a background process (*smart knitting*), or should it be done in the current R terminal (*manual knitting*)? \n\n*Smart knitting* includes additional features, such as custom knit function detection, R Markdown site detection, progress bars, and the setting knit directory."
+        },
         "r.rmarkdown.knit.focusOutputChannel": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Should the R Markdown output channel be focused when knitting?\n\n*Does not affect manual document knitting*."
+          "markdownDescription": "Should the R Markdown output channel be focused when knitting?\n\nRequires `#r.rmarkdown.knit.useBackgroundProcess#` to be set to `true`."
         },
         "r.rmarkdown.knit.openOutputFile": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Should the output file be opened automatically when using knit?\n\n*Does not affect manual document knitting*."
+          "markdownDescription": "Should the output file be opened automatically when using knit?\n\nRequires `#r.rmarkdown.knit.useBackgroundProcess#` to be set to `true`."
         },
         "r.rmarkdown.knit.defaults.knitWorkingDirectory": {
           "type": "string",
@@ -1322,7 +1327,7 @@
             "Use the document's directory as the knit directory",
             "Use the workspace root as the knit directory"
           ],
-          "markdownDescription": "What working directory should R Markdown chunks be evaluated in? Default knit behaviour is to use the document's directory as root.\n\n*Does not affect manual document knitting*.",
+          "markdownDescription": "What working directory should R Markdown chunks be evaluated in? Default knit behaviour is to use the document's directory as root.\n\nRequires `#r.rmarkdown.knit.useBackgroundProcess#` to be set to `true`.",
           "additionalItems": false,
           "additionalProperties": false
         },

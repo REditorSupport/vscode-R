@@ -33,27 +33,21 @@ export abstract class RMarkdownManager {
 	protected busyUriStore: Set<string> = new Set<string>();
 
 	protected getKnitDir(knitDir: string, docPath?: string): string {
-		const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(docPath) ?? vscode.window.activeTextEditor.document.uri).uri.fsPath ?? undefined;
+		const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(docPath) ?? vscode.window.activeTextEditor?.document?.uri)?.uri?.fsPath ?? undefined;
 		switch (knitDir) {
 			// the directory containing the R Markdown document
 			case KnitWorkingDirectory.documentDirectory: {
-				return util.ToRStringLiteral(
-					path.dirname(docPath),
-					'\\"'
-				);
+				return path.dirname(docPath).replace(/\\/g, '/').replace(/['"]/g, '\\"');
 			}
 			// the root of the current workspace
 			case KnitWorkingDirectory.workspaceRoot: {
-				return util.ToRStringLiteral(
-					currentDocumentWorkspace,
-					'\''
-				);
+				return currentDocumentWorkspace.replace(/\\/g, '/').replace(/['"]/g, '\\"');
 			}
 			// the working directory of the attached terminal, NYI
 			// case 'current directory': {
 			// 	return NULL
 			// }
-			default: return 'NULL';
+			default: return undefined;
 		}
 	}
 
