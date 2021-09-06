@@ -4,7 +4,7 @@ import * as fs from 'fs-extra';
 import path = require('path');
 import yaml = require('js-yaml');
 
-import { RMarkdownManager, KnitWorkingDirectory } from './manager';
+import { RMarkdownManager, KnitWorkingDirectory, DisposableProcess } from './manager';
 import { runTextInTerm } from '../rTerminal';
 import { rmdPreviewManager } from '../extension';
 
@@ -26,7 +26,7 @@ interface IYamlFrontmatter {
 }
 
 export class RMarkdownKnitManager extends RMarkdownManager {
-	private async renderDocument(rPath: string, docPath: string, docName: string, yamlParams: IYamlFrontmatter, outputFormat?: string) {
+	private async renderDocument(rPath: string, docPath: string, docName: string, yamlParams: IYamlFrontmatter, outputFormat?: string): Promise<DisposableProcess> {
 		const openOutfile: boolean = util.config().get<boolean>('rmarkdown.knit.openOutputFile') ?? false;
 		const knitWorkingDir = this.getKnitDir(knitDir, docPath);
 		const knitWorkingDirText = knitWorkingDir ? `'${knitWorkingDir}'` : `NULL`;
