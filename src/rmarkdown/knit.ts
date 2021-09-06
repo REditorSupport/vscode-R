@@ -35,14 +35,12 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 		const lim = '---vsc---';
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'gms');
-		const cmd = (
-			`${this.rPath} --silent --slave --no-save --no-restore ` +
-			`-e "knitr::opts_knit[['set']](root.dir = ${knitWorkingDirText})" ` +
-			`-e "cat('${lim}', ` +
+		const cmd =
+			`knitr::opts_knit[['set']](root.dir = ${knitWorkingDirText});` +
+			`cat('${lim}', ` +
 			`${knitCommand}, ` +
 			`'${lim}',` +
-			`sep='')"`
-		);
+			`sep='')`;
 
 		const callback = (dat: string) => {
 			const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
@@ -122,7 +120,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 				`rmarkdown::render(${docPath})`;
 		}
 
-		return knitCommand.replace(/['"]/g, '\\"');
+		return knitCommand.replace(/['"]/g, '"');
 	}
 
 	// check if the workspace of the document is a R Markdown site.

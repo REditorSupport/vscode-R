@@ -290,14 +290,13 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
         const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
         const cmd = (
-            `${this.rPath} --silent --slave --no-save --no-restore ` +
-            `-e "knitr::opts_knit[['set']](root.dir = ${knitWorkingDirText})" ` +
-            `-e "cat('${lim}', rmarkdown::render(` +
+            `knitr::opts_knit[['set']](root.dir = ${knitWorkingDirText});` +
+            `cat('${lim}', rmarkdown::render(` +
             `'${filePath.replace(/\\/g, '/')}',` +
             `output_format = rmarkdown::html_document(),` +
             `output_file = '${outputFile.replace(/\\/g, '/')}',` +
             `intermediates_dir = '${tmpDir().replace(/\\/g, '/')}'), '${lim}',` +
-            `sep='')"`
+            `sep='')`
         );
 
         const callback = (dat: string, childProcess: DisposableProcess) => {

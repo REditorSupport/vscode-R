@@ -58,6 +58,7 @@ export abstract class RMarkdownManager {
 		// variable to set progress to a specific number
 		let currentProgress = 0;
 		let printOutput = true;
+
 		return await new Promise<DisposableProcess>(
 			(resolve, reject) => {
 				const cmd = args.cmd;
@@ -66,11 +67,23 @@ export abstract class RMarkdownManager {
 
 				try {
 					childProcess = util.asDisposable(
-						cp.exec(cmd),
+						cp.spawn(`${this.rPath}`,
+							[
+								`--silent`,
+								`--slave`,
+								`--no-save`,
+								`--no-restore`,
+								`-e`,
+								cmd
+							],
+							{ windowsVerbatimArguments: true }
+						),
 						() => {
-							rMarkdownOutput.appendLine('[VSC-R] terminating R process');
-							childProcess.kill('SIGKILL');
-							printOutput = false;
+
+							if (childProcess.kill('SIGKILL')) {
+								rMarkdownOutput.appendLine('[VSC-R] terminating R process');
+								printOutput = false;
+							}
 						}
 					);
 					progress.report({
