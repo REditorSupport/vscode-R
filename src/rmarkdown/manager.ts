@@ -63,23 +63,28 @@ export abstract class RMarkdownManager {
 			(resolve, reject) => {
 				const cmd = args.cmd;
 				const fileName = args.fileName;
+				const processArgs = [
+					`--silent`,
+					`--slave`,
+					`--no-save`,
+					`--no-restore`,
+					`-e`,
+					cmd
+				];
+				const processOptions = {
+					env: process.env
+				};
+
 				let childProcess: DisposableProcess;
 
 				try {
 					childProcess = util.asDisposable(
-						cp.spawn(`${this.rPath}`,
-							[
-								`--silent`,
-								`--slave`,
-								`--no-save`,
-								`--no-restore`,
-								`-e`,
-								cmd
-							],
-							{ windowsVerbatimArguments: true }
+						cp.spawn(
+							`${this.rPath}`,
+							processArgs,
+							processOptions
 						),
 						() => {
-
 							if (childProcess.kill('SIGKILL')) {
 								rMarkdownOutput.appendLine('[VSC-R] terminating R process');
 								printOutput = false;
