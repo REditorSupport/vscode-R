@@ -371,3 +371,20 @@ export class UriIcon {
         this.light = vscode.Uri.file(path.join(extIconPath, 'light', id + '.svg'));
     }
 }
+
+/**
+ * As Disposable.
+ *
+ * Create a dispose method for any given object, and push it to the
+ * extension subscriptions array
+ *
+ * @param {T} toDispose - the object to add dispose to
+ * @param {Function} disposeFunction - the method called when the object is disposed
+ * @returns returned object is considered types T and vscode.Disposable
+ */
+export function asDisposable<T>(toDispose: T, disposeFunction: (...args: unknown[]) => unknown): T & vscode.Disposable {
+    type disposeType = T & vscode.Disposable;
+    (toDispose as disposeType).dispose = () => disposeFunction();
+    extensionContext.subscriptions.push(toDispose as disposeType);
+    return toDispose as disposeType;
+}

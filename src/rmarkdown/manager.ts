@@ -8,6 +8,15 @@ export enum KnitWorkingDirectory {
 	workspaceRoot = 'workspace root',
 }
 
+export type DisposableProcess = cp.ChildProcessWithoutNullStreams & vscode.Disposable;
+
+export interface IKnitRejection {
+	cp: DisposableProcess;
+	wasCancelled: boolean;
+}
+
+const rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel('R Markdown');
+
 interface IKnitArgs {
 	filePath: string;
 	fileName: string;
@@ -17,13 +26,6 @@ interface IKnitArgs {
 	callback: (...args: unknown[]) => boolean;
 	onRejection?: (...args: unknown[]) => unknown;
 }
-
-export interface IKnitRejection {
-	cp: cp.ChildProcessWithoutNullStreams;
-	wasCancelled: boolean;
-}
-
-const rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel('R Markdown');
 
 export abstract class RMarkdownManager {
 	protected rPath: string = undefined;
@@ -51,18 +53,44 @@ export abstract class RMarkdownManager {
 		}
 	}
 
-	protected async knitDocument(args: IKnitArgs, token?: vscode.CancellationToken, progress?: vscode.Progress<unknown>): Promise<cp.ChildProcessWithoutNullStreams | IKnitRejection> {
+	protected async knitDocument(args: IKnitArgs, token?: vscode.CancellationToken, progress?: vscode.Progress<unknown>): Promise<DisposableProcess | IKnitRejection> {
 		// vscode.Progress auto-increments progress, so we use this
 		// variable to set progress to a specific number
 		let currentProgress = 0;
-		return await new Promise<cp.ChildProcessWithoutNullStreams>(
+		let printOutput = true;
+
+		return await new Promise<DisposableProcess>(
 			(resolve, reject) => {
 				const cmd = args.cmd;
 				const fileName = args.fileName;
-				let childProcess: cp.ChildProcessWithoutNullStreams;
+				const processArgs = [
+					`--silent`,
+					`--slave`,
+					`--no-save`,
+					`--no-restore`,
+					`-e`,
+					cmd
+				];
+				const processOptions = {
+					env: process.env
+				};
+
+				let childProcess: DisposableProcess;
 
 				try {
-					childProcess = cp.exec(cmd);
+					childProcess = util.asDisposable(
+						cp.spawn(
+							`${this.rPath}`,
+							processArgs,
+							processOptions
+						),
+						() => {
+							if (childProcess.kill('SIGKILL')) {
+								rMarkdownOutput.appendLine('[VSC-R] terminating R process');
+								printOutput = false;
+							}
+						}
+					);
 					progress.report({
 						increment: 0,
 						message: '0%'
@@ -81,9 +109,13 @@ export abstract class RMarkdownManager {
 				childProcess.stdout.on('data',
 					(data: Buffer) => {
 						const dat = data.toString('utf8');
-						this.rMarkdownOutput.appendLine(dat);
+						if (printOutput) {
+							this.rMarkdownOutput.appendLine(dat);
+
+						}
 						const percentRegex = /[0-9]+(?=%)/g;
 						const percentRegOutput = dat.match(percentRegex);
+
 						if (percentRegOutput) {
 							for (const item of percentRegOutput) {
 								const perc = Number(item);
@@ -108,7 +140,9 @@ export abstract class RMarkdownManager {
 
 				childProcess.stderr.on('data', (data: Buffer) => {
 					const dat = data.toString('utf8');
-					this.rMarkdownOutput.appendLine(dat);
+					if (printOutput) {
+						this.rMarkdownOutput.appendLine(dat);
+					}
 				});
 
 				childProcess.on('exit', (code, signal) => {
@@ -126,10 +160,10 @@ export abstract class RMarkdownManager {
 		);
 	}
 
-	protected async knitWithProgress(args: IKnitArgs): Promise<cp.ChildProcessWithoutNullStreams> {
-		let childProcess: cp.ChildProcessWithoutNullStreams = undefined;
+	protected async knitWithProgress(args: IKnitArgs): Promise<DisposableProcess> {
+		let childProcess: DisposableProcess = undefined;
 		await util.doWithProgress(async (token: vscode.CancellationToken, progress: vscode.Progress<unknown>) => {
-			childProcess = await this.knitDocument(args, token, progress) as cp.ChildProcessWithoutNullStreams;
+			childProcess = await this.knitDocument(args, token, progress) as DisposableProcess;
 		},
 			vscode.ProgressLocation.Notification,
 			`Knitting ${args.fileName} ${args.rOutputFormat ? 'to ' + args.rOutputFormat : ''} `,
@@ -140,8 +174,8 @@ export abstract class RMarkdownManager {
 				this.rMarkdownOutput.show(true);
 			}
 			// this can occur when a successfuly knitted document is later altered (while still being previewed) and subsequently fails to knit
-			args?.onRejection ? args.onRejection(args.filePath, rejection) :
-				rejection?.cp.kill('SIGKILL');
+			args?.onRejection?.(args.filePath, rejection);
+			rejection.cp?.dispose();
 		});
 		return childProcess;
 	}

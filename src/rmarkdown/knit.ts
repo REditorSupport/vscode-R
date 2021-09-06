@@ -4,7 +4,7 @@ import * as fs from 'fs-extra';
 import path = require('path');
 import yaml = require('js-yaml');
 
-import { RMarkdownManager, KnitWorkingDirectory } from './manager';
+import { RMarkdownManager, KnitWorkingDirectory, DisposableProcess } from './manager';
 import { runTextInTerm } from '../rTerminal';
 import { rmdPreviewManager } from '../extension';
 
@@ -26,23 +26,21 @@ interface IYamlFrontmatter {
 }
 
 export class RMarkdownKnitManager extends RMarkdownManager {
-	private async renderDocument(rPath: string, docPath: string, docName: string, yamlParams: IYamlFrontmatter, outputFormat?: string) {
+	private async renderDocument(rDocumentPath: string, docPath: string, docName: string, yamlParams: IYamlFrontmatter, outputFormat?: string): Promise<DisposableProcess> {
 		const openOutfile: boolean = util.config().get<boolean>('rmarkdown.knit.openOutputFile') ?? false;
 		const knitWorkingDir = this.getKnitDir(knitDir, docPath);
 		const knitWorkingDirText = knitWorkingDir ? `'${knitWorkingDir}'` : `NULL`;
-		const knitCommand = await this.getKnitCommand(yamlParams, rPath, outputFormat);
-		this.rPath = await util.getRpath(true);
+		const knitCommand = await this.getKnitCommand(yamlParams, rDocumentPath, outputFormat);
+		this.rPath = await util.getRpath();
 
 		const lim = '---vsc---';
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'gms');
-		const cmd = (
-			`${this.rPath} --silent --slave --no-save --no-restore ` +
-			`-e "knitr::opts_knit[['set']](root.dir = ${knitWorkingDirText})" ` +
-			`-e "cat('${lim}', ` +
+		const cmd =
+			`knitr::opts_knit[['set']](root.dir = ${knitWorkingDirText});` +
+			`cat('${lim}', ` +
 			`${knitCommand}, ` +
 			`'${lim}',` +
-			`sep='')"`
-		);
+			`sep='')`;
 
 		const callback = (dat: string) => {
 			const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
@@ -68,7 +66,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		return await this.knitWithProgress(
 			{
 				fileName: docName,
-				filePath: rPath,
+				filePath: rDocumentPath,
 				cmd: cmd,
 				rCmd: knitCommand,
 				rOutputFormat: outputFormat,
@@ -122,7 +120,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 				`rmarkdown::render(${docPath})`;
 		}
 
-		return knitCommand.replace(/['"]/g, '\\"');
+		return knitCommand.replace(/['"]/g, '\'');
 	}
 
 	// check if the workspace of the document is a R Markdown site.
@@ -217,12 +215,12 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 		const isSaved = await util.saveDocument(wad);
 		if (isSaved) {
-			let rPath = util.ToRStringLiteral(wad.fileName, '"');
+			let rDocumentPath = util.ToRStringLiteral(wad.fileName, '"');
 			let encodingParam = util.config().get<string>('source.encoding');
 			encodingParam = `encoding = "${encodingParam}"`;
-			rPath = [rPath, encodingParam].join(', ');
+			rDocumentPath = [rDocumentPath, encodingParam].join(', ');
 			if (echo) {
-				rPath = [rPath, 'echo = TRUE'].join(', ');
+				rDocumentPath = [rDocumentPath, 'echo = TRUE'].join(', ');
 			}
 
 			// allow users to opt out of background process
@@ -233,7 +231,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 				} else {
 					this.busyUriStore.add(busyPath);
 					await this.renderDocument(
-						rPath,
+						rDocumentPath,
 						wad.uri.fsPath,
 						path.basename(wad.uri.fsPath),
 						this.getYamlFrontmatter(wad.uri.fsPath),
@@ -243,9 +241,9 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 				}
 			} else {
 				if (outputFormat === undefined) {
-					void runTextInTerm(`rmarkdown::render(${rPath})`);
+					void runTextInTerm(`rmarkdown::render(${rDocumentPath})`);
 				} else {
-					void runTextInTerm(`rmarkdown::render(${rPath}, "${outputFormat}")`);
+					void runTextInTerm(`rmarkdown::render(${rDocumentPath}, '${outputFormat}')`);
 				}
 			}
 		}
