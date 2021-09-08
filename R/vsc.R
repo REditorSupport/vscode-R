@@ -134,6 +134,8 @@ inspect_env <- function(env, cache) {
   is_promise <- rlang::env_binding_are_lazy(env, all_names)
   is_active <- rlang::env_binding_are_active(env, all_names)
   show_object_size <- getOption("vsc.show_object_size", FALSE)
+  object_length_limit <- getOption("vsc.object_length_limit", 2000)
+  str_max_level <- getOption("vsc.str.max.level", 0)
   objs <- lapply(all_names, function(name) {
     if (is_promise[[name]]) {
       info <- list(
@@ -171,12 +173,10 @@ inspect_env <- function(env, cache) {
         info$size <- scalar(cobj$size)
       }
 
-      length_limit <- getOption("vsc.object_length_limit", 2000)
-      if (length(obj) > length_limit) {
+      if (length(obj) > object_length_limit) {
         info$str <- scalar(trimws(capture_str(obj, 0)))
       } else {
-        max_level <- getOption("vsc.str.max.level", 0)
-        info$str <- scalar(trimws(capture_str(obj, max_level)))
+        info$str <- scalar(trimws(capture_str(obj, str_max_level)))
         obj_names <- if (is.object(obj)) {
           .DollarNames(obj, pattern = "")
         } else if (is.recursive(obj)) {
