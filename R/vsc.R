@@ -418,13 +418,13 @@ if (show_view) {
     if (is.data.frame(x) || is.matrix(x)) {
       data <- dataview_table(x)
       file <- tempfile(tmpdir = tempdir, fileext = ".json")
-      jsonlite::write_json(data, file, auto_unbox = TRUE)
+      jsonlite::write_json(data, file, na = "string", null = "null", auto_unbox = TRUE)
       request("dataview", source = "table", type = "json",
         title = title, file = file, viewer = viewer, uuid = uuid)
     } else if (is.list(x)) {
       tryCatch({
         file <- tempfile(tmpdir = tempdir, fileext = ".json")
-        jsonlite::write_json(x, file, auto_unbox = TRUE)
+        jsonlite::write_json(x, file, na = "string", null = "null", auto_unbox = TRUE)
         request("dataview", source = "list", type = "json",
           title = title, file = file, viewer = viewer, uuid = uuid)
       }, error = function(e) {
