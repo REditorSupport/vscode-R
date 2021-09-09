@@ -20,6 +20,7 @@ load_settings <- function() {
     vsc.show_object_size = workspaceViewer$showObjectSize,
     vsc.rstudioapi = session$emulateRStudioAPI,
     vsc.str.max.level = session$levelOfObjectDetail,
+    vsc.object_length_limit = session$objectLengthLimit,
     vsc.globalenv = session$watchGlobalEnvironment,
     vsc.plot = session$viewers$viewColumn$plot,
     vsc.browser = session$viewers$viewColumn$browser,
@@ -133,6 +134,8 @@ inspect_env <- function(env, cache) {
   is_promise <- rlang::env_binding_are_lazy(env, all_names)
   is_active <- rlang::env_binding_are_active(env, all_names)
   show_object_size <- getOption("vsc.show_object_size", FALSE)
+  object_length_limit <- getOption("vsc.object_length_limit", 2000)
+  str_max_level <- getOption("vsc.str.max.level", 0)
   objs <- lapply(all_names, function(name) {
     if (is_promise[[name]]) {
       info <- list(
@@ -154,8 +157,7 @@ inspect_env <- function(env, cache) {
       info <- list(
         class = class(obj),
         type = scalar(typeof(obj)),
-        length = scalar(length(obj)),
-        str = scalar(trimws(capture_str(obj)))
+        length = scalar(length(obj))
       )
 
       if (show_object_size) {
@@ -171,14 +173,19 @@ inspect_env <- function(env, cache) {
         info$size <- scalar(cobj$size)
       }
 
-      obj_names <- if (is.object(obj)) {
-        .DollarNames(obj, pattern = "")
-      } else if (is.recursive(obj)) {
-        names(obj)
-      } else NULL
+      if (length(obj) > object_length_limit) {
+        info$str <- scalar(trimws(capture_str(obj, 0)))
+      } else {
+        info$str <- scalar(trimws(capture_str(obj, str_max_level)))
+        obj_names <- if (is.object(obj)) {
+          .DollarNames(obj, pattern = "")
+        } else if (is.recursive(obj)) {
+          names(obj)
+        } else NULL
 
-      if (length(obj_names)) {
-        info$names <- obj_names
+        if (length(obj_names)) {
+          info$names <- obj_names
+        }
       }
 
       if (isS4(obj)) {

@@ -96,7 +96,7 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
         const trigger = completionContext.triggerCharacter;
 
         if (trigger === undefined) {
-            Object.keys(session.globalenv).map((key) => {
+            Object.keys(session.globalenv).forEach((key) => {
                 const obj = session.globalenv[key];
                 const item = new vscode.CompletionItem(
                     key,
@@ -114,36 +114,44 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             const symbol = document.getText(symbolRange);
             const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
             const obj = session.globalenv[symbol];
-            let elements: string[];
+            let names: string[];
             if (obj !== undefined) {
                 if (completionContext.triggerCharacter === '$') {
-                    elements = obj.names;
+                    names = obj.names;
                 } else if (completionContext.triggerCharacter === '@') {
-                    elements = obj.slots;
+                    names = obj.slots;
                 }
             }
-            elements.map((key) => {
-                const item = new vscode.CompletionItem(key, vscode.CompletionItemKind.Field);
-                item.detail = '[session]';
-                item.documentation = doc;
-                items.push(item);
-            });
+
+            if (names) {
+                items.push(...getCompletionItems(names, vscode.CompletionItemKind.Field, '[session]', doc));
+            }
         }
 
         if (trigger === undefined || trigger === '[' || trigger === ',' || trigger === '"' || trigger === '\'') {
-            const bracketItems = getBracketCompletionItems(document, position, token);
-            items.push(...bracketItems);
+            items.push(...getBracketCompletionItems(document, position, token));
         }
 
         if (trigger === undefined || trigger === '(' || trigger === ',') {
-            const pipelineItems = getPipelineCompletionItems(document, position, token);
-            items.push(...pipelineItems);
+            items.push(...getPipelineCompletionItems(document, position, token));
         }
 
         return items;
     }
 }
 
+function getCompletionItems(names: string[], kind: vscode.CompletionItemKind, detail: string, documentation: vscode.MarkdownString): vscode.CompletionItem[] {
+    const len = names.length.toString().length;
+    let index = 0;
+    return names.map((name) => {
+        const item = new vscode.CompletionItem(name, kind);
+        item.detail = detail;
+        item.documentation = documentation;
+        item.sortText = `0-${index.toString().padStart(len, '0')}`;
+        index++;
+        return item;
+    });
+}
 
 function getBracketCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken) {
     const items: vscode.CompletionItem[] = [];
@@ -181,12 +189,7 @@ function getBracketCompletionItems(document: vscode.TextDocument, position: vsco
         const obj = session.globalenv[symbol];
         if (obj !== undefined && obj.names !== undefined) {
             const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
-            obj.names.map((name: string) => {
-                const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Field);
-                item.detail = '[session]';
-                item.documentation = doc;
-                items.push(item);
-            });
+            items.push(...getCompletionItems(obj.names, vscode.CompletionItemKind.Field, '[session]', doc));
         }
     }
     return items;
@@ -231,12 +234,7 @@ function getPipelineCompletionItems(document: vscode.TextDocument, position: vsc
         const obj = session.globalenv[symbol];
         if (obj !== undefined && obj.names !== undefined) {
             const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
-            obj.names.map((name: string) => {
-                const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Field);
-                item.detail = '[session]';
-                item.documentation = doc;
-                items.push(item);
-            });
+            items.push(...getCompletionItems(obj.names, vscode.CompletionItemKind.Field, '[session]', doc));
         }
     }
     return items;

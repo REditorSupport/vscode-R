@@ -1398,6 +1398,11 @@
           "default": true,
           "markdownDescription": "Watch the global environment to provide hover, autocompletions, and workspace viewer information. Changes the option `vsc.globalenv` in R. Requires `#r.sessionWatcher#` to be set to `true`."
         },
+        "r.session.objectLengthLimit": {
+          "type": "integer",
+          "default": 2000,
+          "markdownDescription": "The upper limit of object length to show object details in workspace viewer and provide session symbol completion. Decrease this value if you experience significant delay after executing R commands caused by large global objects with many elements. Changes the option `vsc.object_length_limit` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+        },
         "r.session.levelOfObjectDetail": {
           "type": "string",
           "markdownDescription": "How much of the object to show on hover, autocompletion, and in the workspace viewer? Changes the option `vsc.str.max.level` in R. Requires `#r.sessionWatcher#` to be set to `true`.",
