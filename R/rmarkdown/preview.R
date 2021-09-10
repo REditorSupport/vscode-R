@@ -1,5 +1,5 @@
 # requires rmarkdown package to run (and knitr)
-if (!requireNamespace(rmarkdown, quietly = TRUE)) {
+if (!requireNamespace("rmarkdown", quietly = TRUE)) {
     stop("Previewing documents requires the {rmarkdown} package.")
 }
 
