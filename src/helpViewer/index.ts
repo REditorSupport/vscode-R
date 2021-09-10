@@ -41,7 +41,7 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
     const rHelpOptions: HelpOptions = {
         webviewScriptPath: context.asAbsolutePath('/html/help/script.js'),
         webviewStylePath: context.asAbsolutePath('html/help/theme.css'),
-		rScriptFile: context.asAbsolutePath('R/getAliases.R'),
+		rScriptFile: context.asAbsolutePath('R/background/help/getAliases.R'),
         rPath: rPath,
         cwd: cwd,
 		persistentState: persistentState

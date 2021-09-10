@@ -20,7 +20,8 @@ const rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel(
 interface IKnitArgs {
 	filePath: string;
 	fileName: string;
-	cmd: string;
+	scriptArgs: Record<string, string>;
+	scriptPath: string;
 	rCmd?: string;
 	rOutputFormat?: string;
 	callback: (...args: unknown[]) => boolean;
@@ -61,18 +62,23 @@ export abstract class RMarkdownManager {
 
 		return await new Promise<DisposableProcess>(
 			(resolve, reject) => {
-				const cmd = args.cmd;
+				const scriptArgs = args.scriptArgs;
+				const scriptPath = args.scriptPath;
 				const fileName = args.fileName;
+
 				const processArgs = [
 					`--silent`,
 					`--slave`,
 					`--no-save`,
 					`--no-restore`,
-					`-e`,
-					cmd
+					`-f`,
+					`${scriptPath}`
 				];
 				const processOptions = {
-					env: process.env
+					env: {
+						...process.env,
+						...scriptArgs
+					}
 				};
 
 				let childProcess: DisposableProcess;
