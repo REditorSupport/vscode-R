@@ -283,21 +283,20 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
 
     private async previewDocument(filePath: string, fileName?: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn): Promise<DisposableProcess> {
         const knitWorkingDir = this.getKnitDir(knitDir, filePath);
-        const knitWorkingDirText = knitWorkingDir ? `'${knitWorkingDir}'` : `NULL`;
+        const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : `NULL`;
         this.rPath = await getRpath();
 
         const lim = '---vsc---';
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
         const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
-        const cmd = (
-            `knitr::opts_knit[['set']](root.dir = ${knitWorkingDirText});` +
-            `cat('${lim}', rmarkdown::render(` +
-            `'${filePath.replace(/\\/g, '/')}',` +
-            `output_format = rmarkdown::html_document(),` +
-            `output_file = '${outputFile.replace(/\\/g, '/')}',` +
-            `intermediates_dir = '${tmpDir().replace(/\\/g, '/')}'), '${lim}',` +
-            `sep='')`
-        );
+        const scriptValues = {
+            'VSCR_KNIT_DIR' : knitWorkingDirText,
+            'VSCR_LIM': lim,
+            'VSCR_FILE_PATH': filePath.replace(/\\/g, '/'),
+            'VSCR_OUTPUT_FILE': outputFile.replace(/\\/g, '/'),
+            'VSCR_TMP_DIR': tmpDir().replace(/\\/g, '/')
+        };
+
 
         const callback = (dat: string, childProcess: DisposableProcess) => {
             const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
@@ -329,7 +328,8 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             {
                 fileName: fileName,
                 filePath: filePath,
-                cmd: cmd,
+                scriptPath: extensionContext.asAbsolutePath('R/rmarkdown/preview.R'),
+                scriptArgs: scriptValues,
                 rOutputFormat: 'html preview',
                 callback: callback,
                 onRejection: onRejected
