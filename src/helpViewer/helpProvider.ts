@@ -40,7 +40,7 @@ export class HelpProvider {
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
 
         // starts the background help server and waits forever to keep the R process running
-        const scriptPath = extensionContext.asAbsolutePath('R/background/help/helpServer.R');
+        const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
         const cmd = (
             `${this.rPath} --silent --slave --no-save --no-restore -f ` +
             `${scriptPath}`

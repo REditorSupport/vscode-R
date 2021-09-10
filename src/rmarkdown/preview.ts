@@ -328,7 +328,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             {
                 fileName: fileName,
                 filePath: filePath,
-                scriptPath: extensionContext.asAbsolutePath('R/background/rmarkdown/preview.R'),
+                scriptPath: extensionContext.asAbsolutePath('R/rmarkdown/preview.R'),
                 scriptArgs: scriptValues,
                 rOutputFormat: 'html preview',
                 callback: callback,

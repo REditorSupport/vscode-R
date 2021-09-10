@@ -98,8 +98,8 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
                 shellPath: termPath,
                 shellArgs: termOpt,
             };
-            const newRprofile = extensionContext.asAbsolutePath(path.join('R', '.Rprofile'));
-            const initR = extensionContext.asAbsolutePath(path.join('R', 'init.R'));
+            const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'session', '.Rprofile'));
+            const initR = extensionContext.asAbsolutePath(path.join('R', 'session','init.R'));
             if (config().get<boolean>('sessionWatcher')) {
                 termOptions.env = {
                     R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,

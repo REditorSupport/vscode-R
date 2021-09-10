@@ -1,5 +1,5 @@
 # requires rmarkdown package to run (and knitr)
-if (!require(rmarkdown, quietly = TRUE)) {
+if (!requireNamespace(rmarkdown, quietly = TRUE)) {
     stop("Knitting requires the {rmarkdown} package.")
 }
 

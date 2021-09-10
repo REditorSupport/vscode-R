@@ -67,7 +67,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 				fileName: docName,
 				filePath: rDocumentPath,
 				scriptArgs: scriptValues,
-				scriptPath: extensionContext.asAbsolutePath('R/background/rmarkdown/knit.R'),
+				scriptPath: extensionContext.asAbsolutePath('R/rmarkdown/knit.R'),
 				rCmd: knitCommand,
 				rOutputFormat: outputFormat,
 				callback: callback
