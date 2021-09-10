@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 
 import * as rHelp from '.';
+import { extensionContext } from '../extension';
 
 export interface RHelpProviderOptions {
 	// path of the R executable
@@ -39,12 +40,14 @@ export class HelpProvider {
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
 
         // starts the background help server and waits forever to keep the R process running
+        const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
         const cmd = (
-            `${this.rPath} --silent --slave --no-save --no-restore -e ` +
-            `"cat('${lim}', tools::startDynamicHelp(), '${lim}', sep=''); while(TRUE) Sys.sleep(1)" ` 
+            `${this.rPath} --silent --slave --no-save --no-restore -f ` +
+            `${scriptPath}`
         );
         const cpOptions = {
-            cwd: this.cwd
+            cwd: this.cwd,
+            env: { ...process.env, 'VSCR_LIM': lim }
         };
         this.cp = cp.exec(cmd, cpOptions);
 
@@ -53,7 +56,7 @@ export class HelpProvider {
         const outputPromise = new Promise<string>((resolve) => {
             this.cp.stdout?.on('data', (data) => {
                 try{
-                    // eslint-disable-next-line 
+                    // eslint-disable-next-line
                     str += data.toString();
                 } catch(e){
                     resolve('');
@@ -92,7 +95,7 @@ export class HelpProvider {
             content?: string,
             redirect?: string
         }
-    
+
         // forward request to R instance
         // below is just a complicated way of getting a http response from the help server
         let url = `http://localhost:${this.port}/${requestPath}`;
@@ -159,7 +162,7 @@ export interface AliasProviderArgs {
     cwd?: string;
 	// getAliases.R
     rScriptFile: string;
-    
+
     persistentState: Memento;
 }
 
@@ -283,7 +286,7 @@ export class AliasProvider {
         }
 
         // get from R
-        this.allPackageAliases = null; 
+        this.allPackageAliases = null;
 		const lim = '---vsc---'; // must match the lim used in R!
 		const re = new RegExp(`^.*?${lim}(.*)${lim}.*$`, 'ms');
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-aliases-'));
