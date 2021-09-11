@@ -71,7 +71,7 @@ class RMarkdownPreview extends vscode.Disposable {
     }
 
     private getHtmlContent(htmlContent: string): void {
-        let content = htmlContent.replace(/<(\w+)\s+(href|src)="(?!\w+:)/g,
+        let content = htmlContent.replace(/<(\w+)\s+(href|src)="(?!(\w+:)|#)/g,
             `<$1 $2="${String(this.panel.webview.asWebviewUri(vscode.Uri.file(tmpDir())))}/`);
 
         const re = new RegExp('<html[^\\n]*>.*</html>', 'ms');
@@ -82,12 +82,11 @@ class RMarkdownPreview extends vscode.Disposable {
             content = `<html><head></head><body><pre>${html}</pre></body></html>`;
         }
 
-        this.htmlLightContent = content;
-
         const $ = cheerio.load(content);
-        const chunkCol = String(config().get('rmarkdown.chunkBackgroundColor'));
+        this.htmlLightContent = $.html();
 
         // make the output chunks a little lighter to stand out
+        const chunkCol = String(config().get('rmarkdown.chunkBackgroundColor'));
         const colReg = /[0-9.]+/g;
         const regOut = chunkCol.match(colReg);
         const outCol = `rgba(${regOut[0] ?? 100}, ${regOut[1] ?? 100}, ${regOut[2] ?? 100}, ${Number(regOut[3]) + 0.05 ?? .5})`;
@@ -112,6 +111,9 @@ class RMarkdownPreview extends vscode.Disposable {
             }
             pre > code {
                 background: transparent;
+            }
+            h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+                color: inherit;
             }
         </style>
         `;
