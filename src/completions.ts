@@ -12,6 +12,7 @@ import { extendSelection } from './selection';
 import { cleanLine } from './lineCache';
 import { globalRHelp } from './extension';
 import { config } from './util';
+import { getChunks } from './rmarkdown';
 
 
 // Get with names(roxygen2:::default_tags())
@@ -33,6 +34,15 @@ export class HoverProvider implements vscode.HoverProvider {
         if(!session.globalenv){
             return null;
         }
+
+        if (document.languageId === 'rmd') {
+            const chunks = getChunks(document);
+            const chunk = chunks.find((chunk) => chunk.language === 'r' && chunk.startLine < position.line && chunk.endLine > position.line);
+            if (!chunk) {
+                return null;
+            }
+        }
+
         const wordRange = document.getWordRangeAtPosition(position);
         const text = document.getText(wordRange);
         // use juggling check here for both
@@ -50,6 +60,15 @@ export class HelpLinkHoverProvider implements vscode.HoverProvider {
         if(!config().get<boolean>('helpPanel.enableHoverLinks')){
             return null;
         }
+
+        if (document.languageId === 'rmd') {
+            const chunks = getChunks(document);
+            const chunk = chunks.find((chunk) => chunk.language === 'r' && chunk.startLine < position.line && chunk.endLine > position.line);
+            if (!chunk) {
+                return null;
+            }
+        }
+
         const re = /([a-zA-Z0-9._:])+/;
         const wordRange = document.getWordRangeAtPosition(position, re);
         const token = document.getText(wordRange);
@@ -71,6 +90,14 @@ export class HelpLinkHoverProvider implements vscode.HoverProvider {
 
 export class StaticCompletionItemProvider implements vscode.CompletionItemProvider {
     provideCompletionItems(document: vscode.TextDocument, position: vscode.Position): vscode.CompletionItem[] | undefined {
+        if (document.languageId === 'rmd') {
+            const chunks = getChunks(document);
+            const chunk = chunks.find((chunk) => chunk.language === 'r' && chunk.startLine < position.line && chunk.endLine > position.line);
+            if (!chunk) {
+                return undefined;
+            }
+        }
+
         if (document.lineAt(position).text
                     .substr(0, 2) === '#\'') {
             return roxygenTagCompletionItems;
@@ -91,6 +118,14 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
         const items = [];
         if (token.isCancellationRequested) {
             return items;
+        }
+
+        if (document.languageId === 'rmd') {
+            const chunks = getChunks(document);
+            const chunk = chunks.find((chunk) => chunk.language === 'r' && chunk.startLine < position.line && chunk.endLine > position.line);
+            if (!chunk) {
+                return items;
+            }
         }
 
         const trigger = completionContext.triggerCharacter;
