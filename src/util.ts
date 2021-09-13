@@ -331,6 +331,10 @@ export class DummyMemento implements vscode.Memento {
     public async update(key: string, value: any): Promise<void> {
         this.items.set(key, value);
     }
+
+    public keys(): readonly string[] {
+        return Object.keys(this.items);
+    }
 }
 
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any
