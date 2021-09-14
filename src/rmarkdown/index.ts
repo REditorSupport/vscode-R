@@ -171,7 +171,7 @@ interface RMarkdownChunk {
 }
 
 // Scan document and return chunk info (e.g. ID, chunk range) from all chunks
-function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
+export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
   const lines = document.getText().split(/\r?\n/);
   const chunks: RMarkdownChunk[] = [];
 

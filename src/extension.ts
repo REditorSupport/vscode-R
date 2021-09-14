@@ -175,9 +175,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
 
     // register (session) hover and completion providers
-    vscode.languages.registerHoverProvider('r', new completions.HoverProvider());
-    vscode.languages.registerHoverProvider('r', new completions.HelpLinkHoverProvider());
-    vscode.languages.registerCompletionItemProvider('r', new completions.StaticCompletionItemProvider(), '@');
+    vscode.languages.registerHoverProvider(['r', 'rmd'], new completions.HoverProvider());
+    vscode.languages.registerHoverProvider(['r', 'rmd'], new completions.HelpLinkHoverProvider());
+    vscode.languages.registerCompletionItemProvider(['r', 'rmd'], new completions.StaticCompletionItemProvider(), '@');
 
     // deploy liveshare listener
     await rShare.initLiveShare(context);
@@ -235,7 +235,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // if session watcher is active, register dyamic completion provider
         const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
-        vscode.languages.registerCompletionItemProvider('r', new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
+        vscode.languages.registerCompletionItemProvider(['r', 'rmd'], new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
 
 
