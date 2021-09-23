@@ -187,13 +187,6 @@
   dependencies:
     "@types/node" "*"
 
-"@types/highlight.js@^10.1.0":
-  version "10.1.0"
-  resolved "https://registry.yarnpkg.com/@types/highlight.js/-/highlight.js-10.1.0.tgz#89bb0c202997d7a90a07bd2ec1f7d00c56bb90b4"
-  integrity sha512-77hF2dGBsOgnvZll1vymYiNUtqJ8cJfXPD6GG/2M0aLRc29PkvB7Au6sIDjIEFcSICBhCh2+Pyq6WSRS7LUm6A==
-  dependencies:
-    highlight.js "*"
-
 "@types/js-yaml@^4.0.2":
   version "4.0.3"
   resolved "https://registry.yarnpkg.com/@types/js-yaml/-/js-yaml-4.0.3.tgz#9f33cd6fbf0d5ec575dc8c8fc69c7fec1b4eb200"
@@ -265,10 +258,10 @@
   resolved "https://registry.yarnpkg.com/@types/vscode/-/vscode-1.60.0.tgz#9330c317691b4f53441a18b598768faeeb71618a"
   integrity sha512-wZt3VTmzYrgZ0l/3QmEbCq4KAJ71K3/hmMQ/nfpv84oH8e81KKwPEoQ5v8dNCxfHFVJ1JabHKmCvqdYOoVm1Ow==
 
-"@types/winreg@^1.2.30":
-  version "1.2.30"
-  resolved "https://registry.yarnpkg.com/@types/winreg/-/winreg-1.2.30.tgz#91d6710e536d345b9c9b017c574cf6a8da64c518"
-  integrity sha1-kdZxDlNtNFucmwF8V0z2qNpkxRg=
+"@types/winreg@^1.2.31":
+  version "1.2.31"
+  resolved "https://registry.yarnpkg.com/@types/winreg/-/winreg-1.2.31.tgz#914a7f076fd8f0f39964eb2e5c624c4fbdca77f7"
+  integrity sha512-SDatEMEtQ1cJK3esIdH6colduWBP+42Xw9Guq1sf/N6rM3ZxgljBduvZOwBsxRps/k5+Wwf5HJun6pH8OnD2gg==
 
 "@types/ws@^7.4.4":
   version "7.4.4"
@@ -663,11 +656,6 @@ boolbase@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/boolbase/-/boolbase-1.0.0.tgz#68dff5fbe60c51eb37725ea9e3ed310dcc1e776e"
   integrity sha1-aN/1++YMUes3cl6p4+0xDcwed24=
-
-bootstrap@^5.0.1:
-  version "5.0.1"
-  resolved "https://registry.yarnpkg.com/bootstrap/-/bootstrap-5.0.1.tgz#e7939d599119dc818a90478a2a299bdaff037e09"
-  integrity sha512-Fl79+wsLOZKoiU345KeEaWD0ik8WKRI5zm0YSPj2oF1Qr+BO7z0fco6GbUtqjoG1h4VI89PeKJnMsMMVQdKKTw==
 
 brace-expansion@^1.1.7:
   version "1.1.11"
@@ -1518,15 +1506,10 @@ he@1.2.0:
   resolved "https://registry.yarnpkg.com/he/-/he-1.2.0.tgz#84ae65fa7eafb165fddb61566ae14baf05664f0f"
   integrity sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==
 
-highlight.js@*:
-  version "11.0.1"
-  resolved "https://registry.yarnpkg.com/highlight.js/-/highlight.js-11.0.1.tgz#a78bafccd9aa297978799fe5eed9beb7ee1ef887"
-  integrity sha512-EqYpWyTF2s8nMfttfBA2yLKPNoZCO33pLS4MnbXQ4hECf1TKujCt1Kq7QAdrio7roL4+CqsfjqwYj4tYgq0pJQ==
-
-highlight.js@^10.7.2:
-  version "10.7.3"
-  resolved "https://registry.yarnpkg.com/highlight.js/-/highlight.js-10.7.3.tgz#697272e3991356e40c3cac566a74eef681756531"
-  integrity sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==
+highlight.js@^11.2.0:
+  version "11.2.0"
+  resolved "https://registry.yarnpkg.com/highlight.js/-/highlight.js-11.2.0.tgz#a7e3b8c1fdc4f0538b93b2dc2ddd53a40c6ab0f0"
+  integrity sha512-JOySjtOEcyG8s4MLR2MNbLUyaXqUunmSnL2kdV/KuGJOmHZuAR5xC54Ko7goAXBWNhf09Vy3B+U7vR62UZ/0iw==
 
 htmlparser2@^6.1.0:
   version "6.1.0"
@@ -2714,10 +2697,10 @@ vscode-test@^1.5.2:
     rimraf "^3.0.2"
     unzipper "^0.10.11"
 
-vsls@^1.0.3015:
-  version "1.0.3015"
-  resolved "https://registry.yarnpkg.com/vsls/-/vsls-1.0.3015.tgz#346b034990aa2ff875c769fb7bf2abab085bb1d6"
-  integrity sha512-c+hG4X/aNdR4PM2nxUeooTEyDav8TQ8exfLSWIWp+h+us1jjhxGk2K+PDCrJxJmeIra/Ku4sdqMRv7P9hF6MRA==
+vsls@^1.0.4753:
+  version "1.0.4753"
+  resolved "https://registry.yarnpkg.com/vsls/-/vsls-1.0.4753.tgz#1b0957fc987fddd2b4d8c03925d086fb701d11fa"
+  integrity sha512-hmrsMbhjuLoU8GgtVfqhbV4ZkGvDpLV2AFmzx+cCOGNra2qk0Q36dYkfwENqy/vJVQ/2/lhxcn+69FYnKQRhgg==
   dependencies:
     "@microsoft/servicehub-framework" "^2.6.74"
 
