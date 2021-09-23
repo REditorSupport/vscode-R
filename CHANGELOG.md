@@ -4,6 +4,22 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.3.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.0)
+
+Enhancements
+
+* R Markdown preview now supports background rendering with progress bar, customizable
+  working directory, and smart knit button. (#765)
+* `{rstudioapi}` emulation is enabled by default. (#769)
+* A new setting `r.session.objectLengthLimit` is added to limit the output of the names of global objects with many named elements which might cause significant delay after inputs. (#778)
+* `NA` and `Inf` could now be correctly displayed in the data viewer. (#780)
+* User-specified R Markdown output format is now respected. (#785)
+
+Fixes
+
+* The security policy of WebView is relaxed to support `{flextable}` widgets. (#771)
+* The R Markdown background rendering process could be properly terminated now. (#773)
+
 ## [2.2.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.2.0)
 
 New Features
