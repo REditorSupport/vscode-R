@@ -26,7 +26,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.57.0"
+    "vscode": "^1.60.0"
   },
   "activationEvents": [
     "onLanguage:r",
@@ -1669,7 +1669,7 @@
     "@types/node": "^14.17.3",
     "@types/node-fetch": "^2.5.10",
     "@types/showdown": "^1.9.3",
-    "@types/vscode": "^1.57.0",
+    "@types/vscode": "^1.60.0",
     "@types/winreg": "^1.2.30",
     "@types/ws": "^7.4.4",
     "@typescript-eslint/eslint-plugin": "4.25.0",
@@ -1687,7 +1687,7 @@
     "yamljs": "^0.3.0"
   },
   "dependencies": {
-    "ag-grid-community": "^25.3.0",
+    "ag-grid-community": "^26.0.0",
     "bootstrap": "^5.0.1",
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
