@@ -509,7 +509,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 
 			// apply syntax highlighting to each code section:
 			codeSections.each((i, section) => {
-				const styledCode = hljs.highlight('r', $(section).text() || '');
+				const styledCode = hljs.highlight($(section).text() || '', { language: 'r' });
 				$(section).html(styledCode.value);
 			});
 		}
