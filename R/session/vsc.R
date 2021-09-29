@@ -562,7 +562,7 @@ show_webview <- function(url, title, ..., viewer) {
   } else if (grepl("^https?\\://", url)) {
     message(
       if (nzchar(proxy_uri)) {
-        "VSCode WebView only supports showing local http content.\n"
+        "VSCode is not running on localhost but on a remote server.\n"
       } else {
         "VSCode WebView only supports showing local http content.\n"
       },
