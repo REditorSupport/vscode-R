@@ -494,11 +494,23 @@ request_browser <- function(url, title, ..., viewer) {
 
 show_browser <- function(url, title = url, ...,
                          viewer = getOption("vsc.browser", "Active")) {
+  if (nzchar(Sys.getenv("VSCODE_PROXY_URI"))) {
+    is.base_path <- grepl("\\:\\d+$", url)
+    url <- sub("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:)?",
+      sub("\\{port\\}", "", Sys.getenv("VSCODE_PROXY_URI")), url)
+    if (is.base_path) {
+      url <- paste0(url, "/")
+    }
+  }
   if (grepl("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:\\d+)?", url)) {
     request_browser(url = url, title = title, ..., viewer = viewer)
   } else if (grepl("^https?\\://", url)) {
     message(
-      "VSCode WebView only supports showing local http content.\n",
+      if (nzchar(Sys.getenv("VSCODE_PROXY_URI"))) {
+        "VSCode is not running on localhost but on a remote server.\n"
+      } else {
+        "VSCode WebView only supports showing local http content.\n"
+      },
       "Opening in external browser..."
     )
     request_browser(url = url, title = title, ..., viewer = FALSE)
@@ -535,11 +547,23 @@ show_webview <- function(url, title, ..., viewer) {
       stop("Invalid object")
     }
   }
+  if (nzchar(Sys.getenv("VSCODE_PROXY_URI"))) {
+    is.base_path <- grepl("\\:\\d+$", url)
+    url <- sub("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:)?",
+      sub("\\{port\\}", "", Sys.getenv("VSCODE_PROXY_URI")), url)
+    if (is.base_path) {
+      url <- paste0(url, "/")
+    }
+  }
   if (grepl("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:\\d+)?", url)) {
     request_browser(url = url, title = title, ..., viewer = viewer)
   } else if (grepl("^https?\\://", url)) {
     message(
-      "VSCode WebView only supports showing local http content.\n",
+      if (nzchar(Sys.getenv("VSCODE_PROXY_URI"))) {
+        "VSCode WebView only supports showing local http content.\n"
+      } else {
+        "VSCode WebView only supports showing local http content.\n"
+      },
       "Opening in external browser..."
     )
     request_browser(url = url, title = title, ..., viewer = FALSE)
