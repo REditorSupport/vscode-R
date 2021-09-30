@@ -74,11 +74,12 @@ export abstract class RMarkdownManager {
 					`-f`,
 					`${scriptPath}`
 				];
-				const processOptions = {
+				const processOptions: cp.SpawnOptions = {
 					env: {
 						...process.env,
 						...scriptArgs
-					}
+					},
+					cwd: vscode.workspace.workspaceFolders[0].uri.fsPath
 				};
 
 				let childProcess: DisposableProcess;
