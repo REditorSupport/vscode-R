@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 
 import { HelpFile, RHelp } from '.';
-import { setContext, UriIcon } from '../util';
+import { setContext, UriIcon, config } from '../util';
 
 //// Declaration of interfaces used/implemented by the Help Panel class
 // specified when creating a new help panel
@@ -117,10 +117,13 @@ export class HelpPanel {
 	}
 
 	// shows (internal) help file object in webview
-	public async showHelpFile(helpFile: HelpFile|Promise<HelpFile>, updateHistory = true, currentScrollY = 0, viewer?: string|any, preserveFocus: boolean = false): Promise<boolean>{
+	public async showHelpFile(helpFile: HelpFile | Promise<HelpFile>, updateHistory = true, currentScrollY = 0, viewer?: vscode.ViewColumn | string, preserveFocus: boolean = false): Promise<boolean>{
+		if (viewer === undefined) {
+			viewer = config().get<string>('session.viewers.viewColumn.helpPanel');
+		}
 
 		// update this.viewColumn if a valid viewer argument was supplied
-		if(typeof viewer === 'string'){
+		if (typeof viewer === 'string'){
 			this.viewColumn = <vscode.ViewColumn>vscode.ViewColumn[String(viewer)];
 		}
 
