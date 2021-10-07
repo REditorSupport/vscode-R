@@ -18,6 +18,7 @@ export interface IKnitRejection {
 const rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel('R Markdown');
 
 interface IKnitArgs {
+	workingDirectory: string;
 	filePath: string;
 	fileName: string;
 	scriptArgs: Record<string, string>;
@@ -79,7 +80,7 @@ export abstract class RMarkdownManager {
 						...process.env,
 						...scriptArgs
 					},
-					cwd: vscode.workspace.workspaceFolders[0].uri.fsPath
+					cwd: args.workingDirectory,
 				};
 
 				let childProcess: DisposableProcess;
