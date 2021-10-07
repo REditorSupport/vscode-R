@@ -328,6 +328,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
 
         return await this.knitWithProgress(
             {
+                workingDirectory: knitWorkingDir,
                 fileName: fileName,
                 filePath: filePath,
                 scriptPath: extensionContext.asAbsolutePath('R/rmarkdown/preview.R'),
