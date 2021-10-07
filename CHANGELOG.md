@@ -4,6 +4,18 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.3.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.1)
+
+Enhancements:
+
+* Proxied requests are now supported to work with [code-server](https://github.com/cdr/code-server). (#275, #803)
+
+Fixes:
+
+* `unsafe-eval` is re-enabled in WebView Content Security Policy to make htmlwidgets such as plotly work. (#805)
+* The help viewer now respects `r.session.viewers.viewColumn.helpPanel`. (#804)
+* The working directory of the knit background process is now consistent with the knit working directory so that `.Rprofile` and `renv` setup are respected. (#807)
+
 ## [2.3.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.0)
 
 Enhancements
