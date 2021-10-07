@@ -18,6 +18,7 @@ export interface IKnitRejection {
 const rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel('R Markdown');
 
 interface IKnitArgs {
+	workingDirectory: string;
 	filePath: string;
 	fileName: string;
 	scriptArgs: Record<string, string>;
@@ -35,8 +36,7 @@ export abstract class RMarkdownManager {
 	// so that we can't spam the knit/preview button
 	protected busyUriStore: Set<string> = new Set<string>();
 
-	protected getKnitDir(knitDir: string, docPath?: string): string {
-		const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(docPath) ?? vscode.window.activeTextEditor?.document?.uri)?.uri?.fsPath ?? undefined;
+	protected getKnitDir(knitDir: string, docPath: string): string {
 		switch (knitDir) {
 			// the directory containing the R Markdown document
 			case KnitWorkingDirectory.documentDirectory: {
@@ -44,6 +44,7 @@ export abstract class RMarkdownManager {
 			}
 			// the root of the current workspace
 			case KnitWorkingDirectory.workspaceRoot: {
+				const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(docPath) ?? vscode.window.activeTextEditor?.document?.uri)?.uri?.fsPath ?? undefined;
 				return currentDocumentWorkspace.replace(/\\/g, '/').replace(/['"]/g, '\\"');
 			}
 			// the working directory of the attached terminal, NYI
@@ -74,11 +75,12 @@ export abstract class RMarkdownManager {
 					`-f`,
 					`${scriptPath}`
 				];
-				const processOptions = {
+				const processOptions: cp.SpawnOptions = {
 					env: {
 						...process.env,
 						...scriptArgs
-					}
+					},
+					cwd: args.workingDirectory,
 				};
 
 				let childProcess: DisposableProcess;

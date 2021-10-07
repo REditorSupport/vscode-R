@@ -64,6 +64,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 		return await this.knitWithProgress(
 			{
+				workingDirectory: knitWorkingDir,
 				fileName: docName,
 				filePath: rDocumentPath,
 				scriptArgs: scriptValues,
