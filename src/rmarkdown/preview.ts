@@ -292,7 +292,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
         const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
         const scriptValues = {
-            'VSCR_KNIT_DIR' : knitWorkingDirText,
+            'VSCR_KNIT_DIR': knitWorkingDirText,
             'VSCR_LIM': lim,
             'VSCR_FILE_PATH': filePath.replace(/\\/g, '/'),
             'VSCR_OUTPUT_FILE': outputFile.replace(/\\/g, '/'),
