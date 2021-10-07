@@ -109,7 +109,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		if (yamlParams?.['knit']) {
 			const knitParam = yamlParams['knit'];
 			knitCommand = outputFormat ?
-				`${knitParam}(${docPath}, output_format = '${outputFormat}')`:
+				`${knitParam}(${docPath}, output_format = '${outputFormat}')` :
 				`${knitParam}(${docPath})`;
 		} else if (!this.isREADME(docPath) && yamlParams?.['site']) {
 			knitCommand = outputFormat ?
@@ -127,7 +127,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 	// check if the workspace of the document is a R Markdown site.
 	// the definition of what constitutes an R Markdown site differs
 	// depending on the type of R Markdown site (i.e., "simple" vs. blogdown sites)
-	private async findSiteParam(): Promise<string|undefined> {
+	private async findSiteParam(): Promise<string | undefined> {
 		const rootFolder = vscode.workspace.workspaceFolders[0].uri.fsPath;
 		const wad = vscode.window.activeTextEditor.document.uri.fsPath;
 		const indexFile = (await vscode.workspace.findFiles(new vscode.RelativePattern(rootFolder, 'index.{Rmd,rmd, md}'), null, 1))?.[0];
@@ -136,7 +136,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		// 'Simple' R Markdown websites require all docs to be in the root folder
 		if (fs.existsSync(siteRoot)) {
 			return 'rmarkdown::render_site';
-		// Other generators may allow for docs in subdirs
+			// Other generators may allow for docs in subdirs
 		} else if (indexFile) {
 			const indexData = this.getYamlFrontmatter(indexFile.fsPath);
 			if (indexData?.['site']) {

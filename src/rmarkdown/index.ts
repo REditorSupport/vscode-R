@@ -399,7 +399,7 @@ async function goToChunk(chunk: RMarkdownChunk) {
   // Move cursor 1 line below 'chunk start line'
   const line = chunk.startLine + 1;
   vscode.window.activeTextEditor.selection = new vscode.Selection(line, 0, line, 0);
-  await vscode.commands.executeCommand('revealLine', { lineNumber: line, at: 'center'});
+  await vscode.commands.executeCommand('revealLine', { lineNumber: line, at: 'center' });
 }
 
 export function goToPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
