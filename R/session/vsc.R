@@ -15,19 +15,23 @@ load_settings <- function() {
     return(FALSE)
   }
 
+  setting <- function(x, ...) {
+    switch(EXPR = x, ..., x)
+  }
+
   mapping <- quote(list(
     vsc.use_httpgd = plot$useHttpgd,
     vsc.show_object_size = workspaceViewer$showObjectSize,
     vsc.rstudioapi = session$emulateRStudioAPI,
-    vsc.str.max.level = session$levelOfObjectDetail,
+    vsc.str.max.level = setting(session$levelOfObjectDetail, Minimal = 0, Normal = 1, Detailed = 2),
     vsc.object_length_limit = session$objectLengthLimit,
     vsc.globalenv = session$watchGlobalEnvironment,
-    vsc.plot = session$viewers$viewColumn$plot,
-    vsc.browser = session$viewers$viewColumn$browser,
-    vsc.viewer = session$viewers$viewColumn$viewer,
-    vsc.page_viewer = session$viewers$viewColumn$pageViewer,
-    vsc.view = session$viewers$viewColumn$view,
-    vsc.helpPanel = session$viewers$viewColumn$helpPanel
+    vsc.plot = setting(session$viewers$viewColumn$plot, Disable = FALSE),
+    vsc.browser = setting(session$viewers$viewColumn$browser, Disable = FALSE),
+    vsc.viewer = setting(session$viewers$viewColumn$viewer, Disable = FALSE),
+    vsc.page_viewer = setting(session$viewers$viewColumn$pageViewer, Disable = FALSE),
+    vsc.view = setting(session$viewers$viewColumn$view, Disable = FALSE),
+    vsc.helpPanel = setting(session$viewers$viewColumn$helpPanel, Disable = FALSE)
   ))
 
   vsc_settings <- tryCatch(jsonlite::read_json(settings_file), error = function(e) {
@@ -41,21 +45,7 @@ load_settings <- function() {
   ops <- eval(mapping, vsc_settings)
 
   # exclude options set by user on startup
-  ops <- ops[!(names(ops) %in% user_options)]
-
-  # translate VS Code setting values to R option values
-  r_options <- lapply(ops, function(x) {
-    if (is.character(x) && length(x) == 1) {
-      switch(EXPR = x,
-        "Disable" = FALSE,
-        "Minimal" = 0,
-        "Detailed" = 2,
-        x
-      )
-    } else {
-      x
-    }
-  })
+  r_options <- ops[!(names(ops) %in% user_options)]
 
   options(r_options)
 }

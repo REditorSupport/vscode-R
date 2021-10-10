@@ -1409,11 +1409,13 @@
           "default": "Minimal",
           "enum": [
             "Minimal",
+            "Normal",
             "Detailed"
           ],
           "enumDescriptions": [
             "Display literal values and object types only.",
-            "Display list content, data frame column values, and example values."
+            "Display the top level of list content, data frame column values, and example values.",
+            "Display the top two levels of list content, data frame column values, and example values. This option may cause notable delay after each user input in the terminal."
           ]
         },
         "r.session.emulateRStudioAPI": {
