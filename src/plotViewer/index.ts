@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 
@@ -60,8 +61,7 @@ export class HttpgdManager {
         this.viewerOptions = {
             parent: this,
             htmlRoot: htmlRoot,
-            preserveFocus: true,
-            viewColumn: vscode.ViewColumn.Two
+            preserveFocus: true
         };
     }
 
@@ -345,7 +345,8 @@ export class HttpgdViewer implements IHttpgdViewer {
                 this.checkStateDelayed();
             }
         });
-        this.customOverwriteCssPath = config().get('plot.customStyleOverwrites', '');
+        const conf = config();
+        this.customOverwriteCssPath = conf.get('plot.customStyleOverwrites', '');
         const localResourceRoots = (
             this.customOverwriteCssPath ?
             [extensionContext.extensionUri, vscode.Uri.file(path.dirname(this.customOverwriteCssPath))] :
@@ -355,7 +356,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.htmlTemplate = fs.readFileSync(path.join(this.htmlRoot, 'index.ejs'), 'utf-8');
         this.smallPlotTemplate = fs.readFileSync(path.join(this.htmlRoot, 'smallPlot.ejs'), 'utf-8');
         this.showOptions = {
-            viewColumn: options.viewColumn ?? vscode.ViewColumn.Two,
+            viewColumn: options.viewColumn ?? vscode.ViewColumn[conf.get<string>('session.viewers.viewColumn.plot') || 'Two'],
             preserveFocus: !!options.preserveFocus
         };
         this.webviewOptions = {
