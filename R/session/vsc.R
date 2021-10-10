@@ -454,7 +454,7 @@ if (show_view) {
     }
   }
 
-  View <- show_dataview
+  rebind("View", show_dataview, "utils")
 }
 
 attach <- function() {
