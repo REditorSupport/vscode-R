@@ -515,21 +515,24 @@ show_browser <- function(url, title = url, ...,
       "Opening in external browser..."
     )
     request_browser(url = url, title = title, ..., viewer = FALSE)
-  } else if (file.exists(url)) {
-    url <- normalizePath(url, "/", mustWork = TRUE)
-    if (grepl("\\.html?$", url, ignore.case = TRUE)) {
-      message(
-        "VSCode WebView has restricted access to local file.\n",
-        "Opening in external browser..."
-      )
-      request_browser(url = path_to_uri(url),
-        title = title, ..., viewer = FALSE)
-    } else {
-      request("dataview", source = "object", type = "txt",
-        title = title, file = url, viewer = viewer)
-    }
   } else {
-    stop("File not exists")
+    path <- if (grepl("^file\\://", url)) sub("^file\\://", "", url) else url
+    if (file.exists(path)) {
+      path <- normalizePath(path, "/", mustWork = TRUE)
+      if (grepl("\\.html?$", path, ignore.case = TRUE)) {
+        message(
+          "VSCode WebView has restricted access to local file.\n",
+          "Opening in external browser..."
+        )
+        request_browser(url = path_to_uri(path),
+          title = title, ..., viewer = FALSE)
+      } else {
+        request("dataview", source = "object", type = "txt",
+          title = title, file = path, viewer = viewer)
+      }
+    } else {
+      stop("File not exists")
+    }
   }
 }
 
