@@ -516,7 +516,7 @@ show_browser <- function(url, title = url, ...,
     )
     request_browser(url = url, title = title, ..., viewer = FALSE)
   } else {
-    path <- if (grepl("^file\\://", url)) sub("^file\\://", "", url) else url
+    path <- sub("^file\\://", "", url)
     if (file.exists(path)) {
       path <- normalizePath(path, "/", mustWork = TRUE)
       if (grepl("\\.html?$", path, ignore.case = TRUE)) {
