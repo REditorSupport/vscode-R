@@ -88,14 +88,18 @@ try_catch_timeout <- function(expr, timeout = Inf, ...) {
 }
 
 capture_str <- function(object, max.level = getOption("vsc.str.max.level", 0)) {
+  paste0(utils::capture.output(
+    utils::str(object,
+      max.level = max.level,
+      give.attr = FALSE,
+      vec.len = 1
+    )
+  ), collapse = "\n")
+}
+
+try_capture_str <- function(object, max.level = getOption("vsc.str.max.level", 0)) {
   tryCatch(
-    paste0(utils::capture.output(
-      utils::str(object,
-        max.level = max.level,
-        give.attr = FALSE,
-        vec.len = 1
-      )
-    ), collapse = "\n"),
+    capture_str(object, max.level = max.level),
     error = function(e) {
       paste0(class(object), collapse = ", ")
     }
@@ -174,18 +178,18 @@ inspect_env <- function(env, cache) {
       }
 
       if (length(obj) > object_length_limit) {
-        info$str <- scalar(trimws(capture_str(obj, 0)))
+        info$str <- scalar(trimws(try_capture_str(obj, 0)))
       } else {
         info_str <- NULL
         if (str_max_level > 0) {
           info_str <- try_catch_timeout(
             capture_str(obj, str_max_level),
             timeout = object_timeout,
-            error = function(e) message("Timeout")
+            error = function(e) NULL
           )
         }
         if (is.null(info_str)) {
-          info_str <- capture_str(obj, 0)
+          info_str <- try_capture_str(obj, 0)
         }
         info$str <- scalar(trimws(info_str))
         obj_names <- if (is.object(obj)) {
@@ -412,7 +416,7 @@ if (show_view) {
             type = typeof(obj),
             length = length(obj),
             size = as.integer(object.size(obj)),
-            value = trimws(capture_str(obj, 0)),
+            value = trimws(try_capture_str(obj, 0)),
             stringsAsFactors = FALSE,
             check.names = FALSE
           )
