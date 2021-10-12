@@ -15,19 +15,24 @@ load_settings <- function() {
     return(FALSE)
   }
 
+  setting <- function(x, ...) {
+    switch(EXPR = x, ..., x)
+  }
+
   mapping <- quote(list(
     vsc.use_httpgd = plot$useHttpgd,
     vsc.show_object_size = workspaceViewer$showObjectSize,
     vsc.rstudioapi = session$emulateRStudioAPI,
-    vsc.str.max.level = session$levelOfObjectDetail,
+    vsc.str.max.level = setting(session$levelOfObjectDetail, Minimal = 0, Normal = 1, Detailed = 2),
     vsc.object_length_limit = session$objectLengthLimit,
+    vsc.object_timeout = session$objectTimeout,
     vsc.globalenv = session$watchGlobalEnvironment,
-    vsc.plot = session$viewers$viewColumn$plot,
-    vsc.browser = session$viewers$viewColumn$browser,
-    vsc.viewer = session$viewers$viewColumn$viewer,
-    vsc.page_viewer = session$viewers$viewColumn$pageViewer,
-    vsc.view = session$viewers$viewColumn$view,
-    vsc.helpPanel = session$viewers$viewColumn$helpPanel
+    vsc.plot = setting(session$viewers$viewColumn$plot, Disable = FALSE),
+    vsc.browser = setting(session$viewers$viewColumn$browser, Disable = FALSE),
+    vsc.viewer = setting(session$viewers$viewColumn$viewer, Disable = FALSE),
+    vsc.page_viewer = setting(session$viewers$viewColumn$pageViewer, Disable = FALSE),
+    vsc.view = setting(session$viewers$viewColumn$view, Disable = FALSE),
+    vsc.helpPanel = setting(session$viewers$viewColumn$helpPanel, Disable = FALSE)
   ))
 
   vsc_settings <- tryCatch(jsonlite::read_json(settings_file), error = function(e) {
@@ -41,21 +46,7 @@ load_settings <- function() {
   ops <- eval(mapping, vsc_settings)
 
   # exclude options set by user on startup
-  ops <- ops[!(names(ops) %in% user_options)]
-
-  # translate VS Code setting values to R option values
-  r_options <- lapply(ops, function(x) {
-    if (is.character(x) && length(x) == 1) {
-      switch(EXPR = x,
-        "Disable" = FALSE,
-        "Minimal" = 0,
-        "Detailed" = 2,
-        x
-      )
-    } else {
-      x
-    }
-  })
+  r_options <- ops[!(names(ops) %in% user_options)]
 
   options(r_options)
 }
@@ -88,15 +79,27 @@ request <- function(command, ...) {
   cat(get_timestamp(), file = request_lock_file)
 }
 
+try_catch_timeout <- function(expr, timeout = Inf, ...) {
+  expr <- substitute(expr)
+  envir <- parent.frame()
+  setTimeLimit(timeout, transient = TRUE)
+  on.exit(setTimeLimit())
+  tryCatch(eval(expr, envir), ...)
+}
+
 capture_str <- function(object, max.level = getOption("vsc.str.max.level", 0)) {
+  paste0(utils::capture.output(
+    utils::str(object,
+      max.level = max.level,
+      give.attr = FALSE,
+      vec.len = 1
+    )
+  ), collapse = "\n")
+}
+
+try_capture_str <- function(object, max.level = getOption("vsc.str.max.level", 0)) {
   tryCatch(
-    paste0(utils::capture.output(
-      utils::str(object,
-        max.level = max.level,
-        give.attr = FALSE,
-        vec.len = 1
-      )
-    ), collapse = "\n"),
+    capture_str(object, max.level = max.level),
     error = function(e) {
       paste0(class(object), collapse = ", ")
     }
@@ -135,6 +138,7 @@ inspect_env <- function(env, cache) {
   is_active <- rlang::env_binding_are_active(env, all_names)
   show_object_size <- getOption("vsc.show_object_size", FALSE)
   object_length_limit <- getOption("vsc.object_length_limit", 2000)
+  object_timeout <- getOption("vsc.object_timeout", 50) / 1000
   str_max_level <- getOption("vsc.str.max.level", 0)
   objs <- lapply(all_names, function(name) {
     if (is_promise[[name]]) {
@@ -174,9 +178,20 @@ inspect_env <- function(env, cache) {
       }
 
       if (length(obj) > object_length_limit) {
-        info$str <- scalar(trimws(capture_str(obj, 0)))
+        info$str <- scalar(trimws(try_capture_str(obj, 0)))
       } else {
-        info$str <- scalar(trimws(capture_str(obj, str_max_level)))
+        info_str <- NULL
+        if (str_max_level > 0) {
+          info_str <- try_catch_timeout(
+            capture_str(obj, str_max_level),
+            timeout = object_timeout,
+            error = function(e) NULL
+          )
+        }
+        if (is.null(info_str)) {
+          info_str <- try_capture_str(obj, 0)
+        }
+        info$str <- scalar(trimws(info_str))
         obj_names <- if (is.object(obj)) {
           .DollarNames(obj, pattern = "")
         } else if (is.recursive(obj)) {
@@ -401,7 +416,7 @@ if (show_view) {
             type = typeof(obj),
             length = length(obj),
             size = as.integer(object.size(obj)),
-            value = trimws(capture_str(obj, 0)),
+            value = trimws(try_capture_str(obj, 0)),
             stringsAsFactors = FALSE,
             check.names = FALSE
           )

@@ -1403,17 +1403,24 @@
           "default": 2000,
           "markdownDescription": "The upper limit of object length to show object details in workspace viewer and provide session symbol completion. Decrease this value if you experience significant delay after executing R commands caused by large global objects with many elements. Changes the option `vsc.object_length_limit` in R. Requires `#r.sessionWatcher#` to be set to `true`."
         },
+        "r.session.objectTimeout": {
+          "type": "integer",
+          "default": 50,
+          "markdownDescription": "The maximum number of milliseconds to get information of a single object in the global environment. Decrease this value if you experience significant delay after executing R commands caused by large global objects with many elements. Changes the option `vsc.object_timeout` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+        },
         "r.session.levelOfObjectDetail": {
           "type": "string",
           "markdownDescription": "How much of the object to show on hover, autocompletion, and in the workspace viewer? Changes the option `vsc.str.max.level` in R. Requires `#r.sessionWatcher#` to be set to `true`.",
           "default": "Minimal",
           "enum": [
             "Minimal",
+            "Normal",
             "Detailed"
           ],
           "enumDescriptions": [
             "Display literal values and object types only.",
-            "Display list content, data frame column values, and example values."
+            "Display the top level of list content, data frame column values, and example values.",
+            "Display the top two levels of list content, data frame column values, and example values. This option may cause notable delay after each user input in the terminal."
           ]
         },
         "r.session.emulateRStudioAPI": {
