@@ -125,8 +125,8 @@ rebind <- function(sym, value, ns) {
 }
 
 address <- function(x) {
-  info <- utils::capture.output(.Internal(inspect(x, 0L)))
-  gsub("@([a-z0-9]+)\\s+.+", "\\1", info[[1]])
+  info <- utils::capture.output(.Internal(inspect(x, 0L, 0L)))
+  sub("@([a-z0-9]+)\\s+.+", "\\1", info[[1]])
 }
 
 globalenv_cache <- new.env(parent = emptyenv())
