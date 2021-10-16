@@ -14,7 +14,7 @@ import { config, setContext, UriIcon } from '../util';
 import { extensionContext } from '../extension';
 
 import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage, PreviewPlotLayout, PreviewPlotLayoutMessage, ToggleFullWindowMessage } from './webviewMessages';
-import { HttpgdIdResponse, HttpgdPlotId } from 'httpgd/lib/types';
+import { HttpgdIdResponse, HttpgdPlotId, HttpgdRendererId } from 'httpgd/lib/types';
 
 const commands = [
     'showViewers',
@@ -729,7 +729,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     // export plot
     // if no format supplied, show a quickpick menu etc.
     // if no filename supplied, show selector window
-    public async exportPlot(id?: HttpgdPlotId, format?: string, outFile?: string): Promise<void> {
+    public async exportPlot(id?: HttpgdPlotId, rendererId?: HttpgdRendererId, outFile?: string): Promise<void> {
         // make sure id is valid or return:
         id ||= this.activePlot || this.plots[this.plots.length - 1]?.id;
         const plot = this.plots.find((plt) => plt.id === id);
@@ -738,13 +738,20 @@ export class HttpgdViewer implements IHttpgdViewer {
             return;
         }
         // make sure format is valid or return:
-        if (!format) {
-            const formats: string[] = ['svg'];
+        if (!rendererId) {
+            const renderers = this.api.getRenderers();
+            const qpItems  = renderers.map(renderer => ({
+                label: renderer.name,
+                detail: renderer.descr,
+                id: renderer.id
+            }));
             const options: vscode.QuickPickOptions = {
                 placeHolder: 'Please choose a file format'
             };
-            format = await vscode.window.showQuickPick(formats, options);
-            if (!format) {
+            // format = await vscode.window.showQuickPick(formats, options);
+            const qpPick = await vscode.window.showQuickPick(qpItems, options);
+            rendererId = qpPick?.id;
+            if(!rendererId){
                 return;
             }
         }
@@ -757,16 +764,15 @@ export class HttpgdViewer implements IHttpgdViewer {
                 return;
             }
         }
-        // actually export plot:
-        if (format === 'svg') {
-            // do export
-            fs.writeFileSync(outFile, plot.data);
-            // const uri = vscode.Uri.file(outFile);
-            // await vscode.workspace.openTextDocument(uri);
-            // void vscode.window.showTextDocument(uri);
-        } else {
-            void vscode.window.showWarningMessage('Format not implemented');
-        }
+        // get plot:
+        const plt = await this.api.getPlot({
+            id: this.activePlot,
+            renderer: rendererId
+        });
+        console.log(plt);
+        
+        // How do I get the actual plot content here?
+        // ...
     }
 
     // Dispose-function to clean up when vscode closes
