@@ -41,7 +41,7 @@ type CommandName = typeof commands[number];
 
 export function initializeHttpgd(): HttpgdManager {
     const httpgdManager = new HttpgdManager();
-    for(const cmd of commands){
+    for (const cmd of commands) {
         const fullCommand = `r.plot.${cmd}`;
         const cb = httpgdManager.getCommandHandler(cmd);
         vscode.commands.registerCommand(fullCommand, cb);
@@ -56,7 +56,7 @@ export class HttpgdManager {
 
     recentlyActiveViewers: HttpgdViewer[] = [];
 
-    constructor(){
+    constructor() {
         const htmlRoot = extensionContext.asAbsolutePath('html/httpgd');
         this.viewerOptions = {
             parent: this,
@@ -73,11 +73,11 @@ export class HttpgdManager {
         const ind = this.viewers.findIndex(
             (viewer) => viewer.host === host
         );
-        if(ind >= 0){
+        if (ind >= 0) {
             const viewer = this.viewers.splice(ind, 1)[0];
             this.viewers.unshift(viewer);
             viewer.show();
-        } else{
+        } else {
             const conf = config();
             const colorTheme = conf.get('plot.defaults.colorTheme', 'vscode');
             this.viewerOptions.stripStyles = (colorTheme === 'vscode');
@@ -93,7 +93,7 @@ export class HttpgdManager {
 
     public registerActiveViewer(viewer: HttpgdViewer): void {
         const ind = this.recentlyActiveViewers.indexOf(viewer);
-        if(ind){
+        if (ind) {
             this.recentlyActiveViewers.splice(ind, 1);
         }
         this.recentlyActiveViewers.unshift(viewer);
@@ -121,7 +121,7 @@ export class HttpgdManager {
             prompt: 'Please enter the httpgd url'
         };
         const urlString = await vscode.window.showInputBox(options);
-        if(urlString){
+        if (urlString) {
             this.showViewer(urlString);
         }
     }
@@ -135,22 +135,22 @@ export class HttpgdManager {
         // below  is an attempt to handle these different combinations efficiently and (somewhat) robustly
         //
 
-        if(command === 'showViewers'){
+        if (command === 'showViewers') {
             this.viewers.forEach(viewer => {
                 viewer.show(true);
             });
             return;
-        } else if(command === 'openUrl'){
+        } else if (command === 'openUrl') {
             void this.openUrl();
             return;
         }
 
         // Identify the correct viewer
         let viewer: HttpgdViewer | undefined;
-        if(typeof hostOrWebviewUri === 'string'){
+        if (typeof hostOrWebviewUri === 'string') {
             const host = hostOrWebviewUri;
             viewer = this.viewers.find((viewer) => viewer.host === host);
-        } else if(hostOrWebviewUri instanceof vscode.Uri){
+        } else if (hostOrWebviewUri instanceof vscode.Uri) {
             const uri = hostOrWebviewUri;
             viewer = this.viewers.find((viewer) => viewer.getPanelPath() === uri.path);
         }
@@ -159,7 +159,7 @@ export class HttpgdManager {
         viewer ||= this.getRecentViewer();
 
         // Abort if no viewer identified
-        if(!viewer){
+        if (!viewer) {
             return;
         }
 
@@ -168,7 +168,7 @@ export class HttpgdManager {
         const boolArg = findItemOfType(args, 'boolean');
 
         // Call corresponding method, possibly with an argument:
-        switch(command) {
+        switch (command) {
             case 'showIndex': {
                 void viewer.focusPlot(stringArg);
                 break;
@@ -310,9 +310,9 @@ export class HttpgdViewer implements IHttpgdViewer {
         return this.getIndex(this.activePlot);
     }
     protected set activeIndex(ind: number) {
-        if(this.plots.length === 0){
+        if (this.plots.length === 0) {
             this.activePlot = undefined;
-        } else{
+        } else {
             ind = Math.max(ind, 0);
             ind = Math.min(ind, this.plots.length - 1);
             this.activePlot = this.plots[ind].id;
@@ -338,10 +338,10 @@ export class HttpgdViewer implements IHttpgdViewer {
             this.checkStateDelayed();
         });
         this.api.onConnectionChange((disconnected: boolean) => {
-            if(disconnected){
+            if (disconnected) {
                 this.api?.dispose();
                 this.api = undefined;
-            } else{
+            } else {
                 this.checkStateDelayed();
             }
         });
@@ -349,8 +349,8 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.customOverwriteCssPath = conf.get('plot.customStyleOverwrites', '');
         const localResourceRoots = (
             this.customOverwriteCssPath ?
-            [extensionContext.extensionUri, vscode.Uri.file(path.dirname(this.customOverwriteCssPath))] :
-            undefined
+                [extensionContext.extensionUri, vscode.Uri.file(path.dirname(this.customOverwriteCssPath))] :
+                undefined
         );
         this.htmlRoot = options.htmlRoot;
         this.htmlTemplate = fs.readFileSync(path.join(this.htmlRoot, 'index.ejs'), 'utf-8');
@@ -384,14 +384,14 @@ export class HttpgdViewer implements IHttpgdViewer {
     // Called to create a new webview if the user closed the old one:
     public show(preserveFocus?: boolean): void {
         preserveFocus ??= this.showOptions.preserveFocus;
-        if(!this.webviewPanel){
+        if (!this.webviewPanel) {
             const showOptions = {
                 ...this.showOptions,
                 preserveFocus: preserveFocus
             };
             this.webviewPanel = this.makeNewWebview(showOptions);
             this.refreshHtml();
-        } else{
+        } else {
             this.webviewPanel.reveal(undefined, preserveFocus);
         }
         this.parent.registerActiveViewer(this);
@@ -399,7 +399,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     public openExternal(): void {
         let urlString = `http://${this.host}/live`;
-        if(this.token){
+        if (this.token) {
             urlString += `?token=${this.token}`;
         }
         const uri = vscode.Uri.parse(urlString);
@@ -408,13 +408,13 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     // focus a specific plot id
     public async focusPlot(id?: PlotId): Promise<void> {
-        if(id){
+        if (id) {
             this.activePlot = id;
         }
         const plt = this.plots[this.activeIndex];
-        if(plt.height !== this.viewHeight * this.scale || plt.width !== this.viewHeight * this.scale){
+        if (plt.height !== this.viewHeight * this.scale || plt.width !== this.viewHeight * this.scale) {
             await this.refreshPlots();
-        } else{
+        } else {
             this._focusPlot();
         }
     }
@@ -430,11 +430,11 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     // navigate through plots (supply `true` to go to end/beginning of list)
     public async nextPlot(last?: boolean): Promise<void> {
-        this.activeIndex = last ? this.plots.length - 1 : this.activeIndex+1;
+        this.activeIndex = last ? this.plots.length - 1 : this.activeIndex + 1;
         await this.focusPlot();
     }
     public async prevPlot(first?: boolean): Promise<void> {
-        this.activeIndex = first ? 0 : this.activeIndex-1;
+        this.activeIndex = first ? 0 : this.activeIndex - 1;
         await this.focusPlot();
     }
 
@@ -447,11 +447,11 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     public hidePlot(id?: PlotId): void {
         id ??= this.activePlot;
-        if(!id){ return; }
+        if (!id) { return; }
         const tmpIndex = this.activeIndex;
         this.hiddenPlots.push(id);
         this.plots = this.plots.filter((plt) => !this.hiddenPlots.includes(plt.id));
-        if(id === this.activePlot){
+        if (id === this.activePlot) {
             this.activeIndex = tmpIndex;
             this._focusPlot();
         }
@@ -467,13 +467,13 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     public async closePlot(id?: PlotId): Promise<void> {
         id ??= this.activePlot;
-        if(id){
+        if (id) {
             this.hidePlot(id);
             await this.api?.closePlot(id);
         }
     }
 
-    public toggleStyle(force?: boolean): void{
+    public toggleStyle(force?: boolean): void {
         this.stripStyles = force ?? !this.stripStyles;
         const msg: ToggleStyleMessage = {
             message: 'toggleStyle',
@@ -491,14 +491,14 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.postWebviewMessage(msg);
     }
 
-    public togglePreviewPlots(force?: PreviewPlotLayout): void{
-        if(force){
+    public togglePreviewPlots(force?: PreviewPlotLayout): void {
+        if (force) {
             this.previewPlotLayout = force;
-        } else if(this.previewPlotLayout === 'multirow'){
+        } else if (this.previewPlotLayout === 'multirow') {
             this.previewPlotLayout = 'scroll';
-        } else if(this.previewPlotLayout === 'scroll'){
+        } else if (this.previewPlotLayout === 'scroll') {
             this.previewPlotLayout = 'hidden';
-        } else if(this.previewPlotLayout === 'hidden'){
+        } else if (this.previewPlotLayout === 'hidden') {
             this.previewPlotLayout = 'multirow';
         }
         const msg: PreviewPlotLayoutMessage = {
@@ -509,7 +509,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
 
     public zoomIn(): void {
-        if(this.scale > 0){
+        if (this.scale > 0) {
             this.scale -= 0.1;
             void this.resizePlot();
         }
@@ -521,19 +521,19 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
 
 
-	public async setContextValues(mightBeInBackground: boolean = false): Promise<void> {
-        if(this.webviewPanel?.active){
+    public async setContextValues(mightBeInBackground: boolean = false): Promise<void> {
+        if (this.webviewPanel?.active) {
             this.parent.registerActiveViewer(this);
             await setContext('r.plot.active', true);
             await setContext('r.plot.canGoBack', this.activeIndex > 0);
             await setContext('r.plot.canGoForward', this.activeIndex < this.plots.length - 1);
-        } else if (!mightBeInBackground){
+        } else if (!mightBeInBackground) {
             await setContext('r.plot.active', false);
         }
-	}
+    }
 
     public getPanelPath(): string | undefined {
-        if(!this.webviewPanel) {
+        if (!this.webviewPanel) {
             return undefined;
         }
         const dummyUri = this.webviewPanel.webview.asWebviewUri(vscode.Uri.file(''));
@@ -548,7 +548,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     // use a delay to avoid refreshing while a plot is incrementally drawn
     protected checkStateDelayed(): void {
         clearTimeout(this.refreshTimeout);
-        if(this.refreshTimeoutLength <= 0){
+        if (this.refreshTimeoutLength <= 0) {
             void this.checkState();
             this.refreshTimeout = undefined;
         } else {
@@ -558,12 +558,12 @@ export class HttpgdViewer implements IHttpgdViewer {
         }
     }
     protected async checkState(): Promise<void> {
-        if(!this.api){
+        if (!this.api) {
             return;
         }
         const oldUpid = this.state?.upid;
         this.state = await this.api.getState();
-        if(this.state.upid !== oldUpid){
+        if (this.state.upid !== oldUpid) {
             await this.refreshPlots();
             if (isHost()) {
                 const urlString = `http://${this.host}/live?token=${this.token}`;
@@ -584,11 +584,11 @@ export class HttpgdViewer implements IHttpgdViewer {
     protected handleResize(height: number, width: number, userTriggered: boolean = false): void {
         this.viewHeight = height;
         this.viewWidth = width;
-        if(userTriggered || this.resizeTimeoutLength === 0){
+        if (userTriggered || this.resizeTimeoutLength === 0) {
             clearTimeout(this.resizeTimeout);
             this.resizeTimeout = undefined;
             void this.resizePlot();
-        } else if(!this.resizeTimeout){
+        } else if (!this.resizeTimeout) {
             this.resizeTimeout = setTimeout(() => {
                 void this.resizePlot().then(() =>
                     this.resizeTimeout = undefined
@@ -599,11 +599,11 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     protected async resizePlot(id?: PlotId): Promise<void> {
         id ??= this.activePlot;
-        if(!id){ return; }
+        if (!id) { return; }
         const height = this.scaledViewHeight;
         const width = this.scaledViewWidth;
         const plt = await this.getPlotContent(id, height, width);
-        if(plt){
+        if (plt) {
             this.plotWidth = plt.width;
             this.plotHeight = plt.height;
             this.updatePlot(plt);
@@ -611,7 +611,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
 
     protected async refreshPlots(redraw: boolean = false, force: boolean = false): Promise<void> {
-        if(!this.api){
+        if (!this.api) {
             return;
         }
         const nPlots = this.plots.length;
@@ -620,23 +620,23 @@ export class HttpgdViewer implements IHttpgdViewer {
         plotIds = plotIds.filter((id) => !this.hiddenPlots.includes(id));
         const newPlots = plotIds.map(async (id) => {
             const plot = this.plots.find((plt) => plt.id === id);
-            if(force || !plot || id === this.activePlot){
+            if (force || !plot || id === this.activePlot) {
                 return await this.getPlotContent(id, this.scaledViewHeight, this.scaledViewWidth);
-            } else{
+            } else {
                 return plot;
             }
         });
         this.plots = await Promise.all(newPlots);
-        if(this.plots.length !== nPlots){
+        if (this.plots.length !== nPlots) {
             this.activePlot = this.plots[this.plots.length - 1]?.id;
         }
-        if(redraw || !this.webviewPanel){
+        if (redraw || !this.webviewPanel) {
             this.refreshHtml();
-        } else{
-            for(const plt of this.plots){
-                if(oldPlotIds.includes(plt.id)){
+        } else {
+            for (const plt of this.plots) {
+                if (oldPlotIds.includes(plt.id)) {
                     this.updatePlot(plt);
-                } else{
+                } else {
                     this.addPlot(plt);
                 }
             }
@@ -666,7 +666,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
 
     protected async getPlotContent(id: PlotId, height?: number, width?: number): Promise<HttpgdPlot | undefined> {
-        if(!this.api){
+        if (!this.api) {
             return undefined;
         }
         height ||= this.scaledViewHeight;
@@ -699,14 +699,14 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     protected makeEjsData(): EjsData {
         const asLocalPath = (relPath: string) => {
-            if(!this.webviewPanel){
+            if (!this.webviewPanel) {
                 return relPath;
             }
             const localUri = vscode.Uri.file(path.join(this.htmlRoot, relPath));
             return localUri.fsPath;
         };
         const asWebViewPath = (localPath: string) => {
-            if(!this.webviewPanel){
+            if (!this.webviewPanel) {
                 return localPath;
             }
             const localUri = vscode.Uri.file(path.join(this.htmlRoot, localPath));
@@ -718,10 +718,10 @@ export class HttpgdViewer implements IHttpgdViewer {
             return `command:${command}?${argString}`;
         };
         let overwriteCssPath = '';
-        if(this.customOverwriteCssPath){
+        if (this.customOverwriteCssPath) {
             const uri = vscode.Uri.file(this.customOverwriteCssPath);
             overwriteCssPath = this.webviewPanel.webview.asWebviewUri(uri).toString();
-        } else{
+        } else {
             overwriteCssPath = asWebViewPath('styleOverwrites.css');
         }
         const ejsData: EjsData = {
@@ -758,9 +758,9 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
 
     protected handleWebviewMessage(msg: OutMessage): void {
-        if(msg.message === 'log'){
+        if (msg.message === 'log') {
             console.log(msg.body);
-        } else if(msg.message === 'resize'){
+        } else if (msg.message === 'resize') {
             const height = msg.height;
             const width = msg.width;
             const userTriggered = msg.userTriggered;
@@ -778,40 +778,40 @@ export class HttpgdViewer implements IHttpgdViewer {
     // if no filename supplied, show selector window
     public async exportPlot(id?: PlotId, format?: ExportFormat, outFile?: string): Promise<void> {
         // make sure id is valid or return:
-        id ||= this.activePlot || this.plots[this.plots.length-1]?.id;
+        id ||= this.activePlot || this.plots[this.plots.length - 1]?.id;
         const plot = this.plots.find((plt) => plt.id === id);
-        if(!plot){
+        if (!plot) {
             void vscode.window.showWarningMessage('No plot available for export.');
             return;
         }
         // make sure format is valid or return:
-        if(!format){
+        if (!format) {
             const formats: ExportFormat[] = ['svg'];
             const options: vscode.QuickPickOptions = {
                 placeHolder: 'Please choose a file format'
             };
             format = await vscode.window.showQuickPick(formats, options) as ExportFormat | undefined;
-            if(!format){
+            if (!format) {
                 return;
             }
         }
         // make sure outFile is valid or return:
-        if(!outFile){
+        if (!outFile) {
             const options: vscode.SaveDialogOptions = {};
             const outUri = await vscode.window.showSaveDialog(options);
             outFile = outUri?.fsPath;
-            if(!outFile){
+            if (!outFile) {
                 return;
             }
         }
         // actually export plot:
-        if(format === 'svg'){
+        if (format === 'svg') {
             // do export
             fs.writeFileSync(outFile, plot.svg);
             // const uri = vscode.Uri.file(outFile);
             // await vscode.workspace.openTextDocument(uri);
             // void vscode.window.showTextDocument(uri);
-        } else{
+        } else {
             void vscode.window.showWarningMessage('Format not implemented');
         }
     }
@@ -836,10 +836,10 @@ function findItemOfType<T = unknown>(arr: any[], type: string): T {
 function stripSize(plt: HttpgdPlot): void {
     const re = /<(svg.*)width="([^"]*)" height="([^"]*)"(.*)>/;
     const m = re.exec(plt.svg);
-    if(!plt.width || isNaN(plt.width)){
+    if (!plt.width || isNaN(plt.width)) {
         plt.width = Number(m[2]);
     }
-    if(!plt.height || isNaN(plt.height)){
+    if (!plt.height || isNaN(plt.height)) {
         plt.height = Number(m[3]);
     }
     plt.svg = plt.svg.replace(re, '<$1 preserveAspectRatio="none" $4>');
@@ -852,11 +852,11 @@ function makeIdsUnique(plt: HttpgdPlot, upid: number): void {
     let m: RegExpExecArray;
     do {
         m = re.exec(svg);
-        if(m){
+        if (m) {
             ids.push(m[1]);
         }
-    } while(m);
-    for(const id of ids){
+    } while (m);
+    for (const id of ids) {
         const newId = `$${upid}_${plt.id}_${plt.height}_${plt.width}_${id}`;
         const re1 = new RegExp(`<clipPath id="${id}">`);
         const replacement1 = `<clipPath id="${newId}">`;
