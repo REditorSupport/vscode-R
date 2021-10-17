@@ -15,6 +15,7 @@ import { extensionContext } from '../extension';
 
 import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage, PreviewPlotLayout, PreviewPlotLayoutMessage, ToggleFullWindowMessage } from './webviewMessages';
 import { HttpgdIdResponse, HttpgdPlotId, HttpgdRendererId } from 'httpgd/lib/types';
+import { Response } from 'node-fetch';
 
 const commands = [
     'showViewers',
@@ -621,9 +622,8 @@ export class HttpgdViewer implements IHttpgdViewer {
             renderer: 'svgp'
         };
         
-        const plotContent = await this.api.getPlotContent(args);
-        
-        const svg = plotContent.toString();
+        const plotContent = await this.api.getPlot(args);
+        const svg = await plotContent.text();
         
         const plt: HttpgdPlot<string> = {
             id: id,
@@ -771,12 +771,16 @@ export class HttpgdViewer implements IHttpgdViewer {
             }
         }
         // get plot:
-        const plt = await this.api.getPlotContent({
+        const plt = await this.api.getPlot({
             id: this.activePlot,
             renderer: rendererId
-        });
-
-        fs.writeFileSync(outFile, plt);
+        }) as unknown as Response; // I am not sure why eslint thinks this is the 
+        // browser Response object and not the node-fetch one. 
+        // cross-fetch problem or config problem in vscode-r?
+        
+        const dest = fs.createWriteStream(outFile);
+        void plt.body.pipe(dest);
+        plt.body.on('close', () => { console.log('Export done!'); });
     }
 
     // Dispose-function to clean up when vscode closes
