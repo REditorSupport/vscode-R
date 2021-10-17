@@ -611,22 +611,27 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     // get content of a single plot
     protected async getPlotContent(id: HttpgdPlotId, width: number, height: number, zoom: number): Promise<HttpgdPlot<string>> {
-
-        const plt: HttpgdPlot<string> = await this.api.getPlot({
+        
+        const args = {
             id: id,
             height: height,
             width: width,
             zoom: zoom,
             renderer: 'svgp'
-        }).then(re => re.text()).then(re => {
-            return {
-                id: id,
-                data: re,
-                height: height,
-                width: width,
-                zoom: zoom,
-            };
-        });
+        };
+        
+        const plotContent = await this.api.getPlotContent(args);
+        
+        const svg = plotContent.toString();
+        
+        const plt = {
+            id: id,
+            data: svg,
+            height: height,
+            width: width,
+            zoom: zoom,
+        };
+
         this.viewHeight ??= plt.height;
         this.viewWidth ??= plt.width;
         return plt;
@@ -765,11 +770,12 @@ export class HttpgdViewer implements IHttpgdViewer {
             }
         }
         // get plot:
-        const plt = await this.api.getPlot({
+        const plt = await this.api.getPlotContent({
             id: this.activePlot,
             renderer: rendererId
         });
-        console.log(plt);
+
+        fs.writeFileSync(outFile, plt);
         
         // How do I get the actual plot content here?
         // ...
