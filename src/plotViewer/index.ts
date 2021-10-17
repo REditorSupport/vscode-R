@@ -559,10 +559,9 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     protected async refreshPlots(plotsIdResponse: HttpgdIdResponse[], redraw: boolean = false, force: boolean = false): Promise<void> {
         const nPlots = this.plots.length;
-        const oldPlotIds = this.plots.map(plt => plt.id);
         let plotIds = plotsIdResponse.map((x) => x.id);
         plotIds = plotIds.filter((id) => !this.hiddenPlots.includes(id));
-        const newPlots = plotIds.map(async (id) => {
+        const newPlotPromises = plotIds.map(async (id) => {
             const plot = this.plots.find((plt) => plt.id === id);
             if (force || !plot || id === this.activePlot) {
                 return await this.getPlotContent(id, this.viewWidth, this.viewHeight, this.zoom);
@@ -570,7 +569,9 @@ export class HttpgdViewer implements IHttpgdViewer {
                 return plot;
             }
         });
-        this.plots = await Promise.all(newPlots);
+        const newPlots = await Promise.all(newPlotPromises);
+        const oldPlotIds = this.plots.map(plt => plt.id);
+        this.plots = newPlots;
         if (this.plots.length !== nPlots) {
             this.activePlot = this.plots[this.plots.length - 1]?.id;
         }
