@@ -776,9 +776,6 @@ export class HttpgdViewer implements IHttpgdViewer {
         });
 
         fs.writeFileSync(outFile, plt);
-        
-        // How do I get the actual plot content here?
-        // ...
     }
 
     // Dispose-function to clean up when vscode closes
