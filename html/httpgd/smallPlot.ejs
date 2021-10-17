@@ -4,7 +4,7 @@
     class="focusPlot <%- plot.id === activePlot ? 'active' : '' %> "
     plotId="<%- plot.id %>"
 >
-    <%- plot.svg %>
+    <%- plot.data %>
 </a>
 <a
     href="<%- makeCommandUri('r.plot.hidePlot', plot.host, plot.id) %>"

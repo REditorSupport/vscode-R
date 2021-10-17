@@ -624,7 +624,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         
         const svg = plotContent.toString();
         
-        const plt = {
+        const plt: HttpgdPlot<string> = {
             id: id,
             data: svg,
             height: height,
