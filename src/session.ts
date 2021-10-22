@@ -660,13 +660,21 @@ export async function getWebviewHtml(webview: Webview, file: string, title: stri
 
 function isFromWorkspace(dir: string) {
     if (workspace.workspaceFolders === undefined) {
-        const rel = path.relative(os.homedir(), dir);
+        let rel = path.relative(os.homedir(), dir);
+        if (rel === '') {
+            return true;
+        }
+        rel = path.relative(fs.realpathSync(os.homedir()), dir);
         if (rel === '') {
             return true;
         }
     } else {
         for (const folder of workspace.workspaceFolders) {
-            const rel = path.relative(folder.uri.fsPath, dir);
+            let rel = path.relative(folder.uri.fsPath, dir);
+            if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+                return true;
+            }
+            rel = path.relative(fs.realpathSync(folder.uri.fsPath), dir);
             if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
                 return true;
             }
