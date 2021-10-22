@@ -4,6 +4,21 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.3.2](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.2)
+
+Enhancements:
+
+* `.vsc.browser()` now handles `file://` urls. (#817)
+* `r.session.levelOfObjectDetail` gains a `Normal` value for the session watcher to write only first level structure of global objects for performance. (#815)
+* Session watcher now supports workspace folder as symlinks. (#827)
+
+Fixes:
+
+* Httpgd plot viewer respects the view column specified by `r.session.viewers.viewColumn.plot` setting (#816)
+* `View` is completed replaced so that `tibble::view()` could
+trigger data viewer (#818)
+* Help cache is disabled between sessions (#819)
+
 ## [2.3.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.1)
 
 Enhancements:
