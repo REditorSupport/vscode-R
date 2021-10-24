@@ -482,9 +482,9 @@ attach <- function() {
     tempdir = tempdir,
     plot = getOption("vsc.plot", "Two"),
     info = list(
+      command = commandArgs()[[1L]],
       version = R.version.string,
-      start_time = format(file.info(tempdir)$ctime),
-      attach_time = format(Sys.time())
+      start_time = format(file.info(tempdir)$ctime)
     )
   )
   if (identical(names(dev.cur()), "httpgd")) {

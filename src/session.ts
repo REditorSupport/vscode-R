@@ -743,7 +743,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         plotView = String(request.plot);
                         console.info(`[updateRequest] attach PID: ${pid}`);
                         sessionStatusBarItem.text = `R ${rver}: ${pid}`;
-                        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nStart time: ${info.start_time}\nAttach time: ${info.attach_time}\nClick to attach active terminal.`;
+                        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach active terminal.`;
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
                         purgeAddinPickerItems();
