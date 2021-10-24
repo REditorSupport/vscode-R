@@ -213,7 +213,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
             const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
             sessionStatusBarItem.command = 'r.attachActive';
             sessionStatusBarItem.text = 'R: (not attached)';
-            sessionStatusBarItem.tooltip = 'Attach Active Terminal';
+            sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
             sessionStatusBarItem.show();
             context.subscriptions.push(sessionStatusBarItem);
             void session.startRequestWatcher(sessionStatusBarItem);
