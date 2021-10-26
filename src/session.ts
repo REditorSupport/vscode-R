@@ -25,7 +25,7 @@ let requestTimeStamp: number;
 let responseTimeStamp: number;
 export let sessionDir: string;
 export let workingDir: string;
-let rver: string;
+let rVer: string;
 let pid: string;
 let info: any;
 export let globalenvFile: string;
@@ -735,15 +735,15 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         break;
                     }
                     case 'attach': {
-                        rver = String(request.version);
+                        rVer = String(request.version);
                         pid = String(request.pid);
                         info = request.info;
                         sessionDir = path.join(request.tempdir, 'vscode-R');
                         workingDir = request.wd;
                         plotView = String(request.plot);
                         console.info(`[updateRequest] attach PID: ${pid}`);
-                        sessionStatusBarItem.text = `R ${rver}: ${pid}`;
-                        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach active terminal.`;
+                        sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
+                        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
                         purgeAddinPickerItems();
