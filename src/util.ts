@@ -200,13 +200,25 @@ export async function getConfirmation(prompt: string, confirmation?: string, det
 // executes a given command as shell task
 // is more transparent thatn background processes without littering the integrated terminals
 // is not intended for actual user interaction
-export async function executeAsTask(name: string, command: string, args?: string[]): Promise<void> {
-    const taskDefinition = { type: 'shell' };
-    const quotedArgs = args.map<vscode.ShellQuotedString>(arg => { return { value: arg, quoting: vscode.ShellQuoting.Weak }; });
-    const taskExecution = new vscode.ShellExecution(
-        command,
-        quotedArgs
-    );
+export async function executeAsTask(name: string, process: string, args?: string[], asProcess?: true): Promise<void>;
+export async function executeAsTask(name: string, command: string, args?: string[], asProcess?: false): Promise<void>;
+export async function executeAsTask(name: string, cmdOrProcess: string, args?: string[], asProcess: boolean = false): Promise<void> {
+    let taskDefinition: vscode.TaskDefinition;
+    let taskExecution: vscode.ShellExecution | vscode.ProcessExecution;
+    if(asProcess){
+        taskDefinition = { type: 'process'};
+        taskExecution = new vscode.ProcessExecution(
+            cmdOrProcess,
+            args
+        );
+    } else{
+        taskDefinition = { type: 'shell' };
+        const quotedArgs = args.map<vscode.ShellQuotedString>(arg => { return { value: arg, quoting: vscode.ShellQuoting.Weak }; });
+        taskExecution = new vscode.ShellExecution(
+            cmdOrProcess,
+            quotedArgs
+        );
+    }
     const task = new vscode.Task(
         taskDefinition,
         vscode.TaskScope.Global,
