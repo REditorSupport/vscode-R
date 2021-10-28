@@ -163,7 +163,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
                 // Automatically continue roxygen comments: #'
                 action: { indentAction: vscode.IndentAction.None, appendText: '#\' ' },
                 beforeText: /^\s*#'/, // matches any roxygen comment line, even an empty one
-                previousLineText: /^\s*([^#].*|#[^'].*|#'\s*[^\s].*|)$/, // matches everything but an empty roxygen line
+                previousLineText: /^\s*([^#\s].*|#[^'\s].*|#'\s*[^\s].*|)$/, // matches everything but an empty roxygen line
             },
         ],
         wordPattern,
