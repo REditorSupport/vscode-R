@@ -157,7 +157,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
             {
                 // Automatically continue roxygen comments: #'
                 action: { indentAction: vscode.IndentAction.None, appendText: '#\' ' },
-                beforeText: /^#'.*/,
+                beforeText: /^\s*#'.*/,
             },
         ],
         wordPattern,
