@@ -215,7 +215,7 @@ export class PackageManager {
         const prompt = `Are you sure you want to remove package ${pkgName}?`;
 
         if(await getConfirmation(prompt, confirmation, cmd)){
-            await executeAsTask('Remove Package', rPath, args);
+            await executeAsTask('Remove Package', rPath, args, true);
             return true;
         } else{
             return false;
@@ -234,7 +234,7 @@ export class PackageManager {
         const prompt = `Are you sure you want to install package${pluralS}: ${pkgNames.join(', ')}?`;
 
         if(skipConfirmation || await getConfirmation(prompt, confirmation, cmd)){
-            await executeAsTask('Install Package', rPath, args);
+            await executeAsTask('Install Package', rPath, args, true);
             return true;
         }
         return false;
@@ -249,7 +249,7 @@ export class PackageManager {
         const prompt = 'Are you sure you want to update all installed packages? This might take some time!';
 
         if(skipConfirmation || await getConfirmation(prompt, confirmation, cmd)){
-            await executeAsTask('Update Packages', rPath, args);
+            await executeAsTask('Update Packages', rPath, args, true);
             return true;
         } else{
             return false;
