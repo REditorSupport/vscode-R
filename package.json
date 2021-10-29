@@ -1316,6 +1316,11 @@
           "default": false,
           "markdownDescription": "Should the output file be opened automatically when using knit?\n\nRequires `#r.rmarkdown.knit.useBackgroundProcess#` to be set to `true`."
         },
+        "r.rmarkdown.knit.command": {
+          "type": "string",
+          "default": "rmarkdown::render",
+          "markdownDescription": "Command used to knit a Rmd file if not specified by the frontmatter."
+        },
         "r.rmarkdown.knit.defaults.knitWorkingDirectory": {
           "type": "string",
           "default": "document directory",
