@@ -198,7 +198,7 @@ export async function getConfirmation(prompt: string, confirmation?: string, det
 }
 
 // executes a given command as shell task
-// is more transparent thatn background processes without littering the integrated terminals
+// is more transparent than background processes without littering the integrated terminals
 // is not intended for actual user interaction
 export async function executeAsTask(name: string, process: string, args?: string[], asProcess?: true): Promise<void>;
 export async function executeAsTask(name: string, command: string, args?: string[], asProcess?: false): Promise<void>;
