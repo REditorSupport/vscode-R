@@ -1318,7 +1318,7 @@
         },
         "r.rmarkdown.knit.command": {
           "type": "string",
-          "default": "",
+          "default": "rmarkdown::render",
           "markdownDescription": "Command used to knit a Rmd file if not specified by the frontmatter."
         },
         "r.rmarkdown.knit.defaults.knitWorkingDirectory": {

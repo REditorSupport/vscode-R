@@ -104,8 +104,6 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 			yamlParams['site'] = await this.findSiteParam();
 		}
 
-		const knitCommandCfg: string = util.config().get<string>('rmarkdown.knit.command') ?? '';
-
 		// precedence:
 		// knit > site > configuration > none
 		if (yamlParams?.['knit']) {
@@ -117,14 +115,11 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 			knitCommand = outputFormat ?
 				`rmarkdown::render_site(${docPath}, output_format = '${outputFormat}')` :
 				`rmarkdown::render_site(${docPath})`;
-		} else if (knitCommandCfg !== '') {
-			knitCommand = outputFormat ?
-			`${knitCommandCfg}(${docPath}, output_format = '${outputFormat}')` :
-			`${knitCommandCfg}(${docPath})`;
 		} else {
+			const cmd = util.config().get<string>('rmarkdown.knit.command');
 			knitCommand = outputFormat ?
-				`rmarkdown::render(${docPath}, output_format = '${outputFormat}')` :
-				`rmarkdown::render(${docPath})`;
+				`${cmd}(${docPath}, output_format = '${outputFormat}')` :
+				`${cmd}(${docPath})`;
 		}
 
 		return knitCommand.replace(/['"]/g, '\'');
