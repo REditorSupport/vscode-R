@@ -1319,7 +1319,7 @@
         "r.rmarkdown.knit.command": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Default command used to knit a Rmd file."
+          "markdownDescription": "Command used to knit a Rmd file if not specified by the frontmatter."
         },
         "r.rmarkdown.knit.defaults.knitWorkingDirectory": {
           "type": "string",
