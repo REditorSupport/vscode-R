@@ -1,7 +1,6 @@
 'use strict';
 
 import * as path from 'path';
-import { pathExists } from 'fs-extra';
 import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
@@ -13,6 +12,7 @@ import { getSelection } from './selection';
 import { removeSessionFiles } from './session';
 import { config, delay, getRterm } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
+import * as fs from 'fs';
 export let rTerm: vscode.Terminal;
 
 export async function runSource(echo: boolean): Promise<void>  {
@@ -82,41 +82,40 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
+export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
+    const termPath = await getRterm();
+    const shellArgs: string[] = config().get('rterm.option');
+    const termOptions: vscode.TerminalOptions = {
+        name: 'R Interactive',
+        shellPath: termPath,
+        shellArgs: shellArgs,
+    };
+    const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'session', '.Rprofile'));
+    const initR = extensionContext.asAbsolutePath(path.join('R', 'session','init.R'));
+    if (config().get<boolean>('sessionWatcher')) {
+        termOptions.env = {
+            R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
+            R_PROFILE_USER: newRprofile,
+            VSCODE_INIT_R: initR,
+            VSCODE_WATCHER_DIR: homeExtDir()
+        };
+    }
+    return termOptions;
+}
 
 export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
-    const termName = 'R Interactive';
-    const termPath = await getRterm();
-    console.info(`termPath: ${termPath}`);
-    if (termPath === undefined) {
-        return undefined;
-    }
-    const termOpt: string[] = config().get('rterm.option');
-    pathExists(termPath, (err, exists) => {
-        if (exists) {
-            const termOptions: vscode.TerminalOptions = {
-                name: termName,
-                shellPath: termPath,
-                shellArgs: termOpt,
-            };
-            const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'session', '.Rprofile'));
-            const initR = extensionContext.asAbsolutePath(path.join('R', 'session','init.R'));
-            if (config().get<boolean>('sessionWatcher')) {
-                termOptions.env = {
-                    R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
-                    R_PROFILE_USER: newRprofile,
-                    VSCODE_INIT_R: initR,
-                    VSCODE_WATCHER_DIR: homeExtDir()
-                };
-            }
-            rTerm = vscode.window.createTerminal(termOptions);
-            rTerm.show(preserveshow);
-
-            return true;
-        }
-        void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check r.rterm setting.`);
-
+    const termOptions = await makeTerminalOptions();
+    const termPath = termOptions.shellPath;
+    if(!termPath){
+        void vscode.window.showErrorMessage('Could not find R path. Please check r.term and r.path setting.');
         return false;
-    });
+    } else if(!fs.existsSync(termPath)){
+        void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check r.rterm setting.`);
+        return false;
+    }
+    rTerm = vscode.window.createTerminal(termOptions);
+    rTerm.show(preserveshow);
+    return true;
 }
 
 export async function restartRTerminal(): Promise<void>{

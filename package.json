@@ -61,10 +61,19 @@
     "onCommand:r.helpPanel.back",
     "onCommand:r.helpPanel.forward",
     "onCommand:r.helpPanel.openForSelection",
-    "onWebviewPanel:rhelp"
+    "onWebviewPanel:rhelp",
+    "onTerminalProfile:r.terminal-profile"
   ],
   "main": "./out/extension",
   "contributes": {
+    "terminal": {
+      "profiles": [
+        {
+          "title": "R Terminal",
+          "id": "r.terminal-profile"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {

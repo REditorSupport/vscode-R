@@ -168,6 +168,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         ],
         wordPattern,
     });
+    
+    // register terminal-provider
+    context.subscriptions.push(vscode.window.registerTerminalProfileProvider('r.terminal-profile',
+        {
+            async provideTerminalProfile() {
+                return {
+                    options: await rTerminal.makeTerminalOptions()
+                };
+            }
+        }
+    ));
 
     // initialize httpgd viewer
     globalHttpgdManager = httpgdViewer.initializeHttpgd();
