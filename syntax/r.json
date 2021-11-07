@@ -248,6 +248,27 @@
                             "name": "constant.character.escape.r"
                         }
                     ]
+                },
+                {
+                    "begin": "`",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.r"
+                        }
+                    },
+                    "end": "`",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.r"
+                        }
+                    },
+                    "name": "variable.parameter.r",
+                    "patterns": [
+                        {
+                            "match": "\\\\.",
+                            "name": "variable.parameter.r"
+                        }
+                    ]
                 }
             ]
         },
