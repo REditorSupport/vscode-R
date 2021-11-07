@@ -262,11 +262,11 @@
                             "name": "punctuation.definition.string.end.r"
                         }
                     },
-                    "name": "string.quoted.single.r",
+                    "name": "variable.parameter.r",
                     "patterns": [
                         {
                             "match": "\\\\.",
-                            "name": "constant.character.escape.r"
+                            "name": "variable.parameter.r"
                         }
                     ]
                 }
