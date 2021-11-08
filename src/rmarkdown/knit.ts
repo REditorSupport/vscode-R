@@ -78,16 +78,37 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 	}
 
 	private getYamlFrontmatter(docPath: string): IYamlFrontmatter {
-		const parseData = fs.readFileSync(docPath, 'utf8');
-		const yamlDat = /(?<=(---)).*(?=(---))/gs.exec(
-			parseData
-		);
+		const text = fs.readFileSync(docPath, 'utf8');
+		const lines = text.split('\n');
+		let startLine = -1;
+		let endLine = -1;
+		for (let i = 0; i < lines.length; i++) {
+			if (/\S/.test(lines[i])) {
+				if (startLine < 0) {
+					if (lines[i].startsWith('---')) {
+						startLine = i;
+					} else {
+						break;
+					}
+				} else {
+					if (lines[i].startsWith('---')) {
+						endLine = i;
+						break;
+					}
+				}
+			}
+		}
+
+		let yamlText = undefined;
+		if (startLine + 1 < endLine) {
+			yamlText = lines.slice(startLine + 1, endLine).join('\n');
+		}
 
 		let paramObj = {};
-		if (yamlDat) {
+		if (yamlText) {
 			try {
 				paramObj = yaml.load(
-					yamlDat[0]
+					yamlText
 				);
 			} catch (e) {
 				console.error(`Could not parse YAML frontmatter for "${docPath}". Error: ${String(e)}`);
