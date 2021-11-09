@@ -174,7 +174,11 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	constructor(options: HelpOptions){
 		this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
 		this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
-		this.helpProvider = new HelpProvider(options);
+		const pkgListener = () => {
+			void vscode.window.showInformationMessage('Restarting Help Server...');
+			void this.refresh(true);
+		};
+		this.helpProvider = new HelpProvider({...options, pkgListener: pkgListener});
 		this.aliasProvider = new AliasProvider(options);
 		this.packageManager = new PackageManager({...options, rHelp: this});
 		this.treeViewWrapper = new HelpTreeWrapper(this);
@@ -207,11 +211,14 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	}
 
 	// refresh cached help info
-	public refresh(): boolean {
+	public async refresh(refreshTreeView: boolean = false): Promise<boolean> {
 		this.cachedHelpFiles.clear();
 		this.helpProvider?.refresh?.();
-		this.aliasProvider?.refresh?.();
-		this.packageManager?.refresh?.();
+		await this.aliasProvider?.refresh?.();
+		await this.packageManager?.refresh?.();
+		if(refreshTreeView){
+			this.treeViewWrapper.refreshPackageRootNode();
+		}
 		return true;
 	}
 

@@ -114,10 +114,10 @@ export class PackageManager {
 
     // Functions to force a refresh of listed packages
     // Useful e.g. after installing/removing packages
-    public refresh(): void {
+    public async refresh(): Promise<void> {
+        await this.clearCachedFiles();
         this.cranUrl = undefined;
         this.pullFavoriteNames();
-        void this.clearCachedFiles();
     }
 
     // Funciton to clear only the cached files regarding an individual package etc.
