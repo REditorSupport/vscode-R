@@ -175,7 +175,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 		this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
 		this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
 		const pkgListener = () => {
-			void vscode.window.showInformationMessage('Restarting Help Server...');
+			void console.log('Restarting Help Server...');
 			void this.refresh(true);
 		};
 		this.helpProvider = new HelpProvider({...options, pkgListener: pkgListener});
