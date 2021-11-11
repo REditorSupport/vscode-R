@@ -1,8 +1,6 @@
 # get values from extension-set env values
 lim <- Sys.getenv("VSCR_LIM")
 
-SLEEP_DURATION <- 1
-
 NEW_PACKAGE_STRING <- "NEW_PACKAGES"
 
 cat(
@@ -12,13 +10,15 @@ cat(
     sep = ""
 )
 
-currentPackages <- .packages(all.available = TRUE)
+currentPackages <- NULL
 
 while (TRUE) {
-    Sys.sleep(1)
-    newPackages <- .packages(all.available = TRUE)
+    newPackages <- installed.packages(fields = "Packaged")[, c("Version", "Packaged")]
     if (!identical(currentPackages, newPackages)) {
-        cat(NEW_PACKAGE_STRING, "\n")
+        if (!is.null(currentPackages)) {
+            cat(NEW_PACKAGE_STRING, "\n")
+        }
         currentPackages <- newPackages
     }
+    Sys.sleep(1)
 }
