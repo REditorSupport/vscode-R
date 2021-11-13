@@ -31,7 +31,6 @@ let info: any;
 export let globalenvFile: string;
 let globalenvLockFile: string;
 let globalenvTimeStamp: number;
-let plotView: string;
 let plotFile: string;
 let plotLockFile: string;
 let plotTimeStamp: number;
@@ -163,7 +162,7 @@ async function updatePlot() {
             void commands.executeCommand('vscode.open', Uri.file(plotFile), {
                 preserveFocus: true,
                 preview: true,
-                viewColumn: ViewColumn[plotView],
+                viewColumn: ViewColumn[config().get<string>('session.viewers.viewColumn.plot')],
             });
             console.info('[updatePlot] Done');
             if (isLiveShare()) {
@@ -740,13 +739,15 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         info = request.info;
                         sessionDir = path.join(request.tempdir, 'vscode-R');
                         workingDir = request.wd;
-                        plotView = String(request.plot);
                         console.info(`[updateRequest] attach PID: ${pid}`);
                         sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
                         sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
                         purgeAddinPickerItems();
+                        if (request.plot_url) {
+                            globalHttpgdManager?.showViewer(request.plot_url);
+                        }
                         break;
                     }
                     case 'browser': {
