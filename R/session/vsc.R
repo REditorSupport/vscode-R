@@ -480,16 +480,13 @@ attach <- function() {
   request("attach",
     version = sprintf("%s.%s", R.version$major, R.version$minor),
     tempdir = tempdir,
-    plot = getOption("vsc.plot", "Two"),
     info = list(
       command = commandArgs()[[1L]],
       version = R.version.string,
       start_time = format(file.info(tempdir)$ctime)
-    )
+    ),
+    plot_url = if (identical(names(dev.cur()), "httpgd")) httpgd::hgd_url()
   )
-  if (identical(names(dev.cur()), "httpgd")) {
-    .vsc$request("httpgd", url = httpgd::hgd_url())
-  }
 }
 
 path_to_uri <- function(path) {
