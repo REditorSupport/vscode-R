@@ -33,7 +33,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		const knitCommand = await this.getKnitCommand(yamlParams, rDocumentPath, outputFormat);
 		this.rPath = await util.getRpath();
 
-		const lim = '---vsc---';
+		const lim = '<<<vsc>>>';
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'gms');
 		const scriptValues = {
 			'VSCR_KNIT_DIR': knitWorkingDirText,
