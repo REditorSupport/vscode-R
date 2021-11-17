@@ -91,7 +91,7 @@ class RMarkdownPreview extends vscode.Disposable {
         if (chunkCol) {
             const colReg = /[0-9.]+/g;
             const regOut = chunkCol.match(colReg);
-            outCol = `rgba(${regOut[0] ?? 128}, ${regOut[1] ?? 128}, ${regOut[2] ?? 128}, ${Math.max(0, Number(regOut[3]) - 0.05) ?? 0.05})`;
+            outCol = `rgba(${regOut[0] ?? 128}, ${regOut[1] ?? 128}, ${regOut[2] ?? 128}, ${Math.max(0, Number(regOut[3] ?? 0.1) - 0.05)})`;
         } else {
             chunkCol = 'rgba(128, 128, 128, 0.1)';
             outCol = 'rgba(128, 128, 128, 0.05)';
