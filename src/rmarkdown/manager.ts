@@ -151,6 +151,11 @@ export abstract class RMarkdownManager {
 					if (printOutput) {
 						this.rMarkdownOutput.appendLine(dat);
 					}
+					// for some reason, some knitting formats have the output
+					// of the file url in the stderr stream
+					if (args.callback(dat, childProcess)) {
+						resolve(childProcess);
+					}
 				});
 
 				childProcess.on('exit', (code, signal) => {

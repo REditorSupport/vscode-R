@@ -7,6 +7,7 @@ import yaml = require('js-yaml');
 import { RMarkdownManager, KnitWorkingDirectory, DisposableProcess } from './manager';
 import { runTextInTerm } from '../rTerminal';
 import { extensionContext, rmdPreviewManager } from '../extension';
+import { showBrowser } from '../session';
 
 export let knitDir: KnitWorkingDirectory = util.config().get<KnitWorkingDirectory>('rmarkdown.knit.defaults.knitWorkingDirectory') ?? undefined;
 
@@ -35,6 +36,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 		const lim = '---vsc---';
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'gms');
+		const serveReg = /(http:\/\/127[0-9.:]*\/.*\.html)/g;
 		const scriptValues = {
 			'VSCR_KNIT_DIR': knitWorkingDirText,
 			'VSCR_LIM': lim,
@@ -43,6 +45,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 		const callback = (dat: string) => {
 			const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
+			const serveUrl = serveReg.exec(dat)?.[0]?.replace(serveReg, '$1');
 			if (outputUrl) {
 				if (openOutfile) {
 					const outFile = vscode.Uri.file(outputUrl);
@@ -52,6 +55,9 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 						void vscode.window.showWarningMessage(`Could not find the output file at path: "${outFile.fsPath}"`);
 					}
 				}
+				return true;
+			} else if (serveUrl) {
+				void showBrowser(serveUrl, docName, 'Beside');
 				return true;
 			} else {
 				return false;
