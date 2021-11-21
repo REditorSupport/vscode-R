@@ -4,6 +4,26 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.3.3](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.3)
+
+Enhancements:
+
+* The information of attached R session now appears in the label and the tooltip of
+the status bar item. (#836)
+* A new setting `r.rmarkdown.knit.command` is added to support customized knit command if not specified in the document. (#841, #850, thanks @xoolive)
+* A terminal profile for R is added via the new terminal API. (#851)
+* The help topics are now automatically updated when R packages are installed, removed, or upgraded. (#863)
+
+Fixes:
+
+* Fixed the problem with PowerShell on Windows when installing packages. (#846)
+* Fixed the handling of single quote in roxygen comments and the roxygen block is now automatically exited after two empty lines. (#847)
+* Backtick is added to the list of quote characters for syntax highlighting. (#859, thanks @jan-imbi)
+* Fixed detecting the YAML frontmatter in R Markdown documents. (#856)
+* Fixed attaching an R session with an open httpgd device that also triggers the plot viewer. (#852)
+* Fixed the chunk coloring in R Markdown preview. (#867)
+* Fixed the delimiter used in the output of the background knit process. (#868)
+
 ## [2.3.2](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.2)
 
 Enhancements:
