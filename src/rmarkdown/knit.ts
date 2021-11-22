@@ -43,7 +43,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 			'VSCR_KNIT_COMMAND': knitCommand
 		};
 
-		const callback = (dat: string) => {
+		const callback = (dat: string, process: DisposableProcess) => {
 			const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
 			const serveUrl = serveReg.exec(dat)?.[0]?.replace(serveReg, '$1');
 			if (outputUrl) {
@@ -57,7 +57,14 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 				}
 				return true;
 			} else if (serveUrl) {
-				void showBrowser(serveUrl, docName, 'Beside');
+				const browser = showBrowser(serveUrl, docName, 'Beside');
+				void browser.then((value) => {
+					if (value) {
+						value.onDidDispose(() => {
+							process.kill('SIGTERM');
+						});
+					}
+				});
 				return true;
 			} else {
 				return false;
