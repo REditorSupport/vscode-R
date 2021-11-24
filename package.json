@@ -446,6 +446,11 @@
         "command": "r.document"
       },
       {
+        "title": "Check",
+        "category": "R",
+        "command": "r.check"
+      },
+      {
         "title": "Attach Active Terminal",
         "category": "R",
         "command": "r.attachActive"

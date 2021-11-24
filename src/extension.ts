@@ -110,6 +110,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.install': () => rTerminal.runTextInTerm('devtools::install()'),
         'r.build': () => rTerminal.runTextInTerm('devtools::build()'),
         'r.document': () => rTerminal.runTextInTerm('devtools::document()'),
+        'r.check': () => rTerminal.runTextInTerm('devtools::check()'),
 
         // interaction with R sessions
         'r.previewDataframe': preview.previewDataframe,
