@@ -91,6 +91,9 @@ export async function getRpath(quote = false, overwriteConfig?: string): Promise
     } else if (quote && /^[^'"].* .*[^'"]$/.exec(rpath)) {
         // if requested and rpath contains spaces, add quotes:
         rpath = `"${rpath}"`;
+    } else if (!quote) {
+        rpath = rpath.replace(/^"(.*)"$/, '$1');
+        rpath = rpath.replace(/^'(.*)'$/, '$1');
     } else if (process.platform === 'win32' && /^'.* .*'$/.exec(rpath)) {
         // replace single quotes with double quotes on windows
         rpath = rpath.replace(/^'(.*)'$/, '"$1"');
