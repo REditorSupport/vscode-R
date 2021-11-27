@@ -268,7 +268,7 @@ export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, p
 // argument path is optional and should be relative to the cran root
 // currently the CRAN root url is hardcoded, this could be replaced by reading
 // the url from config, R, or both
-export async function getCranUrl(path?: string, cwd?: string): Promise<string> {
+export async function getCranUrl(path: string = '', cwd?: string): Promise<string> {
     const defaultCranUrl = 'https://cran.r-project.org/';
     // get cran URL from R. Returns empty string if option is not set.
     const baseUrl = await executeRCommand('cat(getOption(\'repos\')[\'CRAN\'])', undefined, cwd);
