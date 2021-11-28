@@ -1,12 +1,11 @@
 
 import * as cheerio from 'cheerio';
-import * as https from 'https';
-import * as http from 'http';
 import * as vscode from 'vscode';
 
 import { RHelp } from '.';
 import { getRpath, getConfirmation, executeAsTask, doWithProgress, getCranUrl } from '../util';
 import { AliasProvider } from './helpProvider';
+import { getPackagesFromCran } from './cran';
 
 
 // This file implements a rudimentary 'package manager'
@@ -61,24 +60,8 @@ export interface Package {
     isCran?: boolean;
     isInstalled?: boolean;
 }
-export interface CranPackage extends Package {
-    href: string;
-    date: string;
-    isCran: true;
-}
-export interface InstalledPackage extends Package {
-    isInstalled: true;
-}
 
-
-// used to store package info parsed from /doc/html/00Index.html and /library/.../html/index.html
-export interface IndexFileEntry {
-    name: string;
-    description: string;
-    href?: string;
-}
-
-type CachedIndexFiles = {path: string, items: IndexFileEntry[] | null}[];
+type CachedIndexFiles = {path: string, items: Package[] | null}[];
 
 
 export interface PackageManagerOptions {
@@ -99,8 +82,6 @@ export class PackageManager {
 
     readonly cwd?: string;
 
-    protected cranUrl?: string;
-
     // names of packages to be highlighted in the package list
     public favoriteNames: string[] = [];
 
@@ -116,7 +97,6 @@ export class PackageManager {
     // Useful e.g. after installing/removing packages
     public async refresh(): Promise<void> {
         await this.clearCachedFiles();
-        this.cranUrl = undefined;
         this.pullFavoriteNames();
     }
 
@@ -166,7 +146,7 @@ export class PackageManager {
     }
 
     // Save a new file to the cache (or update existing entry)
-    private async updateCachedIndexFile(path: string, items: IndexFileEntry[] | null){
+    private async updateCachedIndexFile(path: string, items: Package[] | null){
         const cache = this.state.get<CachedIndexFiles>('r.helpPanel.cachedIndexFiles', []);
         const ind = cache.findIndex(v => v.path === path);
         if(ind < 0){
@@ -260,19 +240,18 @@ export class PackageManager {
         let packages: Package[]|undefined;
         this.pullFavoriteNames();
         if(fromCran){
-            const cranPath = 'web/packages/available_packages_by_date.html';
-            try{
-                this.cranUrl ||= await getCranUrl(cranPath, this.cwd);
-                packages = await this.getParsedCranFile(this.cranUrl);
-            } catch(e){
-                packages = undefined;
-            }
-            if(!packages || packages.length === 0){
-                void vscode.window.showErrorMessage(`Failed to parse CRAN file from ${this.cranUrl || cranPath}`);
+            // Use a placeholder, since multiple different urls are attempted
+            const CRAN_PATH_PLACEHOLDER = 'CRAN_PATH_PLACEHOLDER';
+
+            packages = this.getCachedIndexFile(CRAN_PATH_PLACEHOLDER);
+            if(!packages?.length){
+                const cranUrl = await getCranUrl('', this.cwd);
+                packages = await getPackagesFromCran(cranUrl);
+                await this.updateCachedIndexFile(CRAN_PATH_PLACEHOLDER, packages);
             }
         } else{
             packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
-            if(!packages || packages.length === 0){
+            if(!packages?.length){
                 void vscode.window.showErrorMessage('Help provider not available!');
             }
         }
@@ -466,7 +445,7 @@ export class PackageManager {
 
 	// retrieve and parse an index file
 	// (either list of all packages, or documentation entries of a package)
-	public async getParsedIndexFile(path: string): Promise<IndexFileEntry[]|undefined> {
+	public async getParsedIndexFile(path: string): Promise<Package[]|undefined> {
 
         let indexItems = this.getCachedIndexFile(path);
 
@@ -478,140 +457,57 @@ export class PackageManager {
                 indexItems = null;
 			} else{
 				// parse and cache file
-				indexItems = this.parseIndexFile(helpFile.html);
+				indexItems = parseIndexFile(helpFile.html);
 			}
             void this.updateCachedIndexFile(path, indexItems);
 		}
 
 		// return cache entry. make new array to avoid messing with the cache
-        let ret: IndexFileEntry[] | undefined = undefined;
+        let ret: Package[] | undefined = undefined;
         if(indexItems){
             ret = [];
             ret.push(...indexItems);
         }
 		return ret;
 	}
-
-	private parseIndexFile(html: string): IndexFileEntry[] {
-
-		const $ = cheerio.load(html);
-
-		const tables = $('table');
-
-		const ret: IndexFileEntry[] = [];
-
-		// loop over all tables on document and each row as one index entry
-		// assumes that the provided html is from a valid index file
-		tables.each((tableIndex, table) => {
-			const rows = $('tr', table);
-			rows.each((rowIndex, row) => {
-				const elements = $('td', row);
-				if(elements.length === 2){
-                    const e0 = elements[0];
-                    const e1 = elements[1];
-                    if(
-                        e0.type === 'tag' && e1.type === 'tag' &&
-                        e0.firstChild.type === 'tag'
-                    ){
-                        const href = e0.firstChild.attribs['href'];
-                        const name = e0.firstChild.firstChild.data || '';
-                        const description = e1.firstChild.data || '';
-                        ret.push({
-                            name: name,
-                            description: description,
-                            href: href,
-                        });
-                    }
-				}
-			});
-		});
-
-		const retSorted = ret.sort((a, b) => a.name.localeCompare(b.name));
-
-		return retSorted;
-	}
-
-    // retrieves and parses a list of packages from CRAN
-	public async getParsedCranFile(url: string): Promise<Package[]> {
-
-        // return cache entry if present
-        const cacheEntry = this.getCachedIndexFile(url);
-        if(cacheEntry){
-            return cacheEntry;
-        }
-
-        // retrieve html from website
-		const htmlPromise = new Promise<string>((resolve) => {
-			let content = '';
-            const httpOrHttps = (vscode.Uri.parse(url).scheme === 'https' ? https : http);
-			httpOrHttps.get(url, (res: http.IncomingMessage) => {
-				res.on('data', (chunk: Buffer) => {
-					content += chunk.toString();
-				});
-				res.on('close', () => {
-					resolve(content);
-				});
-				res.on('error', () => {
-					resolve('');
-				});
-			});
-		});
-		const html = await htmlPromise;
-
-        // parse file
-		const cranPackages = this.parseCranFile(html, url);
-
-        // update cache and return
-        void this.updateCachedIndexFile(url, cranPackages);
-        const ret = [...cranPackages];
-		return ret;
-	}
-
-	private parseCranFile(html: string, baseUrl: string): CranPackage[] {
-		if(!html){
-			return [];
-		}
-		const $ = cheerio.load(html);
-		const tables = $('table');
-		const ret: CranPackage[] = [];
-
-		// loop over all tables on document and each row as one index entry
-		// assumes that the provided html is from a valid index file
-		tables.each((tableIndex, table) => {
-			const rows = $('tr', table);
-			rows.each((rowIndex, row) => {
-				const elements = $('td', row);
-				if(elements.length === 3){
-
-                    const e0 = elements[0];
-                    const e1 = elements[1];
-                    const e2 = elements[2];
-                    if(
-                        e0.type === 'tag' && e1.type === 'tag' &&
-                        e0.firstChild.type === 'text' && e1.children[1].type === 'tag' &&
-                        e2.type === 'tag'
-                    ){
-                        const href = e1.children[1].attribs['href'];
-                        const url = new URL(href, baseUrl).toString();
-                        ret.push({
-                            date: (e0.firstChild.data || '').trim(),
-                            name: (e1.children[1].firstChild.data || '').trim(),
-                            href: url,
-                            description: (e2.firstChild.data || '').trim(),
-                            isCran: true
-                        });
-                    }
-				}
-			});
-		});
-
-		const retSorted = ret.sort((a, b) => a.name.localeCompare(b.name));
-
-		return retSorted;
-	}
-
 }
 
 
+function parseIndexFile(html: string): Package[] {
 
+    const $ = cheerio.load(html);
 
+    const tables = $('table');
+
+    const ret: Package[] = [];
+
+    // loop over all tables on document and each row as one index entry
+    // assumes that the provided html is from a valid index file
+    tables.each((tableIndex, table) => {
+        const rows = $('tr', table);
+        rows.each((rowIndex, row) => {
+            const elements = $('td', row);
+            if(elements.length === 2){
+                const e0 = elements[0];
+                const e1 = elements[1];
+                if(
+                    e0.type === 'tag' && e1.type === 'tag' &&
+                    e0.firstChild.type === 'tag'
+                ){
+                    const href = e0.firstChild.attribs['href'];
+                    const name = e0.firstChild.firstChild.data || '';
+                    const description = e1.firstChild.data || '';
+                    ret.push({
+                        name: name,
+                        description: description,
+                        href: href,
+                    });
+                }
+            }
+        });
+    });
+
+    const retSorted = ret.sort((a, b) => a.name.localeCompare(b.name));
+
+    return retSorted;
+}
