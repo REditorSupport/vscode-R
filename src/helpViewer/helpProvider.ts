@@ -21,7 +21,7 @@ export interface RHelpProviderOptions {
 
 // Class to forward help requests to a backgorund R instance that is running a help server
 export class HelpProvider {
-    private cp: cp.ChildProcess;
+    private cp?: cp.ChildProcess;
     private port: number|Promise<number>;
     private readonly rPath: string;
     private readonly cwd?: string;
@@ -34,9 +34,12 @@ export class HelpProvider {
         this.port = this.launchRHelpServer(); // is a promise for now!
     }
 
-    public refresh(): void {
-        kill(this.cp.pid); // more reliable than cp.kill (?)
+    public async refresh(): Promise<void> {
+        if(this.cp){
+            kill(this.cp.pid); // more reliable than cp.kill (?)
+        }
         this.port = this.launchRHelpServer();
+        await this.port;
     }
 
     public async launchRHelpServer(): Promise<number>{
@@ -55,12 +58,20 @@ export class HelpProvider {
             cwd: this.cwd,
             env: { ...process.env, 'VSCR_LIM': lim }
         };
-        this.cp = cp.exec(cmd, cpOptions);
+        const childProcess = cp.exec(cmd, cpOptions);
+        this.cp = childProcess;
+
+        const onCpExit = () => {
+            this.cp = undefined;
+            this.port = 0;
+        };
+        childProcess.on('exit', onCpExit);
+        childProcess.on('error', onCpExit);
 
         let str = '';
         // promise containing the first output of the r process (contains only the port number)
         const portPromise = new Promise<string>((resolve) => {
-            this.cp.stdout?.on('data', (data) => {
+            childProcess.stdout?.on('data', (data) => {
                 try{
                     // eslint-disable-next-line
                     str += data.toString();
@@ -76,7 +87,7 @@ export class HelpProvider {
                     str = str.replace(newPackageRegex, '');
                 }
             });
-            this.cp.on('close', () => {
+            childProcess.on('close', () => {
                 resolve('');
             });
         });
@@ -158,6 +169,7 @@ export class HelpProvider {
 
 
     dispose(): void {
+        this.port = 0;
         if(this.cp){
             kill(this.cp.pid);
         }

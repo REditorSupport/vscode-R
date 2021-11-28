@@ -81,7 +81,10 @@ export class HelpPanel {
 		return this.panel.webview;
     }
 
-	private initializePanel() {
+	private initializePanel(): void {
+		if(!this.panel){
+			return;
+		}
 		this.panel.iconPath = new UriIcon('help');
 		// virtual uris used to access local files
 		this.webviewScriptUri = this.panel.webview.asWebviewUri(this.webviewScriptFile);

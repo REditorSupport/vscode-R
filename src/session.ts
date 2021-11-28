@@ -284,7 +284,7 @@ export function openExternalBrowser(): void {
 export async function showWebView(file: string, title: string, viewer: string | boolean): Promise<void> {
     console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
     if (viewer === false) {
-        void env.openExternal(Uri.parse(file));
+        void env.openExternal(Uri.file(file));
     } else {
         const dir = path.dirname(file);
         const webviewDir = extensionContext.asAbsolutePath('html/session/webview/');

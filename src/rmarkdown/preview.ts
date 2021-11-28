@@ -254,7 +254,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     // (e.g., is an unopened tab)
     public async showSource(): Promise<void> {
         if (this.activePreview?.filePath) {
-            await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(this.activePreview.filePath), {
+            await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(this.activePreview.filePath), {
                 preserveFocus: false,
                 preview: false,
                 viewColumn: this.activePreview?.preview?.resourceViewColumn ?? this.activePreview?.preview?.panel.viewColumn ?? vscode.ViewColumn.Active
@@ -294,7 +294,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : `NULL`;
         this.rPath = await getRpath();
 
-        const lim = '---vsc---';
+        const lim = '<<<vsc>>>';
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
         const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
         const scriptValues = {
@@ -312,7 +312,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
                 if (viewer !== undefined) {
                     const autoRefresh = config().get<boolean>('rmarkdown.preview.autoRefresh');
                     void this.openPreview(
-                        vscode.Uri.parse(outputUrl),
+                        vscode.Uri.file(outputUrl),
                         filePath,
                         fileName,
                         childProcess,
