@@ -34,9 +34,10 @@ export class HelpProvider {
         this.port = this.launchRHelpServer(); // is a promise for now!
     }
 
-    public refresh(): void {
+    public async refresh(): Promise<void> {
         kill(this.cp.pid); // more reliable than cp.kill (?)
         this.port = this.launchRHelpServer();
+        await this.port;
     }
 
     public async launchRHelpServer(): Promise<number>{

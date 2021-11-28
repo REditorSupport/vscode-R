@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import { RHelp } from '.';
+import { doWithProgress } from '../util';
 import { Package, Topic, TopicType } from './packages';
 
 // this enum is re-assigned just for code readability
@@ -581,11 +582,11 @@ class Search2Node extends MetaNode {
 
 class RefreshNode extends MetaNode {
     parent: RootNode;
-	label = 'Clear Cached Index Files & Restart Help Server';
+	label = 'Clear Cache & Restart Help Server';
     iconPath = new vscode.ThemeIcon('refresh');
 
     async callBack(){
-        await this.rHelp.refresh();
+        await doWithProgress(() => this.rHelp.refresh());
         this.parent.pkgRootNode.refresh();
     }
 }
