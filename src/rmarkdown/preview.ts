@@ -254,7 +254,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     // (e.g., is an unopened tab)
     public async showSource(): Promise<void> {
         if (this.activePreview?.filePath) {
-            await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(this.activePreview.filePath), {
+            await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(this.activePreview.filePath), {
                 preserveFocus: false,
                 preview: false,
                 viewColumn: this.activePreview?.preview?.resourceViewColumn ?? this.activePreview?.preview?.panel.viewColumn ?? vscode.ViewColumn.Active
