@@ -62,11 +62,12 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 		context.subscriptions.push(rHelp);
 
 		// register help related commands
+		
 		context.subscriptions.push(
 			vscode.commands.registerCommand('r.showHelp', () => rHelp?.treeViewWrapper.helpViewProvider.rootItem.showQuickPick()),
-			vscode.commands.registerCommand('r.helpPanel.back', () => rHelp?.goBack()),
-			vscode.commands.registerCommand('r.helpPanel.forward', () => rHelp?.goForward()),
-			vscode.commands.registerCommand('r.helpPanel.openExternal', () => rHelp?.openExternal()),
+			vscode.commands.registerCommand('r.helpPanel.back', () => rHelp?.getActiveHelpPanel(false)?.goBack()),
+			vscode.commands.registerCommand('r.helpPanel.forward', () => rHelp?.getActiveHelpPanel(false)?.goForward()),
+			vscode.commands.registerCommand('r.helpPanel.openExternal', () => rHelp?.getActiveHelpPanel(false)?.openInExternalBrowser()),
 			vscode.commands.registerCommand('r.helpPanel.openForSelection', (preserveFocus: boolean = false) => rHelp?.openHelpForSelection(!!preserveFocus)),
 			vscode.commands.registerCommand('r.helpPanel.openForPath', (path?: string) => {
 				if(path){
@@ -166,7 +167,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	readonly webviewStyleFile: vscode.Uri; // the css file applied to help pages
 
 	// cache for modified help files (syntax highlighting etc.)
-	private cachedHelpFiles: Map<string, HelpFile | null> = new Map<string, HelpFile | null>();
+	private cachedHelpFiles: Map<string, HelpFile | undefined> = new Map<string, HelpFile | undefined>();
 
 	// The options used when creating this instance
 	private helpPanelOptions: HelpOptions;
@@ -213,7 +214,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	// refresh cached help info
 	public async refresh(refreshTreeView: boolean = false): Promise<boolean> {
 		this.cachedHelpFiles.clear();
-		this.helpProvider?.refresh?.();
+		await this.helpProvider?.refresh?.();
 		await this.aliasProvider?.refresh?.();
 		await this.packageManager?.refresh?.();
 		if(refreshTreeView){
@@ -273,24 +274,6 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 		}
 	}
 
-	// Triggered by a command button shown above the helppanel
-	public openExternal(): void {
-		void this.getActiveHelpPanel(false)?.openInExternalBrowser();
-	}
-
-	// go back/forward in the history of the webview
-	public goBack(): void{
-		this.getActiveHelpPanel(false)?.goBack();
-	}
-	public goForward(): void{
-		this.getActiveHelpPanel(false)?.goForward();
-	}
-
-	// Shows the content of the tree-view in a quickpick
-	public showHelpMenu(): void  {
-		void this.treeViewWrapper.helpViewProvider.rootItem.showQuickPick();
-	}
-
 	// search function, similar to typing `?? ...` in R
 	public async searchHelpByText(): Promise<boolean>{
 		const searchTerm = await vscode.window.showInputBox({
@@ -306,7 +289,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	// quickly open help for selection
 	public async openHelpForSelection(preserveFocus: boolean = false): Promise<boolean> {
 		// only use if we failed to show help page:
-		let errMsg: string;
+		let errMsg = '';
 
 		const editor = vscode.window.activeTextEditor;
 		if (editor) {
@@ -349,7 +332,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 		const matchingAliases = await this.getMatchingAliases(token);
 
 		let pickedAlias: Alias | undefined;
-		if(matchingAliases.length === 0){
+		if(!matchingAliases?.length){
 			return false;
 		} else if(matchingAliases.length === 1){
 			pickedAlias = matchingAliases[0];
@@ -366,13 +349,10 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 		return false;
 	}
 
-	public async getMatchingAliases(token: string): Promise<Alias[]> {
+	public async getMatchingAliases(token: string): Promise<Alias[]|undefined> {
 		const aliases = await this.getAllAliases();
-		if(!aliases){
-			[];
-		}
 
-		const matchingAliases = aliases.filter(alias => (
+		const matchingAliases = aliases?.filter(alias => (
 			token === alias.name
 			|| token === `${alias.package}::${alias.name}`
 			|| token === `${alias.package}:::${alias.name}`
@@ -391,7 +371,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	}
 
 	// helper function to get aliases from aliasprovider
-	private async getAllAliases(): Promise<Alias[] | null | undefined> {
+	private async getAllAliases(): Promise<Alias[] | undefined> {
 		const aliases = await doWithProgress(() => this.aliasProvider.getAllAliases());
 		if(!aliases){
 			void vscode.window.showErrorMessage(`Failed to get list of R functions. Make sure that \`jsonlite\` is installed and r.${getRPathConfigEntry()} points to a valid R executable.`);
@@ -444,7 +424,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 		}
 	}
 
-	public async getHelpFileForPath(requestPath: string, modify: boolean = true): Promise<HelpFile | null> {
+	public async getHelpFileForPath(requestPath: string, modify: boolean = true): Promise<HelpFile | undefined> {
 		// get helpFile from helpProvider if not cached
 		if(!this.cachedHelpFiles.has(requestPath)){
 			const helpFile = (!isGuestSession ?
@@ -457,9 +437,9 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 		// modifications are optional and cached
 		const helpFileCached = this.cachedHelpFiles.get(requestPath);
 		if(!helpFileCached){
-			return null;
+			return undefined;
 		} else if(modify && !helpFileCached.isModified){
-			this.pimpMyHelp(helpFileCached);
+			pimpMyHelp(helpFileCached);
 		}
 
 		// make deep copy to avoid messing with cache
@@ -482,52 +462,53 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 	}
 
 
-	// improves the help display by applying syntax highlighting and adjusting hyperlinks
-	// only contains modifications that are independent of the webview panel
-	// (i.e. no modified file paths, scroll position etc.)
-	private pimpMyHelp(helpFile: HelpFile): HelpFile {
+}
 
-		// Retun if the help file is already modified
-		if(helpFile.isModified){
-			return helpFile;
-		}
+// improves the help display by applying syntax highlighting and adjusting hyperlinks
+// only contains modifications that are independent of the webview panel
+// (i.e. no modified file paths, scroll position etc.)
+function pimpMyHelp(helpFile: HelpFile): HelpFile {
 
-		// store original html content
-		helpFile.html0 = helpFile.html;
-
-		// Make sure the helpfile content is actually html
-		const re = new RegExp('<html[^\\n]*>.*</html>', 'ms');
-		helpFile.isHtml = !!re.exec(helpFile.html);
-		if(!helpFile.isHtml){
-			const html = escapeHtml(helpFile.html);
-			helpFile.html = `<html><head></head><body><pre>${html}</pre></body></html>`;
-		}
-
-		// parse the html string
-		const $ = cheerio.load(helpFile.html);
-
-		// Remove style elements specified in the html itself (replaced with custom CSS)
-		$('head style').remove();
-
-		// Apply syntax highlighting:
-		if(config().get<boolean>('helpPanel.enableSyntaxHighlighting')){
-			// find all code sections, enclosed by <pre>...</pre>
-			const codeSections = $('pre');
-
-			// apply syntax highlighting to each code section:
-			codeSections.each((i, section) => {
-				const styledCode = hljs.highlight($(section).text() || '', { language: 'r' });
-				$(section).html(styledCode.value);
-			});
-		}
-
-		// replace html of the helpfile
-		helpFile.html = $.html();
-
-		// flag help file as modified
-		helpFile.isModified = true;
-
+	// Retun if the help file is already modified
+	if(helpFile.isModified){
 		return helpFile;
 	}
+
+	// store original html content
+	helpFile.html0 = helpFile.html;
+
+	// Make sure the helpfile content is actually html
+	const re = new RegExp('<html[^\\n]*>.*</html>', 'ms');
+	helpFile.isHtml = !!re.exec(helpFile.html);
+	if(!helpFile.isHtml){
+		const html = escapeHtml(helpFile.html);
+		helpFile.html = `<html><head></head><body><pre>${html}</pre></body></html>`;
+	}
+
+	// parse the html string
+	const $ = cheerio.load(helpFile.html);
+
+	// Remove style elements specified in the html itself (replaced with custom CSS)
+	$('head style').remove();
+
+	// Apply syntax highlighting:
+	if(config().get<boolean>('helpPanel.enableSyntaxHighlighting')){
+		// find all code sections, enclosed by <pre>...</pre>
+		const codeSections = $('pre');
+
+		// apply syntax highlighting to each code section:
+		codeSections.each((i, section) => {
+			const styledCode = hljs.highlight($(section).text() || '', { language: 'r' });
+			$(section).html(styledCode.value);
+		});
+	}
+
+	// replace html of the helpfile
+	helpFile.html = $.html();
+
+	// flag help file as modified
+	helpFile.isModified = true;
+
+	return helpFile;
 }
 

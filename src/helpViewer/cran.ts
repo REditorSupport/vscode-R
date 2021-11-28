@@ -46,13 +46,13 @@ export async function getPackagesFromCran(cranUrl: string): Promise<Package[]> {
 }
 
 function parseCranPackagesFile(html: string): Package[] {
-    const packageNames = html.match(/^Package: .*$/gm)?.map(s => s.replace(/^Package: /, ''));
-    const packages: Package[] = packageNames?.map(s => ({
+    const packageNames = html.match(/^Package: .*$/gm)?.map(s => s.replace(/^Package: /, '')) || [];
+    const packages: Package[] = packageNames.map(s => ({
         name: s,
         description: '',
         isCran: true
     }));
-    return packages || [];
+    return packages;
 }
 
 function parseCranJson(jsonString: string): Package[] {
@@ -91,16 +91,16 @@ function parseCranTable(html: string, baseUrl: string): Package[] {
                 const e2 = elements[2];
                 if(
                     e0.type === 'tag' && e1.type === 'tag' &&
-                    e0.firstChild.type === 'text' && e1.children[1].type === 'tag' &&
+                    e0.firstChild?.type === 'text' && e1.children[1].type === 'tag' &&
                     e2.type === 'tag'
                 ){
                     const href = e1.children[1].attribs['href'];
                     const url = new URL(href, baseUrl).toString();
                     ret.push({
                         date: (e0.firstChild.data || '').trim(),
-                        name: (e1.children[1].firstChild.data || '').trim(),
+                        name: (e1.children[1].firstChild?.data || '').trim(),
                         href: url,
-                        description: (e2.firstChild.data || '').trim(),
+                        description: (e2.firstChild?.data || '').trim(),
                         isCran: true
                     });
                 }
