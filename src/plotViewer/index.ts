@@ -763,7 +763,29 @@ export class HttpgdViewer implements IHttpgdViewer {
         }
         // make sure outFile is valid or return:
         if (!outFile) {
+            // Suggest a file extension:
+            const renderer = this.api.getRenderers().find(r => r.id === rendererId);
+            
+            const defaultUri = vscode.workspace.workspaceFolders[0]?.uri;
+            const ext = renderer?.ext.replace(/^\./, '');
+
             const options: vscode.SaveDialogOptions = {};
+            // set default URI if possible
+            if(defaultUri){
+                let defaultName = 'plot';
+                if(ext){
+                    defaultName = `${defaultName}.${ext}`;
+                }
+                options.defaultUri = vscode.Uri.joinPath(defaultUri, defaultName);
+            }
+            // set file extension filter if possible
+            if(ext && renderer?.name){
+                options.filters = {
+                    ['All']: ['*'],
+                    [renderer.name]: [ext]
+                };
+            }
+
             const outUri = await vscode.window.showSaveDialog(options);
             outFile = outUri?.fsPath;
             if (!outFile) {
