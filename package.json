@@ -61,6 +61,7 @@
     "onCommand:r.helpPanel.back",
     "onCommand:r.helpPanel.forward",
     "onCommand:r.helpPanel.openForSelection",
+    "onCommand:r.plot.openUrl",
     "onWebviewPanel:rhelp",
     "onTerminalProfile:r.terminal-profile"
   ],
