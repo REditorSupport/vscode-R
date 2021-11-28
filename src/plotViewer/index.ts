@@ -305,6 +305,9 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     // Get/set active plot by index instead of id:
     protected get activeIndex(): number {
+        if(!this.activePlot){
+            return -1;
+        }
         return this.getIndex(this.activePlot);
     }
     protected set activeIndex(ind: number) {
@@ -397,7 +400,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     // focus a specific plot id
     public async focusPlot(id?: HttpgdPlotId): Promise<void> {
-        this.activePlot = id;
+        this.activePlot = id || this.activePlot;
         const plt = this.plots[this.activeIndex];
         if (plt.height !== this.viewHeight || plt.width !== this.viewHeight || plt.zoom !== this.zoom) {
             await this.refreshPlots(this.api.getPlots());
@@ -407,6 +410,9 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
     protected _focusPlot(plotId?: HttpgdPlotId): void {
         plotId ??= this.activePlot;
+        if(!plotId){
+            return;
+        }
         const msg: FocusPlotMessage = {
             message: 'focusPlot',
             plotId: plotId
@@ -525,7 +531,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         }
         const dummyUri = this.webviewPanel.webview.asWebviewUri(vscode.Uri.file(''));
         const m = /^[^.]*/.exec(dummyUri.authority);
-        const webviewId = m[0] || '';
+        const webviewId = m?.[0] || '';
         return `webview-panel/webview-${webviewId}`;
     }
 
@@ -537,7 +543,9 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.viewHeight = height;
         this.viewWidth = width;
         if (userTriggered || this.resizeTimeoutLength === 0) {
-            clearTimeout(this.resizeTimeout);
+            if(this.resizeTimeout){
+                clearTimeout(this.resizeTimeout);
+            }
             this.resizeTimeout = undefined;
             void this.resizePlot();
         } else if (!this.resizeTimeout) {
@@ -608,6 +616,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             html: html
         };
         this.postWebviewMessage(msg);
+        void this.focusPlot(plt.id);
         void this.setContextValues();
     }
 
@@ -623,7 +632,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         };
         
         const plotContent = await this.api.getPlot(args);
-        const svg = await plotContent.text();
+        const svg = await plotContent?.text() || '';
         
         const plt: HttpgdPlot<string> = {
             id: id,
@@ -679,7 +688,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         let overwriteCssPath = '';
         if (this.customOverwriteCssPath) {
             const uri = vscode.Uri.file(this.customOverwriteCssPath);
-            overwriteCssPath = this.webviewPanel.webview.asWebviewUri(uri).toString();
+            overwriteCssPath = this.webviewPanel?.webview.asWebviewUri(uri).toString() || '';
         } else {
             overwriteCssPath = asWebViewPath('styleOverwrites.css');
         }
@@ -766,7 +775,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             // Suggest a file extension:
             const renderer = this.api.getRenderers().find(r => r.id === rendererId);
             
-            const defaultUri = vscode.workspace.workspaceFolders[0]?.uri;
+            const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri;
             const ext = renderer?.ext.replace(/^\./, '');
 
             const options: vscode.SaveDialogOptions = {};
