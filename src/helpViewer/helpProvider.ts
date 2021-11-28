@@ -15,6 +15,8 @@ export interface RHelpProviderOptions {
     rPath: string;
 	// directory in which to launch R processes
 	cwd?: string;
+    // listener to notify when new packages are installed
+    pkgListener?: () => void;
 }
 
 // Class to forward help requests to a backgorund R instance that is running a help server
@@ -23,10 +25,12 @@ export class HelpProvider {
     private port: number|Promise<number>;
     private readonly rPath: string;
     private readonly cwd?: string;
+    private readonly pkgListener?: () => void;
 
     public constructor(options: RHelpProviderOptions){
         this.rPath = options.rPath || 'R';
         this.cwd = options.cwd;
+        this.pkgListener = options.pkgListener;
         this.port = this.launchRHelpServer(); // is a promise for now!
     }
 
@@ -37,7 +41,9 @@ export class HelpProvider {
 
     public async launchRHelpServer(): Promise<number>{
 		const lim = '---vsc---';
-		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
+		const portRegex = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
+        
+        const newPackageRegex = new RegExp('NEW_PACKAGES');
 
         // starts the background help server and waits forever to keep the R process running
         const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
@@ -53,7 +59,7 @@ export class HelpProvider {
 
         let str = '';
         // promise containing the first output of the r process (contains only the port number)
-        const outputPromise = new Promise<string>((resolve) => {
+        const portPromise = new Promise<string>((resolve) => {
             this.cp.stdout?.on('data', (data) => {
                 try{
                     // eslint-disable-next-line
@@ -61,8 +67,13 @@ export class HelpProvider {
                 } catch(e){
                     resolve('');
                 }
-                if(re.exec(str)){
-                    resolve(str.replace(re, '$1'));
+                if(portRegex.exec(str)){
+                    resolve(str.replace(portRegex, '$1'));
+                    str = str.replace(portRegex, '');
+                }
+                if(newPackageRegex.exec(str)){
+                    this.pkgListener?.();
+                    str = str.replace(newPackageRegex, '');
                 }
             });
             this.cp.on('close', () => {
@@ -71,19 +82,18 @@ export class HelpProvider {
         });
 
         // await and store port number
-        const output = await outputPromise;
-        const port = Number(output);
+        const port = Number(await portPromise);
 
         // is returned as a promise if not called with "await":
         return port;
     }
 
-	public async getHelpFileFromRequestPath(requestPath: string): Promise<null|rHelp.HelpFile> {
+	public async getHelpFileFromRequestPath(requestPath: string): Promise<undefined|rHelp.HelpFile> {
         // make sure the server is actually running
         this.port = await this.port;
 
         if(!this.port || typeof this.port !== 'number'){
-            return null;
+            return undefined;
         }
 
         // remove leading '/'
@@ -174,6 +184,9 @@ interface PackageAliases {
         [key: string]: string;
     }
 }
+interface AllPackageAliases {
+    [key: string]: PackageAliases
+}
 
 // Implements the aliasProvider required by the help panel
 export class AliasProvider {
@@ -181,10 +194,7 @@ export class AliasProvider {
     private readonly rPath: string;
     private readonly cwd?: string;
     private readonly rScriptFile: string;
-    private allPackageAliases?: null | {
-        [key: string]: PackageAliases;
-    }
-    private aliases?: null | rHelp.Alias[];
+    private aliases?: undefined | rHelp.Alias[];
 	private readonly persistentState?: Memento;
 
     constructor(args: AliasProviderArgs){
@@ -195,114 +205,78 @@ export class AliasProvider {
     }
 
     // delete stored aliases, will be generated on next request
-    public refresh(): void {
-        this.aliases = null;
-        this.allPackageAliases = null;
-        void this.persistentState?.update('r.helpPanel.cachedPackageAliases', undefined);
-    }
-
-    // get all aliases that match the given name, if specified only from 1 package
-    public getAliasesForName(name: string, pkgName?: string): rHelp.Alias[] | null {
-        const aliases = this.getAliasesForPackage(pkgName);
-        if(aliases){
-            return aliases.filter((v) => v.name === name);
-        } else{
-            return null;
-        }
+    public async refresh(): Promise<void> {
+        this.aliases = undefined;
+        await this.persistentState?.update('r.helpPanel.cachedAliases', undefined);
+        this.makeAllAliases();
     }
 
     // get a list of all aliases
-    public getAllAliases(): rHelp.Alias[] | null {
-        if(!this.aliases){
-            this.makeAllAliases();
+    public getAllAliases(): rHelp.Alias[] | undefined {
+        // try this.aliases:
+        if(this.aliases){
+            return this.aliases;
         }
-        return this.aliases || null;
-    }
-
-    // get all aliases, grouped by package
-    private getPackageAliases() {
-        if(!this.allPackageAliases){
-            this.readAliases();
+        
+        // try cached aliases:
+        const cachedAliases = this.persistentState?.get<rHelp.Alias[]>('r.helpPanel.cachedAliases');
+        if(cachedAliases){
+            this.aliases = cachedAliases;
+            return cachedAliases;
         }
-        return this.allPackageAliases;
-    }
-
-    // get all aliases provided by one package
-    private getAliasesForPackage(pkgName?: string): rHelp.Alias[] | null {
-        if(!pkgName){
-            return this.getAllAliases();
-        }
-        const packageAliases = this.getPackageAliases();
-        if(packageAliases && pkgName in packageAliases){
-            const al = packageAliases[pkgName].aliases;
-            if(al){
-                const ret: rHelp.Alias[] = [];
-                for(const fncName in al){
-                    ret.push({
-                        name: fncName,
-                        alias: al[fncName],
-                        package: pkgName
-                    });
-                }
-                return ret;
-            }
-        }
-        return null;
+        
+        // try to make new aliases (returns undefined if unsuccessful):
+        const newAliases = this.makeAllAliases();
+        this.aliases = newAliases;
+        this.persistentState?.update('r.helpPanel.cachedAliases', newAliases);
+        return newAliases;
     }
 
     // converts aliases grouped by package to a flat list of aliases
-    private makeAllAliases(): void {
-        if(!this.allPackageAliases){
-            this.readAliases();
+    private makeAllAliases(): rHelp.Alias[] | undefined {
+        // get aliases from R (nested format)
+        const allPackageAliases = this.getAliasesFromR();
+        if(!allPackageAliases){
+            return undefined;
         }
-        if(this.allPackageAliases){
-            const ret: rHelp.Alias[] = [];
-            for(const pkg in this.allPackageAliases){
-                const pkgName = this.allPackageAliases[pkg].package || pkg;
-                const al = this.allPackageAliases[pkg].aliases;
-                if(al){
-                    for(const fncName in al){
-                        ret.push({
-                            name: fncName,
-                            alias: al[fncName],
-                            package: pkgName
-                        });
-                    }
-                }
+        
+        // flatten aliases into one list:
+        const allAliases: rHelp.Alias[] = [];
+        for(const pkg in allPackageAliases){
+            const pkgName = allPackageAliases[pkg].package || pkg;
+            const pkgAliases = allPackageAliases[pkg].aliases || {};
+            for(const fncName in pkgAliases){
+                allAliases.push({
+                    name: fncName,
+                    alias: pkgAliases[fncName],
+                    package: pkgName
+                });
             }
-            this.aliases = ret;
-        } else{
-            this.aliases = null;
         }
+        return allAliases;
     }
 
     // call R script `getAliases.R` and parse the output
-    private readAliases(): void {
-        // read from persistent workspace cache
-        const cachedAliases = this.persistentState?.get<{[key: string]: PackageAliases}>('r.helpPanel.cachedPackageAliases');
-        if(cachedAliases){
-            this.allPackageAliases = cachedAliases;
-            return;
-        }
+    private getAliasesFromR(): undefined | AllPackageAliases {
 
         // get from R
-        this.allPackageAliases = null;
 		const lim = '---vsc---'; // must match the lim used in R!
 		const re = new RegExp(`^.*?${lim}(.*)${lim}.*$`, 'ms');
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-aliases-'));
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-aliases'));
         const tempFile = path.join(tempDir, 'aliases.json');
         const cmd = `${this.rPath} --silent --no-save --no-restore --slave -f "${this.rScriptFile}" > "${tempFile}"`;
 
+        let allPackageAliases: undefined | AllPackageAliases = undefined;
         try{
             // execute R script 'getAliases.R'
-            // aliases will be written to tempDir
+            // aliases will be written to tempFile
             cp.execSync(cmd, {cwd: this.cwd});
 
             // read and parse aliases
             const txt = fs.readFileSync(tempFile, 'utf-8');
             const json = txt.replace(re, '$1');
             if(json){
-                this.allPackageAliases = <{[key: string]: PackageAliases}> JSON.parse(json) || {};
+                allPackageAliases = <{[key: string]: PackageAliases}> JSON.parse(json) || {};
             }
         } catch(e: unknown){
             console.log(e);
@@ -310,8 +284,6 @@ export class AliasProvider {
         } finally {
             fs.rmdirSync(tempDir, {recursive: true});
         }
-        // update persistent workspace cache
-        void this.persistentState?.update('r.helpPanel.cachedPackageAliases', this.allPackageAliases);
+        return allPackageAliases;
     }
 }
-

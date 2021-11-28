@@ -86,10 +86,16 @@ class RMarkdownPreview extends vscode.Disposable {
         this.htmlLightContent = $.html();
 
         // make the output chunks a little lighter to stand out
-        const chunkCol = String(config().get('rmarkdown.chunkBackgroundColor'));
-        const colReg = /[0-9.]+/g;
-        const regOut = chunkCol.match(colReg);
-        const outCol = `rgba(${regOut[0] ?? 100}, ${regOut[1] ?? 100}, ${regOut[2] ?? 100}, ${Number(regOut[3]) + 0.05 ?? .5})`;
+        let chunkCol = String(config().get('rmarkdown.chunkBackgroundColor'));
+        let outCol: string;
+        if (chunkCol) {
+            const colReg = /[0-9.]+/g;
+            const regOut = chunkCol.match(colReg);
+            outCol = `rgba(${regOut[0] ?? 128}, ${regOut[1] ?? 128}, ${regOut[2] ?? 128}, ${Math.max(0, Number(regOut[3] ?? 0.1) - 0.05)})`;
+        } else {
+            chunkCol = 'rgba(128, 128, 128, 0.1)';
+            outCol = 'rgba(128, 128, 128, 0.05)';
+        }
 
         const style =
             `<style>
