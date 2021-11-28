@@ -35,7 +35,9 @@ export class HelpProvider {
     }
 
     public async refresh(): Promise<void> {
-        kill(this.cp.pid); // more reliable than cp.kill (?)
+        if(!this.cp.exitCode){
+            kill(this.cp.pid); // more reliable than cp.kill (?)
+        }
         this.port = this.launchRHelpServer();
         await this.port;
     }
