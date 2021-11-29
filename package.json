@@ -422,33 +422,33 @@
       },
       {
         "title": "Load All",
-        "category": "R",
+        "category": "R Package",
         "command": "r.loadAll"
       },
       {
-        "title": "Test Package",
-        "category": "R",
-        "command": "r.test"
-      },
-      {
-        "title": "Install Package",
-        "category": "R",
-        "command": "r.install"
-      },
-      {
-        "title": "Build Package",
-        "category": "R",
+        "title": "Build",
+        "category": "R Package",
         "command": "r.build"
       },
       {
-        "title": "Document",
-        "category": "R",
-        "command": "r.document"
+        "title": "Check",
+        "category": "R Package",
+        "command": "r.checkTask"
       },
       {
-        "title": "Check",
-        "category": "R",
-        "command": "r.check"
+        "title": "Document",
+        "category": "R Package",
+        "command": "r.documentTask"
+      },
+      {
+        "title": "Install",
+        "category": "R Package",
+        "command": "r.installTask"
+      },
+      {
+        "title": "Test",
+        "category": "R Package",
+        "command": "r.testTask"
       },
       {
         "title": "Attach Active Terminal",
