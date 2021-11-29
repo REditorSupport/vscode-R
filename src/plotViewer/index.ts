@@ -293,6 +293,8 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     refreshTimeout?: NodeJS.Timeout;
     readonly refreshTimeoutLength: number = 10;
+    
+    private lastExportUri?: vscode.Uri;
 
     readonly htmlTemplate: string;
     readonly smallPlotTemplate: string;
@@ -772,32 +774,38 @@ export class HttpgdViewer implements IHttpgdViewer {
         }
         // make sure outFile is valid or return:
         if (!outFile) {
+            const options: vscode.SaveDialogOptions = {};
+
             // Suggest a file extension:
             const renderer = this.api.getRenderers().find(r => r.id === rendererId);
-            
-            const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri;
             const ext = renderer?.ext.replace(/^\./, '');
 
-            const options: vscode.SaveDialogOptions = {};
-            // set default URI if possible
-            if(defaultUri){
-                let defaultName = 'plot';
-                if(ext){
-                    defaultName = `${defaultName}.${ext}`;
+            // try to set default URI:
+            if(this.lastExportUri){
+                const noExtPath = this.lastExportUri.fsPath.replace(/\.[^.]*$/, '');
+                const defaultPath = noExtPath + (ext ? `.${ext}` : '');
+                options.defaultUri = vscode.Uri.file(defaultPath);
+            } else {
+                // construct default Uri
+                const defaultFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                if(defaultFolder){
+                    const defaultName = 'plot' + (ext ? `.${ext}` : '');
+                    options.defaultUri = vscode.Uri.file(path.join(defaultFolder, defaultName));
                 }
-                options.defaultUri = vscode.Uri.joinPath(defaultUri, defaultName);
             }
-            // set file extension filter if possible
+            // set file extension filter
             if(ext && renderer?.name){
                 options.filters = {
+                    [renderer.name]: [ext],
                     ['All']: ['*'],
-                    [renderer.name]: [ext]
                 };
             }
 
             const outUri = await vscode.window.showSaveDialog(options);
-            outFile = outUri?.fsPath;
-            if (!outFile) {
+            if(outUri){
+                this.lastExportUri = outUri;
+                outFile = outUri.fsPath;
+            } else {
                 return;
             }
         }
@@ -810,8 +818,13 @@ export class HttpgdViewer implements IHttpgdViewer {
         // cross-fetch problem or config problem in vscode-r?
         
         const dest = fs.createWriteStream(outFile);
+        dest.on('error', (err) => void vscode.window.showErrorMessage(
+            `Export failed: ${err.message}`
+        ));
+        dest.on('close', () => void vscode.window.showInformationMessage(
+            `Export done: ${outFile}`
+        ));
         void plt.body.pipe(dest);
-        plt.body.on('close', () => { console.log('Export done!'); });
     }
 
     // Dispose-function to clean up when vscode closes
