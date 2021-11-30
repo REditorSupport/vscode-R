@@ -61,6 +61,7 @@
     "onCommand:r.helpPanel.back",
     "onCommand:r.helpPanel.forward",
     "onCommand:r.helpPanel.openForSelection",
+    "onCommand:r.plot.openUrl",
     "onWebviewPanel:rhelp",
     "onTerminalProfile:r.terminal-profile"
   ],
@@ -1713,6 +1714,7 @@
     "ejs": "^3.1.6",
     "fs-extra": "^10.0.0",
     "highlight.js": "^10.7.3",
+    "httpgd": "^0.1.6",
     "jquery": "^3.6.0",
     "jquery.json-viewer": "^1.4.0",
     "js-yaml": "^4.1.0",
