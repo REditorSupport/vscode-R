@@ -4,6 +4,18 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.3.4](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.4)
+
+Enhancements:
+
+* Quotes in `r.rpath.*` settings are now removed. (#884)
+* Alternative CRAN mirrors (e.g. [RStudio Public Package Manager](https://packagemanager.rstudio.com) and [the ropensci universe](https://ropensci.r-universe.dev) are supported. (#876)
+
+Fixes:
+
+* Fixed a Uri handling bug in Windows. (#888)
+* Fixed a bug in restarting help server when library has changed. (#893)
+
 ## [2.3.3](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.3)
 
 Enhancements:
