@@ -19,10 +19,14 @@ export interface RHelpProviderOptions {
     pkgListener?: () => void;
 }
 
+type ChildProcessWithPort = cp.ChildProcess & {
+    port?: number | Promise<number>;
+    running?: boolean;
+};
+
 // Class to forward help requests to a backgorund R instance that is running a help server
 export class HelpProvider {
-    private cp?: cp.ChildProcess;
-    private port: number|Promise<number>;
+    private cp: ChildProcessWithPort;
     private readonly rPath: string;
     private readonly cwd?: string;
     private readonly pkgListener?: () => void;
@@ -31,18 +35,18 @@ export class HelpProvider {
         this.rPath = options.rPath || 'R';
         this.cwd = options.cwd;
         this.pkgListener = options.pkgListener;
-        this.port = this.launchRHelpServer(); // is a promise for now!
+        this.cp = this.launchRHelpServer();
     }
 
     public async refresh(): Promise<void> {
-        if(this.cp){
+        if(this.cp.running){
             kill(this.cp.pid); // more reliable than cp.kill (?)
         }
-        this.port = this.launchRHelpServer();
-        await this.port;
+        this.cp = this.launchRHelpServer();
+        await this.cp.port;
     }
 
-    public async launchRHelpServer(): Promise<number>{
+    public launchRHelpServer(): ChildProcessWithPort{
 		const lim = '---vsc---';
 		const portRegex = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
         
@@ -58,28 +62,22 @@ export class HelpProvider {
             cwd: this.cwd,
             env: { ...process.env, 'VSCR_LIM': lim }
         };
-        const childProcess = cp.exec(cmd, cpOptions);
-        this.cp = childProcess;
 
-        const onCpExit = () => {
-            this.cp = undefined;
-            this.port = 0;
-        };
-        childProcess.on('exit', onCpExit);
-        childProcess.on('error', onCpExit);
+        const childProcess: ChildProcessWithPort = cp.exec(cmd, cpOptions);
+        childProcess.running = true;
 
         let str = '';
-        // promise containing the first output of the r process (contains only the port number)
-        const portPromise = new Promise<string>((resolve) => {
+        // promise containing the port number of the process (or 0)
+        const portPromise = new Promise<number>((resolve) => {
             childProcess.stdout?.on('data', (data) => {
                 try{
                     // eslint-disable-next-line
                     str += data.toString();
                 } catch(e){
-                    resolve('');
+                    resolve(0);
                 }
                 if(portRegex.exec(str)){
-                    resolve(str.replace(portRegex, '$1'));
+                    resolve(Number(str.replace(portRegex, '$1')));
                     str = str.replace(portRegex, '');
                 }
                 if(newPackageRegex.exec(str)){
@@ -88,22 +86,28 @@ export class HelpProvider {
                 }
             });
             childProcess.on('close', () => {
-                resolve('');
+                resolve(0);
             });
         });
+        
+        const exitHandler = () => {
+            childProcess.port = 0;
+            childProcess.running = false;
+        };
+        childProcess.on('exit', exitHandler);
+        childProcess.on('error', exitHandler);
 
         // await and store port number
-        const port = Number(await portPromise);
+        childProcess.port = portPromise;
 
         // is returned as a promise if not called with "await":
-        return port;
+        return childProcess;
     }
 
 	public async getHelpFileFromRequestPath(requestPath: string): Promise<undefined|rHelp.HelpFile> {
-        // make sure the server is actually running
-        this.port = await this.port;
 
-        if(!this.port || typeof this.port !== 'number'){
+        const port = await this.cp?.port;
+        if(!port || typeof port !== 'number'){
             return undefined;
         }
 
@@ -119,7 +123,7 @@ export class HelpProvider {
 
         // forward request to R instance
         // below is just a complicated way of getting a http response from the help server
-        let url = `http://localhost:${this.port}/${requestPath}`;
+        let url = `http://localhost:${port}/${requestPath}`;
         let html = '';
         const maxForwards = 3;
         for (let index = 0; index < maxForwards; index++) {
@@ -169,8 +173,7 @@ export class HelpProvider {
 
 
     dispose(): void {
-        this.port = 0;
-        if(this.cp){
+        if(this.cp.running){
             kill(this.cp.pid);
         }
     }
