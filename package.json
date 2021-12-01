@@ -433,22 +433,22 @@
       {
         "title": "Check",
         "category": "R Package",
-        "command": "r.checkTask"
+        "command": "r.check"
       },
       {
         "title": "Document",
         "category": "R Package",
-        "command": "r.documentTask"
+        "command": "r.document"
       },
       {
         "title": "Install",
         "category": "R Package",
-        "command": "r.installTask"
+        "command": "r.install"
       },
       {
         "title": "Test",
         "category": "R Package",
-        "command": "r.testTask"
+        "command": "r.test"
       },
       {
         "title": "Attach Active Terminal",
