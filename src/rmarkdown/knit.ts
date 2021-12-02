@@ -36,7 +36,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 		const lim = '---vsc---';
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'gms');
-		const serveReg = /(http:\/\/127[0-9.:]*\/.*\.html)/g;
+		const serveReg = /(http:\/\/(localhost)?[0-9.:]*\/.*\.html)/g;
 		const scriptValues = {
 			'VSCR_KNIT_DIR': knitWorkingDirText,
 			'VSCR_LIM': lim,
