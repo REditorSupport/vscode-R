@@ -2,7 +2,6 @@
 import { Memento, window } from 'vscode';
 import * as http from 'http';
 import * as cp from 'child_process';
-import * as kill from 'tree-kill';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -39,8 +38,8 @@ export class HelpProvider {
     }
 
     public async refresh(): Promise<void> {
-        if(this.cp.running){
-            kill(this.cp.pid); // more reliable than cp.kill (?)
+        if (this.cp.running) {
+            this.cp.kill();
         }
         this.cp = this.launchRHelpServer();
         await this.cp.port;
@@ -173,8 +172,8 @@ export class HelpProvider {
 
 
     dispose(): void {
-        if(this.cp.running){
-            kill(this.cp.pid);
+        if (this.cp.running) {
+            this.cp.kill();
         }
     }
 }
