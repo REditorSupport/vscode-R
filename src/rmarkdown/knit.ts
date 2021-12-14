@@ -150,8 +150,8 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 	// the definition of what constitutes an R Markdown site differs
 	// depending on the type of R Markdown site (i.e., "simple" vs. blogdown sites)
 	private async findSiteParam(): Promise<string | undefined> {
-		const rootFolder = vscode.workspace.workspaceFolders[0].uri.fsPath;
 		const wad = vscode.window.activeTextEditor.document.uri.fsPath;
+		const rootFolder = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? path.dirname(wad);
 		const indexFile = (await vscode.workspace.findFiles(new vscode.RelativePattern(rootFolder, 'index.{Rmd,rmd, md}'), null, 1))?.[0];
 		const siteRoot = path.join(path.dirname(wad), '_site.yml');
 
