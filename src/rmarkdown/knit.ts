@@ -29,7 +29,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 	private async renderDocument(rDocumentPath: string, docPath: string, docName: string, yamlParams: IYamlFrontmatter, outputFormat?: string): Promise<DisposableProcess> {
 		const openOutfile: boolean = util.config().get<boolean>('rmarkdown.knit.openOutputFile') ?? false;
 		const knitWorkingDir = this.getKnitDir(knitDir, docPath);
-		const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : `NULL`;
+		const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : '';
 		const knitCommand = await this.getKnitCommand(yamlParams, rDocumentPath, outputFormat);
 		this.rPath = await util.getRpath();
 

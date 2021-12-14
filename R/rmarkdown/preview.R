@@ -29,7 +29,7 @@ set_html <- tryCatch(
 
 # set the knitr chunk eval directory
 # mainly affects source calls
-if (!is.null(eval(parse(text = knit_dir)))) {
+if (nzchar(knit_dir)) {
     knitr::opts_knit[["set"]](root.dir = knit_dir)
 }
 
