@@ -195,7 +195,7 @@ async function updateGlobalenv() {
     }
 }
 
-export async function showBrowser(url: string, title: string, viewer: string | boolean): Promise<void> {
+export async function showBrowser(url: string, title: string, viewer: string | boolean): Promise<void|WebviewPanel> {
     console.info(`[showBrowser] uri: ${url}, viewer: ${viewer.toString()}`);
     const uri = Uri.parse(url);
     if (viewer === false) {
@@ -240,6 +240,7 @@ export async function showBrowser(url: string, title: string, viewer: string | b
         });
         panel.iconPath = new UriIcon('globe');
         panel.webview.html = getBrowserHtml(externalUri);
+        return (panel);
     }
     console.info('[showBrowser] Done');
 }
