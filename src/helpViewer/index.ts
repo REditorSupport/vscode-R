@@ -38,12 +38,9 @@ export async function initializeHelp(context: vscode.ExtensionContext, rExtensio
 	);
 
 	// Gather options used in r help related files
-  const isLight = (vscode.window.activeColorTheme.kind === 1);
   const rHelpOptions: HelpOptions = {
     webviewScriptPath: context.asAbsolutePath('/html/help/script.js'),
-    webviewStylePath: isLight
-      ? context.asAbsolutePath('html/help/theme-light.css')
-      : context.asAbsolutePath('html/help/theme-dark.css'),
+    webviewStylePath: context.asAbsolutePath('/html/help/theme.css'),
     rScriptFile: context.asAbsolutePath('R/help/getAliases.R'),
     rPath: rPath,
     cwd: cwd,
