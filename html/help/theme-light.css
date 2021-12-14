@@ -1,0 +1,34 @@
+@import url('./theme.css');
+
+/* based off of VS Code's Dark+ theme */
+
+.hljs-literal,
+.hljs-keyword {
+  color: #569cd6;
+}
+
+.hljs-number {
+  color: #cb4b16;
+}
+
+.hljs-regexp,
+.hljs-bullet,
+.hljs-string {
+  color: #859900;
+}
+/* .hljs-subst, */
+.hljs-symbol,
+.hljs-class {
+  color: #4ec9b0;
+}
+
+.hljs-built_in,
+.hljs-function,
+.hljs-link {
+  color: #268bd2;
+}
+
+.hljs-quote,
+.hljs-comment {
+  color: #93a1a1;
+}
