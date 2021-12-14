@@ -29,7 +29,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 	private async renderDocument(rDocumentPath: string, docPath: string, docName: string, yamlParams: IYamlFrontmatter, outputFormat?: string): Promise<DisposableProcess> {
 		const openOutfile: boolean = util.config().get<boolean>('rmarkdown.knit.openOutputFile') ?? false;
 		const knitWorkingDir = this.getKnitDir(knitDir, docPath);
-		const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : `NULL`;
+		const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : '';
 		const knitCommand = await this.getKnitCommand(yamlParams, rDocumentPath, outputFormat);
 		this.rPath = await util.getRpath();
 
@@ -150,8 +150,8 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 	// the definition of what constitutes an R Markdown site differs
 	// depending on the type of R Markdown site (i.e., "simple" vs. blogdown sites)
 	private async findSiteParam(): Promise<string | undefined> {
-		const rootFolder = vscode.workspace.workspaceFolders[0].uri.fsPath;
 		const wad = vscode.window.activeTextEditor.document.uri.fsPath;
+		const rootFolder = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? path.dirname(wad);
 		const indexFile = (await vscode.workspace.findFiles(new vscode.RelativePattern(rootFolder, 'index.{Rmd,rmd, md}'), null, 1))?.[0];
 		const siteRoot = path.join(path.dirname(wad), '_site.yml');
 

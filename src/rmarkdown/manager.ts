@@ -40,12 +40,12 @@ export abstract class RMarkdownManager {
 		switch (knitDir) {
 			// the directory containing the R Markdown document
 			case KnitWorkingDirectory.documentDirectory: {
-				return path.dirname(docPath).replace(/\\/g, '/').replace(/['"]/g, '\\"');
+				return path.dirname(docPath)?.replace(/\\/g, '/')?.replace(/['"]/g, '\\"') ?? undefined;
 			}
 			// the root of the current workspace
 			case KnitWorkingDirectory.workspaceRoot: {
 				const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(docPath) ?? vscode.window.activeTextEditor?.document?.uri)?.uri?.fsPath ?? undefined;
-				return currentDocumentWorkspace.replace(/\\/g, '/').replace(/['"]/g, '\\"');
+				return currentDocumentWorkspace?.replace(/\\/g, '/')?.replace(/['"]/g, '\\"') ?? undefined;
 			}
 			// the working directory of the attached terminal, NYI
 			// case 'current directory': {
