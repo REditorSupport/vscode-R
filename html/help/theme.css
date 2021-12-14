@@ -34,21 +34,22 @@ a ~ div.header {
 }
 
 .vscode-light {
-  --rhelp-number: #cb4b16;
-  --rhelp-string: #647400;
-  --rhelp-symbol: #cb4b16;
-  --rhelp-keyword: #2074b1;
-  --rhelp-comment: #727e7e;
-  --rhelp-function: #2074b1;
+    --rhelp-number: #cb4b16;
+    --rhelp-string: #647400;
+    --rhelp-symbol: #cb4b16;
+    --rhelp-keyword: #2074b1;
+    --rhelp-comment: #727e7e;
+    --rhelp-function: #2074b1;
 }
 
-.vscode-dark {
-  --rhelp-number: #b5cea8;
-  --rhelp-string: #CE9178;
-  --rhelp-symbol: #4EC9B0;
-  --rhelp-keyword: #569cd6;
-  --rhelp-comment: #6A9955;
-  --rhelp-function: #DCDCAA;
+.vscode-dark, 
+.vscode-high-contrast {
+    --rhelp-number: #b5cea8;
+    --rhelp-string: #CE9178;
+    --rhelp-symbol: #4EC9B0;
+    --rhelp-keyword: #569cd6;
+    --rhelp-comment: #6A9955;
+    --rhelp-function: #DCDCAA;
 }
 
 .hljs-number {
