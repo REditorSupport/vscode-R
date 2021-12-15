@@ -2,7 +2,7 @@
 import { Memento, window } from 'vscode';
 import * as http from 'http';
 import * as cp from 'child_process';
-import * as kill from 'tree-kill';
+// import * as kill from 'tree-kill';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -40,8 +40,8 @@ export class HelpProvider {
 
     public async refresh(): Promise<void> {
         if (this.cp.running) {
-            // this.cp.kill('SIGKILL');
-            kill(this.cp.pid, 'SIGKILL'); // more reliable than cp.kill (?)
+            this.cp.kill('SIGKILL');
+            // kill(this.cp.pid, 'SIGKILL'); // more reliable than cp.kill (?)
         }
         this.cp = this.launchRHelpServer();
         await this.cp.port;
@@ -55,16 +55,20 @@ export class HelpProvider {
 
         // starts the background help server and waits forever to keep the R process running
         const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
-        const cmd = (
-            `${this.rPath} --silent --slave --no-save --no-restore -f ` +
-            `${scriptPath}`
-        );
+        const args: string[] = [
+            '--silent',
+            '--slave',
+            '--no-save',
+            '--no-restore',
+            '-f',
+            scriptPath
+        ];
         const cpOptions = {
             cwd: this.cwd,
             env: { ...process.env, 'VSCR_LIM': lim }
         };
 
-        const childProcess: ChildProcessWithPort = cp.exec(cmd, cpOptions);
+        const childProcess: ChildProcessWithPort = cp.spawn(this.rPath, args, cpOptions);
         childProcess.running = true;
 
         let str = '';
@@ -175,8 +179,8 @@ export class HelpProvider {
 
     dispose(): void {
         if (this.cp.running) {
-            // this.cp.kill('SIGKILL');
-            kill(this.cp.pid, 'SIGKILL');
+            this.cp.kill('SIGKILL');
+            // kill(this.cp.pid, 'SIGKILL');
         }
     }
 }
