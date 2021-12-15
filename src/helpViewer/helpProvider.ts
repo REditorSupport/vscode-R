@@ -39,8 +39,9 @@ export class HelpProvider {
     }
 
     public async refresh(): Promise<void> {
-        if(this.cp.running){
-            kill(this.cp.pid); // more reliable than cp.kill (?)
+        if (this.cp.running) {
+            // this.cp.kill('SIGKILL');
+            kill(this.cp.pid, 'SIGKILL'); // more reliable than cp.kill (?)
         }
         this.cp = this.launchRHelpServer();
         await this.cp.port;
@@ -173,8 +174,9 @@ export class HelpProvider {
 
 
     dispose(): void {
-        if(this.cp.running){
-            kill(this.cp.pid);
+        if (this.cp.running) {
+            // this.cp.kill('SIGKILL');
+            kill(this.cp.pid, 'SIGKILL');
         }
     }
 }
