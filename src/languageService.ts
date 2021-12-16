@@ -45,7 +45,7 @@ export class LanguageService implements Disposable {
       console.log(`LANG: ${env.LANG}`);
     }
 
-    const options = { cwd: cwd, env: env };
+    const options = { cwd: cwd, env: env, shell: false, detached: false };
     const initArgs: string[] = config.get<string[]>('lsp.args').concat('--quiet', '--slave');
 
     const tcpServerOptions = () => new Promise<ChildProcess | StreamInfo>((resolve, reject) => {

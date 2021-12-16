@@ -65,7 +65,9 @@ export class HelpProvider {
         ];
         const cpOptions = {
             cwd: this.cwd,
-            env: { ...process.env, 'VSCR_LIM': lim }
+            env: { ...process.env, 'VSCR_LIM': lim },
+            shell: false,
+            detached: false,
         };
 
         const childProcess: ChildProcessWithPort = cp.spawn(this.rPath, args, cpOptions);
