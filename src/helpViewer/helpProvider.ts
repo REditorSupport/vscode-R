@@ -285,13 +285,13 @@ export class AliasProvider {
 		const re = new RegExp(`^.*?${lim}(.*)${lim}.*$`, 'ms');
         const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-aliases'));
         const tempFile = path.join(tempDir, 'aliases.json');
-        const cmd = `${this.rPath} --silent --no-save --no-restore --slave -f "${this.rScriptFile}" > "${tempFile}"`;
+        const cmd = `"${this.rPath}" --silent --no-save --no-restore --slave -f "${this.rScriptFile}" > "${tempFile}"`;
 
         let allPackageAliases: undefined | AllPackageAliases = undefined;
         try{
             // execute R script 'getAliases.R'
             // aliases will be written to tempFile
-            cp.execSync(cmd, {cwd: this.cwd});
+            cp.execSync(cmd, { cwd: this.cwd });
 
             // read and parse aliases
             const txt = fs.readFileSync(tempFile, 'utf-8');
