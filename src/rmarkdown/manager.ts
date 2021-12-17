@@ -65,7 +65,15 @@ export abstract class RMarkdownManager {
 				const scriptArgs = args.scriptArgs;
 				const scriptPath = args.scriptPath;
 				const fileName = args.fileName;
-				const cmd = `"${this.rPath}" --silent --slave --no-save --no-restore -f "${scriptPath}"`;
+				// const cmd = `${this.rPath} --silent --slave --no-save --no-restore -f "${scriptPath}"`;
+				const cpArgs = [
+					'--slient',
+					'--slave',
+					'--no-save',
+					'--no-restore',
+					'-f',
+					scriptPath
+				];
 				const processOptions: cp.SpawnOptions = {
 					env: {
 						...process.env,
@@ -76,7 +84,7 @@ export abstract class RMarkdownManager {
 
 				let childProcess: DisposableProcess;
 				try {
-					childProcess = exec(cmd, processOptions, () => {
+					childProcess = exec(this.rPath, cpArgs, processOptions, () => {
 						rMarkdownOutput.appendLine('[VSC-R] terminating R process');
 						printOutput = false;
 					});

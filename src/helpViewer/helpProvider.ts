@@ -51,15 +51,21 @@ export class HelpProvider {
 
         // starts the background help server and waits forever to keep the R process running
         const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
-        const cmd = (
-            `"${this.rPath}" --silent --slave --no-save --no-restore -f "${scriptPath}"`
-        );
+        // const cmd = `${this.rPath} --silent --slave --no-save --no-restore -f "${scriptPath}"`;
+        const args = [
+            '--slient',
+            '--slave',
+            '--no-save',
+            '--no-restore',
+            '-f',
+            scriptPath
+        ];
         const cpOptions = {
             cwd: this.cwd,
             env: { ...process.env, 'VSCR_LIM': lim },
         };
 
-        const childProcess: ChildProcessWithPort = exec(cmd, cpOptions);
+        const childProcess: ChildProcessWithPort = exec(this.rPath, args, cpOptions);
 
         let str = '';
         // promise containing the port number of the process (or 0)
