@@ -2,13 +2,13 @@
 import { Memento, window } from 'vscode';
 import * as http from 'http';
 import * as cp from 'child_process';
-// import * as kill from 'tree-kill';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
+import { DisposableProcess, execCommand } from '../util';
 
 export interface RHelpProviderOptions {
 	// path of the R executable
@@ -19,9 +19,8 @@ export interface RHelpProviderOptions {
     pkgListener?: () => void;
 }
 
-type ChildProcessWithPort = cp.ChildProcess & {
+type ChildProcessWithPort = DisposableProcess & {
     port?: number | Promise<number>;
-    running?: boolean;
 };
 
 // Class to forward help requests to a backgorund R instance that is running a help server
@@ -39,10 +38,7 @@ export class HelpProvider {
     }
 
     public async refresh(): Promise<void> {
-        if (this.cp.running) {
-            this.cp.kill('SIGKILL');
-            // kill(this.cp.pid, 'SIGKILL'); // more reliable than cp.kill (?)
-        }
+        this.cp.dispose();
         this.cp = this.launchRHelpServer();
         await this.cp.port;
     }
@@ -55,23 +51,15 @@ export class HelpProvider {
 
         // starts the background help server and waits forever to keep the R process running
         const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
-        const args: string[] = [
-            '--silent',
-            '--slave',
-            '--no-save',
-            '--no-restore',
-            '-f',
-            scriptPath
-        ];
+        const cmd = (
+            `"${this.rPath}" --silent --slave --no-save --no-restore -f "${scriptPath}"`
+        );
         const cpOptions = {
             cwd: this.cwd,
             env: { ...process.env, 'VSCR_LIM': lim },
-            shell: false,
-            detached: false,
         };
 
-        const childProcess: ChildProcessWithPort = cp.spawn(this.rPath, args, cpOptions);
-        childProcess.running = true;
+        const childProcess: ChildProcessWithPort = execCommand(cmd, cpOptions);
 
         let str = '';
         // promise containing the port number of the process (or 0)
@@ -99,7 +87,6 @@ export class HelpProvider {
         
         const exitHandler = () => {
             childProcess.port = 0;
-            childProcess.running = false;
         };
         childProcess.on('exit', exitHandler);
         childProcess.on('error', exitHandler);
@@ -180,10 +167,7 @@ export class HelpProvider {
 
 
     dispose(): void {
-        if (this.cp.running) {
-            this.cp.kill('SIGKILL');
-            // kill(this.cp.pid, 'SIGKILL');
-        }
+        this.cp.dispose();
     }
 }
 

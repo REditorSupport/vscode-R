@@ -6,10 +6,10 @@ import path = require('path');
 import crypto = require('crypto');
 
 
-import { config, readContent, setContext, escapeHtml, UriIcon, saveDocument, getRpath } from '../util';
+import { config, readContent, setContext, escapeHtml, UriIcon, saveDocument, getRpath, DisposableProcess } from '../util';
 import { extensionContext, tmpDir } from '../extension';
 import { knitDir } from './knit';
-import { DisposableProcess, RMarkdownManager } from './manager';
+import { RMarkdownManager } from './manager';
 
 class RMarkdownPreview extends vscode.Disposable {
     title: string;
@@ -27,7 +27,7 @@ class RMarkdownPreview extends vscode.Disposable {
         resourceViewColumn: vscode.ViewColumn, outputUri: vscode.Uri, filePath: string,
         RMarkdownPreviewManager: RMarkdownPreviewManager, useCodeTheme: boolean, autoRefresh: boolean) {
         super(() => {
-            this.cp?.kill('SIGKILL');
+            this.cp?.dispose();
             this.panel?.dispose();
             this.fileWatcher?.close();
             fs.removeSync(this.outputUri.fsPath);
@@ -271,7 +271,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     public async updatePreview(preview?: RMarkdownPreview): Promise<void> {
         const toUpdate = preview ?? this.activePreview?.preview;
         const previewUri = this.previewStore?.getFilePath(toUpdate);
-        toUpdate?.cp?.kill('SIGKILL');
+        toUpdate?.cp?.dispose();
 
         if (toUpdate) {
             const childProcess: DisposableProcess | void = await this.previewDocument(previewUri, toUpdate.title).catch(() => {
