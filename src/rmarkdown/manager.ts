@@ -2,7 +2,7 @@ import * as util from '../util';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import path = require('path');
-import { DisposableProcess, execCommand } from '../util';
+import { DisposableProcess, exec } from '../util';
 
 export enum KnitWorkingDirectory {
 	documentDirectory = 'document directory',
@@ -76,7 +76,7 @@ export abstract class RMarkdownManager {
 
 				let childProcess: DisposableProcess;
 				try {
-					childProcess = execCommand(cmd, processOptions, () => {
+					childProcess = exec(cmd, processOptions, () => {
 						rMarkdownOutput.appendLine('[VSC-R] terminating R process');
 						printOutput = false;
 					});

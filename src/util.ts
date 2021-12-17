@@ -410,7 +410,7 @@ export function asDisposable<T>(toDispose: T, disposeFunction: (...args: unknown
 }
 
 export type DisposableProcess = cp.ChildProcessWithoutNullStreams & vscode.Disposable;
-export function execCommand(command: string, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
+export function exec(command: string, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
     const proc = cp.exec(command, options);
     let running = true;
     const exitHandler = () => {

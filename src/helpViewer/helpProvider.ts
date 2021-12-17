@@ -8,7 +8,7 @@ import * as os from 'os';
 
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
-import { DisposableProcess, execCommand } from '../util';
+import { DisposableProcess, exec } from '../util';
 
 export interface RHelpProviderOptions {
 	// path of the R executable
@@ -59,7 +59,7 @@ export class HelpProvider {
             env: { ...process.env, 'VSCR_LIM': lim },
         };
 
-        const childProcess: ChildProcessWithPort = execCommand(cmd, cpOptions);
+        const childProcess: ChildProcessWithPort = exec(cmd, cpOptions);
 
         let str = '';
         // promise containing the port number of the process (or 0)
