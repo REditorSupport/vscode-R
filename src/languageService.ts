@@ -66,7 +66,7 @@ export class LanguageService implements Disposable {
       server.listen(0, '127.0.0.1', () => {
         const port = (server.address() as net.AddressInfo).port;
         const expr = debug ? `languageserver::run(port=${port},debug=TRUE)` : `languageserver::run(port=${port})`;
-        const cmd = `"${rPath}" ${initArgs.join(' ')} -e ${expr}`;
+        const cmd = `"${rPath}" ${initArgs.join(' ')} -e "${expr}"`;
         const childProcess = execCommand(cmd, options);
         client.outputChannel.appendLine(`R Language Server (${childProcess.pid}) started`);
         childProcess.stderr.on('data', (chunk: Buffer) => {
