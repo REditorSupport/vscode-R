@@ -2,13 +2,12 @@ import * as util from '../util';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import path = require('path');
+import { DisposableProcess, exec } from '../util';
 
 export enum KnitWorkingDirectory {
 	documentDirectory = 'document directory',
 	workspaceRoot = 'workspace root',
 }
-
-export type DisposableProcess = cp.ChildProcessWithoutNullStreams & vscode.Disposable;
 
 export interface IKnitRejection {
 	cp: DisposableProcess;
@@ -66,14 +65,14 @@ export abstract class RMarkdownManager {
 				const scriptArgs = args.scriptArgs;
 				const scriptPath = args.scriptPath;
 				const fileName = args.fileName;
-
-				const processArgs = [
-					`--silent`,
-					`--slave`,
-					`--no-save`,
-					`--no-restore`,
-					`-f`,
-					`${scriptPath}`
+				// const cmd = `${this.rPath} --silent --slave --no-save --no-restore -f "${scriptPath}"`;
+				const cpArgs = [
+					'--slient',
+					'--slave',
+					'--no-save',
+					'--no-restore',
+					'-f',
+					scriptPath
 				];
 				const processOptions: cp.SpawnOptions = {
 					env: {
@@ -84,21 +83,11 @@ export abstract class RMarkdownManager {
 				};
 
 				let childProcess: DisposableProcess;
-
 				try {
-					childProcess = util.asDisposable(
-						cp.spawn(
-							`${this.rPath}`,
-							processArgs,
-							processOptions
-						),
-						() => {
-							if (childProcess.kill('SIGKILL')) {
-								rMarkdownOutput.appendLine('[VSC-R] terminating R process');
-								printOutput = false;
-							}
-						}
-					);
+					childProcess = exec(this.rPath, cpArgs, processOptions, () => {
+						rMarkdownOutput.appendLine('[VSC-R] terminating R process');
+						printOutput = false;
+					});
 					progress.report({
 						increment: 0,
 						message: '0%'

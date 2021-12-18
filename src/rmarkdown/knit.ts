@@ -4,9 +4,10 @@ import * as fs from 'fs-extra';
 import path = require('path');
 import yaml = require('js-yaml');
 
-import { RMarkdownManager, KnitWorkingDirectory, DisposableProcess } from './manager';
+import { RMarkdownManager, KnitWorkingDirectory } from './manager';
 import { runTextInTerm } from '../rTerminal';
 import { extensionContext, rmdPreviewManager } from '../extension';
+import { DisposableProcess } from '../util';
 
 export let knitDir: KnitWorkingDirectory = util.config().get<KnitWorkingDirectory>('rmarkdown.knit.defaults.knitWorkingDirectory') ?? undefined;
 
