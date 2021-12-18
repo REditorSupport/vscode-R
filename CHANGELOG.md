@@ -4,6 +4,19 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.3.5](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.5)
+
+Enhancements:
+
+* Added `devtools` tasks to command palette. (#880, thanks @alex-gable)
+* Improved help pages readability. (#915, thanks @18kimn)
+
+Fixes:
+
+* Fixed R Markdown knit and preview without opening a workspace folder. (#914)
+* Fixed `DESCRIPTION` syntax highlighting for `Authors@R` field. (#920)
+* Fixed an issue about leaking child processes. All spawned child processes (e.g. help server, language server, R Markdown preview) are cleaned up on exit. (#918)
+
 ## [2.3.4](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.4)
 
 Enhancements:
