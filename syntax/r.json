@@ -560,14 +560,6 @@
                     "name": "punctuation.separator.parameters.r"
                 },
                 {
-                    "end": "\\)",
-                    "endCaptures": {
-                        "0": {
-                            "name": "punctuation.section.parens.end.r"
-                        }
-                    }
-                },
-                {
                     "include": "source.r"
                 }
             ]
