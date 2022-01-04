@@ -562,7 +562,9 @@
                 {
                     "end": "\\)",
                     "endCaptures": {
-                        "0": "punctuation.section.parens.end.r"
+                        "0": {
+                            "name": "punctuation.section.parens.end.r"
+                        }
                     }
                 },
                 {
