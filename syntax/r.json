@@ -208,6 +208,96 @@
         "strings": {
             "patterns": [
                 {
+                    "begin": "[rR]\"(-*)\\[",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.begin.r"
+                        }
+                    },
+                    "end": "\\]\\1\"",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.end.r"
+                        }
+                    },
+                    "name": "string.quoted.double.raw.r"
+                },
+                {
+                    "begin": "[rR]'(-*)\\[",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.begin.r"
+                        }
+                    },
+                    "end": "\\]\\1'",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.end.r"
+                        }
+                    },
+                    "name": "string.quoted.single.raw.r"
+                },
+                {
+                    "begin": "[rR]\"(-*)\\{",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.begin.r"
+                        }
+                    },
+                    "end": "\\}\\1\"",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.end.r"
+                        }
+                    },
+                    "name": "string.quoted.double.raw.r"
+                },
+                {
+                    "begin": "[rR]'(-*)\\{",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.begin.r"
+                        }
+                    },
+                    "end": "\\}\\1'",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.end.r"
+                        }
+                    },
+                    "name": "string.quoted.single.raw.r"
+                },
+                {
+                    "begin": "[rR]\"(-*)\\(",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.begin.r"
+                        }
+                    },
+                    "end": "\\)\\1\"",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.end.r"
+                        }
+                    },
+                    "name": "string.quoted.double.raw.r"
+                },
+                {
+                    "begin": "[rR]'(-*)\\(",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.begin.r"
+                        }
+                    },
+                    "end": "\\)\\1'",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.end.r"
+                        }
+                    },
+                    "name": "string.quoted.single.raw.r"
+                },
+                {
                     "begin": "\"",
                     "beginCaptures": {
                         "0": {
@@ -246,6 +336,27 @@
                         {
                             "match": "\\\\.",
                             "name": "constant.character.escape.r"
+                        }
+                    ]
+                },
+                {
+                    "begin": "`",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.r"
+                        }
+                    },
+                    "end": "`",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.r"
+                        }
+                    },
+                    "name": "variable.parameter.r",
+                    "patterns": [
+                        {
+                            "match": "\\\\.",
+                            "name": "variable.parameter.r"
                         }
                     ]
                 }
@@ -462,7 +573,7 @@
         "roxygen": {
             "patterns": [
                 {
-                    "begin": "^(#')\\s*",
+                    "begin": "^\\s*(#')\\s*",
                     "beginCaptures": {
                         "1": {
                             "name": "punctuation.definition.comment.r"

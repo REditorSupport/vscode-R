@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import { RHelp } from '.';
+import { doWithProgress } from '../util';
 import { Package, Topic, TopicType } from './packages';
 
 // this enum is re-assigned just for code readability
@@ -73,6 +74,10 @@ export class HelpTreeWrapper {
         for(const listener of this.helpViewProvider.listeners){
             listener(node);
         }
+    }
+    
+    public refreshPackageRootNode(): void {
+        this.helpViewProvider.rootItem?.pkgRootNode?.refresh();
     }
 }
 
@@ -164,7 +169,7 @@ abstract class Node extends vscode.TreeItem{
     // Only internal commands are handled here, custom commands are implemented in _handleCommand!
     public handleCommand(cmd: cmdName){
         if(cmd === 'CALLBACK' && this.callBack){
-            this.callBack();
+            void this.callBack();
         } else if(cmd === 'QUICKPICK'){
             if(this.quickPickCommand){
                 this._handleCommand(this.quickPickCommand);
@@ -186,7 +191,7 @@ abstract class Node extends vscode.TreeItem{
 
     // implement this to handle callBacks (simple clicks on a node)
     // can also be implemented in _handleCommand('CALLBACK')
-    public callBack?(): void;
+    public callBack?(): void | Promise<void>;
 
     // Shows a quickpick containing the children of a node
     // If the picked child has children itself, another quickpick is shown
@@ -577,11 +582,11 @@ class Search2Node extends MetaNode {
 
 class RefreshNode extends MetaNode {
     parent: RootNode;
-	label = 'Clear Cached Index Files & Restart Help Server';
+	label = 'Clear Cache & Restart Help Server';
     iconPath = new vscode.ThemeIcon('refresh');
 
-    callBack(){
-        this.rHelp.refresh();
+    async callBack(){
+        await doWithProgress(() => this.rHelp.refresh());
         this.parent.pkgRootNode.refresh();
     }
 }

@@ -4,9 +4,10 @@ import * as fs from 'fs-extra';
 import path = require('path');
 import yaml = require('js-yaml');
 
-import { RMarkdownManager, KnitWorkingDirectory, DisposableProcess } from './manager';
+import { RMarkdownManager, KnitWorkingDirectory } from './manager';
 import { runTextInTerm } from '../rTerminal';
 import { extensionContext, rmdPreviewManager } from '../extension';
+import { DisposableProcess } from '../util';
 
 export let knitDir: KnitWorkingDirectory = util.config().get<KnitWorkingDirectory>('rmarkdown.knit.defaults.knitWorkingDirectory') ?? undefined;
 
@@ -29,11 +30,11 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 	private async renderDocument(rDocumentPath: string, docPath: string, docName: string, yamlParams: IYamlFrontmatter, outputFormat?: string): Promise<DisposableProcess> {
 		const openOutfile: boolean = util.config().get<boolean>('rmarkdown.knit.openOutputFile') ?? false;
 		const knitWorkingDir = this.getKnitDir(knitDir, docPath);
-		const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : `NULL`;
+		const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : '';
 		const knitCommand = await this.getKnitCommand(yamlParams, rDocumentPath, outputFormat);
 		this.rPath = await util.getRpath();
 
-		const lim = '---vsc---';
+		const lim = '<<<vsc>>>';
 		const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'gms');
 		const scriptValues = {
 			'VSCR_KNIT_DIR': knitWorkingDirText,
@@ -64,6 +65,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 		return await this.knitWithProgress(
 			{
+				workingDirectory: knitWorkingDir,
 				fileName: docName,
 				filePath: rDocumentPath,
 				scriptArgs: scriptValues,
@@ -77,16 +79,37 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 	}
 
 	private getYamlFrontmatter(docPath: string): IYamlFrontmatter {
-		const parseData = fs.readFileSync(docPath, 'utf8');
-		const yamlDat = /(?<=(---)).*(?=(---))/gs.exec(
-			parseData
-		);
+		const text = fs.readFileSync(docPath, 'utf8');
+		const lines = text.split('\n');
+		let startLine = -1;
+		let endLine = -1;
+		for (let i = 0; i < lines.length; i++) {
+			if (/\S/.test(lines[i])) {
+				if (startLine < 0) {
+					if (lines[i].startsWith('---')) {
+						startLine = i;
+					} else {
+						break;
+					}
+				} else {
+					if (lines[i].startsWith('---')) {
+						endLine = i;
+						break;
+					}
+				}
+			}
+		}
+
+		let yamlText = undefined;
+		if (startLine + 1 < endLine) {
+			yamlText = lines.slice(startLine + 1, endLine).join('\n');
+		}
 
 		let paramObj = {};
-		if (yamlDat) {
+		if (yamlText) {
 			try {
 				paramObj = yaml.load(
-					yamlDat[0]
+					yamlText
 				);
 			} catch (e) {
 				console.error(`Could not parse YAML frontmatter for "${docPath}". Error: ${String(e)}`);
@@ -104,20 +127,21 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		}
 
 		// precedence:
-		// knit > site > none
+		// knit > site > configuration
 		if (yamlParams?.['knit']) {
 			const knitParam = yamlParams['knit'];
 			knitCommand = outputFormat ?
-				`${knitParam}(${docPath}, output_format = '${outputFormat}')`:
+				`${knitParam}(${docPath}, output_format = '${outputFormat}')` :
 				`${knitParam}(${docPath})`;
 		} else if (!this.isREADME(docPath) && yamlParams?.['site']) {
 			knitCommand = outputFormat ?
 				`rmarkdown::render_site(${docPath}, output_format = '${outputFormat}')` :
 				`rmarkdown::render_site(${docPath})`;
 		} else {
+			const cmd = util.config().get<string>('rmarkdown.knit.command');
 			knitCommand = outputFormat ?
-				`rmarkdown::render(${docPath}, output_format = '${outputFormat}')` :
-				`rmarkdown::render(${docPath})`;
+				`${cmd}(${docPath}, output_format = '${outputFormat}')` :
+				`${cmd}(${docPath})`;
 		}
 
 		return knitCommand.replace(/['"]/g, '\'');
@@ -126,16 +150,16 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 	// check if the workspace of the document is a R Markdown site.
 	// the definition of what constitutes an R Markdown site differs
 	// depending on the type of R Markdown site (i.e., "simple" vs. blogdown sites)
-	private async findSiteParam(): Promise<string|undefined> {
-		const rootFolder = vscode.workspace.workspaceFolders[0].uri.fsPath;
+	private async findSiteParam(): Promise<string | undefined> {
 		const wad = vscode.window.activeTextEditor.document.uri.fsPath;
+		const rootFolder = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? path.dirname(wad);
 		const indexFile = (await vscode.workspace.findFiles(new vscode.RelativePattern(rootFolder, 'index.{Rmd,rmd, md}'), null, 1))?.[0];
 		const siteRoot = path.join(path.dirname(wad), '_site.yml');
 
 		// 'Simple' R Markdown websites require all docs to be in the root folder
 		if (fs.existsSync(siteRoot)) {
 			return 'rmarkdown::render_site';
-		// Other generators may allow for docs in subdirs
+			// Other generators may allow for docs in subdirs
 		} else if (indexFile) {
 			const indexData = this.getYamlFrontmatter(indexFile.fsPath);
 			if (indexData?.['site']) {

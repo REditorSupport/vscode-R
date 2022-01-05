@@ -32,7 +32,7 @@ Yes / No
 
 (If related)setting.json
 
-```json
+```jsonc
 // R.exe path for windows
 "r.rterm.windows": "",
 

@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "R Extension for Visual Studio Code",
-  "version": "2.3.0",
+  "version": "2.3.5",
   "author": "REditorSupport",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "Ikuyadeu",
@@ -61,10 +61,20 @@
     "onCommand:r.helpPanel.back",
     "onCommand:r.helpPanel.forward",
     "onCommand:r.helpPanel.openForSelection",
-    "onWebviewPanel:rhelp"
+    "onCommand:r.plot.openUrl",
+    "onWebviewPanel:rhelp",
+    "onTerminalProfile:r.terminal-profile"
   ],
   "main": "./out/extension",
   "contributes": {
+    "terminal": {
+      "profiles": [
+        {
+          "title": "R Terminal",
+          "id": "r.terminal-profile"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -413,28 +423,33 @@
       },
       {
         "title": "Load All",
-        "category": "R",
+        "category": "R Package",
         "command": "r.loadAll"
       },
       {
-        "title": "Test Package",
-        "category": "R",
-        "command": "r.test"
-      },
-      {
-        "title": "Install Package",
-        "category": "R",
-        "command": "r.install"
-      },
-      {
-        "title": "Build Package",
-        "category": "R",
+        "title": "Build",
+        "category": "R Package",
         "command": "r.build"
       },
       {
+        "title": "Check",
+        "category": "R Package",
+        "command": "r.check"
+      },
+      {
         "title": "Document",
-        "category": "R",
+        "category": "R Package",
         "command": "r.document"
+      },
+      {
+        "title": "Install",
+        "category": "R Package",
+        "command": "r.install"
+      },
+      {
+        "title": "Test",
+        "category": "R Package",
+        "command": "r.test"
       },
       {
         "title": "Attach Active Terminal",
@@ -1316,6 +1331,11 @@
           "default": false,
           "markdownDescription": "Should the output file be opened automatically when using knit?\n\nRequires `#r.rmarkdown.knit.useBackgroundProcess#` to be set to `true`."
         },
+        "r.rmarkdown.knit.command": {
+          "type": "string",
+          "default": "rmarkdown::render",
+          "markdownDescription": "Command used to knit a Rmd file if not specified by the frontmatter."
+        },
         "r.rmarkdown.knit.defaults.knitWorkingDirectory": {
           "type": "string",
           "default": "document directory",
@@ -1349,7 +1369,7 @@
             "Store on a per workspace basis",
             "Store globally"
           ],
-          "default": "Global"
+          "default": "None"
         },
         "r.helpPanel.rpath": {
           "type": "string",
@@ -1403,17 +1423,24 @@
           "default": 2000,
           "markdownDescription": "The upper limit of object length to show object details in workspace viewer and provide session symbol completion. Decrease this value if you experience significant delay after executing R commands caused by large global objects with many elements. Changes the option `vsc.object_length_limit` in R. Requires `#r.sessionWatcher#` to be set to `true`."
         },
+        "r.session.objectTimeout": {
+          "type": "integer",
+          "default": 50,
+          "markdownDescription": "The maximum number of milliseconds to get information of a single object in the global environment. Decrease this value if you experience significant delay after executing R commands caused by large global objects with many elements. Changes the option `vsc.object_timeout` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+        },
         "r.session.levelOfObjectDetail": {
           "type": "string",
           "markdownDescription": "How much of the object to show on hover, autocompletion, and in the workspace viewer? Changes the option `vsc.str.max.level` in R. Requires `#r.sessionWatcher#` to be set to `true`.",
           "default": "Minimal",
           "enum": [
             "Minimal",
+            "Normal",
             "Detailed"
           ],
           "enumDescriptions": [
             "Display literal values and object types only.",
-            "Display list content, data frame column values, and example values."
+            "Display the top level of list content, data frame column values, and example values.",
+            "Display the top two levels of list content, data frame column values, and example values. This option may cause notable delay after each user input in the terminal."
           ]
         },
         "r.session.emulateRStudioAPI": {
@@ -1692,6 +1719,7 @@
     "ejs": "^3.1.6",
     "fs-extra": "^10.0.0",
     "highlight.js": "^10.7.3",
+    "httpgd": "^0.1.6",
     "jquery": "^3.6.0",
     "jquery.json-viewer": "^1.4.0",
     "js-yaml": "^4.1.0",

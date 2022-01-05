@@ -6,10 +6,10 @@ import path = require('path');
 import crypto = require('crypto');
 
 
-import { config, readContent, setContext, escapeHtml, UriIcon, saveDocument, getRpath } from '../util';
+import { config, readContent, setContext, escapeHtml, UriIcon, saveDocument, getRpath, DisposableProcess } from '../util';
 import { extensionContext, tmpDir } from '../extension';
 import { knitDir } from './knit';
-import { DisposableProcess, RMarkdownManager } from './manager';
+import { RMarkdownManager } from './manager';
 
 class RMarkdownPreview extends vscode.Disposable {
     title: string;
@@ -27,7 +27,7 @@ class RMarkdownPreview extends vscode.Disposable {
         resourceViewColumn: vscode.ViewColumn, outputUri: vscode.Uri, filePath: string,
         RMarkdownPreviewManager: RMarkdownPreviewManager, useCodeTheme: boolean, autoRefresh: boolean) {
         super(() => {
-            this.cp?.kill('SIGKILL');
+            this.cp?.dispose();
             this.panel?.dispose();
             this.fileWatcher?.close();
             fs.removeSync(this.outputUri.fsPath);
@@ -86,10 +86,16 @@ class RMarkdownPreview extends vscode.Disposable {
         this.htmlLightContent = $.html();
 
         // make the output chunks a little lighter to stand out
-        const chunkCol = String(config().get('rmarkdown.chunkBackgroundColor'));
-        const colReg = /[0-9.]+/g;
-        const regOut = chunkCol.match(colReg);
-        const outCol = `rgba(${regOut[0] ?? 100}, ${regOut[1] ?? 100}, ${regOut[2] ?? 100}, ${Number(regOut[3]) + 0.05 ?? .5})`;
+        let chunkCol = String(config().get('rmarkdown.chunkBackgroundColor'));
+        let outCol: string;
+        if (chunkCol) {
+            const colReg = /[0-9.]+/g;
+            const regOut = chunkCol.match(colReg);
+            outCol = `rgba(${regOut[0] ?? 128}, ${regOut[1] ?? 128}, ${regOut[2] ?? 128}, ${Math.max(0, Number(regOut[3] ?? 0.1) - 0.05)})`;
+        } else {
+            chunkCol = 'rgba(128, 128, 128, 0.1)';
+            outCol = 'rgba(128, 128, 128, 0.05)';
+        }
 
         const style =
             `<style>
@@ -248,7 +254,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     // (e.g., is an unopened tab)
     public async showSource(): Promise<void> {
         if (this.activePreview?.filePath) {
-            await vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(this.activePreview.filePath), {
+            await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(this.activePreview.filePath), {
                 preserveFocus: false,
                 preview: false,
                 viewColumn: this.activePreview?.preview?.resourceViewColumn ?? this.activePreview?.preview?.panel.viewColumn ?? vscode.ViewColumn.Active
@@ -265,7 +271,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     public async updatePreview(preview?: RMarkdownPreview): Promise<void> {
         const toUpdate = preview ?? this.activePreview?.preview;
         const previewUri = this.previewStore?.getFilePath(toUpdate);
-        toUpdate?.cp?.kill('SIGKILL');
+        toUpdate?.cp?.dispose();
 
         if (toUpdate) {
             const childProcess: DisposableProcess | void = await this.previewDocument(previewUri, toUpdate.title).catch(() => {
@@ -285,14 +291,14 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
 
     private async previewDocument(filePath: string, fileName?: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn): Promise<DisposableProcess> {
         const knitWorkingDir = this.getKnitDir(knitDir, filePath);
-        const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : `NULL`;
+        const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : '';
         this.rPath = await getRpath();
 
-        const lim = '---vsc---';
+        const lim = '<<<vsc>>>';
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
         const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
         const scriptValues = {
-            'VSCR_KNIT_DIR' : knitWorkingDirText,
+            'VSCR_KNIT_DIR': knitWorkingDirText,
             'VSCR_LIM': lim,
             'VSCR_FILE_PATH': filePath.replace(/\\/g, '/'),
             'VSCR_OUTPUT_FILE': outputFile.replace(/\\/g, '/'),
@@ -306,7 +312,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
                 if (viewer !== undefined) {
                     const autoRefresh = config().get<boolean>('rmarkdown.preview.autoRefresh');
                     void this.openPreview(
-                        vscode.Uri.parse(outputUrl),
+                        vscode.Uri.file(outputUrl),
                         filePath,
                         fileName,
                         childProcess,
@@ -328,6 +334,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
 
         return await this.knitWithProgress(
             {
+                workingDirectory: knitWorkingDir,
                 fileName: fileName,
                 filePath: filePath,
                 scriptPath: extensionContext.asAbsolutePath('R/rmarkdown/preview.R'),

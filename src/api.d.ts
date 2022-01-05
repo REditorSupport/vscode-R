@@ -11,7 +11,6 @@ export declare class RExtension {
 export type HelpSubMenu = 'doc' | 'pkgList' | 'refresh' | '?' | '??';
 
 export interface HelpPanel {
-	showHelpMenu(): void;
 	showHelpForPath(requestPath?: string): void;
 	dispose(): void;
 	refresh(): void;

@@ -11,9 +11,10 @@ import { docProvider, docScheme } from './virtualDocs';
 
 // Workspace Vars
 let guestPid: string;
-let guestPlotView: string;
 export let guestGlobalenv: unknown;
 export let guestResDir: string;
+let rVer: string;
+let info: IRequest['info'];
 
 // Browser Vars
 // Used to keep track of shared browsers
@@ -37,6 +38,12 @@ interface IRequest {
     requestPath?: string;
     uuid?: number;
     tempdir?: string;
+    version?: string;
+    info?: {
+        version: string,
+        command: string,
+        start_time: string
+    };
 }
 
 export function initGuest(context: vscode.ExtensionContext): void {
@@ -45,7 +52,7 @@ export function initGuest(context: vscode.ExtensionContext): void {
     const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
     sessionStatusBarItem.command = 'r.attachActiveGuest';
     sessionStatusBarItem.text = 'Guest R: (not attached)';
-    sessionStatusBarItem.tooltip = 'Attach to Host Terminal';
+    sessionStatusBarItem.tooltip = 'Click to attach to host terminal';
     sessionStatusBarItem.show();
     context.subscriptions.push(
         sessionStatusBarItem,
@@ -58,6 +65,7 @@ export function initGuest(context: vscode.ExtensionContext): void {
 export function detachGuest(): void {
     console.info('[Guest Service] detach guest from workspace');
     sessionStatusBarItem.text = 'Guest R: (not attached)';
+    sessionStatusBarItem.tooltip = 'Click to attach to host terminal';
     guestGlobalenv = undefined;
     rWorkspace?.refresh();
 }
@@ -94,10 +102,9 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                     }
                     case 'attach': {
                         guestPid = String(request.pid);
-                        guestPlotView = String(request.plot);
                         console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
-                        sessionStatusBarItem.text = `Guest R: ${guestPid}`;
-                        sessionStatusBarItem.show();
+                        sessionStatusBarItem.text = `Guest R ${rVer}: ${guestPid}`;
+                        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${guestPid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to host terminal.`;
                         break;
                     }
                     case 'browser': {
@@ -124,9 +131,12 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
             }
         } else {
             guestPid = String(request.pid);
-            guestPlotView = String(request.plot);
+            rVer = String(request.version);
+            info = request.info;
+
             console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
-            sessionStatusBarItem.text = `Guest R: ${guestPid}`;
+            sessionStatusBarItem.text = `Guest R ${rVer}: ${guestPid}`;
+            sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${guestPid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to host terminal.`;
             sessionStatusBarItem.show();
         }
     }
@@ -146,16 +156,17 @@ export function updateGuestGlobalenv(hostEnv: string): void {
 let panel: vscode.WebviewPanel = undefined;
 export async function updateGuestPlot(file: string): Promise<void> {
     const plotContent = await readContent(file, 'base64');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const guestPlotView: vscode.ViewColumn = vscode.ViewColumn[config().get<string>('session.viewers.viewColumn.plot')];
     if (plotContent) {
         if (panel) {
             panel.webview.html = getGuestImageHtml(plotContent);
-            panel.reveal(vscode.ViewColumn[guestPlotView], true);
+            panel.reveal(guestPlotView, true);
         } else {
             panel = vscode.window.createWebviewPanel('dataview', 'R Guest Plot',
                 {
                     preserveFocus: true,
-                    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-                    viewColumn: vscode.ViewColumn[guestPlotView],
+                    viewColumn: guestPlotView,
                 },
                 {
                     enableScripts: true,

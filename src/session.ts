@@ -25,11 +25,12 @@ let requestTimeStamp: number;
 let responseTimeStamp: number;
 export let sessionDir: string;
 export let workingDir: string;
+let rVer: string;
 let pid: string;
+let info: any;
 export let globalenvFile: string;
 let globalenvLockFile: string;
 let globalenvTimeStamp: number;
-let plotView: string;
 let plotFile: string;
 let plotLockFile: string;
 let plotTimeStamp: number;
@@ -161,7 +162,7 @@ async function updatePlot() {
             void commands.executeCommand('vscode.open', Uri.file(plotFile), {
                 preserveFocus: true,
                 preview: true,
-                viewColumn: ViewColumn[plotView],
+                viewColumn: ViewColumn[config().get<string>('session.viewers.viewColumn.plot')],
             });
             console.info('[updatePlot] Done');
             if (isLiveShare()) {
@@ -283,7 +284,7 @@ export function openExternalBrowser(): void {
 export async function showWebView(file: string, title: string, viewer: string | boolean): Promise<void> {
     console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
     if (viewer === false) {
-        void env.openExternal(Uri.parse(file));
+        void env.openExternal(Uri.file(file));
     } else {
         const dir = path.dirname(file);
         const webviewDir = extensionContext.asAbsolutePath('html/session/webview/');
@@ -632,7 +633,7 @@ export async function getWebviewHtml(webview: Webview, file: string, title: stri
         upgrade-insecure-requests;
         default-src https: data: filesystem:;
         style-src https: data: filesystem: 'unsafe-inline';
-        script-src https: data: filesystem: 'unsafe-inline';
+        script-src https: data: filesystem: 'unsafe-inline' 'unsafe-eval';
     `;
 
     return `
@@ -660,13 +661,21 @@ export async function getWebviewHtml(webview: Webview, file: string, title: stri
 
 function isFromWorkspace(dir: string) {
     if (workspace.workspaceFolders === undefined) {
-        const rel = path.relative(os.homedir(), dir);
+        let rel = path.relative(os.homedir(), dir);
+        if (rel === '') {
+            return true;
+        }
+        rel = path.relative(fs.realpathSync(os.homedir()), dir);
         if (rel === '') {
             return true;
         }
     } else {
         for (const folder of workspace.workspaceFolders) {
-            const rel = path.relative(folder.uri.fsPath, dir);
+            let rel = path.relative(folder.uri.fsPath, dir);
+            if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+                return true;
+            }
+            rel = path.relative(fs.realpathSync(folder.uri.fsPath), dir);
             if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
                 return true;
             }
@@ -725,15 +734,20 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         break;
                     }
                     case 'attach': {
+                        rVer = String(request.version);
                         pid = String(request.pid);
+                        info = request.info;
                         sessionDir = path.join(request.tempdir, 'vscode-R');
                         workingDir = request.wd;
-                        plotView = String(request.plot);
                         console.info(`[updateRequest] attach PID: ${pid}`);
-                        sessionStatusBarItem.text = `R: ${pid}`;
+                        sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
+                        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
                         purgeAddinPickerItems();
+                        if (request.plot_url) {
+                            globalHttpgdManager?.showViewer(request.plot_url);
+                        }
                         break;
                     }
                     case 'browser': {

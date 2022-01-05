@@ -1,12 +1,11 @@
 
 import * as cheerio from 'cheerio';
-import * as https from 'https';
-import * as http from 'http';
 import * as vscode from 'vscode';
 
 import { RHelp } from '.';
 import { getRpath, getConfirmation, executeAsTask, doWithProgress, getCranUrl } from '../util';
 import { AliasProvider } from './helpProvider';
+import { getPackagesFromCran } from './cran';
 
 
 // This file implements a rudimentary 'package manager'
@@ -61,24 +60,14 @@ export interface Package {
     isCran?: boolean;
     isInstalled?: boolean;
 }
-export interface CranPackage extends Package {
-    href: string;
-    date: string;
-    isCran: true;
-}
-export interface InstalledPackage extends Package {
-    isInstalled: true;
-}
 
-
-// used to store package info parsed from /doc/html/00Index.html and /library/.../html/index.html
-export interface IndexFileEntry {
+export interface IndexEntry {
     name: string;
     description: string;
     href?: string;
 }
 
-type CachedIndexFiles = {path: string, items: IndexFileEntry[] | null}[];
+type CachedIndexFiles = {path: string, items: IndexEntry[] | undefined}[];
 
 
 export interface PackageManagerOptions {
@@ -99,10 +88,10 @@ export class PackageManager {
 
     readonly cwd?: string;
 
-    protected cranUrl?: string;
-
     // names of packages to be highlighted in the package list
-    public favoriteNames: string[] = [];
+    // public favoriteNames: string[] = [];
+    
+    public favoriteNames: Set<string> = new Set();
 
 
     constructor(args: PackageManagerOptions){
@@ -114,10 +103,9 @@ export class PackageManager {
 
     // Functions to force a refresh of listed packages
     // Useful e.g. after installing/removing packages
-    public refresh(): void {
-        this.cranUrl = undefined;
+    public async refresh(): Promise<void> {
+        await this.clearCachedFiles();
         this.pullFavoriteNames();
-        void this.clearCachedFiles();
     }
 
     // Funciton to clear only the cached files regarding an individual package etc.
@@ -138,24 +126,19 @@ export class PackageManager {
     // Function to add/remove packages from favorites
     public addFavorite(pkgName: string): string[] {
         this.pullFavoriteNames();
-        if(pkgName && this.favoriteNames.indexOf(pkgName) === -1){
-            this.favoriteNames.push(pkgName);
-        }
+        this.favoriteNames.add(pkgName);
         this.pushFavoriteNames();
-        return this.favoriteNames;
+        return [...this.favoriteNames.values()];
     }
     public removeFavorite(pkgName: string): string[] {
         this.pullFavoriteNames();
-        const ind = this.favoriteNames.indexOf(pkgName);
-        if(ind>=0){
-            this.favoriteNames.splice(ind, 1);
-        }
+        this.favoriteNames.delete(pkgName);
         this.pushFavoriteNames();
-        return this.favoriteNames;
+        return [...this.favoriteNames.values()];
     }
 
     // return the index file if cached, else undefined
-    private getCachedIndexFile(path: string){
+    private getCachedIndexFile(path: string): IndexEntry[] | undefined {
         const cache = this.state.get<CachedIndexFiles>('r.helpPanel.cachedIndexFiles', []);
         const ind = cache.findIndex(v => v.path === path);
         if(ind < 0){
@@ -166,7 +149,7 @@ export class PackageManager {
     }
 
     // Save a new file to the cache (or update existing entry)
-    private async updateCachedIndexFile(path: string, items: IndexFileEntry[] | null){
+    private async updateCachedIndexFile(path: string, items: IndexEntry[] | undefined): Promise<void>{
         const cache = this.state.get<CachedIndexFiles>('r.helpPanel.cachedIndexFiles', []);
         const ind = cache.findIndex(v => v.path === path);
         if(ind < 0){
@@ -184,20 +167,24 @@ export class PackageManager {
     // Is used frequently when list of favorites is shared globally to sync between sessions
     private pullFavoriteNames(){
         if(this.state){
-            this.favoriteNames = this.state.get('r.helpPanel.favoriteNames') || this.favoriteNames;
+            this.favoriteNames = this.state.get('r.helpPanel.favoriteNamesSet') || this.favoriteNames;
         }
     }
     private pushFavoriteNames(){
         if(this.state){
-            void this.state.update('r.helpPanel.favoriteNames', this.favoriteNames);
+            void this.state.update('r.helpPanel.favoriteNamesSet', this.favoriteNames);
         }
     }
 
     // let the user pick and install a package from CRAN 
     public async pickAndInstallPackages(pickMany: boolean = false): Promise<boolean> {
-        const pkgs = await this.pickPackages('Please selecte a package.', true, pickMany);
-        if(pkgs?.length >= 1){
-            const pkgsConfirmed = await this.confirmPackages('Are you sure you want to install these packages?', pkgs);
+        const packages = await doWithProgress(() => this.getPackages(true));
+        if(!packages?.length){
+            return false;
+        }
+        const pkgs = await pickPackages(packages, 'Please selecte a package.', pickMany);
+        if(pkgs?.length){
+            const pkgsConfirmed = await confirmPackages('Are you sure you want to install these packages?', pkgs);
             if(pkgsConfirmed?.length){
                 const names = pkgsConfirmed.map(v => v.name);
                 return await this.installPackages(names, true);
@@ -215,7 +202,7 @@ export class PackageManager {
         const prompt = `Are you sure you want to remove package ${pkgName}?`;
 
         if(await getConfirmation(prompt, confirmation, cmd)){
-            await executeAsTask('Remove Package', rPath, args);
+            await executeAsTask('Remove Package', rPath, args, true);
             return true;
         } else{
             return false;
@@ -234,7 +221,7 @@ export class PackageManager {
         const prompt = `Are you sure you want to install package${pluralS}: ${pkgNames.join(', ')}?`;
 
         if(skipConfirmation || await getConfirmation(prompt, confirmation, cmd)){
-            await executeAsTask('Install Package', rPath, args);
+            await executeAsTask('Install Package', rPath, args, true);
             return true;
         }
         return false;
@@ -249,7 +236,7 @@ export class PackageManager {
         const prompt = 'Are you sure you want to update all installed packages? This might take some time!';
 
         if(skipConfirmation || await getConfirmation(prompt, confirmation, cmd)){
-            await executeAsTask('Update Packages', rPath, args);
+            await executeAsTask('Update Packages', rPath, args, true);
             return true;
         } else{
             return false;
@@ -260,25 +247,24 @@ export class PackageManager {
         let packages: Package[]|undefined;
         this.pullFavoriteNames();
         if(fromCran){
-            const cranPath = 'web/packages/available_packages_by_date.html';
-            try{
-                this.cranUrl ||= await getCranUrl(cranPath, this.cwd);
-                packages = await this.getParsedCranFile(this.cranUrl);
-            } catch(e){
-                packages = undefined;
-            }
-            if(!packages || packages.length === 0){
-                void vscode.window.showErrorMessage(`Failed to parse CRAN file from ${this.cranUrl || cranPath}`);
+            // Use a placeholder, since multiple different urls are attempted
+            const CRAN_PATH_PLACEHOLDER = 'CRAN_PATH_PLACEHOLDER';
+
+            packages = this.getCachedIndexFile(CRAN_PATH_PLACEHOLDER);
+            if(!packages?.length){
+                const cranUrl = await getCranUrl('', this.cwd);
+                packages = await getPackagesFromCran(cranUrl);
+                await this.updateCachedIndexFile(CRAN_PATH_PLACEHOLDER, packages);
             }
         } else{
             packages = await this.getParsedIndexFile(`/doc/html/packages.html`);
-            if(!packages || packages.length === 0){
+            if(!packages?.length){
                 void vscode.window.showErrorMessage('Help provider not available!');
             }
         }
         if(packages){
             for(const pkg of packages){
-                pkg.isFavorite = this.favoriteNames.includes(pkg.name);
+                pkg.isFavorite = this.favoriteNames.has(pkg.name);
                 pkg.helpPath = (
                     pkg.name === 'doc' ?
                     '/doc/html/packages.html' :
@@ -289,77 +275,6 @@ export class PackageManager {
         return packages;
     }
 
-    // Used to let the user confirm their choice when installing/removing packages
-    public async confirmPackages(placeHolder: string, packages: Package[]): Promise<Package[]> {
-        const qpItems: (vscode.QuickPickItem & {package: Package})[] = packages.map(pkg => ({
-            label: pkg.name,
-            detail: pkg.description,
-            package: pkg,
-            picked: true
-        }));
-        const qpOptions: vscode.QuickPickOptions = {
-            matchOnDescription: true,
-            matchOnDetail: true,
-            placeHolder: placeHolder
-        };
-        const qp = await vscode.window.showQuickPick(qpItems, {...qpOptions, canPickMany: true});
-        const ret = qp?.map(v => v.package) || [];
-        return ret;
-    }
-
-    // Let the user pick a package, either from local installation or CRAN
-    public async pickPackages(placeHolder: string, fromCran: boolean = false, pickMany: boolean = false): Promise<Package[]|undefined> {
-        const packages = await doWithProgress(() => this.getPackages(fromCran));
-
-		if(!packages || packages.length === 0){
-			return undefined;
-		}
-
-        const qpItems: (vscode.QuickPickItem & {package: Package})[] = packages.map(pkg => ({
-            label: pkg.name,
-            detail: pkg.description,
-            package: pkg
-        }));
-
-        const qpOptions: vscode.QuickPickOptions = {
-            matchOnDescription: true,
-            matchOnDetail: true,
-            placeHolder: placeHolder
-        };
-        let ret: Package | Package[] | undefined;
-        if(pickMany){
-            const qp = await vscode.window.showQuickPick(qpItems, {...qpOptions, canPickMany: true});
-            ret = qp?.map(v => v.package);
-        } else{
-            const qp = await vscode.window.showQuickPick(qpItems, qpOptions);
-            ret = (qp ? [qp.package] : undefined);
-        }
-        
-        return ret;
-    }
-
-    // let the user pick a help topic from a package
-    public async pickTopic(pkgName: string, placeHolder: string = '', summarize: boolean = false): Promise<Topic|undefined> {
-
-        const topics = await this.getTopics(pkgName, summarize);
-
-        if(!topics){
-            return undefined;
-        }
-
-        const qpItems: (vscode.QuickPickItem & {topic: Topic})[] = topics.map(topic => ({
-            label: topic.name,
-            description: topic.description,
-            topic: topic
-        }));
-
-        const qp = await vscode.window.showQuickPick(qpItems, {
-            placeHolder: placeHolder,
-            matchOnDescription: true
-        });
-
-        return qp?.topic;
-    }
 
     // parses a package's index file to produce a list of help topics
     // highlights ths 'home' topic and adds entries for the package index and DESCRIPTION file
@@ -422,7 +337,7 @@ export class PackageManager {
             }
         }
 
-        const ret = (summarize ? this.summarizeTopics(topics) : topics);
+        const ret = (summarize ? summarizeTopics(topics) : topics);
 
         ret.sort((a, b) => {
             if(a.type === b.type){
@@ -435,183 +350,147 @@ export class PackageManager {
         return ret;
     }
 
-    // Used to summarize index-entries that point to the same help file
-    public summarizeTopics(topics: Topic[]): Topic[] {
-        const topicMap = new Map<string, Topic>();
-        for(const topic of topics){
-            if(topicMap.has(topic.helpPath)){
-                // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-                const newTopic = <Topic>topicMap.get(topic.helpPath); // checked above that key is present
-                if(newTopic.aliases){
-                    newTopic.aliases.push(topic.name);
-                }
-                // newTopic.topicType ||= topic.topicType;
-                newTopic.type = (newTopic.type === TopicType.NORMAL ? topic.type : newTopic.type);
-            } else{
-                const newTopic: Topic = {
-                    ...topic,
-                    isGrouped: true
-                };
-                if(newTopic.type === TopicType.NORMAL && newTopic.description){
-                    newTopic.aliases = [newTopic.name];
-                    [newTopic.name, newTopic.description] = [newTopic.description, newTopic.name];
-                }
-                topicMap.set(newTopic.helpPath, newTopic);
-            }
-        }
-        const newTopics = [...topicMap.values()];
-        return newTopics;
-    }
-
-
 	// retrieve and parse an index file
 	// (either list of all packages, or documentation entries of a package)
-	public async getParsedIndexFile(path: string): Promise<IndexFileEntry[]|undefined> {
+	private async getParsedIndexFile(path: string): Promise<IndexEntry[]|undefined> {
 
         let indexItems = this.getCachedIndexFile(path);
 
 		// only read and parse file if not cached yet
 		if(!indexItems){
 			const helpFile = await this.rHelp.getHelpFileForPath(path, false);
-			if(!helpFile || !helpFile.html){
+			if(!helpFile?.html){
 				// set missing files to null
-                indexItems = null;
+                indexItems = undefined;
 			} else{
 				// parse and cache file
-				indexItems = this.parseIndexFile(helpFile.html);
+				indexItems = parseIndexFile(helpFile.html);
 			}
             void this.updateCachedIndexFile(path, indexItems);
 		}
 
 		// return cache entry. make new array to avoid messing with the cache
-        let ret: IndexFileEntry[] | undefined = undefined;
+        let ret: IndexEntry[] | undefined = undefined;
         if(indexItems){
             ret = [];
             ret.push(...indexItems);
         }
 		return ret;
 	}
-
-	private parseIndexFile(html: string): IndexFileEntry[] {
-
-		const $ = cheerio.load(html);
-
-		const tables = $('table');
-
-		const ret: IndexFileEntry[] = [];
-
-		// loop over all tables on document and each row as one index entry
-		// assumes that the provided html is from a valid index file
-		tables.each((tableIndex, table) => {
-			const rows = $('tr', table);
-			rows.each((rowIndex, row) => {
-				const elements = $('td', row);
-				if(elements.length === 2){
-                    const e0 = elements[0];
-                    const e1 = elements[1];
-                    if(
-                        e0.type === 'tag' && e1.type === 'tag' &&
-                        e0.firstChild.type === 'tag'
-                    ){
-                        const href = e0.firstChild.attribs['href'];
-                        const name = e0.firstChild.firstChild.data || '';
-                        const description = e1.firstChild.data || '';
-                        ret.push({
-                            name: name,
-                            description: description,
-                            href: href,
-                        });
-                    }
-				}
-			});
-		});
-
-		const retSorted = ret.sort((a, b) => a.name.localeCompare(b.name));
-
-		return retSorted;
-	}
-
-    // retrieves and parses a list of packages from CRAN
-	public async getParsedCranFile(url: string): Promise<Package[]> {
-
-        // return cache entry if present
-        const cacheEntry = this.getCachedIndexFile(url);
-        if(cacheEntry){
-            return cacheEntry;
-        }
-
-        // retrieve html from website
-		const htmlPromise = new Promise<string>((resolve) => {
-			let content = '';
-            const httpOrHttps = (vscode.Uri.parse(url).scheme === 'https' ? https : http);
-			httpOrHttps.get(url, (res: http.IncomingMessage) => {
-				res.on('data', (chunk: Buffer) => {
-					content += chunk.toString();
-				});
-				res.on('close', () => {
-					resolve(content);
-				});
-				res.on('error', () => {
-					resolve('');
-				});
-			});
-		});
-		const html = await htmlPromise;
-
-        // parse file
-		const cranPackages = this.parseCranFile(html, url);
-
-        // update cache and return
-        void this.updateCachedIndexFile(url, cranPackages);
-        const ret = [...cranPackages];
-		return ret;
-	}
-
-	private parseCranFile(html: string, baseUrl: string): CranPackage[] {
-		if(!html){
-			return [];
-		}
-		const $ = cheerio.load(html);
-		const tables = $('table');
-		const ret: CranPackage[] = [];
-
-		// loop over all tables on document and each row as one index entry
-		// assumes that the provided html is from a valid index file
-		tables.each((tableIndex, table) => {
-			const rows = $('tr', table);
-			rows.each((rowIndex, row) => {
-				const elements = $('td', row);
-				if(elements.length === 3){
-
-                    const e0 = elements[0];
-                    const e1 = elements[1];
-                    const e2 = elements[2];
-                    if(
-                        e0.type === 'tag' && e1.type === 'tag' &&
-                        e0.firstChild.type === 'text' && e1.children[1].type === 'tag' &&
-                        e2.type === 'tag'
-                    ){
-                        const href = e1.children[1].attribs['href'];
-                        const url = new URL(href, baseUrl).toString();
-                        ret.push({
-                            date: (e0.firstChild.data || '').trim(),
-                            name: (e1.children[1].firstChild.data || '').trim(),
-                            href: url,
-                            description: (e2.firstChild.data || '').trim(),
-                            isCran: true
-                        });
-                    }
-				}
-			});
-		});
-
-		const retSorted = ret.sort((a, b) => a.name.localeCompare(b.name));
-
-		return retSorted;
-	}
-
 }
 
 
+function parseIndexFile(html: string): IndexEntry[] {
+
+    const $ = cheerio.load(html);
+
+    const tables = $('table');
+
+    const ret: IndexEntry[] = [];
+
+    // loop over all tables on document and each row as one index entry
+    // assumes that the provided html is from a valid index file
+    tables.each((tableIndex, table) => {
+        const rows = $('tr', table);
+        rows.each((rowIndex, row) => {
+            const elements = $('td', row);
+            if(elements.length === 2){
+                const e0 = elements[0];
+                const e1 = elements[1];
+                if(
+                    e0.type === 'tag' && e1.type === 'tag' &&
+                    e0.firstChild?.type === 'tag'
+                ){
+                    const href = e0.firstChild.attribs['href'];
+                    const name = e0.firstChild?.firstChild?.data || '';
+                    const description = e1.firstChild?.data || '';
+                    ret.push({
+                        name: name,
+                        description: description,
+                        href: href,
+                    });
+                }
+            }
+        });
+    });
+
+    const retSorted = ret.sort((a, b) => a.name.localeCompare(b.name));
+
+    return retSorted;
+}
 
 
+// Used to let the user confirm their choice when installing/removing packages
+async function confirmPackages(placeHolder: string, packages: Package[]): Promise<Package[]> {
+    const qpItems: (vscode.QuickPickItem & {package: Package})[] = packages.map(pkg => ({
+        label: pkg.name,
+        detail: pkg.description,
+        package: pkg,
+        picked: true
+    }));
+    const qpOptions: vscode.QuickPickOptions = {
+        matchOnDescription: true,
+        matchOnDetail: true,
+        placeHolder: placeHolder
+    };
+    const qp = await vscode.window.showQuickPick(qpItems, {...qpOptions, canPickMany: true});
+    const ret = qp?.map(v => v.package) || [];
+    return ret;
+}
+
+// Let the user pick a package, either from local installation or CRAN
+async function pickPackages(packages: Package[], placeHolder: string, pickMany: boolean = false): Promise<Package[]|undefined> {
+    if(!packages?.length){
+        return undefined;
+    }
+
+    const qpItems: (vscode.QuickPickItem & {package: Package})[] = packages.map(pkg => ({
+        label: pkg.name,
+        detail: pkg.description,
+        package: pkg
+    }));
+
+    const qpOptions: vscode.QuickPickOptions = {
+        matchOnDescription: true,
+        matchOnDetail: true,
+        placeHolder: placeHolder
+    };
+    let ret: Package | Package[] | undefined;
+    if(pickMany){
+        const qp = await vscode.window.showQuickPick(qpItems, {...qpOptions, canPickMany: true});
+        ret = qp?.map(v => v.package);
+    } else{
+        const qp = await vscode.window.showQuickPick(qpItems, qpOptions);
+        ret = (qp ? [qp.package] : undefined);
+    }
+    
+    return ret;
+}
+
+// Used to summarize index-entries that point to the same help file
+function summarizeTopics(topics: Topic[]): Topic[] {
+    const topicMap = new Map<string, Topic>();
+    for(const topic of topics){
+        if(topicMap.has(topic.helpPath)){
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+            const newTopic = <Topic>topicMap.get(topic.helpPath); // checked above that key is present
+            if(newTopic.aliases){
+                newTopic.aliases.push(topic.name);
+            }
+            // newTopic.topicType ||= topic.topicType;
+            newTopic.type = (newTopic.type === TopicType.NORMAL ? topic.type : newTopic.type);
+        } else{
+            const newTopic: Topic = {
+                ...topic,
+                isGrouped: true
+            };
+            if(newTopic.type === TopicType.NORMAL && newTopic.description){
+                newTopic.aliases = [newTopic.name];
+                [newTopic.name, newTopic.description] = [newTopic.description, newTopic.name];
+            }
+            topicMap.set(newTopic.helpPath, newTopic);
+        }
+    }
+    const newTopics = [...topicMap.values()];
+    return newTopics;
+}

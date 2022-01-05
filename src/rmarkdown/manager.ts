@@ -2,13 +2,12 @@ import * as util from '../util';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import path = require('path');
+import { DisposableProcess, exec } from '../util';
 
 export enum KnitWorkingDirectory {
 	documentDirectory = 'document directory',
 	workspaceRoot = 'workspace root',
 }
-
-export type DisposableProcess = cp.ChildProcessWithoutNullStreams & vscode.Disposable;
 
 export interface IKnitRejection {
 	cp: DisposableProcess;
@@ -18,6 +17,7 @@ export interface IKnitRejection {
 const rMarkdownOutput: vscode.OutputChannel = vscode.window.createOutputChannel('R Markdown');
 
 interface IKnitArgs {
+	workingDirectory: string;
 	filePath: string;
 	fileName: string;
 	scriptArgs: Record<string, string>;
@@ -35,16 +35,16 @@ export abstract class RMarkdownManager {
 	// so that we can't spam the knit/preview button
 	protected busyUriStore: Set<string> = new Set<string>();
 
-	protected getKnitDir(knitDir: string, docPath?: string): string {
-		const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(docPath) ?? vscode.window.activeTextEditor?.document?.uri)?.uri?.fsPath ?? undefined;
+	protected getKnitDir(knitDir: string, docPath: string): string {
 		switch (knitDir) {
 			// the directory containing the R Markdown document
 			case KnitWorkingDirectory.documentDirectory: {
-				return path.dirname(docPath).replace(/\\/g, '/').replace(/['"]/g, '\\"');
+				return path.dirname(docPath)?.replace(/\\/g, '/')?.replace(/['"]/g, '\\"') ?? undefined;
 			}
 			// the root of the current workspace
 			case KnitWorkingDirectory.workspaceRoot: {
-				return currentDocumentWorkspace.replace(/\\/g, '/').replace(/['"]/g, '\\"');
+				const currentDocumentWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(docPath) ?? vscode.window.activeTextEditor?.document?.uri)?.uri?.fsPath ?? undefined;
+				return currentDocumentWorkspace?.replace(/\\/g, '/')?.replace(/['"]/g, '\\"') ?? undefined;
 			}
 			// the working directory of the attached terminal, NYI
 			// case 'current directory': {
@@ -65,38 +65,29 @@ export abstract class RMarkdownManager {
 				const scriptArgs = args.scriptArgs;
 				const scriptPath = args.scriptPath;
 				const fileName = args.fileName;
-
-				const processArgs = [
-					`--silent`,
-					`--slave`,
-					`--no-save`,
-					`--no-restore`,
-					`-f`,
-					`${scriptPath}`
+				// const cmd = `${this.rPath} --silent --slave --no-save --no-restore -f "${scriptPath}"`;
+				const cpArgs = [
+					'--slient',
+					'--slave',
+					'--no-save',
+					'--no-restore',
+					'-f',
+					scriptPath
 				];
-				const processOptions = {
+				const processOptions: cp.SpawnOptions = {
 					env: {
 						...process.env,
 						...scriptArgs
-					}
+					},
+					cwd: args.workingDirectory,
 				};
 
 				let childProcess: DisposableProcess;
-
 				try {
-					childProcess = util.asDisposable(
-						cp.spawn(
-							`${this.rPath}`,
-							processArgs,
-							processOptions
-						),
-						() => {
-							if (childProcess.kill('SIGKILL')) {
-								rMarkdownOutput.appendLine('[VSC-R] terminating R process');
-								printOutput = false;
-							}
-						}
-					);
+					childProcess = exec(this.rPath, cpArgs, processOptions, () => {
+						rMarkdownOutput.appendLine('[VSC-R] terminating R process');
+						printOutput = false;
+					});
 					progress.report({
 						increment: 0,
 						message: '0%'

@@ -7,10 +7,9 @@ import os = require('os');
 import path = require('path');
 import net = require('net');
 import url = require('url');
-import { spawn, ChildProcess } from 'child_process';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { getRpath } from './util';
+import { DisposableProcess, getRpath, exec } from './util';
 
 export class LanguageService implements Disposable {
   private readonly clients: Map<string, LanguageClient> = new Map();
@@ -29,9 +28,9 @@ export class LanguageService implements Disposable {
     let client: LanguageClient;
 
     const debug = config.get<boolean>('lsp.debug');
-    const path = await getRpath();
+    const rPath = await getRpath();
     if (debug) {
-      console.log(`R binary: ${path}`);
+      console.log(`R path: ${rPath}`);
     }
     const use_stdio = config.get<boolean>('lsp.use_stdio');
     const env = Object.create(process.env);
@@ -46,9 +45,9 @@ export class LanguageService implements Disposable {
     }
 
     const options = { cwd: cwd, env: env };
-    const initArgs: string[] = config.get<string[]>('lsp.args').concat('--quiet', '--slave');
+    const initArgs: string[] = config.get<string[]>('lsp.args').concat('--silent', '--slave');
 
-    const tcpServerOptions = () => new Promise<ChildProcess | StreamInfo>((resolve, reject) => {
+    const tcpServerOptions = () => new Promise<DisposableProcess | StreamInfo>((resolve, reject) => {
       // Use a TCP socket because of problems with blocking STDIO
       const server = net.createServer(socket => {
         // 'connection' listener
@@ -66,14 +65,10 @@ export class LanguageService implements Disposable {
       // Listen on random port
       server.listen(0, '127.0.0.1', () => {
         const port = (server.address() as net.AddressInfo).port;
-        let args: string[];
-        // The server is implemented in R
-        if (debug) {
-          args = initArgs.concat(['-e', `languageserver::run(port=${port},debug=TRUE)`]);
-        } else {
-          args = initArgs.concat(['-e', `languageserver::run(port=${port})`]);
-        }
-        const childProcess = spawn(path, args, options);
+        const expr = debug ? `languageserver::run(port=${port},debug=TRUE)` : `languageserver::run(port=${port})`;
+        // const cmd = `${rPath} ${initArgs.join(' ')} -e "${expr}"`;
+        const args = initArgs.concat(['-e', expr]);
+        const childProcess = exec(rPath, args, options);
         client.outputChannel.appendLine(`R Language Server (${childProcess.pid}) started`);
         childProcess.stderr.on('data', (chunk: Buffer) => {
           client.outputChannel.appendLine(chunk.toString());
@@ -122,7 +117,7 @@ export class LanguageService implements Disposable {
       } else {
         args = initArgs.concat(['-e', `languageserver::run()`]);
       }
-      client = new LanguageClient('r', 'R Language Server', { command: path, args: args, options: options }, clientOptions);
+      client = new LanguageClient('r', 'R Language Server', { command: rPath, args: args, options: options }, clientOptions);
     } else {
       client = new LanguageClient('r', 'R Language Server', tcpServerOptions, clientOptions);
     }

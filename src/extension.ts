@@ -106,10 +106,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
         'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
-        'r.test': () => rTerminal.runTextInTerm('devtools::test()'),
-        'r.install': () => rTerminal.runTextInTerm('devtools::install()'),
-        'r.build': () => rTerminal.runTextInTerm('devtools::build()'),
-        'r.document': () => rTerminal.runTextInTerm('devtools::document()'),
+
+        // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758
+        'r.build': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build'),
+        'r.check': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Check'),
+        'r.document': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Document'),
+        'r.install': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Install'),
+        'r.test': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Test'),
 
         // interaction with R sessions
         'r.previewDataframe': preview.previewDataframe,
@@ -157,11 +160,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
             {
                 // Automatically continue roxygen comments: #'
                 action: { indentAction: vscode.IndentAction.None, appendText: '#\' ' },
-                beforeText: /^#'.*/,
+                beforeText: /^\s*#'\s*[^\s]/, // matches a non-empty roxygen line
+            },
+            {
+                // Automatically continue roxygen comments: #'
+                action: { indentAction: vscode.IndentAction.None, appendText: '#\' ' },
+                beforeText: /^\s*#'/, // matches any roxygen comment line, even an empty one
+                previousLineText: /^\s*([^#\s].*|#[^'\s].*|#'\s*[^\s].*|)$/, // matches everything but an empty roxygen line
             },
         ],
         wordPattern,
     });
+
+    // register terminal-provider
+    context.subscriptions.push(vscode.window.registerTerminalProfileProvider('r.terminal-profile',
+        {
+            async provideTerminalProfile() {
+                return {
+                    options: await rTerminal.makeTerminalOptions()
+                };
+            }
+        }
+    ));
 
     // initialize httpgd viewer
     globalHttpgdManager = httpgdViewer.initializeHttpgd();
@@ -187,6 +207,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     vscode.tasks.registerTaskProvider(type, {
         provideTasks() {
             return [
+                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Build', 'R',
+                    new vscode.ShellExecution('Rscript -e "devtools::build()"')),
                 new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Check', 'R',
                     new vscode.ShellExecution('Rscript -e "devtools::check()"')),
                 new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Document', 'R',
@@ -213,7 +235,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
             const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
             sessionStatusBarItem.command = 'r.attachActive';
             sessionStatusBarItem.text = 'R: (not attached)';
-            sessionStatusBarItem.tooltip = 'Attach Active Terminal';
+            sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
             sessionStatusBarItem.show();
             context.subscriptions.push(sessionStatusBarItem);
             void session.startRequestWatcher(sessionStatusBarItem);

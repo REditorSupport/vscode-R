@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
 import { extensionContext } from './extension';
+import * as kill from 'tree-kill';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -91,6 +92,9 @@ export async function getRpath(quote = false, overwriteConfig?: string): Promise
     } else if (quote && /^[^'"].* .*[^'"]$/.exec(rpath)) {
         // if requested and rpath contains spaces, add quotes:
         rpath = `"${rpath}"`;
+    } else if (!quote) {
+        rpath = rpath.replace(/^"(.*)"$/, '$1');
+        rpath = rpath.replace(/^'(.*)'$/, '$1');
     } else if (process.platform === 'win32' && /^'.* .*'$/.exec(rpath)) {
         // replace single quotes with double quotes on windows
         rpath = rpath.replace(/^'(.*)'$/, '"$1"');
@@ -198,15 +202,27 @@ export async function getConfirmation(prompt: string, confirmation?: string, det
 }
 
 // executes a given command as shell task
-// is more transparent thatn background processes without littering the integrated terminals
+// is more transparent than background processes without littering the integrated terminals
 // is not intended for actual user interaction
-export async function executeAsTask(name: string, command: string, args?: string[]): Promise<void> {
-    const taskDefinition = { type: 'shell' };
-    const quotedArgs = args.map<vscode.ShellQuotedString>(arg => { return { value: arg, quoting: vscode.ShellQuoting.Weak }; });
-    const taskExecution = new vscode.ShellExecution(
-        command,
-        quotedArgs
-    );
+export async function executeAsTask(name: string, process: string, args?: string[], asProcess?: true): Promise<void>;
+export async function executeAsTask(name: string, command: string, args?: string[], asProcess?: false): Promise<void>;
+export async function executeAsTask(name: string, cmdOrProcess: string, args?: string[], asProcess: boolean = false): Promise<void> {
+    let taskDefinition: vscode.TaskDefinition;
+    let taskExecution: vscode.ShellExecution | vscode.ProcessExecution;
+    if(asProcess){
+        taskDefinition = { type: 'process'};
+        taskExecution = new vscode.ProcessExecution(
+            cmdOrProcess,
+            args
+        );
+    } else{
+        taskDefinition = { type: 'shell' };
+        const quotedArgs = args.map<vscode.ShellQuotedString>(arg => { return { value: arg, quoting: vscode.ShellQuoting.Weak }; });
+        taskExecution = new vscode.ShellExecution(
+            cmdOrProcess,
+            quotedArgs
+        );
+    }
     const task = new vscode.Task(
         taskDefinition,
         vscode.TaskScope.Global,
@@ -253,7 +269,7 @@ export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, p
 // argument path is optional and should be relative to the cran root
 // currently the CRAN root url is hardcoded, this could be replaced by reading
 // the url from config, R, or both
-export async function getCranUrl(path?: string, cwd?: string): Promise<string> {
+export async function getCranUrl(path: string = '', cwd?: string): Promise<string> {
     const defaultCranUrl = 'https://cran.r-project.org/';
     // get cran URL from R. Returns empty string if option is not set.
     const baseUrl = await executeRCommand('cat(getOption(\'repos\')[\'CRAN\'])', undefined, cwd);
@@ -391,4 +407,34 @@ export function asDisposable<T>(toDispose: T, disposeFunction: (...args: unknown
     (toDispose as disposeType).dispose = () => disposeFunction();
     extensionContext.subscriptions.push(toDispose as disposeType);
     return toDispose as disposeType;
+}
+
+export type DisposableProcess = cp.ChildProcessWithoutNullStreams & vscode.Disposable;
+export function exec(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
+    let proc: cp.ChildProcess;
+    if (process.platform === 'win32') {
+        const cmd = `"${command}" ${args.map(s => `"${s}"`).join(' ')}`;
+        proc = cp.exec(cmd, options);
+    } else {
+        proc = cp.spawn(command, args, options);
+    }
+    let running = true;
+    const exitHandler = () => {
+        running = false;
+    };
+    proc.on('exit', exitHandler);
+    proc.on('error', exitHandler);
+    const disposable = asDisposable(proc, () => {
+        if (running) {
+            if (process.platform === 'win32') {
+                kill(proc.pid);
+            } else {
+                proc.kill('SIGKILL');
+            }
+        }
+        if (onDisposed) {
+            onDisposed();
+        }
+    });
+    return disposable;
 }

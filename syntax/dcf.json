@@ -68,7 +68,7 @@
                             "name": "keyword.control"
                         }
                     },
-                    "end": "\\)$",
+                    "end": "(?<=\\))\\s*$",
                     "contentName": "meta.embedded.block.r",
                     "patterns": [
                         {

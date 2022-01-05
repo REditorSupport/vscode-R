@@ -11,7 +11,9 @@ knit_command <- Sys.getenv("VSCR_KNIT_COMMAND")
 
 # set the knitr chunk eval directory
 # mainly affects source calls
-knitr::opts_knit[["set"]](root.dir = knit_dir)
+if (nzchar(knit_dir)) {
+    knitr::opts_knit[["set"]](root.dir = knit_dir)
+}
 
 # render and get file output location for use in extension
 cat(
