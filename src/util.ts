@@ -420,13 +420,7 @@ export function exec(command: string, args?: ReadonlyArray<string>, options?: cp
     const disposable = asDisposable(proc, () => {
         if (running) {
             if (process.platform === 'win32') {
-                cp.exec(`taskkill /PID ${proc.pid} /T /F`, (error, stdout, stderr) => {
-                    console.log('taskkill stdout: ' + stdout);
-                    console.log('taskkill stderr: ' + stderr);
-                    if (error) {
-                        console.log('error: ' + error.message);
-                    }
-                });
+                cp.spawn('taskkill', ['/pid', String(proc.pid), '/f', '/t']);
             } else {
                 proc.kill('SIGKILL');
             }
