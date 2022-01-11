@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
 import { extensionContext } from './extension';
+import * as kill from 'tree-kill';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -420,7 +421,7 @@ export function exec(command: string, args?: ReadonlyArray<string>, options?: cp
     const disposable = asDisposable(proc, () => {
         if (running) {
             if (process.platform === 'win32') {
-                cp.spawn('taskkill', ['/pid', String(proc.pid), '/f', '/t']);
+                kill(proc.pid);
             } else {
                 proc.kill('SIGKILL');
             }
