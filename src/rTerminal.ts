@@ -90,7 +90,7 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
         shellPath: termPath,
         shellArgs: shellArgs,
     };
-    const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'session', '.Rprofile'));
+    const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'session', 'profile.R'));
     const initR = extensionContext.asAbsolutePath(path.join('R', 'session','init.R'));
     if (config().get<boolean>('sessionWatcher')) {
         termOptions.env = {
