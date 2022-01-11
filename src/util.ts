@@ -411,13 +411,7 @@ export function asDisposable<T>(toDispose: T, disposeFunction: (...args: unknown
 
 export type DisposableProcess = cp.ChildProcessWithoutNullStreams & vscode.Disposable;
 export function exec(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
-    let proc: cp.ChildProcess;
-    if (process.platform === 'win32') {
-        const cmd = `"${command}" ${args.map(s => `"${s}"`).join(' ')}`;
-        proc = cp.exec(cmd, options);
-    } else {
-        proc = cp.spawn(command, args, options);
-    }
+    const proc = cp.spawn(command, args, options);
     let running = true;
     const exitHandler = () => {
         running = false;
