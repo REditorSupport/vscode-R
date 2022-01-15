@@ -1726,7 +1726,6 @@
     "node-fetch": "^2.6.1",
     "popper.js": "^1.16.1",
     "showdown": "^1.9.1",
-    "tree-kill": "^1.2.2",
     "vscode-languageclient": "^7.0.0",
     "vsls": "^1.0.4753",
     "winreg": "^1.2.4",

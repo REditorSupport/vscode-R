@@ -8,7 +8,6 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
 import { extensionContext } from './extension';
-import * as kill from 'tree-kill';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -412,16 +411,19 @@ export function asDisposable<T>(toDispose: T, disposeFunction: (...args: unknown
 export type DisposableProcess = cp.ChildProcessWithoutNullStreams & vscode.Disposable;
 export function exec(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
     const proc = cp.spawn(command, args, options);
+    console.log(`Process ${proc.pid} spawned`);
     let running = true;
     const exitHandler = () => {
         running = false;
+        console.log(`Process ${proc.pid} exited`);
     };
     proc.on('exit', exitHandler);
     proc.on('error', exitHandler);
     const disposable = asDisposable(proc, () => {
         if (running) {
+            console.log(`Process ${proc.pid} terminating`);
             if (process.platform === 'win32') {
-                kill(proc.pid);
+                cp.spawnSync('taskkill', ['/pid', proc.pid.toString(), '/f', '/t']);
             } else {
                 proc.kill('SIGKILL');
             }
