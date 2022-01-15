@@ -423,7 +423,7 @@ export function exec(command: string, args?: ReadonlyArray<string>, options?: cp
         if (running) {
             console.log(`Process ${proc.pid} terminating`);
             if (process.platform === 'win32') {
-                cp.spawn('taskkill', ['/pid', proc.pid.toString(), '/f', '/t']);
+                cp.spawnSync('taskkill', ['/pid', proc.pid.toString(), '/f', '/t']);
             } else {
                 proc.kill('SIGKILL');
             }
