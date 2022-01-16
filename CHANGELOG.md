@@ -4,6 +4,18 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.3.6](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.6)
+
+Enhancements:
+
+* Added raw string syntax. (#922)
+* Added support for both single and double brackets in code-server's URI template. (#934, thanks @benz0li)
+
+Fixes:
+
+* Fixed syntax highlighting so that variables and function parameters are highlighted more consistently. (#939)
+* R processes are now properly terminated on extension deactivation. (#941, thanks @albertosantini and @Yunuuuu)
+
 ## [2.3.5](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.5)
 
 Enhancements:
