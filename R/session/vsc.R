@@ -31,6 +31,7 @@ load_settings <- function() {
     vsc.browser = setting(session$viewers$viewColumn$browser, Disable = FALSE),
     vsc.viewer = setting(session$viewers$viewColumn$viewer, Disable = FALSE),
     vsc.page_viewer = setting(session$viewers$viewColumn$pageViewer, Disable = FALSE),
+    vsc.row_limit = setting(session$data$rowLimit, Disable = FALSE),
     vsc.view = setting(session$viewers$viewColumn$view, Disable = FALSE),
     vsc.helpPanel = setting(session$viewers$viewColumn$helpPanel, Disable = FALSE)
   ))
@@ -340,13 +341,12 @@ if (show_view) {
     )
   }
 
-  dataview_table <- function(data) {
+  dataview_table <- function(data, .nrow) {
     if (is.matrix(data)) {
       data <- as.data.frame.matrix(data)
     }
 
     if (is.data.frame(data)) {
-      nrow <- nrow(data)
       colnames <- colnames(data)
       if (is.null(colnames)) {
         colnames <- sprintf("V%d", seq_len(ncol(data)))
@@ -357,14 +357,14 @@ if (show_view) {
         rownames <- rownames(data)
         rownames(data) <- NULL
       } else {
-        rownames <- seq_len(nrow)
+        rownames <- seq_len(.nrow)
       }
       colnames <- c("(row)", colnames)
       fields <- sprintf("x%d", seq_along(colnames))
       data <- c(list(" " = rownames), .subset(data))
       names(data) <- fields
       class(data) <- "data.frame"
-      attr(data, "row.names") <- .set_row_names(nrow)
+      attr(data, "row.names") <- .set_row_names(.nrow)
       columns <- .mapply(get_column_def,
         list(colnames, fields, data),
         NULL
@@ -379,7 +379,8 @@ if (show_view) {
   }
 
   show_dataview <- function(x, title, uuid = NULL,
-                            viewer = getOption("vsc.view", "Two")) {
+                            viewer = getOption("vsc.view", "Two"),
+                            row_limit = abs(getOption("vsc.row_limit", 0))) {
     if (missing(title)) {
       sub <- substitute(x)
       title <- deparse(sub, nlines = 1)
@@ -438,7 +439,13 @@ if (show_view) {
       }
     }
     if (is.data.frame(x) || is.matrix(x)) {
-      data <- dataview_table(x)
+      .nrow <- nrow(x)
+      if (row_limit != 0 && row_limit < .nrow) {
+        title <- sprintf("%s (Limited to %s rows)", title, row_limit)
+        .nrow <- row_limit
+        x <- utils::head(x, n = .nrow)
+      }
+      data <- dataview_table(x, .nrow)
       file <- tempfile(tmpdir = tempdir, fileext = ".json")
       jsonlite::write_json(data, file, na = "string", null = "null", auto_unbox = TRUE)
       request("dataview", source = "table", type = "json",
