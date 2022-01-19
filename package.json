@@ -1453,6 +1453,11 @@
           "default": 0,
           "markdownDescription": "The maximum number of rows to be displayed in the data viewer. `0` means no limit. Changes the option `vsc.row_limit` in R. Requires `#r.sessionWatcher#` to be set to `true`."
         },
+        "r.session.data.showArrowTable": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Show a Apache Arrow table as a data frame in the data viewer. Convert a `ArrowTabular` class object to a `data.frame` and then display it. Changes the option `vsc.show_arrow_table` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+        },
         "r.session.viewers.viewColumn": {
           "type": "object",
           "markdownDescription": "Which view column should R-related webviews be displayed? Requires `#r.sessionWatcher#` to be set to `true`.",

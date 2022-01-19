@@ -32,6 +32,7 @@ load_settings <- function() {
     vsc.viewer = setting(session$viewers$viewColumn$viewer, Disable = FALSE),
     vsc.page_viewer = setting(session$viewers$viewColumn$pageViewer, Disable = FALSE),
     vsc.row_limit = setting(session$data$rowLimit, Disable = FALSE),
+    vsc.show_arrow_table = setting(session$data$showArrowTable, Disable = FALSE),
     vsc.view = setting(session$viewers$viewColumn$view, Disable = FALSE),
     vsc.helpPanel = setting(session$viewers$viewColumn$helpPanel, Disable = FALSE)
   ))
@@ -384,6 +385,15 @@ if (show_view) {
     if (missing(title)) {
       sub <- substitute(x)
       title <- deparse(sub, nlines = 1)
+    }
+    if (getOption("vsc.show_arrow_table", FALSE) && inherits(x, "ArrowTabular")) {
+      .nrow <- nrow(x)
+      if (row_limit != 0 && row_limit < .nrow) {
+        title <- sprintf("%s (Limited to %s rows)", title, row_limit)
+        .nrow <- row_limit
+        x <- utils::head(x, n = .nrow)
+      }
+      x <- as.data.frame(x)
     }
     if (is.environment(x)) {
       all_names <- ls(x)
