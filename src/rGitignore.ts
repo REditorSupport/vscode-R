@@ -17,11 +17,11 @@ export async function createGitignore(): Promise<void> {
     }
     const ignorePath = join(workspace.workspaceFolders[0].uri.path, '.gitignore');
     if (existsSync(ignorePath)) {
-        const override = await window.showWarningMessage(
-            '".gitignore" file is already exist. Do you want to override?',
+        const overwrite = await window.showWarningMessage(
+            '".gitignore" file is already exist. Do you want to overwrite?',
             'Yes', 'No'
         );
-        if (override === 'No') {
+        if (overwrite === 'No') {
             return;
         }
     }
