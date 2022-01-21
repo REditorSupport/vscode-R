@@ -1,6 +1,7 @@
 'use strict';
 
 import { writeFile } from 'fs-extra';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import { window, workspace } from 'vscode';
 // .gitignore template from "https://github.com/github/gitignore/blob/main/R.gitignore"
@@ -55,13 +56,22 @@ const ignoreFiles = ['# History files',
     'rsconnect/',
     ''].join('\n');
 
-export function createGitignore(): void {
+export async function createGitignore(): Promise<void> {
     if (workspace.workspaceFolders[0].uri.path === undefined) {
         void window.showWarningMessage('Please open workspace to create .gitignore');
 
         return;
     }
     const ignorePath = join(workspace.workspaceFolders[0].uri.path, '.gitignore');
+    if (existsSync(ignorePath)) {
+        const override = await window.showWarningMessage(
+            '".gitignore" file is already exist. Do you want to override?',
+            'Yes', 'No'
+        );
+        if (override === 'No') {
+            return;
+        }
+    }
     writeFile(ignorePath, ignoreFiles, (err) => {
         try {
             if (err) {
