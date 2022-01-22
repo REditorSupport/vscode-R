@@ -5,11 +5,12 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { window, workspace } from 'vscode';
 import { extensionContext } from './extension';
-// .gitignore template from "https://github.com/github/gitignore/blob/main/R.gitignore"
-const ignoreFileTemplate = extensionContext.asAbsolutePath('R/template/R.gitignore');
-const ignoreFileContent = readFileSync(ignoreFileTemplate);
 
 export async function createGitignore(): Promise<void> {
+    // .gitignore template from "https://github.com/github/gitignore/blob/main/R.gitignore"
+    const ignoreFileTemplate = extensionContext.asAbsolutePath('R/template/R.gitignore');
+    const ignoreFileContent = readFileSync(ignoreFileTemplate);
+
     if (workspace.workspaceFolders[0].uri.path === undefined) {
         void window.showWarningMessage('Please open workspace to create .gitignore');
 
