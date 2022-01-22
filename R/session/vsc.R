@@ -31,8 +31,8 @@ load_settings <- function() {
     vsc.browser = setting(session$viewers$viewColumn$browser, Disable = FALSE),
     vsc.viewer = setting(session$viewers$viewColumn$viewer, Disable = FALSE),
     vsc.page_viewer = setting(session$viewers$viewColumn$pageViewer, Disable = FALSE),
-    vsc.row_limit = setting(session$data$rowLimit, Disable = FALSE),
-    vsc.show_arrow_table = setting(session$data$showArrowTable, Disable = FALSE),
+    vsc.row_limit = session$data$rowLimit,
+    vsc.show_arrow_table = session$data$showArrowTable,
     vsc.view = setting(session$viewers$viewColumn$view, Disable = FALSE),
     vsc.helpPanel = setting(session$viewers$viewColumn$helpPanel, Disable = FALSE)
   ))
