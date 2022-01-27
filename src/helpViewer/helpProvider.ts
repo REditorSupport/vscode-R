@@ -53,7 +53,7 @@ export class HelpProvider {
         const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
         // const cmd = `${this.rPath} --silent --slave --no-save --no-restore -f "${scriptPath}"`;
         const args = [
-            '--slient',
+            '--silent',
             '--slave',
             '--no-save',
             '--no-restore',

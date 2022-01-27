@@ -67,7 +67,7 @@ export abstract class RMarkdownManager {
 				const fileName = args.fileName;
 				// const cmd = `${this.rPath} --silent --slave --no-save --no-restore -f "${scriptPath}"`;
 				const cpArgs = [
-					'--slient',
+					'--silent',
 					'--slave',
 					'--no-save',
 					'--no-restore',
