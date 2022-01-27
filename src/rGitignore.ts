@@ -3,20 +3,21 @@
 import { writeFile } from 'fs-extra';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { window, workspace } from 'vscode';
+import { window } from 'vscode';
 import { extensionContext } from './extension';
+import { getCurrentWorkspaceFolder } from './util';
 
 export async function createGitignore(): Promise<void> {
     // .gitignore template from "https://github.com/github/gitignore/blob/main/R.gitignore"
     const ignoreFileTemplate = extensionContext.asAbsolutePath('R/template/R.gitignore');
     const ignoreFileContent = readFileSync(ignoreFileTemplate);
 
-    if (workspace.workspaceFolders[0].uri.path === undefined) {
-        void window.showWarningMessage('Please open workspace to create .gitignore');
-
+    const currentWorkspaceFolder = getCurrentWorkspaceFolder()?.uri.fsPath;
+    if (currentWorkspaceFolder === undefined) {
+        void window.showWarningMessage('Please open a workspace to create .gitignore');
         return;
     }
-    const ignorePath = join(workspace.workspaceFolders[0].uri.path, '.gitignore');
+    const ignorePath = join(currentWorkspaceFolder, '.gitignore');
     if (existsSync(ignorePath)) {
         const overwrite = await window.showWarningMessage(
             '".gitignore" file is already exist. Do you want to overwrite?',

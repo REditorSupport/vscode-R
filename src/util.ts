@@ -146,6 +146,21 @@ export function checkIfFileExists(filePath: string): boolean {
     return existsSync(filePath);
 }
 
+export function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder {
+    if (vscode.workspace.workspaceFolders !== undefined) {
+        if (vscode.workspace.workspaceFolders.length === 1) {
+            return vscode.workspace.workspaceFolders[0];
+        } else if (vscode.workspace.workspaceFolders.length > 1) {
+            const currentDocument = vscode.window.activeTextEditor;
+            if (currentDocument !== undefined) {
+                return vscode.workspace.getWorkspaceFolder(currentDocument.document.uri);
+            }
+        }
+    }
+
+    return undefined;
+}
+
 // Drop-in replacement for fs-extra.readFile (),
 // passes to guest service if the caller is a guest
 // This can be used wherever fs.readFile() is used,
