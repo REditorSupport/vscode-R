@@ -331,7 +331,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
         this.api = new Httpgd(this.host, this.token, true);
         this.api.onPlotsChanged((newState) => {
-            void this.refreshPlots(newState.plots);
+            void this.refreshPlotsDelayed(newState.plots);
         });
         this.api.onConnectionChanged(() => {
             // todo
@@ -566,6 +566,22 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.plotWidth = plt.width;
         this.plotHeight = plt.height;
         this.updatePlot(plt);
+    }
+    
+    protected async refreshPlotsDelayed(plotsIdResponse: HttpgdIdResponse[], redraw: boolean = false, force: boolean = false): Promise<void> {
+        if(this.refreshTimeoutLength === 0){
+            if(this.refreshTimeout){
+                clearTimeout(this.refreshTimeout);
+            }
+            this.refreshTimeout = undefined;
+            await this.refreshPlots(plotsIdResponse, redraw, force);
+        } if(!this.refreshTimeout){
+            this.refreshTimeout = setTimeout(() => {
+                void this.refreshPlots(plotsIdResponse, redraw, force).then(() => 
+                    this.refreshTimeout = undefined
+                );
+            }, this.refreshTimeoutLength);
+        }
     }
 
     protected async refreshPlots(plotsIdResponse: HttpgdIdResponse[], redraw: boolean = false, force: boolean = false): Promise<void> {
