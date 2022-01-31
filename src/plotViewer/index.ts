@@ -288,10 +288,10 @@ export class HttpgdViewer implements IHttpgdViewer {
     readonly zoom0: number = 1;
     zoom: number = this.zoom0;
 
-    resizeTimeout?: NodeJS.Timeout;
+    protected resizeTimeout?: NodeJS.Timeout;
     readonly resizeTimeoutLength: number = 1300;
 
-    refreshTimeout?: NodeJS.Timeout;
+    protected refreshTimeout?: NodeJS.Timeout;
     readonly refreshTimeoutLength: number = 10;
     
     private lastExportUri?: vscode.Uri;
@@ -331,7 +331,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
         this.api = new Httpgd(this.host, this.token, true);
         this.api.onPlotsChanged((newState) => {
-            void this.refreshPlots(newState.plots);
+            void this.refreshPlotsDelayed(newState.plots);
         });
         this.api.onConnectionChanged(() => {
             // todo
@@ -566,6 +566,19 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.plotWidth = plt.width;
         this.plotHeight = plt.height;
         this.updatePlot(plt);
+    }
+    
+    protected async refreshPlotsDelayed(plotsIdResponse: HttpgdIdResponse[], redraw: boolean = false, force: boolean = false): Promise<void> {
+        if(this.refreshTimeoutLength === 0){
+            await this.refreshPlots(plotsIdResponse, redraw, force);
+        } else{
+            clearTimeout(this.refreshTimeout);
+            this.refreshTimeout = setTimeout(() => {
+                void this.refreshPlots(plotsIdResponse, redraw, force).then(() => 
+                    this.refreshTimeout = undefined
+                );
+            }, this.refreshTimeoutLength);
+        }
     }
 
     protected async refreshPlots(plotsIdResponse: HttpgdIdResponse[], redraw: boolean = false, force: boolean = false): Promise<void> {
