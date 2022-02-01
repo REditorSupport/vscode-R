@@ -217,6 +217,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
                     new vscode.ShellExecution('Rscript -e "devtools::install()"')),
                 new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Test', 'R',
                     new vscode.ShellExecution('Rscript -e "devtools::test()"')),
+                new vscode.Task({type: type}, vscode.TaskScope.Workspace, 'Knit', 'R',
+                    new vscode.ShellExecution('Rscript -e "rmarkdown::render(\'${file}\')"')),
             ];
         },
         resolveTask(task: vscode.Task) {
