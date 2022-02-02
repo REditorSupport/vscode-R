@@ -385,7 +385,7 @@ if (show_view) {
     as_truncated_data <- function(.data) {
       .nrow <- nrow(.data)
       if (row_limit != 0 && row_limit < .nrow) {
-        title <<- sprintf("%s (Limited to %s rows)", title, row_limit)
+        title <<- sprintf("%s (limited to %d/%d)", title, row_limit, .nrow)
         .data <- utils::head(.data, n = row_limit)
       }
       return(.data)
