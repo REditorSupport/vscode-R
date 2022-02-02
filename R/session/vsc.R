@@ -341,12 +341,13 @@ if (show_view) {
     )
   }
 
-  dataview_table <- function(data, .nrow) {
+  dataview_table <- function(data) {
     if (is.matrix(data)) {
       data <- as.data.frame.matrix(data)
     }
 
     if (is.data.frame(data)) {
+      .nrow <- nrow(data)
       colnames <- colnames(data)
       if (is.null(colnames)) {
         colnames <- sprintf("V%d", seq_len(ncol(data)))
@@ -381,17 +382,21 @@ if (show_view) {
   show_dataview <- function(x, title, uuid = NULL,
                             viewer = getOption("vsc.view", "Two"),
                             row_limit = abs(getOption("vsc.row_limit", 0))) {
+    as_truncated_data <- function(.data) {
+      .nrow <- nrow(.data)
+      if (row_limit != 0 && row_limit < .nrow) {
+        title <<- sprintf("%s (Limited to %s rows)", title, row_limit)
+        .data <- utils::head(.data, n = row_limit)
+      }
+      return(.data)
+    }
+
     if (missing(title)) {
       sub <- substitute(x)
       title <- deparse(sub, nlines = 1)
     }
     if (inherits(x, "ArrowTabular")) {
-      .nrow <- nrow(x)
-      if (row_limit != 0 && row_limit < .nrow) {
-        title <- sprintf("%s (Limited to %s rows)", title, row_limit)
-        .nrow <- row_limit
-        x <- utils::head(x, n = .nrow)
-      }
+      x <- as_truncated_data(x)
       x <- as.data.frame(x)
     }
     if (is.environment(x)) {
@@ -448,13 +453,8 @@ if (show_view) {
       }
     }
     if (is.data.frame(x) || is.matrix(x)) {
-      .nrow <- nrow(x)
-      if (row_limit != 0 && row_limit < .nrow) {
-        title <- sprintf("%s (Limited to %s rows)", title, row_limit)
-        .nrow <- row_limit
-        x <- utils::head(x, n = .nrow)
-      }
-      data <- dataview_table(x, .nrow)
+      x <- as_truncated_data(x)
+      data <- dataview_table(x)
       file <- tempfile(tmpdir = tempdir, fileext = ".json")
       jsonlite::write_json(data, file, na = "string", null = "null", auto_unbox = TRUE)
       request("dataview", source = "table", type = "json",
