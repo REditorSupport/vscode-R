@@ -32,7 +32,6 @@ load_settings <- function() {
     vsc.viewer = setting(session$viewers$viewColumn$viewer, Disable = FALSE),
     vsc.page_viewer = setting(session$viewers$viewColumn$pageViewer, Disable = FALSE),
     vsc.row_limit = session$data$rowLimit,
-    vsc.show_arrow_table = session$data$showArrowTable,
     vsc.view = setting(session$viewers$viewColumn$view, Disable = FALSE),
     vsc.helpPanel = setting(session$viewers$viewColumn$helpPanel, Disable = FALSE)
   ))
@@ -386,7 +385,7 @@ if (show_view) {
       sub <- substitute(x)
       title <- deparse(sub, nlines = 1)
     }
-    if (getOption("vsc.show_arrow_table", FALSE) && inherits(x, "ArrowTabular")) {
+    if (inherits(x, "ArrowTabular")) {
       .nrow <- nrow(x)
       if (row_limit != 0 && row_limit < .nrow) {
         title <- sprintf("%s (Limited to %s rows)", title, row_limit)
