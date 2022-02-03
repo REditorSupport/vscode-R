@@ -1728,7 +1728,7 @@
     "jquery": "^3.6.0",
     "jquery.json-viewer": "^1.4.0",
     "js-yaml": "^4.1.0",
-    "node-fetch": "^2.6.1",
+    "node-fetch": "^2.6.7",
     "popper.js": "^1.16.1",
     "showdown": "^1.9.1",
     "vscode-languageclient": "^7.0.0",
