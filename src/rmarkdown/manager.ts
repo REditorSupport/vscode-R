@@ -74,9 +74,16 @@ export abstract class RMarkdownManager {
 					'-f',
 					scriptPath
 				];
+				// When there's no LANG variable, we should try to set to a UTF-8 compatible one, as R relies
+				// on locale setting (based on LANG) to render certain characters.
+				// See https://github.com/REditorSupport/vscode-R/issues/933
+				let env = process.env;
+				if (env.LANG === undefined) {
+					env.LANG = 'en_US.UTF-8';
+				}
 				const processOptions: cp.SpawnOptions = {
 					env: {
-						...process.env,
+						...env,
 						...scriptArgs
 					},
 					cwd: args.workingDirectory,
