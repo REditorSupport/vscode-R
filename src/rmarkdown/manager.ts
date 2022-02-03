@@ -77,7 +77,7 @@ export abstract class RMarkdownManager {
 				// When there's no LANG variable, we should try to set to a UTF-8 compatible one, as R relies
 				// on locale setting (based on LANG) to render certain characters.
 				// See https://github.com/REditorSupport/vscode-R/issues/933
-				let env = process.env;
+				const env = process.env;
 				if (env.LANG === undefined) {
 					env.LANG = 'en_US.UTF-8';
 				}
