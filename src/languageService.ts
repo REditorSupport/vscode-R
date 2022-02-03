@@ -9,7 +9,7 @@ import net = require('net');
 import url = require('url');
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { DisposableProcess, getRpath, exec } from './util';
+import { DisposableProcess, getRpath, exec, isRPkgIntalled } from './util';
 
 export class LanguageService implements Disposable {
   private readonly clients: Map<string, LanguageClient> = new Map();
@@ -145,6 +145,10 @@ export class LanguageService implements Disposable {
   }
 
   private startLanguageService(self: LanguageService): void {
+    void isRPkgIntalled(
+      'languageserver',
+      'You need the R package `languageserver` to enjoy R language service features like code completion and function documentation.'
+    );
     const config = workspace.getConfiguration('r');
     const outputChannel: OutputChannel = window.createOutputChannel('R Language Server');
 

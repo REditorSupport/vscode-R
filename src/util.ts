@@ -449,3 +449,28 @@ export function exec(command: string, args?: ReadonlyArray<string>, options?: cp
     });
     return disposable;
 }
+
+/**
+ * Check if an R package is available or not
+ *
+ * @param name the R package name that need to be checked
+ * @returns a boolean Promise
+ */
+export async function isRPkgIntalled(name: string, msg?: string): Promise<boolean> {
+    const cmd = `cat(suppressPackageStartupMessages(require(${name}, quietly=TRUE)))`;
+    const isInstalled = await executeRCommand(cmd) === 'TRUE';
+    if (!isInstalled && msg !== undefined) {
+        const repo = await getCranUrl();
+        const rPath = await getRpath(false);
+        void vscode.window.showErrorMessage(msg, 'Click to install', 'Not sure')
+        .then(function(select) {
+            if (select === 'Click to install') {
+                const args = [`--silent`, '--slave', `-e`, `install.packages("${name}", repos='${repo}')`];
+                void executeAsTask('Install Package', rPath, args, true);
+                void vscode.window.showInformationMessage('You may need to reload VSCode to take effect after the R package being installed', 'OK');
+                return true;
+            }
+        });
+    }
+    return isInstalled;
+}
