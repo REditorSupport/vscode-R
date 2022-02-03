@@ -206,17 +206,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     const type = 'R';
     vscode.tasks.registerTaskProvider(type, {
         provideTasks() {
+            // `vscode.ShellQuoting.Strong` will treat the "value" as pure string and quote them based on the shell used
+            // this can ensure it works for different shells, e.g., zsh, PowerShell or cmd
             return [
                 new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Build', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::build()"')),
+                    new vscode.ShellExecution('Rscript', ['-e', {value: 'devtools::build()', quoting: vscode.ShellQuoting.Strong}])),
                 new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Check', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::check()"')),
+                    new vscode.ShellExecution('Rscript', ['-e', {value: 'devtools::check()', quoting: vscode.ShellQuoting.Strong}])),
                 new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Document', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::document()"')),
+                    new vscode.ShellExecution('Rscript', ['-e', {value: 'devtools::document()', quoting: vscode.ShellQuoting.Strong}])),
                 new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Install', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::install()"')),
+                    new vscode.ShellExecution('Rscript', ['-e', {value: 'devtools::install()', quoting: vscode.ShellQuoting.Strong}])),
                 new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Test', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::test()"')),
+                    new vscode.ShellExecution('Rscript', ['-e', {value: 'devtools::test()', quoting: vscode.ShellQuoting.Strong}]))
             ];
         },
         resolveTask(task: vscode.Task) {
