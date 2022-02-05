@@ -177,7 +177,8 @@
           "R DCF"
         ],
         "filenames": [
-          "DESCRIPTION"
+          "DESCRIPTION",
+          ".lintr"
         ],
         "configuration": "./language/dcf-configuration.json"
       }
