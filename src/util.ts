@@ -457,15 +457,21 @@ export function exec(command: string, args?: ReadonlyArray<string>, options?: cp
  * @returns a boolean Promise
  */
 export async function isRPkgIntalled(name: string, msg?: string): Promise<boolean> {
-    const cmd = `cat(suppressPackageStartupMessages(require(${name}, quietly=TRUE)))`;
-    const isInstalled = await executeRCommand(cmd) === 'TRUE';
+     // users may write stdout in .Rprofile at the begining or the end of the session. so we need some strings to surround the output
+    const cmd = `cat(sprintf('vscodeRCheckPkgAvailability={%s}', require(${name}, quietly=TRUE)))`;
+    const rOut = /vscodeRCheckPkgAvailability=\{(.{4,5})\}/.exec(await executeRCommand(cmd));
+    if (rOut.length !== 2) {
+        // somehow the code failed to perform, so we don't throw (probably) false alert
+        return true;
+    }
+    const isInstalled = rOut[1] === 'TRUE';
     if (!isInstalled && msg !== undefined) {
         const repo = await getCranUrl();
         const rPath = await getRpath(false);
         void vscode.window.showErrorMessage(msg, 'Click to install', 'Not sure')
         .then(function(select) {
             if (select === 'Click to install') {
-                const args = [`--silent`, '--slave', `-e`, `install.packages("${name}", repos='${repo}')`];
+                const args = [`--silent`, '--slave', `-e`, `install.packages('${name}', repos='${repo}')`];
                 void executeAsTask('Install Package', rPath, args, true);
                 void vscode.window.showInformationMessage('You may need to reload VSCode to take effect after the R package being installed', 'OK');
                 return true;
