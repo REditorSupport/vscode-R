@@ -471,7 +471,7 @@ export async function isRPkgIntalled(name: string, msg?: string): Promise<boolea
         void vscode.window.showErrorMessage(msg, 'Click to install', 'Not sure')
         .then(function(select) {
             if (select === 'Click to install') {
-                const args = [`--silent`, '--slave', `-e`, `install.packages('${name}', repos='${repo}')`];
+                const args = ['--silent', '--slave', '-e', `install.packages('${name}', repos='${repo}')`];
                 void executeAsTask('Install Package', rPath, args, true);
                 void vscode.window.showInformationMessage('You may need to reload VSCode to take effect after the R package gets installed', 'OK');
                 return true;
