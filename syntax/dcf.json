@@ -22,7 +22,7 @@
             "patterns": [
                 {
                     "comment": "keyword",
-                    "match": "^[A-Z][a-zA-Z-]+:",
+                    "match": "^(?!Authors@R:).*?:",
                     "name": "keyword.control"
                 }
             ]
@@ -68,7 +68,7 @@
                             "name": "keyword.control"
                         }
                     },
-                    "end": "(?<=\\))\\s*$",
+                    "end": "^(?!\\s)",
                     "contentName": "meta.embedded.block.r",
                     "patterns": [
                         {
