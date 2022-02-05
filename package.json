@@ -1613,7 +1613,7 @@
         "r.plot.useHttpgd": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer. Changes the option `vsc.use_httpgd` in R."
+          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer. Changes the option `vsc.use_httpgd` in R.\n\nRequires the `httpgd` R package version 1.2.0 or later."
         },
         "r.plot.defaults.colorTheme": {
           "type": "string",
