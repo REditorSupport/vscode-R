@@ -22,7 +22,7 @@
             "patterns": [
                 {
                     "comment": "keyword",
-                    "match": "^(?!Authors@R:).*?:",
+                    "match": "^(?!(Authors@R:|linters:|exclusions:)).*?:",
                     "name": "keyword.control"
                 }
             ]
@@ -62,7 +62,7 @@
             ],
             "repository": {
                 "code-block-r": {
-                    "begin": "^(Authors@R:)",
+                    "begin": "^(Authors@R:|linters:|exclusions:)",
                     "beginCaptures": {
                         "1": {
                             "name": "keyword.control"
