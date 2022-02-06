@@ -310,13 +310,6 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
     const lim = '---vsc---';
     const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
 
-    const args = [
-        '--silent',
-        '--slave',
-        '--no-save',
-        '--no-restore',
-    ];
-
     const rPath = await getRpath(true);
 
     const options: cp.ExecSyncOptionsWithStringEncoding = {
@@ -324,15 +317,24 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
         encoding: 'utf-8'
     };
 
-    const cmd = (
-        `${rPath} ${args.join(' ')} -e "cat('${lim}')" -e "${rCommand}" -e "cat('${lim}')"`
-    );
+    const args = [
+        '--silent',
+        '--slave',
+        '--no-save',
+        '--no-restore',
+        '-e', `cat('${lim}')`,
+        '-e', rCommand,
+        '-e', `cat('${lim}')`
+    ];
 
     let ret: string = undefined;
 
     try {
-        const stdout = cp.execSync(cmd, options);
-        ret = stdout.replace(re, '$1');
+        const result = cp.spawnSync(rPath, args, options);
+        if (result.error) {
+            throw result.error;
+        }
+        ret = result.stdout.replace(re, '$1');
     } catch (e) {
         if (fallBack) {
             ret = fallBack;
@@ -456,27 +458,28 @@ export function exec(command: string, args?: ReadonlyArray<string>, options?: cp
  * @param name the R package name that need to be checked
  * @returns a boolean Promise
  */
-export async function isRPkgIntalled(name: string, msg?: string): Promise<boolean> {
-     // users may write stdout in .Rprofile at the begining or the end of the session. so we need some strings to surround the output
-    const cmd = `cat(sprintf('vscodeRCheckPkgAvailability={%s}', require(${name}, quietly=TRUE)))`;
-    const rOut = /vscodeRCheckPkgAvailability=\{(.{4,5})\}/.exec(await executeRCommand(cmd));
-    if (rOut.length !== 2) {
-        // somehow the code failed to perform, so we don't throw (probably) false alert
-        return true;
-    }
-    const isInstalled = rOut[1] === 'TRUE';
-    if (!isInstalled && msg !== undefined) {
+export async function isRPkgIntalled(name: string, promptToInstall: boolean = false, installMsg?: string, postInstallMsg?: string): Promise<boolean> {
+    // users may write stdout in .Rprofile at the begining or the end of the session. so we need some strings to surround the output
+    const cmd = `cat(requireNamespace('${name}', quietly=TRUE))`;
+    const rOut = await executeRCommand(cmd);
+    const isInstalled = rOut === 'TRUE';
+    if (promptToInstall && !isInstalled) {
+        if (installMsg === undefined) {
+            installMsg = `R package {${name}} is not installed. Do you want to install it?`;
+        }
         const repo = await getCranUrl();
         const rPath = await getRpath(false);
-        void vscode.window.showErrorMessage(msg, 'Click to install', 'Not sure')
-        .then(function(select) {
-            if (select === 'Click to install') {
-                const args = ['--silent', '--slave', '-e', `install.packages('${name}', repos='${repo}')`];
-                void executeAsTask('Install Package', rPath, args, true);
-                void vscode.window.showInformationMessage('You may need to reload VSCode to take effect after the R package gets installed', 'OK');
-                return true;
-            }
-        });
+        void vscode.window.showErrorMessage(installMsg, 'Yes', 'No')
+            .then(function (select) {
+                if (select === 'Yes') {
+                    const args = ['--silent', '--slave', '-e', `install.packages('${name}', repos='${repo}')`];
+                    void executeAsTask('Install Package', rPath, args, true);
+                    if (postInstallMsg) {
+                        void vscode.window.showInformationMessage(postInstallMsg, 'OK');
+                    }
+                    return true;
+                }
+            });
     }
     return isInstalled;
 }

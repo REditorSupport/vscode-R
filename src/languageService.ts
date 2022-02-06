@@ -25,6 +25,16 @@ export class LanguageService implements Disposable {
 
   private async createClient(config: WorkspaceConfiguration, selector: DocumentFilter[],
     cwd: string, workspaceFolder: WorkspaceFolder, outputChannel: OutputChannel): Promise<LanguageClient> {
+    const installed = await isRPkgIntalled(
+      'languageserver', true,
+      'R package {languageserver} is required to enable R language service features such as code completion, function signature, find references, etc. Do you want to install it?',
+      'You may need to reopen an R file to start the language service after the package is installed.'
+    );
+
+    if (!installed) {
+      return undefined;
+    }
+
     let client: LanguageClient;
 
     const debug = config.get<boolean>('lsp.debug');
@@ -145,10 +155,6 @@ export class LanguageService implements Disposable {
   }
 
   private startLanguageService(self: LanguageService): void {
-    void isRPkgIntalled(
-      'languageserver',
-      'You need the R package `languageserver` to enjoy R language service features like code completion and function documentation.'
-    );
     const config = workspace.getConfiguration('r');
     const outputChannel: OutputChannel = window.createOutputChannel('R Language Server');
 
@@ -173,8 +179,10 @@ export class LanguageService implements Disposable {
           ];
           const client = await self.createClient(config, documentSelector,
             path.dirname(document.uri.fsPath), folder, outputChannel);
-          client.start();
-          self.clients.set(key, client);
+          if (client) {
+            client.start();
+            self.clients.set(key, client);
+          }
           self.initSet.delete(key);
         }
         return;
@@ -192,8 +200,10 @@ export class LanguageService implements Disposable {
             { scheme: 'file', language: 'rmd', pattern: pattern },
           ];
           const client = await self.createClient(config, documentSelector, folder.uri.fsPath, folder, outputChannel);
-          client.start();
-          self.clients.set(key, client);
+          if (client) {
+            client.start();
+            self.clients.set(key, client);
+          }
           self.initSet.delete(key);
         }
 
@@ -209,8 +219,10 @@ export class LanguageService implements Disposable {
               { scheme: 'untitled', language: 'rmd' },
             ];
             const client = await self.createClient(config, documentSelector, os.homedir(), undefined, outputChannel);
-            client.start();
-            self.clients.set(key, client);
+            if (client) {
+              client.start();
+              self.clients.set(key, client);
+            }
             self.initSet.delete(key);
           }
           return;
@@ -226,8 +238,10 @@ export class LanguageService implements Disposable {
             ];
             const client = await self.createClient(config, documentSelector,
               path.dirname(document.uri.fsPath), undefined, outputChannel);
-            client.start();
-            self.clients.set(key, client);
+            if (client) {
+              client.start();
+              self.clients.set(key, client);
+            }
             self.initSet.delete(key);
           }
           return;
