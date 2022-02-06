@@ -475,7 +475,7 @@ export async function isRPkgIntalled(name: string, cwd: string, promptToInstall:
         void vscode.window.showErrorMessage(installMsg, 'Yes', 'No')
             .then(async function (select) {
                 if (select === 'Yes') {
-                    const repo = await getCranUrl(undefined, cwd);
+                    const repo = await getCranUrl('', cwd);
                     const rPath = await getRpath(false);
                     const args = ['--silent', '--slave', '-e', `install.packages('${name}', repos='${repo}')`];
                     void executeAsTask('Install Package', rPath, args, true);
