@@ -334,7 +334,12 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
         if (result.error) {
             throw result.error;
         }
-        ret = result.stdout.replace(re, '$1');
+        const match = re.exec(result.stdout);
+        if (match.length === 2) {
+            ret = match[1];
+        } else {
+            throw new Error('Could not parse R output.');
+        }
     } catch (e) {
         if (fallBack) {
             ret = fallBack;
