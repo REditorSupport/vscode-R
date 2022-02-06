@@ -472,11 +472,11 @@ export async function isRPkgIntalled(name: string, cwd: string, promptToInstall:
         if (installMsg === undefined) {
             installMsg = `R package {${name}} is not installed. Do you want to install it?`;
         }
-        const repo = await getCranUrl();
-        const rPath = await getRpath(false);
         void vscode.window.showErrorMessage(installMsg, 'Yes', 'No')
-            .then(function (select) {
+            .then(async function (select) {
                 if (select === 'Yes') {
+                    const repo = await getCranUrl(undefined, cwd);
+                    const rPath = await getRpath(false);
                     const args = ['--silent', '--slave', '-e', `install.packages('${name}', repos='${repo}')`];
                     void executeAsTask('Install Package', rPath, args, true);
                     if (postInstallMsg) {
