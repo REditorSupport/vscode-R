@@ -310,13 +310,6 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
     const lim = '---vsc---';
     const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
 
-    const args = [
-        '--silent',
-        '--slave',
-        '--no-save',
-        '--no-restore',
-    ];
-
     const rPath = await getRpath(true);
 
     const options: cp.ExecSyncOptionsWithStringEncoding = {
@@ -324,15 +317,29 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
         encoding: 'utf-8'
     };
 
-    const cmd = (
-        `${rPath} ${args.join(' ')} -e "cat('${lim}')" -e "${rCommand}" -e "cat('${lim}')"`
-    );
+    const args = [
+        '--silent',
+        '--slave',
+        '--no-save',
+        '--no-restore',
+        '-e', `cat('${lim}')`,
+        '-e', rCommand,
+        '-e', `cat('${lim}')`
+    ];
 
     let ret: string = undefined;
 
     try {
-        const stdout = cp.execSync(cmd, options);
-        ret = stdout.replace(re, '$1');
+        const result = cp.spawnSync(rPath, args, options);
+        if (result.error) {
+            throw result.error;
+        }
+        const match = re.exec(result.stdout);
+        if (match.length === 2) {
+            ret = match[1];
+        } else {
+            throw new Error('Could not parse R output.');
+        }
     } catch (e) {
         if (fallBack) {
             ret = fallBack;
@@ -448,4 +455,35 @@ export function exec(command: string, args?: ReadonlyArray<string>, options?: cp
         }
     });
     return disposable;
+}
+
+/**
+ * Check if an R package is available or not
+ *
+ * @param name the R package name that need to be checked
+ * @returns a boolean Promise
+ */
+export async function isRPkgIntalled(name: string, cwd: string, promptToInstall: boolean = false, installMsg?: string, postInstallMsg?: string): Promise<boolean> {
+    const cmd = `cat(requireNamespace('${name}', quietly=TRUE))`;
+    const rOut = await executeRCommand(cmd, 'FALSE', cwd);
+    const isInstalled = rOut === 'TRUE';
+    if (promptToInstall && !isInstalled) {
+        if (installMsg === undefined) {
+            installMsg = `R package {${name}} is not installed. Do you want to install it?`;
+        }
+        void vscode.window.showErrorMessage(installMsg, 'Yes', 'No')
+            .then(async function (select) {
+                if (select === 'Yes') {
+                    const repo = await getCranUrl('', cwd);
+                    const rPath = await getRpath(false);
+                    const args = ['--silent', '--slave', '-e', `install.packages('${name}', repos='${repo}')`];
+                    void executeAsTask('Install Package', rPath, args, true);
+                    if (postInstallMsg) {
+                        void vscode.window.showInformationMessage(postInstallMsg, 'OK');
+                    }
+                    return true;
+                }
+            });
+    }
+    return isInstalled;
 }
