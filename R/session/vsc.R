@@ -321,7 +321,11 @@ show_view <- !identical(getOption("vsc.view", "Two"), FALSE)
 if (show_view) {
   get_column_def <- function(name, field, value) {
     filter <- TRUE
-    tooltip <- typeof(value)
+    tooltip <- sprintf(
+      "class: [%s], type: %s",
+      toString(class(value)),
+      typeof(value)
+    )
     if (is.numeric(value)) {
       type <- "numericColumn"
       if (is.null(attr(value, "class"))) {

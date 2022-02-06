@@ -497,6 +497,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         pagination: true,
         enableCellTextSelection: true,
         ensureDomOrder: true,
+        tooltipShowDelay: 100,
         onGridReady: function (params) {
             gridOptions.api.sizeColumnsToFit();
             autoSizeAll(false);
