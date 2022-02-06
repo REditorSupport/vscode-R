@@ -26,7 +26,7 @@ export class LanguageService implements Disposable {
   private async createClient(config: WorkspaceConfiguration, selector: DocumentFilter[],
     cwd: string, workspaceFolder: WorkspaceFolder, outputChannel: OutputChannel): Promise<LanguageClient> {
     const installed = await isRPkgIntalled(
-      'languageserver', true,
+      'languageserver', cwd, true,
       'R package {languageserver} is required to enable R language service features such as code completion, function signature, find references, etc. Do you want to install it?',
       'You may need to reopen an R file to start the language service after the package is installed.'
     );
