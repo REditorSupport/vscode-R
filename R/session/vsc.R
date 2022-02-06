@@ -321,6 +321,7 @@ show_view <- !identical(getOption("vsc.view", "Two"), FALSE)
 if (show_view) {
   get_column_def <- function(name, field, value) {
     filter <- TRUE
+    tooltip <- typeof(value)
     if (is.numeric(value)) {
       type <- "numericColumn"
       if (is.null(attr(value, "class"))) {
@@ -335,6 +336,7 @@ if (show_view) {
     }
     list(
       headerName = name,
+      headerTooltip = tooltip,
       field = field,
       type = type,
       filter = filter
