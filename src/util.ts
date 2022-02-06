@@ -464,7 +464,6 @@ export function exec(command: string, args?: ReadonlyArray<string>, options?: cp
  * @returns a boolean Promise
  */
 export async function isRPkgIntalled(name: string, cwd: string, promptToInstall: boolean = false, installMsg?: string, postInstallMsg?: string): Promise<boolean> {
-    // users may write stdout in .Rprofile at the begining or the end of the session. so we need some strings to surround the output
     const cmd = `cat(requireNamespace('${name}', quietly=TRUE))`;
     const rOut = await executeRCommand(cmd, 'FALSE', cwd);
     const isInstalled = rOut === 'TRUE';
