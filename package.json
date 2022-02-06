@@ -1719,7 +1719,7 @@
     "yamljs": "^0.3.0"
   },
   "dependencies": {
-    "ag-grid-community": "^26.0.0",
+    "ag-grid-community": "^26.2.1",
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
     "ejs": "^3.1.6",
