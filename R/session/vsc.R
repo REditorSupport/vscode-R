@@ -321,6 +321,11 @@ show_view <- !identical(getOption("vsc.view", "Two"), FALSE)
 if (show_view) {
   get_column_def <- function(name, field, value) {
     filter <- TRUE
+    tooltip <- sprintf(
+      "class: [%s], type: %s",
+      toString(class(value)),
+      typeof(value)
+    )
     if (is.numeric(value)) {
       type <- "numericColumn"
       if (is.null(attr(value, "class"))) {
@@ -335,6 +340,7 @@ if (show_view) {
     }
     list(
       headerName = name,
+      headerTooltip = tooltip,
       field = field,
       type = type,
       filter = filter
@@ -348,11 +354,11 @@ if (show_view) {
 
     if (is.data.frame(data)) {
       .nrow <- nrow(data)
-      colnames <- colnames(data)
-      if (is.null(colnames)) {
-        colnames <- sprintf("V%d", seq_len(ncol(data)))
+      .colnames <- colnames(data)
+      if (is.null(.colnames)) {
+        .colnames <- sprintf("V%d", seq_len(ncol(data)))
       } else {
-        colnames <- trimws(colnames)
+        .colnames <- trimws(.colnames)
       }
       if (.row_names_info(data) > 0L) {
         rownames <- rownames(data)
@@ -360,14 +366,14 @@ if (show_view) {
       } else {
         rownames <- seq_len(.nrow)
       }
-      colnames <- c("(row)", colnames)
-      fields <- sprintf("x%d", seq_along(colnames))
+      .colnames <- c("(row)", .colnames)
+      fields <- sprintf("x%d", seq_along(.colnames))
       data <- c(list(" " = rownames), .subset(data))
       names(data) <- fields
       class(data) <- "data.frame"
       attr(data, "row.names") <- .set_row_names(.nrow)
       columns <- .mapply(get_column_def,
-        list(colnames, fields, data),
+        list(.colnames, fields, data),
         NULL
       )
       list(
