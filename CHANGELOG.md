@@ -4,6 +4,12 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.3.8](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.8)
+
+Fixes:
+
+* Fixes languageserver detection failure on Windows by avoiding rpath quoting. (#981)
+
 ## [2.3.7](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.7)
 
 Note:
