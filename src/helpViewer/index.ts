@@ -29,7 +29,7 @@ export async function initializeHelp(
     void vscode.commands.executeCommand('setContext', 'r.helpViewer.show', true);
 
     // get the "vanilla" R path from config
-    const rPath = await getRpath(false);
+    const rPath = await getRpath();
 
     // get the current working directory from vscode
     const cwd = vscode.workspace.workspaceFolders?.length

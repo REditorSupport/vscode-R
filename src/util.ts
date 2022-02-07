@@ -310,7 +310,7 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
     const lim = '---vsc---';
     const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
 
-    const rPath = await getRpath(true);
+    const rPath = await getRpath();
 
     const options: cp.ExecSyncOptionsWithStringEncoding = {
         cwd: cwd,
@@ -475,7 +475,7 @@ export async function isRPkgIntalled(name: string, cwd: string, promptToInstall:
             .then(async function (select) {
                 if (select === 'Yes') {
                     const repo = await getCranUrl('', cwd);
-                    const rPath = await getRpath(false);
+                    const rPath = await getRpath();
                     const args = ['--silent', '--slave', '-e', `install.packages('${name}', repos='${repo}')`];
                     void executeAsTask('Install Package', rPath, args, true);
                     if (postInstallMsg) {

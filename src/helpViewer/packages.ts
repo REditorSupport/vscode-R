@@ -195,7 +195,7 @@ export class PackageManager {
 
     // remove a specified package. The packagename is selected e.g. in the help tree-view
     public async removePackage(pkgName: string): Promise<boolean> {
-        const rPath = await getRpath(false);
+        const rPath = await getRpath();
         const args = ['--silent', '--slave', '-e', `remove.packages('${pkgName}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
         const confirmation = 'Yes, remove package!';
@@ -212,7 +212,7 @@ export class PackageManager {
     // actually install packages
     // confirmation can be skipped (e.g. if the user has confimred before)
     public async installPackages(pkgNames: string[], skipConfirmation: boolean = false): Promise<boolean> {
-        const rPath = await getRpath(false);
+        const rPath = await getRpath();
         const cranUrl = await getCranUrl('', this.cwd);
         const args = [`--silent`, '--slave', `-e`, `install.packages(c(${pkgNames.map(v => `'${v}'`).join(',')}),repos='${cranUrl}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
@@ -228,7 +228,7 @@ export class PackageManager {
     }
     
     public async updatePackages(skipConfirmation: boolean = false): Promise<boolean> {
-        const rPath = await getRpath(false);
+        const rPath = await getRpath();
         const cranUrl = await getCranUrl('', this.cwd);
         const args = ['--silent', '--slave', '-e', `update.packages(ask=FALSE,repos='${cranUrl}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
