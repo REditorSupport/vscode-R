@@ -4,6 +4,29 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.3.7](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.7)
+
+Note:
+
+* After v2.3.4, httpgd plot viewer requires `httpgd` 1.2.0 or later. If the plot viewer shows 404 error, installing the latest release of `httpgd` should resolve the problem. (#972)
+
+Enhancements:
+
+* Data viewer supports [Apache Arrow Table](https://arrow.apache.org/docs/r) and `r.session.data.rowLimit` setting is added to limit the number of rows to show. (#945, thanks @eitsupi)
+* R gitignore file is updated and "R: Create gitignore" also supports multi-root workspace. (#949, thanks @eitsupi).
+* Httpgd plot viewer has a delay before refreshing to avoid redrawing too often. (#956)
+* Shell commands used in tasks use strong quoting. (#964, thanks @shrektan)
+* User will be prompted to install `languageserver` if the package is missing. (#965, @shrektan)
+* DCF syntax is updated to support syntax highlighting of `.lintr`. (#970, thanks @eitsupi)
+* Column headers show the class and type of each column in tooltips. (#974, thanks @eitsupi)
+* Extension is activated if the workspace folder contains `*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}` at any level of sub-folders. (#979)
+
+Fixes:
+
+* Fix typo in command line arguments. (#954, thanks @achey2016)
+* R Markdown commenting uses HTML-style comments outside code blocks. (#958)
+* R Markdown rendering process gets `LANG` environment variable to properly handle unicode characters. (#961, thanks @shrektan)
+
 ## [2.3.6](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.6)
 
 Enhancements:
