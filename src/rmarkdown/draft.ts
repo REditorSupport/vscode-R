@@ -39,7 +39,7 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
     '--no-save',
     '--no-restore',
     '-f',
-    extensionContext.asAbsolutePath('R/rmarkdown/draft.R')
+    extensionContext.asAbsolutePath('R/rmarkdown/templates.R')
   ];
 
   try {
