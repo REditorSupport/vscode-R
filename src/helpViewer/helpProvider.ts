@@ -9,7 +9,7 @@ import * as os from 'os';
 
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
-import { DisposableProcess, exec } from '../util';
+import { DisposableProcess, spawn } from '../util';
 import { readJSON } from 'fs-extra';
 
 export interface RHelpProviderOptions {
@@ -67,7 +67,7 @@ export class HelpProvider {
             env: { ...process.env, 'VSCR_LIM': lim },
         };
 
-        const childProcess: ChildProcessWithPort = exec(this.rPath, args, cpOptions);
+        const childProcess: ChildProcessWithPort = spawn(this.rPath, args, cpOptions);
 
         let str = '';
         // promise containing the port number of the process (or 0)

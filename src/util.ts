@@ -431,7 +431,7 @@ export function asDisposable<T>(toDispose: T, disposeFunction: (...args: unknown
 }
 
 export type DisposableProcess = cp.ChildProcessWithoutNullStreams & vscode.Disposable;
-export function exec(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
+export function spawn(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
     const proc = cp.spawn(command, args, options);
     console.log(`Process ${proc.pid} spawned`);
     let running = true;
