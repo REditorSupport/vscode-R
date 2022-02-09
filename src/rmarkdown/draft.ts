@@ -6,14 +6,15 @@
 /* eslint-disable @typescript-eslint/explicit-module-boundary-types */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 
-import { QuickPickItem, QuickPickOptions, window, workspace } from 'vscode';
+import { QuickPickItem, QuickPickOptions, Uri, window, workspace } from 'vscode';
 import { extensionContext } from '../extension';
-import { getCurrentWorkspaceFolder, getRpath } from '../util';
+import { executeRCommand, getCurrentWorkspaceFolder, getRpath } from '../util';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { readJSON } from 'fs-extra';
+import { join } from 'path';
 
 interface TemplateItem extends QuickPickItem {
   id: string;
@@ -91,43 +92,12 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem> {
   return selection;
 }
 
-async function makeDraft(template: TemplateItem, cwd: string): Promise<string> {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-'));
-  const tempFile = path.join(tempDir, 'draft.Rmd');
-  const rPath = await getRpath();
-  const options: cp.ExecSyncOptionsWithStringEncoding = {
-    cwd: cwd,
-    encoding: 'utf-8',
-  };
-
-  const args = [
-    '--silent',
-    '--slave',
-    '--no-save',
-    '--no-restore',
-    '-e',
-    `rmarkdown::draft(file='${tempFile}', template='${template.id}', package='${template.package}', edit=FALSE)`,
-  ];
-
-  try {
-    const result = cp.spawnSync(rPath, args, options);
-    if (result.error) {
-      throw result.error;
-    }
-
-    if (fs.existsSync(tempFile)) {
-      const text = fs.readFileSync(tempFile, 'utf-8');
-      return text;
-    } else {
-      throw new Error('Failed to create draft.');
-    }
-  } catch (e) {
-    void window.showErrorMessage((<{ message: string }>e).message);
-  } finally {
-    fs.rmdirSync(tempDir, { recursive: true });
-  }
-
-  return undefined;
+async function makeDraft(file: string, template: TemplateItem, cwd: string): Promise<string> {
+  const cmd = `cat(normalizePath(rmarkdown::draft(file='${file}', template='${template.id}', package='${template.package}', edit=FALSE)))`;
+  return await executeRCommand(cmd, cwd, (e: Error) => {
+    void window.showErrorMessage(e.message);
+    return '';
+  });
 }
 
 export async function newDraft(): Promise<void> {
@@ -137,8 +107,20 @@ export async function newDraft(): Promise<void> {
     return;
   }
 
-  const text = await makeDraft(template, cwd);
-  if (text) {
-    void workspace.openTextDocument({ language: 'rmd', content: text });
+  const uri = await window.showSaveDialog({
+    defaultUri: Uri.file(join(cwd, 'draft.Rmd')),
+    filters: {
+      'R Markdown': ['Rmd', 'rmd']
+    },
+    saveLabel: 'Create Draft',
+    title: 'R Markdown: New Draft'
+  });
+
+  if (uri) {
+    const draftPath = await makeDraft(uri.fsPath, template, cwd);
+    if (draftPath) {
+      await workspace.openTextDocument(draftPath)
+        .then(document => window.showTextDocument(document));
+    }
   }
 }
