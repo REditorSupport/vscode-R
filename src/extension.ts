@@ -93,6 +93,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.goToNextChunk': rmarkdown.goToNextChunk,
         'r.runChunks': rTerminal.runChunksInTerm,
 
+        'r.rmarkdown.newDraft': () => rmarkdown.newDraft(),
         'r.rmarkdown.setKnitDirectory': () => rmdKnitManager.setKnitDir(),
         'r.rmarkdown.showPreviewToSide': () => rmdPreviewManager.previewRmd(vscode.ViewColumn.Beside),
         'r.rmarkdown.showPreview': (uri: vscode.Uri) => rmdPreviewManager.previewRmd(vscode.ViewColumn.Active, uri),
