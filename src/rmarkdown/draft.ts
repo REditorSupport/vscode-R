@@ -8,7 +8,7 @@
 
 import { QuickPickItem, QuickPickOptions, Uri, window, workspace } from 'vscode';
 import { extensionContext } from '../extension';
-import { executeRCommand, getCurrentWorkspaceFolder, getRpath } from '../util';
+import { executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral } from '../util';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -93,7 +93,8 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem> {
 }
 
 async function makeDraft(file: string, template: TemplateItem, cwd: string): Promise<string> {
-  const cmd = `cat(normalizePath(rmarkdown::draft(file='${file}', template='${template.id}', package='${template.package}', edit=FALSE)))`;
+  const fileString = ToRStringLiteral(file, '');
+  const cmd = `cat(normalizePath(rmarkdown::draft(file='${fileString}', template='${template.id}', package='${template.package}', edit=FALSE)))`;
   return await executeRCommand(cmd, cwd, (e: Error) => {
     void window.showErrorMessage(e.message);
     return '';
