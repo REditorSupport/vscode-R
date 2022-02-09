@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 
 import { Memento, window } from 'vscode';
 import * as http from 'http';
@@ -9,6 +10,7 @@ import * as os from 'os';
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
 import { DisposableProcess, exec } from '../util';
+import { readJSON } from 'fs-extra';
 
 export interface RHelpProviderOptions {
 	// path of the R executable
@@ -221,11 +223,11 @@ export class AliasProvider {
     public async refresh(): Promise<void> {
         this.aliases = undefined;
         await this.persistentState?.update('r.helpPanel.cachedAliases', undefined);
-        this.makeAllAliases();
+        await this.makeAllAliases();
     }
 
     // get a list of all aliases
-    public getAllAliases(): rHelp.Alias[] | undefined {
+    public async getAllAliases(): Promise<rHelp.Alias[] | undefined> {
         // try this.aliases:
         if(this.aliases){
             return this.aliases;
@@ -239,16 +241,16 @@ export class AliasProvider {
         }
         
         // try to make new aliases (returns undefined if unsuccessful):
-        const newAliases = this.makeAllAliases();
+        const newAliases = await this.makeAllAliases();
         this.aliases = newAliases;
         this.persistentState?.update('r.helpPanel.cachedAliases', newAliases);
         return newAliases;
     }
 
     // converts aliases grouped by package to a flat list of aliases
-    private makeAllAliases(): rHelp.Alias[] | undefined {
+    private async makeAllAliases(): Promise<rHelp.Alias[] | undefined> {
         // get aliases from R (nested format)
-        const allPackageAliases = this.getAliasesFromR();
+        const allPackageAliases = await this.getAliasesFromR();
         if(!allPackageAliases){
             return undefined;
         }
@@ -270,32 +272,53 @@ export class AliasProvider {
     }
 
     // call R script `getAliases.R` and parse the output
-    private getAliasesFromR(): undefined | AllPackageAliases {
-
-        // get from R
-		const lim = '---vsc---'; // must match the lim used in R!
-		const re = new RegExp(`^.*?${lim}(.*)${lim}.*$`, 'ms');
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-aliases'));
+    private async getAliasesFromR(): Promise<undefined | AllPackageAliases> {
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-'));
         const tempFile = path.join(tempDir, 'aliases.json');
-        const cmd = `"${this.rPath}" --silent --no-save --no-restore --slave -f "${this.rScriptFile}" > "${tempFile}"`;
+        const options: cp.ExecSyncOptionsWithStringEncoding = {
+            cwd: this.cwd,
+            encoding: 'utf-8',
+            env: {
+                ...process.env,
+                VSCR_FILE: tempFile
+            }
+        };
+
+        const args = [
+            '--silent',
+            '--slave',
+            '--no-save',
+            '--no-restore',
+            '-f',
+            this.rScriptFile
+        ];
 
         let allPackageAliases: undefined | AllPackageAliases = undefined;
-        try{
+        try {
             // execute R script 'getAliases.R'
             // aliases will be written to tempFile
-            cp.execSync(cmd, { cwd: this.cwd });
+            const result = cp.spawnSync(this.rPath, args, options);
+
+            if (result.error) {
+                throw result.error;
+            }
+
+            if (result.status) {
+                throw new Error(result.stderr);
+            }
 
             // read and parse aliases
-            const txt = fs.readFileSync(tempFile, 'utf-8');
-            const json = txt.replace(re, '$1');
-            if(json){
-                allPackageAliases = <{[key: string]: PackageAliases}> JSON.parse(json) || {};
-            }
-        } catch(e: unknown){
+            allPackageAliases = <{ [key: string]: PackageAliases }>await readJSON(tempFile).then(
+                (result) => result,
+                () => {
+                    throw new Error('Failed to read aliases from installed packages.');
+                }
+            ) || {};
+        } catch (e) {
             console.log(e);
-            void window.showErrorMessage((<{message: string}>e).message);
+            void window.showErrorMessage((<{ message: string }>e).message);
         } finally {
-            fs.rmdirSync(tempDir, {recursive: true});
+            fs.rmdirSync(tempDir, { recursive: true });
         }
         return allPackageAliases;
     }
