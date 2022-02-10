@@ -112,20 +112,32 @@ export async function newDraft(): Promise<void> {
     return;
   }
 
-  const uri = await window.showSaveDialog({
-    defaultUri: Uri.file(join(cwd, template.info.create_dir ? 'draft' : 'draft.Rmd')),
-    filters: {
-      'R Markdown': ['Rmd', 'rmd']
-    },
-    saveLabel: template.info.create_dir ? 'Create Folder' : 'Save',
-    title: 'R Markdown: New Draft'
-  });
+  if (template.info.create_dir) {
+    const uri = await window.showSaveDialog({
+      defaultUri: Uri.file(join(cwd, 'draft')),
+      filters: {
+        'R Markdown': ['Rmd', 'rmd']
+      },
+      saveLabel: 'Create Folder',
+      title: 'R Markdown: New Draft'
+    });
 
-  if (uri) {
-    const draftPath = await makeDraft(uri.fsPath, template, cwd);
+    if (uri) {
+      const draftPath = await makeDraft(uri.fsPath, template, cwd);
+      if (draftPath) {
+        await workspace.openTextDocument(draftPath)
+          .then(document => window.showTextDocument(document));
+      }
+    }
+  } else {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-'));
+    const tempFile = path.join(tempDir, 'draft.Rmd');
+    const draftPath = await makeDraft(tempFile, template, cwd);
     if (draftPath) {
-      await workspace.openTextDocument(draftPath)
+      const text = fs.readFileSync(draftPath, 'utf8');
+      await workspace.openTextDocument({ language: 'rmd', content: text })
         .then(document => window.showTextDocument(document));
     }
+    fs.rmdirSync(tempDir, { recursive: true });
   }
 }
