@@ -25,10 +25,4 @@ names(ret) <- rownames(ip)
 lim <- Sys.getenv("VSCR_LIM")
 json <- jsonlite::toJSON(ret, auto_unbox = TRUE)
 
-cat(
-  lim,
-  json,
-  lim,
-  sep = "\n",
-  file = stdout()
-)
+cat(lim, json, lim, sep = "\n", file = stdout())
