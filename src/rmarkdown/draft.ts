@@ -6,12 +6,11 @@
 
 import { QuickPickItem, QuickPickOptions, Uri, window, workspace } from 'vscode';
 import { extensionContext } from '../extension';
-import { executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral } from '../util';
+import { exec, executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral } from '../util';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { readJSON } from 'fs-extra';
 import { join } from 'path';
 
 interface TemplateInfo {
@@ -27,57 +26,65 @@ interface TemplateItem extends QuickPickItem {
 }
 
 async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-'));
-  const tempFile = path.join(tempDir, 'templates.json');
+  const lim = '---vsc---';
   const rPath = await getRpath();
   const options: cp.ExecSyncOptionsWithStringEncoding = {
     cwd: cwd,
     encoding: 'utf-8',
     env: {
       ...process.env,
-      VSCR_FILE: tempFile
+      VSCR_LIM: lim
     }
   };
 
+  const rScriptFile = extensionContext.asAbsolutePath('R/rmarkdown/templates.R');
   const args = [
     '--silent',
     '--slave',
     '--no-save',
     '--no-restore',
     '-f',
-    extensionContext.asAbsolutePath('R/rmarkdown/templates.R')
+    rScriptFile
   ];
 
-  try {
-    const result = cp.spawnSync(rPath, args, options);
-    if (result.error) {
-      throw result.error;
+  return new Promise((resolve) => {
+    try {
+      let str = '';
+      const childProcess = exec(rPath, args, options);
+      childProcess.stdout?.on('data', (chunk: Buffer) => {
+        str += chunk.toString();
+      });
+      childProcess.on('exit', (code, signal) => {
+        let items: TemplateItem[] = [];
+        if (code === 0) {
+          const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
+          const match = re.exec(str);
+          if (match.length === 2) {
+            const json = match[1];
+            const templates = <TemplateInfo[]>JSON.parse(json) || [];
+            items = templates.map((x) => {
+              return {
+                alwaysShow: false,
+                description: `{${x.package}}`,
+                label: x.name,
+                detail: x.description,
+                picked: false,
+                info: x
+              };
+            });
+          } else {
+            console.log('Could not parse R output.');
+          }
+        } else {
+          console.log(`R process exited with code ${code} from signal ${signal}`);
+        }
+        resolve(items);
+      });
+    } catch (e) {
+      void window.showErrorMessage((<{ message: string }>e).message);
+      resolve([]);
     }
-
-    const templates: TemplateInfo[] = await readJSON(tempFile).then(
-      (result) => result,
-      () => {
-        throw ('Failed to load templates from installed packages.');
-      }
-    );
-
-    const items = templates.map((x) => {
-      return {
-        alwaysShow: false,
-        description: `{${x.package}}`,
-        label: x.name,
-        detail: x.description,
-        picked: false,
-        info: x
-      };
-    });
-
-    return items;
-  } catch (e) {
-    void window.showErrorMessage((<{ message: string }>e).message);
-  } finally {
-    fs.rmdirSync(tempDir, { recursive: true });
-  }
+  });
 }
 
 async function launchTemplatePicker(cwd: string): Promise<TemplateItem> {

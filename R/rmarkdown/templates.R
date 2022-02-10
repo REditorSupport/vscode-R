@@ -20,6 +20,6 @@ template_dirs <- lapply(pkgs, function(pkg) {
 })
 
 template_list <- unname(as.list(templates))
-file <- Sys.getenv("VSCR_FILE")
-
-jsonlite::write_json(template_list, file, auto_unbox = TRUE)
+lim <- Sys.getenv("VSCR_LIM")
+json <- jsonlite::toJSON(template_list, auto_unbox = TRUE)
+cat(lim, json, lim, sep = "\n", file = stdout())
