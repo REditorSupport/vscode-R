@@ -300,24 +300,25 @@ export class AliasProvider {
                     str += chunk.toString();
                 });
                 childProcess.on('exit', (code, signal) => {
+                    let result: AllPackageAliases | undefined = undefined;
                     if (code === 0) {
                         const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
                         const match = re.exec(str);
                         if (match.length === 2) {
                             const json = match[1];
-                            const result = <{ [key: string]: PackageAliases }>JSON.parse(json) || {};
-                            resolve(result);
+                            result = <{ [key: string]: PackageAliases }>JSON.parse(json) || {};
                         } else {
-                            reject(new Error('Could not parse R output.'));
+                            console.log('Could not parse R output.');
                         }
                     } else {
-                        reject(new Error(`R process exited with code ${code} from signal ${signal}`));
+                        console.log(`R process exited with code ${code} from signal ${signal}`);
                     }
+                    resolve(result);
                 });
             } catch (e) {
                 console.log(e);
                 void window.showErrorMessage((<{ message: string }>e).message);
-                reject(e);
+                resolve(undefined);
             }
         });
     }
