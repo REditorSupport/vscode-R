@@ -22,5 +22,13 @@ ret <- lapply(rownames(ip), function(row) {
 })
 names(ret) <- rownames(ip)
 
-file <- Sys.getenv("VSCR_FILE")
-jsonlite::write_json(ret, file, auto_unbox = TRUE)
+lim <- Sys.getenv("VSCR_LIM")
+json <- jsonlite::toJSON(ret, auto_unbox = TRUE)
+
+cat(
+  lim,
+  json,
+  lim,
+  sep = "\n",
+  file = stdout()
+)

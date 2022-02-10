@@ -273,14 +273,13 @@ export class AliasProvider {
 
     // call R script `getAliases.R` and parse the output
     private async getAliasesFromR(): Promise<undefined | AllPackageAliases> {
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-'));
-        const tempFile = path.join(tempDir, 'aliases.json');
+        const lim = '---vsc---';
         const options: cp.ExecSyncOptionsWithStringEncoding = {
             cwd: this.cwd,
             encoding: 'utf-8',
             env: {
                 ...process.env,
-                VSCR_FILE: tempFile
+                VSCR_LIM: lim
             }
         };
 
@@ -293,33 +292,33 @@ export class AliasProvider {
             this.rScriptFile
         ];
 
-        let allPackageAliases: undefined | AllPackageAliases = undefined;
-        try {
-            // execute R script 'getAliases.R'
-            // aliases will be written to tempFile
-            const result = cp.spawnSync(this.rPath, args, options);
-
-            if (result.error) {
-                throw result.error;
+        return new Promise((resolve, reject) => {
+            try {
+                let str = '';
+                const childProcess = spawn(this.rPath, args, options);
+                childProcess.stdout?.on('data', (chunk: Buffer) => {
+                    str += chunk.toString();
+                });
+                childProcess.on('exit', (code, signal) => {
+                    if (code === 0) {
+                        const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
+                        const match = re.exec(str);
+                        if (match.length === 2) {
+                            const json = match[1];
+                            const result = <{ [key: string]: PackageAliases }>JSON.parse(json) || {};
+                            resolve(result);
+                        } else {
+                            reject(new Error('Could not parse R output.'));
+                        }
+                    } else {
+                        reject(new Error(`R process exited with code ${code} from signal ${signal}`));
+                    }
+                });
+            } catch (e) {
+                console.log(e);
+                void window.showErrorMessage((<{ message: string }>e).message);
+                reject(e);
             }
-
-            if (result.status) {
-                throw new Error(result.stderr);
-            }
-
-            // read and parse aliases
-            allPackageAliases = <{ [key: string]: PackageAliases }>await readJSON(tempFile).then(
-                (result) => result,
-                () => {
-                    throw new Error('Failed to read aliases from installed packages.');
-                }
-            ) || {};
-        } catch (e) {
-            console.log(e);
-            void window.showErrorMessage((<{ message: string }>e).message);
-        } finally {
-            fs.rmdirSync(tempDir, { recursive: true });
-        }
-        return allPackageAliases;
+        });
     }
 }
