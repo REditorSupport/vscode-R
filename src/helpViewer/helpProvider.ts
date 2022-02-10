@@ -292,7 +292,7 @@ export class AliasProvider {
             this.rScriptFile
         ];
 
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             try {
                 let str = '';
                 const childProcess = spawn(this.rPath, args, options);
