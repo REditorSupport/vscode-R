@@ -14,9 +14,16 @@ import * as os from 'os';
 import { readJSON } from 'fs-extra';
 import { join } from 'path';
 
-interface TemplateItem extends QuickPickItem {
+interface TemplateInfo {
   id: string;
   package: string;
+  name: string;
+  description: string;
+  create_dir: boolean;
+}
+
+interface TemplateItem extends QuickPickItem {
+  info: TemplateInfo;
 }
 
 async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
@@ -47,7 +54,7 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
       throw result.error;
     }
 
-    const templates: any[] = await readJSON(tempFile).then(
+    const templates: TemplateInfo[] = await readJSON(tempFile).then(
       (result) => result,
       () => {
         throw ('Failed to load templates from installed packages.');
@@ -61,8 +68,7 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
         label: x.name,
         detail: x.description,
         picked: false,
-        package: x.package,
-        id: x.id,
+        info: x
       };
     });
 
@@ -92,7 +98,7 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem> {
 
 async function makeDraft(file: string, template: TemplateItem, cwd: string): Promise<string> {
   const fileString = ToRStringLiteral(file, '');
-  const cmd = `cat(normalizePath(rmarkdown::draft(file='${fileString}', template='${template.id}', package='${template.package}', edit=FALSE)))`;
+  const cmd = `cat(normalizePath(rmarkdown::draft(file='${fileString}', template='${template.info.id}', package='${template.info.package}', edit=FALSE)))`;
   return await executeRCommand(cmd, cwd, (e: Error) => {
     void window.showErrorMessage(e.message);
     return '';
@@ -107,11 +113,11 @@ export async function newDraft(): Promise<void> {
   }
 
   const uri = await window.showSaveDialog({
-    defaultUri: Uri.file(join(cwd, 'draft.Rmd')),
+    defaultUri: Uri.file(join(cwd, template.info.create_dir ? 'draft' : 'draft.Rmd')),
     filters: {
       'R Markdown': ['Rmd', 'rmd']
     },
-    saveLabel: 'Create Draft',
+    saveLabel: template.info.create_dir ? 'Create Folder' : 'Save',
     title: 'R Markdown: New Draft'
   });
 
