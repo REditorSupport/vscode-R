@@ -308,7 +308,7 @@ export class AliasProvider {
                                 const json = match[1];
                                 result = <AllPackageAliases>JSON.parse(json) || {};
                             } else {
-                                throw new Error('Could not parse R output: ${stderr}');
+                                throw new Error('Could not parse R output.');
                             }
                         } else {
                             throw new Error(`R process exited with code ${code} from signal ${signal}: ${stderr}`);
