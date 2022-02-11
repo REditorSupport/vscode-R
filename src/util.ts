@@ -307,9 +307,6 @@ export async function getCranUrl(path: string = '', cwd?: string): Promise<strin
 // Single quotes are ok.
 //
 export async function executeRCommand(rCommand: string, fallBack?: string, cwd?: string): Promise<string | undefined> {
-    const lim = '---vsc---';
-    const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
-
     const rPath = await getRpath();
 
     const options: cp.ExecSyncOptionsWithStringEncoding = {
@@ -317,6 +314,7 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
         encoding: 'utf-8'
     };
 
+    const lim = '---vsc---';
     const args = [
         '--silent',
         '--slave',
@@ -330,15 +328,20 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
     let ret: string = undefined;
 
     try {
-        const result = cp.spawnSync(rPath, args, options);
+        const result = await spawnAsync(rPath, args, options);
         if (result.error) {
             throw result.error;
         }
-        const match = re.exec(result.stdout);
-        if (match.length === 2) {
-            ret = match[1];
+        if (result.status === 0) {
+            const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
+            const match = re.exec(result.stdout);
+            if (match.length === 2) {
+                ret = match[1];
+            } else {
+                throw new Error('Could not parse R output.');
+            }
         } else {
-            throw new Error('Could not parse R output.');
+            throw new Error(result.stderr);
         }
     } catch (e) {
         if (fallBack) {
