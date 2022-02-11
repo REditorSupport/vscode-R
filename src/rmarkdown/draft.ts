@@ -39,8 +39,6 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
         rScriptFile
     ];
 
-    let items: TemplateItem[] = [];
-
     try {
         const result = await spawnAsync(rPath, args, options);
         if (result.status !== 0) {
@@ -53,22 +51,21 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
         }
         const json = match[1];
         const templates = <TemplateInfo[]>JSON.parse(json) || [];
-        items = templates.map((x) => {
+        const items = templates.map((x) => {
             return {
                 alwaysShow: false,
                 description: `{${x.package}}`,
-                label: x.name,
+                label: x.name + (x.create_dir ? ' $(new-folder)' : ''),
                 detail: x.description,
                 picked: false,
                 info: x
             };
         });
+        return items;
     } catch (e) {
         console.log(e);
         void window.showErrorMessage((<{ message: string }>e).message);
     }
-
-    return items;
 }
 
 async function launchTemplatePicker(cwd: string): Promise<TemplateItem> {
