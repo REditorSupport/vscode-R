@@ -6,7 +6,7 @@
 
 import { QuickPickItem, QuickPickOptions, Uri, window, workspace } from 'vscode';
 import { extensionContext } from '../extension';
-import { exec, executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral } from '../util';
+import { spawn, executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral, spawnAsync } from '../util';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -28,9 +28,8 @@ interface TemplateItem extends QuickPickItem {
 async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
   const lim = '---vsc---';
   const rPath = await getRpath();
-  const options: cp.ExecSyncOptionsWithStringEncoding = {
+  const options: cp.CommonOptions = {
     cwd: cwd,
-    encoding: 'utf-8',
     env: {
       ...process.env,
       VSCR_LIM: lim
@@ -47,44 +46,36 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
     rScriptFile
   ];
 
-  return new Promise((resolve) => {
-    try {
-      let str = '';
-      const childProcess = exec(rPath, args, options);
-      childProcess.stdout?.on('data', (chunk: Buffer) => {
-        str += chunk.toString();
-      });
-      childProcess.on('exit', (code, signal) => {
-        let items: TemplateItem[] = [];
-        if (code === 0) {
-          const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
-          const match = re.exec(str);
-          if (match.length === 2) {
-            const json = match[1];
-            const templates = <TemplateInfo[]>JSON.parse(json) || [];
-            items = templates.map((x) => {
-              return {
-                alwaysShow: false,
-                description: `{${x.package}}`,
-                label: x.name,
-                detail: x.description,
-                picked: false,
-                info: x
-              };
-            });
-          } else {
-            console.log('Could not parse R output.');
-          }
-        } else {
-          console.log(`R process exited with code ${code} from signal ${signal}`);
-        }
-        resolve(items);
-      });
-    } catch (e) {
-      void window.showErrorMessage((<{ message: string }>e).message);
-      resolve([]);
+  let items: TemplateItem[] = [];
+
+  try {
+    const result = await spawnAsync(rPath, args, options);
+    if (result.status !== 0) {
+      throw result.error || new Error(result.stderr);
     }
-  });
+    const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
+    const match = re.exec(result.stdout);
+    if (match.length !== 2) {
+      throw new Error('Could not parse R output.');
+    }
+    const json = match[1];
+    const templates = <TemplateInfo[]>JSON.parse(json) || [];
+    items = templates.map((x) => {
+      return {
+        alwaysShow: false,
+        description: `{${x.package}}`,
+        label: x.name,
+        detail: x.description,
+        picked: false,
+        info: x
+      };
+    });
+  } catch (e) {
+    console.log(e);
+    void window.showErrorMessage((<{ message: string }>e).message);
+  }
+
+  return items;
 }
 
 async function launchTemplatePicker(cwd: string): Promise<TemplateItem> {
