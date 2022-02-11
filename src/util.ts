@@ -307,16 +307,13 @@ export async function getCranUrl(path: string = '', cwd?: string): Promise<strin
 // Single quotes are ok.
 //
 export async function executeRCommand(rCommand: string, cwd?: string, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
-    const lim = '---vsc---';
-    const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
-
     const rPath = await getRpath();
 
-    const options: cp.ExecSyncOptionsWithStringEncoding = {
+    const options: cp.CommonOptions = {
         cwd: cwd,
-        encoding: 'utf-8'
     };
 
+    const lim = '---vsc---';
     const args = [
         '--silent',
         '--slave',
@@ -330,19 +327,16 @@ export async function executeRCommand(rCommand: string, cwd?: string, fallback?:
     let ret: string = undefined;
 
     try {
-        const result = cp.spawnSync(rPath, args, options);
-        if (result.error) {
-            throw result.error;
-        }
+        const result = await spawnAsync(rPath, args, options);
         if (result.status !== 0) {
-            throw new Error(result.stderr);
+            throw result.error || new Error(result.stderr);
         }
+        const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
         const match = re.exec(result.stdout);
-        if (match.length === 2) {
-            ret = match[1];
-        } else {
-            throw new Error('Could not parse R output.');
+        if (match.length !== 2) {
+            throw new Error('Could not parse R output.');   
         }
+        ret = match[1];
     } catch (e) {
         if (fallback) {
             ret = (typeof fallback === 'function' ? fallback(e) : fallback);
@@ -434,7 +428,7 @@ export function asDisposable<T>(toDispose: T, disposeFunction: (...args: unknown
 }
 
 export type DisposableProcess = cp.ChildProcessWithoutNullStreams & vscode.Disposable;
-export function exec(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
+export function spawn(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
     const proc = cp.spawn(command, args, options);
     console.log(`Process ${proc.pid} spawned`);
     let running = true;
@@ -458,6 +452,41 @@ export function exec(command: string, args?: ReadonlyArray<string>, options?: cp
         }
     });
     return disposable;
+}
+
+export async function spawnAsync(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): Promise<cp.SpawnSyncReturns<string>> {
+    return new Promise((resolve) => {
+        const result: cp.SpawnSyncReturns<string> = {
+            error: undefined,
+            pid: undefined,
+            output: undefined,
+            stdout: '',
+            stderr: '',
+            status: undefined,
+            signal: undefined
+        };
+        try {
+            const childProcess = spawn(command, args, options, onDisposed);
+            result.pid = childProcess.pid;
+            childProcess.stdout?.on('data', (chunk: Buffer) => {
+                result.stdout += chunk.toString();
+            });
+            childProcess.stderr?.on('data', (chunk: Buffer) => {
+                result.stderr += chunk.toString();
+            });
+            childProcess.on('error', (err: Error) => {
+                result.error = err;
+            });
+            childProcess.on('exit', (code, signal) => {
+                result.status = code;
+                result.signal = signal;
+                resolve(result);
+            });
+        } catch (e) {
+            result.error = (e instanceof Error) ? e : new Error(e);
+            resolve(result);
+        }
+    });
 }
 
 /**
