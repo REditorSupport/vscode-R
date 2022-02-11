@@ -328,20 +328,15 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
 
     try {
         const result = await spawnAsync(rPath, args, options);
-        if (result.error) {
-            throw result.error;
+        if (result.status !== 0) {
+            throw result.error || new Error(result.stderr);
         }
-        if (result.status === 0) {
-            const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
-            const match = re.exec(result.stdout);
-            if (match.length === 2) {
-                ret = match[1];
-            } else {
-                throw new Error('Could not parse R output.');
-            }
-        } else {
-            throw new Error(result.stderr);
+        const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
+        const match = re.exec(result.stdout);
+        if (match.length !== 2) {
+            throw new Error('Could not parse R output.');   
         }
+        ret = match[1];
     } catch (e) {
         if (fallBack) {
             ret = fallBack;
