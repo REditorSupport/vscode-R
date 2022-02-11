@@ -1,6 +1,6 @@
 import { QuickPickItem, QuickPickOptions, Uri, window, workspace } from 'vscode';
 import { extensionContext } from '../extension';
-import { executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral, spawnAsync } from '../util';
+import { executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral, spawnAsync, getConfirmation } from '../util';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -101,16 +101,31 @@ export async function newDraft(): Promise<void> {
     }
 
     if (template.info.create_dir) {
+        let defaultPath = path.join(cwd, 'draft');
+        let i = 1;
+        while (fs.existsSync(defaultPath)) {
+            defaultPath = path.join(cwd, `draft_${++i}`);
+        }
         const uri = await window.showSaveDialog({
-            defaultUri: Uri.file(path.join(cwd, 'draft')),
+            defaultUri: Uri.file(defaultPath),
             filters: {
-                'R Markdown': ['Rmd', 'rmd']
+                'Folder': ['']
             },
             saveLabel: 'Create Folder',
             title: 'R Markdown: New Draft'
         });
 
         if (uri) {
+            const parsedPath = path.parse(uri.fsPath);
+            const dir = path.join(parsedPath.dir, parsedPath.name);
+            if (fs.existsSync(dir)) {
+                if (await getConfirmation(`Folder already exists. Are you sure to replace the folder?`)) {
+                    fs.rmdirSync(dir, { recursive: true });
+                } else {
+                    return;
+                }
+            }
+
             const draftPath = await makeDraft(uri.fsPath, template, cwd);
             if (draftPath) {
                 await workspace.openTextDocument(draftPath)
