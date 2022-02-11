@@ -9,7 +9,7 @@ import net = require('net');
 import url = require('url');
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { DisposableProcess, getRpath, exec, isRPkgIntalled } from './util';
+import { DisposableProcess, getRpath, spawn, isRPkgIntalled } from './util';
 
 export class LanguageService implements Disposable {
   private readonly clients: Map<string, LanguageClient> = new Map();
@@ -78,7 +78,7 @@ export class LanguageService implements Disposable {
         const expr = debug ? `languageserver::run(port=${port},debug=TRUE)` : `languageserver::run(port=${port})`;
         // const cmd = `${rPath} ${initArgs.join(' ')} -e "${expr}"`;
         const args = initArgs.concat(['-e', expr]);
-        const childProcess = exec(rPath, args, options);
+        const childProcess = spawn(rPath, args, options);
         client.outputChannel.appendLine(`R Language Server (${childProcess.pid}) started`);
         childProcess.stderr.on('data', (chunk: Buffer) => {
           client.outputChannel.appendLine(chunk.toString());
