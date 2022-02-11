@@ -270,9 +270,8 @@ export class AliasProvider {
     // call R script `getAliases.R` and parse the output
     private async getAliasesFromR(): Promise<undefined | AllPackageAliases> {
         const lim = '---vsc---';
-        const options: cp.ExecSyncOptionsWithStringEncoding = {
+        const options: cp.CommonOptions = {
             cwd: this.cwd,
-            encoding: 'utf-8',
             env: {
                 ...process.env,
                 VSCR_LIM: lim
@@ -290,26 +289,36 @@ export class AliasProvider {
 
         return new Promise((resolve) => {
             try {
-                let str = '';
+                let stdout = '';
+                let stderr = '';
                 const childProcess = spawn(this.rPath, args, options);
                 childProcess.stdout?.on('data', (chunk: Buffer) => {
-                    str += chunk.toString();
+                    stdout += chunk.toString();
+                });
+                childProcess.stderr?.on('data', (chunk: Buffer) => {
+                    stderr += chunk.toString();
                 });
                 childProcess.on('exit', (code, signal) => {
                     let result: AllPackageAliases | undefined = undefined;
-                    if (code === 0) {
-                        const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
-                        const match = re.exec(str);
-                        if (match.length === 2) {
-                            const json = match[1];
-                            result = <{ [key: string]: PackageAliases }>JSON.parse(json) || {};
+                    try {
+                        if (code === 0) {
+                            const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
+                            const match = re.exec(stdout);
+                            if (match.length === 2) {
+                                const json = match[1];
+                                result = <AllPackageAliases>JSON.parse(json) || {};
+                            } else {
+                                throw new Error('Could not parse R output: ${stderr}');
+                            }
                         } else {
-                            console.log('Could not parse R output.');
+                            throw new Error(`R process exited with code ${code} from signal ${signal}: ${stderr}`);
                         }
-                    } else {
-                        console.log(`R process exited with code ${code} from signal ${signal}`);
+                    } catch (e) {
+                        console.log(e);
+                        void window.showErrorMessage((<{ message: string }>e).message);
+                    } finally {
+                        resolve(result);
                     }
-                    resolve(result);
                 });
             } catch (e) {
                 console.log(e);
