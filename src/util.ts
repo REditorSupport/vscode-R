@@ -309,9 +309,8 @@ export async function getCranUrl(path: string = '', cwd?: string): Promise<strin
 export async function executeRCommand(rCommand: string, fallBack?: string, cwd?: string): Promise<string | undefined> {
     const rPath = await getRpath();
 
-    const options: cp.ExecSyncOptionsWithStringEncoding = {
+    const options: cp.CommonOptions = {
         cwd: cwd,
-        encoding: 'utf-8'
     };
 
     const lim = '---vsc---';
