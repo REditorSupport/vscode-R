@@ -457,6 +457,41 @@ export function spawn(command: string, args?: ReadonlyArray<string>, options?: c
     return disposable;
 }
 
+export async function spawnAsync(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): Promise<cp.SpawnSyncReturns<string>> {
+    return new Promise((resolve) => {
+        const result: cp.SpawnSyncReturns<string> = {
+            error: undefined,
+            pid: undefined,
+            output: undefined,
+            stdout: '',
+            stderr: '',
+            status: undefined,
+            signal: undefined
+        };
+        try {
+            const childProcess = spawn(command, args, options, onDisposed);
+            result.pid = childProcess.pid;
+            childProcess.stdout?.on('data', (chunk: Buffer) => {
+                result.stdout += chunk.toString();
+            });
+            childProcess.stderr?.on('data', (chunk: Buffer) => {
+                result.stderr += chunk.toString();
+            });
+            childProcess.on('error', (err: Error) => {
+                result.error = err;
+            });
+            childProcess.on('exit', (code, signal) => {
+                result.status = code;
+                result.signal = signal;
+                resolve(result);
+            });
+        } catch (e) {
+            result.error = (e instanceof Error) ? e : new Error(e);
+            resolve(result);
+        }
+    });
+}
+
 /**
  * Check if an R package is available or not
  *

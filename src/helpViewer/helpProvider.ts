@@ -6,7 +6,7 @@ import * as cp from 'child_process';
 
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
-import { DisposableProcess, spawn } from '../util';
+import { DisposableProcess, spawn, spawnAsync } from '../util';
 
 export interface RHelpProviderOptions {
 	// path of the R executable
@@ -286,45 +286,24 @@ export class AliasProvider {
             '-f',
             this.rScriptFile
         ];
-
-        return new Promise((resolve) => {
-            try {
-                let stdout = '';
-                let stderr = '';
-                const childProcess = spawn(this.rPath, args, options);
-                childProcess.stdout?.on('data', (chunk: Buffer) => {
-                    stdout += chunk.toString();
-                });
-                childProcess.stderr?.on('data', (chunk: Buffer) => {
-                    stderr += chunk.toString();
-                });
-                childProcess.on('exit', (code, signal) => {
-                    let result: AllPackageAliases | undefined = undefined;
-                    try {
-                        if (code === 0) {
-                            const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
-                            const match = re.exec(stdout);
-                            if (match.length === 2) {
-                                const json = match[1];
-                                result = <AllPackageAliases>JSON.parse(json) || {};
-                            } else {
-                                throw new Error('Could not parse R output.');
-                            }
-                        } else {
-                            throw new Error(`R process exited with code ${code} from signal ${signal}: ${stderr}`);
-                        }
-                    } catch (e) {
-                        console.log(e);
-                        void window.showErrorMessage((<{ message: string }>e).message);
-                    } finally {
-                        resolve(result);
-                    }
-                });
-            } catch (e) {
-                console.log(e);
-                void window.showErrorMessage((<{ message: string }>e).message);
-                resolve(undefined);
-            }
-        });
+        
+        try {
+            const result = await spawnAsync(this.rPath, args, options);
+            if (result.status === 0) {
+                const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
+                const match = re.exec(result.stdout);
+                if (match.length === 2) {
+                    const json = match[1];
+                    return <AllPackageAliases>JSON.parse(json) || {};
+                } else {
+                    throw new Error('Could not parse R output.');
+                }
+            } else {
+                throw result.error || new Error(result.stderr);
+            }    
+        } catch (e) {
+            console.log(e);
+            void window.showErrorMessage((<{ message: string }>e).message);
+        }
     }
 }
