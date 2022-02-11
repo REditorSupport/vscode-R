@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-
 import { Memento, window } from 'vscode';
 import * as http from 'http';
 import * as cp from 'child_process';
@@ -289,18 +287,16 @@ export class AliasProvider {
         
         try {
             const result = await spawnAsync(this.rPath, args, options);
-            if (result.status === 0) {
-                const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
-                const match = re.exec(result.stdout);
-                if (match.length === 2) {
-                    const json = match[1];
-                    return <AllPackageAliases>JSON.parse(json) || {};
-                } else {
-                    throw new Error('Could not parse R output.');
-                }
-            } else {
+            if (result.status !== 0) {
                 throw result.error || new Error(result.stderr);
-            }    
+            }
+            const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
+            const match = re.exec(result.stdout);
+            if (match.length !== 2) {
+                throw new Error('Could not parse R output.');
+            }
+            const json = match[1];
+            return <AllPackageAliases>JSON.parse(json) || {};
         } catch (e) {
             console.log(e);
             void window.showErrorMessage((<{ message: string }>e).message);
