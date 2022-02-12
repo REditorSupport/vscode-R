@@ -30,20 +30,6 @@ export const rtasks = [
     new vscode.Task(
         { type: type },
         vscode.TaskScope.Workspace,
-        'ttest',
-        'R',
-        new vscode.ShellExecution(
-            'echo',
-            [
-                'hello',
-                'world'
-            ]
-        )
-    ),
-    
-    new vscode.Task(
-        { type: type },
-        vscode.TaskScope.Workspace,
         'Check',
         'R',
         new vscode.ShellExecution(
