@@ -21,6 +21,7 @@ import * as completions from './completions';
 import * as rShare from './liveShare';
 import * as httpgdViewer from './plotViewer';
 import * as languageService from './languageService';
+import { rtasks } from './tasks';
 
 
 // global objects used in other files
@@ -201,27 +202,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // deploy liveshare listener
     await rShare.initLiveShare(context);
-
+    
     // register task provider
-    const type = 'R';
-    vscode.tasks.registerTaskProvider(type, {
+    vscode.tasks.registerTaskProvider('R', {
         provideTasks() {
-            // `vscode.ShellQuoting.Strong` will treat the "value" as pure string and quote them based on the shell used
-            // this can ensure it works for different shells, e.g., zsh, PowerShell or cmd
-            return [
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Build', 'R',
-                    new vscode.ShellExecution('Rscript', ['-e', {value: 'devtools::build()', quoting: vscode.ShellQuoting.Strong}])),
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Check', 'R',
-                    new vscode.ShellExecution('Rscript', ['-e', {value: 'devtools::check()', quoting: vscode.ShellQuoting.Strong}])),
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Document', 'R',
-                    new vscode.ShellExecution('Rscript', ['-e', {value: 'devtools::document()', quoting: vscode.ShellQuoting.Strong}])),
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Install', 'R',
-                    new vscode.ShellExecution('Rscript', ['-e', {value: 'devtools::install()', quoting: vscode.ShellQuoting.Strong}])),
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Test', 'R',
-                    new vscode.ShellExecution('Rscript', ['-e', {value: 'devtools::test()', quoting: vscode.ShellQuoting.Strong}]))
-            ];
+            console.log('From provide Task');
+            return rtasks;
         },
         resolveTask(task: vscode.Task) {
+            console.log('From resolve Task');
             return task;
         }
     });

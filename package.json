@@ -1670,6 +1670,27 @@
       {
         "type": "R"
       }
+    ],
+    "problemMatchers": [
+      {
+        "name": "testthat",
+        "owner": "R",
+        "severity": "error",
+        "fileLocation": ["relative", "${workspaceFolder}/tests/testthat"],
+        "pattern": [
+          {
+              "regexp": "^(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):(\\d+)\\):\\s(.*)",
+              "file": 2,
+              "line": 3,
+              "column": 4,
+              "message": 5
+          },
+          {
+              "regexp": "^(.*)$",
+              "message": 1
+          }
+        ]
+      }
     ]
   },
   "scripts": {
