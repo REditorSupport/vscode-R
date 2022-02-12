@@ -202,15 +202,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // deploy liveshare listener
     await rShare.initLiveShare(context);
-    
+
     // register task provider
     vscode.tasks.registerTaskProvider('R', {
         provideTasks() {
-            console.log('From provide Task');
             return rtasks;
         },
         resolveTask(task: vscode.Task) {
-            console.log('From resolve Task');
             return task;
         }
     });
