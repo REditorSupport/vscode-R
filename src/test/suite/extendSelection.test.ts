@@ -11,7 +11,7 @@ import * as assert from 'assert';
 import { extendSelection } from '../../selection';
 
 // Defines a Mocha test suite to group tests of similar kind together
-suite('Extension Tests', () => {
+suite('extendSelection Tests', () => {
 
     test('Selecting multi-line {} bracketed expression', () => {
         const doc = `
