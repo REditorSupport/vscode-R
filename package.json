@@ -1673,7 +1673,23 @@
     },
     "taskDefinitions": [
       {
-        "type": "R"
+        "type": "R",
+        "required": [],
+        "properties": {
+          "command": {
+            "type": "string",
+            "default": "Rscript",
+            "description": "The command to be executed."
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "The command arguments."
+          }
+        }
       }
     ],
     "problemMatchers": [
