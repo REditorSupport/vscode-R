@@ -5,6 +5,8 @@ import * as vscode from 'vscode';
 interface RTaskDefinition extends vscode.TaskDefinition {
     command: string | vscode.ShellQuotedString;
     args: (string | vscode.ShellQuotedString)[];
+    cwd?: string;
+    env?: { [key: string]: string | null };
 }
 
 export class RTaskProvider implements vscode.TaskProvider {
@@ -18,7 +20,11 @@ export class RTaskProvider implements vscode.TaskProvider {
             'R',
             new vscode.ShellExecution(
                 definition.command,
-                definition.args
+                definition.args,
+                {
+                    cwd: definition.cwd,
+                    env: definition.env
+                }
             ),
             problemMatchers
         );

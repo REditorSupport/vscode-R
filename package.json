@@ -1674,7 +1674,7 @@
     "taskDefinitions": [
       {
         "type": "R",
-        "required": [],
+        "required": ["command", "args"],
         "properties": {
           "command": {
             "type": "string",
@@ -1688,6 +1688,19 @@
             },
             "default": [],
             "description": "The command arguments."
+          },
+          "cwd": {
+            "type": "string",
+            "default": "${workspaceRoot}",
+            "description": "The current working directory of the executed program or shell. If omitted, the current workspace root will be used."
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "description": "The environment of the executed program or shell. If omitted, the current process environment will be used."
           }
         }
       }
