@@ -538,6 +538,11 @@
         "command": "r.goToNextChunk"
       },
       {
+        "title": "New Draft",
+        "category": "R Markdown",
+        "command": "r.rmarkdown.newDraft"
+      },
+      {
         "command": "r.rmarkdown.setKnitDirectory",
         "title": "R: Set Knit directory",
         "icon": "$(zap)",
