@@ -98,7 +98,7 @@ export class RTaskProvider implements vscode.TaskProvider {
     ];
 
     public provideTasks(): vscode.Task[] {
-        return this.tasks.map(task => task);
+        return this.tasks;
     }
 
     public resolveTask(task: vscode.Task): vscode.Task {
