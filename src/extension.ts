@@ -21,7 +21,7 @@ import * as completions from './completions';
 import * as rShare from './liveShare';
 import * as httpgdViewer from './plotViewer';
 import * as languageService from './languageService';
-import { rtasks } from './tasks';
+import { RTaskProvider } from './tasks';
 
 
 // global objects used in other files
@@ -204,14 +204,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     await rShare.initLiveShare(context);
 
     // register task provider
-    vscode.tasks.registerTaskProvider('R', {
-        provideTasks() {
-            return rtasks;
-        },
-        resolveTask(task: vscode.Task) {
-            return task;
-        }
-    });
+    const taskProvider = new RTaskProvider();
+    vscode.tasks.registerTaskProvider(taskProvider.type, taskProvider);
 
     // deploy session watcher (if configured by user)
     if (enableSessionWatcher) {
