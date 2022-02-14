@@ -3,10 +3,10 @@
 import * as vscode from 'vscode';
 
 interface RTaskDefinition extends vscode.TaskDefinition {
-    command: string | vscode.ShellQuotedString;
-    args: (string | vscode.ShellQuotedString)[];
+    command: string;
+    args: string[];
     cwd?: string;
-    env?: { [key: string]: string | null };
+    env?: { [key: string]: string };
 }
 
 export class RTaskProvider implements vscode.TaskProvider {
@@ -18,7 +18,7 @@ export class RTaskProvider implements vscode.TaskProvider {
             vscode.TaskScope.Workspace,
             name,
             'R',
-            new vscode.ShellExecution(
+            new vscode.ProcessExecution(
                 definition.command,
                 definition.args,
                 {
@@ -39,10 +39,7 @@ export class RTaskProvider implements vscode.TaskProvider {
             command: 'Rscript',
             args: [
                 '-e',
-                {
-                    value: 'devtools::build()',
-                    quoting: vscode.ShellQuoting.Strong
-                }
+                'devtools::build()'
             ]
         }),
         this.getTask('Check', {
@@ -50,10 +47,7 @@ export class RTaskProvider implements vscode.TaskProvider {
             command: 'Rscript',
             args: [
                 '-e',
-                {
-                    value: 'devtools::check()',
-                    quoting: vscode.ShellQuoting.Strong
-                }
+                'devtools::check()'
             ]
         }),
         this.getTask('Document', {
@@ -61,10 +55,7 @@ export class RTaskProvider implements vscode.TaskProvider {
             command: 'Rscript',
             args: [
                 '-e',
-                {
-                    value: 'devtools::document()',
-                    quoting: vscode.ShellQuoting.Strong
-                }
+                'devtools::document()'
             ]
         }),
         this.getTask('Install', {
@@ -72,10 +63,7 @@ export class RTaskProvider implements vscode.TaskProvider {
             command: 'Rscript',
             args: [
                 '-e',
-                {
-                    value: 'devtools::install()',
-                    quoting: vscode.ShellQuoting.Strong
-                }
+                'devtools::install()'
             ]
         }),
         this.getTask('Test', {
@@ -83,10 +71,7 @@ export class RTaskProvider implements vscode.TaskProvider {
             command: 'Rscript',
             args: [
                 '-e',
-                {
-                    value: 'devtools::test()',
-                    quoting: vscode.ShellQuoting.Strong
-                }
+                'devtools::test()'
             ]
         }, '$testthat'),
     ];
