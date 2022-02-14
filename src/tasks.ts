@@ -30,9 +30,6 @@ export class RTaskProvider implements vscode.TaskProvider {
         );
     }
 
-    // `vscode.ShellQuoting.Strong` will treat the "value" as pure string
-    // and quote them based on the shell used this can ensure it works for
-    // different shells, e.g., zsh, PowerShell or cmd
     private readonly tasks = [
         this.getTask('Build', {
             type: this.type,
