@@ -1674,20 +1674,15 @@
     "taskDefinitions": [
       {
         "type": "R",
-        "required": ["command", "args"],
+        "required": ["code"],
         "properties": {
-          "command": {
-            "type": "string",
-            "default": "Rscript",
-            "description": "The command to be executed."
-          },
-          "args": {
+          "code": {
             "type": "array",
             "items": {
               "type": "string"
             },
             "default": [],
-            "description": "The command arguments."
+            "description": "R code to be executed"
           },
           "cwd": {
             "type": "string",

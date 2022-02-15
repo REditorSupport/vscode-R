@@ -5,105 +5,103 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 interface RTaskDefinition extends vscode.TaskDefinition {
-    command: string;
-    args: string[];
+    code: string[];
     cwd?: string;
     env?: { [key: string]: string };
 }
 
-export class RTaskProvider implements vscode.TaskProvider {
-    public readonly type = 'R';
 
-    private getTask(name: string, definition: RTaskDefinition, group?: vscode.TaskGroup, problemMatchers?: string | string[]): vscode.Task {
-        const task: vscode.Task = new vscode.Task(
-            definition,
-            vscode.TaskScope.Workspace,
-            name,
-            'R',
-            new vscode.ProcessExecution(
-                definition.command,
-                definition.args,
-                {
-                    cwd: definition.cwd,
-                    env: definition.env
-                }
-            ),
-            problemMatchers
-        );
-        
-        if (group) {
-            task.group = group;
-        }
-        
-        return task;
-    }
+const TYPE = 'R';
 
-    private readonly tasks = [
-        this.getTask(
-            'Build',
+class TaskMeta {
+    constructor(
+        public name: string,
+        public definition: RTaskDefinition,
+        public group?: vscode.TaskGroup,
+        public problemMatchers?: string | string[],
+    ) {}
+}
+
+
+const rtasks: TaskMeta[] = [
+    new TaskMeta(
+        'Test',
+        {
+            type: TYPE,
+            code: ['devtools::test()']
+        },
+        vscode.TaskGroup.Test,
+        '$testthat'
+    ),
+    
+    new TaskMeta(
+        'Build',
+        {
+            type: TYPE,
+            code: [ 'devtools::build()' ]
+        },
+        vscode.TaskGroup.Build
+    ),
+
+    new TaskMeta(
+        'Check',
+        {
+            type: TYPE,
+            code: [ 'devtools::check()' ]
+        },
+        vscode.TaskGroup.Test
+    ),
+    
+    new TaskMeta(
+        'Document',
+        {
+            type: TYPE,
+            code: [ 'devtools::document()' ]
+        },
+        vscode.TaskGroup.Build
+    ),
+    
+    new TaskMeta(
+        'Install',
+        {
+            type: TYPE,
+            code: [ 'devtools::install()' ]
+        },
+        vscode.TaskGroup.Test
+    )
+];
+
+
+const asTask = function (
+    folder: vscode.WorkspaceFolder | vscode.TaskScope,
+    meta: TaskMeta
+): vscode.Task {
+    const task: vscode.Task = new vscode.Task(
+        meta.definition,
+        folder,
+        meta.name,
+        TYPE,
+        new vscode.ProcessExecution(
+            'Rscript',
+            ['-e', meta.definition.code.join('; ')],
             {
-                type: this.type,
-                command: 'Rscript',
-                args: [
-                    '-e',
-                    'devtools::build()'
-                ]
-            },
-            vscode.TaskGroup.Build
-        ),
-
-        this.getTask(
-            'Check',
-            {
-                type: this.type,
-                command: 'Rscript',
-                args: [
-                    '-e',
-                    'devtools::check()'
-                ]
-            },
-            vscode.TaskGroup.Test,
-        ),
-
-        this.getTask(
-            'Document',
-            {
-                type: this.type,
-                command: 'Rscript',
-                args: [
-                    '-e',
-                    'devtools::document()'
-                ]
+                cwd: meta.definition.cwd,
+                env: meta.definition.env
             }
         ),
+        meta.problemMatchers
+    );
+    
+    if (meta.group) {
+        task.group = meta.group;
+    }
+    
+    return task;
+};
 
-        this.getTask(
-            'Install',
-            {
-                type: this.type,
-                command: 'Rscript',
-                args: [
-                    '-e',
-                    'devtools::install()'
-                ]
-            },
-            vscode.TaskGroup.Build
-        ),
 
-        this.getTask(
-            'Test',
-            {
-                type: this.type,
-                command: 'Rscript',
-                args: [
-                    '-e',
-                    'devtools::test()'
-                ]
-            },
-            vscode.TaskGroup.Test, 
-            '$testthat'
-        ),
-    ];
+
+export class RTaskProvider implements vscode.TaskProvider {
 
     public provideTasks(): vscode.Task[] {        
         const folders = vscode.workspace.workspaceFolders;
@@ -112,24 +110,29 @@ export class RTaskProvider implements vscode.TaskProvider {
             return [] as vscode.Task[];
         }
         
-        let is_r_workspace: boolean;
-        for(const folder of folders){
-            is_r_workspace = fs.existsSync(
-                path.join(folder.uri.fsPath, 'DESCRIPTION')
-            );
+        const tasks: vscode.Task[] = [];
+        
+        for (const folder of folders) {
+            const is_r_workspace = fs.existsSync(path.join(folder.uri.fsPath, 'DESCRIPTION'));
+            if (is_r_workspace) {
+                for (const rtask of rtasks) {
+                    const task = asTask(folder, rtask);
+                    tasks.push(task);
+                }
+            }
         }
-        if (is_r_workspace){
-            return this.tasks;
-        }
-        return undefined;
+        return tasks;
     }
 
     public resolveTask(task: vscode.Task): vscode.Task {
-        return this.getTask(
-            task.name,
-            <RTaskDefinition>task.definition,
-            task.group,
-            task.problemMatchers
+        return asTask(
+            vscode.TaskScope.Workspace,
+            new TaskMeta(
+                task.name,
+                <RTaskDefinition>task.definition,
+                task.group,
+                task.problemMatchers
+            )
         );
     }
 }
