@@ -115,8 +115,8 @@ export class RTaskProvider implements vscode.TaskProvider {
         const tasks: vscode.Task[] = [];
         
         for (const folder of folders) {
-            const is_r_workspace = fs.existsSync(path.join(folder.uri.fsPath, 'DESCRIPTION'));
-            if (is_r_workspace) {
+            const isRPackage = fs.existsSync(path.join(folder.uri.fsPath, 'DESCRIPTION'));
+            if (isRPackage) {
                 for (const rtask of rtasks) {
                     const task = asTask(folder, rtask);
                     tasks.push(task);
