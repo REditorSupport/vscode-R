@@ -1,6 +1,8 @@
 'use strict';
 
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface RTaskDefinition extends vscode.TaskDefinition {
     command: string;
@@ -103,8 +105,23 @@ export class RTaskProvider implements vscode.TaskProvider {
         ),
     ];
 
-    public provideTasks(): vscode.Task[] {
-        return this.tasks;
+    public provideTasks(): vscode.Task[] {        
+        const folders = vscode.workspace.workspaceFolders;
+        
+        if (!folders) {
+            return [] as vscode.Task[];
+        }
+        
+        let is_r_workspace: boolean;
+        for(const folder of folders){
+            is_r_workspace = fs.existsSync(
+                path.join(folder.uri.fsPath, 'DESCRIPTION')
+            );
+        }
+        if (is_r_workspace){
+            return this.tasks;
+        }
+        return undefined;
     }
 
     public resolveTask(task: vscode.Task): vscode.Task {
