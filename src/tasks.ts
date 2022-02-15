@@ -12,8 +12,8 @@ interface RTaskDefinition extends vscode.TaskDefinition {
 export class RTaskProvider implements vscode.TaskProvider {
     public readonly type = 'R';
 
-    private getTask(name: string, definition: RTaskDefinition, problemMatchers?: string | string[]): vscode.Task {
-        return new vscode.Task(
+    private getTask(name: string, definition: RTaskDefinition, group?: vscode.TaskGroup, problemMatchers?: string | string[]): vscode.Task {
+        const task: vscode.Task = new vscode.Task(
             definition,
             vscode.TaskScope.Workspace,
             name,
@@ -28,49 +28,79 @@ export class RTaskProvider implements vscode.TaskProvider {
             ),
             problemMatchers
         );
+        
+        if (group) {
+            task.group = group;
+        }
+        
+        return task;
     }
 
     private readonly tasks = [
-        this.getTask('Build', {
-            type: this.type,
-            command: 'Rscript',
-            args: [
-                '-e',
-                'devtools::build()'
-            ]
-        }),
-        this.getTask('Check', {
-            type: this.type,
-            command: 'Rscript',
-            args: [
-                '-e',
-                'devtools::check()'
-            ]
-        }),
-        this.getTask('Document', {
-            type: this.type,
-            command: 'Rscript',
-            args: [
-                '-e',
-                'devtools::document()'
-            ]
-        }),
-        this.getTask('Install', {
-            type: this.type,
-            command: 'Rscript',
-            args: [
-                '-e',
-                'devtools::install()'
-            ]
-        }),
-        this.getTask('Test', {
-            type: this.type,
-            command: 'Rscript',
-            args: [
-                '-e',
-                'devtools::test()'
-            ]
-        }, '$testthat'),
+        this.getTask(
+            'Build',
+            {
+                type: this.type,
+                command: 'Rscript',
+                args: [
+                    '-e',
+                    'devtools::build()'
+                ]
+            },
+            vscode.TaskGroup.Build
+        ),
+
+        this.getTask(
+            'Check',
+            {
+                type: this.type,
+                command: 'Rscript',
+                args: [
+                    '-e',
+                    'devtools::check()'
+                ]
+            },
+            vscode.TaskGroup.Test,
+        ),
+
+        this.getTask(
+            'Document',
+            {
+                type: this.type,
+                command: 'Rscript',
+                args: [
+                    '-e',
+                    'devtools::document()'
+                ]
+            }
+        ),
+
+        this.getTask(
+            'Install',
+            {
+                type: this.type,
+                command: 'Rscript',
+                args: [
+                    '-e',
+                    'devtools::install()'
+                ]
+            },
+            vscode.TaskGroup.Build
+        ),
+
+        this.getTask(
+            'Test',
+            {
+                type: this.type,
+                command: 'Rscript',
+                args: [
+                    '-e',
+                    'devtools::test()'
+                ]
+            },
+            vscode.TaskGroup.Test, 
+            '$testthat'
+        ),
     ];
 
     public provideTasks(): vscode.Task[] {
@@ -81,6 +111,7 @@ export class RTaskProvider implements vscode.TaskProvider {
         return this.getTask(
             task.name,
             <RTaskDefinition>task.definition,
+            task.group,
             task.problemMatchers
         );
     }
