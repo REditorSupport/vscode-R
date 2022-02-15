@@ -102,6 +102,8 @@ const asTask = function (
 
 
 export class RTaskProvider implements vscode.TaskProvider {
+    
+    public type = TYPE;
 
     public provideTasks(): vscode.Task[] {        
         const folders = vscode.workspace.workspaceFolders;
