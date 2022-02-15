@@ -76,6 +76,11 @@ const asTask = function (
     folder: vscode.WorkspaceFolder | vscode.TaskScope,
     meta: TaskMeta
 ): vscode.Task {
+    const codeLines: string[] = [];
+    for (const line of meta.definition.code) {
+        codeLines.push('-e');
+        codeLines.push(line);
+    }
     const task: vscode.Task = new vscode.Task(
         meta.definition,
         folder,
@@ -83,7 +88,7 @@ const asTask = function (
         TYPE,
         new vscode.ProcessExecution(
             'Rscript',
-            ['-e', meta.definition.code.join('; ')],
+            codeLines,
             {
                 cwd: meta.definition.cwd,
                 env: meta.definition.env
