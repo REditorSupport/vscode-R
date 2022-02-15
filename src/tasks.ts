@@ -67,7 +67,7 @@ const rtasks: TaskMeta[] = [
             type: TYPE,
             code: [ 'devtools::install()' ]
         },
-        vscode.TaskGroup.Test
+        vscode.TaskGroup.Build
     )
 ];
 
