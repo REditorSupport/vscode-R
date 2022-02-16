@@ -1674,20 +1674,29 @@
     "taskDefinitions": [
       {
         "type": "R",
-        "required": ["command", "args"],
+        "required": ["code"],
         "properties": {
-          "command": {
-            "type": "string",
-            "default": "Rscript",
-            "description": "The command to be executed."
-          },
-          "args": {
+          "code": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "default": [],
-            "description": "The command arguments."
+            "default": [
+              "x <- 'Hello, World!'",
+              "print(x)"
+            ],
+            "description": "R code to be executed"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "--no-echo",
+              "--no-restore"
+            ],
+            "description": "Command line options used to invoke R (see R --help)"
           },
           "cwd": {
             "type": "string",
