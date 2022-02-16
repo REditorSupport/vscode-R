@@ -19,7 +19,8 @@ interface syntaxFile {
 
 /**
  * Converts a POSIX regular expression string into a format
- * that JavaScript can use
+ * that JavaScript can use. This is because vscode parses 
+ * syntax files using POSIX but JavaScript can't support it.
  * @param {string} s - A string to be used as a regular expression
  */
 const regex_from_posix = function (s: string): string {
@@ -35,9 +36,12 @@ const regex_from_posix = function (s: string): string {
 };
 
 
-const extension_root: string = process.env.EXTENSION_ROOT;
-const rawdata = readFileSync(join(extension_root, 'syntax', 'r.json')) as unknown;
-const rsyntax: syntaxFile = JSON.parse(rawdata as string) as syntaxFile;
+const extension_root: string = join(__dirname, '..', '..', '..');
+
+const r_syntax_file: string = join(extension_root, 'syntax', 'r.json');
+console.log(r_syntax_file);
+const rsyntax_raw = readFileSync(r_syntax_file) as unknown;
+const rsyntax: syntaxFile = JSON.parse(rsyntax_raw as string) as syntaxFile;
 
 const function_pattern: string = rsyntax.repository['function-declarations'].patterns[0].match;
 const function_pattern_fixed: string = regex_from_posix(function_pattern);
