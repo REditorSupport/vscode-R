@@ -38,8 +38,7 @@ const rtasks: RTaskInfo[] = [
     {
         definition: {
             type: TYPE,
-            code: ['devtools::test()'],
-            options: defaultOptions
+            code: ['devtools::test()']
         },
         name: 'Test',
         group: vscode.TaskGroup.Test,
@@ -49,8 +48,7 @@ const rtasks: RTaskInfo[] = [
     {
         definition: {
             type: TYPE,
-            code: ['devtools::build()'],
-            options: defaultOptions
+            code: ['devtools::build()']
         },
         name: 'Build',
         group: vscode.TaskGroup.Build,
@@ -60,8 +58,7 @@ const rtasks: RTaskInfo[] = [
     {
         definition: {
             type: TYPE,
-            code: ['devtools::check()'],
-            options: defaultOptions
+            code: ['devtools::check()']
         },
         name: 'Check',
         group: vscode.TaskGroup.Test,
@@ -71,8 +68,7 @@ const rtasks: RTaskInfo[] = [
     {
         definition: {
             type: TYPE,
-            code: ['devtools::document()'],
-            options: defaultOptions
+            code: ['devtools::document()']
         },
         name: 'Document',
         group: vscode.TaskGroup.Build,
@@ -82,8 +78,7 @@ const rtasks: RTaskInfo[] = [
     {
         definition: {
             type: TYPE,
-            code: ['devtools::install()'],
-            options: defaultOptions
+            code: ['devtools::install()']
         },
         name: 'Install',
         group: vscode.TaskGroup.Build,
