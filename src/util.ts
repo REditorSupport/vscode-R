@@ -286,7 +286,7 @@ export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, p
 export async function getCranUrl(path: string = '', cwd?: string): Promise<string> {
     const defaultCranUrl = 'https://cran.r-project.org/';
     // get cran URL from R. Returns empty string if option is not set.
-    const baseUrl = await executeRCommand('cat(getOption(\'repos\')[\'CRAN\'])', undefined, cwd);
+    const baseUrl = await executeRCommand('cat(getOption(\'repos\')[\'CRAN\'])', cwd);
     let url: string;
     try {
         url = new URL(path, baseUrl).toString();
@@ -301,12 +301,12 @@ export async function getCranUrl(path: string = '', cwd?: string): Promise<strin
 
 // executes an R command returns its output to stdout
 // uses a regex to filter out output generated e.g. by code in .Rprofile
-// returns the provided fallBack when the command failes
+// returns the provided fallback when the command failes
 //
 // WARNING: Cannot handle double quotes in the R command! (e.g. `print("hello world")`)
 // Single quotes are ok.
 //
-export async function executeRCommand(rCommand: string, fallBack?: string, cwd?: string): Promise<string | undefined> {
+export async function executeRCommand(rCommand: string, cwd?: string, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
     const rPath = await getRpath();
 
     const options: cp.CommonOptions = {
@@ -338,8 +338,8 @@ export async function executeRCommand(rCommand: string, fallBack?: string, cwd?:
         }
         ret = match[1];
     } catch (e) {
-        if (fallBack) {
-            ret = fallBack;
+        if (fallback) {
+            ret = (typeof fallback === 'function' ? fallback(e) : fallback);
         } else {
             console.warn(e);
         }
@@ -497,7 +497,7 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
  */
 export async function isRPkgIntalled(name: string, cwd: string, promptToInstall: boolean = false, installMsg?: string, postInstallMsg?: string): Promise<boolean> {
     const cmd = `cat(requireNamespace('${name}', quietly=TRUE))`;
-    const rOut = await executeRCommand(cmd, 'FALSE', cwd);
+    const rOut = await executeRCommand(cmd, cwd, 'FALSE');
     const isInstalled = rOut === 'TRUE';
     if (promptToInstall && !isInstalled) {
         if (installMsg === undefined) {

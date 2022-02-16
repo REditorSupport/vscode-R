@@ -538,6 +538,11 @@
         "command": "r.goToNextChunk"
       },
       {
+        "title": "New Draft",
+        "category": "R Markdown",
+        "command": "r.rmarkdown.newDraft"
+      },
+      {
         "command": "r.rmarkdown.setKnitDirectory",
         "title": "R: Set Knit directory",
         "icon": "$(zap)",
@@ -1668,7 +1673,66 @@
     },
     "taskDefinitions": [
       {
-        "type": "R"
+        "type": "R",
+        "required": ["code"],
+        "properties": {
+          "code": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "x <- 'Hello, World!'",
+              "print(x)"
+            ],
+            "description": "R code to be executed"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "--no-echo",
+              "--no-restore"
+            ],
+            "description": "Command line options used to invoke R. (see R --help)"
+          },
+          "cwd": {
+            "type": "string",
+            "default": "${workspaceRoot}",
+            "description": "The current working directory of the executed program or shell. If omitted, the current workspace root will be used."
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "description": "The environment of the executed program or shell. If omitted, the current process environment will be used."
+          }
+        }
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "testthat",
+        "owner": "R",
+        "severity": "error",
+        "fileLocation": ["relative", "${workspaceFolder}/tests/testthat"],
+        "pattern": [
+          {
+              "regexp": "^(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):(\\d+)\\):\\s(.*)",
+              "file": 2,
+              "line": 3,
+              "column": 4,
+              "message": 5
+          },
+          {
+              "regexp": "^(.*)$",
+              "message": 1
+          }
+        ]
       }
     ]
   },

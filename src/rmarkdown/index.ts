@@ -5,6 +5,7 @@ import { config } from '../util';
 // reexports
 export { knitDir, RMarkdownKnitManager } from './knit';
 export { RMarkdownPreviewManager } from './preview';
+export { newDraft } from './draft';
 
 function isRDocument(document: vscode.TextDocument) {
   return (document.languageId === 'r');
