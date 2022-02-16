@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { makeTerminalOptions } from './rTerminal';
+import { getRpath } from './util';
 
 
 const TYPE = 'R';
@@ -11,42 +11,35 @@ const TYPE = 'R';
 interface RTaskDefinition extends vscode.TaskDefinition {
     type: string,
     code: string[],
-    args?: string[],
+    options?: string[],
     cwd?: string,
     env?: { [key: string]: string }
 }
 
-interface RTaskMeta {
+interface RTaskInfo {
     definition: RTaskDefinition,
     problemMatchers?: string | string[],
     name?: string,
     group?: vscode.TaskGroup
 }
 
-
-const getRterm = async function ():Promise<string> {
-    const termOptions = await makeTerminalOptions();
-    const termPath = termOptions.shellPath;
-    return termPath ?? 'R';
-};
-
-
-const zipRTermArguments = function (code: string[], args: string[]) {
-    const codeLines: string[] = [];
+function makeRArgs(options: string[], code: string[]) {
+    const codeArgs: string[] = [];
     for (const line of code) {
-        codeLines.push(...['-e', line]);
+        codeArgs.push('-e');
+        codeArgs.push(line);
     }
-    const RtermArgs = args.concat(codeLines);
-    return RtermArgs;
-};
+    const args = options.concat(codeArgs);
+    return args;
+}
 
-
-const RTasksMeta: RTaskMeta[] = [
+const defaultOptions: string[] = ['--no-echo', '--no-restore'];
+const rtasks: RTaskInfo[] = [
     {
         definition: {
             type: TYPE,
             code: ['devtools::test()'],
-            args: ['--no-echo', '--no-restore']
+            options: defaultOptions
         },
         name: 'Test',
         group: vscode.TaskGroup.Test,
@@ -57,7 +50,7 @@ const RTasksMeta: RTaskMeta[] = [
         definition: {
             type: TYPE,
             code: ['devtools::build()'],
-            args: ['--no-echo', '--no-restore']
+            options: defaultOptions
         },
         name: 'Build',
         group: vscode.TaskGroup.Build,
@@ -68,7 +61,7 @@ const RTasksMeta: RTaskMeta[] = [
         definition: {
             type: TYPE,
             code: ['devtools::check()'],
-            args: ['--no-echo', '--no-restore']
+            options: defaultOptions
         },
         name: 'Check',
         group: vscode.TaskGroup.Test,
@@ -79,7 +72,7 @@ const RTasksMeta: RTaskMeta[] = [
         definition: {
             type: TYPE,
             code: ['devtools::document()'],
-            args: ['--no-echo', '--no-restore']
+            options: defaultOptions
         },
         name: 'Document',
         group: vscode.TaskGroup.Build,
@@ -90,7 +83,7 @@ const RTasksMeta: RTaskMeta[] = [
         definition: {
             type: TYPE,
             code: ['devtools::install()'],
-            args: ['--no-echo', '--no-restore']
+            options: defaultOptions
         },
         name: 'Install',
         group: vscode.TaskGroup.Build,
@@ -98,38 +91,27 @@ const RTasksMeta: RTaskMeta[] = [
     }
 ];
 
-
-
-
-const asRTask = async function (
-    folder: vscode.WorkspaceFolder | vscode.TaskScope,
-    meta: RTaskMeta
-): Promise<vscode.Task> {
-
-    const Rterm = await getRterm();
-    const RtermArgs = zipRTermArguments(meta.definition.code, meta.definition.args ?? []);
-
+function asRTask(rPath: string, folder: vscode.WorkspaceFolder | vscode.TaskScope, info: RTaskInfo): vscode.Task {
+    const args = makeRArgs(info.definition.options ?? defaultOptions, info.definition.code);
     const rtask: vscode.Task = new vscode.Task(
-        meta.definition,
+        info.definition,
         folder,
-        meta.name,
-        meta.definition.type,
+        info.name,
+        info.definition.type,
         new vscode.ProcessExecution(
-            Rterm,
-            RtermArgs,
+            rPath,
+            args,
             {
-                cwd: meta.definition.cwd,
-                env: meta.definition.env
+                cwd: info.definition.cwd,
+                env: info.definition.env
             }
         ),
-        meta.problemMatchers
+        info.problemMatchers
     );
     
-    rtask.group = meta.group;
+    rtask.group = info.group;
     return rtask;
-};
-
-
+}
 
 export class RTaskProvider implements vscode.TaskProvider {
     
@@ -139,16 +121,17 @@ export class RTaskProvider implements vscode.TaskProvider {
         const folders = vscode.workspace.workspaceFolders;
         
         if (!folders) {
-            return [] as vscode.Task[];
+            return [];
         }
         
         const tasks: vscode.Task[] = [];
+        const rPath = await getRpath(false);
         
         for (const folder of folders) {
             const isRPackage = fs.existsSync(path.join(folder.uri.fsPath, 'DESCRIPTION'));
             if (isRPackage) {
-                for (const rtask of RTasksMeta) {
-                    const task = await asRTask(folder, rtask);
+                for (const rtask of rtasks) {
+                    const task = asRTask(rPath, folder, rtask);
                     tasks.push(task);
                 }
             }
@@ -157,11 +140,12 @@ export class RTaskProvider implements vscode.TaskProvider {
     }
 
     public async resolveTask(task: vscode.Task): Promise<vscode.Task> {
-        const taskMeta: RTaskMeta = {
+        const taskInfo: RTaskInfo = {
             definition: <RTaskDefinition>task.definition,
             group: task.group,
             name: task.name
         };
-        return await asRTask(vscode.TaskScope.Workspace, taskMeta);
+        const rPath = await getRpath(false);
+        return asRTask(rPath, vscode.TaskScope.Workspace, taskInfo);
     }
 }

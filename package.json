@@ -1687,7 +1687,7 @@
             ],
             "description": "R code to be executed"
           },
-          "args": {
+          "options": {
             "type": "array",
             "items": {
               "type": "string"
@@ -1696,7 +1696,7 @@
               "--no-echo",
               "--no-restore"
             ],
-            "description": "Arguments used to invoke R (see R --help)"
+            "description": "Command line options used to invoke R (see R --help)"
           },
           "cwd": {
             "type": "string",
