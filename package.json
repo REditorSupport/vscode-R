@@ -1681,8 +1681,22 @@
             "items": {
               "type": "string"
             },
-            "default": [],
+            "default": [
+              "x <- 'Hello, World!'",
+              "print(x)"
+            ],
             "description": "R code to be executed"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "--no-echo",
+              "--no-restore"
+            ],
+            "description": "Arguments used to invoke R (see R --help)"
           },
           "cwd": {
             "type": "string",
