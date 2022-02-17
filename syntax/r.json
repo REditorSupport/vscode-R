@@ -440,7 +440,7 @@
         "function-declarations": {
             "patterns": [
                 {
-                    "match": "((?:`[^`\\\\]*(?:\\\\.[^`\\\\]*)*`)|(?:[[:alpha:].][[:alnum:]._]*))\\s*(<?<-|=(?!=))\\s*(function)",
+                    "match": "((?:`[^`\\\\]*(?:\\\\.[^`\\\\]*)*`)|(?:[[:alpha:].][[:alnum:]._]*))\\s*(<?<-|=(?!=))\\s*(function)(?!\\w)",
                     "captures": {
                         "1": {
                             "name": "entity.name.function.r"
