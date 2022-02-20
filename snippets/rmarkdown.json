@@ -123,7 +123,7 @@
 		"prefix": "reference list",
 		"body": [
 			"::: {#refs}",
-			": : :"
+			":::$0"
 		],
 		"description": "Insert reference list"
 	}
