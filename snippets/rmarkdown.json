@@ -101,7 +101,7 @@
 		"body": [
 			"::: notes",
 			"${TM_SELECTED_TEXT}$0",
-			":::"
+			":::$0"
 		],
 		"description": "Insert speaker notes"
 	},
