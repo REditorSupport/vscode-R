@@ -411,7 +411,7 @@
         ],
         "description": "Folding Region End"
     },
-    "Insert shiny sidebar page": {
+    "Insert Shiny sidebar page": {
         "prefix": "shiny sidebar page",
         "body": [
             "library(shiny)",
