@@ -431,5 +431,14 @@
             "shinyApp(ui, server)$0"
         ],
         "description": "Insert Shiny sidebar page"
+    },
+    "Insert Shiny observe event": {
+        "prefix": "shiny observe event",
+        "body": [
+            "observeEvent(${1:event}, {",
+            "    ${0}",
+            "})"
+        ],
+        "description": "Insert Shiny observe event"
     }
 }
