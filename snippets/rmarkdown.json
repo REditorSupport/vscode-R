@@ -53,6 +53,16 @@
 		],
 		"description": "Insert ordered list"
 	},
+	"Insert unordered item": {
+		"prefix": "unordered item",
+		"body": "- ${1:${TM_SELECTED_TEXT}}",
+		"description": "Insert unordered item"
+	},
+	"Insert ordered item": {
+		"prefix": "ordered item",
+		"body": "1. ${1:${TM_SELECTED_TEXT}}",
+		"description": "Insert ordered item"
+	},
 	"Insert horizontal rule": {
 		"prefix": "horizontal rule",
 		"body": "----------\n",
