@@ -100,7 +100,9 @@
 		"prefix": "speaker notes",
 		"body": [
 			"::: notes",
+			"",
 			"${TM_SELECTED_TEXT}$0",
+			"",
 			":::"
 		],
 		"description": "Insert speaker notes"
@@ -110,10 +112,14 @@
 		"body": [
 			":::::: {.columns}",
 			"::: {.column}",
+			"",
 			"${1:Content of the left column.}",
+			"",
 			":::",
 			"::: {.column}",
+			"",
 			"${2:Content of the right column.}",
+			"",
 			":::",
 			"::::::$0"
 		],
@@ -123,10 +129,12 @@
 		"prefix": "incremental list",
 		"body": [
 			"::: incremental",
+			"",
 			"- ${1:first}",
 			"- ${2:second}",
 			"- ${3:third}",
 			"$0",
+			"",
 			":::"
 		],
 		"description": "Insert incremental list"
@@ -135,10 +143,12 @@
 		"prefix": "nonincremental list",
 		"body": [
 			"::: nonincremental",
+			"",
 			"- ${1:first}",
 			"- ${2:second}",
 			"- ${3:third}",
 			"$0",
+			"",
 			":::"
 		],
 		"description": "Insert nonincremental list"
