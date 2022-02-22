@@ -126,5 +126,14 @@
 			":::$0"
 		],
 		"description": "Insert reference list"
+	},
+	"Insert bookdown theorem": {
+		"prefix": "theorem",
+		"body": [
+			"::: {.theorem #${1:label} name=\"${2:theorem name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown theorem)"
 	}
 }
