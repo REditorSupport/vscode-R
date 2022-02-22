@@ -135,5 +135,12 @@
 			":::"
 		],
 		"description": "Insert bookdown theorem)"
+	},
+	"Cross-reference bookdown theorem": {
+		"prefix": "cross-reference theorem",
+		"body": [
+			"\\@ref(thm:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown theorem)"
 	}
 }
