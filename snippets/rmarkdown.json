@@ -119,6 +119,18 @@
 		],
 		"description": "Insert (side-by-side) two columns"
 	},
+	"Insert incremental list": {
+		"prefix": "incremental list",
+		"body": [
+			"::: incremental",
+			"- ${1:first}",
+			"- ${2:second}",
+			"- ${3:third}",
+			"$0",
+			":::"
+		],
+		"description": "Insert incremental list"
+	},
 	"Insert reference list": {
 		"prefix": "reference list",
 		"body": [
