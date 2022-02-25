@@ -9,13 +9,16 @@
 		"body": "*${1:${TM_SELECTED_TEXT}}*$0",
 		"description": "Insert italic text"
 	},
-
 	"Insert superscript": {
 		"prefix": "superscript",
 		"body": "^${1:${TM_SELECTED_TEXT}}^$0",
 		"description": "Insert superscript"
 	},
-
+	"Insert subscript": {
+		"prefix": "subscript",
+		"body": "~${1:${TM_SELECTED_TEXT}}~$0",
+		"description": "Insert subscript"
+	},
 	"Insert quoted text": {
 		"prefix": "quote",
 		"body": "> ${1:${TM_SELECTED_TEXT}}",
