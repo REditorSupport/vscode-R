@@ -78,6 +78,16 @@
 		"body": "1. ${1:${TM_SELECTED_TEXT}}",
 		"description": "Insert ordered item"
 	},
+	"Insert checked item": {
+		"prefix": "checked item",
+		"body": "- [x] ${1:${TM_SELECTED_TEXT}}",
+		"description": "Insert checked item"
+	},
+	"Insert unchecked item": {
+		"prefix": "unchecked item",
+		"body": "- [ ] ${1:${TM_SELECTED_TEXT}}",
+		"description": "Insert unchecked item"
+	},
 	"Insert horizontal rule": {
 		"prefix": "horizontal rule",
 		"body": "----------\n",
