@@ -19,6 +19,11 @@
 		"body": "~${1:${TM_SELECTED_TEXT}}~$0",
 		"description": "Insert subscript"
 	},
+	"Insert strikeout": {
+		"prefix": "strikeout",
+		"body": "~~${1:${TM_SELECTED_TEXT}}~~$0",
+		"description": "Insert strikeout"
+	},
 	"Insert quoted text": {
 		"prefix": "quote",
 		"body": "> ${1:${TM_SELECTED_TEXT}}",
