@@ -440,5 +440,14 @@
             "})"
         ],
         "description": "Insert Shiny observe event"
+    },
+    "Insert Shiny withProgress": {
+        "prefix": "shiny withProgress",
+        "body": [
+            "    withProgress( message = \"${1:message}\" , {",
+            "    ${0}",
+            "    })"
+        ],
+        "description": "Insert Shiny withProgress"
     }
 }
