@@ -449,5 +449,27 @@
             "    })"
         ],
         "description": "Insert Shiny withProgress"
+    },
+    "Insert Shiny module": {
+        "prefix": "shiny module",
+        "body": [
+            "    ${1:name}ui <- function(id){",
+            "        ns <- NS(id)",
+            "        tagList(",
+            "        ${0}",
+            "            )",
+            "        }",
+            "",
+            "    ${1:name} <- function(input, output, session){",
+            "        ns <- session\\$ns",
+            "    }",
+            "    ",
+            "    # Copy in UI",
+            "    #${1:name}ui(\"${1:name}ui\")",
+            "    ",
+            "    # Copy in server",
+            "    #callModule(${1:name}, \"${1:name}ui\")"
+        ],
+        "description": "Insert Shiny module"
     }
 }
