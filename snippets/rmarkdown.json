@@ -78,6 +78,16 @@
 		"body": "1. ${1:${TM_SELECTED_TEXT}}",
 		"description": "Insert ordered item"
 	},
+	"Insert task list": {
+		"prefix": "task list",
+		"body": [
+			"- [${1|x, |}] ${2:first}",
+			"- [${3|x, |}] ${4:second}",
+			"- [${5|x, |}] ${6:third}",
+			"$0"
+		],
+		"description": "Insert task list"
+	},
 	"Insert checked item": {
 		"prefix": "checked item",
 		"body": "- [x] ${1:${TM_SELECTED_TEXT}}",
