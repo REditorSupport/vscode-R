@@ -411,7 +411,7 @@
         ],
         "description": "Folding Region End"
     },
-    "Insert Shiny sidebar page": {
+    "Shiny sidebar page": {
         "prefix": "shiny sidebar page",
         "body": [
             "library(shiny)",
@@ -430,27 +430,27 @@
             "",
             "shinyApp(ui, server)$0"
         ],
-        "description": "Insert Shiny sidebar page"
+        "description": "Shiny sidebar page"
     },
-    "Insert Shiny observe event": {
+    "Shiny observe event": {
         "prefix": "shiny observe event",
         "body": [
             "observeEvent(${1:event}, {",
             "    ${0}",
             "})"
         ],
-        "description": "Insert Shiny observe event"
+        "description": "Shiny observe event"
     },
-    "Insert Shiny withProgress": {
+    "Shiny withProgress": {
         "prefix": "shiny withProgress",
         "body": [
             "    withProgress( message = \"${1:message}\" , {",
             "    ${0}",
             "    })"
         ],
-        "description": "Insert Shiny withProgress"
+        "description": "Shiny withProgress"
     },
-    "Insert Shiny module": {
+    "Shiny module": {
         "prefix": "shiny module",
         "body": [
             "    ${1:name}ui <- function(id){",
@@ -470,6 +470,6 @@
             "    # Copy in server",
             "    #callModule(${1:name}, \"${1:name}ui\")"
         ],
-        "description": "Insert Shiny module"
+        "description": "Shiny module"
     }
 }
