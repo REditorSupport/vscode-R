@@ -444,31 +444,31 @@
     "Shiny withProgress": {
         "prefix": "shiny withProgress",
         "body": [
-            "    withProgress( message = \"${1:message}\" , {",
-            "    ${0}",
-            "    })"
+            "withProgress(message = \"${1:message}\", {",
+            "${0}",
+            "})"
         ],
         "description": "Shiny withProgress"
     },
     "Shiny module": {
         "prefix": "shiny module",
         "body": [
-            "    ${1:name}ui <- function(id){",
-            "        ns <- NS(id)",
-            "        tagList(",
-            "        ${0}",
-            "            )",
-            "        }",
-            "",
-            "    ${1:name} <- function(input, output, session){",
-            "        ns <- session\\$ns",
+            "${1:name}ui <- function(id) {",
+            "    ns <- NS(id)",
+            "    tagList(",
+            "    ${0}",
+            "        )",
             "    }",
-            "    ",
-            "    # Copy in UI",
-            "    #${1:name}ui(\"${1:name}ui\")",
-            "    ",
-            "    # Copy in server",
-            "    #callModule(${1:name}, \"${1:name}ui\")"
+            "",
+            "${1:name} <- function(input, output, session) {",
+            "    ns <- session\\$ns",
+            "}",
+            "",
+            "# Copy in UI",
+            "#${1:name}ui(\"${1:name}ui\")",
+            "",
+            "# Copy in server",
+            "#callModule(${1:name}, \"${1:name}ui\")"
         ],
         "description": "Shiny module"
     }
