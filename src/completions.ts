@@ -98,8 +98,7 @@ export class StaticCompletionItemProvider implements vscode.CompletionItemProvid
             }
         }
 
-        if (document.lineAt(position).text
-                    .substr(0, 2) === '#\'') {
+        if (document.lineAt(position).text.startsWith('#\'')) {
             return roxygenTagCompletionItems;
         }
 
@@ -159,7 +158,7 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             }
 
             if (names) {
-                items.push(...getCompletionItems(names, vscode.CompletionItemKind.Field, '[session]', doc));
+                items.push(...getCompletionItems(names, vscode.CompletionItemKind.Variable, '[session]', doc));
             }
         }
 

@@ -208,7 +208,7 @@ inspect_env <- function(env, cache) {
         info$slots <- slotNames(obj)
       }
 
-      if (is.list(obj) && !is.null(dim(obj))) {
+      if (!is.null(dim(obj))) {
         info$dim <- dim(obj)
       }
     }

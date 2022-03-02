@@ -110,9 +110,9 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 			)) : [];
 
 		function sortItems(a: GlobalEnvItem, b: GlobalEnvItem) {
-			if (priorityAttr.includes(a.contextValue) > priorityAttr.includes(b.contextValue)) {
+			if (priorityAttr.includes(a.type) > priorityAttr.includes(b.type)) {
 				return -1;
-			} else if (priorityAttr.includes(b.contextValue) > priorityAttr.includes(a.contextValue)) {
+			} else if (priorityAttr.includes(b.type) > priorityAttr.includes(a.type)) {
 				return 1;
 			} else {
 				return 0 || a.label.localeCompare(b.label);
@@ -127,6 +127,7 @@ export class GlobalEnvItem extends TreeItem {
 	label: string;
 	desc: string;
 	str: string;
+	type: string;
 	treeLevel: number;
 	contextValue: string;
 
@@ -140,16 +141,17 @@ export class GlobalEnvItem extends TreeItem {
 		dim?: number[],
 	) {
 		super(label, GlobalEnvItem.setCollapsibleState(treeLevel, type, str));
-		this.description = this.getDescription(dim, str, rClass);
+		this.description = this.getDescription(dim, str, rClass, type);
 		this.tooltip = this.getTooltip(label, rClass, size, treeLevel);
-		this.contextValue = type;
+		this.iconPath = this.getIconPath(type, dim);
+		this.type = type;
 		this.str = str;
 		this.treeLevel = treeLevel;
 		this.contextValue = treeLevel === 0 ? 'rootNode' : `childNode${treeLevel}`;
 	}
 
-	private getDescription(dim: number[], str: string, rClass: string): string {
-		if (dim !== undefined) {
+	private getDescription(dim: number[], str: string, rClass: string, type: string): string {
+		if (dim && type === 'list') {
 			if (dim[1] === 1) {
 				return `${rClass}: ${dim[0]} obs. of ${dim[1]} variable`;
 			} else {
@@ -178,6 +180,36 @@ export class GlobalEnvItem extends TreeItem {
 		} else {
 			return `${label} (${rClass})`;
 		}
+	}
+
+	private getIconPath(type: string, dim?: number[]) {
+		let name: string;
+		if (dim) {
+			if (type === 'list') {
+				name = 'symbol-constant';
+			} else {
+				name = 'symbol-array';
+			}
+		} else if (type === 'closure' || type === 'builtin') {
+			name = 'symbol-function';
+		} else if (type === 'double' || type === 'integer') {
+			name = 'symbol-numeric';
+		} else if (type === 'logical') {
+			name = 'symbol-boolean';
+		} else if (type === 'character') {
+			name = 'symbol-string';
+		} else if (type === 'NULL') {
+			name = 'symbol-null';
+		} else if (type === 'list') {
+			name = 'symbol-struct';
+		} else if (type === 'environment') {
+			name = 'symbol-object';
+		} else if (type === '') {
+			name = 'symbol-variable';
+		} else {
+			name = 'symbol-field';
+		}
+		return new ThemeIcon(name);
 	}
 
 	/* This logic has to be implemented this way to allow it to be called
