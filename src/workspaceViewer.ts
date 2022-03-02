@@ -1,9 +1,9 @@
 import * as path from 'path';
 import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window } from 'vscode';
 import { runTextInTerm } from './rTerminal';
-import { globalenv, workingDir } from './session';
+import { workspaceData, workingDir } from './session';
 import { config } from './util';
-import { isGuestSession, isLiveShare, UUID, guestGlobalenv } from './liveShare';
+import { isGuestSession, isLiveShare, UUID, guestWorkspace } from './liveShare';
 
 interface WorkspaceAttr {
 	[key: string]: {
@@ -26,9 +26,9 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 
 	refresh(): void {
 		if (isGuestSession) {
-			this.data = guestGlobalenv as WorkspaceAttr;
+			this.data = guestWorkspace.globalenv as WorkspaceAttr;
 		} else {
-			this.data = globalenv as WorkspaceAttr;
+			this.data = workspaceData.globalenv as WorkspaceAttr;
 		}
 		this._onDidChangeTreeData.fire();
 	}
@@ -179,7 +179,7 @@ export function clearWorkspace(): void {
 	const removeHiddenItems: boolean = config().get('workspaceViewer.removeHiddenItems');
 	const promptUser: boolean = config().get('workspaceViewer.clearPrompt');
 
-	if ((isGuestSession ? guestGlobalenv : globalenv) !== undefined) {
+	if ((isGuestSession ? guestWorkspace : workspaceData) !== undefined) {
 		if (promptUser) {
 			void window.showInformationMessage(
 				'Are you sure you want to clear the workspace? This cannot be reversed.',
@@ -207,7 +207,7 @@ export function clearWorkspace(): void {
 }
 
 export function saveWorkspace(): void {
-	if (globalenv !== undefined) {
+	if (workspaceData !== undefined) {
 		void window.showSaveDialog({
 			defaultUri: Uri.file(`${workingDir}${path.sep}workspace.RData`),
 			filters: {
@@ -226,7 +226,7 @@ export function saveWorkspace(): void {
 }
 
 export function loadWorkspace(): void {
-	if (globalenv !== undefined) {
+	if (workspaceData !== undefined) {
 		void window.showOpenDialog({
 			defaultUri: Uri.file(workingDir),
 			filters: {

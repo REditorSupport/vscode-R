@@ -17,7 +17,13 @@ import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
-export let globalenv: any;
+export interface WorkspaceData {
+    search: string[];
+    loaded_namespaces: string[];
+    globalenv: any;
+}
+
+export let workspaceData: WorkspaceData;
 let resDir: string;
 export let requestFile: string;
 export let requestLockFile: string;
@@ -28,13 +34,13 @@ export let workingDir: string;
 let rVer: string;
 let pid: string;
 let info: any;
-export let globalenvFile: string;
-let globalenvLockFile: string;
-let globalenvTimeStamp: number;
+export let workspaceFile: string;
+let workspaceLockFile: string;
+let workspaceTimeStamp: number;
 let plotFile: string;
 let plotLockFile: string;
 let plotTimeStamp: number;
-let globalEnvWatcher: FSWatcher;
+let workspaceWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
 let activeBrowserPanel: WebviewPanel;
 let activeBrowserUri: Uri;
@@ -118,20 +124,20 @@ function writeSettings() {
 
 function updateSessionWatcher() {
     console.info(`[updateSessionWatcher] PID: ${pid}`);
-    console.info('[updateSessionWatcher] Create globalEnvWatcher');
-    globalenvFile = path.join(sessionDir, 'globalenv.json');
-    globalenvLockFile = path.join(sessionDir, 'globalenv.lock');
-    globalenvTimeStamp = 0;
-    if (globalEnvWatcher !== undefined) {
-        globalEnvWatcher.close();
+    console.info('[updateSessionWatcher] Create workspaceWatcher');
+    workspaceFile = path.join(sessionDir, 'workspace.json');
+    workspaceLockFile = path.join(sessionDir, 'workspace.lock');
+    workspaceTimeStamp = 0;
+    if (workspaceWatcher !== undefined) {
+        workspaceWatcher.close();
     }
-    if (fs.existsSync(globalenvLockFile)) {
-        globalEnvWatcher = fs.watch(globalenvLockFile, {}, () => {
-            void updateGlobalenv();
+    if (fs.existsSync(workspaceLockFile)) {
+        workspaceWatcher = fs.watch(workspaceLockFile, {}, () => {
+            void updateWorkspace();
         });
-        void updateGlobalenv();
+        void updateWorkspace();
     } else {
-        console.info('[updateSessionWatcher] globalenvLockFile not found');
+        console.info('[updateSessionWatcher] workspaceLockFile not found');
     }
 
     console.info('[updateSessionWatcher] Create plotWatcher');
@@ -174,23 +180,23 @@ async function updatePlot() {
     }
 }
 
-async function updateGlobalenv() {
-    console.info(`[updateGlobalenv] ${globalenvFile}`);
+async function updateWorkspace() {
+    console.info(`[updateWorkspace] ${workspaceFile}`);
 
-    const lockContent = await fs.readFile(globalenvLockFile, 'utf8');
+    const lockContent = await fs.readFile(workspaceLockFile, 'utf8');
     const newTimeStamp = Number.parseFloat(lockContent);
-    if (newTimeStamp !== globalenvTimeStamp) {
-        globalenvTimeStamp = newTimeStamp;
-        if (fs.existsSync(globalenvFile)) {
-            const content = await fs.readFile(globalenvFile, 'utf8');
-            globalenv = JSON.parse(content);
+    if (newTimeStamp !== workspaceTimeStamp) {
+        workspaceTimeStamp = newTimeStamp;
+        if (fs.existsSync(workspaceFile)) {
+            const content = await fs.readFile(workspaceFile, 'utf8');
+            workspaceData = JSON.parse(content);
             void rWorkspace?.refresh();
-            console.info('[updateGlobalenv] Done');
+            console.info('[updateWorkspace] Done');
             if (isLiveShare()) {
-                rHostService.notifyGlobalenv(globalenv);
+                rHostService.notifyWorkspace(workspaceData);
             }
         } else {
-            console.info('[updateGlobalenv] File not found');
+            console.info('[updateWorkspace] File not found');
         }
     }
 }

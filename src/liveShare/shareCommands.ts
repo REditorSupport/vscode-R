@@ -3,11 +3,11 @@ import * as vscode from 'vscode';
 import * as fs from 'fs-extra';
 
 import { rHostService, isGuest, service } from '.';
-import { updateGuestRequest, updateGuestGlobalenv, updateGuestPlot, detachGuest } from './shareSession';
+import { updateGuestRequest, updateGuestWorkspace, updateGuestPlot, detachGuest } from './shareSession';
 import { forwardCommands, shareWorkspace } from './shareTree';
 
 import { runTextInTerm } from '../rTerminal';
-import { requestFile } from '../session';
+import { requestFile, WorkspaceData } from '../session';
 import { HelpFile } from '../helpViewer';
 import { globalHttpgdManager, globalRHelp } from '../extension';
 
@@ -31,7 +31,7 @@ interface ICommands {
 // used for notify & request events
 // (mainly to prevent typos)
 export const enum Callback {
-    NotifyEnvUpdate = 'NotifyEnvUpdate',
+    NotifyWorkspaceUpdate = 'NotifyWorkspaceUpdate',
     NotifyPlotUpdate = 'NotifyPlotUpdate',
     NotifyRequestUpdate = 'NotifyRequestUpdate',
     NotifyMessage = 'NotifyMessage',
@@ -92,8 +92,8 @@ export const Commands: ICommands = {
         [Callback.NotifyRequestUpdate]: (args: [file: string, force: boolean]): void => {
             void updateGuestRequest(args[0], args[1]);
         },
-        [Callback.NotifyEnvUpdate]: (args: [hostEnv: string]): void => {
-            void updateGuestGlobalenv(args[0]);
+        [Callback.NotifyWorkspaceUpdate]: (args: [hostWorkspace: WorkspaceData]): void => {
+            void updateGuestWorkspace(args[0]);
         },
         [Callback.NotifyPlotUpdate]: (args: [file: string]): void => {
             void updateGuestPlot(args[0]);

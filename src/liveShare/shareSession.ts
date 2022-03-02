@@ -4,14 +4,14 @@ import * as vsls from 'vsls';
 
 import { extensionContext, globalRHelp, rWorkspace } from '../extension';
 import { config, readContent } from '../util';
-import { showBrowser, showDataView, showWebView } from '../session';
+import { showBrowser, showDataView, showWebView, WorkspaceData } from '../session';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from '.';
 import { autoShareBrowser } from './shareTree';
 import { docProvider, docScheme } from './virtualDocs';
 
 // Workspace Vars
 let guestPid: string;
-export let guestGlobalenv: unknown;
+export let guestWorkspace: WorkspaceData;
 export let guestResDir: string;
 let rVer: string;
 let info: IRequest['info'];
@@ -66,7 +66,7 @@ export function detachGuest(): void {
     console.info('[Guest Service] detach guest from workspace');
     sessionStatusBarItem.text = 'Guest R: (not attached)';
     sessionStatusBarItem.tooltip = 'Click to attach to host terminal';
-    guestGlobalenv = undefined;
+    guestWorkspace = undefined;
     rWorkspace?.refresh();
 }
 
@@ -142,12 +142,12 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
     }
 }
 
-// Call from host, pass parsed globalenvfile
-export function updateGuestGlobalenv(hostEnv: string): void {
-    if (hostEnv) {
-        guestGlobalenv = hostEnv;
+// Call from host, pass parsed workspace file
+export function updateGuestWorkspace(hostWorkspace: WorkspaceData): void {
+    if (hostWorkspace) {
+        guestWorkspace = hostWorkspace;
         void rWorkspace?.refresh();
-        console.info('[updateGuestGlobalenv] Done');
+        console.info('[updateGuestWorkspace] Done');
     }
 }
 
