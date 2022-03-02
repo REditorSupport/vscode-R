@@ -209,6 +209,17 @@
 		],
 		"description": "Insert incremental fenced block"
 	},
+	"Insert nonincremental fenced block": {
+		"prefix": "nonincremental fenced block",
+		"body": [
+			"::: nonincremental",
+			"",
+			"$0",
+			"",
+			":::"
+		],
+		"description": "Insert nonincremental fenced block"
+	},
 	"Insert reference list": {
 		"prefix": "reference list",
 		"body": [
