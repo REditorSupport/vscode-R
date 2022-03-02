@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window } from 'vscode';
+import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window, ThemeIcon } from 'vscode';
 import { runTextInTerm } from './rTerminal';
 import { workspaceData, workingDir, WorkspaceData, GlobalEnv } from './session';
 import { config } from './util';
@@ -21,15 +21,22 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 
 	data: WorkspaceData;
 
-	private readonly attachedItem: TreeItem;
-	private readonly loadedNamespacesItem: TreeItem;
+	private readonly treeItems: TreeItem[] = [];
 
 	constructor() {
-		this.attachedItem = new TreeItem('Attached namespaces', TreeItemCollapsibleState.Expanded);
-		this.attachedItem.id = 'attached-namespaces';
+		const attachedNamespacesItem = new TreeItem('Attached Namespaces', TreeItemCollapsibleState.Collapsed);
+		attachedNamespacesItem.id = 'attached-namespaces';
+		attachedNamespacesItem.iconPath = new ThemeIcon('library');
 
-		this.loadedNamespacesItem = new TreeItem('Loaded namespaces', TreeItemCollapsibleState.Collapsed);
-		this.loadedNamespacesItem.id = 'loaded-namespaces';
+		const loadedNamespacesItem = new TreeItem('Loaded Namespaces', TreeItemCollapsibleState.Collapsed);
+		loadedNamespacesItem.id = 'loaded-namespaces';
+		loadedNamespacesItem.iconPath = new ThemeIcon('package');
+
+		const globalEnvItem = new TreeItem('Global Environment', TreeItemCollapsibleState.Expanded);
+		globalEnvItem.id = 'globalenv';
+		globalEnvItem.iconPath = new ThemeIcon('menu');
+
+		this.treeItems.push(attachedNamespacesItem, loadedNamespacesItem, globalEnvItem);
 	}
 
 	getTreeItem(element: TreeItem): TreeItem {
@@ -39,9 +46,19 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 	getChildren(element?: TreeItem): TreeItem[] {
 		if (element) {
 			if (element.id === 'attached-namespaces') {
-				return this.data.search.map(name =>  new TreeItem(name, TreeItemCollapsibleState.None));
+				return this.data.search.map(name => {
+					const item = new TreeItem(name, TreeItemCollapsibleState.None);
+					item.iconPath = new ThemeIcon(name.startsWith('package:') ? 'symbol-namespace' : 'symbol-array');
+					return item;
+				});
 			} else if (element.id === 'loaded-namespaces') {
-				return this.data.loaded_namespaces.map(name => new TreeItem(name, TreeItemCollapsibleState.None));
+				return this.data.loaded_namespaces.map(name => {
+					const item = new TreeItem(name, TreeItemCollapsibleState.None);
+					item.iconPath = new ThemeIcon('symbol-namespace');
+					return item;
+				});
+			} else if (element.id === 'globalenv') {
+				return this.getGlobalEnvItems(this.data.globalenv);
 			} else if (element instanceof GlobalEnvItem) {
 				return element.str
 					.split('\n')
@@ -58,9 +75,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 					);
 			}
 		} else {
-			const items: TreeItem[] = [this.attachedItem, this.loadedNamespacesItem];
-			items.push(...this.getGlobalEnvItems(this.data.globalenv));
-			return items;
+			return this.treeItems;
 		}
 	}
 

@@ -230,7 +230,7 @@ file.create(workspace_lock_file, showWarnings = FALSE)
 update_workspace <- function(...) {
   tryCatch({
     data <- list(
-      search = search(),
+      search = search()[-1],
       loaded_namespaces = loadedNamespaces(),
       globalenv = if (show_globalenv) inspect_env(.GlobalEnv, globalenv_cache) else NULL
     )
