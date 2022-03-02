@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window } from 'vscode';
 import { runTextInTerm } from './rTerminal';
-import { GlobalEnv, workspaceData, workingDir } from './session';
+import { workspaceData, workingDir, WorkspaceData, GlobalEnv } from './session';
 import { config } from './util';
 import { isGuestSession, isLiveShare, UUID, guestWorkspace } from './liveShare';
 
@@ -10,47 +10,61 @@ const priorityAttr: string[] = [
 	'environment'
 ];
 
-export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
+export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 	private _onDidChangeTreeData: EventEmitter<void> = new EventEmitter();
 	readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
 
 	refresh(): void {
-		if (isGuestSession) {
-			this.data = guestWorkspace.globalenv;
-		} else {
-			this.data = workspaceData.globalenv;
-		}
+		this.data = isGuestSession ? guestWorkspace : workspaceData;
 		this._onDidChangeTreeData.fire();
 	}
 
-	data: GlobalEnv;
+	data: WorkspaceData;
 
-	getTreeItem(element: WorkspaceItem): TreeItem {
+	private readonly attachedItem: TreeItem;
+	private readonly loadedNamespacesItem: TreeItem;
+
+	constructor() {
+		this.attachedItem = new TreeItem('Attached namespaces', TreeItemCollapsibleState.Expanded);
+		this.attachedItem.id = 'attached-namespaces';
+
+		this.loadedNamespacesItem = new TreeItem('Loaded namespaces', TreeItemCollapsibleState.Collapsed);
+		this.loadedNamespacesItem.id = 'loaded-namespaces';
+	}
+
+	getTreeItem(element: TreeItem): TreeItem {
 		return element;
 	}
 
-	getChildren(element?: WorkspaceItem): WorkspaceItem[] {
+	getChildren(element?: TreeItem): TreeItem[] {
 		if (element) {
-			return element.str
-				.split('\n')
-				.filter((elem, index) => {return index > 0;})
-				.map(strItem =>
-					new WorkspaceItem(
-						'',
-						'',
-						strItem.replace(/\s+/g,' ').trim(),
-						'',
-						0,
-						element.treeLevel + 1
-					)
-				);
+			if (element.id === 'attached-namespaces') {
+				return this.data.search.map(name =>  new TreeItem(name, TreeItemCollapsibleState.None));
+			} else if (element.id === 'loaded-namespaces') {
+				return this.data.loaded_namespaces.map(name => new TreeItem(name, TreeItemCollapsibleState.None));
+			} else if (element instanceof GlobalEnvItem) {
+				return element.str
+					.split('\n')
+					.filter((elem, index) => { return index > 0; })
+					.map(strItem =>
+						new GlobalEnvItem(
+							'',
+							'',
+							strItem.replace(/\s+/g, ' ').trim(),
+							'',
+							0,
+							element.treeLevel + 1
+						)
+					);
+			}
 		} else {
-			return this.getWorkspaceItems(this.data);
+			const items: TreeItem[] = [this.attachedItem, this.loadedNamespacesItem];
+			items.push(...this.getGlobalEnvItems(this.data.globalenv));
+			return items;
 		}
-
 	}
 
-	private getWorkspaceItems(data: GlobalEnv): WorkspaceItem[] {
+	private getGlobalEnvItems(globalenv: GlobalEnv): GlobalEnvItem[] {
 		const toItem = (
 			key: string,
 			rClass: string,
@@ -58,8 +72,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 			type: string,
 			size?: number,
 			dim?: number[]
-		): WorkspaceItem => {
-			return new WorkspaceItem(
+		): GlobalEnvItem => {
+			return new GlobalEnvItem(
 				key,
 				rClass,
 				str,
@@ -70,17 +84,17 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 			);
 		};
 
-		const items = data ? Object.keys(data).map((key) =>
+		const items = globalenv ? Object.keys(globalenv).map((key) =>
 			toItem(
 				key,
-				data[key].class[0],
-				data[key].str,
-				data[key].type,
-				data[key].size,
-				data[key].dim,
+				globalenv[key].class[0],
+				globalenv[key].str,
+				globalenv[key].type,
+				globalenv[key].size,
+				globalenv[key].dim,
 			)) : [];
 
-		function sortItems(a: WorkspaceItem, b: WorkspaceItem) {
+		function sortItems(a: GlobalEnvItem, b: GlobalEnvItem) {
 			if (priorityAttr.includes(a.contextValue) > priorityAttr.includes(b.contextValue)) {
 				return -1;
 			} else if (priorityAttr.includes(b.contextValue) > priorityAttr.includes(a.contextValue)) {
@@ -94,7 +108,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 	}
 }
 
-export class WorkspaceItem extends TreeItem {
+export class GlobalEnvItem extends TreeItem {
 	label: string;
 	desc: string;
 	str: string;
@@ -110,7 +124,7 @@ export class WorkspaceItem extends TreeItem {
 		treeLevel: number,
 		dim?: number[],
 	) {
-		super(label, WorkspaceItem.setCollapsibleState(treeLevel, type, str));
+		super(label, GlobalEnvItem.setCollapsibleState(treeLevel, type, str));
 		this.description = this.getDescription(dim, str, rClass);
 		this.tooltip = this.getTooltip(label, rClass, size, treeLevel);
 		this.contextValue = type;
