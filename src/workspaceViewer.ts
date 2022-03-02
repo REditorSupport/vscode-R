@@ -1,19 +1,9 @@
 import * as path from 'path';
 import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window } from 'vscode';
 import { runTextInTerm } from './rTerminal';
-import { workspaceData, workingDir } from './session';
+import { GlobalEnv, workspaceData, workingDir } from './session';
 import { config } from './util';
 import { isGuestSession, isLiveShare, UUID, guestWorkspace } from './liveShare';
-
-interface WorkspaceAttr {
-	[key: string]: {
-		class: string[];
-		type: string;
-		str: string;
-		size?: number;
-		dim?: number[]
-	}
-}
 
 const priorityAttr: string[] = [
 	'list',
@@ -26,14 +16,14 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 
 	refresh(): void {
 		if (isGuestSession) {
-			this.data = guestWorkspace.globalenv as WorkspaceAttr;
+			this.data = guestWorkspace.globalenv;
 		} else {
-			this.data = workspaceData.globalenv as WorkspaceAttr;
+			this.data = workspaceData.globalenv;
 		}
 		this._onDidChangeTreeData.fire();
 	}
 
-	data: WorkspaceAttr;
+	data: GlobalEnv;
 
 	getTreeItem(element: WorkspaceItem): TreeItem {
 		return element;
@@ -60,7 +50,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<WorkspaceItem> {
 
 	}
 
-	private getWorkspaceItems(data: WorkspaceAttr): WorkspaceItem[] {
+	private getWorkspaceItems(data: GlobalEnv): WorkspaceItem[] {
 		const toItem = (
 			key: string,
 			rClass: string,

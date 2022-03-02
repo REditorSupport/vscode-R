@@ -17,10 +17,23 @@ import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
+export interface GlobalEnv {
+    [key: string]: {
+        class: string[];
+        type: string;
+        length: number;
+        str: string;
+        size?: number;
+        dim?: number[],
+        names?: string[],
+        slots?: string[]
+    }
+}
+
 export interface WorkspaceData {
     search: string[];
     loaded_namespaces: string[];
-    globalenv: any;
+    globalenv: GlobalEnv;
 }
 
 export let workspaceData: WorkspaceData;
