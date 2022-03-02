@@ -44,7 +44,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 	}
 
 	getChildren(element?: TreeItem): TreeItem[] {
-		if (element) {
+		if (element && this.data) {
 			if (element.id === 'attached-namespaces') {
 				return this.data.search.map(name => {
 					const item = new TreeItem(name, TreeItemCollapsibleState.None);
