@@ -223,7 +223,7 @@ function getBracketCompletionItems(document: vscode.TextDocument, position: vsco
         const obj = session.workspaceData.globalenv[symbol];
         if (obj !== undefined && obj.names !== undefined) {
             const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
-            items.push(...getCompletionItems(obj.names, vscode.CompletionItemKind.Field, '[session]', doc));
+            items.push(...getCompletionItems(obj.names, vscode.CompletionItemKind.Variable, '[session]', doc));
         }
     }
     return items;
@@ -268,7 +268,7 @@ function getPipelineCompletionItems(document: vscode.TextDocument, position: vsc
         const obj = session.workspaceData.globalenv[symbol];
         if (obj !== undefined && obj.names !== undefined) {
             const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
-            items.push(...getCompletionItems(obj.names, vscode.CompletionItemKind.Field, '[session]', doc));
+            items.push(...getCompletionItems(obj.names, vscode.CompletionItemKind.Variable, '[session]', doc));
         }
     }
     return items;

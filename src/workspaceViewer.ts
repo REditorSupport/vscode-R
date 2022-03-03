@@ -44,7 +44,10 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 	}
 
 	getChildren(element?: TreeItem): TreeItem[] {
-		if (element && this.data) {
+		if (element) {
+			if (this.data === undefined) {
+				return [];
+			}
 			if (element.id === 'attached-namespaces') {
 				return this.data.search.map(name => {
 					const item = new TreeItem(name, TreeItemCollapsibleState.None);
@@ -143,7 +146,7 @@ export class GlobalEnvItem extends TreeItem {
 		super(label, GlobalEnvItem.setCollapsibleState(treeLevel, type, str));
 		this.description = this.getDescription(dim, str, rClass, type);
 		this.tooltip = this.getTooltip(label, rClass, size, treeLevel);
-		this.iconPath = this.getIconPath(type, dim);
+		this.iconPath = this.getIcon(type, dim);
 		this.type = type;
 		this.str = str;
 		this.treeLevel = treeLevel;
@@ -182,28 +185,12 @@ export class GlobalEnvItem extends TreeItem {
 		}
 	}
 
-	private getIconPath(type: string, dim?: number[]) {
+	private getIcon(type: string, dim?: number[]) {
 		let name: string;
 		if (dim) {
-			if (type === 'list') {
-				name = 'symbol-constant';
-			} else {
-				name = 'symbol-array';
-			}
+			name = 'symbol-array';
 		} else if (type === 'closure' || type === 'builtin') {
 			name = 'symbol-function';
-		} else if (type === 'double' || type === 'integer') {
-			name = 'symbol-numeric';
-		} else if (type === 'logical') {
-			name = 'symbol-boolean';
-		} else if (type === 'character') {
-			name = 'symbol-string';
-		} else if (type === 'NULL') {
-			name = 'symbol-null';
-		} else if (type === 'list') {
-			name = 'symbol-struct';
-		} else if (type === 'environment') {
-			name = 'symbol-object';
 		} else if (type === '') {
 			name = 'symbol-variable';
 		} else {
