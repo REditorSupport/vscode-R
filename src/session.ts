@@ -724,7 +724,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     case 'help': {
                         if (globalRHelp) {
                             console.log(request.requestPath);
-                            void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
+                            await globalRHelp.showHelpForPath(request.requestPath, request.viewer);
                         }
                         break;
                     }
@@ -756,11 +756,11 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         break;
                     }
                     case 'webview': {
-                        void showWebView(request.file, request.title, request.viewer);
+                        await showWebView(request.file, request.title, request.viewer);
                         break;
                     }
                     case 'dataview': {
-                        void showDataView(request.source,
+                        await showDataView(request.source,
                             request.type, request.title, request.file, request.viewer);
                         break;
                     }
