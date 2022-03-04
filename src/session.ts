@@ -781,7 +781,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 await liveSession.shareServer({
                     port: Number(url.port),
                     browseUrl: request.url,
-                    displayName: `${request.command} (${url.host}:${url.port})`
+                    displayName: `${request.command} (${url.host})`
                 });
             }
             void rHostService.notifyRequest(requestFile);
