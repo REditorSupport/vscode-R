@@ -44,7 +44,9 @@ export function initializeHttpgd(): HttpgdManager {
     for (const cmd of commands) {
         const fullCommand = `r.plot.${cmd}`;
         const cb = httpgdManager.getCommandHandler(cmd);
-        vscode.commands.registerCommand(fullCommand, cb);
+        extensionContext.subscriptions.push(
+            vscode.commands.registerCommand(fullCommand, cb)
+        );
     }
     return httpgdManager;
 }

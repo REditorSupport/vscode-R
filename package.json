@@ -291,32 +291,43 @@
       {
         "command": "r.workspaceViewer.refreshEntry",
         "title": "Manual Refresh",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.view",
         "title": "View",
-        "icon": "$(open-preview)"
+        "icon": "$(open-preview)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.clear",
         "title": "Clear environment",
-        "icon": "$(clear-all)"
+        "icon": "$(clear-all)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.remove",
         "title": "Remove",
-        "icon": "$(close)"
+        "icon": "$(close)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.save",
         "title": "Save workspace",
-        "icon": "$(save)"
+        "icon": "$(save)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.load",
         "title": "Load workspace",
-        "icon": "$(folder-opened)"
+        "icon": "$(folder-opened)",
+        "category": "R Workspace Viewer"
+      },
+      {
+        "command": "r.workspaceViewer.namespace.showQuickPick",
+        "title": "Show QuickPick",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.browser.refresh",
@@ -332,7 +343,8 @@
       },
       {
         "command": "r.showHelp",
-        "title": "R: Show help"
+        "title": "Show help",
+        "category": "R"
       },
       {
         "command": "editor.action.webvieweditor.showFind",
@@ -544,7 +556,7 @@
       },
       {
         "command": "r.rmarkdown.setKnitDirectory",
-        "title": "R: Set Knit directory",
+        "title": "Set Knit directory",
         "icon": "$(zap)",
         "category": "R Markdown"
       },

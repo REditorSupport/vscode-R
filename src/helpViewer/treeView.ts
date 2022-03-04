@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import { RHelp } from '.';
+import { extensionContext } from '../extension';
 import { doWithProgress } from '../util';
 import { Package, Topic, TopicType } from './packages';
 
@@ -61,12 +62,12 @@ export class HelpTreeWrapper {
 
         // register the commands defiend in `nodeCommands`
         // they still need to be defined in package.json (apart from CALLBACK)
-        for(const cmd in nodeCommands){
-            vscode.commands.registerCommand(nodeCommands[cmd], (node: Node | undefined) => {
+        for (const cmd in nodeCommands) {
+            extensionContext.subscriptions.push(vscode.commands.registerCommand(nodeCommands[cmd], (node: Node | undefined) => {
                 // treeview-root is represented by `undefined`
                 node ||= this.helpViewProvider.rootItem;
                 node.handleCommand(<cmdName>cmd);
-            });
+            }));
         }
     }
 

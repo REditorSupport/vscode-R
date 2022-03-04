@@ -1,9 +1,11 @@
+import * as vscode from 'vscode';
 import * as path from 'path';
 import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window, ThemeIcon } from 'vscode';
 import { runTextInTerm } from './rTerminal';
 import { workspaceData, workingDir, WorkspaceData, GlobalEnv } from './session';
 import { config } from './util';
 import { isGuestSession, isLiveShare, UUID, guestWorkspace } from './liveShare';
+import { extensionContext, globalRHelp } from './extension';
 
 const priorityAttr: string[] = [
 	'list',
@@ -37,6 +39,19 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 		globalEnvItem.iconPath = new ThemeIcon('menu');
 
 		this.treeItems.push(attachedNamespacesItem, loadedNamespacesItem, globalEnvItem);
+
+		extensionContext.subscriptions.push(
+			vscode.commands.registerCommand(PackageItem.command, async (name: string) => {
+				const pkgRootNode = globalRHelp?.treeViewWrapper.helpViewProvider.rootItem.pkgRootNode;
+				if (pkgRootNode) {
+					const packages = await pkgRootNode.getChildren();
+					const node = packages.find(node => node.label === name);
+					if (node) {
+						await node.showQuickPick();
+					}
+				}
+			})
+		);
 	}
 
 	getTreeItem(element: TreeItem): TreeItem {
@@ -50,14 +65,17 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 			}
 			if (element.id === 'attached-namespaces') {
 				return this.data.search.map(name => {
-					const item = new TreeItem(name, TreeItemCollapsibleState.None);
-					item.iconPath = new ThemeIcon(name.startsWith('package:') ? 'symbol-namespace' : 'symbol-array');
-					return item;
+					if (name.startsWith('package:')) {
+						return new PackageItem(name, name.substring(8));
+					} else {
+						const item = new TreeItem(name, TreeItemCollapsibleState.None);
+						item.iconPath = new ThemeIcon('symbol-array');
+						return item;
+					}
 				});
 			} else if (element.id === 'loaded-namespaces') {
 				return this.data.loaded_namespaces.map(name => {
-					const item = new TreeItem(name, TreeItemCollapsibleState.None);
-					item.iconPath = new ThemeIcon('symbol-namespace');
+					const item = new PackageItem(name, name);
 					return item;
 				});
 			} else if (element.id === 'globalenv') {
@@ -123,6 +141,22 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 		}
 
 		return items.sort((a, b) => sortItems(a, b));
+	}
+}
+
+class PackageItem extends TreeItem {
+	static command : string = 'r.workspaceViewer.namespace.showQuickPick';
+	label: string;
+	name: string;
+	constructor(label: string, name: string) {
+		super(label, TreeItemCollapsibleState.None);
+		this.iconPath = new ThemeIcon('symbol-namespace');
+		this.name = name;
+		this.command = {
+			command: PackageItem.command,
+			title: 'Show help topics',
+			arguments: [ name ]
+		};
 	}
 }
 
