@@ -225,6 +225,14 @@ function getGuestImageHtml(content: string) {
 `;
 }
 
+export async function shareServer(url: URL, name: string): Promise<vscode.Disposable> {
+    return liveSession.shareServer({
+        port: parseInt(url.port),
+        displayName: `${name} (${url.host})`,
+        browseUrl: url.toString()
+    });
+}
+
 // Share and close browser are called from the
 // host session
 // Automates sharing browser sessions through the
@@ -232,12 +240,7 @@ function getGuestImageHtml(content: string) {
 export async function shareBrowser(url: string, name: string, force: boolean = false): Promise<void> {
     if (autoShareBrowser || force) {
         const _url = new URL(url);
-        const server: vsls.Server = {
-            port: parseInt(_url.port),
-            displayName: name,
-            browseUrl: url,
-        };
-        const disposable = await liveSession.shareServer(server);
+        const disposable = await shareServer(_url, name);
         console.log(`[HostService] shared ${name} at ${url}`);
         browserDisposables.push({ Disposable: disposable, url, name });
     }

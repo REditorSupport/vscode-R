@@ -15,7 +15,7 @@ import { config, readContent, UriIcon } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
-import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace, liveSession } from './liveShare';
+import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
 export let globalenv: any;
 let resDir: string;
@@ -730,7 +730,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     }
                     case 'httpgd': {
                         if (request.url) {
-                            void globalHttpgdManager?.showViewer(request.url);
+                            await globalHttpgdManager?.showViewer(request.url);
                         }
                         break;
                     }
@@ -747,7 +747,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         updateSessionWatcher();
                         purgeAddinPickerItems();
                         if (request.plot_url) {
-                            globalHttpgdManager?.showViewer(request.plot_url);
+                            await globalHttpgdManager?.showViewer(request.plot_url);
                         }
                         break;
                     }
@@ -776,14 +776,6 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
             console.info(`[updateRequest] Ignored request outside workspace`);
         }
         if (isLiveShare()) {
-            if (request.url) {
-                const url = new URL(request.url);
-                await liveSession.shareServer({
-                    port: Number(url.port),
-                    browseUrl: request.url,
-                    displayName: `${request.command} (${url.host})`
-                });
-            }
             void rHostService.notifyRequest(requestFile);
         }
     }
