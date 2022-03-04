@@ -7,7 +7,7 @@ import { config } from './util';
 import { isGuestSession, isLiveShare, UUID, guestWorkspace } from './liveShare';
 import { extensionContext, globalRHelp } from './extension';
 
-const priorityAttr: string[] = [
+const collapsibleTypes: string[] = [
 	'list',
 	'environment'
 ];
@@ -42,7 +42,10 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 
 		extensionContext.subscriptions.push(
 			vscode.commands.registerCommand(PackageItem.command, async (name: string) => {
-				const pkgRootNode = globalRHelp?.treeViewWrapper.helpViewProvider.rootItem.pkgRootNode;
+				const rootNode = globalRHelp.treeViewWrapper.helpViewProvider.rootItem;
+				// ensure the pkgRootNode is populated.
+				await rootNode.getChildren();
+				const pkgRootNode = rootNode.pkgRootNode;
 				if (pkgRootNode) {
 					const packages = await pkgRootNode.getChildren();
 					const node = packages.find(node => node.label === name);
@@ -131,9 +134,9 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 			)) : [];
 
 		function sortItems(a: GlobalEnvItem, b: GlobalEnvItem) {
-			if (priorityAttr.includes(a.type) > priorityAttr.includes(b.type)) {
+			if (a.priority > b.priority) {
 				return -1;
-			} else if (priorityAttr.includes(b.type) > priorityAttr.includes(a.type)) {
+			} else if (a.priority < b.priority) {
 				return 1;
 			} else {
 				return 0 || a.label.localeCompare(b.label);
@@ -167,6 +170,7 @@ export class GlobalEnvItem extends TreeItem {
 	type: string;
 	treeLevel: number;
 	contextValue: string;
+	priority: number;
 
 	constructor(
 		label: string,
@@ -185,6 +189,7 @@ export class GlobalEnvItem extends TreeItem {
 		this.str = str;
 		this.treeLevel = treeLevel;
 		this.contextValue = treeLevel === 0 ? 'rootNode' : `childNode${treeLevel}`;
+		this.priority = dim ? 1 : 0;
 	}
 
 	private getDescription(dim: number[], str: string, rClass: string, type: string): string {
@@ -239,7 +244,7 @@ export class GlobalEnvItem extends TreeItem {
 	in the futere for more tree levels.*/
 
 	private static setCollapsibleState(treeLevel: number, type: string, str: string) {
-		if (treeLevel === 0 && priorityAttr.includes(type) && str.includes('\n')){
+		if (treeLevel === 0 && collapsibleTypes.includes(type) && str.includes('\n')){
 			return TreeItemCollapsibleState.Collapsed;
 		} else {
 			return TreeItemCollapsibleState.None;
