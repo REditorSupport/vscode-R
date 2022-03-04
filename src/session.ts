@@ -730,7 +730,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     }
                     case 'httpgd': {
                         if (request.url) {
-                            globalHttpgdManager?.showViewer(request.url);
+                            void globalHttpgdManager?.showViewer(request.url);
                         }
                         break;
                     }
@@ -781,7 +781,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                 await liveSession.shareServer({
                     port: Number(url.port),
                     browseUrl: request.url,
-                    displayName: request.command
+                    displayName: `${request.command} (${url.host}:${url.port})`
                 });
             }
             void rHostService.notifyRequest(requestFile);
