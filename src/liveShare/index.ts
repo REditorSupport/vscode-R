@@ -279,8 +279,8 @@ export class GuestService {
             void liveShareRequest(Callback.RequestAttachGuest);
             // focus guest term if it exists
             const rTermNameOptions = ['R [Shared]', 'R Interactive [Shared]'];
-            const activeTerminalName = vscode.window.activeTerminal.name;
-            if (!rTermNameOptions.includes(activeTerminalName)) {
+            const activeTerminalName = vscode.window.activeTerminal?.name;
+            if (activeTerminalName && !rTermNameOptions.includes(activeTerminalName)) {
                 for (const [i] of vscode.window.terminals.entries()) {
                     const terminal = vscode.window.terminals[i];
                     const terminalName = terminal.name;

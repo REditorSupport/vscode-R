@@ -2,7 +2,7 @@ import path = require('path');
 import * as vscode from 'vscode';
 import * as vsls from 'vsls';
 
-import { extensionContext, globalRHelp, rWorkspace } from '../extension';
+import { extensionContext, globalHttpgdManager, globalRHelp, rWorkspace } from '../extension';
 import { config, readContent } from '../util';
 import { showBrowser, showDataView, showWebView } from '../session';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from '.';
@@ -98,13 +98,19 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                         break;
                     }
                     case 'httpgd': {
+                        if (request.url) {
+                            globalHttpgdManager?.showViewer(request.url);
+                        }
                         break;
                     }
                     case 'attach': {
                         guestPid = String(request.pid);
+                        rVer = String(request.version);
+                        info = request.info;
                         console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
                         sessionStatusBarItem.text = `Guest R ${rVer}: ${guestPid}`;
                         sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${guestPid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to host terminal.`;
+                        sessionStatusBarItem.show();
                         break;
                     }
                     case 'browser': {
@@ -131,13 +137,13 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
             }
         } else {
             guestPid = String(request.pid);
-            rVer = String(request.version);
-            info = request.info;
+            // rVer = String(request.version);
+            // info = request.info;
 
-            console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
-            sessionStatusBarItem.text = `Guest R ${rVer}: ${guestPid}`;
-            sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${guestPid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to host terminal.`;
-            sessionStatusBarItem.show();
+            // console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
+            // sessionStatusBarItem.text = `Guest R ${rVer}: ${guestPid}`;
+            // sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${guestPid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to host terminal.`;
+            // sessionStatusBarItem.show();
         }
     }
 }
