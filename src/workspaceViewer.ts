@@ -247,11 +247,11 @@ export function clearWorkspace(): void {
 export function saveWorkspace(): void {
 	if (workspaceData !== undefined) {
 		void window.showSaveDialog({
-			defaultUri: Uri.file(`${workingDir}${path.sep}workspace.RData`),
+			defaultUri: Uri.file(path.join(workingDir, 'workspace.RData')),
 			filters: {
-				'Data': ['RData']
+				'RData': ['RData']
 			},
-			title: 'Save workspace'
+			title: 'Save Workspace'
 		}
 		).then(async (uri: Uri | undefined) => {
 			if (uri) {
