@@ -1,8 +1,7 @@
 import path = require('path');
 import * as vscode from 'vscode';
-import * as vsls from 'vsls';
 
-import { extensionContext, globalRHelp, rWorkspace } from '../extension';
+import { extensionContext, globalHttpgdManager, globalRHelp, rWorkspace } from '../extension';
 import { config, readContent } from '../util';
 import { showBrowser, showDataView, showWebView, WorkspaceData } from '../session';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from '.';
@@ -85,60 +84,70 @@ export function attachActiveGuest(): void {
 export async function updateGuestRequest(file: string, force: boolean = false): Promise<void> {
     const requestContent: string = await readContent(file, 'utf8');
     console.info(`[updateGuestRequest] request: ${requestContent}`);
-    if (typeof (requestContent) === 'string') {
-        const request: IRequest = JSON.parse(requestContent) as IRequest;
-        if (request && !force) {
-            if (request.uuid === null || request.uuid === undefined || request.uuid === UUID) {
-                switch (request.command) {
-                    case 'help': {
-                        if (globalRHelp) {
-                            console.log(request.requestPath);
-                            void globalRHelp.showHelpForPath(request.requestPath, request.viewer);
-                        }
-                        break;
-                    }
-                    case 'httpgd': {
-                        break;
-                    }
-                    case 'attach': {
-                        guestPid = String(request.pid);
-                        console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
-                        sessionStatusBarItem.text = `Guest R ${rVer}: ${guestPid}`;
-                        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${guestPid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to host terminal.`;
-                        break;
-                    }
-                    case 'browser': {
-                        await showBrowser(request.url, request.title, request.viewer);
-                        break;
-                    }
-                    case 'webview': {
-                        void showWebView(request.file, request.title, request.viewer);
-                        break;
-                    }
-                    case 'dataview': {
-                        void showDataView(request.source,
-                            request.type, request.title, request.file, request.viewer);
-                        break;
-                    }
-                    case 'rstudioapi': {
-                        console.error(`[GuestService] ${request.command} not supported`);
-                        break;
-                    }
-                    default:
-                        console.error(`[updateRequest] Unsupported command: ${request.command}`);
+    if (typeof (requestContent) !== 'string') {
+        return;
+    }
+
+    const request: IRequest = JSON.parse(requestContent) as IRequest;
+    if (!request) {
+        return;
+    }
+
+    if (force) {
+        // The last request is not necessarily an attach request.
+        guestPid = String(request.pid);
+        console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
+        sessionStatusBarItem.text = `Guest R: ${guestPid}`;
+        sessionStatusBarItem.tooltip = 'Click to attach to host terminal.';
+        sessionStatusBarItem.show();
+    }
+
+    if (request.uuid === null || request.uuid === undefined || request.uuid === UUID) {
+        switch (request.command) {
+            case 'help': {
+                if (globalRHelp) {
+                    console.log(request.requestPath);
+                    await globalRHelp.showHelpForPath(request.requestPath, request.viewer);
                 }
-
+                break;
             }
-        } else {
-            guestPid = String(request.pid);
-            rVer = String(request.version);
-            info = request.info;
-
-            console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
-            sessionStatusBarItem.text = `Guest R ${rVer}: ${guestPid}`;
-            sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${guestPid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to host terminal.`;
-            sessionStatusBarItem.show();
+            case 'httpgd': {
+                if (request.url) {
+                    await globalHttpgdManager?.showViewer(request.url);
+                }
+                break;
+            }
+            case 'attach': {
+                guestPid = String(request.pid);
+                rVer = String(request.version);
+                info = request.info;
+                console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
+                sessionStatusBarItem.text = `Guest R ${rVer}: ${guestPid}`;
+                sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${guestPid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to host terminal.`;
+                sessionStatusBarItem.show();
+                break;
+            }
+            case 'browser': {
+                await showBrowser(request.url, request.title, request.viewer);
+                break;
+            }
+            case 'webview': {
+                await showWebView(request.file, request.title, request.viewer);
+                break;
+            }
+            case 'dataview': {
+                await showDataView(request.source,
+                    request.type, request.title, request.file, request.viewer);
+                break;
+            }
+            case 'rstudioapi': {
+                console.error(`[GuestService] ${request.command} not supported`);
+                break;
+            }
+            default:
+                console.error(`[updateRequest] Unsupported command: ${request.command}`);
         }
+
     }
 }
 
@@ -219,6 +228,14 @@ function getGuestImageHtml(content: string) {
 `;
 }
 
+export async function shareServer(url: URL, name: string): Promise<vscode.Disposable> {
+    return liveSession.shareServer({
+        port: parseInt(url.port),
+        displayName: `${name} (${url.host})`,
+        browseUrl: url.toString()
+    });
+}
+
 // Share and close browser are called from the
 // host session
 // Automates sharing browser sessions through the
@@ -226,12 +243,7 @@ function getGuestImageHtml(content: string) {
 export async function shareBrowser(url: string, name: string, force: boolean = false): Promise<void> {
     if (autoShareBrowser || force) {
         const _url = new URL(url);
-        const server: vsls.Server = {
-            port: parseInt(_url.port),
-            displayName: name,
-            browseUrl: url,
-        };
-        const disposable = await liveSession.shareServer(server);
+        const disposable = await shareServer(_url, name);
         console.log(`[HostService] shared ${name} at ${url}`);
         browserDisposables.push({ Disposable: disposable, url, name });
     }
