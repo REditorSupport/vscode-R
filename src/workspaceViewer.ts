@@ -68,10 +68,11 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 			if (this.data === undefined) {
 				return [];
 			}
+			const pkgPrefix = 'package:';
 			if (element.id === 'attached-namespaces') {
 				return this.data.search.map(name => {
-					if (name.startsWith('package:')) {
-						return new PackageItem(name, name.substring(8));
+					if (name.startsWith(pkgPrefix)) {
+						return new PackageItem(name, name.substring(pkgPrefix.length));
 					} else {
 						const item = new TreeItem(name, TreeItemCollapsibleState.None);
 						item.iconPath = new ThemeIcon('symbol-array');
@@ -79,8 +80,14 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 					}
 				});
 			} else if (element.id === 'loaded-namespaces') {
+				const attached_packages = this.data.search
+					.filter(name => name.startsWith(pkgPrefix))
+					.map(name => name.substring(pkgPrefix.length));
 				return this.data.loaded_namespaces.map(name => {
 					const item = new PackageItem(name, name);
+					if (attached_packages.includes(name)) {
+						item.description = 'attached';
+					}
 					return item;
 				});
 			} else if (element.id === 'globalenv') {
@@ -150,13 +157,13 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 }
 
 class PackageItem extends TreeItem {
-	static command : string = 'r.workspaceViewer.namespace.showQuickPick';
+	static command : string = 'r.workspaceViewer.package.showQuickPick';
 	label: string;
 	name: string;
 	constructor(label: string, name: string) {
 		super(label, TreeItemCollapsibleState.None);
-		this.iconPath = new ThemeIcon('symbol-namespace');
 		this.name = name;
+		this.iconPath = new ThemeIcon('symbol-package');
 		this.command = {
 			command: PackageItem.command,
 			title: 'Show help topics',

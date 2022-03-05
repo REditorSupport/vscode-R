@@ -325,7 +325,7 @@
         "category": "R Workspace Viewer"
       },
       {
-        "command": "r.workspaceViewer.namespace.showQuickPick",
+        "command": "r.workspaceViewer.package.showQuickPick",
         "title": "Show QuickPick",
         "category": "R Workspace Viewer"
       },
