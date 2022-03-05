@@ -16,6 +16,7 @@ import { extensionContext } from '../extension';
 import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage, PreviewPlotLayout, PreviewPlotLayoutMessage, ToggleFullWindowMessage } from './webviewMessages';
 import { HttpgdIdResponse, HttpgdPlotId, HttpgdRendererId } from 'httpgd/lib/types';
 import { Response } from 'node-fetch';
+import { autoShareBrowser, isHost, shareServer } from '../liveShare';
 
 const commands = [
     'showViewers',
@@ -44,7 +45,9 @@ export function initializeHttpgd(): HttpgdManager {
     for (const cmd of commands) {
         const fullCommand = `r.plot.${cmd}`;
         const cb = httpgdManager.getCommandHandler(cmd);
-        vscode.commands.registerCommand(fullCommand, cb);
+        extensionContext.subscriptions.push(
+            vscode.commands.registerCommand(fullCommand, cb)
+        );
     }
     return httpgdManager;
 }
@@ -65,7 +68,7 @@ export class HttpgdManager {
         };
     }
 
-    public showViewer(urlString: string): void {
+    public async showViewer(urlString: string): Promise<void> {
         const url = new URL(urlString);
         const host = url.host;
         const token = url.searchParams.get('token') || undefined;
@@ -86,6 +89,10 @@ export class HttpgdManager {
             this.viewerOptions.fullWindow = conf.get('plot.defaults.fullWindowMode', false);
             this.viewerOptions.token = token;
             const viewer = new HttpgdViewer(host, this.viewerOptions);
+            if (isHost() && autoShareBrowser) {
+                const disposable = await shareServer(url, 'httpgd');
+                viewer.webviewPanel?.onDidDispose(() => void disposable.dispose());
+            }
             this.viewers.unshift(viewer);
         }
     }
@@ -121,7 +128,7 @@ export class HttpgdManager {
         };
         const urlString = await vscode.window.showInputBox(options);
         if (urlString) {
-            this.showViewer(urlString);
+            await this.showViewer(urlString);
         }
     }
 
