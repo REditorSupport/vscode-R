@@ -291,32 +291,43 @@
       {
         "command": "r.workspaceViewer.refreshEntry",
         "title": "Manual Refresh",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.view",
         "title": "View",
-        "icon": "$(open-preview)"
+        "icon": "$(open-preview)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.clear",
         "title": "Clear environment",
-        "icon": "$(clear-all)"
+        "icon": "$(clear-all)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.remove",
         "title": "Remove",
-        "icon": "$(close)"
+        "icon": "$(close)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.save",
         "title": "Save workspace",
-        "icon": "$(save)"
+        "icon": "$(save)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.load",
         "title": "Load workspace",
-        "icon": "$(folder-opened)"
+        "icon": "$(folder-opened)",
+        "category": "R Workspace Viewer"
+      },
+      {
+        "command": "r.workspaceViewer.package.showQuickPick",
+        "title": "Show QuickPick",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.browser.refresh",
@@ -332,7 +343,8 @@
       },
       {
         "command": "r.showHelp",
-        "title": "R: Show help"
+        "title": "Show help",
+        "category": "R"
       },
       {
         "command": "editor.action.webvieweditor.showFind",
@@ -544,7 +556,7 @@
       },
       {
         "command": "r.rmarkdown.setKnitDirectory",
-        "title": "R: Set Knit directory",
+        "title": "Set Knit directory",
         "icon": "$(zap)",
         "category": "R Markdown"
       },
@@ -603,113 +615,133 @@
       },
       {
         "command": "r.helpPanel.back",
-        "title": "R Help Panel: Go Back",
+        "title": "Go Back",
+        "category": "R Help Panel",
         "enablement": "r.helpPanel.canGoBack",
         "icon": "$(arrow-left)"
       },
       {
         "command": "r.helpPanel.forward",
-        "title": "R Help Panel: Go Forward",
+        "title": "Go Forward",
+        "category": "R Help Panel",
         "enablement": "r.helpPanel.canGoForward",
         "icon": "$(arrow-right)"
       },
       {
         "command": "r.helpPanel.openExternal",
-        "title": "R Help Panel: Open in external browser",
+        "title": "Open in external browser",
+        "category": "R Help Panel",
         "icon": "$(link-external)"
       },
       {
         "title": "Search Package Topics",
+        "category": "R Help Panel",
         "command": "r.helpPanel.searchPackage",
         "icon": "$(search)"
       },
       {
         "title": "Open Topic in new Panel",
+        "category": "R Help Panel",
         "command": "r.helpPanel.openInNewPanel",
         "icon": "$(add)"
       },
       {
         "title": "Clear Cached Files",
+        "category": "R Help Panel",
         "command": "r.helpPanel.clearCache",
         "icon": "$(refresh)"
       },
       {
         "title": "Filter Packages",
+        "category": "R Help Panel",
         "command": "r.helpPanel.filterPackages",
         "icon": "$(filter)"
       },
       {
         "title": "Remove from favorites",
+        "category": "R Help Panel",
         "command": "r.helpPanel.removeFromFavorites",
         "icon": "$(star-full)"
       },
       {
         "title": "Add to favorites",
+        "category": "R Help Panel",
         "command": "r.helpPanel.addToFavorites",
         "icon": "$(star-empty)"
       },
       {
         "title": "Show all packages",
+        "category": "R Help Panel",
         "command": "r.helpPanel.showAllPackages",
         "icon": "$(star-full)"
       },
       {
         "title": "Show only favorites",
+        "category": "R Help Panel",
         "command": "r.helpPanel.showOnlyFavorites",
         "icon": "$(star-empty)"
       },
       {
         "title": "Remove Package",
+        "category": "R Help Panel",
         "command": "r.helpPanel.removePackage",
         "icon": "$(trash)"
       },
       {
         "title": "Update Installed Packages",
+        "category": "R Help Panel",
         "command": "r.helpPanel.updateInstalledPackages",
         "icon": "$(clone)"
       },
       {
         "title": "Update/reinstall Package",
+        "category": "R Help Panel",
         "command": "r.helpPanel.updatePackage",
         "icon": "$(cloud-download)"
       },
       {
         "title": "Install multiple packages",
+        "category": "R Help Panel",
         "command": "r.helpPanel.installPackages",
         "icon": "$(expand-all)"
       },
       {
         "title": "Show QuickPick",
+        "category": "R Help Panel",
         "command": "r.helpPanel.showQuickPick",
         "icon": "$(zap)"
       },
       {
         "title": "Summarize Identical Topics",
+        "category": "R Help Panel",
         "command": "r.helpPanel.summarizeTopics",
         "icon": "$(fold)"
       },
       {
         "title": "Don't Summarize Identical Topics",
+        "category": "R Help Panel",
         "command": "r.helpPanel.unsummarizeTopics",
         "icon": "$(unfold)"
       },
       {
         "title": "Open help for selection",
-        "category": "R",
+        "category": "R Help Panel",
         "command": "r.helpPanel.openForSelection"
       },
       {
         "title": "Open help for path",
-        "category": "R",
+        "category": "R Help Panel",
         "command": "r.helpPanel.openForPath"
       },
       {
         "command": "r.liveShare.toggle",
+        "category": "R Live Share",
         "title": "Toggle"
       },
       {
         "command": "r.liveShare.retry",
         "title": "Retry connection to Live Share service",
+        "category": "R Live Share",
         "icon": "$(refresh)"
       },
       {
