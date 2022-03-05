@@ -42,15 +42,17 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 
 		extensionContext.subscriptions.push(
 			vscode.commands.registerCommand(PackageItem.command, async (name: string) => {
-				const rootNode = globalRHelp.treeViewWrapper.helpViewProvider.rootItem;
-				// ensure the pkgRootNode is populated.
-				await rootNode.getChildren();
-				const pkgRootNode = rootNode.pkgRootNode;
-				if (pkgRootNode) {
-					const packages = await pkgRootNode.getChildren();
-					const node = packages.find(node => node.label === name);
-					if (node) {
-						await node.showQuickPick();
+				const rootNode = globalRHelp?.treeViewWrapper.helpViewProvider.rootItem;
+				if (rootNode) {
+					// ensure the pkgRootNode is populated.
+					await rootNode.getChildren();
+					const pkgRootNode = rootNode.pkgRootNode;
+					if (pkgRootNode) {
+						const packages = await pkgRootNode.getChildren();
+						const node = packages.find(node => node.label === name);
+						if (node) {
+							await node.showQuickPick();
+						}
 					}
 				}
 			})
