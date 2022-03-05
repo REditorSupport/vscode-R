@@ -23,22 +23,22 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 
 	data: WorkspaceData;
 
-	private readonly treeItems: TreeItem[] = [];
+	private readonly attachedNamespacesItem: TreeItem;
+	private readonly loadedNamespacesItem: TreeItem;
+	private readonly globalEnvItem: TreeItem;
 
 	constructor() {
-		const attachedNamespacesItem = new TreeItem('Attached Namespaces', TreeItemCollapsibleState.Collapsed);
-		attachedNamespacesItem.id = 'attached-namespaces';
-		attachedNamespacesItem.iconPath = new ThemeIcon('library');
+		this.attachedNamespacesItem = new TreeItem('Attached Namespaces', TreeItemCollapsibleState.Collapsed);
+		this.attachedNamespacesItem.id = 'attached-namespaces';
+		this.attachedNamespacesItem.iconPath = new ThemeIcon('library');
 
-		const loadedNamespacesItem = new TreeItem('Loaded Namespaces', TreeItemCollapsibleState.Collapsed);
-		loadedNamespacesItem.id = 'loaded-namespaces';
-		loadedNamespacesItem.iconPath = new ThemeIcon('package');
+		this.loadedNamespacesItem = new TreeItem('Loaded Namespaces', TreeItemCollapsibleState.Collapsed);
+		this.loadedNamespacesItem.id = 'loaded-namespaces';
+		this.loadedNamespacesItem.iconPath = new ThemeIcon('package');
 
-		const globalEnvItem = new TreeItem('Global Environment', TreeItemCollapsibleState.Expanded);
-		globalEnvItem.id = 'globalenv';
-		globalEnvItem.iconPath = new ThemeIcon('menu');
-
-		this.treeItems.push(attachedNamespacesItem, loadedNamespacesItem, globalEnvItem);
+		this.globalEnvItem = new TreeItem('Global Environment', TreeItemCollapsibleState.Expanded);
+		this.globalEnvItem.id = 'globalenv';
+		this.globalEnvItem.iconPath = new ThemeIcon('menu');
 
 		extensionContext.subscriptions.push(
 			vscode.commands.registerCommand(PackageItem.command, async (name: string) => {
@@ -108,7 +108,11 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 					);
 			}
 		} else {
-			return this.treeItems;
+			const treeItems = [this.attachedNamespacesItem, this.loadedNamespacesItem];
+			if (config().get<boolean>('session.watchGlobalEnvironment')) {
+				treeItems.push(this.globalEnvItem);
+			}
+			return treeItems;
 		}
 	}
 
