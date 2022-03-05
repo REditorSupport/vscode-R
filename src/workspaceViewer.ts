@@ -6,11 +6,28 @@ import { workspaceData, workingDir, WorkspaceData, GlobalEnv } from './session';
 import { config } from './util';
 import { isGuestSession, isLiveShare, UUID, guestWorkspace } from './liveShare';
 import { extensionContext, globalRHelp } from './extension';
+import { PackageNode } from './helpViewer/treeView';
 
 const collapsibleTypes: string[] = [
 	'list',
 	'environment'
 ];
+
+async function populatePackageNodes(): Promise<void> {
+	const rootNode = globalRHelp?.treeViewWrapper.helpViewProvider.rootItem;
+	if (rootNode) {
+		// ensure the pkgRootNode is populated.
+		await rootNode.getChildren();
+		await rootNode.pkgRootNode.getChildren();
+	}
+}
+
+function getPackageNode(name: string): PackageNode {
+	const rootNode = globalRHelp?.treeViewWrapper.helpViewProvider.rootItem;
+	if (rootNode) {
+		return rootNode.pkgRootNode.children?.find(node => node.label === name);
+	}
+}
 
 export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 	private _onDidChangeTreeData: EventEmitter<void> = new EventEmitter();
@@ -41,20 +58,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 		this.globalEnvRootItem.iconPath = new ThemeIcon('menu');
 
 		extensionContext.subscriptions.push(
-			vscode.commands.registerCommand(PackageItem.command, async (name: string) => {
-				const rootNode = globalRHelp?.treeViewWrapper.helpViewProvider.rootItem;
-				if (rootNode) {
-					// ensure the pkgRootNode is populated.
-					await rootNode.getChildren();
-					const pkgRootNode = rootNode.pkgRootNode;
-					if (pkgRootNode) {
-						const packages = await pkgRootNode.getChildren();
-						const node = packages.find(node => node.label === name);
-						if (node) {
-							await node.showQuickPick();
-						}
-					}
-				}
+			vscode.commands.registerCommand(PackageItem.command, async (node: PackageNode) => {
+				await node.showQuickPick();
 			})
 		);
 	}
@@ -63,16 +68,19 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 		return element;
 	}
 
-	getChildren(element?: TreeItem): TreeItem[] {
+	async getChildren(element?: TreeItem): Promise<TreeItem[]> {
 		if (element) {
 			if (this.data === undefined) {
 				return [];
 			}
 			const pkgPrefix = 'package:';
 			if (element.id === 'attached-namespaces') {
+				await populatePackageNodes();
 				return this.data.search.map(name => {
 					if (name.startsWith(pkgPrefix)) {
-						return new PackageItem(name, name.substring(pkgPrefix.length));
+						const pkgName = name.substring(pkgPrefix.length);
+						const pkgNode = getPackageNode(pkgName);
+						return new PackageItem(name, pkgName, pkgNode);
 					} else {
 						const item = new TreeItem(name, TreeItemCollapsibleState.None);
 						item.iconPath = new ThemeIcon('symbol-array');
@@ -80,11 +88,13 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 					}
 				});
 			} else if (element.id === 'loaded-namespaces') {
+				await populatePackageNodes();
 				const attached_packages = this.data.search
 					.filter(name => name.startsWith(pkgPrefix))
 					.map(name => name.substring(pkgPrefix.length));
 				return this.data.loaded_namespaces.map(name => {
-					const item = new PackageItem(name, name);
+					const pkgNode = getPackageNode(name);
+					const item = new PackageItem(name, name, pkgNode);
 					if (attached_packages.includes(name)) {
 						item.description = 'attached';
 					}
@@ -164,15 +174,20 @@ class PackageItem extends TreeItem {
 	static command : string = 'r.workspaceViewer.package.showQuickPick';
 	label: string;
 	name: string;
-	constructor(label: string, name: string) {
+	pkgNode?: PackageNode;
+	constructor(label: string, name: string, pkgNode?: PackageNode) {
 		super(label, TreeItemCollapsibleState.None);
 		this.name = name;
 		this.iconPath = new ThemeIcon('symbol-package');
-		this.command = {
-			command: PackageItem.command,
-			title: 'Show help topics',
-			arguments: [ name ]
-		};
+		this.pkgNode = pkgNode;
+		if (pkgNode) {
+			this.tooltip = new vscode.MarkdownString(pkgNode.pkg.description);
+			this.command = {
+				command: PackageItem.command,
+				title: 'Show Quick Pick',
+				arguments: [pkgNode]
+			};
+		}
 	}
 }
 

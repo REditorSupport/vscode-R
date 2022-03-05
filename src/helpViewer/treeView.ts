@@ -428,7 +428,7 @@ class PkgRootNode extends MetaNode {
 
 
 // contains the topics belonging to an individual package
-class PackageNode extends Node {
+export class PackageNode extends Node {
     // TreeItem
     public command = undefined;
     public collapsibleState = CollapsibleState.Collapsed;
@@ -459,7 +459,7 @@ class PackageNode extends Node {
         }
     }
 
-    public async _handleCommand(cmd: cmdName){
+    public async _handleCommand(cmd: cmdName): Promise<void> {
         if(cmd === 'clearCache'){
             // useful e.g. when working on a package
             this.rHelp.clearCachedFiles(new RegExp(`^/library/${this.pkg.name}/`));
@@ -487,7 +487,7 @@ class PackageNode extends Node {
         }
     }
 
-    async makeChildren(forQuickPick: boolean = false) {
+    async makeChildren(forQuickPick: boolean = false): Promise<TopicNode[]> {
         const summarizeTopics = (
             forQuickPick ? false : (this.parent.summarizeTopics ?? true)
         );
