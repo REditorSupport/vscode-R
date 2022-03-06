@@ -371,5 +371,22 @@
 			"Hypothesis \\@ref(hyp:${1:label})$0"
 		],
 		"description": "Cross-reference bookdown hypothesis)"
+	},
+	"Insert bookdown equation": {
+		"prefix": "equation",
+		"body": [
+			"\\begin{equation}",
+			"${TM_SELECTED_TEXT}$0",
+			"(\\#eq:${1:label})",
+			"\\end{equation}"
+		],
+		"description": "Insert bookdown equation)"
+	},
+	"Cross-reference bookdown equation": {
+		"prefix": "cross-reference equation",
+		"body": [
+			"Equation \\@ref(eq:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown equation)"
 	}
 }
