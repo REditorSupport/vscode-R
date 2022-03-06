@@ -430,5 +430,12 @@
 			"# (PART\\*) Part ${1:I} {-}$0"
 		],
 		"description": "Insert bookdown unnumbered part"
+	},
+	"Insert bookdown appendix": {
+		"prefix": "appendix",
+		"body": [
+			"# (APPENDIX) Appendix {-}$0"
+		],
+		"description": "Insert bookdown appendix"
 	}
 }
