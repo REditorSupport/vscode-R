@@ -388,5 +388,12 @@
 			"Equation \\@ref(eq:${1:label})$0"
 		],
 		"description": "Cross-reference bookdown equation)"
+	},
+	"Cross-reference bookdown table": {
+		"prefix": "cross-reference table",
+		"body": [
+			"Table \\@ref(tab:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown table)"
 	}
 }
