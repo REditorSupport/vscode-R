@@ -416,5 +416,19 @@
 			"Section \\@ref(${1:label})$0"
 		],
 		"description": "Cross-reference bookdown section"
+	},
+	"Insert bookdown part": {
+		"prefix": "part",
+		"body": [
+			"# (PART) Part ${1:I} {-}$0"
+		],
+		"description": "Insert bookdown part"
+	},
+	"Insert unnumbered bookdown part": {
+		"prefix": "unnumbered part",
+		"body": [
+			"# (PART\\*) Part ${1:I} {-}$0"
+		],
+		"description": "Insert bookdown unnumbered part"
 	}
 }
