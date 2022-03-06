@@ -323,5 +323,21 @@
 			"Definition \\@ref(def:${1:label})$0"
 		],
 		"description": "Cross-reference bookdown definition)"
+	},
+	"Insert bookdown example": {
+		"prefix": "example",
+		"body": [
+			"::: {.example #${1:label} name=\"${2:example name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown example)"
+	},
+	"Cross-reference bookdown example": {
+		"prefix": "cross-reference example",
+		"body": [
+			"Example \\@ref(exm:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown example)"
 	}
 }
