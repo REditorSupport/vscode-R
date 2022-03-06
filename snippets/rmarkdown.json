@@ -291,5 +291,21 @@
 			"Proposition \\@ref(prp:${1:label})$0"
 		],
 		"description": "Cross-reference bookdown proposition)"
+	},
+	"Insert bookdown conjecture": {
+		"prefix": "conjecture",
+		"body": [
+			"::: {.conjecture #${1:label} name=\"${2:conjecture name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown conjecture)"
+	},
+	"Cross-reference bookdown conjecture": {
+		"prefix": "cross-reference conjecture",
+		"body": [
+			"Conjecture \\@ref(cnj:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown conjecture)"
 	}
 }
