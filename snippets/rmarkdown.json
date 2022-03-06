@@ -203,7 +203,7 @@
 		"body": [
 			"::: incremental",
 			"",
-			"$0",
+			"${1:${TM_SELECTED_TEXT}}$0",
 			"",
 			":::"
 		],
@@ -214,7 +214,7 @@
 		"body": [
 			"::: nonincremental",
 			"",
-			"$0",
+			"${1:${TM_SELECTED_TEXT}}$0",
 			"",
 			":::"
 		],
