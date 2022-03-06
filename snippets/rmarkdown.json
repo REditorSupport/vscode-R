@@ -399,7 +399,7 @@
 	"Insert figure chunk": {
 		"prefix": "figure chunk",
 		"body": [
-			"```{r ${1:label}, fig.cap = \"${2:Figure caption.}\", fig.alt = \"${3:Alt text.}\"",
+			"```{r ${1:label}, fig.cap = \"${2:Figure caption.}\", fig.alt = \"${3:Alt text.}\"}",
 			"${TM_SELECTED_TEXT}$0",
 			"```"
 		],
