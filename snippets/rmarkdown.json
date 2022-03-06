@@ -395,5 +395,12 @@
 			"Table \\@ref(tab:${1:label})$0"
 		],
 		"description": "Cross-reference bookdown table)"
+	},
+	"Cross-reference bookdown figure": {
+		"prefix": "cross-reference figure",
+		"body": [
+			"Figure \\@ref(fig:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown figure)"
 	}
 }
