@@ -243,5 +243,21 @@
 			"Theorem \\@ref(thm:${1:label})$0"
 		],
 		"description": "Cross-reference bookdown theorem)"
+	},
+	"Insert bookdown lemma": {
+		"prefix": "lemma",
+		"body": [
+			"::: {.lemma #${1:label} name=\"${2:lemma name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown lemma)"
+	},
+	"Cross-reference bookdown lemma": {
+		"prefix": "cross-reference lemma",
+		"body": [
+			"Lemma \\@ref(lem:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown lemma)"
 	}
 }
