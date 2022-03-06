@@ -405,6 +405,15 @@
 		],
 		"description": "Insert figure chunk"
 	},
+	"Insert external figure chunk": {
+		"prefix": "external figure chunk",
+		"body": [
+			"```{r ${1:label}, fig.cap = \"${2:Figure caption.}\", fig.alt = \"${3:Alt text.}\"}",
+			"knitr::include_graphics(\"${4:path/to/file.png}\")",
+			"```"
+		],
+		"description": "Insert external figure chunk"
+	},
 	"Cross-reference bookdown figure": {
 		"prefix": "cross-reference figure",
 		"body": [
