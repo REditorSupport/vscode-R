@@ -259,5 +259,21 @@
 			"Lemma \\@ref(lem:${1:label})$0"
 		],
 		"description": "Cross-reference bookdown lemma)"
+	},
+	"Insert bookdown corollary": {
+		"prefix": "corollary",
+		"body": [
+			"::: {.corollary #${1:label} name=\"${2:corollary name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown corollary)"
+	},
+	"Cross-reference bookdown corollary": {
+		"prefix": "cross-reference corollary",
+		"body": [
+			"Corollary \\@ref(cor:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown corollary)"
 	}
 }
