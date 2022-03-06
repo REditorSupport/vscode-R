@@ -403,6 +403,13 @@
 		],
 		"description": "Cross-reference bookdown figure"
 	},
+	"Insert bookdown section label": {
+		"prefix": "section label",
+		"body": [
+			"${TM_SELECTED_TEXT} {#${1:label}}$0"
+		],
+		"description": "Insert bookdown section label"
+	},
 	"Cross-reference bookdown section": {
 		"prefix": "cross-reference section",
 		"body": [
