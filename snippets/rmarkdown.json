@@ -275,5 +275,21 @@
 			"Corollary \\@ref(cor:${1:label})$0"
 		],
 		"description": "Cross-reference bookdown corollary)"
+	},
+	"Insert bookdown proposition": {
+		"prefix": "proposition",
+		"body": [
+			"::: {.proposition #${1:label} name=\"${2:proposition name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown proposition)"
+	},
+	"Cross-reference bookdown proposition": {
+		"prefix": "cross-reference proposition",
+		"body": [
+			"Proposition \\@ref(prp:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown proposition)"
 	}
 }
