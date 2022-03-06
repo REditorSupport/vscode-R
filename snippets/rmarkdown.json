@@ -355,5 +355,21 @@
 			"Exercise \\@ref(exr:${1:label})$0"
 		],
 		"description": "Cross-reference bookdown exercise)"
+	},
+	"Insert bookdown hypothesis": {
+		"prefix": "hypothesis",
+		"body": [
+			"::: {.hypothesis #${1:label} name=\"${2:hypothesis name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown hypothesis)"
+	},
+	"Cross-reference bookdown hypothesis": {
+		"prefix": "cross-reference hypothesis",
+		"body": [
+			"Hypothesis \\@ref(hyp:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown hypothesis)"
 	}
 }
