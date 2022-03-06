@@ -235,14 +235,14 @@
 			"${TM_SELECTED_TEXT}$0",
 			":::"
 		],
-		"description": "Insert bookdown theorem)"
+		"description": "Insert bookdown theorem"
 	},
 	"Cross-reference bookdown theorem": {
 		"prefix": "cross-reference theorem",
 		"body": [
 			"Theorem \\@ref(thm:${1:label})$0"
 		],
-		"description": "Cross-reference bookdown theorem)"
+		"description": "Cross-reference bookdown theorem"
 	},
 	"Insert bookdown lemma": {
 		"prefix": "lemma",
@@ -251,14 +251,14 @@
 			"${TM_SELECTED_TEXT}$0",
 			":::"
 		],
-		"description": "Insert bookdown lemma)"
+		"description": "Insert bookdown lemma"
 	},
 	"Cross-reference bookdown lemma": {
 		"prefix": "cross-reference lemma",
 		"body": [
 			"Lemma \\@ref(lem:${1:label})$0"
 		],
-		"description": "Cross-reference bookdown lemma)"
+		"description": "Cross-reference bookdown lemma"
 	},
 	"Insert bookdown corollary": {
 		"prefix": "corollary",
@@ -267,14 +267,14 @@
 			"${TM_SELECTED_TEXT}$0",
 			":::"
 		],
-		"description": "Insert bookdown corollary)"
+		"description": "Insert bookdown corollary"
 	},
 	"Cross-reference bookdown corollary": {
 		"prefix": "cross-reference corollary",
 		"body": [
 			"Corollary \\@ref(cor:${1:label})$0"
 		],
-		"description": "Cross-reference bookdown corollary)"
+		"description": "Cross-reference bookdown corollary"
 	},
 	"Insert bookdown proposition": {
 		"prefix": "proposition",
@@ -283,14 +283,14 @@
 			"${TM_SELECTED_TEXT}$0",
 			":::"
 		],
-		"description": "Insert bookdown proposition)"
+		"description": "Insert bookdown proposition"
 	},
 	"Cross-reference bookdown proposition": {
 		"prefix": "cross-reference proposition",
 		"body": [
 			"Proposition \\@ref(prp:${1:label})$0"
 		],
-		"description": "Cross-reference bookdown proposition)"
+		"description": "Cross-reference bookdown proposition"
 	},
 	"Insert bookdown conjecture": {
 		"prefix": "conjecture",
@@ -299,14 +299,14 @@
 			"${TM_SELECTED_TEXT}$0",
 			":::"
 		],
-		"description": "Insert bookdown conjecture)"
+		"description": "Insert bookdown conjecture"
 	},
 	"Cross-reference bookdown conjecture": {
 		"prefix": "cross-reference conjecture",
 		"body": [
 			"Conjecture \\@ref(cnj:${1:label})$0"
 		],
-		"description": "Cross-reference bookdown conjecture)"
+		"description": "Cross-reference bookdown conjecture"
 	},
 	"Insert bookdown definition": {
 		"prefix": "definition",
@@ -315,14 +315,14 @@
 			"${TM_SELECTED_TEXT}$0",
 			":::"
 		],
-		"description": "Insert bookdown definition)"
+		"description": "Insert bookdown definition"
 	},
 	"Cross-reference bookdown definition": {
 		"prefix": "cross-reference definition",
 		"body": [
 			"Definition \\@ref(def:${1:label})$0"
 		],
-		"description": "Cross-reference bookdown definition)"
+		"description": "Cross-reference bookdown definition"
 	},
 	"Insert bookdown example": {
 		"prefix": "example",
@@ -331,14 +331,14 @@
 			"${TM_SELECTED_TEXT}$0",
 			":::"
 		],
-		"description": "Insert bookdown example)"
+		"description": "Insert bookdown example"
 	},
 	"Cross-reference bookdown example": {
 		"prefix": "cross-reference example",
 		"body": [
 			"Example \\@ref(exm:${1:label})$0"
 		],
-		"description": "Cross-reference bookdown example)"
+		"description": "Cross-reference bookdown example"
 	},
 	"Insert bookdown exercise": {
 		"prefix": "exercise",
@@ -347,14 +347,14 @@
 			"${TM_SELECTED_TEXT}$0",
 			":::"
 		],
-		"description": "Insert bookdown exercise)"
+		"description": "Insert bookdown exercise"
 	},
 	"Cross-reference bookdown exercise": {
 		"prefix": "cross-reference exercise",
 		"body": [
 			"Exercise \\@ref(exr:${1:label})$0"
 		],
-		"description": "Cross-reference bookdown exercise)"
+		"description": "Cross-reference bookdown exercise"
 	},
 	"Insert bookdown hypothesis": {
 		"prefix": "hypothesis",
@@ -363,44 +363,44 @@
 			"${TM_SELECTED_TEXT}$0",
 			":::"
 		],
-		"description": "Insert bookdown hypothesis)"
+		"description": "Insert bookdown hypothesis"
 	},
 	"Cross-reference bookdown hypothesis": {
 		"prefix": "cross-reference hypothesis",
 		"body": [
 			"Hypothesis \\@ref(hyp:${1:label})$0"
 		],
-		"description": "Cross-reference bookdown hypothesis)"
+		"description": "Cross-reference bookdown hypothesis"
 	},
 	"Insert bookdown equation": {
 		"prefix": "equation",
 		"body": [
 			"\\begin{equation}",
 			"${TM_SELECTED_TEXT}$0",
-			"(\\#eq:${1:label})",
-			"\\end{equation}"
+			"(\\#eq:${1:label})",3
+			"\\end{equation}"3
 		],
-		"description": "Insert bookdown equation)"
+		"description": "Insert bookdown equation"
 	},
 	"Cross-reference bookdown equation": {
 		"prefix": "cross-reference equation",
 		"body": [
 			"Equation \\@ref(eq:${1:label})$0"
 		],
-		"description": "Cross-reference bookdown equation)"
+		"description": "Cross-reference bookdown equation"
 	},
 	"Cross-reference bookdown table": {
 		"prefix": "cross-reference table",
 		"body": [
 			"Table \\@ref(tab:${1:label})$0"
 		],
-		"description": "Cross-reference bookdown table)"
+		"description": "Cross-reference bookdown table"
 	},
 	"Cross-reference bookdown figure": {
 		"prefix": "cross-reference figure",
 		"body": [
 			"Figure \\@ref(fig:${1:label})$0"
 		],
-		"description": "Cross-reference bookdown figure)"
+		"description": "Cross-reference bookdown figure"
 	}
 }
