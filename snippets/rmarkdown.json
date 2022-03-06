@@ -377,8 +377,8 @@
 		"body": [
 			"\\begin{equation}",
 			"${TM_SELECTED_TEXT}$0",
-			"(\\#eq:${1:label})",3
-			"\\end{equation}"3
+			"(\\#eq:${1:label})",
+			"\\end{equation}"
 		],
 		"description": "Insert bookdown equation"
 	},
@@ -402,5 +402,12 @@
 			"Figure \\@ref(fig:${1:label})$0"
 		],
 		"description": "Cross-reference bookdown figure"
+	},
+	"Cross-reference bookdown section": {
+		"prefix": "cross-reference section",
+		"body": [
+			"Section \\@ref(${1:label})$0"
+		],
+		"description": "Cross-reference bookdown section"
 	}
 }
