@@ -307,5 +307,21 @@
 			"Conjecture \\@ref(cnj:${1:label})$0"
 		],
 		"description": "Cross-reference bookdown conjecture)"
+	},
+	"Insert bookdown definition": {
+		"prefix": "definition",
+		"body": [
+			"::: {.definition #${1:label} name=\"${2:definition name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown definition)"
+	},
+	"Cross-reference bookdown definition": {
+		"prefix": "cross-reference definition",
+		"body": [
+			"Definition \\@ref(def:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown definition)"
 	}
 }
