@@ -339,5 +339,21 @@
 			"Example \\@ref(exm:${1:label})$0"
 		],
 		"description": "Cross-reference bookdown example)"
+	},
+	"Insert bookdown exercise": {
+		"prefix": "exercise",
+		"body": [
+			"::: {.exercise #${1:label} name=\"${2:exercise name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown exercise)"
+	},
+	"Cross-reference bookdown exercise": {
+		"prefix": "cross-reference exercise",
+		"body": [
+			"Exercise \\@ref(exr:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown exercise)"
 	}
 }
