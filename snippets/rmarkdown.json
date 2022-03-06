@@ -400,7 +400,7 @@
 		"prefix": "figure chunk",
 		"body": [
 			"```{r ${1:label}, fig.cap = \"${2:Figure caption.}\", fig.alt = \"${3:Alt text.}\"",
-			"${4|knitr::include_graphics(\"\"),|}${TM_SELECTED_TEXT}$0",
+			"${TM_SELECTED_TEXT}$0",
 			"```"
 		],
 		"description": "Insert figure chunk"
