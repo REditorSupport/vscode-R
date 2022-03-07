@@ -4,6 +4,29 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.4.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.4.0)
+
+New Features:
+
+* Added "R Markdown: New Draft" command to choose a template for a new R Markdown document. (#984)
+* Added *Attached Namespaces* and *Loaded Namespaces* to the workspace viewer. (#1022)
+
+Enhancements:
+
+* `spawn` is consistently used to run R scripts and commands. (#985)
+* Added a problemMatcher for testthat output from Test task. (#989, thanks @gowerc)
+* Code chunk snippets now preserve selected text. (#1001)
+* Added more useful Shiny and R Markdown snippets. (#1009, #1012, thanks @jooyoungseo).
+* Provides optional `code` argument to `r.runSelection` command for other extensions to execute interactive R code. (#1017, thanks @jjallaire)
+* Supports lambda function declaration in syntax higlighting. (#1025)
+
+Fixes:
+
+* Fixed code detection with mixed quotes. (#988, thanks @gowerc)
+* Fixed syntax highlighting for variables starting with `function`. (#992, thanks @gowerc)
+* Fixed R task definition and `resolveTask`. (#994)
+* Fixed auto port forwarding for httpgd plot viewer in LiveShare session. (#1026)
+
 ## [2.3.8](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.8)
 
 Fixes:
