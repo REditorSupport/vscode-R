@@ -50,7 +50,17 @@ const rtasks: RTaskInfo[] = [
             type: TYPE,
             code: ['devtools::build()']
         },
-        name: 'Build',
+        name: 'BuildSource',
+        group: vscode.TaskGroup.Build,
+        problemMatchers: []
+    },
+
+    {
+        definition: {
+            type: TYPE,
+            code: ['devtools::build(binary = TRUE, args = c("--preclean"))']
+        },
+        name: 'BuildBinary',
         group: vscode.TaskGroup.Build,
         problemMatchers: []
     },
