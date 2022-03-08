@@ -442,7 +442,12 @@
       {
         "title": "Build",
         "category": "R Package",
-        "command": "r.build"
+        "command": "r.buildsource"
+      },
+      {
+        "title": "Build",
+        "category": "R Package",
+        "command": "r.buildbinary"
       },
       {
         "title": "Check",
