@@ -136,7 +136,6 @@ inspect_env <- function(env, cache) {
   all_names <- ls(env)
   rm(list = setdiff(names(globalenv_cache), all_names), envir = cache)
   is_promise <- rlang::env_binding_are_lazy(env, all_names)
-  is_active <- rlang::env_binding_are_active(env, all_names)
   show_object_size <- getOption("vsc.show_object_size", FALSE)
   object_length_limit <- getOption("vsc.object_length_limit", 2000)
   object_timeout <- getOption("vsc.object_timeout", 50) / 1000
@@ -149,7 +148,7 @@ inspect_env <- function(env, cache) {
         length = scalar(0L),
         str = scalar("(promise)")
       )
-    } else if (is_active[[name]]) {
+    } else if (bindingIsActive(name, env)) {
       info <- list(
         class = "active_binding",
         type = scalar("active_binding"),
@@ -409,7 +408,6 @@ if (show_view) {
     if (is.environment(x)) {
       all_names <- ls(x)
       is_promise <- rlang::env_binding_are_lazy(x, all_names)
-      is_active <- rlang::env_binding_are_active(x, all_names)
       x <- lapply(all_names, function(name) {
         if (is_promise[[name]]) {
           data.frame(
@@ -421,7 +419,7 @@ if (show_view) {
             stringsAsFactors = FALSE,
             check.names = FALSE
           )
-        } else if (is_active[[name]]) {
+        } else if (bindingIsActive(name, x)) {
           data.frame(
             class = "active_binding",
             type = "active_binding",
