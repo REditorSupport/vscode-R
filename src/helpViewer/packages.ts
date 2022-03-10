@@ -178,7 +178,7 @@ export class PackageManager {
 
     // let the user pick and install a package from CRAN 
     public async pickAndInstallPackages(pickMany: boolean = false): Promise<boolean> {
-        const packages = await doWithProgress(() => this.getPackages(true));
+        const packages = await doWithProgress(() => this.getPackages(true), this.rHelp.treeViewWrapper.viewId);
         if(!packages?.length){
             return false;
         }

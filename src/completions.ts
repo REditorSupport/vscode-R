@@ -31,7 +31,7 @@ const roxygenTagCompletionItems = [
 
 export class HoverProvider implements vscode.HoverProvider {
     provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.Hover {
-        if(!session.workspaceData.globalenv){
+        if(!session.workspaceData?.globalenv){
             return null;
         }
 
@@ -115,7 +115,7 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
         completionContext: vscode.CompletionContext
     ): vscode.CompletionItem[] {
         const items = [];
-        if (token.isCancellationRequested) {
+        if (token.isCancellationRequested || !session.workspaceData?.globalenv) {
             return items;
         }
 
