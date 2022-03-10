@@ -445,6 +445,11 @@
         "command": "r.build"
       },
       {
+        "title": "Build Binary",
+        "category": "R Package",
+        "command": "r.buildBinary"
+      },
+      {
         "title": "Check",
         "category": "R Package",
         "command": "r.check"

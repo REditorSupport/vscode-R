@@ -111,6 +111,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758
         'r.build': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build'),
+        'r.buildBinary': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build Binary'),
         'r.check': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Check'),
         'r.document': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Document'),
         'r.install': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Install'),
