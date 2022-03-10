@@ -45,6 +45,7 @@ type cmdName = keyof typeof nodeCommands;
 // necessary to implement Node.refresh(),
 // which is used to signal from a node that its contents/children have changed
 export class HelpTreeWrapper {
+    public readonly viewId = 'rHelpPages';
     public rHelp: RHelp;
     public helpView: vscode.TreeView<Node>;
     public helpViewProvider: HelpViewProvider;
@@ -53,7 +54,7 @@ export class HelpTreeWrapper {
         this.rHelp = rHelp;
         this.helpViewProvider = new HelpViewProvider(this);
         this.helpView = vscode.window.createTreeView(
-            'rHelpPages',
+            this.viewId,
             {
                 treeDataProvider: this.helpViewProvider,
                 showCollapseAll: true
@@ -587,7 +588,7 @@ class RefreshNode extends MetaNode {
     iconPath = new vscode.ThemeIcon('refresh');
 
     async callBack(){
-        await doWithProgress(() => this.rHelp.refresh());
+        await doWithProgress(() => this.rHelp.refresh(), this.wrapper.viewId);
         this.parent.pkgRootNode.refresh();
     }
 }

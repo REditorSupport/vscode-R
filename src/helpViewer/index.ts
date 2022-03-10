@@ -423,6 +423,7 @@ export class RHelp
     private async getAllAliases(): Promise<Alias[] | undefined> {
         const aliases = await doWithProgress(() =>
             this.aliasProvider.getAllAliases(),
+            vscode.ProgressLocation.Window
         );
         if (!aliases) {
             void vscode.window.showErrorMessage(
