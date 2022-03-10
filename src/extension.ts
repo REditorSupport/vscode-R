@@ -110,8 +110,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
 
         // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758
-        'r.buildsource': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: BuildSource'),
-        'r.buildbinary': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: BuildBinary'),
+        'r.build': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build'),
+        'r.buildBinary': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build Binary'),
         'r.check': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Check'),
         'r.document': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Document'),
         'r.install': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Install'),

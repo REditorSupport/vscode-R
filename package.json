@@ -440,14 +440,14 @@
         "command": "r.loadAll"
       },
       {
-        "title": "Build Source",
+        "title": "Build",
         "category": "R Package",
-        "command": "r.buildsource"
+        "command": "r.build"
       },
       {
         "title": "Build Binary",
         "category": "R Package",
-        "command": "r.buildbinary"
+        "command": "r.buildBinary"
       },
       {
         "title": "Check",
