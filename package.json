@@ -1711,7 +1711,9 @@
     "taskDefinitions": [
       {
         "type": "R",
-        "required": ["code"],
+        "required": [
+          "code"
+        ],
         "properties": {
           "code": {
             "type": "array",
@@ -1756,18 +1758,21 @@
         "name": "testthat",
         "owner": "R",
         "severity": "error",
-        "fileLocation": ["relative", "${workspaceFolder}/tests/testthat"],
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}/tests/testthat"
+        ],
         "pattern": [
           {
-              "regexp": "^(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):(\\d+)\\):\\s(.*)",
-              "file": 2,
-              "line": 3,
-              "column": 4,
-              "message": 5
+            "regexp": "^(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):(\\d+)\\):\\s(.*)",
+            "file": 2,
+            "line": 3,
+            "column": 4,
+            "message": 5
           },
           {
-              "regexp": "^(.*)$",
-              "message": 1
+            "regexp": "^(.*)$",
+            "message": 1
           }
         ]
       }
@@ -1820,7 +1825,7 @@
     "yamljs": "^0.3.0"
   },
   "dependencies": {
-    "ag-grid-community": "^26.2.1",
+    "ag-grid-community": "^27.1.0",
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
     "ejs": "^3.1.6",
