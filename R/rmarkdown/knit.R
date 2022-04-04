@@ -4,21 +4,30 @@ if (!requireNamespace("rmarkdown", quietly = TRUE)) {
 }
 
 # get values from extension-set env values
+# Hiding values is necessary to prevent their accidental removal
+# See: https://github.com/REditorSupport/vscode-R/issues/860
+attach(
+    local({
+        .vsc.knit_dir <- Sys.getenv("VSCR_KNIT_DIR")
+        .vsc.knit_lim <- Sys.getenv("VSCR_LIM")
+        .vsc.knit_command <- Sys.getenv("VSCR_KNIT_COMMAND")
+        environment()
+    }),
+    name = "tools:vscode",
+    warn.conflicts = FALSE
+)
 
-knit_dir <- Sys.getenv("VSCR_KNIT_DIR")
-lim <- Sys.getenv("VSCR_LIM")
-knit_command <- Sys.getenv("VSCR_KNIT_COMMAND")
 
 # set the knitr chunk eval directory
 # mainly affects source calls
-if (nzchar(knit_dir)) {
-    knitr::opts_knit[["set"]](root.dir = knit_dir)
+if (nzchar(.vsc.knit_dir)) {
+    knitr::opts_knit[["set"]](root.dir = .vsc.knit_dir)
 }
 
 # render and get file output location for use in extension
 cat(
-    lim,
-    eval(parse(text = knit_command)),
-    lim,
+    .vsc.knit_lim,
+    eval(parse(text = .vsc.knit_command)),
+    .vsc.knit_lim,
     sep = ""
 )
