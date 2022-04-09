@@ -1498,7 +1498,7 @@
         },
         "r.session.data.pageSize": {
           "type": "integer",
-          "default": 100,
+          "default": 500,
           "markdownDescription": "The maximum number of rows per page in the data viewer. `0` means to disable pagination."
         },
         "r.session.viewers.viewColumn": {
