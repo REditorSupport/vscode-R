@@ -1496,6 +1496,11 @@
           "default": 0,
           "markdownDescription": "The maximum number of rows to be displayed in the data viewer. `0` means no limit. Changes the option `vsc.row_limit` in R. Requires `#r.sessionWatcher#` to be set to `true`."
         },
+        "r.session.data.pageSize": {
+          "type": "integer",
+          "default": 500,
+          "markdownDescription": "The maximum number of rows per page in the data viewer. `0` means to disable pagination."
+        },
         "r.session.viewers.viewColumn": {
           "type": "object",
           "markdownDescription": "Which view column should R-related webviews be displayed? Requires `#r.sessionWatcher#` to be set to `true`.",
