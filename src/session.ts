@@ -378,6 +378,7 @@ export async function showDataView(source: string, type: string, title: string, 
 
 export async function getTableHtml(webview: Webview, file: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
+    const pageSize = config().get<number>('session.data.pageSize');
     const content = await readContent(file, 'utf8');
     return `
 <!DOCTYPE html>
@@ -513,7 +514,8 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         columnDefs: data.columns,
         rowData: data.data,
         rowSelection: 'multiple',
-        pagination: true,
+        pagination: ${pageSize > 0 ? 'true' : 'false'},
+        paginationPageSize: ${pageSize},
         enableCellTextSelection: true,
         ensureDomOrder: true,
         tooltipShowDelay: 100,
