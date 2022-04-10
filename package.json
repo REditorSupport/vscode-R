@@ -1310,7 +1310,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Additional library paths to launch R Language Server with. These paths will be appended to `.libPaths()`."
+          "markdownDescription": "Additional library paths to launch R Language Server with. These paths will be appended to `.libPaths()`. `${workspaceFolder}` and `${home}` could be used in the paths."
         },
         "r.lsp.promptToInstall": {
           "type": "boolean",

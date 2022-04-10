@@ -64,7 +64,12 @@ export class LanguageService implements Disposable {
     const use_stdio = config.get<boolean>('lsp.use_stdio');
     const env = Object.create(process.env);
     env.R_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
-    env.R_LSP_LIB_PATHS = config.get<string[]>('lsp.libPaths').join('\n');
+    env.R_LSP_LIB_PATHS = config.get<string[]>('lsp.libPaths')
+      .map(dir => dir
+        .replace('${workspaceFolder}', workspaceFolder?.uri.fsPath || cwd)
+        .replace('${home}', os.homedir())
+      )
+      .join('\n');
 
     const lang = config.get<string>('lsp.lang');
     if (lang !== '') {
