@@ -1298,23 +1298,39 @@
         },
         "r.lsp.args": {
           "type": "array",
+          "items": {
+            "type": "string"
+          },
           "default": [],
-          "description": "The command line arguments to use when launching R Language Server"
+          "description": "The command line arguments to use when launching R Language Server."
+        },
+        "r.lsp.libPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Additional library paths to launch R Language Server with. These paths will be appended to `.libPaths()`. `${workspaceFolder}` and `${home}` could be used in the paths."
+        },
+        "r.lsp.promptToInstall": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prompt to install R Language Server if it is not installed."
         },
         "r.lsp.debug": {
           "type": "boolean",
           "default": false,
-          "description": "Debug R Language Server"
+          "description": "Debug R Language Server."
         },
         "r.lsp.diagnostics": {
           "type": "boolean",
           "default": true,
-          "description": "Enable Diagnostics"
+          "description": "Enable diagnostics."
         },
         "r.lsp.lang": {
           "type": "string",
           "default": "",
-          "description": "Override default LANG environment variable"
+          "markdownDescription": "Override default `LANG` environment variable."
         },
         "r.lsp.use_stdio": {
           "type": "boolean",

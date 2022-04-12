@@ -492,30 +492,30 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
 /**
  * Check if an R package is available or not
  *
- * @param name the R package name that need to be checked
+ * @param name the R package name to ask user to install
  * @returns a boolean Promise
  */
-export async function isRPkgIntalled(name: string, cwd: string, promptToInstall: boolean = false, installMsg?: string, postInstallMsg?: string): Promise<boolean> {
-    const cmd = `cat(requireNamespace('${name}', quietly=TRUE))`;
-    const rOut = await executeRCommand(cmd, cwd, 'FALSE');
-    const isInstalled = rOut === 'TRUE';
-    if (promptToInstall && !isInstalled) {
-        if (installMsg === undefined) {
-            installMsg = `R package {${name}} is not installed. Do you want to install it?`;
-        }
-        void vscode.window.showErrorMessage(installMsg, 'Yes', 'No')
-            .then(async function (select) {
-                if (select === 'Yes') {
-                    const repo = await getCranUrl('', cwd);
-                    const rPath = await getRpath();
-                    const args = ['--silent', '--slave', '-e', `install.packages('${name}', repos='${repo}')`];
-                    void executeAsTask('Install Package', rPath, args, true);
-                    if (postInstallMsg) {
-                        void vscode.window.showInformationMessage(postInstallMsg, 'OK');
-                    }
-                    return true;
-                }
-            });
+export async function promptToInstallRPackage(name: string, section: string, cwd: string, installMsg?: string, postInstallMsg?: string): Promise<void> {
+    const _config = config();
+    const prompt = _config.get<boolean>(section);
+    if (!prompt) {
+        return;
     }
-    return isInstalled;
+    if (installMsg === undefined) {
+        installMsg = `R package {${name}} is not installed. Do you want to install it?`;
+    }
+    await vscode.window.showErrorMessage(installMsg, 'Yes', 'No', 'Never ask again')
+        .then(async function (select) {
+            if (select === 'Yes') {
+                const repo = await getCranUrl('', cwd);
+                const rPath = await getRpath();
+                const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `install.packages('${name}', repos='${repo}')`];
+                void executeAsTask('Install Package', rPath, args, true);
+                if (postInstallMsg) {
+                    void vscode.window.showInformationMessage(postInstallMsg, 'OK');
+                }
+            } else if (select === 'Never ask again') {
+                void _config.update(section, false);
+            }
+        });
 }

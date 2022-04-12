@@ -196,7 +196,7 @@ export class PackageManager {
     // remove a specified package. The packagename is selected e.g. in the help tree-view
     public async removePackage(pkgName: string): Promise<boolean> {
         const rPath = await getRpath();
-        const args = ['--silent', '--slave', '-e', `remove.packages('${pkgName}')`];
+        const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `remove.packages('${pkgName}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
         const confirmation = 'Yes, remove package!';
         const prompt = `Are you sure you want to remove package ${pkgName}?`;
@@ -230,7 +230,7 @@ export class PackageManager {
     public async updatePackages(skipConfirmation: boolean = false): Promise<boolean> {
         const rPath = await getRpath();
         const cranUrl = await getCranUrl('', this.cwd);
-        const args = ['--silent', '--slave', '-e', `update.packages(ask=FALSE,repos='${cranUrl}')`];
+        const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `update.packages(ask=FALSE,repos='${cranUrl}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
         const confirmation = 'Yes, update all packages!';
         const prompt = 'Are you sure you want to update all installed packages? This might take some time!';
