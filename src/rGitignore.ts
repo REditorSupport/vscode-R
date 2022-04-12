@@ -14,13 +14,13 @@ export async function createGitignore(): Promise<void> {
 
     const currentWorkspaceFolder = getCurrentWorkspaceFolder()?.uri.fsPath;
     if (currentWorkspaceFolder === undefined) {
-        void window.showWarningMessage('Please open a workspace to create .gitignore');
+        void window.showWarningMessage('Please open a workspace folder to create .gitignore');
         return;
     }
     const ignorePath = join(currentWorkspaceFolder, '.gitignore');
     if (existsSync(ignorePath)) {
         const overwrite = await window.showWarningMessage(
-            '".gitignore" file is already exist. Do you want to overwrite?',
+            '".gitignore" file already exists. Do you want to overwrite?',
             'Yes', 'No'
         );
         if (overwrite === 'No') {
