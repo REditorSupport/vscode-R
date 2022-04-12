@@ -509,7 +509,7 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
             if (select === 'Yes') {
                 const repo = await getCranUrl('', cwd);
                 const rPath = await getRpath();
-                const args = ['--silent', '--slave', '-e', `install.packages('${name}', repos='${repo}')`];
+                const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `install.packages('${name}', repos='${repo}')`];
                 void executeAsTask('Install Package', rPath, args, true);
                 if (postInstallMsg) {
                     void vscode.window.showInformationMessage(postInstallMsg, 'OK');
