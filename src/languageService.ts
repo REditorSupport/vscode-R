@@ -84,7 +84,14 @@ export class LanguageService implements Disposable {
 
     const rScriptPath = extensionContext.asAbsolutePath('R/languageServer.R');
     const options = { cwd: cwd, env: env };
-    const args = config.get<string[]>('lsp.args').concat('--silent', '--slave', '-f', rScriptPath);
+    const args = config.get<string[]>('lsp.args').concat(
+      '--silent',
+      '--slave',
+      '--no-save',
+      '--no-restore',
+      '-f',
+      rScriptPath
+    );
 
     const tcpServerOptions = () => new Promise<DisposableProcess | StreamInfo>((resolve, reject) => {
       // Use a TCP socket because of problems with blocking STDIO
