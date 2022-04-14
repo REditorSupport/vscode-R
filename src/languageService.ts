@@ -190,7 +190,8 @@ export class LanguageService implements Disposable {
         if (!self.checkClient(key)) {
           console.log(`Start language server for ${document.uri.toString(true)}`);
           const documentSelector: DocumentFilter[] = [
-            { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}` },
+            { language: 'r', notebookType: 'jupyter-notebook', pattern: document.uri.fsPath },
+            { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}#*` },
           ];
           const client = await self.createClient(config, documentSelector,
             path.dirname(document.uri.fsPath), folder, outputChannel);
