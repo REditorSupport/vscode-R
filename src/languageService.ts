@@ -7,7 +7,7 @@ import os = require('os');
 import path = require('path');
 import net = require('net');
 import url = require('url');
-import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
+import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn, DocumentSelector } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
 import { DisposableProcess, getRpath, promptToInstallRPackage, spawn } from './util';
 import { extensionContext } from './extension';
@@ -51,7 +51,7 @@ export class LanguageService implements Disposable {
     return childProcess;
   }
 
-  private async createClient(config: WorkspaceConfiguration, selector: DocumentFilter[],
+  private async createClient(config: WorkspaceConfiguration, selector: DocumentSelector,
     cwd: string, workspaceFolder: WorkspaceFolder, outputChannel: OutputChannel): Promise<LanguageClient> {
 
     let client: LanguageClient;
@@ -135,8 +135,12 @@ export class LanguageService implements Disposable {
       },
       revealOutputChannelOn: RevealOutputChannelOn.Never,
       errorHandler: {
-        error: () => ErrorAction.Shutdown,
-        closed: () => CloseAction.DoNotRestart,
+        error: () => {
+          return { action: ErrorAction.Shutdown };
+        },
+        closed: () => {
+          return { action: CloseAction.DoNotRestart };
+        }
       },
     };
 
@@ -189,8 +193,8 @@ export class LanguageService implements Disposable {
         const key = self.getKey(document.uri);
         if (!self.checkClient(key)) {
           console.log(`Start language server for ${document.uri.toString(true)}`);
-          const documentSelector: DocumentFilter[] = [
-            { language: 'r', notebookType: 'jupyter-notebook', pattern: document.uri.fsPath },
+          const documentSelector: DocumentSelector = [
+            { language: 'r', notebook: { notebookType: 'jupyter-notebook', pattern: document.uri.fsPath } },
             { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}#*` },
           ];
           const client = await self.createClient(config, documentSelector,
@@ -211,7 +215,7 @@ export class LanguageService implements Disposable {
         if (!self.checkClient(key)) {
           console.log(`Start language server for ${document.uri.toString(true)}`);
           const pattern = `${folder.uri.fsPath}/**/*`;
-          const documentSelector: DocumentFilter[] = [
+          const documentSelector: DocumentSelector = [
             { scheme: 'file', language: 'r', pattern: pattern },
             { scheme: 'file', language: 'rmd', pattern: pattern },
           ];
@@ -230,7 +234,7 @@ export class LanguageService implements Disposable {
           const key = self.getKey(document.uri);
           if (!self.checkClient(key)) {
             console.log(`Start language server for ${document.uri.toString(true)}`);
-            const documentSelector: DocumentFilter[] = [
+            const documentSelector: DocumentSelector = [
               { scheme: 'untitled', language: 'r' },
               { scheme: 'untitled', language: 'rmd' },
             ];
