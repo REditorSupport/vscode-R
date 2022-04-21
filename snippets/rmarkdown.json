@@ -116,7 +116,7 @@
 	"Insert code chunk": {
 		"prefix": "code chunk",
 		"body": [
-			"```{${1|language,awk,bash,coffee,gawk,groovy,haskell,lein,mysql,node,octave,perl,psql,Rscript,ruby,sas,scala,sed,sh,stata,zsh,asis,asy,block,block2,bslib,c,cat,cc,comment,css,dot,embed,fortran,fortran95,go,highlight,js,julia,python,R,Rcpp,sass,scss,sql\\, connection=db,stan\\, output.var=\"stanmodel\",targets,tikz,verbatim|}}",
+			"```{${1|language,awk,bash,coffee,gawk,groovy,haskell,lein,mysql,node,octave,perl,psql,Rscript,ruby,sas,scala,sed,sh,stata,zsh,asis,asy,block,block2,bslib,c,cat,cc,comment,css,dot,embed,fortran,fortran95,go,highlight,js,julia,python,R,Rcpp,sass,scss,sql\\, connection=db,stan\\, output.var=\"stanmodel\",targets,tikz,verbatim,exec\\, command=\"\"|}}",
 			"${TM_SELECTED_TEXT}$0",
 			"```"
 		],
