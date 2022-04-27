@@ -105,7 +105,7 @@
 	},
 	"Insert link": {
 		"prefix": "link",
-		"body": "[${1:text}](http://${2:link})$0",
+		"body": "[${1:text}](${2:link})$0",
 		"description": "Insert link"
 	},
 	"Insert image": {
