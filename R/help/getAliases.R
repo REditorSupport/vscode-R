@@ -1,4 +1,4 @@
-requireNamespace("jsonlite")
+loadNamespace("jsonlite")
 
 ip <- installed.packages()
 

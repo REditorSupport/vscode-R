@@ -1,5 +1,5 @@
-requireNamespace("jsonlite")
-requireNamespace("yaml")
+loadNamespace("jsonlite")
+loadNamespace("yaml")
 
 pkgs <- .packages(all.available = TRUE)
 templates <- new.env()

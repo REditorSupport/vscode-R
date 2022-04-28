@@ -65,6 +65,7 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
     } catch (e) {
         console.log(e);
         void window.showErrorMessage((<{ message: string }>e).message);
+        return undefined;
     }
 }
 
@@ -80,8 +81,16 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem> {
 
     const items = await getTemplateItems(cwd);
 
-    const selection: TemplateItem = await window.showQuickPick<TemplateItem>(items, options);
-    return selection;
+    if (items) {
+        if (items.length > 0) {
+            const selection = await window.showQuickPick<TemplateItem>(items, options);
+            return selection;
+        } else {
+            void window.showInformationMessage('No templates found.');
+        }
+    } else {
+        return undefined;
+    }
 }
 
 async function makeDraft(file: string, template: TemplateItem, cwd: string): Promise<string> {
