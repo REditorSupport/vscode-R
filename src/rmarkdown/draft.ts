@@ -88,9 +88,8 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem> {
         } else {
             void window.showInformationMessage('No templates found.');
         }
-    } else {
-        return undefined;
     }
+    return undefined;
 }
 
 async function makeDraft(file: string, template: TemplateItem, cwd: string): Promise<string> {
