@@ -1849,7 +1849,7 @@
     "ag-grid-community": "^27.1.0",
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
-    "ejs": "^3.1.6",
+    "ejs": "^3.1.7",
     "fs-extra": "^10.0.0",
     "highlight.js": "^10.7.3",
     "httpgd": "^0.1.6",
