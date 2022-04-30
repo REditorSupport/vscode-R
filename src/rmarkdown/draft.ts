@@ -1,4 +1,4 @@
-import { QuickPickItem, QuickPickOptions, Uri, window, workspace } from 'vscode';
+import { QuickPickItem, QuickPickOptions, Uri, window, workspace, env } from 'vscode';
 import { extensionContext } from '../extension';
 import { executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral, spawnAsync, getConfirmation } from '../util';
 import * as cp from 'child_process';
@@ -86,7 +86,12 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem> {
             const selection = await window.showQuickPick<TemplateItem>(items, options);
             return selection;
         } else {
-            void window.showInformationMessage('No templates found.');
+            void window.showInformationMessage('No templates found. Would you like to browse the wiki page for R packages that provide R Markdown templates?', 'Yes', 'No')
+                .then((select: string) => {
+                    if (select === 'Yes') {
+                        void env.openExternal(Uri.parse('https://github.com/REditorSupport/vscode-R/wiki/R-Markdown#templates'));
+                    }
+                });
         }
     }
     return undefined;
