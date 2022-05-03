@@ -17,7 +17,7 @@ Go to the [wiki](https://github.com/REditorSupport/vscode-R/wiki) to view the do
     install.packages("languageserver")
     ```
 
-3. Install the [R extension for Visual Studio Code](https://marketplace.visualstudio.com/items?itemName=Ikuyadeu.r).
+3. Install the [R extension for Visual Studio Code](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r).
 
 4. Create an R file and start coding.
 
