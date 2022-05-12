@@ -27,6 +27,7 @@ set_html <- tryCatch(
     }
 )
 
+
 # set the knitr chunk eval directory
 # mainly affects source calls
 knitr::opts_knit[["set"]](root.dir = knit_dir)
@@ -35,10 +36,12 @@ knitr::opts_knit[["set"]](root.dir = knit_dir)
 cat(
     lim,
     rmarkdown::render(
-        file_path,
+        input = file_path,
         output_format = set_html,
         output_file = output_file_loc,
-        intermediates_dir = tmp_dir
+        output_dir = tmp_dir,
+        intermediates_dir = tmp_dir,
+        output_options = list(self_contained = TRUE)
     ),
     lim,
     sep = ""
