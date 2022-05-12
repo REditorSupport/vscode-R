@@ -27,7 +27,6 @@ set_html <- tryCatch(
     }
 )
 
-
 # set the knitr chunk eval directory
 # mainly affects source calls
 knitr::opts_knit[["set"]](root.dir = knit_dir)
