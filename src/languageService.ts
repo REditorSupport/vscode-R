@@ -9,7 +9,7 @@ import net = require('net');
 import url = require('url');
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { DisposableProcess, getRpath, promptToInstallRPackage, spawn } from './util';
+import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn } from './util';
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 
@@ -63,13 +63,8 @@ export class LanguageService implements Disposable {
     }
     const use_stdio = config.get<boolean>('lsp.use_stdio');
     const env = Object.create(process.env);
-    env.R_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
-    env.R_LSP_LIB_PATHS = config.get<string[]>('lsp.libPaths')
-      .map(dir => dir
-        .replace('${workspaceFolder}', workspaceFolder?.uri.fsPath || cwd)
-        .replace('${home}', os.homedir())
-      )
-      .join('\n');
+    env.VSCR_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
+    env.VSCR_LIB_PATHS = getRLibPaths(workspaceFolder?.uri.fsPath || cwd);
 
     const lang = config.get<string>('lsp.lang');
     if (lang !== '') {
@@ -111,7 +106,7 @@ export class LanguageService implements Disposable {
       // Listen on random port
       server.listen(0, '127.0.0.1', () => {
         const port = (server.address() as net.AddressInfo).port;
-        env.R_LSP_PORT = String(port);
+        env.VSCR_LSP_PORT = String(port);
         return this.spawnServer(client, rPath, args, options);
       });
     });

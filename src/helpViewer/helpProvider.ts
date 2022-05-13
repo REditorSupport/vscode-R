@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
-import { DisposableProcess, spawn, spawnAsync } from '../util';
+import { DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
 
 export interface RHelpProviderOptions {
 	// path of the R executable
@@ -58,7 +58,11 @@ export class HelpProvider {
         ];
         const cpOptions = {
             cwd: this.cwd,
-            env: { ...process.env, 'VSCR_LIM': lim },
+            env: {
+                ...process.env,
+                VSCR_LIB_PATHS: getRLibPaths(this.cwd),
+                VSCR_LIM: lim
+            },
         };
 
         const childProcess: ChildProcessWithPort = spawn(this.rPath, args, cpOptions);
@@ -272,6 +276,7 @@ export class AliasProvider {
             cwd: this.cwd,
             env: {
                 ...process.env,
+                VSCR_LIB_PATHS: getRLibPaths(this.cwd),
                 VSCR_LIM: lim
             }
         };

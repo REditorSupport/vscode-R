@@ -2,6 +2,7 @@
 
 import { existsSync, PathLike, readFile } from 'fs-extra';
 import * as fs from 'fs';
+import os = require('os');
 import winreg = require('winreg');
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -296,8 +297,14 @@ export async function getCranUrl(path: string = '', cwd?: string): Promise<strin
     return url;
 }
 
-
-
+export function getRLibPaths(cwd: string): string {
+    return config().get<string[]>('libPaths')
+        .map(dir => dir
+            .replace('${workspaceFolder}', cwd)
+            .replace('${home}', os.homedir())
+        )
+        .join('\n');
+}
 
 // executes an R command returns its output to stdout
 // uses a regex to filter out output generated e.g. by code in .Rprofile
