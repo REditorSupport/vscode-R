@@ -197,7 +197,9 @@ inspect_env <- function(env, cache) {
           .DollarNames(obj, pattern = "")
         } else if (is.recursive(obj)) {
           names(obj)
-        } else NULL
+        } else {
+          NULL
+        }
 
         if (length(obj_names)) {
           info$names <- obj_names
