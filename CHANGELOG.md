@@ -4,6 +4,32 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.5.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.5.0)
+
+Announcement:
+
+* [vscode-R](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r) has been transferred to `REditorSupport` as the publisher in the VS Code Marketplace. The unique identifier has been updated to `REditorSupport.r`. (#690)
+* [R in Visual Studio Code](https://code.visualstudio.com/docs/languages/r) topic is added to the VS Code documentation.
+
+New Features:
+
+* A new setting `r.libPaths` is added to support additional library paths to be appended to `.libPaths()` when R background processes (R language server and help server) are launched. It could be useful for projects with [renv](https://rstudio.github.io/renv/articles/renv.html) enabled where required packages (e.g. `languageserver` and `jsonlite`) to use vscode-R are only installed in other location. For more details, checkout the [wiki](https://github.com/REditorSupport/vscode-R/wiki/Working-with-renv-enabled-projects). (#1071, #1097, #1098)
+
+Enhancements:
+
+* The R package build task is separated into Build and Build Binary tasks. (#1029, thanks @Yunuuuu)
+* Hide smart knit environment variables to prevent accidental deletion. (#1060)
+* A new setting `r.session.data.pageSize` is added to support adjusting the page size of the data viewer. The default is now 500. (#1068)
+* The check for languageserver package installation is improved and the prompt could be disabled. (#1071)
+* The R Markdown code chunk snippet supports language choice. (#1082, thanks @jooyoungseo)
+* It will prompt instead of showing empty choice when no R Markdown templates are found. (#1089)
+
+Fixes:
+
+* Guard against evaluation of active bindings in the global environment. (#1038)
+* The `http` prefix is unnecessary and removed from several code snippets. (#1084, #1085, thanks @jooyoungseo)
+* R Markdown knit and preview scripts now use `loadNamespace()` instead of `requireNamespace()` to fail early if necessary packages are unavailable. (#1086)
+
 ## [2.4.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.4.0)
 
 New Features:
