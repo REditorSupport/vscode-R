@@ -60,7 +60,7 @@ export class HelpProvider {
             cwd: this.cwd,
             env: {
                 ...process.env,
-                VSCR_LIB_PATHS: getRLibPaths(this.cwd),
+                VSCR_LIB_PATHS: getRLibPaths(),
                 VSCR_LIM: lim
             },
         };
@@ -276,7 +276,7 @@ export class AliasProvider {
             cwd: this.cwd,
             env: {
                 ...process.env,
-                VSCR_LIB_PATHS: getRLibPaths(this.cwd),
+                VSCR_LIB_PATHS: getRLibPaths(),
                 VSCR_LIM: lim
             }
         };
