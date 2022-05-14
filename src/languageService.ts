@@ -64,7 +64,7 @@ export class LanguageService implements Disposable {
     const use_stdio = config.get<boolean>('lsp.use_stdio');
     const env = Object.create(process.env);
     env.VSCR_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
-    env.VSCR_LIB_PATHS = getRLibPaths(workspaceFolder?.uri.fsPath || cwd);
+    env.VSCR_LIB_PATHS = getRLibPaths();
 
     const lang = config.get<string>('lsp.lang');
     if (lang !== '') {
@@ -190,7 +190,7 @@ export class LanguageService implements Disposable {
           const client = await self.createClient(config, documentSelector,
             path.dirname(document.uri.fsPath), folder, outputChannel);
           if (client) {
-            client.start();
+            extensionContext.subscriptions.push(client.start());
             self.clients.set(key, client);
           }
           self.initSet.delete(key);
@@ -211,7 +211,7 @@ export class LanguageService implements Disposable {
           ];
           const client = await self.createClient(config, documentSelector, folder.uri.fsPath, folder, outputChannel);
           if (client) {
-            client.start();
+            extensionContext.subscriptions.push(client.start());
             self.clients.set(key, client);
           }
           self.initSet.delete(key);
@@ -230,7 +230,7 @@ export class LanguageService implements Disposable {
             ];
             const client = await self.createClient(config, documentSelector, os.homedir(), undefined, outputChannel);
             if (client) {
-              client.start();
+              extensionContext.subscriptions.push(client.start());
               self.clients.set(key, client);
             }
             self.initSet.delete(key);
@@ -249,7 +249,7 @@ export class LanguageService implements Disposable {
             const client = await self.createClient(config, documentSelector,
               path.dirname(document.uri.fsPath), undefined, outputChannel);
             if (client) {
-              client.start();
+              extensionContext.subscriptions.push(client.start());
               self.clients.set(key, client);
             }
             self.initSet.delete(key);
