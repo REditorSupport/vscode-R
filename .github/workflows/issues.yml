@@ -13,11 +13,12 @@ jobs:
     steps:
       - uses: actions/stale@v5
         with:
-          days-before-issue-stale: 180
+          days-before-issue-stale: 365
           days-before-issue-close: 14
           stale-issue-label: "stale"
-          stale-issue-message: "This issue is stale because it has been open for 30 days with no activity."
+          stale-issue-message: "This issue is stale because it has been open for 365 days with no activity."
           close-issue-message: "This issue was closed because it has been inactive for 14 days since being marked as stale."
+          exempt-issue-labels: "help wanted,engineering"
           days-before-pr-stale: -1 # change if we want to auto close old PRs
           days-before-pr-close: -1
           repo-token: ${{ secrets.GITHUB_TOKEN }}
