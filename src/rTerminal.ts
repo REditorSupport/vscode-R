@@ -18,16 +18,17 @@ export let rTerm: vscode.Terminal;
 export async function runSource(echo: boolean): Promise<void>  {
     const wad = vscode.window.activeTextEditor?.document;
     const isSaved = await util.saveDocument(wad);
-    if (isSaved) {
-        let rPath: string = util.ToRStringLiteral(wad.fileName, '"');
-        let encodingParam = util.config().get<string>('source.encoding');
-        encodingParam = `encoding = "${encodingParam}"`;
-        rPath = [rPath, encodingParam].join(', ');
-        if (echo) {
-            rPath = [rPath, 'echo = TRUE'].join(', ');
-        }
-        void runTextInTerm(`source(${rPath})`);
+    if (!isSaved) {
+        return;
     }
+    let rPath: string = util.ToRStringLiteral(wad.fileName, '"');
+    let encodingParam = util.config().get<string>('source.encoding');
+    encodingParam = `encoding = "${encodingParam}"`;
+    rPath = [rPath, encodingParam].join(', ');
+    if (echo) {
+        rPath = [rPath, 'echo = TRUE'].join(', ');
+    }
+    void runTextInTerm(`source(${rPath})`);
 }
 
 export async function runSelection(): Promise<void> {
