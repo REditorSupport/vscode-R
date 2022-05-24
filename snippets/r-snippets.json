@@ -1,283 +1,284 @@
 {
-    "rug":{
+    "rug": {
         "prefix": "rug",
         "body": "rug(${1:jitter(${2:x})})",
         "descriptison": "Add Tick Marks"
     },
-    "app":{
+    "app": {
         "prefix": "apply",
         "body": "apply(${1:X}, ${2:MARGIN}, ${3:FUN}, ${4:...})",
         "description": "Apply"
     },
-    "att":{
+    "att": {
         "prefix": "attach",
         "body": "attach(${1:frame})",
         "description": "Attach"
     },
-    "cat":{
+    "cat": {
         "prefix": "cat",
         "body": "cat(${1:file}, ${2:sep = ${3:\"\"}}, ${4:fill = ${5:FALSE}}, ${6:labels = ${7:NULL}}, ${8:append = ${9:FALSE}})",
         "description": "Cat"
     },
-    "cum":{
+    "cum": {
         "prefix": "cum",
         "body": "cum${1:max}(${2:x})",
         "description": "Cummulative"
     },
-    "cuma":{
+    "cuma": {
         "prefix": "cumaax",
         "body": "cummax(${1:x}",
         "description": "Cummulative max"
-        
     },
-    "cumi":{
+    "cumi": {
         "prefix": "cumin",
         "body": "cummin(${1:x}",
         "description": "Cummulative min"
     },
-    "daf":{
+    "daf": {
         "prefix": "data.frame",
         "body": "data.frame(${1:...}, ${2:row.names = ${3:NULL}}, ${4:check.rows = ${5:FALSE}}, ${6:check.names = ${7:TRUE}}, ${8:stringsAsFactors = ${9:default.stringsAsFactors()}})",
         "description": "Data Frame"
     },
-    "den":{
+    "den": {
         "prefix": "density",
         "body": "density(${1:x}${2:, bw = ${3:bandwidth}})",
         "description": "Density"
     },
-    "det":{
+    "det": {
         "prefix": "detach",
         "body": "detach(${0:})",
         "description": "Detach"
     },
-    "cut":{
+    "cut": {
         "prefix": "cut",
         "body": "cut(${1:x}, breaks = c(${2:${3:}, ${4:max(${1:x})}}))",
         "description": "Divide Into Intervals"
     },
-    "exp":{
+    "exp": {
         "prefix": "exppand",
         "body": "expand.grid(${1:...}, ${2:KEEP.OUT.ATTRS = ${3:TRUE}}, ${4:stringsAsFactors = ${5:TRUE}})",
         "description": "Expand grid"
     },
-    "fac":{
+    "fac": {
         "prefix": "factor",
         "body": "factor(${1:x})",
         "description": "Factor"
     },
-    "fun":{
+    "fun": {
         "prefix": "function",
         "body": "function(${1:x}) ${3:{$0\\}}",
         "description": "Function"
     },
-    "glm":{
+    "glm": {
         "prefix": "glm",
         "body": "glm(${1:formula}, ${2:family = {3:gaussian}}, ${4:data})",
         "description": "Generalized Linear Models"
     },
-    "grep":{
+    "grep": {
         "prefix": "grep",
         "body": "grep(${1:pattern}, ${2:x}, ${3:ignore.case = ${4:FALSE}}, ${5:perl = ${6:FALSE}})",
         "description": "Grep"
     },
-    "grep2":{
+    "grep2": {
         "prefix": "grep",
         "body": "grep(${1:pattern}, ${2:x}, ${3:ignore.case = ${4:FALSE}}, ${5:perl = ${6:FALSE}}, ${7:value = ${8:FALSE}}, ${9:fixed = ${10:TRUE}})",
         "description": "Grep"
     },
-    "grepl":{
+    "grepl": {
         "prefix": "grepl",
         "body": "grep(${1:pattern}, ${2:x}, ${3:ignore.case = ${4:FALSE}}, ${5:perl = ${6:FALSE}}, ${7:fixed = ${8:TRUE}})",
         "description": "Grep logical"
     },
-    "ins":{
+    "ins": {
         "prefix": "insall",
         "body": "install.packages(${1:pkgs}, ${2:lib}, ${3:repos = ${4:getOption(\"repos\")}}, ${5:contriburl = ${6:contrib.url(repos, type)}})",
         "description": "Install package"
     },
-    "km":{
+    "km": {
         "prefix": "kmeans",
         "body": "kmeans(${1:x}, ${2:centers}, ${3:iter.max = ${4:10}}, ${5:nstart = ${6:1}}, ${7:algorithm = ${8:c(\"Hartigan-Wong\", \"Lloyd\", \"Forgy\",\"MacQueen\")}}, ${9:trace = ${10:FALSE}})",
         "description": "Kmeans"
     },
-    "kr":{
+    "kr": {
         "prefix": "kruskal",
         "body": "kruskal.test(${1:formula}, ${2:data}, ${3:subset}, ${4:na.action}, ${5:...})",
         "description": "Kruskal-Wallis Rank Sum test"
     },
-    "lap":{
+    "lap": {
         "prefix": "lapply",
         "body": "lapply(${1:X}, ${2:FUN}, ${3:...})",
         "description": "Lapply"
     },
-    "len":{
+    "len": {
         "prefix": "length",
         "body": "length(${1:x})",
         "description": "Length"
     },
-    "lib":{
+    "lib": {
         "prefix": "library",
         "body": "library(${1:package}, ${2:help}, ${3:pos = ${4:2}}, ${5:lib.loc = ${6:NULL}})",
         "description": "Library"
     },
-    "lin":{
+    "lin": {
         "prefix": "lines",
         "body": "lines(${1:x}${2:, color=${3:red}})",
         "description": "Polygonal Line"
     },
-    "dat":{
+    "dat": {
         "prefix": "data",
         "body": "data(${1:name})",
         "description": "Load Dataset"
     },
-    "loa":{
+    "loa": {
         "prefix": "load",
         "body": "load(${1:file}, ${2:envir = ${3:parent.frame()}}, ${4:verbose = ${5:FALSE}})",
         "description": "Load RData"
     },
-    "mea":{
+    "mea": {
         "prefix": "mean",
         "body": "mean(${1:x}${2:, na.rm=${3:FALSE}})",
         "description": "Mean"
     },
-    "mer":{
+    "mer": {
         "prefix": "merge",
         "body": "merge(${1:x}, ${2:y}, ${3:by = ${4:intersect(names(x), names(y))}}, ${5:all = ${6:FALSE}})",
         "description": "Merge"
     },
-    "nam":{
+    "nam": {
         "prefix": "names",
         "body": "names(${1:x})",
         "description": "Names"
     },
-    "opt":{
+    "opt": {
         "prefix": "option",
         "body": "options(${1:...})",
         "description": "Options"
     },
-    "ord":{
+    "ord": {
         "prefix": "order",
         "body": "order(${1:...}, ${2:na.last = ${3:TRUE}}, ${4:decreasing = ${5:FALSE}})",
         "description": "Order"
     },
-    "out":{
+    "out": {
         "prefix": "outer",
         "body": "outer(${1:X}, ${2:Y}, ${3:FUN = ${4:\"*\"}}, ${5:...})",
         "description": "Outer"
     },
-    "pas":{
+    "pas": {
         "prefix": "paste",
         "body": "paste(${1:...}, ${2:sep = ${3:\" \"}}, ${3:collapse = ${4:NULL}})",
         "description": "Paste"
     },
-    "pas0":{
+    "pas0": {
         "prefix": "pas0",
         "body": "paste(${1:...}, ${2:collapse = ${3:NULL}})",
         "description": "Paste0"
     },
-    "plot":{
+    "plot": {
         "prefix": "plot",
         "body": "plot(${1:x}, ${2:y}, ${3:...})",
         "description": "Plot"
     },
-    "poi":{
+    "poi": {
         "prefix": "point",
         "body": "points(${1:x}, ${2:y = ${3:NULL}}, ${4:type = ${5:\"p\"}}, ${6:...})",
         "description": "Points"
     },
-    "pri":{
+    "pri": {
         "prefix": "print",
         "body": "print(${1:x}, ${2:...})",
         "description": "Print"
     },
-    "qua":{
+    "qua": {
         "prefix": "quantile",
         "body": "quantile(${1:x}, ${2:probs = ${3:seq(0, 1, 0.25)}}, ${4:na.rm = ${5:FALSE}}, ${6:names = ${7:TRUE}}, ${8:type = ${9:7}}, ${10:...})",
         "description": "Quantile"
     },
-    "reat":{
+    "reat": {
         "prefix": "read",
         "body": "read.table('${1:filename}'${2:, header = ${3:TRUE},  sep = '${4:\t}',  stringsAsFactors = ${5:FALSE}})",
         "description": "Read From File"
     },
-    "rep":{
+    "rep": {
         "prefix": "rep",
         "body": "rep(${1:x}, ${2:...})",
         "description": "Rep"
     },
-    "sam":{
+    "sam": {
         "prefix": "sample",
         "body": "sample(${1:x}, ${2:size}, ${3:replace = ${4:FALSE}}, ${5:prob = ${6:NULL}})",
         "description": "Sample"
     },
-    "seq":{
+    "seq": {
         "prefix": "seq",
         "body": "seq(${1:from}, ${2:to}, ${3:by})",
         "description": "Sequence (from,to,by)"
     },
-    "sor":{
+    "sor": {
         "prefix": "sort",
         "body": "sort(${1:x})",
         "description": "Sort"
     },
-    "sou":{
+    "sou": {
         "prefix": "source",
         "body": "source(${1:'${2:}'}${3:, chdir = ${4:TRUE}})",
         "description": "Source"
     },
-    "sd":{
+    "sd": {
         "prefix": "sd",
         "body": "sd(${1:x}${2:, na.rm=${3:FALSE}})",
         "description": "Standard deviation"
     },
-    "tab":{
+    "tab": {
         "prefix": "table",
         "body": "table(${1:...})",
         "description": "Table"
     },
-    "tap":{
+    "tap": {
         "prefix": "tapply",
         "body": "tapply(${1:X}, ${2:INDEX}, ${3:FUN = ${4:NULL}}, ${5:...}, ${6:simplify = ${7:TRUE}})",
         "description": "Tapply"
     },
-    "uni":{
+    "uni": {
         "prefix": "unique",
         "body": "unique(${1:x}, ${2:incomparables = ${3:FALSE}}, ${4:...})",
         "description": "Unique"
     },
-    "whi":{
+    "whi": {
         "prefix": "which",
         "body": "which(${1:x}, ${2:arr.ind = ${3:FALSE}}, ${4:useNames = ${5:TRUE}})",
         "description": "Which"
     },
-    "wric":{
+    "wric": {
         "prefix": "write",
         "body": "write.csv(${1:x}, ${2:file = ${3:\"\"}}, ${4:append = ${5:FALSE}}, ${6:quote = ${7:TRUE}}, ${8:sep = ${9:\" \"}}",
         "description": "Write csv"
     },
-    "fch":{
+    "fch": {
         "prefix": "fch",
         "body": "${1:file = }file.choose()${0:}",
         "description": "file.choose"
     },
     "Clustering": {
         "prefix": "clara",
-        "body":[
+        "body": [
             "library(cluster)",
             "clara(${1:xData}, k = ${2:k}, metric = ${3:metric}, stand = ${4:stand}, samples = ${5:samples})"
         ],
-        "description":"Cluster data into k clusters (library: cluster)"
+        "description": "Cluster data into k clusters (library: cluster)"
     },
-    "Linear model":{
+    "Linear model": {
         "prefix": "lm",
-        "body": ["lmObj <- lm(${1:yCol} ~ {2:xCol}, data = ${3:data}, subset = ${4:subset}, weights = ${5:weights}, na.action = ${6:na.action})",
+        "body": [
+            "lmObj <- lm(${1:yCol} ~ {2:xCol}, data = ${3:data}, subset = ${4:subset}, weights = ${5:weights}, na.action = ${6:na.action})",
             "summary(lmObj)"
         ],
         "description": "Fit a linear model"
     },
-    "Linear model with plot":{
+    "Linear model with plot": {
         "prefix": "lmplot",
-        "body": ["lmObj <- lm(${1:yCol} ~ {2:xCol}, data = ${3:data}, subset = ${4:subset}, weights = ${5:weights}, na.action = ${6:na.action})",
+        "body": [
+            "lmObj <- lm(${1:yCol} ~ {2:xCol}, data = ${3:data}, subset = ${4:subset}, weights = ${5:weights}, na.action = ${6:na.action})",
             "summary(lmObj)",
             "plot(lmObj, which=c(1)) # Plot residuals versus fitted"
         ],
@@ -285,9 +286,10 @@
     },
     "loess": {
         "prefix": "loess",
-        "body": ["loess(${1:yCol} ~ {2:xCol}, data = ${3:data}, subset = ${4:subset}, weights = ${5:weights}, span = ${6:span},",
+        "body": [
+            "loess(${1:yCol} ~ {2:xCol}, data = ${3:data}, subset = ${4:subset}, weights = ${5:weights}, span = ${6:span},",
             "degree = ${7:degree}, na.action = {8:na.action})"
-    ],
+        ],
         "description": "Local polynomial regression"
     },
     "Descriptive statistics summary": {
@@ -324,17 +326,17 @@
         "body": "${1:outFactor} <- factor(x = ${2:dataVec}, levels = ${3:levels}, exclude = ${4:exclude})",
         "description": "Create a factor (categorical variable) from a vector"
     },
-    "Matrix":{
+    "Matrix": {
         "prefix": "matrix",
         "body": "${1:outMatrix} <- matrix(data = ${2:dataVec}, nrow = ${3:nrow}, ncol = ${4:ncol}, byrow = ${5:byrow})",
         "description": "Create a matrix from a vector"
     },
-    "remove missings":{
+    "remove missings": {
         "prefix": "naomit",
         "body": "${1:newdataframe} <- na.omit(${2:dataframe})",
         "description": "Remove all rows with missing values from data frame"
     },
-    "Read CSV":{
+    "Read CSV": {
         "prefix": "readc",
         "body": "${1:dfname} <- read.csv(file = \"${2:file}\", header = ${3|TRUE,FALSE|},  sep = \"${4|\\,,;|}\", row.names = ${5:NULL},  stringsAsFactors = ${6|FALSE,TRUE|})",
         "description": "Read a data table from a comma-separated file (CSV) and create a data frame"
@@ -343,10 +345,10 @@
         "prefix": "else",
         "body": [
             "else {",
-                "   ${1:selected}",
-                "}"
+            "   ${1:selected}",
+            "}"
         ],
-        "description": "Code snippet for 'else' conditional"       
+        "description": "Code snippet for 'else' conditional"
     },
     "elseif": {
         "prefix": "elseif",
@@ -355,9 +357,9 @@
             "   ${2:selected}",
             "}"
         ],
-        "description": "Code snippet for 'else' conditional"       
+        "description": "Code snippet for 'else' conditional"
     },
-    "for":{
+    "for": {
         "prefix": "for",
         "body": [
             "for (${1:identifier} in ${2:collection}) {",
@@ -373,7 +375,7 @@
             "   ${3:selected}",
             "}"
         ],
-        "description": "Named function"       
+        "description": "Named function"
     },
     "if": {
         "prefix": "if",
@@ -382,7 +384,7 @@
             "   ${2:selected}",
             "}"
         ],
-        "description": "Code snippet for 'if' conditional"       
+        "description": "Code snippet for 'if' conditional"
     },
     "if-else block": {
         "prefix": "ifelse",
@@ -393,20 +395,81 @@
             "   ",
             "}"
         ],
-        "description": "Code snippet for 'if-else' conditional block"       
+        "description": "Code snippet for 'if-else' conditional block"
     },
-	"Region Start": {
-		"prefix": "#region",
-		"body": [
-			"#region $0"
-		],
-		"description": "Folding Region Start"
-	},
-	"Region End": {
-		"prefix": "#endregion",
-		"body": [
-			"#endregion"
-		],
-		"description": "Folding Region End"
-	}
+    "Region Start": {
+        "prefix": "#region",
+        "body": [
+            "#region $0"
+        ],
+        "description": "Folding Region Start"
+    },
+    "Region End": {
+        "prefix": "#endregion",
+        "body": [
+            "#endregion"
+        ],
+        "description": "Folding Region End"
+    },
+    "Shiny sidebar page": {
+        "prefix": "shiny sidebar page",
+        "body": [
+            "library(shiny)",
+            "",
+            "ui <- fluidPage(",
+            "    titlePanel(\"${1:title}\"),",
+            "    sidebarLayout(",
+            "        sidebarPanel(),",
+            "        mainPanel()",
+            "    )",
+            ")",
+            "",
+            "server <- function(input, output, session) {",
+            "",
+            "}",
+            "",
+            "shinyApp(ui, server)$0"
+        ],
+        "description": "Shiny sidebar page"
+    },
+    "Shiny observe event": {
+        "prefix": "shiny observe event",
+        "body": [
+            "observeEvent(${1:event}, {",
+            "    ${0}",
+            "})"
+        ],
+        "description": "Shiny observe event"
+    },
+    "Shiny withProgress": {
+        "prefix": "shiny withProgress",
+        "body": [
+            "withProgress(message = \"${1:message}\", {",
+            "${0}",
+            "})"
+        ],
+        "description": "Shiny withProgress"
+    },
+    "Shiny module": {
+        "prefix": "shiny module",
+        "body": [
+            "${1:name}ui <- function(id) {",
+            "    ns <- NS(id)",
+            "    tagList(",
+            "    ${0}",
+            "        )",
+            "    }",
+            "",
+            "${1:name} <- function(input, output, session) {",
+            "    ns <- session\\$ns",
+            "}",
+            "",
+            "# Copy in UI",
+            "#${1:name}ui(\"${1:name}ui\")",
+            "",
+            "# Copy in server",
+            "#callModule(${1:name}, \"${1:name}ui\")"
+        ],
+        "description": "Shiny module"
+    }
 }

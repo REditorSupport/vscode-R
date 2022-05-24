@@ -1,14 +1,10 @@
-
 import { Memento, window } from 'vscode';
 import * as http from 'http';
 import * as cp from 'child_process';
-import * as path from 'path';
-import * as fs from 'fs';
-import * as os from 'os';
 
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
-import { DisposableProcess, exec } from '../util';
+import { DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
 
 export interface RHelpProviderOptions {
 	// path of the R executable
@@ -53,7 +49,7 @@ export class HelpProvider {
         const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
         // const cmd = `${this.rPath} --silent --slave --no-save --no-restore -f "${scriptPath}"`;
         const args = [
-            '--slient',
+            '--silent',
             '--slave',
             '--no-save',
             '--no-restore',
@@ -62,10 +58,14 @@ export class HelpProvider {
         ];
         const cpOptions = {
             cwd: this.cwd,
-            env: { ...process.env, 'VSCR_LIM': lim },
+            env: {
+                ...process.env,
+                VSCR_LIB_PATHS: getRLibPaths(),
+                VSCR_LIM: lim
+            },
         };
 
-        const childProcess: ChildProcessWithPort = exec(this.rPath, args, cpOptions);
+        const childProcess: ChildProcessWithPort = spawn(this.rPath, args, cpOptions);
 
         let str = '';
         // promise containing the port number of the process (or 0)
@@ -221,11 +221,11 @@ export class AliasProvider {
     public async refresh(): Promise<void> {
         this.aliases = undefined;
         await this.persistentState?.update('r.helpPanel.cachedAliases', undefined);
-        this.makeAllAliases();
+        await this.makeAllAliases();
     }
 
     // get a list of all aliases
-    public getAllAliases(): rHelp.Alias[] | undefined {
+    public async getAllAliases(): Promise<rHelp.Alias[] | undefined> {
         // try this.aliases:
         if(this.aliases){
             return this.aliases;
@@ -239,16 +239,16 @@ export class AliasProvider {
         }
         
         // try to make new aliases (returns undefined if unsuccessful):
-        const newAliases = this.makeAllAliases();
+        const newAliases = await this.makeAllAliases();
         this.aliases = newAliases;
         this.persistentState?.update('r.helpPanel.cachedAliases', newAliases);
         return newAliases;
     }
 
     // converts aliases grouped by package to a flat list of aliases
-    private makeAllAliases(): rHelp.Alias[] | undefined {
+    private async makeAllAliases(): Promise<rHelp.Alias[] | undefined> {
         // get aliases from R (nested format)
-        const allPackageAliases = this.getAliasesFromR();
+        const allPackageAliases = await this.getAliasesFromR();
         if(!allPackageAliases){
             return undefined;
         }
@@ -270,33 +270,41 @@ export class AliasProvider {
     }
 
     // call R script `getAliases.R` and parse the output
-    private getAliasesFromR(): undefined | AllPackageAliases {
-
-        // get from R
-		const lim = '---vsc---'; // must match the lim used in R!
-		const re = new RegExp(`^.*?${lim}(.*)${lim}.*$`, 'ms');
-        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-R-aliases'));
-        const tempFile = path.join(tempDir, 'aliases.json');
-        const cmd = `"${this.rPath}" --silent --no-save --no-restore --slave -f "${this.rScriptFile}" > "${tempFile}"`;
-
-        let allPackageAliases: undefined | AllPackageAliases = undefined;
-        try{
-            // execute R script 'getAliases.R'
-            // aliases will be written to tempFile
-            cp.execSync(cmd, { cwd: this.cwd });
-
-            // read and parse aliases
-            const txt = fs.readFileSync(tempFile, 'utf-8');
-            const json = txt.replace(re, '$1');
-            if(json){
-                allPackageAliases = <{[key: string]: PackageAliases}> JSON.parse(json) || {};
+    private async getAliasesFromR(): Promise<undefined | AllPackageAliases> {
+        const lim = '---vsc---';
+        const options: cp.CommonOptions = {
+            cwd: this.cwd,
+            env: {
+                ...process.env,
+                VSCR_LIB_PATHS: getRLibPaths(),
+                VSCR_LIM: lim
             }
-        } catch(e: unknown){
+        };
+
+        const args = [
+            '--silent',
+            '--slave',
+            '--no-save',
+            '--no-restore',
+            '-f',
+            this.rScriptFile
+        ];
+        
+        try {
+            const result = await spawnAsync(this.rPath, args, options);
+            if (result.status !== 0) {
+                throw result.error || new Error(result.stderr);
+            }
+            const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
+            const match = re.exec(result.stdout);
+            if (match.length !== 2) {
+                throw new Error('Could not parse R output.');
+            }
+            const json = match[1];
+            return <AllPackageAliases>JSON.parse(json) || {};
+        } catch (e) {
             console.log(e);
-            void window.showErrorMessage((<{message: string}>e).message);
-        } finally {
-            fs.rmdirSync(tempDir, {recursive: true});
+            void window.showErrorMessage((<{ message: string }>e).message);
         }
-        return allPackageAliases;
     }
 }

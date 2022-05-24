@@ -11,7 +11,7 @@ import * as assert from 'assert';
 import { extendSelection } from '../../selection';
 
 // Defines a Mocha test suite to group tests of similar kind together
-suite('Extension Tests', () => {
+suite('extendSelection Tests', () => {
 
     test('Selecting multi-line {} bracketed expression', () => {
         const doc = `
@@ -613,6 +613,36 @@ suite('Extension Tests', () => {
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 5);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(2, f, doc.length).endLine, 5);
+    });
+
+    test('extendSelection ignores commented out pipes - part 1', () => {
+        const doc = `
+        "a" %>%
+            print('a') # %>%
+        print("hi there")
+        `.split('\n');
+        function f(i: number) { return (doc[i]); }
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
+    });
+
+    test('extendSelection ignores commented out pipes - part 2', () => {
+        const doc = `
+        "a" %>%
+            print('a"inner comment"') # %>%
+        print("hi there")
+        `.split('\n');
+        function f(i: number) { return (doc[i]); }
+        assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 2);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
 
 });

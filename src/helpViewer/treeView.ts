@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import { RHelp } from '.';
+import { extensionContext } from '../extension';
 import { doWithProgress } from '../util';
 import { Package, Topic, TopicType } from './packages';
 
@@ -44,6 +45,7 @@ type cmdName = keyof typeof nodeCommands;
 // necessary to implement Node.refresh(),
 // which is used to signal from a node that its contents/children have changed
 export class HelpTreeWrapper {
+    public readonly viewId = 'rHelpPages';
     public rHelp: RHelp;
     public helpView: vscode.TreeView<Node>;
     public helpViewProvider: HelpViewProvider;
@@ -52,7 +54,7 @@ export class HelpTreeWrapper {
         this.rHelp = rHelp;
         this.helpViewProvider = new HelpViewProvider(this);
         this.helpView = vscode.window.createTreeView(
-            'rHelpPages',
+            this.viewId,
             {
                 treeDataProvider: this.helpViewProvider,
                 showCollapseAll: true
@@ -61,12 +63,12 @@ export class HelpTreeWrapper {
 
         // register the commands defiend in `nodeCommands`
         // they still need to be defined in package.json (apart from CALLBACK)
-        for(const cmd in nodeCommands){
-            vscode.commands.registerCommand(nodeCommands[cmd], (node: Node | undefined) => {
+        for (const cmd in nodeCommands) {
+            extensionContext.subscriptions.push(vscode.commands.registerCommand(nodeCommands[cmd], (node: Node | undefined) => {
                 // treeview-root is represented by `undefined`
                 node ||= this.helpViewProvider.rootItem;
                 node.handleCommand(<cmdName>cmd);
-            });
+            }));
         }
     }
 
@@ -427,7 +429,7 @@ class PkgRootNode extends MetaNode {
 
 
 // contains the topics belonging to an individual package
-class PackageNode extends Node {
+export class PackageNode extends Node {
     // TreeItem
     public command = undefined;
     public collapsibleState = CollapsibleState.Collapsed;
@@ -458,7 +460,7 @@ class PackageNode extends Node {
         }
     }
 
-    public async _handleCommand(cmd: cmdName){
+    public async _handleCommand(cmd: cmdName): Promise<void> {
         if(cmd === 'clearCache'){
             // useful e.g. when working on a package
             this.rHelp.clearCachedFiles(new RegExp(`^/library/${this.pkg.name}/`));
@@ -486,7 +488,7 @@ class PackageNode extends Node {
         }
     }
 
-    async makeChildren(forQuickPick: boolean = false) {
+    async makeChildren(forQuickPick: boolean = false): Promise<TopicNode[]> {
         const summarizeTopics = (
             forQuickPick ? false : (this.parent.summarizeTopics ?? true)
         );
@@ -586,7 +588,7 @@ class RefreshNode extends MetaNode {
     iconPath = new vscode.ThemeIcon('refresh');
 
     async callBack(){
-        await doWithProgress(() => this.rHelp.refresh());
+        await doWithProgress(() => this.rHelp.refresh(), this.wrapper.viewId);
         this.parent.pkgRootNode.refresh();
     }
 }

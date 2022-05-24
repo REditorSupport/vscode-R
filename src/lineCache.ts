@@ -54,7 +54,11 @@ export function cleanLine(text: string): string {
     for (let i = 0; i < text.length; i++) {
         const c = text[i];
         if (isQuote(c)) {
-            withinQuotes = (withinQuotes === c) ? null : c;
+            if (withinQuotes === null) {
+                withinQuotes = c;
+            } else if (withinQuotes === c) {
+                withinQuotes = null;
+            }
         }
         if (isComment(c) && !withinQuotes) {
             break;
@@ -62,7 +66,6 @@ export function cleanLine(text: string): string {
 
         cleaned += c;
     }
-
     return (cleaned.trimEnd());
 }
 

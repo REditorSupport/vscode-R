@@ -8,7 +8,6 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
 import { extensionContext } from './extension';
-import * as kill from 'tree-kill';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -147,6 +146,21 @@ export function checkIfFileExists(filePath: string): boolean {
     return existsSync(filePath);
 }
 
+export function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder {
+    if (vscode.workspace.workspaceFolders !== undefined) {
+        if (vscode.workspace.workspaceFolders.length === 1) {
+            return vscode.workspace.workspaceFolders[0];
+        } else if (vscode.workspace.workspaceFolders.length > 1) {
+            const currentDocument = vscode.window.activeTextEditor;
+            if (currentDocument !== undefined) {
+                return vscode.workspace.getWorkspaceFolder(currentDocument.document.uri);
+            }
+        }
+    }
+
+    return undefined;
+}
+
 // Drop-in replacement for fs-extra.readFile (),
 // passes to guest service if the caller is a guest
 // This can be used wherever fs.readFile() is used,
@@ -247,7 +261,7 @@ export async function executeAsTask(name: string, cmdOrProcess: string, args?: s
 // executes a callback and shows a 'busy' progress bar during the execution
 // synchronous callbacks are converted to async to properly render the progress bar
 // default location is in the help pages tree view
-export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, progress?: vscode.Progress<T>) => T | Promise<T>, location: string | vscode.ProgressLocation = 'rHelpPages', title?: string, cancellable?: boolean): Promise<T> {
+export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, progress?: vscode.Progress<T>) => T | Promise<T>, location: (string | vscode.ProgressLocation) = vscode.ProgressLocation.Window, title?: string, cancellable?: boolean): Promise<T> {
     const location2 = (typeof location === 'string' ? { viewId: location } : location);
     const options: vscode.ProgressOptions = {
         location: location2,
@@ -272,7 +286,7 @@ export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, p
 export async function getCranUrl(path: string = '', cwd?: string): Promise<string> {
     const defaultCranUrl = 'https://cran.r-project.org/';
     // get cran URL from R. Returns empty string if option is not set.
-    const baseUrl = await executeRCommand('cat(getOption(\'repos\')[\'CRAN\'])', undefined, cwd);
+    const baseUrl = await executeRCommand('cat(getOption(\'repos\')[\'CRAN\'])', cwd);
     let url: string;
     try {
         url = new URL(path, baseUrl).toString();
@@ -282,46 +296,51 @@ export async function getCranUrl(path: string = '', cwd?: string): Promise<strin
     return url;
 }
 
-
-
+export function getRLibPaths(): string {
+    return config().get<string[]>('libPaths').join('\n');
+}
 
 // executes an R command returns its output to stdout
 // uses a regex to filter out output generated e.g. by code in .Rprofile
-// returns the provided fallBack when the command failes
+// returns the provided fallback when the command failes
 //
 // WARNING: Cannot handle double quotes in the R command! (e.g. `print("hello world")`)
 // Single quotes are ok.
 //
-export async function executeRCommand(rCommand: string, fallBack?: string, cwd?: string): Promise<string | undefined> {
-    const lim = '---vsc---';
-    const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
+export async function executeRCommand(rCommand: string, cwd?: string, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
+    const rPath = await getRpath();
 
+    const options: cp.CommonOptions = {
+        cwd: cwd,
+    };
+
+    const lim = '---vsc---';
     const args = [
         '--silent',
         '--slave',
         '--no-save',
         '--no-restore',
+        '-e', `cat('${lim}')`,
+        '-e', rCommand,
+        '-e', `cat('${lim}')`
     ];
-
-    const rPath = await getRpath(true);
-
-    const options: cp.ExecSyncOptionsWithStringEncoding = {
-        cwd: cwd,
-        encoding: 'utf-8'
-    };
-
-    const cmd = (
-        `${rPath} ${args.join(' ')} -e "cat('${lim}')" -e "${rCommand}" -e "cat('${lim}')"`
-    );
 
     let ret: string = undefined;
 
     try {
-        const stdout = cp.execSync(cmd, options);
-        ret = stdout.replace(re, '$1');
+        const result = await spawnAsync(rPath, args, options);
+        if (result.status !== 0) {
+            throw result.error || new Error(result.stderr);
+        }
+        const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
+        const match = re.exec(result.stdout);
+        if (match.length !== 2) {
+            throw new Error('Could not parse R output.');   
+        }
+        ret = match[1];
     } catch (e) {
-        if (fallBack) {
-            ret = fallBack;
+        if (fallback) {
+            ret = (typeof fallback === 'function' ? fallback(e) : fallback);
         } else {
             console.warn(e);
         }
@@ -410,24 +429,21 @@ export function asDisposable<T>(toDispose: T, disposeFunction: (...args: unknown
 }
 
 export type DisposableProcess = cp.ChildProcessWithoutNullStreams & vscode.Disposable;
-export function exec(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
-    let proc: cp.ChildProcess;
-    if (process.platform === 'win32') {
-        const cmd = `"${command}" ${args.map(s => `"${s}"`).join(' ')}`;
-        proc = cp.exec(cmd, options);
-    } else {
-        proc = cp.spawn(command, args, options);
-    }
+export function spawn(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
+    const proc = cp.spawn(command, args, options);
+    console.log(`Process ${proc.pid} spawned`);
     let running = true;
     const exitHandler = () => {
         running = false;
+        console.log(`Process ${proc.pid} exited`);
     };
     proc.on('exit', exitHandler);
     proc.on('error', exitHandler);
     const disposable = asDisposable(proc, () => {
         if (running) {
+            console.log(`Process ${proc.pid} terminating`);
             if (process.platform === 'win32') {
-                kill(proc.pid);
+                cp.spawnSync('taskkill', ['/pid', proc.pid.toString(), '/f', '/t']);
             } else {
                 proc.kill('SIGKILL');
             }
@@ -437,4 +453,70 @@ export function exec(command: string, args?: ReadonlyArray<string>, options?: cp
         }
     });
     return disposable;
+}
+
+export async function spawnAsync(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): Promise<cp.SpawnSyncReturns<string>> {
+    return new Promise((resolve) => {
+        const result: cp.SpawnSyncReturns<string> = {
+            error: undefined,
+            pid: undefined,
+            output: undefined,
+            stdout: '',
+            stderr: '',
+            status: undefined,
+            signal: undefined
+        };
+        try {
+            const childProcess = spawn(command, args, options, onDisposed);
+            result.pid = childProcess.pid;
+            childProcess.stdout?.on('data', (chunk: Buffer) => {
+                result.stdout += chunk.toString();
+            });
+            childProcess.stderr?.on('data', (chunk: Buffer) => {
+                result.stderr += chunk.toString();
+            });
+            childProcess.on('error', (err: Error) => {
+                result.error = err;
+            });
+            childProcess.on('exit', (code, signal) => {
+                result.status = code;
+                result.signal = signal;
+                resolve(result);
+            });
+        } catch (e) {
+            result.error = (e instanceof Error) ? e : new Error(e);
+            resolve(result);
+        }
+    });
+}
+
+/**
+ * Check if an R package is available or not
+ *
+ * @param name the R package name to ask user to install
+ * @returns a boolean Promise
+ */
+export async function promptToInstallRPackage(name: string, section: string, cwd: string, installMsg?: string, postInstallMsg?: string): Promise<void> {
+    const _config = config();
+    const prompt = _config.get<boolean>(section);
+    if (!prompt) {
+        return;
+    }
+    if (installMsg === undefined) {
+        installMsg = `R package {${name}} is not installed. Do you want to install it?`;
+    }
+    await vscode.window.showErrorMessage(installMsg, 'Yes', 'No', 'Never ask again')
+        .then(async function (select) {
+            if (select === 'Yes') {
+                const repo = await getCranUrl('', cwd);
+                const rPath = await getRpath();
+                const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `install.packages('${name}', repos='${repo}')`];
+                void executeAsTask('Install Package', rPath, args, true);
+                if (postInstallMsg) {
+                    void vscode.window.showInformationMessage(postInstallMsg, 'OK');
+                }
+            } else if (select === 'Never ask again') {
+                void _config.update(section, false);
+            }
+        });
 }

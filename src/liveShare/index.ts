@@ -14,7 +14,7 @@ import { initTreeView, rLiveShareProvider, shareWorkspace, ToggleNode } from './
 import { Commands, Callback, liveShareOnRequest, liveShareRequest } from './shareCommands';
 
 import { HelpFile } from '../helpViewer';
-import { globalenv } from '../session';
+import { WorkspaceData, workspaceData } from '../session';
 import { config } from '../util';
 
 /// LiveShare
@@ -222,15 +222,15 @@ export class HostService {
     // This way, we don't have to re-create a guest version of the session
     // watcher, and can rely on the host to tell when something needs to be
     // updated
-    public notifyGlobalenv(hostEnv: string): void {
+    public notifyWorkspace(hostWorkspace: WorkspaceData): void {
         if (this._isStarted && shareWorkspace) {
-            void liveShareRequest(Callback.NotifyEnvUpdate, hostEnv);
+            void liveShareRequest(Callback.NotifyWorkspaceUpdate, hostWorkspace);
         }
     }
     public notifyRequest(file: string, force: boolean = false): void {
         if (this._isStarted && shareWorkspace) {
             void liveShareRequest(Callback.NotifyRequestUpdate, file, force);
-            void this.notifyGlobalenv(globalenv);
+            void this.notifyWorkspace(workspaceData);
         }
     }
     public notifyPlot(file: string): void {
@@ -279,8 +279,8 @@ export class GuestService {
             void liveShareRequest(Callback.RequestAttachGuest);
             // focus guest term if it exists
             const rTermNameOptions = ['R [Shared]', 'R Interactive [Shared]'];
-            const activeTerminalName = vscode.window.activeTerminal.name;
-            if (!rTermNameOptions.includes(activeTerminalName)) {
+            const activeTerminalName = vscode.window.activeTerminal?.name;
+            if (activeTerminalName && !rTermNameOptions.includes(activeTerminalName)) {
                 for (const [i] of vscode.window.terminals.entries()) {
                     const terminal = vscode.window.terminals[i];
                     const terminalName = terminal.name;

@@ -9,7 +9,9 @@ import net = require('net');
 import url = require('url');
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { DisposableProcess, getRpath, exec } from './util';
+import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn } from './util';
+import { extensionContext } from './extension';
+import { CommonOptions } from 'child_process';
 
 export class LanguageService implements Disposable {
   private readonly clients: Map<string, LanguageClient> = new Map();
@@ -23,8 +25,35 @@ export class LanguageService implements Disposable {
     return this.stopLanguageService();
   }
 
+  private spawnServer(client: LanguageClient, rPath: string, args: readonly string[], options: CommonOptions): DisposableProcess {
+    const childProcess = spawn(rPath, args, options);
+    client.outputChannel.appendLine(`R Language Server (${childProcess.pid}) started`);
+    childProcess.stderr.on('data', (chunk: Buffer) => {
+      client.outputChannel.appendLine(chunk.toString());
+    });
+    childProcess.on('exit', (code, signal) => {
+      client.outputChannel.appendLine(`R Language Server (${childProcess.pid}) exited ` +
+        (signal ? `from signal ${signal}` : `with exit code ${code}`));
+      if (code !== 0) {
+        if (code === 10) {
+          // languageserver is not installed.
+          void promptToInstallRPackage(
+            'languageserver', 'lsp.promptToInstall', options.cwd,
+            'R package {languageserver} is required to enable R language service features such as code completion, function signature, find references, etc. Do you want to install it?',
+            'You may need to reopen an R file to start the language service after the package is installed.'
+          );
+        } else {
+          client.outputChannel.show();
+        }
+      }
+      void client.stop();
+    });
+    return childProcess;
+  }
+
   private async createClient(config: WorkspaceConfiguration, selector: DocumentFilter[],
     cwd: string, workspaceFolder: WorkspaceFolder, outputChannel: OutputChannel): Promise<LanguageClient> {
+
     let client: LanguageClient;
 
     const debug = config.get<boolean>('lsp.debug');
@@ -34,18 +63,30 @@ export class LanguageService implements Disposable {
     }
     const use_stdio = config.get<boolean>('lsp.use_stdio');
     const env = Object.create(process.env);
+    env.VSCR_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
+    env.VSCR_LIB_PATHS = getRLibPaths();
+
     const lang = config.get<string>('lsp.lang');
     if (lang !== '') {
       env.LANG = lang;
     } else if (env.LANG === undefined) {
       env.LANG = 'en_US.UTF-8';
     }
+
     if (debug) {
       console.log(`LANG: ${env.LANG}`);
     }
 
+    const rScriptPath = extensionContext.asAbsolutePath('R/languageServer.R');
     const options = { cwd: cwd, env: env };
-    const initArgs: string[] = config.get<string[]>('lsp.args').concat('--silent', '--slave');
+    const args = config.get<string[]>('lsp.args').concat(
+      '--silent',
+      '--slave',
+      '--no-save',
+      '--no-restore',
+      '-f',
+      rScriptPath
+    );
 
     const tcpServerOptions = () => new Promise<DisposableProcess | StreamInfo>((resolve, reject) => {
       // Use a TCP socket because of problems with blocking STDIO
@@ -65,23 +106,8 @@ export class LanguageService implements Disposable {
       // Listen on random port
       server.listen(0, '127.0.0.1', () => {
         const port = (server.address() as net.AddressInfo).port;
-        const expr = debug ? `languageserver::run(port=${port},debug=TRUE)` : `languageserver::run(port=${port})`;
-        // const cmd = `${rPath} ${initArgs.join(' ')} -e "${expr}"`;
-        const args = initArgs.concat(['-e', expr]);
-        const childProcess = exec(rPath, args, options);
-        client.outputChannel.appendLine(`R Language Server (${childProcess.pid}) started`);
-        childProcess.stderr.on('data', (chunk: Buffer) => {
-          client.outputChannel.appendLine(chunk.toString());
-        });
-        childProcess.on('exit', (code, signal) => {
-          client.outputChannel.appendLine(`R Language Server (${childProcess.pid}) exited ` +
-            (signal ? `from signal ${signal}` : `with exit code ${code}`));
-          if (code !== 0) {
-            client.outputChannel.show();
-          }
-          void client.stop();
-        });
-        return childProcess;
+        env.VSCR_LSP_PORT = String(port);
+        return this.spawnServer(client, rPath, args, options);
       });
     });
 
@@ -111,12 +137,6 @@ export class LanguageService implements Disposable {
 
     // Create the language client and start the client.
     if (use_stdio && process.platform !== 'win32') {
-      let args: string[];
-      if (debug) {
-        args = initArgs.concat(['-e', `languageserver::run(debug=TRUE)`]);
-      } else {
-        args = initArgs.concat(['-e', `languageserver::run()`]);
-      }
       client = new LanguageClient('r', 'R Language Server', { command: rPath, args: args, options: options }, clientOptions);
     } else {
       client = new LanguageClient('r', 'R Language Server', tcpServerOptions, clientOptions);
@@ -169,8 +189,10 @@ export class LanguageService implements Disposable {
           ];
           const client = await self.createClient(config, documentSelector,
             path.dirname(document.uri.fsPath), folder, outputChannel);
-          client.start();
-          self.clients.set(key, client);
+          if (client) {
+            extensionContext.subscriptions.push(client.start());
+            self.clients.set(key, client);
+          }
           self.initSet.delete(key);
         }
         return;
@@ -188,8 +210,10 @@ export class LanguageService implements Disposable {
             { scheme: 'file', language: 'rmd', pattern: pattern },
           ];
           const client = await self.createClient(config, documentSelector, folder.uri.fsPath, folder, outputChannel);
-          client.start();
-          self.clients.set(key, client);
+          if (client) {
+            extensionContext.subscriptions.push(client.start());
+            self.clients.set(key, client);
+          }
           self.initSet.delete(key);
         }
 
@@ -205,8 +229,10 @@ export class LanguageService implements Disposable {
               { scheme: 'untitled', language: 'rmd' },
             ];
             const client = await self.createClient(config, documentSelector, os.homedir(), undefined, outputChannel);
-            client.start();
-            self.clients.set(key, client);
+            if (client) {
+              extensionContext.subscriptions.push(client.start());
+              self.clients.set(key, client);
+            }
             self.initSet.delete(key);
           }
           return;
@@ -222,8 +248,10 @@ export class LanguageService implements Disposable {
             ];
             const client = await self.createClient(config, documentSelector,
               path.dirname(document.uri.fsPath), undefined, outputChannel);
-            client.start();
-            self.clients.set(key, client);
+            if (client) {
+              extensionContext.subscriptions.push(client.start());
+              self.clients.set(key, client);
+            }
             self.initSet.delete(key);
           }
           return;

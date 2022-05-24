@@ -2,7 +2,7 @@ import * as util from '../util';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import path = require('path');
-import { DisposableProcess, exec } from '../util';
+import { DisposableProcess, spawn } from '../util';
 
 export enum KnitWorkingDirectory {
 	documentDirectory = 'document directory',
@@ -67,16 +67,23 @@ export abstract class RMarkdownManager {
 				const fileName = args.fileName;
 				// const cmd = `${this.rPath} --silent --slave --no-save --no-restore -f "${scriptPath}"`;
 				const cpArgs = [
-					'--slient',
+					'--silent',
 					'--slave',
 					'--no-save',
 					'--no-restore',
 					'-f',
 					scriptPath
 				];
+				// When there's no LANG variable, we should try to set to a UTF-8 compatible one, as R relies
+				// on locale setting (based on LANG) to render certain characters.
+				// See https://github.com/REditorSupport/vscode-R/issues/933
+				const env = process.env;
+				if (env.LANG === undefined) {
+					env.LANG = 'en_US.UTF-8';
+				}
 				const processOptions: cp.SpawnOptions = {
 					env: {
-						...process.env,
+						...env,
 						...scriptArgs
 					},
 					cwd: args.workingDirectory,
@@ -84,7 +91,7 @@ export abstract class RMarkdownManager {
 
 				let childProcess: DisposableProcess;
 				try {
-					childProcess = exec(this.rPath, cpArgs, processOptions, () => {
+					childProcess = spawn(this.rPath, cpArgs, processOptions, () => {
 						rMarkdownOutput.appendLine('[VSC-R] terminating R process');
 						printOutput = false;
 					});

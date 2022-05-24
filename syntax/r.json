@@ -144,6 +144,17 @@
                     "match": "([[:alpha:].][[:alnum:]._]*)\\s*(=)(?=[^=])"
                 },
                 {
+                    "captures": {
+                        "1": {
+                            "name": "variable.parameter.r"
+                        },
+                        "2": {
+                            "name": "keyword.operator.assignment.r"
+                        }
+                    },
+                    "match": "(`[^`]+`)\\s*(=)(?=[^=])"
+                },
+                {
                     "match": "\\b([\\d_][[:alnum:]._]+)\\b",
                     "name": "invalid.illegal.variable.other.r"
                 },
@@ -153,6 +164,10 @@
                 },
                 {
                     "match": "\\b([[:alnum:]._]+)\\b",
+                    "name": "variable.other.r"
+                },
+                {
+                    "match": "(`[^`]+`)",
                     "name": "variable.other.r"
                 }
             ]
@@ -208,6 +223,96 @@
         "strings": {
             "patterns": [
                 {
+                    "begin": "[rR]\"(-*)\\[",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.begin.r"
+                        }
+                    },
+                    "end": "\\]\\1\"",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.end.r"
+                        }
+                    },
+                    "name": "string.quoted.double.raw.r"
+                },
+                {
+                    "begin": "[rR]'(-*)\\[",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.begin.r"
+                        }
+                    },
+                    "end": "\\]\\1'",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.end.r"
+                        }
+                    },
+                    "name": "string.quoted.single.raw.r"
+                },
+                {
+                    "begin": "[rR]\"(-*)\\{",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.begin.r"
+                        }
+                    },
+                    "end": "\\}\\1\"",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.end.r"
+                        }
+                    },
+                    "name": "string.quoted.double.raw.r"
+                },
+                {
+                    "begin": "[rR]'(-*)\\{",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.begin.r"
+                        }
+                    },
+                    "end": "\\}\\1'",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.end.r"
+                        }
+                    },
+                    "name": "string.quoted.single.raw.r"
+                },
+                {
+                    "begin": "[rR]\"(-*)\\(",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.begin.r"
+                        }
+                    },
+                    "end": "\\)\\1\"",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.end.r"
+                        }
+                    },
+                    "name": "string.quoted.double.raw.r"
+                },
+                {
+                    "begin": "[rR]'(-*)\\(",
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.begin.r"
+                        }
+                    },
+                    "end": "\\)\\1'",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.raw.end.r"
+                        }
+                    },
+                    "name": "string.quoted.single.raw.r"
+                },
+                {
                     "begin": "\"",
                     "beginCaptures": {
                         "0": {
@@ -246,27 +351,6 @@
                         {
                             "match": "\\\\.",
                             "name": "constant.character.escape.r"
-                        }
-                    ]
-                },
-                {
-                    "begin": "`",
-                    "beginCaptures": {
-                        "0": {
-                            "name": "punctuation.definition.string.begin.r"
-                        }
-                    },
-                    "end": "`",
-                    "endCaptures": {
-                        "0": {
-                            "name": "punctuation.definition.string.end.r"
-                        }
-                    },
-                    "name": "variable.parameter.r",
-                    "patterns": [
-                        {
-                            "match": "\\\\.",
-                            "name": "variable.parameter.r"
                         }
                     ]
                 }
@@ -356,7 +440,7 @@
         "function-declarations": {
             "patterns": [
                 {
-                    "match": "((?:`[^`\\\\]*(?:\\\\.[^`\\\\]*)*`)|(?:[[:alpha:].][[:alnum:]._]*))\\s*(<?<-|=(?!=))\\s*(function)",
+                    "match": "((?:`[^`\\\\]*(?:\\\\.[^`\\\\]*)*`)|(?:[[:alpha:].][[:alnum:]._]*))\\s*(<?<-|=(?!=))\\s*(function|\\\\)(?!\\w)",
                     "captures": {
                         "1": {
                             "name": "entity.name.function.r"
@@ -403,7 +487,7 @@
                         },
                         {
                             "match": "(?:[a-zA-Z._][\\w.]*|`[^`]+`)",
-                            "name": "variable.parameter.r"
+                            "name": "variable.other.r"
                         },
                         {
                             "begin": "(?==)",
@@ -454,7 +538,7 @@
                 },
                 {
                     "match": "(?:[a-zA-Z._][\\w.]*|`[^`]+`)(?=\\s[^=])",
-                    "name": "variable.parameter.r"
+                    "name": "variable.other.r"
                 },
                 {
                     "begin": "(?==)",
@@ -468,12 +552,6 @@
                 {
                     "match": ",",
                     "name": "punctuation.separator.parameters.r"
-                },
-                {
-                    "end": "\\)",
-                    "endCaptures": {
-                        "0": "punctuation.section.parens.end.r"
-                    }
                 },
                 {
                     "include": "source.r"

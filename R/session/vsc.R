@@ -31,6 +31,7 @@ load_settings <- function() {
     vsc.browser = setting(session$viewers$viewColumn$browser, Disable = FALSE),
     vsc.viewer = setting(session$viewers$viewColumn$viewer, Disable = FALSE),
     vsc.page_viewer = setting(session$viewers$viewColumn$pageViewer, Disable = FALSE),
+    vsc.row_limit = session$data$rowLimit,
     vsc.view = setting(session$viewers$viewColumn$view, Disable = FALSE),
     vsc.helpPanel = setting(session$viewers$viewColumn$helpPanel, Disable = FALSE)
   ))
@@ -134,21 +135,21 @@ globalenv_cache <- new.env(parent = emptyenv())
 inspect_env <- function(env, cache) {
   all_names <- ls(env)
   rm(list = setdiff(names(globalenv_cache), all_names), envir = cache)
-  is_promise <- rlang::env_binding_are_lazy(env, all_names)
-  is_active <- rlang::env_binding_are_active(env, all_names)
+  is_active <- vapply(all_names, bindingIsActive, logical(1), USE.NAMES = TRUE, env)
+  is_promise <- rlang::env_binding_are_lazy(env, all_names[!is_active])
   show_object_size <- getOption("vsc.show_object_size", FALSE)
   object_length_limit <- getOption("vsc.object_length_limit", 2000)
   object_timeout <- getOption("vsc.object_timeout", 50) / 1000
   str_max_level <- getOption("vsc.str.max.level", 0)
   objs <- lapply(all_names, function(name) {
-    if (is_promise[[name]]) {
+    if (isTRUE(is_promise[name])) {
       info <- list(
         class = "promise",
         type = scalar("promise"),
         length = scalar(0L),
         str = scalar("(promise)")
       )
-    } else if (is_active[[name]]) {
+    } else if (isTRUE(is_active[name])) {
       info <- list(
         class = "active_binding",
         type = scalar("active_binding"),
@@ -196,7 +197,9 @@ inspect_env <- function(env, cache) {
           .DollarNames(obj, pattern = "")
         } else if (is.recursive(obj)) {
           names(obj)
-        } else NULL
+        } else {
+          NULL
+        }
 
         if (length(obj_names)) {
           info$names <- obj_names
@@ -207,7 +210,7 @@ inspect_env <- function(env, cache) {
         info$slots <- slotNames(obj)
       }
 
-      if (is.list(obj) && !is.null(dim(obj))) {
+      if (!is.null(dim(obj))) {
         info$dim <- dim(obj)
       }
     }
@@ -220,25 +223,26 @@ inspect_env <- function(env, cache) {
 dir_session <- file.path(tempdir, "vscode-R")
 dir.create(dir_session, showWarnings = FALSE, recursive = TRUE)
 
-removeTaskCallback("vsc.globalenv")
+removeTaskCallback("vsc.workspace")
 show_globalenv <- isTRUE(getOption("vsc.globalenv", TRUE))
-if (show_globalenv) {
-  globalenv_file <- file.path(dir_session, "globalenv.json")
-  globalenv_lock_file <- file.path(dir_session, "globalenv.lock")
-  file.create(globalenv_lock_file, showWarnings = FALSE)
+workspace_file <- file.path(dir_session, "workspace.json")
+workspace_lock_file <- file.path(dir_session, "workspace.lock")
+file.create(workspace_lock_file, showWarnings = FALSE)
 
-  update_globalenv <- function(...) {
-    tryCatch({
-      objs <- inspect_env(.GlobalEnv, globalenv_cache)
-      jsonlite::write_json(objs, globalenv_file, force = TRUE, pretty = FALSE)
-      cat(get_timestamp(), file = globalenv_lock_file)
-    }, error = message)
-    TRUE
-  }
-
-  update_globalenv()
-  addTaskCallback(update_globalenv, name = "vsc.globalenv")
+update_workspace <- function(...) {
+  tryCatch({
+    data <- list(
+      search = search()[-1],
+      loaded_namespaces = loadedNamespaces(),
+      globalenv = if (show_globalenv) inspect_env(.GlobalEnv, globalenv_cache) else NULL
+    )
+    jsonlite::write_json(data, workspace_file, force = TRUE, pretty = FALSE)
+    cat(get_timestamp(), file = workspace_lock_file)
+  }, error = message)
+  TRUE
 }
+update_workspace()
+addTaskCallback(update_workspace, name = "vsc.workspace")
 
 removeTaskCallback("vsc.plot")
 use_httpgd <- identical(getOption("vsc.use_httpgd", FALSE), TRUE)
@@ -320,6 +324,11 @@ show_view <- !identical(getOption("vsc.view", "Two"), FALSE)
 if (show_view) {
   get_column_def <- function(name, field, value) {
     filter <- TRUE
+    tooltip <- sprintf(
+      "class: [%s], type: %s",
+      toString(class(value)),
+      typeof(value)
+    )
     if (is.numeric(value)) {
       type <- "numericColumn"
       if (is.null(attr(value, "class"))) {
@@ -334,6 +343,7 @@ if (show_view) {
     }
     list(
       headerName = name,
+      headerTooltip = tooltip,
       field = field,
       type = type,
       filter = filter
@@ -346,27 +356,27 @@ if (show_view) {
     }
 
     if (is.data.frame(data)) {
-      nrow <- nrow(data)
-      colnames <- colnames(data)
-      if (is.null(colnames)) {
-        colnames <- sprintf("V%d", seq_len(ncol(data)))
+      .nrow <- nrow(data)
+      .colnames <- colnames(data)
+      if (is.null(.colnames)) {
+        .colnames <- sprintf("V%d", seq_len(ncol(data)))
       } else {
-        colnames <- trimws(colnames)
+        .colnames <- trimws(.colnames)
       }
       if (.row_names_info(data) > 0L) {
         rownames <- rownames(data)
         rownames(data) <- NULL
       } else {
-        rownames <- seq_len(nrow)
+        rownames <- seq_len(.nrow)
       }
-      colnames <- c("(row)", colnames)
-      fields <- sprintf("x%d", seq_along(colnames))
+      .colnames <- c("(row)", .colnames)
+      fields <- sprintf("x%d", seq_along(.colnames))
       data <- c(list(" " = rownames), .subset(data))
       names(data) <- fields
       class(data) <- "data.frame"
-      attr(data, "row.names") <- .set_row_names(nrow)
+      attr(data, "row.names") <- .set_row_names(.nrow)
       columns <- .mapply(get_column_def,
-        list(colnames, fields, data),
+        list(.colnames, fields, data),
         NULL
       )
       list(
@@ -379,17 +389,31 @@ if (show_view) {
   }
 
   show_dataview <- function(x, title, uuid = NULL,
-                            viewer = getOption("vsc.view", "Two")) {
+                            viewer = getOption("vsc.view", "Two"),
+                            row_limit = abs(getOption("vsc.row_limit", 0))) {
+    as_truncated_data <- function(.data) {
+      .nrow <- nrow(.data)
+      if (row_limit != 0 && row_limit < .nrow) {
+        title <<- sprintf("%s (limited to %d/%d)", title, row_limit, .nrow)
+        .data <- utils::head(.data, n = row_limit)
+      }
+      return(.data)
+    }
+
     if (missing(title)) {
       sub <- substitute(x)
       title <- deparse(sub, nlines = 1)
     }
+    if (inherits(x, "ArrowTabular")) {
+      x <- as_truncated_data(x)
+      x <- as.data.frame(x)
+    }
     if (is.environment(x)) {
       all_names <- ls(x)
-      is_promise <- rlang::env_binding_are_lazy(x, all_names)
-      is_active <- rlang::env_binding_are_active(x, all_names)
+      is_active <- vapply(all_names, bindingIsActive, logical(1), USE.NAMES = TRUE, x)
+      is_promise <- rlang::env_binding_are_lazy(x, all_names[!is_active])
       x <- lapply(all_names, function(name) {
-        if (is_promise[[name]]) {
+        if (isTRUE(is_promise[name])) {
           data.frame(
             class = "promise",
             type = "promise",
@@ -399,7 +423,7 @@ if (show_view) {
             stringsAsFactors = FALSE,
             check.names = FALSE
           )
-        } else if (is_active[[name]]) {
+        } else if (isTRUE(is_active[name])) {
           data.frame(
             class = "active_binding",
             type = "active_binding",
@@ -438,6 +462,7 @@ if (show_view) {
       }
     }
     if (is.data.frame(x) || is.matrix(x)) {
+      x <- as_truncated_data(x)
       data <- dataview_table(x)
       file <- tempfile(tmpdir = tempdir, fileext = ".json")
       jsonlite::write_json(data, file, na = "string", null = "null", auto_unbox = TRUE)
@@ -516,7 +541,7 @@ show_browser <- function(url, title = url, ...,
   if (nzchar(proxy_uri)) {
     is_base_path <- grepl("\\:\\d+$", url)
     url <- sub("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:)?",
-      sub("{port}", "", proxy_uri, fixed = TRUE), url)
+      sub("\\{\\{?port\\}\\}?", "", proxy_uri), url)
     if (is_base_path) {
       url <- paste0(url, "/")
     }
@@ -573,7 +598,7 @@ show_webview <- function(url, title, ..., viewer) {
   if (nzchar(proxy_uri)) {
     is_base_path <- grepl("\\:\\d+$", url)
     url <- sub("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:)?",
-      sub("{port}", "", proxy_uri, fixed = TRUE), url)
+      sub("\\{\\{?port\\}\\}?", "", proxy_uri), url)
     if (is_base_path) {
       url <- paste0(url, "/")
     }

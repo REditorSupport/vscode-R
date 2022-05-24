@@ -21,6 +21,7 @@ import * as completions from './completions';
 import * as rShare from './liveShare';
 import * as httpgdViewer from './plotViewer';
 import * as languageService from './languageService';
+import { RTaskProvider } from './tasks';
 
 
 // global objects used in other files
@@ -67,7 +68,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.thead': () => rTerminal.runSelectionOrWord(['t', 'head']),
         'r.names': () => rTerminal.runSelectionOrWord(['names']),
         'r.runSource': () => { void rTerminal.runSource(false); },
-        'r.runSelection': rTerminal.runSelection,
+        'r.runSelection':  (code?: string) => { code ? void rTerminal.runTextInTerm(code) : void rTerminal.runSelection(); },
         'r.runFromLineToEnd': rTerminal.runFromLineToEnd,
         'r.runFromBeginningToLine': rTerminal.runFromBeginningToLine,
         'r.runSelectionRetainCursor': rTerminal.runSelectionRetainCursor,
@@ -93,6 +94,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.goToNextChunk': rmarkdown.goToNextChunk,
         'r.runChunks': rTerminal.runChunksInTerm,
 
+        'r.rmarkdown.newDraft': () => rmarkdown.newDraft(),
         'r.rmarkdown.setKnitDirectory': () => rmdKnitManager.setKnitDir(),
         'r.rmarkdown.showPreviewToSide': () => rmdPreviewManager.previewRmd(vscode.ViewColumn.Beside),
         'r.rmarkdown.showPreview': (uri: vscode.Uri) => rmdPreviewManager.previewRmd(vscode.ViewColumn.Active, uri),
@@ -109,6 +111,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758
         'r.build': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build'),
+        'r.buildBinary': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build Binary'),
         'r.check': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Check'),
         'r.document': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Document'),
         'r.install': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Install'),
@@ -122,8 +125,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // workspace viewer
         'r.workspaceViewer.refreshEntry': () => rWorkspace?.refresh(),
-        'r.workspaceViewer.view': (node: workspaceViewer.WorkspaceItem) => workspaceViewer.viewItem(node.label),
-        'r.workspaceViewer.remove': (node: workspaceViewer.WorkspaceItem) => workspaceViewer.removeItem(node.label),
+        'r.workspaceViewer.view': (node: workspaceViewer.GlobalEnvItem) => workspaceViewer.viewItem(node.label),
+        'r.workspaceViewer.remove': (node: workspaceViewer.GlobalEnvItem) => workspaceViewer.removeItem(node.label),
         'r.workspaceViewer.clear': workspaceViewer.clearWorkspace,
         'r.workspaceViewer.load': workspaceViewer.loadWorkspace,
         'r.workspaceViewer.save': workspaceViewer.saveWorkspace,
@@ -203,26 +206,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     await rShare.initLiveShare(context);
 
     // register task provider
-    const type = 'R';
-    vscode.tasks.registerTaskProvider(type, {
-        provideTasks() {
-            return [
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Build', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::build()"')),
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Check', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::check()"')),
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Document', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::document()"')),
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Install', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::install()"')),
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Test', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::test()"')),
-            ];
-        },
-        resolveTask(task: vscode.Task) {
-            return task;
-        }
-    });
+    const taskProvider = new RTaskProvider();
+    vscode.tasks.registerTaskProvider(taskProvider.type, taskProvider);
 
     // deploy session watcher (if configured by user)
     if (enableSessionWatcher) {
