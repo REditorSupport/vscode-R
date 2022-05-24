@@ -44,19 +44,19 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
 		const callback = (dat: string) => {
 			const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
-			if (outputUrl) {
-				if (openOutfile) {
-					const outFile = vscode.Uri.file(outputUrl);
-					if (fs.existsSync(outFile.fsPath)) {
-						void vscode.commands.executeCommand('vscode.open', outFile);
-					} else {
-						void vscode.window.showWarningMessage(`Could not find the output file at path: "${outFile.fsPath}"`);
-					}
-				}
-				return true;
-			} else {
+			if (!outputUrl) {
 				return false;
 			}
+
+			if (openOutfile) {
+				const outFile = vscode.Uri.file(outputUrl);
+				if (fs.existsSync(outFile.fsPath)) {
+					void vscode.commands.executeCommand('vscode.open', outFile);
+				} else {
+					void vscode.window.showWarningMessage(`Could not find the output file at path: "${outFile.fsPath}"`);
+				}
+			}
+			return true;
 		};
 
 		if (util.config().get<boolean>('rmarkdown.knit.focusOutputChannel')) {
@@ -238,37 +238,38 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 		}
 
 		const isSaved = await util.saveDocument(wad);
-		if (isSaved) {
-			let rDocumentPath = util.ToRStringLiteral(wad.fileName, '"');
-			let encodingParam = util.config().get<string>('source.encoding');
-			encodingParam = `encoding = "${encodingParam}"`;
-			rDocumentPath = [rDocumentPath, encodingParam].join(', ');
-			if (echo) {
-				rDocumentPath = [rDocumentPath, 'echo = TRUE'].join(', ');
-			}
+		if(!isSaved){
+			return;
+		}
 
-			// allow users to opt out of background process
-			if (util.config().get<boolean>('rmarkdown.knit.useBackgroundProcess')) {
-				const busyPath = wad.uri.fsPath + outputFormat;
-				if (this.busyUriStore.has(busyPath)) {
-					return;
-				} else {
-					this.busyUriStore.add(busyPath);
-					await this.renderDocument(
-						rDocumentPath,
-						wad.uri.fsPath,
-						path.basename(wad.uri.fsPath),
-						this.getYamlFrontmatter(wad.uri.fsPath),
-						outputFormat
-					);
-					this.busyUriStore.delete(busyPath);
-				}
+		let rDocumentPath = util.ToRStringLiteral(wad.fileName, '"');
+		let encodingParam = util.config().get<string>('source.encoding');
+		encodingParam = `encoding = "${encodingParam}"`;
+		rDocumentPath = [rDocumentPath, encodingParam].join(', ');
+		if (echo) {
+			rDocumentPath = [rDocumentPath, 'echo = TRUE'].join(', ');
+		}
+
+		// allow users to opt out of background process
+		if (util.config().get<boolean>('rmarkdown.knit.useBackgroundProcess')) {
+			const busyPath = wad.uri.fsPath + outputFormat;
+			if (this.busyUriStore.has(busyPath)) {
+				return;
+			}
+			this.busyUriStore.add(busyPath);
+			await this.renderDocument(
+				rDocumentPath,
+				wad.uri.fsPath,
+				path.basename(wad.uri.fsPath),
+				this.getYamlFrontmatter(wad.uri.fsPath),
+				outputFormat
+			);
+			this.busyUriStore.delete(busyPath);
+		} else {
+			if (outputFormat === undefined) {
+				void runTextInTerm(`rmarkdown::render(${rDocumentPath})`);
 			} else {
-				if (outputFormat === undefined) {
-					void runTextInTerm(`rmarkdown::render(${rDocumentPath})`);
-				} else {
-					void runTextInTerm(`rmarkdown::render(${rDocumentPath}, '${outputFormat}')`);
-				}
+				void runTextInTerm(`rmarkdown::render(${rDocumentPath}, '${outputFormat}')`);
 			}
 		}
 	}
