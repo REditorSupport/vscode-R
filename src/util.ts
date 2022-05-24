@@ -189,11 +189,9 @@ export async function saveDocument(document: vscode.TextDocument): Promise<boole
     const isSaved: boolean = document.isDirty ? (await document.save()) : true;
     if (!isSaved) {
         void vscode.window.showErrorMessage('Cannot run R command: document could not be saved.');
-
-        return false;
     }
 
-    return true;
+    return isSaved;
 }
 
 // shows a quick pick asking the user for confirmation
