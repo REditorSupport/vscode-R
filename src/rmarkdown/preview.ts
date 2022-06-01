@@ -205,17 +205,18 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             true :
             await saveDocument(vscode.window.activeTextEditor.document);
 
-        if (isSaved) {
-            // don't knit if the current uri is already being knit
-            if (this.busyUriStore.has(filePath)) {
-                return;
-            } else if (this.previewStore.has(filePath)) {
-                this.previewStore.get(filePath)?.panel.reveal();
-            } else {
-                this.busyUriStore.add(filePath);
-                await this.previewDocument(filePath, fileName, viewer, currentViewColumn);
-                this.busyUriStore.delete(filePath);
-            }
+        if (!isSaved) {
+            return;
+        }
+        // don't knit if the current uri is already being knit
+        if (this.busyUriStore.has(filePath)) {
+            return;
+        } else if (this.previewStore.has(filePath)) {
+            this.previewStore.get(filePath)?.panel.reveal();
+        } else {
+            this.busyUriStore.add(filePath);
+            await this.previewDocument(filePath, fileName, viewer, currentViewColumn);
+            this.busyUriStore.delete(filePath);
         }
     }
 
