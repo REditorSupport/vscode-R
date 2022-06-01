@@ -253,17 +253,16 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 			const busyPath = wad.uri.fsPath + outputFormat;
 			if (this.busyUriStore.has(busyPath)) {
 				return;
-			} else {
-				this.busyUriStore.add(busyPath);
-				await this.renderDocument(
-					rDocumentPath,
-					wad.uri.fsPath,
-					path.basename(wad.uri.fsPath),
-					this.getYamlFrontmatter(wad.uri.fsPath),
-					outputFormat
-				);
-				this.busyUriStore.delete(busyPath);
 			}
+			this.busyUriStore.add(busyPath);
+			await this.renderDocument(
+				rDocumentPath,
+				wad.uri.fsPath,
+				path.basename(wad.uri.fsPath),
+				this.getYamlFrontmatter(wad.uri.fsPath),
+				outputFormat
+			);
+			this.busyUriStore.delete(busyPath);
 		} else {
 			if (outputFormat === undefined) {
 				void runTextInTerm(`rmarkdown::render(${rDocumentPath})`);
