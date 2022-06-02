@@ -29,5 +29,6 @@ cat(
     .vsc.knit_lim,
     eval(parse(text = .vsc.knit_command)),
     .vsc.knit_lim,
-    sep = ""
+    sep = "",
+    file = stdout()
 )
