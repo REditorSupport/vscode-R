@@ -1731,10 +1731,10 @@ jest-worker@^27.0.2:
     merge-stream "^2.0.0"
     supports-color "^8.0.0"
 
-jquery.json-viewer@^1.4.0:
-  version "1.4.0"
-  resolved "https://registry.yarnpkg.com/jquery.json-viewer/-/jquery.json-viewer-1.4.0.tgz#6e0ede8ae3239cb20ac359f663b9aae4ec8a9d94"
-  integrity sha512-6H1U/w+/8vMwDH5Im0OveuKPZ1fZWy7hgvR3Cn+HeamQIoWrVqBuRaE2TF/xEc6Hmi3vhQVRqZBmYGKTdOo2tw==
+jquery.json-viewer@^1.5.0:
+  version "1.5.0"
+  resolved "https://registry.yarnpkg.com/jquery.json-viewer/-/jquery.json-viewer-1.5.0.tgz#57bd248a8cf180c67c322cc4b555b49d0d301f10"
+  integrity sha512-M/mRFXg14V/UUAlz7TBNBIDmQdWt05BunsqC/UjEx5BoFdQpNpfkfDdVn+VtjX951n/an/T9GWB3apBp02x8Mg==
 
 jquery@^3.6.0:
   version "3.6.0"
