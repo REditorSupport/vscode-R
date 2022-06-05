@@ -132,7 +132,7 @@ export async function newDraft(): Promise<void> {
             const parsedPath = path.parse(uri.fsPath);
             const dir = path.join(parsedPath.dir, parsedPath.name);
             if (fs.existsSync(dir)) {
-                if (await getConfirmation(`Folder already exists. Are you sure to replace the folder?`)) {
+                if (await getConfirmation(`Folder already exists. Are you sure you want to replace the folder?`)) {
                     fs.rmdirSync(dir, { recursive: true });
                 } else {
                     return;

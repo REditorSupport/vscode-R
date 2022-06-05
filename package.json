@@ -560,6 +560,18 @@
         "command": "r.rmarkdown.newDraft"
       },
       {
+        "title": "R Markdown (rmd)",
+        "category": "R Markdown",
+        "when": false,
+        "command": "r.rmarkdown.newFileDraft"
+      },
+      {
+        "title": "R Document (r)",
+        "category": "R",
+        "when": false,
+        "command": "r.newFileDocument"
+      },
+      {
         "command": "r.rmarkdown.setKnitDirectory",
         "title": "Set Knit directory",
         "icon": "$(zap)",
@@ -1236,6 +1248,16 @@
         },
         {
           "command": "r.knitRmdToAll"
+        }
+      ],
+      "file/newFile": [
+        {
+          "group": "R",
+          "command": "r.rmarkdown.newFileDraft"
+        },
+        {
+          "group": "R",
+          "command": "r.newFileDocument"
         }
       ]
     },

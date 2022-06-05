@@ -105,6 +105,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.rmarkdown.preview.enableAutoRefresh': () => rmdPreviewManager.enableAutoRefresh(),
         'r.rmarkdown.preview.disableAutoRefresh': () => rmdPreviewManager.disableAutoRefresh(),
 
+        // file creation (under file submenu)
+        'r.rmarkdown.newFileDraft': () => rmarkdown.newDraft(),
+        'r.newFileDocument': () => vscode.workspace.openTextDocument({language: 'r'}).then((v) => vscode.window.showTextDocument(v)),
+
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
         'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
