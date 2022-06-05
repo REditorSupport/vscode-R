@@ -507,8 +507,10 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             sortable: true,
             resizable: true,
             filter: true,
+            width: 100,
+            minWidth: 50,
             filterParams: {
-            buttons: ['reset', 'apply']
+                buttons: ['reset', 'apply']
             }
         },
         columnDefs: data.columns,
@@ -519,11 +521,11 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         enableCellTextSelection: true,
         ensureDomOrder: true,
         tooltipShowDelay: 100,
-        onGridReady: function (params) {
-            gridOptions.api.sizeColumnsToFit();
-            autoSizeAll(false);
-        }
+        onFirstDataRendered: onFirstDataRendered
     };
+    function onFirstDataRendered(params) {
+        gridOptions.columnApi.autoSizeAllColumns(false);
+    }
     function updateTheme() {
         const gridDiv = document.querySelector('#myGrid');
         if (document.body.classList.contains('vscode-light')) {
@@ -531,13 +533,6 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         } else {
             gridDiv.className = 'ag-theme-balham-dark';
         }
-    }
-    function autoSizeAll(skipHeader) {
-        var allColumnIds = [];
-        gridOptions.columnApi.getAllColumns().forEach(function (column) {
-            allColumnIds.push(column.colId);
-        });
-        gridOptions.columnApi.autoSizeColumns(allColumnIds, skipHeader);
     }
     document.addEventListener('DOMContentLoaded', () => {
         gridOptions.columnDefs.forEach(function(column) {
