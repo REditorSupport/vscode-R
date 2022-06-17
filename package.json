@@ -426,7 +426,7 @@
         "command": "r.createGitignore"
       },
       {
-        "title": "Create .linr to the workspace",
+        "title": "Create .lintr to the workspace",
         "category": "R",
         "command": "r.createLintrConfig"
       },
