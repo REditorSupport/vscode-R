@@ -23,6 +23,7 @@ import * as rShare from './liveShare';
 import * as httpgdViewer from './plotViewer';
 import * as languageService from './languageService';
 import { RTaskProvider } from './tasks';
+import * as rExec from './executables';
 
 
 // global objects used in other files
@@ -35,6 +36,7 @@ export let enableSessionWatcher: boolean = undefined;
 export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
 export let rmdPreviewManager: rmarkdown.RMarkdownPreviewManager | undefined = undefined;
 export let rmdKnitManager: rmarkdown.RMarkdownKnitManager | undefined = undefined;
+export let rExecService: rExec.RExecutableManager | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -50,6 +52,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // assign extension context to global variable
     extensionContext = context;
+    rExecService = new rExec.RExecutableManager();
 
     // assign session watcher setting to global variable
     enableSessionWatcher = util.config().get<boolean>('sessionWatcher');
@@ -61,6 +64,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     const commands = {
         // create R terminal
         'r.createRTerm': rTerminal.createRTerm,
+        'r.setExecutable': () => rExecService.executableQuickPick.showQuickPick(),
 
         // run code from editor in terminal
         'r.nrow': () => rTerminal.runSelectionOrWord(['nrow']),
@@ -69,7 +73,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.thead': () => rTerminal.runSelectionOrWord(['t', 'head']),
         'r.names': () => rTerminal.runSelectionOrWord(['names']),
         'r.runSource': () => { void rTerminal.runSource(false); },
-        'r.runSelection':  (code?: string) => { code ? void rTerminal.runTextInTerm(code) : void rTerminal.runSelection(); },
+        'r.runSelection': (code?: string) => { code ? void rTerminal.runTextInTerm(code) : void rTerminal.runSelection(); },
         'r.runFromLineToEnd': rTerminal.runFromLineToEnd,
         'r.runFromBeginningToLine': rTerminal.runFromBeginningToLine,
         'r.runSelectionRetainCursor': rTerminal.runSelectionRetainCursor,
@@ -108,7 +112,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // file creation (under file submenu)
         'r.rmarkdown.newFileDraft': () => rmarkdown.newDraft(),
-        'r.newFileDocument': () => vscode.workspace.openTextDocument({language: 'r'}).then((v) => vscode.window.showTextDocument(v)),
+        'r.newFileDocument': () => vscode.workspace.openTextDocument({ language: 'r' }).then((v) => vscode.window.showTextDocument(v)),
 
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
@@ -250,7 +254,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
         vscode.languages.registerCompletionItemProvider(['r', 'rmd'], new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
-
 
     return rExtension;
 }

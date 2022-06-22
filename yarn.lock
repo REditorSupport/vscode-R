@@ -254,9 +254,9 @@
   integrity sha512-dchbFCWfVgUSWEvhOkXGS7zjm+K7jCUvGrQkAHPk2Fmslfofp4HQTH2pqnQ3Pw5GPYv0zWa2AQjKtsfZThuemQ==
 
 "@types/vscode@^1.60.0":
-  version "1.60.0"
-  resolved "https://registry.yarnpkg.com/@types/vscode/-/vscode-1.60.0.tgz#9330c317691b4f53441a18b598768faeeb71618a"
-  integrity sha512-wZt3VTmzYrgZ0l/3QmEbCq4KAJ71K3/hmMQ/nfpv84oH8e81KKwPEoQ5v8dNCxfHFVJ1JabHKmCvqdYOoVm1Ow==
+  version "1.68.0"
+  resolved "https://registry.yarnpkg.com/@types/vscode/-/vscode-1.68.0.tgz#c0864e4ea43c509bfc6b53f4e91aa923fd0475b8"
+  integrity sha512-duBwEK5ta/eBBMJMQ7ECMEsMvlE3XJdRGh3xoS1uOO4jl2Z4LPBl5vx8WvBP10ERAgDRmIt/FaSD4RHyBGbChw==
 
 "@types/winreg@^1.2.31":
   version "1.2.31"

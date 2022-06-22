@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
 
-import { extensionContext, homeExtDir } from './extension';
+import { extensionContext, homeExtDir, rExecService } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
@@ -101,6 +101,7 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
             VSCODE_WATCHER_DIR: homeExtDir()
         };
     }
+    termOptions.env['R_BINARY'] = rExecService?.activeExecutable?.rBin;
     return termOptions;
 }
 

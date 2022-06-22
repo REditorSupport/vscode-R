@@ -290,6 +290,11 @@
     ],
     "commands": [
       {
+        "category": "R",
+        "command": "r.setExecutable",
+        "title": "Select executable"
+      },
+      {
         "command": "r.workspaceViewer.refreshEntry",
         "title": "Manual Refresh",
         "icon": "$(refresh)",
