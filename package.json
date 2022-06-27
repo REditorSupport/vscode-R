@@ -1825,6 +1825,7 @@
     "vscode:prepublish": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
     "compile": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
     "watch": "tsc -p . --watch",
+    "watchHelp": "tsc -p ./html/help --watch",
     "pretest": "tsc -p ./",
     "test": "node ./out/test/runTest.js",
     "lint": "eslint src --ext ts"

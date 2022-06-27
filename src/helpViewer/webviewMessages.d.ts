@@ -29,7 +29,11 @@ export interface LinkClickedMessage extends IMessage {
   href: string,
   scrollY: number
 }
+export interface CodeClickedMessage extends IMessage {
+  message: 'codeClicked',
+  code: string
+}
 
-export type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage;
+export type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage | CodeClickedMessage;
 
 

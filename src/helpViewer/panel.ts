@@ -264,6 +264,13 @@ export class HelpPanel {
 		} else if(msg.message === 'text'){
 			// used for logging/debugging
 			console.log(`Message (text): ${String(msg.text)}`);
+		} else if(msg.message === 'codeClicked') {
+			const code = String(msg.code || '');
+			console.log(`Code clicked: ${code}`);
+			if(code){
+				void vscode.env.clipboard.writeText(code);
+				void vscode.window.showInformationMessage(`Copied to clipboard: ${code}`);
+			}
 		} else{
 			console.log('Unknown message:', msg);
 		}

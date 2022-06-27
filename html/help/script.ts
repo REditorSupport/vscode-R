@@ -85,5 +85,19 @@ window.document.body.onload = () => {
             };
         }
     }
+    
+    // notify vscode when code is clicked:
+    const codeElements = document.getElementsByTagName('pre');
+    console.log(codeElements);
+    for(let i=0; i<codeElements.length; i++){
+        const el = codeElements[i];
+        el.onclick = () => {
+            const code = el.textContent;
+            vscode.postMessage({
+                message: 'codeClicked',
+                code: code || ''
+            });
+        };
+    }
 };
 

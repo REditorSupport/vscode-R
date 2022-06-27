@@ -34,12 +34,12 @@ a ~ div.header {
 }
 
 .vscode-light {
-    --rhelp-number: #cb4b16;
-    --rhelp-string: #647400;
-    --rhelp-symbol: #cb4b16;
-    --rhelp-keyword: #2074b1;
-    --rhelp-comment: #727e7e;
-    --rhelp-function: #2074b1;
+  --rhelp-number: #cb4b16;
+  --rhelp-string: #647400;
+  --rhelp-symbol: #cb4b16;
+  --rhelp-keyword: #2074b1;
+  --rhelp-comment: #727e7e;
+  --rhelp-function: #2074b1;
 }
 
 .vscode-dark, 
@@ -50,6 +50,12 @@ a ~ div.header {
     --rhelp-keyword: #569cd6;
     --rhelp-comment: #6A9955;
     --rhelp-function: #DCDCAA;
+}
+
+pre:hover,
+pre:hover span {
+  color: red;
+  cursor: pointer;
 }
 
 .hljs-number {
