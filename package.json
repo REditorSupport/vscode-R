@@ -1472,6 +1472,11 @@
             "Disabled",
             "Copy",
             "Run"
+          ],
+          "markdownEnumDescriptions": [
+            "Do not make code examples clickable.",
+            "Copy the code to the clipboard.",
+            "Run the code in the terminal."
           ]
         },
         "r.source.encoding": {
