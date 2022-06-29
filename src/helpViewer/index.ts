@@ -568,6 +568,7 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
     
     // Split code examples at empty lines:
     if(config().get<CodeClickAction>('helpPanel.clickCodeExamples') !== 'Disabled'){
+        $('body').addClass('preClickable');
         const codeSections = $('pre');
         codeSections.each((i, section) => {
             const innerHtml = $(section).html();

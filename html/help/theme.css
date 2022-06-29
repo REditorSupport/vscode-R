@@ -7,6 +7,11 @@ pre, code {
   font-size: var(--vscode-editor-font-size);
 }
 
+.preClickable pre:hover {
+  cursor: pointer;
+  background-color: var(--vscode-list-hoverBackground);
+}
+
 body table:nth-child(1)[width="100%"] td:nth-child(2){
   display: none;
 }
@@ -44,46 +49,41 @@ a ~ div.header {
 
 .vscode-dark, 
 .vscode-high-contrast {
-    --rhelp-number: #b5cea8;
-    --rhelp-string: #CE9178;
-    --rhelp-symbol: #4EC9B0;
-    --rhelp-keyword: #569cd6;
-    --rhelp-comment: #6A9955;
-    --rhelp-function: #DCDCAA;
-}
-
-pre:hover {
-  cursor: pointer;
-  background-color: var(--vscode-list-hoverBackground);
+  --rhelp-number: #b5cea8;
+  --rhelp-string: #CE9178;
+  --rhelp-symbol: #4EC9B0;
+  --rhelp-keyword: #569cd6;
+  --rhelp-comment: #6A9955;
+  --rhelp-function: #DCDCAA;
 }
 
 .hljs-number {
-    color: var(--rhelp-number)
+  color: var(--rhelp-number)
 }
 
 .hljs-regexp,
 .hljs-bullet,
 .hljs-string {
-    color: var(--rhelp-string)
+  color: var(--rhelp-string)
 }
 
 .hljs-symbol,
 .hljs-class {
-    color: var(--rhelp-symbol)
+  color: var(--rhelp-symbol)
 }
 
 .hljs-literal,
 .hljs-keyword {
-    color: var(--rhelp-keyword)
+  color: var(--rhelp-keyword)
 }
 
 .hljs-built_in,
 .hljs-function {
-    color: var(--rhelp-function)
+  color: var(--rhelp-function)
 }
 
 .hljs-quote,
 .hljs-comment {
-    color: var(--rhelp-comment)
+  color: var(--rhelp-comment)
 }
 
