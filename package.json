@@ -1464,6 +1464,16 @@
           "default": true,
           "markdownDescription": "Show links to matching help pages in hover"
         },
+        "r.helpPanel.clickCodeExamples": {
+          "type": "string",
+          "default": "Copy",
+          "markdownDescription": "What happens when clicking code examples on help pages.",
+          "enum": [
+            "Disabled",
+            "Copy",
+            "Run"
+          ]
+        },
         "r.source.encoding": {
           "type": "string",
           "default": "UTF-8",

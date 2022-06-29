@@ -3,8 +3,9 @@
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 
-import { HelpFile, RHelp } from '.';
+import { CodeClickAction, HelpFile, RHelp } from '.';
 import { setContext, UriIcon, config } from '../util';
+import { runTextInTerm } from '../rTerminal';
 
 //// Declaration of interfaces used/implemented by the Help Panel class
 // specified when creating a new help panel
@@ -267,9 +268,14 @@ export class HelpPanel {
 		} else if(msg.message === 'codeClicked') {
 			const code = String(msg.code || '');
 			console.log(`Code clicked: ${code}`);
-			if(code){
+			const codeClickAction = config().get<CodeClickAction>('helpPanel.clickCodeExamples');
+			if(codeClickAction === 'Disabled' || !code){
+				// pass
+			} else if(codeClickAction === 'Copy'){
 				void vscode.env.clipboard.writeText(code);
 				void vscode.window.showInformationMessage(`Copied to clipboard: ${code}`);
+			} else if(codeClickAction === 'Run'){
+				void runTextInTerm(code);
 			}
 		} else{
 			console.log('Unknown message:', msg);
