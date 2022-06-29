@@ -273,7 +273,7 @@ export class HelpPanel {
 				// pass
 			} else if(codeClickAction === 'Copy'){
 				void vscode.env.clipboard.writeText(code);
-				void vscode.window.showInformationMessage(`Copied to clipboard: ${code}`);
+				void vscode.window.showInformationMessage(`Copied to clipboard: \`${code}\`.`);
 			} else if(codeClickAction === 'Run'){
 				void runTextInTerm(code);
 			}
