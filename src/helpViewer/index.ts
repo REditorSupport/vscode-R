@@ -563,7 +563,15 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
 
     // Remove style elements specified in the html itself (replaced with custom CSS)
     $('head style').remove();
-
+    
+    // Split code examples at empty lines:
+    const codeSections = $('pre');
+    codeSections.each((i, section) => {
+        const innerHtml = $(section).html();
+        const newPres = innerHtml.split('\n\n').map(s => `<pre>${s}</pre>`);
+        $(section).replaceWith(newPres.join('\n'));
+    });
+    
     // Apply syntax highlighting:
     if (config().get<boolean>('helpPanel.enableSyntaxHighlighting')) {
         // find all code sections, enclosed by <pre>...</pre>

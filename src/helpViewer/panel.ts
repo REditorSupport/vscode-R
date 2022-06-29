@@ -290,12 +290,12 @@ export class HelpPanel {
 		$('body').attr('relpath', relPath);
 		$('body').attr('scrollyto', `${helpFile.scrollY ?? -1}`);
 
-        if(styleUri){
-            $('body').append(`\n<link rel="stylesheet" href="${styleUri.toString()}"></link>`);
-        }
-        if(scriptUri){
-            $('body').append(`\n<script src=${scriptUri.toString()}></script>`);
-        }
+		if(styleUri){
+			$('body').append(`\n<link rel="stylesheet" href="${styleUri.toString()}"></link>`);
+		}
+		if(scriptUri){
+			$('body').append(`\n<script src=${scriptUri.toString()}></script>`);
+		}
 
 
 		// convert to string

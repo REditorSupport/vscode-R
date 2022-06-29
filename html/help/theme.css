@@ -52,10 +52,9 @@ a ~ div.header {
     --rhelp-function: #DCDCAA;
 }
 
-pre:hover,
-pre:hover span {
-  color: red;
+pre:hover {
   cursor: pointer;
+  background-color: var(--vscode-toolbar-hoverBackground);
 }
 
 .hljs-number {
