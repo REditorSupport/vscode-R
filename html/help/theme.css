@@ -54,7 +54,7 @@ a ~ div.header {
 
 pre:hover {
   cursor: pointer;
-  background-color: var(--vscode-toolbar-hoverBackground);
+  background-color: var(--vscode-list-hoverBackground);
 }
 
 .hljs-number {
