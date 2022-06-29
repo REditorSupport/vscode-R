@@ -1,15 +1,7 @@
+
+/* General styling */
 body {
   font-size: var(--vscode-editor-font-size);
-}
-
-pre, code {
-  font-family: var(--vscode-editor-font-family);
-  font-size: var(--vscode-editor-font-size);
-}
-
-.preClickable pre:hover {
-  cursor: pointer;
-  background-color: var(--vscode-list-hoverBackground);
 }
 
 body table:nth-child(1)[width="100%"] td:nth-child(2){
@@ -19,7 +11,6 @@ body table:nth-child(1)[width="100%"] td:nth-child(2){
 body table:nth-child(1)[width="100%"] td:nth-child(1){
   text-align: right;
 }
-
 
 h1, h2 {
   text-align: center;
@@ -34,6 +25,26 @@ a ~ div.header {
   display: none;
 }
 
+/* Styling for clickable code sections */
+pre, code {
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
+.preClickable pre {
+  margin: 0px;
+  padding-top: 0.5em;
+  padding-bottom: 0.5em;
+}
+
+.preClickable .preDiv:hover {
+  cursor: pointer;
+}
+.preClickable pre:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+/* Syntax highlighting in code sections */
 .hljs-link {
   color: var(--vscode-textLink-foreground)
 }
