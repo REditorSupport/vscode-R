@@ -31,7 +31,13 @@ export interface LinkClickedMessage extends IMessage {
 }
 export interface CodeClickedMessage extends IMessage {
   message: 'codeClicked',
-  code: string
+  code: string,
+  modifiers: {
+    altKey: boolean,
+    ctrlKey: boolean,
+    shiftKey: boolean,
+    metaKey: boolean,
+  }
 }
 
 export type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage | CodeClickedMessage;

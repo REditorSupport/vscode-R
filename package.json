@@ -1465,19 +1465,58 @@
           "markdownDescription": "Show links to matching help pages in hover"
         },
         "r.helpPanel.clickCodeExamples": {
-          "type": "string",
-          "default": "Copy",
-          "markdownDescription": "What happens when clicking code examples on help pages.",
-          "enum": [
-            "Disabled",
-            "Copy",
-            "Run"
-          ],
-          "markdownEnumDescriptions": [
-            "Do not make code examples clickable.",
-            "Copy the code to the clipboard.",
-            "Run the code in the terminal."
-          ]
+          "type": "object",
+          "markdownDescription": "What happens when clicking code examples on help pages. Might require restarting to take effect.",
+          "default": {
+            "Click": "Copy",
+            "Ctrl+Click": "Run",
+            "Shift+Click": "Ignore"
+          },
+          "properties": {
+            "Click": {
+              "type": "string",
+              "default": "Copy",
+              "enum": [
+                "Ignore",
+                "Copy",
+                "Run"
+              ],
+              "enumDescriptions": [
+                "Do nothing",
+                "Copy the code to the clipboard",
+                "Run the code in the terminal"
+              ]
+            },
+            "Ctrl+Click": {
+              "type": "string",
+              "default": "Run",
+              "enum": [
+                "Ignore",
+                "Copy",
+                "Run"
+              ],
+              "enumDescriptions": [
+                "Do nothing",
+                "Copy the code to the clipboard",
+                "Run the code in the terminal"
+              ]
+            },
+            "Shift+Click": {
+              "type": "string",
+              "default": "Ignore",
+              "enum": [
+                "Ignore",
+                "Copy",
+                "Run"
+              ],
+              "enumDescriptions": [
+                "Do nothing",
+                "Copy the code to the clipboard",
+                "Run the code in the terminal"
+              ]
+            }
+          },
+          "additionalProperties": false
         },
         "r.source.encoding": {
           "type": "string",

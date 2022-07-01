@@ -3,9 +3,10 @@
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 
-import { CodeClickAction, HelpFile, RHelp } from '.';
+import { CodeClickConfig, HelpFile, RHelp } from '.';
 import { setContext, UriIcon, config } from '../util';
 import { runTextInTerm } from '../rTerminal';
+import { OutMessage } from './webviewMessages';
 
 //// Declaration of interfaces used/implemented by the Help Panel class
 // specified when creating a new help panel
@@ -103,7 +104,7 @@ export class HelpPanel {
 		});
 
 		// sent by javascript added to the help pages, e.g. when a link or mouse button is clicked
-		this.panel.webview.onDidReceiveMessage((e: {[key: string]: any}) => {
+		this.panel.webview.onDidReceiveMessage((e: OutMessage) => {
 			void this.handleMessage(e);
 		});
 
@@ -210,11 +211,11 @@ export class HelpPanel {
 	}
 
 	// handle message produced by javascript inside the help page
-	private async handleMessage(msg: {[key: string]: any}){
-		if('message' in msg && msg.message === 'linkClicked'){
+	private async handleMessage(msg: OutMessage){
+		if(msg.message === 'linkClicked'){
 			// handle hyperlinks clicked in the webview
 			// normal navigation does not work in webviews (even on localhost)
-			const href: string = <string>msg.href || '';
+			const href: string = msg.href || '';
 			const currentScrollY: number = Number(msg.scrollY) || 0;
 			console.log('Link clicked: ' + href);
 
@@ -262,20 +263,35 @@ export class HelpPanel {
 			} else if(button === 4){
 				this._goForward(currentScrollY);
 			}
-		} else if(msg.message === 'text'){
-			// used for logging/debugging
-			console.log(`Message (text): ${String(msg.text)}`);
 		} else if(msg.message === 'codeClicked') {
-			const code = String(msg.code || '');
-			console.log(`Code clicked: ${code}`);
-			const codeClickAction = config().get<CodeClickAction>('helpPanel.clickCodeExamples');
-			if(codeClickAction === 'Disabled' || !code){
-				// pass
-			} else if(codeClickAction === 'Copy'){
-				void vscode.env.clipboard.writeText(code);
-				void vscode.window.showInformationMessage(`Copied to clipboard: \`${code}\`.`);
-			} else if(codeClickAction === 'Run'){
-				void runTextInTerm(code);
+			if(!msg.code){
+				return;
+			}
+			// Process modifiers:
+			const isCtrlClick = msg.modifiers.ctrlKey || msg.modifiers.metaKey;
+			const isShiftClick = msg.modifiers.shiftKey;
+			const isNormalClick = !isCtrlClick && !isShiftClick;
+			
+			// Check wheter to copy or run the code (or both or none)
+			const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
+			const runCode = (
+				isCtrlClick && codeClickConfig['Ctrl+Click'] === 'Run'
+				|| isShiftClick && codeClickConfig['Shift+Click'] === 'Run'
+				|| isNormalClick && codeClickConfig['Click'] === 'Run'
+			);
+			const copyCode = (
+				isCtrlClick && codeClickConfig['Ctrl+Click'] === 'Copy'
+				|| isShiftClick && codeClickConfig['Shift+Click'] === 'Copy'
+				|| isNormalClick && codeClickConfig['Click'] === 'Copy'
+			);
+			
+			// Execute action:
+			if(copyCode){
+				void vscode.env.clipboard.writeText(msg.code);
+				void vscode.window.showInformationMessage('Copied code example to clipboard.');
+			}
+			if(runCode){
+				void runTextInTerm(msg.code);
 			}
 		} else{
 			console.log('Unknown message:', msg);

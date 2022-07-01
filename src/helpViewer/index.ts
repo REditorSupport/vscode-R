@@ -20,7 +20,13 @@ import {HelpTreeWrapper} from './treeView';
 import {PackageManager} from './packages';
 import {isGuestSession, rGuestService} from '../liveShare';
 
-export type CodeClickAction = 'Disabled' | 'Copy' | 'Run';
+export type CodeClickAction = 'Ignore' | 'Copy' | 'Run';
+export interface CodeClickConfig {
+    'Click': CodeClickAction,
+    'Ctrl+Click': CodeClickAction,
+    'Shift+Click': CodeClickAction,
+}
+const CODE_CLICKS: (keyof CodeClickConfig)[] = ['Click', 'Ctrl+Click', 'Shift+Click'];
 
 // Initialization function that is called once when activating the extension
 export async function initializeHelp(
@@ -567,7 +573,9 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
     $('head style').remove();
     
     // Split code examples at empty lines:
-    if(config().get<CodeClickAction>('helpPanel.clickCodeExamples') !== 'Disabled'){
+    const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
+    const isEnabled = CODE_CLICKS.some(k => codeClickConfig[k] !== 'Ignore');
+    if(isEnabled){
         $('body').addClass('preClickable');
         const codeSections = $('pre');
         codeSections.each((i, section) => {
@@ -576,6 +584,9 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
             const newHtml = '<div class="preDiv">' + newPres.join('\n') + '</div>';
             $(section).replaceWith(newHtml);
         });
+    }
+    if(codeClickConfig.Click !== 'Ignore'){
+        $('body').addClass('preHoverPointer');
     }
 
     // Apply syntax highlighting:

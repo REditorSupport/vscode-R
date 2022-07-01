@@ -92,11 +92,16 @@ window.document.body.onload = () => {
         console.log(codeElements);
         for(let i=0; i<codeElements.length; i++){
             const el = codeElements[i];
-            el.onclick = () => {
-                const code = el.textContent;
+            el.onclick = (me: MouseEvent) => {
                 vscode.postMessage({
                     message: 'codeClicked',
-                    code: code || ''
+                    code: el.textContent || '',
+                    modifiers: {
+                        altKey: me.altKey,
+                        ctrlKey: me.ctrlKey,
+                        shiftKey: me.shiftKey,
+                        metaKey: me.metaKey,
+                    }
                 });
             };
         }

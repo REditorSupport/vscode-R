@@ -37,7 +37,7 @@ pre, code {
   padding-bottom: 0.5em;
 }
 
-.preClickable .preDiv:hover {
+.preHoverPointer .preDiv:hover {
   cursor: pointer;
 }
 .preClickable pre:hover {
