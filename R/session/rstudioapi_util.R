@@ -180,8 +180,7 @@ normalise_pos_or_range_arg <- function(location) {
 normalise_text_arg <- function(text, location_length) {
     if (length(text) == location_length) {
         text
-    }
-    else if (length(text) == 1 && location_length > 1) {
+    } else if (length(text) == 1 && location_length > 1) {
         rep(text, location_length)
     } else {
         stop(
