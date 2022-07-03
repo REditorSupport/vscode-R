@@ -3,10 +3,9 @@
 import { existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { window } from 'vscode';
-import { runTextInTerm } from './rTerminal';
-import { getCurrentWorkspaceFolder } from './util';
+import { executeRCommand, getCurrentWorkspaceFolder } from './util';
 
-export async function createLintrConfig(): Promise<void> {
+export async function createLintrConfig(): Promise<string> {
     const currentWorkspaceFolder = getCurrentWorkspaceFolder()?.uri.fsPath;
     if (currentWorkspaceFolder === undefined) {
         void window.showWarningMessage('Please open a workspace folder to create .lintr');
@@ -23,5 +22,8 @@ export async function createLintrConfig(): Promise<void> {
         }
         void unlinkSync(lintrFilePath);
     }
-    void runTextInTerm('lintr::use_lintr()');
+    return await executeRCommand(`lintr::use_lintr()`, currentWorkspaceFolder, (e: Error) => {
+        void window.showErrorMessage(e.message);
+        return '';
+    });
 }
