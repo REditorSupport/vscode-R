@@ -6,7 +6,7 @@
 
 declare function acquireVsCodeApi(): VsCode;
 
-const vscode = acquireVsCodeApi(); 
+const vscode = acquireVsCodeApi();
 
 // notify vscode when mouse buttons are clicked
 // used to implement back/forward on mouse buttons 3/4
@@ -61,7 +61,7 @@ window.document.body.onload = () => {
     }
 
     // notify vscode when links are clicked:
-    const hyperLinks = document.getElementsByTagName('a'); 
+    const hyperLinks = document.getElementsByTagName('a');
 
     for(let i=0; i<hyperLinks.length; i++){
         const hrefAbs = hyperLinks[i].href;
@@ -72,7 +72,7 @@ window.document.body.onload = () => {
                 document.location.hash = hrefRel;
             };
         } else if(hrefAbs && hrefAbs.startsWith('vscode-webview://')){
-            hyperLinks[i].onclick = () => { 
+            hyperLinks[i].onclick = () => {
 
                 const url2 = new URL(hrefRel, url1);
                 const finalHref = url2.toString();
@@ -81,11 +81,11 @@ window.document.body.onload = () => {
                     message: 'linkClicked',
                     href: finalHref,
                     scrollY: window.scrollY
-                }); 
+                });
             };
         }
     }
-    
+
     // notify vscode when code is clicked:
     if(document.body.classList.contains('preClickable')){
         const codeElements = document.getElementsByTagName('pre');

@@ -82,7 +82,7 @@ export class PackageManager {
 
     readonly rHelp: RHelp;
 
-	readonly aliasProvider: AliasProvider;
+    readonly aliasProvider: AliasProvider;
 
     readonly state: vscode.Memento;
 
@@ -90,7 +90,7 @@ export class PackageManager {
 
     // names of packages to be highlighted in the package list
     // public favoriteNames: string[] = [];
-    
+
     public favoriteNames: Set<string> = new Set();
 
 
@@ -109,7 +109,7 @@ export class PackageManager {
     }
 
     // Funciton to clear only the cached files regarding an individual package etc.
-	public async clearCachedFiles(re?: string|RegExp): Promise<void> {
+    public async clearCachedFiles(re?: string|RegExp): Promise<void> {
         let cache: CachedIndexFiles | undefined;
         if(re){
             const oldCache = this.state.get<CachedIndexFiles>('r.helpPanel.cachedIndexFiles', []);
@@ -121,7 +121,7 @@ export class PackageManager {
             cache = undefined;
         }
         await this.state.update('r.helpPanel.cachedIndexFiles', cache);
-	}
+    }
 
     // Function to add/remove packages from favorites
     public addFavorite(pkgName: string): string[] {
@@ -176,7 +176,7 @@ export class PackageManager {
         }
     }
 
-    // let the user pick and install a package from CRAN 
+    // let the user pick and install a package from CRAN
     public async pickAndInstallPackages(pickMany: boolean = false): Promise<boolean> {
         const packages = await doWithProgress(() => this.getPackages(true), this.rHelp.treeViewWrapper.viewId);
         if(!packages?.length){
@@ -226,7 +226,7 @@ export class PackageManager {
         }
         return false;
     }
-    
+
     public async updatePackages(skipConfirmation: boolean = false): Promise<boolean> {
         const rPath = await getRpath();
         const cranUrl = await getCranUrl('', this.cwd);
@@ -267,8 +267,8 @@ export class PackageManager {
                 pkg.isFavorite = this.favoriteNames.has(pkg.name);
                 pkg.helpPath = (
                     pkg.name === 'doc' ?
-                    '/doc/html/packages.html' :
-                    `/library/${pkg.name}/html/00Index.html`
+                        '/doc/html/packages.html' :
+                        `/library/${pkg.name}/html/00Index.html`
                 );
             }
         }
@@ -300,8 +300,8 @@ export class PackageManager {
 
             topic.helpPath = (
                 topic.pkgName === 'doc' ?
-                `/doc/html/${topic.href}` :
-                `/library/${topic.pkgName}/html/${topic.href}`
+                    `/doc/html/${topic.href}` :
+                    `/library/${topic.pkgName}/html/${topic.href}`
             );
             return topic;
         });
@@ -350,33 +350,33 @@ export class PackageManager {
         return ret;
     }
 
-	// retrieve and parse an index file
-	// (either list of all packages, or documentation entries of a package)
-	private async getParsedIndexFile(path: string): Promise<IndexEntry[]|undefined> {
+    // retrieve and parse an index file
+    // (either list of all packages, or documentation entries of a package)
+    private async getParsedIndexFile(path: string): Promise<IndexEntry[]|undefined> {
 
         let indexItems = this.getCachedIndexFile(path);
 
-		// only read and parse file if not cached yet
-		if(!indexItems){
-			const helpFile = await this.rHelp.getHelpFileForPath(path, false);
-			if(!helpFile?.html){
-				// set missing files to null
+        // only read and parse file if not cached yet
+        if(!indexItems){
+            const helpFile = await this.rHelp.getHelpFileForPath(path, false);
+            if(!helpFile?.html){
+                // set missing files to null
                 indexItems = undefined;
-			} else{
-				// parse and cache file
-				indexItems = parseIndexFile(helpFile.html);
-			}
+            } else{
+                // parse and cache file
+                indexItems = parseIndexFile(helpFile.html);
+            }
             void this.updateCachedIndexFile(path, indexItems);
-		}
+        }
 
-		// return cache entry. make new array to avoid messing with the cache
+        // return cache entry. make new array to avoid messing with the cache
         let ret: IndexEntry[] | undefined = undefined;
         if(indexItems){
             ret = [];
             ret.push(...indexItems);
         }
-		return ret;
-	}
+        return ret;
+    }
 }
 
 
@@ -463,7 +463,7 @@ async function pickPackages(packages: Package[], placeHolder: string, pickMany: 
         const qp = await vscode.window.showQuickPick(qpItems, qpOptions);
         ret = (qp ? [qp.package] : undefined);
     }
-    
+
     return ret;
 }
 

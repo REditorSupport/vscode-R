@@ -44,7 +44,7 @@ const rtasks: RTaskInfo[] = [
         group: vscode.TaskGroup.Test,
         problemMatchers: '$testthat'
     },
-    
+
     {
         definition: {
             type: TYPE,
@@ -64,7 +64,7 @@ const rtasks: RTaskInfo[] = [
         group: vscode.TaskGroup.Build,
         problemMatchers: []
     },
-    
+
     {
         definition: {
             type: TYPE,
@@ -84,7 +84,7 @@ const rtasks: RTaskInfo[] = [
         group: vscode.TaskGroup.Build,
         problemMatchers: []
     },
-    
+
     {
         definition: {
             type: TYPE,
@@ -113,25 +113,25 @@ function asRTask(rPath: string, folder: vscode.WorkspaceFolder | vscode.TaskScop
         ),
         info.problemMatchers
     );
-    
+
     rtask.group = info.group;
     return rtask;
 }
 
 export class RTaskProvider implements vscode.TaskProvider {
-    
+
     public type = TYPE;
 
-    public async provideTasks(): Promise<vscode.Task[]> {        
+    public async provideTasks(): Promise<vscode.Task[]> {
         const folders = vscode.workspace.workspaceFolders;
-        
+
         if (!folders) {
             return [];
         }
-        
+
         const tasks: vscode.Task[] = [];
         const rPath = await getRpath(false);
-        
+
         for (const folder of folders) {
             const isRPackage = fs.existsSync(path.join(folder.uri.fsPath, 'DESCRIPTION'));
             if (isRPackage) {

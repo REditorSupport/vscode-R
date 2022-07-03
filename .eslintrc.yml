@@ -31,3 +31,7 @@ rules:
     - 'warn'
     - ignoreParameters: true
       ignoreProperties: true
+  indent:
+    - 'error'
+    - 4
+    - SwitchCase: 1

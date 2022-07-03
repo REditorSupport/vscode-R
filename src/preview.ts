@@ -77,11 +77,12 @@ async function openTmpCSV(pathToTmpCsv: string, tmpDir: string) {
     }
 
     // Open CSV in Excel Viewer and clean up.
-    void workspace.openTextDocument(pathToTmpCsv)
-             .then(async (file) => {
-                await commands.executeCommand('csv.preview', file.uri);
-                removeSync(tmpDir);
-            });
+    void workspace.openTextDocument(pathToTmpCsv).then(
+        async (file) => {
+            await commands.executeCommand('csv.preview', file.uri);
+            removeSync(tmpDir);
+        }
+    );
 }
 
 async function waitForFileToFinish(filePath: string) {
@@ -127,9 +128,11 @@ function checkcsv() {
     if (iscsv !== undefined && iscsv.isActive) {
         return true;
     }
-    void window.showInformationMessage('This function need to install `GrapeCity.gc-excelviewer`, will you install?',
-                                       'Yes', 'No')
-          .then((select) => {
+    void window.showInformationMessage(
+        'This function need to install `GrapeCity.gc-excelviewer`, will you install?',
+        'Yes',
+        'No'
+    ).then((select) => {
         if (select === 'Yes') {
             void commands.executeCommand('workbench.extensions.installExtension', 'GrapeCity.gc-excelviewer');
         }

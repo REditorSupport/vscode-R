@@ -300,7 +300,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     protected refreshTimeout?: NodeJS.Timeout;
     readonly refreshTimeoutLength: number = 10;
-    
+
     private lastExportUri?: vscode.Uri;
 
     readonly htmlTemplate: string;
@@ -574,14 +574,14 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.plotHeight = plt.height;
         this.updatePlot(plt);
     }
-    
+
     protected async refreshPlotsDelayed(plotsIdResponse: HttpgdIdResponse[], redraw: boolean = false, force: boolean = false): Promise<void> {
         if(this.refreshTimeoutLength === 0){
             await this.refreshPlots(plotsIdResponse, redraw, force);
         } else{
             clearTimeout(this.refreshTimeout);
             this.refreshTimeout = setTimeout(() => {
-                void this.refreshPlots(plotsIdResponse, redraw, force).then(() => 
+                void this.refreshPlots(plotsIdResponse, redraw, force).then(() =>
                     this.refreshTimeout = undefined
                 );
             }, this.refreshTimeoutLength);
@@ -644,7 +644,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     // get content of a single plot
     protected async getPlotContent(id: HttpgdPlotId, width: number, height: number, zoom: number): Promise<HttpgdPlot<string>> {
-        
+
         const args = {
             id: id,
             height: height,
@@ -652,10 +652,10 @@ export class HttpgdViewer implements IHttpgdViewer {
             zoom: zoom,
             renderer: 'svgp'
         };
-        
+
         const plotContent = await this.api.getPlot(args);
         const svg = await plotContent?.text() || '';
-        
+
         const plt: HttpgdPlot<string> = {
             id: id,
             data: svg,
@@ -833,10 +833,10 @@ export class HttpgdViewer implements IHttpgdViewer {
         const plt = await this.api.getPlot({
             id: this.activePlot,
             renderer: rendererId
-        }) as unknown as Response; // I am not sure why eslint thinks this is the 
-        // browser Response object and not the node-fetch one. 
+        }) as unknown as Response; // I am not sure why eslint thinks this is the
+        // browser Response object and not the node-fetch one.
         // cross-fetch problem or config problem in vscode-r?
-        
+
         const dest = fs.createWriteStream(outFile);
         dest.on('error', (err) => void vscode.window.showErrorMessage(
             `Export failed: ${err.message}`

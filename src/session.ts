@@ -268,15 +268,15 @@ function getBrowserHtml(uri: Uri): string {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
     html, body {
         height: 100%;
         padding: 0;
         overflow: hidden;
     }
-  </style>
+    </style>
 </head>
 <body>
     <iframe src="${uri.toString(true)}" width="100%" height="100%" frameborder="0" />
@@ -384,9 +384,9 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style media="only screen">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style media="only screen">
     html, body {
         height: 100%;
         width: 100%;
@@ -477,12 +477,12 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     [class*="vscode"] input[class^=ag-] {
         border-color: var(--vscode-notificationCenter-border) !important;
     }
-  </style>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham.min.css'))))}" rel="stylesheet">
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham-dark.min.css'))))}" rel="stylesheet">
-  <script>
+    </style>
+    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
+    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
+    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham.min.css'))))}" rel="stylesheet">
+    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham-dark.min.css'))))}" rel="stylesheet">
+    <script>
     const dateFilterParams = {
         browserDatePicker: true,
         comparator: function (filterLocalDateAtMidnight, cellValue) {
@@ -555,10 +555,10 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             characterData: false
         });
     }
-  </script>
+    </script>
 </head>
 <body onload='onload()'>
-  <div id="myGrid" style="height: 100%;"></div>
+    <div id="myGrid" style="height: 100%;"></div>
 </body>
 </html>
 `;
@@ -572,12 +572,12 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 <!doctype HTML>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
-  <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.js'))))}"></script>
-  <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.css'))))}" rel="stylesheet">
-  <style type="text/css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
+    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.js'))))}"></script>
+    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.css'))))}" rel="stylesheet">
+    <style type="text/css">
     body {
         color: var(--vscode-editor-foreground);
         background-color: var(--vscode-editor-background);
@@ -616,8 +616,8 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
     a.json-placeholder {
         color: var(--vscode-input-placeholderForeground);
     }
-  </style>
-  <script>
+    </style>
+    <script>
     var data = ${String(content)};
     $(document).ready(function() {
       var options = {
@@ -628,10 +628,10 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
       };
       $("#json-renderer").jsonViewer(data, options);
     });
-  </script>
+    </script>
 </head>
 <body>
-  <pre id="json-renderer"></pre>
+    <pre id="json-renderer"></pre>
 </body>
 </html>
 `;
