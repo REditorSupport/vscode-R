@@ -20,6 +20,14 @@ import {HelpTreeWrapper} from './treeView';
 import {PackageManager} from './packages';
 import {isGuestSession, rGuestService} from '../liveShare';
 
+export type CodeClickAction = 'Ignore' | 'Copy' | 'Run';
+export interface CodeClickConfig {
+    'Click': CodeClickAction,
+    'Ctrl+Click': CodeClickAction,
+    'Shift+Click': CodeClickAction,
+}
+const CODE_CLICKS: (keyof CodeClickConfig)[] = ['Click', 'Ctrl+Click', 'Shift+Click'];
+
 // Initialization function that is called once when activating the extension
 export async function initializeHelp(
     context: vscode.ExtensionContext,
@@ -563,6 +571,23 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
 
     // Remove style elements specified in the html itself (replaced with custom CSS)
     $('head style').remove();
+    
+    // Split code examples at empty lines:
+    const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
+    const isEnabled = CODE_CLICKS.some(k => codeClickConfig[k] !== 'Ignore');
+    if(isEnabled){
+        $('body').addClass('preClickable');
+        const codeSections = $('pre');
+        codeSections.each((i, section) => {
+            const innerHtml = $(section).html();
+            const newPres = innerHtml.split('\n\n').map(s => `<pre>${s}</pre>`);
+            const newHtml = '<div class="preDiv">' + newPres.join('\n') + '</div>';
+            $(section).replaceWith(newHtml);
+        });
+    }
+    if(codeClickConfig.Click !== 'Ignore'){
+        $('body').addClass('preHoverPointer');
+    }
 
     // Apply syntax highlighting:
     if (config().get<boolean>('helpPanel.enableSyntaxHighlighting')) {

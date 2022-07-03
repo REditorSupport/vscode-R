@@ -23,6 +23,16 @@ interface LinkClickedMessage extends IOutMessage {
   href: string,
   scrollY: number
 }
+interface CodeClickedMessage extends IOutMessage {
+  message: 'codeClicked',
+  code: string,
+  modifiers: {
+    altKey: boolean,
+    ctrlKey: boolean,
+    shiftKey: boolean,
+    metaKey: boolean,
+  }
+}
 
-type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage;
+type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage | CodeClickedMessage;
 

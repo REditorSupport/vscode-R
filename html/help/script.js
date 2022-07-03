@@ -72,4 +72,24 @@ window.document.body.onload = () => {
             };
         }
     }
+    // notify vscode when code is clicked:
+    if (document.body.classList.contains('preClickable')) {
+        const codeElements = document.getElementsByTagName('pre');
+        console.log(codeElements);
+        for (let i = 0; i < codeElements.length; i++) {
+            const el = codeElements[i];
+            el.onclick = (me) => {
+                vscode.postMessage({
+                    message: 'codeClicked',
+                    code: el.textContent || '',
+                    modifiers: {
+                        altKey: me.altKey,
+                        ctrlKey: me.ctrlKey,
+                        shiftKey: me.shiftKey,
+                        metaKey: me.metaKey,
+                    }
+                });
+            };
+        }
+    }
 };

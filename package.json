@@ -1464,6 +1464,60 @@
           "default": true,
           "markdownDescription": "Show links to matching help pages in hover"
         },
+        "r.helpPanel.clickCodeExamples": {
+          "type": "object",
+          "markdownDescription": "What happens when clicking code examples on help pages. Might require restarting to take effect.",
+          "default": {
+            "Click": "Copy",
+            "Ctrl+Click": "Run",
+            "Shift+Click": "Ignore"
+          },
+          "properties": {
+            "Click": {
+              "type": "string",
+              "default": "Copy",
+              "enum": [
+                "Ignore",
+                "Copy",
+                "Run"
+              ],
+              "enumDescriptions": [
+                "Do nothing",
+                "Copy the code to the clipboard",
+                "Run the code in the terminal"
+              ]
+            },
+            "Ctrl+Click": {
+              "type": "string",
+              "default": "Run",
+              "enum": [
+                "Ignore",
+                "Copy",
+                "Run"
+              ],
+              "enumDescriptions": [
+                "Do nothing",
+                "Copy the code to the clipboard",
+                "Run the code in the terminal"
+              ]
+            },
+            "Shift+Click": {
+              "type": "string",
+              "default": "Ignore",
+              "enum": [
+                "Ignore",
+                "Copy",
+                "Run"
+              ],
+              "enumDescriptions": [
+                "Do nothing",
+                "Copy the code to the clipboard",
+                "Run the code in the terminal"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
         "r.source.encoding": {
           "type": "string",
           "default": "UTF-8",
@@ -1825,6 +1879,7 @@
     "vscode:prepublish": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
     "compile": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
     "watch": "tsc -p . --watch",
+    "watchHelp": "tsc -p ./html/help --watch",
     "pretest": "tsc -p ./",
     "test": "node ./out/test/runTest.js",
     "lint": "eslint src --ext ts"
