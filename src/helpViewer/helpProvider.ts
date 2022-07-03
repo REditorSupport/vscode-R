@@ -7,10 +7,10 @@ import { extensionContext } from '../extension';
 import { DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
 
 export interface RHelpProviderOptions {
-	// path of the R executable
+    // path of the R executable
     rPath: string;
-	// directory in which to launch R processes
-	cwd?: string;
+    // directory in which to launch R processes
+    cwd?: string;
     // listener to notify when new packages are installed
     pkgListener?: () => void;
 }
@@ -40,8 +40,8 @@ export class HelpProvider {
     }
 
     public launchRHelpServer(): ChildProcessWithPort{
-		const lim = '---vsc---';
-		const portRegex = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
+        const lim = '---vsc---';
+        const portRegex = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
         
         const newPackageRegex = new RegExp('NEW_PACKAGES');
 
@@ -104,7 +104,7 @@ export class HelpProvider {
         return childProcess;
     }
 
-	public async getHelpFileFromRequestPath(requestPath: string): Promise<undefined|rHelp.HelpFile> {
+    public async getHelpFileFromRequestPath(requestPath: string): Promise<undefined|rHelp.HelpFile> {
 
         const port = await this.cp?.port;
         if(!port || typeof port !== 'number'){
@@ -179,11 +179,11 @@ export class HelpProvider {
 
 
 export interface AliasProviderArgs {
-	// R path, must be vanilla R
-	rPath: string;
+    // R path, must be vanilla R
+    rPath: string;
     // cwd
     cwd?: string;
-	// getAliases.R
+    // getAliases.R
     rScriptFile: string;
 
     persistentState: Memento;
@@ -208,7 +208,7 @@ export class AliasProvider {
     private readonly cwd?: string;
     private readonly rScriptFile: string;
     private aliases?: undefined | rHelp.Alias[];
-	private readonly persistentState?: Memento;
+    private readonly persistentState?: Memento;
 
     constructor(args: AliasProviderArgs){
         this.rPath = args.rPath;

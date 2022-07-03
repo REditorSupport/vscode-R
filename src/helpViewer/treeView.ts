@@ -565,7 +565,7 @@ class HomeNode extends MetaNode {
 }
 
 class Search1Node extends MetaNode {
-	label = 'Open Help Topic using `?`';
+    label = 'Open Help Topic using `?`';
     iconPath = new vscode.ThemeIcon('zap');
     
     callBack(){
@@ -574,7 +574,7 @@ class Search1Node extends MetaNode {
 }
 
 class Search2Node extends MetaNode {
-	label = 'Search Help Topics using `??`';
+    label = 'Search Help Topics using `??`';
     iconPath = new vscode.ThemeIcon('search');
 
     callBack(){
@@ -584,7 +584,7 @@ class Search2Node extends MetaNode {
 
 class RefreshNode extends MetaNode {
     parent: RootNode;
-	label = 'Clear Cache & Restart Help Server';
+    label = 'Clear Cache & Restart Help Server';
     iconPath = new vscode.ThemeIcon('refresh');
 
     async callBack(){

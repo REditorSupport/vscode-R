@@ -82,7 +82,7 @@ export class PackageManager {
 
     readonly rHelp: RHelp;
 
-	readonly aliasProvider: AliasProvider;
+    readonly aliasProvider: AliasProvider;
 
     readonly state: vscode.Memento;
 
@@ -109,7 +109,7 @@ export class PackageManager {
     }
 
     // Funciton to clear only the cached files regarding an individual package etc.
-	public async clearCachedFiles(re?: string|RegExp): Promise<void> {
+    public async clearCachedFiles(re?: string|RegExp): Promise<void> {
         let cache: CachedIndexFiles | undefined;
         if(re){
             const oldCache = this.state.get<CachedIndexFiles>('r.helpPanel.cachedIndexFiles', []);
@@ -121,7 +121,7 @@ export class PackageManager {
             cache = undefined;
         }
         await this.state.update('r.helpPanel.cachedIndexFiles', cache);
-	}
+    }
 
     // Function to add/remove packages from favorites
     public addFavorite(pkgName: string): string[] {
@@ -350,33 +350,33 @@ export class PackageManager {
         return ret;
     }
 
-	// retrieve and parse an index file
-	// (either list of all packages, or documentation entries of a package)
-	private async getParsedIndexFile(path: string): Promise<IndexEntry[]|undefined> {
+    // retrieve and parse an index file
+    // (either list of all packages, or documentation entries of a package)
+    private async getParsedIndexFile(path: string): Promise<IndexEntry[]|undefined> {
 
         let indexItems = this.getCachedIndexFile(path);
 
-		// only read and parse file if not cached yet
-		if(!indexItems){
-			const helpFile = await this.rHelp.getHelpFileForPath(path, false);
-			if(!helpFile?.html){
-				// set missing files to null
+        // only read and parse file if not cached yet
+        if(!indexItems){
+            const helpFile = await this.rHelp.getHelpFileForPath(path, false);
+            if(!helpFile?.html){
+                // set missing files to null
                 indexItems = undefined;
-			} else{
-				// parse and cache file
-				indexItems = parseIndexFile(helpFile.html);
-			}
+            } else{
+                // parse and cache file
+                indexItems = parseIndexFile(helpFile.html);
+            }
             void this.updateCachedIndexFile(path, indexItems);
-		}
+        }
 
-		// return cache entry. make new array to avoid messing with the cache
+        // return cache entry. make new array to avoid messing with the cache
         let ret: IndexEntry[] | undefined = undefined;
         if(indexItems){
             ret = [];
             ret.push(...indexItems);
         }
-		return ret;
-	}
+        return ret;
+    }
 }
 
 

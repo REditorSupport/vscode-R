@@ -204,9 +204,9 @@ function getGuestImageHtml(content: string) {
 <!doctype HTML>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style type="text/css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style type="text/css">
     body {
         color: black;
         background-color: var(--vscode-editor-background);
@@ -219,10 +219,10 @@ function getGuestImageHtml(content: string) {
         right: 0;
         margin: auto;
     }
-  </style>
+    </style>
 </head>
 <body>
-  <img src = "data:image/png;base64, ${String(content)}">
+    <img src = "data:image/png;base64, ${String(content)}">
 </body>
 </html>
 `;

@@ -4,40 +4,40 @@
 
 
 interface VsCode {
-  postMessage: (msg: OutMessage) => void;
-  setState: (state: string) => void;
+    postMessage: (msg: OutMessage) => void;
+    setState: (state: string) => void;
 }
 declare function acquireVsCodeApi(): VsCode;
 
 
 
 export interface IMessage {
-  message: string;
+    message: string;
 }
 
 export interface LogMessage extends IMessage {
-  message: 'log',
-  body: any
+    message: 'log',
+    body: any
 }
 export interface MouseClickMessage extends IMessage {
-  message: 'mouseClick',
-  button: number,
-  scrollY: number
+    message: 'mouseClick',
+    button: number,
+    scrollY: number
 }
 export interface LinkClickedMessage extends IMessage {
-  message: 'linkClicked',
-  href: string,
-  scrollY: number
+    message: 'linkClicked',
+    href: string,
+    scrollY: number
 }
 export interface CodeClickedMessage extends IMessage {
-  message: 'codeClicked',
-  code: string,
-  modifiers: {
-    altKey: boolean,
-    ctrlKey: boolean,
-    shiftKey: boolean,
-    metaKey: boolean,
-  }
+    message: 'codeClicked',
+    code: string,
+    modifiers: {
+        altKey: boolean,
+        ctrlKey: boolean,
+        shiftKey: boolean,
+        metaKey: boolean,
+    }
 }
 
 export type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage | CodeClickedMessage;
