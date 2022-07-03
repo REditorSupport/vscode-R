@@ -271,7 +271,7 @@ export class HelpPanel {
             const isCtrlClick = msg.modifiers.ctrlKey || msg.modifiers.metaKey;
             const isShiftClick = msg.modifiers.shiftKey;
             const isNormalClick = !isCtrlClick && !isShiftClick;
-            
+
             // Check wheter to copy or run the code (or both or none)
             const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
             const runCode = (
@@ -284,7 +284,7 @@ export class HelpPanel {
                 || isShiftClick && codeClickConfig['Shift+Click'] === 'Copy'
                 || isNormalClick && codeClickConfig['Click'] === 'Copy'
             );
-            
+
             // Execute action:
             if(copyCode){
                 void vscode.env.clipboard.writeText(msg.code);

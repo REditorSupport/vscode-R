@@ -19,7 +19,7 @@ interface syntaxFile {
 
 /**
  * Converts a POSIX regular expression string into a format
- * that JavaScript can use. This is because vscode parses 
+ * that JavaScript can use. This is because vscode parses
  * syntax files using POSIX but JavaScript can't support it.
  * @param {string} s - A string to be used as a regular expression
  */
@@ -55,14 +55,14 @@ suite('Syntax Highlighting', () => {
         const match = re.exec(line);
         assert.strictEqual(match[3], 'function');
     });
-    
+
     test('function-declarations - extra spacing', () => {
         const re = new RegExp(function_pattern_fixed);
         const line = 'x <- function  (x) {';
         const match = re.exec(line);
         assert.strictEqual(match[3], 'function');
     });
-    
+
     test('function-declarations - false function', () => {
         const re = new RegExp(function_pattern_fixed);
         const line = 'x <- functions';

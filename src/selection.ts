@@ -259,7 +259,7 @@ export function extendSelection(line: number, getLine: (line: number) => string,
                 flagAbort = true;
             }
         }
-        
+
         curChar = nextChar;
     }
     if (flagAbort) {

@@ -42,7 +42,7 @@ export class HelpProvider {
     public launchRHelpServer(): ChildProcessWithPort{
         const lim = '---vsc---';
         const portRegex = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
-        
+
         const newPackageRegex = new RegExp('NEW_PACKAGES');
 
         // starts the background help server and waits forever to keep the R process running
@@ -90,7 +90,7 @@ export class HelpProvider {
                 resolve(0);
             });
         });
-        
+
         const exitHandler = () => {
             childProcess.port = 0;
         };
@@ -230,14 +230,14 @@ export class AliasProvider {
         if(this.aliases){
             return this.aliases;
         }
-        
+
         // try cached aliases:
         const cachedAliases = this.persistentState?.get<rHelp.Alias[]>('r.helpPanel.cachedAliases');
         if(cachedAliases){
             this.aliases = cachedAliases;
             return cachedAliases;
         }
-        
+
         // try to make new aliases (returns undefined if unsuccessful):
         const newAliases = await this.makeAllAliases();
         this.aliases = newAliases;
@@ -252,7 +252,7 @@ export class AliasProvider {
         if(!allPackageAliases){
             return undefined;
         }
-        
+
         // flatten aliases into one list:
         const allAliases: rHelp.Alias[] = [];
         for(const pkg in allPackageAliases){
@@ -289,7 +289,7 @@ export class AliasProvider {
             '-f',
             this.rScriptFile
         ];
-        
+
         try {
             const result = await spawnAsync(this.rPath, args, options);
             if (result.status !== 0) {

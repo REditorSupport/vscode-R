@@ -11,7 +11,7 @@ interface Plot {
 
     // svg of the plot
     svg: string;
-    
+
     height?: number;
     width?: number;
 }
@@ -104,7 +104,7 @@ function addPlot(html: string){
 }
 
 function focusPlot(plotId: string): void {
-    
+
     const smallPlots = getSmallPlots();
 
     const ind = findIndex(plotId, smallPlots);
@@ -115,25 +115,25 @@ function focusPlot(plotId: string): void {
     for(const elm of smallPlots){
         elm.classList.remove('active');
     }
-    
+
     const smallPlot = smallPlots[ind];
 
     smallPlot.classList.add('active');
-    
+
     largePlotDiv.innerHTML = smallPlot.innerHTML;
 }
 
 function updatePlot(plt: Plot): void {
-    
+
     const smallPlots = getSmallPlots();
 
     const ind = findIndex(plt.id, smallPlots);
     if(ind<0){
         return;
     }
-    
+
     smallPlots[ind].innerHTML = plt.svg;
-    
+
     if(smallPlots[ind].classList.contains('active')){
         largePlotDiv.innerHTML = plt.svg;
     }
@@ -146,11 +146,11 @@ function hidePlot(plotId: string): void {
     if(ind<0){
         return;
     }
-    
+
     if(smallPlots[ind].classList.contains('active')){
         largePlotDiv.innerHTML = '';
     }
-    
+
     smallPlots[ind].parentElement?.remove();
 }
 
@@ -212,7 +212,7 @@ document.addEventListener('mousemove', (e) => {
     if (isFullWindow || !isHandlerDragging) {
         return false;
     }
-    
+
     // postLogMessage('mousemove');
 
     // Get offset
@@ -220,7 +220,7 @@ document.addEventListener('mousemove', (e) => {
 
     // Get x-coordinate of pointer relative to container
     const pointerRelativeYpos = e.clientY - containerOffsetTop + window.scrollY;
-    
+
     // Arbitrary minimum width set on box A, otherwise its inner content will collapse to width of 0
     const largePlotMinHeight = 60;
 

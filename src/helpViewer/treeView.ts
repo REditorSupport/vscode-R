@@ -9,7 +9,7 @@ import { Package, Topic, TopicType } from './packages';
 const CollapsibleState = vscode.TreeItemCollapsibleState;
 
 
-// the commands contributed in package.json for the tree view 
+// the commands contributed in package.json for the tree view
 // the commands are registered in HelpTreeWrapper.constructor
 // the node-objects only need to handle the keys ('QUICKPICK' etc.) in Node.handleCommand()
 const nodeCommands = {
@@ -77,7 +77,7 @@ export class HelpTreeWrapper {
             listener(node);
         }
     }
-    
+
     public refreshPackageRootNode(): void {
         this.helpViewProvider.rootItem?.pkgRootNode?.refresh();
     }
@@ -551,7 +551,7 @@ class HomeNode extends MetaNode {
     collapsibleState = CollapsibleState.None;
     iconPath = new vscode.ThemeIcon('home');
     contextValue = Node.makeContextValue('openInNewPanel');
-    
+
     _handleCommand(cmd: cmdName){
         if(cmd === 'openInNewPanel'){
             void this.rHelp.makeNewHelpPanel();
@@ -567,7 +567,7 @@ class HomeNode extends MetaNode {
 class Search1Node extends MetaNode {
     label = 'Open Help Topic using `?`';
     iconPath = new vscode.ThemeIcon('zap');
-    
+
     callBack(){
         void this.rHelp.searchHelpByAlias();
     }
@@ -597,7 +597,7 @@ class OpenForSelectionNode extends MetaNode {
     parent: RootNode;
     label = 'Open Help Page for Selected Text';
     iconPath = new vscode.ThemeIcon('symbol-key');
-    
+
     callBack(){
         void this.rHelp.openHelpForSelection();
     }

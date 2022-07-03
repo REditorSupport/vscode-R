@@ -333,7 +333,7 @@ export async function executeRCommand(rCommand: string, cwd?: string, fallback?:
         const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
         const match = re.exec(result.stdout);
         if (match.length !== 2) {
-            throw new Error('Could not parse R output.');   
+            throw new Error('Could not parse R output.');
         }
         ret = match[1];
     } catch (e) {

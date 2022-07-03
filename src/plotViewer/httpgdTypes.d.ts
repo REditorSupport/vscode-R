@@ -15,7 +15,7 @@ export interface HttpgdPlot<T> {
 
     // data of the plot
     data: T;
-    
+
     // Size
     height: number;
     width: number;
@@ -47,14 +47,14 @@ export class IHttpgdViewer {
 
     // active plots
     plots: HttpgdPlot<string>[];
-    
+
     // Id of the currently viewed plot
     activePlot?: HttpgdPlotId;
-    
+
     // Size of the view area:
     viewHeight: number;
     viewWidth: number;
-    
+
     // constructor called by the session watcher if a corresponding function was called in R
     // creates a new api instance itself
     constructor(options: HttpgdViewerOptions);
@@ -65,17 +65,17 @@ export class IHttpgdViewer {
 
     // Called to create a new webview if the user closed the old one:
     show(preserveFocus?: boolean): void;
-    
+
     // focus a specific plot id
     focusPlot(id: HttpgdPlotId): void;
-    
+
     // navigate through plots (supply `true` to go to end/beginning of list)
     nextPlot(last?: boolean): void;
     prevPlot(first?: boolean): void;
-    
+
     // restore closed plots, show most recent plot etc.?
     resetPlots(): void;
-    
+
     // export plot
     // if no format supplied, show a quickpick menu etc.
     // if no filename supplied, show selector window

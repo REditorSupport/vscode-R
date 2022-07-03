@@ -90,7 +90,7 @@ export class PackageManager {
 
     // names of packages to be highlighted in the package list
     // public favoriteNames: string[] = [];
-    
+
     public favoriteNames: Set<string> = new Set();
 
 
@@ -176,7 +176,7 @@ export class PackageManager {
         }
     }
 
-    // let the user pick and install a package from CRAN 
+    // let the user pick and install a package from CRAN
     public async pickAndInstallPackages(pickMany: boolean = false): Promise<boolean> {
         const packages = await doWithProgress(() => this.getPackages(true), this.rHelp.treeViewWrapper.viewId);
         if(!packages?.length){
@@ -226,7 +226,7 @@ export class PackageManager {
         }
         return false;
     }
-    
+
     public async updatePackages(skipConfirmation: boolean = false): Promise<boolean> {
         const rPath = await getRpath();
         const cranUrl = await getCranUrl('', this.cwd);
@@ -463,7 +463,7 @@ async function pickPackages(packages: Package[], placeHolder: string, pickMany: 
         const qp = await vscode.window.showQuickPick(qpItems, qpOptions);
         ret = (qp ? [qp.package] : undefined);
     }
-    
+
     return ret;
 }
 
