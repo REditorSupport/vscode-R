@@ -52,8 +52,8 @@ export async function initializeHelp(
         cacheConfig === 'Workspace'
             ? context.workspaceState
             : cacheConfig === 'Global'
-            ? context.globalState
-            : new DummyMemento();
+                ? context.globalState
+                : new DummyMemento();
 
     // Gather options used in r help related files
     const rHelpOptions: HelpOptions = {
@@ -168,8 +168,7 @@ export interface HelpOptions {
 
 // The name api.HelpPanel is a bit misleading
 // This class manages all R-help and R-packages related functions
-export class RHelp
-    implements api.HelpPanel, vscode.WebviewPanelSerializer<string>
+export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<string>
 {
     // Path of a vanilla R installation
     readonly rPath: string
@@ -429,8 +428,8 @@ export class RHelp
 
     // helper function to get aliases from aliasprovider
     private async getAllAliases(): Promise<Alias[] | undefined> {
-        const aliases = await doWithProgress(() =>
-            this.aliasProvider.getAllAliases(),
+        const aliases = await doWithProgress(
+            () => this.aliasProvider.getAllAliases(),
             vscode.ProgressLocation.Window
         );
         if (!aliases) {
@@ -505,8 +504,8 @@ export class RHelp
         if (!this.cachedHelpFiles.has(requestPath)) {
             const helpFile = !isGuestSession
                 ? await this.helpProvider.getHelpFileFromRequestPath(
-                      requestPath,
-                  )
+                    requestPath,
+                )
                 : await rGuestService.requestHelpContent(requestPath);
             this.cachedHelpFiles.set(requestPath, helpFile);
         }

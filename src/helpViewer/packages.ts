@@ -267,8 +267,8 @@ export class PackageManager {
                 pkg.isFavorite = this.favoriteNames.has(pkg.name);
                 pkg.helpPath = (
                     pkg.name === 'doc' ?
-                    '/doc/html/packages.html' :
-                    `/library/${pkg.name}/html/00Index.html`
+                        '/doc/html/packages.html' :
+                        `/library/${pkg.name}/html/00Index.html`
                 );
             }
         }
@@ -300,8 +300,8 @@ export class PackageManager {
 
             topic.helpPath = (
                 topic.pkgName === 'doc' ?
-                `/doc/html/${topic.href}` :
-                `/library/${topic.pkgName}/html/${topic.href}`
+                    `/doc/html/${topic.href}` :
+                    `/library/${topic.pkgName}/html/${topic.href}`
             );
             return topic;
         });

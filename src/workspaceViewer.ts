@@ -241,8 +241,12 @@ export class GlobalEnvItem extends TreeItem {
         }
     }
 
-    private getTooltip(label:string, rClass: string,
-                size: number, treeLevel: number): string {
+    private getTooltip(
+        label:string,
+        rClass: string,
+        size: number,
+        treeLevel: number
+    ): string {
         if (size !== undefined && treeLevel === 0) {
             return `${label} (${rClass}, ${this.getSizeString(size)})`;
         } else if (treeLevel === 1) {

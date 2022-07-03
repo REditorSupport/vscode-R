@@ -109,11 +109,13 @@ function isQuote(c: string) {
  * @param getEndsInOperator A function that returns whether the given line ends in an operator.
  * @param lineCount The number of lines in the document.
  */
-function getNextChar(p: PositionNeg,
-                     lookingForward: boolean,
-                     getLine: (x: number) => string,
-                     getEndsInOperator: (y: number) => boolean,
-                     lineCount: number) {
+function getNextChar(
+    p: PositionNeg,
+    lookingForward: boolean,
+    getLine: (x: number) => string,
+    getEndsInOperator: (y: number) => boolean,
+    lineCount: number
+){
     const s = getLine(p.line);
     let nextPos: PositionNeg;
     let isEndOfCodeLine = false;
@@ -207,12 +209,13 @@ export function extendSelection(line: number, getLine: (line: number) => string,
     let curChar = '';
     let quoteChar = '';
     while (!flagAbort && !(flagsFinish[0] && flagsFinish[1])) {
-        const { nextChar, nextPos, isEndOfCodeLine, isEndOfFile }
-        = getNextChar(poss[lookingForward ? 1 : 0],
-                      lookingForward,
-                      getLineFromCache,
-                      getEndsInOperatorFromCache,
-                      lineCount);
+        const { nextChar, nextPos, isEndOfCodeLine, isEndOfFile } = getNextChar(
+            poss[lookingForward ? 1 : 0],
+            lookingForward,
+            getLineFromCache,
+            getEndsInOperatorFromCache,
+            lineCount
+        );
         poss[Number(lookingForward)] = nextPos;
         if (quoteChar === '') {
             if (isQuote(nextChar)) {

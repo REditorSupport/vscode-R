@@ -166,9 +166,10 @@ export abstract class RMarkdownManager {
 
     protected async knitWithProgress(args: IKnitArgs): Promise<DisposableProcess> {
         let childProcess: DisposableProcess = undefined;
-        await util.doWithProgress(async (token: vscode.CancellationToken, progress: vscode.Progress<unknown>) => {
-            childProcess = await this.knitDocument(args, token, progress) as DisposableProcess;
-        },
+        await util.doWithProgress(
+            async (token: vscode.CancellationToken, progress: vscode.Progress<unknown>) => {
+                childProcess = await this.knitDocument(args, token, progress) as DisposableProcess;
+            },
             vscode.ProgressLocation.Notification,
             `Knitting ${args.fileName} ${args.rOutputFormat ? 'to ' + args.rOutputFormat : ''} `,
             true
