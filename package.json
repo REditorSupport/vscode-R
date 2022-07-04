@@ -54,6 +54,7 @@
     "onCommand:r.goToPreviousChunk",
     "onCommand:r.goToNextChunk",
     "onCommand:r.createGitignore",
+    "onCommand:r.createLintrConfig",
     "onCommand:r.runCommandWithSelectionOrWord",
     "onCommand:r.runCommandWithEditorPath",
     "onCommand:r.runCommand",
@@ -423,6 +424,11 @@
         "title": "Create gitignore",
         "category": "R",
         "command": "r.createGitignore"
+      },
+      {
+        "title": "Create .lintr to the workspace",
+        "category": "R",
+        "command": "r.createLintrConfig"
       },
       {
         "title": "Preview Dataframe",
