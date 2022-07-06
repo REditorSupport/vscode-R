@@ -1929,7 +1929,7 @@
     "yamljs": "^0.3.0"
   },
   "dependencies": {
-    "ag-grid-community": "^27.1.0",
+    "ag-grid-community": "^28.0.0",
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
     "ejs": "^3.1.7",
