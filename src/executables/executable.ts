@@ -39,7 +39,9 @@ export class RExecutable {
     }
 
     public get tooltip(): string {
-        return `R ${this.rVersion} ${this.rArch}`;
+        const versionString = this.rVersion ? ` ${this.rVersion}` : '';
+        const archString = this.rArch ? ` ${this.rArch}` : '';
+        return `R${versionString}${archString}`;
     }
 }
 
@@ -54,7 +56,7 @@ export class VirtualRExecutable extends RExecutable {
     }
 
     public get tooltip(): string {
-        return `${this.name} (R ${this.rVersion} ${this.rArch})`;
+        return `${this.name} (${super.tooltip})`;
     }
 
     // todo, hardcoded

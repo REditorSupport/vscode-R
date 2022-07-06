@@ -34,7 +34,8 @@ export class ExecutableStatusItem implements vscode.Disposable  {
             this.languageStatusItem.severity = vscode.LanguageStatusSeverity.Information;
             this.languageStatusItem.detail = execState.rBin;
             if (execState instanceof VirtualRExecutable) {
-                this.languageStatusItem.text = `${execState.name} (${execState.rVersion})`;
+                const versionString = execState.rVersion ? ` (${execState.rVersion})` : '';
+                this.languageStatusItem.text = `${execState.name}${versionString}`;
             } else {
                 this.languageStatusItem.text = execState.rVersion;
             }
