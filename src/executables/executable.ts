@@ -1,4 +1,4 @@
-import { getVersionFromPath, getArchitectureFromPath } from './locator';
+import { getRDetailsFromPath } from './locator';
 
 export class RExecutableFactory {
     static createExecutable(executablePath: string): RExecutable {
@@ -20,9 +20,10 @@ export class RExecutable {
     private _arch: string;
 
     constructor(bin_path: string) {
+        const details = getRDetailsFromPath(bin_path);
         this._rBin = bin_path;
-        this._rVersion = getVersionFromPath(bin_path);
-        this._arch = getArchitectureFromPath(bin_path);
+        this._rVersion = details.version;
+        this._arch = details.arch;
     }
 
     public get rBin(): string {

@@ -1,19 +1,27 @@
 import * as fs from 'fs-extra';
-import * as os from 'os';
 import path = require('path');
 import winreg = require('winreg');
+import { RExecutable, RExecutableFactory } from '../executable';
 
 import { AbstractLocatorService } from './shared';
 
 export class WindowsExecLocator extends AbstractLocatorService {
-    public get hasBinaries(): boolean {
-        return this.binary_paths.length > 0;
+    constructor() {
+        super();
+        this._binaryPaths = [];
+        this._executables = [];
     }
-    public get binaries(): string[] {
-        return this.binary_paths;
+    public get hasExecutables(): boolean {
+        return this._executables.length > 0;
+    }
+    public get executables(): RExecutable[] {
+        return this._executables;
+    }
+    public get binaryPaths(): string[] {
+        return this._binaryPaths;
     }
     public refreshPaths(): void {
-        this.binary_paths = Array.from(
+        const paths = Array.from(
             new Set([
                 ...this.getHomeFromDirs(),
                 ...this.getHomeFromEnv(),
@@ -21,12 +29,13 @@ export class WindowsExecLocator extends AbstractLocatorService {
                 // ... this.getHomeFromConda()
             ])
         );
+        for (const path of paths) {
+            if (!this._binaryPaths?.includes(path)) {
+                this._binaryPaths.push(path);
+                this._executables.push(RExecutableFactory.createExecutable(path));
+            }
+        }
     }
-
-    private potential_bin_paths: string[] = [
-        '%ProgramFiles%\\R\\',
-        '%ProgramFiles(x86)%\\R\\'
-    ];
 
     private getHomeFromRegistry(): string[] {
         const registryBins: string[] = [];
@@ -68,7 +77,11 @@ export class WindowsExecLocator extends AbstractLocatorService {
 
     private getHomeFromDirs(): string[] {
         const dirBins: string[] = [];
-        for (const bin of this.potential_bin_paths) {
+        const potential_bin_paths: string[] = [
+            '%ProgramFiles%\\R\\',
+            '%ProgramFiles(x86)%\\R\\'
+        ];
+        for (const bin of potential_bin_paths) {
             const resolvedBin = path.resolve(bin);
             if (fs.existsSync(resolvedBin)) {
                 const i386 = `${resolvedBin}\\i386\\`;

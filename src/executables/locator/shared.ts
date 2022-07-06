@@ -1,36 +1,26 @@
-import path = require('path');
-import * as fs from 'fs-extra';
+import { execSync } from 'child_process';
+import { RExecutable } from '../executable';
 
-export function getVersionFromPath(rPath: string): string {
-    if (process.platform === 'win32') {
-        // not sure how to do this
-        return '';
-    } else {
-        try {
-            const scriptPath = path.normalize(`${rPath}/../Rcmd`);
-            const rCmdFile = fs.readFileSync(scriptPath, 'utf-8');
-            const regex = /(?<=R_VERSION=)[0-9.]*/g;
-            const version = regex.exec(rCmdFile)?.[0];
-            return version ?? '';
-        } catch (error) {
-            return '';
-        }
-    }
-}
-
-export function getArchitectureFromPath(path: string): string {
-    if (process.platform === 'win32') {
-        // \\bin\\i386 = 32bit
-        // \\bin\\x64 = 64bit
-        return '';
-    } else {
-        return '64-bit';
+export function getRDetailsFromPath(rPath: string): {version: string, arch: string} {
+    try {
+        const child = execSync(`${rPath} --version`).toString();
+        const versionRegex = /(?<=R version\s)[0-9.]*/g;
+        const archRegex = /[0-9]*-bit/g;
+        const out = {
+            version: child.match(versionRegex)?.[0] ?? '',
+            arch: child.match(archRegex)?.[0] ?? ''
+        };
+        return out;
+    } catch (error) {
+        return { version: '', arch: '' };
     }
 }
 
 export abstract class AbstractLocatorService {
-    protected binary_paths: string[];
-    public abstract get hasBinaries(): boolean;
-    public abstract get binaries(): string[];
+    protected _binaryPaths: string[];
+    protected _executables: RExecutable[];
+    public abstract get hasExecutables(): boolean;
+    public abstract get executables(): RExecutable[];
+    public abstract get binaryPaths(): string[];
     public abstract refreshPaths(): void;
 }

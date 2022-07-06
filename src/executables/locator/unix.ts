@@ -1,38 +1,53 @@
 import * as fs from 'fs-extra';
 import * as os from 'os';
 import path = require('path');
+import { RExecutable, RExecutableFactory } from '../executable';
 
 import { AbstractLocatorService } from './shared';
 
 export class UnixExecLocator extends AbstractLocatorService {
-    public get hasBinaries(): boolean {
-        return this.binary_paths.length > 0;
+    constructor() {
+        super();
+        this._binaryPaths = [];
+        this._executables = [];
     }
-    public get binaries(): string[] {
-        return this.binary_paths;
+    public get hasExecutables(): boolean {
+        return this._executables.length > 0;
+    }
+    public get executables(): RExecutable[] {
+        return this._executables;
+    }
+    public get binaryPaths(): string[] {
+        return this._binaryPaths;
     }
     public refreshPaths(): void {
-        this.binary_paths = Array.from(
+        const paths = Array.from(
             new Set([
                 ...this.getHomeFromDirs(),
                 ...this.getHomeFromEnv(),
                 ... this.getHomeFromConda()
             ])
         );
+        for (const path of paths) {
+            if (!this._binaryPaths?.includes(path)) {
+                this._binaryPaths.push(path);
+                this._executables.push(RExecutableFactory.createExecutable(path));
+            }
+        }
     }
-
-    private potential_bin_paths: string[] = [
-        '/usr/lib64/R/bin/R',
-        '/usr/lib/R/bin/R',
-        '/usr/local/lib64/R/bin/R',
-        '/usr/local/lib/R/bin/R',
-        '/opt/local/lib64/R/bin/R',
-        '/opt/local/lib/R/bin/R'
-    ];
 
     private getHomeFromDirs(): string[] {
         const dirBins: string[] = [];
-        for (const bin of this.potential_bin_paths) {
+        const potentialPaths: string[] = [
+            '/usr/lib64/R/bin/R',
+            '/usr/lib/R/bin/R',
+            '/usr/local/lib64/R/bin/R',
+            '/usr/local/lib/R/bin/R',
+            '/opt/local/lib64/R/bin/R',
+            '/opt/local/lib/R/bin/R'
+        ];
+
+        for (const bin of potentialPaths) {
             if (fs.existsSync(bin)) {
                 dirBins.push(bin);
             }

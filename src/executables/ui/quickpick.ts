@@ -84,10 +84,9 @@ export class ExecutableQuickPick implements vscode.Disposable {
             }
         );
 
-        this.retriever.binaries.forEach(home => {
+        this.retriever.binaryPaths.forEach(home => {
             if (validateRFolder(home)) {
-                const inst = RExecutableFactory.createExecutable(home);
-                executables.push(inst);
+                executables.push(this.retriever.executables.filter(exec => exec.rBin === home)?.[0]);
             }
         });
         sortBins(executables).forEach((bin: RExecutable) => {
@@ -119,6 +118,7 @@ export class ExecutableQuickPick implements vscode.Disposable {
         function setupQuickpickListeners(self: ExecutableQuickPick, resolver: () => void): void {
             self.qp.onDidTriggerButton((item: vscode.QuickInputButton) => {
                 if (item.tooltip === 'Refresh paths') {
+                    self.retriever.refreshPaths();
                     self.setItems();
                     self.qp.show();
                 } else {
