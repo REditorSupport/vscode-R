@@ -1,0 +1,72 @@
+import { execSync } from 'child_process';
+import * as fs from 'fs-extra';
+import * as vscode from 'vscode';
+
+export function getRDetailsFromPath(rPath: string): {version: string, arch: string} {
+    try {
+        const child = execSync(`${rPath} --version`).toString();
+        const versionRegex = /(?<=R version\s)[0-9.]*/g;
+        const archRegex = /[0-9]*-bit/g;
+        const out = {
+            version: child.match(versionRegex)?.[0] ?? '',
+            arch: child.match(archRegex)?.[0] ?? ''
+        };
+        return out;
+    } catch (error) {
+        return { version: '', arch: '' };
+    }
+}
+
+/**
+ * For a given array of paths, return only unique paths
+ * (including symlinks), favouring shorter paths
+ * @param paths
+ */
+export function getUniquePaths(paths: string[]): string[] {
+    function realpath(path: string): string {
+        if (fs.lstatSync(path).isSymbolicLink()) {
+            return fs.realpathSync(path);
+        }
+        return path;
+    }
+    function existsInSet(set: Set<string>, path: string): string {
+        const arr: string[] = [];
+        set.forEach((v) => {
+            if (realpath(path) === realpath(v)) {
+                arr.push(v);
+            }
+        });
+        return arr?.[0];
+    }
+
+    const out: Set<string> = new Set<string>();
+    for (const path of paths) {
+        const truepath = realpath(path);
+        const storedpath = existsInSet(out, path);
+        if (storedpath) {
+            if (storedpath.length > truepath.length) {
+                out.delete(storedpath);
+                out.add(truepath);
+            }
+        } else {
+            const shortestPath = truepath.length <= path.length ? truepath : path;
+            out.add(shortestPath);
+        }
+    }
+    return [...out.values()];
+}
+
+export abstract class AbstractLocatorService {
+    protected _binaryPaths: string[];
+    protected emitter: vscode.EventEmitter<string[]>;
+    public abstract refreshPaths(): void;
+    public get hasPaths(): boolean {
+        return this._binaryPaths.length > 0;
+    }
+    public get binaryPaths(): string[] {
+        return this._binaryPaths;
+    }
+    public get onDidRefreshPaths(): vscode.Event<string[]> {
+        return this.emitter.event;
+    }
+}

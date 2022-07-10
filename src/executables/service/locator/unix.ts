@@ -1,39 +1,25 @@
 import * as fs from 'fs-extra';
 import * as os from 'os';
+import * as vscode from 'vscode';
 import path = require('path');
-import { RExecutable, RExecutableFactory } from '../executable';
-
+import { getUniquePaths } from './shared';
 import { AbstractLocatorService } from './shared';
 
 export class UnixExecLocator extends AbstractLocatorService {
     constructor() {
         super();
+        this.emitter = new vscode.EventEmitter<string[]>();
         this._binaryPaths = [];
-        this._executables = [];
-    }
-    public get hasExecutables(): boolean {
-        return this._executables.length > 0;
-    }
-    public get executables(): RExecutable[] {
-        return this._executables;
-    }
-    public get binaryPaths(): string[] {
-        return this._binaryPaths;
     }
     public refreshPaths(): void {
-        const paths = Array.from(
+        this._binaryPaths = getUniquePaths(Array.from(
             new Set([
                 ...this.getHomeFromDirs(),
                 ...this.getHomeFromEnv(),
                 ... this.getHomeFromConda()
             ])
-        );
-        for (const path of paths) {
-            if (!this._binaryPaths?.includes(path)) {
-                this._binaryPaths.push(path);
-                this._executables.push(RExecutableFactory.createExecutable(path));
-            }
-        }
+        ));
+        this.emitter.fire(this._binaryPaths);
     }
 
     private getHomeFromDirs(): string[] {
@@ -93,4 +79,16 @@ export class UnixExecLocator extends AbstractLocatorService {
         }
         return envBins;
     }
+
+    // private getHomeFromStorage(): string[] {
+    //     const store = getExecutableStore();
+    //     const storedBins: string[] = [];
+    //     for (const [_, path] of store) {
+    //         if (fs.existsSync(path) && validateRExecutablePath(path)) {
+    //             storedBins.push(path);
+    //         }
+    //     }
+    //     return storedBins;
+    // }
 }
+

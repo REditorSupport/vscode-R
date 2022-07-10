@@ -1,20 +1,38 @@
 import { getRDetailsFromPath } from './locator';
+import { RExecutableRegistry } from './registry';
+
+export type ExecutableType = RExecutable;
+export type VirtualExecutableType = VirtualRExecutable;
+
+export function isVirtual(executable: RExecutable): executable is VirtualRExecutable {
+    return executable instanceof VirtualRExecutable;
+}
 
 export class RExecutableFactory {
-    static createExecutable(executablePath: string): RExecutable {
-        if (new RegExp('\\.conda').exec(executablePath)?.length > 0) {
-            return new VirtualRExecutable(executablePath);
-        } else {
-            return new RExecutable(executablePath);
-        }
+    private readonly registry: RExecutableRegistry;
+
+    constructor(registry: RExecutableRegistry) {
+        this.registry = registry;
     }
 
-    private constructor() {
-        //
+    public create(executablePath: string): ExecutableType {
+        const oldExec = [...this.registry.executables.values()].find((v) => v.rBin === executablePath);
+        if (oldExec) {
+            return oldExec;
+        } else {
+            let executable: RExecutable;
+            if (new RegExp('\\.conda').exec(executablePath)?.length > 0) {
+                executable = new VirtualRExecutable(executablePath);
+            } else {
+                executable = new RExecutable(executablePath);
+            }
+            this.registry.addExecutable(executable);
+            return executable;
+        }
     }
 }
 
-export class RExecutable {
+class RExecutable {
     private _rBin: string;
     private _rVersion: string;
     private _arch: string;
@@ -45,7 +63,7 @@ export class RExecutable {
     }
 }
 
-export class VirtualRExecutable extends RExecutable {
+class VirtualRExecutable extends RExecutable {
     constructor(bin_path: string) {
         super(bin_path);
     }

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import { VirtualRExecutable } from '../executable';
+import { isVirtual } from '../service/class';
 import { RExecutableService } from '../service';
 
 enum BinText {
@@ -9,7 +9,7 @@ enum BinText {
 }
 
 export class ExecutableStatusItem implements vscode.Disposable  {
-    private service: RExecutableService;
+    private readonly service: RExecutableService;
     private languageStatusItem: vscode.LanguageStatusItem;
 
     private createItem(): vscode.LanguageStatusItem {
@@ -33,7 +33,7 @@ export class ExecutableStatusItem implements vscode.Disposable  {
         if (execState) {
             this.languageStatusItem.severity = vscode.LanguageStatusSeverity.Information;
             this.languageStatusItem.detail = execState.rBin;
-            if (execState instanceof VirtualRExecutable) {
+            if (isVirtual(execState)) {
                 const versionString = execState.rVersion ? ` (${execState.rVersion})` : '';
                 this.languageStatusItem.text = `${execState.name}${versionString}`;
             } else {

@@ -2,26 +2,23 @@ import path = require('path');
 import * as fs from 'fs-extra';
 import * as vscode from 'vscode';
 
-import { LocatorServiceFactory, AbstractLocatorService } from './locator';
 import { ExecutableStatusItem, ExecutableQuickPick } from './ui';
-import { RExecutableService, WorkspaceExecutableEvent } from './service';
+import { isVirtual, RExecutableService, ExecutableType, WorkspaceExecutableEvent } from './service';
 import { extensionContext } from '../extension';
 import { spawnAsync } from '../util';
-import { RExecutable, VirtualRExecutable } from './executable';
+
+export { ExecutableType as IRExecutable, VirtualExecutableType as IVirtualRExecutable } from './service';
 
 // super class that manages relevant sub classes
-export class RExecutableManager {
-    private retrievalService: AbstractLocatorService;
-    private statusBar: ExecutableStatusItem;
-    private quickPick: ExecutableQuickPick;
-    private executableService: RExecutableService;
+export class RExecutableManager implements vscode.Disposable {
+    private readonly statusBar: ExecutableStatusItem;
+    private readonly quickPick: ExecutableQuickPick;
+    private readonly executableService: RExecutableService;
 
     constructor() {
-        this.retrievalService = LocatorServiceFactory.getLocator();
-        this.retrievalService.refreshPaths();
         this.executableService = new RExecutableService();
         this.statusBar = new ExecutableStatusItem(this.executableService);
-        this.quickPick = new ExecutableQuickPick(this.executableService, this.retrievalService);
+        this.quickPick = new ExecutableQuickPick(this.executableService);
 
         extensionContext.subscriptions.push(
             this.onDidChangeActiveExecutable(() => {
@@ -32,26 +29,35 @@ export class RExecutableManager {
                     this.reload();
                 }
             }),
-            this.executableService,
-            this.statusBar,
-            this.quickPick
+            this
         );
+
         this.reload();
     }
 
-    public get activeExecutable(): RExecutable {
-        return this.executableService.activeExecutable;
+    public dispose(): void {
+        this.executableService.dispose();
+        this.statusBar.dispose();
+        this.quickPick.dispose();
     }
 
     public get executableQuickPick(): ExecutableQuickPick {
         return this.quickPick;
     }
 
-    public get executableStatusItem(): ExecutableStatusItem {
-        return this.statusBar;
+    public get activeExecutablePath(): string {
+        return this.executableService.activeExecutable.rBin;
     }
 
-    public get onDidChangeActiveExecutable(): vscode.Event<RExecutable> {
+    public getExecutablePath(workingDir: string): string {
+        return this.executableService.getWorkspaceExecutable(workingDir).rBin;
+    }
+
+    public get activeExecutable(): ExecutableType {
+        return this.executableService.activeExecutable;
+    }
+
+    public get onDidChangeActiveExecutable(): vscode.Event<ExecutableType> {
         return this.executableService.onDidChangeActiveExecutable;
     }
 
@@ -72,21 +78,23 @@ export class RExecutableManager {
     }
 
     private async activateEnvironment(): Promise<unknown> {
+        if (!isVirtual(this.activeExecutable) ||
+            process.env.CONDA_DEFAULT_ENV !== this.activeExecutable.name) {
+            return Promise.resolve();
+        }
+
         const opts = {
             env: {
                 ...process.env
             },
         };
-        if (this.activeExecutable instanceof VirtualRExecutable && opts.env.CONDA_DEFAULT_ENV !== this.activeExecutable.name) {
-            return spawnAsync(
-                'conda', // hard coded for now
-                this.activeExecutable.activationCommand,
-                opts,
-                undefined
-            );
-        } else {
-            return Promise.resolve();
-        }
+
+        return spawnAsync(
+            'conda', // hard coded for now
+            this.activeExecutable.activationCommand,
+            opts,
+            undefined
+        );
     }
 
 }
@@ -99,8 +107,7 @@ export class RExecutableManager {
  * @param execPath
  * @returns boolean
  */
-export function validateRFolder(execPath: string): boolean {
+export function validateRExecutablePath(execPath: string): boolean {
     const basename = process.platform === 'win32' ? 'R.exe' : 'R';
-    const scriptPath = path.normalize(`${execPath}/../Rcmd`);
-    return fs.existsSync(execPath) && path.basename(basename) && fs.existsSync(scriptPath);
+    return fs.existsSync(execPath) && (path.basename(execPath) === basename);
 }

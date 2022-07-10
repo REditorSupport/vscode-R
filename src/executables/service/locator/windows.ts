@@ -1,40 +1,25 @@
 import * as fs from 'fs-extra';
+import * as vscode from 'vscode';
 import path = require('path');
 import winreg = require('winreg');
-import { RExecutable, RExecutableFactory } from '../executable';
-
-import { AbstractLocatorService } from './shared';
+import { getUniquePaths, AbstractLocatorService } from './shared';
 
 export class WindowsExecLocator extends AbstractLocatorService {
     constructor() {
         super();
+        this.emitter = new vscode.EventEmitter<string[]>();
         this._binaryPaths = [];
-        this._executables = [];
-    }
-    public get hasExecutables(): boolean {
-        return this._executables.length > 0;
-    }
-    public get executables(): RExecutable[] {
-        return this._executables;
-    }
-    public get binaryPaths(): string[] {
-        return this._binaryPaths;
     }
     public refreshPaths(): void {
-        const paths = Array.from(
+        this._binaryPaths = getUniquePaths(Array.from(
             new Set([
                 ...this.getHomeFromDirs(),
                 ...this.getHomeFromEnv(),
                 ...this.getHomeFromRegistry(),
                 // ... this.getHomeFromConda()
             ])
-        );
-        for (const path of paths) {
-            if (!this._binaryPaths?.includes(path)) {
-                this._binaryPaths.push(path);
-                this._executables.push(RExecutableFactory.createExecutable(path));
-            }
-        }
+        ));
+        this.emitter.fire(this._binaryPaths);
     }
 
     private getHomeFromRegistry(): string[] {
