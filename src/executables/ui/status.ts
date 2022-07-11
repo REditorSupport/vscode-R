@@ -8,7 +8,7 @@ enum BinText {
     missing = '$(warning) Select executable'
 }
 
-export class ExecutableStatusItem implements vscode.Disposable  {
+export class ExecutableStatusItem implements vscode.Disposable {
     private readonly service: RExecutableService;
     private languageStatusItem: vscode.LanguageStatusItem;
 
@@ -26,7 +26,7 @@ export class ExecutableStatusItem implements vscode.Disposable  {
     public constructor(service: RExecutableService) {
         this.service = service;
         this.createItem();
-     }
+    }
 
     public refresh(): void {
         const execState = this.service?.activeExecutable;
