@@ -10,19 +10,19 @@ export class WindowsExecLocator extends AbstractLocatorService {
         this.emitter = new vscode.EventEmitter<string[]>();
         this._binaryPaths = [];
     }
-    public refreshPaths(): void {
+    public async refreshPaths(): Promise<void> {
         this._binaryPaths = getUniquePaths(Array.from(
             new Set([
                 ...this.getHomeFromDirs(),
                 ...this.getHomeFromEnv(),
-                ...this.getHomeFromRegistry(),
+                ...await this.getHomeFromRegistry(),
                 // ... this.getHomeFromConda()
             ])
         ));
         this.emitter.fire(this._binaryPaths);
     }
 
-    private getHomeFromRegistry(): string[] {
+    private async getHomeFromRegistry(): Promise<string[]> {
         const registryBins: string[] = [];
         const potentialBins = [
             new winreg({
@@ -36,7 +36,7 @@ export class WindowsExecLocator extends AbstractLocatorService {
         ];
 
         for (const bin of potentialBins) {
-            void new Promise(
+            await new Promise(
                 (c, e) => {
                     bin.get('InstallPath', (err, result) => err === null ? c(result) : e(err));
                 }
@@ -86,14 +86,17 @@ export class WindowsExecLocator extends AbstractLocatorService {
 
     private getHomeFromEnv(): string[] {
         const envBins: string[] = [];
-        const os_paths: string[] | string = process.env.PATH.split(';');
+        const os_paths: string[] | string | undefined = process?.env?.PATH?.split(';');
 
-        for (const os_path of os_paths) {
-            const os_r_path: string = path.join(os_path, 'R' + '.exe');
-            if (fs.existsSync(os_r_path)) {
-                envBins.push(os_r_path);
+        if (os_paths) {
+            for (const os_path of os_paths) {
+                const os_r_path: string = path.join(os_path, 'R' + '.exe');
+                if (fs.existsSync(os_r_path)) {
+                    envBins.push(os_r_path);
+                }
             }
         }
+
         return envBins;
     }
 

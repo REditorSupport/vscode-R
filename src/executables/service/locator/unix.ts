@@ -11,7 +11,8 @@ export class UnixExecLocator extends AbstractLocatorService {
         this.emitter = new vscode.EventEmitter<string[]>();
         this._binaryPaths = [];
     }
-    public refreshPaths(): void {
+    // eslint-disable-next-line @typescript-eslint/require-await
+    public async refreshPaths(): Promise<void> {
         this._binaryPaths = getUniquePaths(Array.from(
             new Set([
                 ...this.getHomeFromDirs(),
@@ -69,14 +70,17 @@ export class UnixExecLocator extends AbstractLocatorService {
 
     private getHomeFromEnv(): string[] {
         const envBins: string[] = [];
-        const os_paths: string[] | string = process.env.PATH.split(';');
+        const os_paths: string[] | string | undefined = process?.env?.PATH?.split(';');
 
-        for (const os_path of os_paths) {
-            const os_r_path: string = path.join(os_path, 'R');
-            if (fs.existsSync(os_r_path)) {
-                envBins.push(os_r_path);
+        if (os_paths) {
+            for (const os_path of os_paths) {
+                const os_r_path: string = path.join(os_path, 'R');
+                if (fs.existsSync(os_r_path)) {
+                    envBins.push(os_r_path);
+                }
             }
         }
+
         return envBins;
     }
 

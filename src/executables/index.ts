@@ -11,15 +11,14 @@ export { ExecutableType as IRExecutable, VirtualExecutableType as IVirtualRExecu
 
 // super class that manages relevant sub classes
 export class RExecutableManager implements vscode.Disposable {
-    private readonly statusBar: ExecutableStatusItem;
-    private readonly quickPick: ExecutableQuickPick;
     private readonly executableService: RExecutableService;
+    private statusBar: ExecutableStatusItem;
+    private quickPick: ExecutableQuickPick;
 
-    constructor() {
-        this.executableService = new RExecutableService();
+    private constructor(service: RExecutableService) {
+        this.executableService = service;
         this.statusBar = new ExecutableStatusItem(this.executableService);
         this.quickPick = new ExecutableQuickPick(this.executableService);
-
         extensionContext.subscriptions.push(
             this.onDidChangeActiveExecutable(() => {
                 this.reload();
@@ -31,8 +30,12 @@ export class RExecutableManager implements vscode.Disposable {
             }),
             this
         );
-
         this.reload();
+    }
+
+    static async initialize(): Promise<RExecutableManager> {
+        const executableService = await RExecutableService.initialize();
+        return new this(executableService);
     }
 
     public dispose(): void {
@@ -45,19 +48,19 @@ export class RExecutableManager implements vscode.Disposable {
         return this.quickPick;
     }
 
-    public get activeExecutablePath(): string {
-        return this.executableService.activeExecutable.rBin;
+    public get activeExecutablePath(): string | undefined {
+        return this.executableService.activeExecutable?.rBin;
     }
 
-    public getExecutablePath(workingDir: string): string {
-        return this.executableService.getWorkspaceExecutable(workingDir).rBin;
+    public getExecutablePath(workingDir: string): string | undefined {
+        return this.executableService.getWorkspaceExecutable(workingDir)?.rBin;
     }
 
-    public get activeExecutable(): ExecutableType {
+    public get activeExecutable(): ExecutableType | undefined {
         return this.executableService.activeExecutable;
     }
 
-    public get onDidChangeActiveExecutable(): vscode.Event<ExecutableType> {
+    public get onDidChangeActiveExecutable(): vscode.Event<ExecutableType | undefined> {
         return this.executableService.onDidChangeActiveExecutable;
     }
 
@@ -77,8 +80,9 @@ export class RExecutableManager implements vscode.Disposable {
         void this.statusBar.busy(loading);
     }
 
+
     private async activateEnvironment(): Promise<unknown> {
-        if (!isVirtual(this.activeExecutable) ||
+        if (!this.activeExecutable || !isVirtual(this.activeExecutable) ||
             process.env.CONDA_DEFAULT_ENV !== this.activeExecutable.name) {
             return Promise.resolve();
         }

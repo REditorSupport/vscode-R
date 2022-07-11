@@ -13,7 +13,7 @@ export class RExecutablePathStorage {
         return this.store;
     }
 
-    public setExecutablePath(workingDir: string, binPath: string): void {
+    public setExecutablePath(workingDir: string, binPath: string | undefined): void {
         if (binPath) {
             this.store.set(workingDir, binPath);
         } else {
@@ -22,11 +22,11 @@ export class RExecutablePathStorage {
         void this.saveStorage();
     }
 
-    public getActiveExecutablePath(): string {
+    public getActiveExecutablePath(): string | undefined {
         return this.store.get(getCurrentWorkspaceFolder().uri.fsPath);
     }
 
-    public getExecutablePath(workingDir: string): string {
+    public getExecutablePath(workingDir: string): string | undefined {
         return this.store.get(workingDir);
     }
 

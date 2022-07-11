@@ -29,13 +29,14 @@ export class ExecutableStatusItem implements vscode.Disposable  {
      }
 
     public refresh(): void {
-        const execState = this.service.activeExecutable;
+        const execState = this.service?.activeExecutable;
         if (execState) {
             this.languageStatusItem.severity = vscode.LanguageStatusSeverity.Information;
             this.languageStatusItem.detail = execState.rBin;
             if (isVirtual(execState)) {
                 const versionString = execState.rVersion ? ` (${execState.rVersion})` : '';
-                this.languageStatusItem.text = `${execState.name}${versionString}`;
+                const name = execState.name ? execState.name : '';
+                this.languageStatusItem.text = `${name}${versionString}`;
             } else {
                 this.languageStatusItem.text = execState.rVersion;
             }

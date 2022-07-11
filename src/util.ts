@@ -7,7 +7,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
-import { extensionContext, rExecService } from './extension';
+import { extensionContext } from './extension';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -68,13 +68,6 @@ export function getRPathConfigEntry(term: boolean = false): string {
 }
 
 export async function getRpath(quote = false, overwriteConfig?: string): Promise<string> {
-    const execPath = rExecService.activeExecutable?.rBin;
-    if (execPath) {
-        return execPath;
-    } else {
-        return '';
-    }
-
     let rpath = '';
 
     // try the config entry specified in the function arg:
@@ -305,6 +298,10 @@ export function getRLibPaths(): string {
     return config().get<string[]>('libPaths').join('\n');
 }
 
+export function normaliseRPathString(path: string): string {
+    return path.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+}
+
 // executes an R command returns its output to stdout
 // uses a regex to filter out output generated e.g. by code in .Rprofile
 // returns the provided fallback when the command failes
@@ -524,4 +521,13 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
                 void _config.update(section, false);
             }
         });
+}
+
+export function isMultiRoot(): boolean {
+    const folders = vscode?.workspace?.workspaceFolders;
+    if (folders) {
+        return folders.length > 1;
+    } else {
+        return false;
+    }
 }

@@ -21,7 +21,7 @@ export class RExecutableFactory {
             return oldExec;
         } else {
             let executable: RExecutable;
-            if (new RegExp('\\.conda').exec(executablePath)?.length > 0) {
+            if (new RegExp('\\.conda')?.exec(executablePath)) {
                 executable = new VirtualRExecutable(executablePath);
             } else {
                 executable = new RExecutable(executablePath);
@@ -64,13 +64,16 @@ class RExecutable {
 }
 
 class VirtualRExecutable extends RExecutable {
+    private _name: string;
+
     constructor(bin_path: string) {
         super(bin_path);
+        const reg = new RegExp('(?<=\\/envs\\/)(.*?)(?=\\/)');
+        this._name = reg?.exec(this.rBin)?.[0] ?? '';
     }
 
     public get name(): string {
-        const reg = new RegExp('(?<=\\/envs\\/)(.*?)(?=\\/)');
-        return reg.exec(this.rBin)[0];
+        return this._name;
     }
 
     public get tooltip(): string {
@@ -79,6 +82,10 @@ class VirtualRExecutable extends RExecutable {
 
     // todo, hardcoded
     public get activationCommand(): string[] {
-        return ['activate', this.name];
+        if (this.name) {
+            return ['activate', this.name];
+        } else {
+            return ['activate'];
+        }
     }
 }

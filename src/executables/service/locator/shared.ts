@@ -1,10 +1,12 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs-extra';
 import * as vscode from 'vscode';
+import { normaliseRPathString } from '../../../util';
 
 export function getRDetailsFromPath(rPath: string): {version: string, arch: string} {
     try {
-        const child = execSync(`${rPath} --version`).toString();
+        const path = normaliseRPathString(rPath);
+        const child = execSync(`${path} --version`).toString();
         const versionRegex = /(?<=R version\s)[0-9.]*/g;
         const archRegex = /[0-9]*-bit/g;
         const out = {
@@ -59,7 +61,7 @@ export function getUniquePaths(paths: string[]): string[] {
 export abstract class AbstractLocatorService {
     protected _binaryPaths: string[];
     protected emitter: vscode.EventEmitter<string[]>;
-    public abstract refreshPaths(): void;
+    public abstract refreshPaths(): Promise<void>;
     public get hasPaths(): boolean {
         return this._binaryPaths.length > 0;
     }

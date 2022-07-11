@@ -24,4 +24,8 @@ export class RExecutableRegistry {
     public hasExecutable(executable: ExecutableType): boolean {
         return this._executables.has(executable);
     }
+
+    public getExecutablesWithVersion(version: string): ExecutableType[] {
+        return [...this._executables.values()].filter((v) => v.rVersion === version);
+    }
 }

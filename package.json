@@ -26,7 +26,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": "^1.65.0"
   },
   "activationEvents": [
     "onLanguage:r",
@@ -1916,7 +1916,7 @@
     "@types/node": "^14.17.3",
     "@types/node-fetch": "^2.5.10",
     "@types/showdown": "^1.9.3",
-    "@types/vscode": "^1.60.0",
+    "@types/vscode": "^1.65.0",
     "@types/winreg": "^1.2.31",
     "@types/ws": "^7.4.4",
     "@typescript-eslint/eslint-plugin": "4.25.0",
