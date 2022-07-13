@@ -49,16 +49,18 @@ export class UnixExecLocator extends AbstractLocatorService {
         ];
         for (const dir of conda_dirs) {
             if (fs.existsSync(dir)) {
-                const lines = fs.readFileSync(dir).toString();
-                for (const line of lines.split('\n')) {
-                    if (line) {
-                        const potential_dirs = [
-                            `${line}/lib64/R/bin/R`,
-                            `${line}/lib/R/bin/R`
-                        ];
-                        for (const dir of potential_dirs) {
-                            if (fs.existsSync(dir)) {
-                                dirBins.push(dir);
+                const lines = fs.readFileSync(dir)?.toString();
+                if (lines) {
+                    for (const line of lines.split('\n')) {
+                        if (line) {
+                            const potential_dirs = [
+                                `${line}/lib64/R/bin/R`,
+                                `${line}/lib/R/bin/R`
+                            ];
+                            for (const dir of potential_dirs) {
+                                if (fs.existsSync(dir)) {
+                                    dirBins.push(dir);
+                                }
                             }
                         }
                     }

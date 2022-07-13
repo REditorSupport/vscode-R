@@ -8,6 +8,8 @@ import { RExecutableService } from '../service';
 import { getRenvVersion } from '../service/renv';
 
 class ExecutableQuickPickItem implements vscode.QuickPickItem {
+    public recommended: boolean;
+    public category: string;
     public label: string;
     public description: string;
     public detail?: string;
@@ -15,13 +17,20 @@ class ExecutableQuickPickItem implements vscode.QuickPickItem {
     public alwaysShow?: boolean;
     private _executable: ExecutableType;
 
-    constructor(executable: ExecutableType, recommended?: boolean) {
+    constructor(executable: ExecutableType, recommended: boolean) {
         this._executable = executable;
         this.description = executable.rBin;
 
+        if (isVirtual(executable)) {
+            this.category = 'Virtual';
+        } else {
+            this.category = 'Global';
+        }
+
+        this.recommended = recommended;
+
         if (recommended) {
             this.label = `$(star) ${executable.tooltip}`;
-            this.detail = 'ffffffffffff';
         } else {
             this.label = executable.tooltip;
         }
@@ -53,17 +62,6 @@ export class ExecutableQuickPick implements vscode.Disposable {
     }
 
     private setItems(): void {
-        function sortBins(bins: ExecutableType[]) {
-            return bins.sort((a, b) => {
-                if (!isVirtual(a) && isVirtual(b)) {
-                    return 1;
-                } else if (!isVirtual(b) && isVirtual(a)) {
-                    return -1;
-                } else {
-                    return a.rVersion.localeCompare(b.rVersion, undefined, { numeric: true, sensitivity: 'base' });
-                }
-            });
-        }
         const qpItems: vscode.QuickPickItem[] = [];
         const configPath = config().get<string>(getRPathConfigEntry());
         qpItems.push(
@@ -83,14 +81,44 @@ export class ExecutableQuickPick implements vscode.Disposable {
             });
         }
 
+        const renvVersion = getRenvVersion(this.currentFolder.uri.fsPath) ?? undefined;
+        const recommendedItems: vscode.QuickPickItem[] = [
+            {
+                label: 'Recommended',
+                kind: vscode.QuickPickItemKind.Separator
+            }
+        ];
+        const virtualItems: vscode.QuickPickItem[] = [
+            {
+                label: 'Virtual',
+                kind: vscode.QuickPickItemKind.Separator
+            }
+        ];
+        const globalItems: vscode.QuickPickItem[] = [
+            {
+                label: 'Global',
+                kind: vscode.QuickPickItemKind.Separator
+            }
+        ];
 
-
-        sortBins([...this.service.executables]).forEach((bin: ExecutableType) => {
-            qpItems.push(new ExecutableQuickPickItem(bin, recommendPath(bin, this.currentFolder)));
+        [...this.service.executables].forEach((v) => {
+            const item = new ExecutableQuickPickItem(v, recommendPath(v, this.currentFolder, renvVersion));
+            if (item.recommended) {
+                recommendedItems.push(item);
+            } else {
+                switch (item.category) {
+                    case 'Virtual': {
+                        virtualItems.push(item);
+                        break;
+                    }
+                    case 'Global': {
+                        globalItems.push(item);
+                        break;
+                    }
+                }
+            }
         });
-
-        this.quickpick.items = qpItems;
-
+        this.quickpick.items = [...qpItems, ...recommendedItems, ...virtualItems, ...globalItems];
         for (const item of this.quickpick.items) {
             if (item.description === this.service.getWorkspaceExecutable(this.currentFolder?.uri?.fsPath)?.rBin) {
                 this.quickpick.activeItems = [item];
@@ -98,32 +126,42 @@ export class ExecutableQuickPick implements vscode.Disposable {
         }
     }
 
+    /**
+     * @description
+     * Basic display of the quickpick is:
+     *    - Manual executable selection
+     *    - Configuration path (may be hidden)
+     *    - Recommended paths (may be hidden)
+     *    - Virtual paths
+     *    - Global paths
+     * @returns {*}  {Promise<void>}
+     * @memberof ExecutableQuickPick
+     */
     public async showQuickPick(): Promise<void> {
-        function setupQuickpickOpts(self: ExecutableQuickPick): void {
-            self.quickpick = vscode.window.createQuickPick();
-            self.quickpick.title = 'Select R executable path';
-            self.quickpick.canSelectMany = false;
-            self.quickpick.ignoreFocusOut = true;
-            self.quickpick.matchOnDescription = true;
-            self.quickpick.placeholder = '';
-            self.quickpick.buttons = [
+        const setupQuickpickOpts = () => {
+            this.quickpick = vscode.window.createQuickPick();
+            this.quickpick.title = 'Select R executable path';
+            this.quickpick.canSelectMany = false;
+            this.quickpick.ignoreFocusOut = true;
+            this.quickpick.matchOnDescription = true;
+            this.quickpick.buttons = [
                 { iconPath: new vscode.ThemeIcon('clear-all'), tooltip: 'Clear stored path' },
                 { iconPath: new vscode.ThemeIcon('refresh'), tooltip: 'Refresh paths' }
             ];
-        }
+        };
 
-        function setupQuickpickListeners(self: ExecutableQuickPick, resolver: () => void): void {
-            self.quickpick.onDidTriggerButton(async (item: vscode.QuickInputButton) => {
+        const setupQuickpickListeners = (resolver: () => void) => {
+            this.quickpick.onDidTriggerButton(async (item: vscode.QuickInputButton) => {
                 if (item.tooltip === 'Refresh paths') {
-                    await self.service.executablePathLocator.refreshPaths();
-                    self.setItems();
-                    self.quickpick.show();
+                    await this.service.executablePathLocator.refreshPaths();
+                    this.setItems();
+                    this.quickpick.show();
                 } else {
-                    self.service.setWorkspaceExecutable(self.currentFolder?.uri?.fsPath, undefined);
-                    self.quickpick.hide();
+                    this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
+                    this.quickpick.hide();
                 }
             });
-            self.quickpick.onDidChangeSelection((items: vscode.QuickPickItem[]) => {
+            this.quickpick.onDidChangeSelection((items: vscode.QuickPickItem[]) => {
                 const qpItem = items[0];
                 if (qpItem.label) {
                     switch (qpItem.label) {
@@ -136,11 +174,11 @@ export class ExecutableQuickPick implements vscode.Disposable {
                             };
                             void vscode.window.showOpenDialog(opts).then((execPath) => {
                                 if (execPath?.[0].fsPath && validateRExecutablePath(execPath[0].fsPath)) {
-                                    const rExec = self.service.executableFactory.create(execPath[0].fsPath);
-                                    self.service.setWorkspaceExecutable(self.currentFolder?.uri?.fsPath, rExec);
+                                    const rExec = this.service.executableFactory.create(execPath[0].fsPath);
+                                    this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, rExec);
                                 } else {
                                     void vscode.window.showErrorMessage(ExecutableNotifications.badFolder);
-                                    self.service.setWorkspaceExecutable(self.currentFolder?.uri?.fsPath, undefined);
+                                    this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
                                 }
                             });
                             break;
@@ -148,30 +186,36 @@ export class ExecutableQuickPick implements vscode.Disposable {
                         case PathQuickPickMenu.configuration: {
                             const configPath = config().get<string>(getRPathConfigEntry());
                             if (configPath && validateRExecutablePath(configPath)) {
-                                const rExec = self.service.executableFactory.create(configPath);
-                                self.service.setWorkspaceExecutable(self.currentFolder?.uri?.fsPath, rExec);
+                                const rExec = this.service.executableFactory.create(configPath);
+                                this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, rExec);
                             } else {
                                 void vscode.window.showErrorMessage(ExecutableNotifications.badConfig);
-                                self.service.setWorkspaceExecutable(self.currentFolder?.uri?.fsPath, undefined);
+                                this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
                             }
                             break;
                         }
                         default: {
-                            self.service.setWorkspaceExecutable(self.currentFolder?.uri?.fsPath, (qpItem as ExecutableQuickPickItem).executable);
+                            this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, (qpItem as ExecutableQuickPickItem).executable);
                             break;
                         }
                     }
                 }
-                self.quickpick.hide();
+                this.quickpick.hide();
                 resolver();
             });
-        }
+        };
 
         return await new Promise((res) => {
-            setupQuickpickOpts(this);
-            setupQuickpickListeners(this, res);
+            setupQuickpickOpts();
+            setupQuickpickListeners(res);
             void showWorkspaceFolderQP().then((folder: vscode.WorkspaceFolder) => {
                 this.currentFolder = folder;
+                const currentExec = this.service.getWorkspaceExecutable(folder?.uri?.fsPath);
+                if (currentExec) {
+                    this.quickpick.placeholder = `Current path: ${currentExec.rBin}`;
+                } else {
+                    this.quickpick.placeholder = '';
+                }
                 this.setItems();
                 this.quickpick.show();
             });
@@ -179,16 +223,25 @@ export class ExecutableQuickPick implements vscode.Disposable {
     }
 }
 
-async function showWorkspaceFolderQP(): Promise<vscode.WorkspaceFolder> {
+async function showWorkspaceFolderQP(): Promise<vscode.WorkspaceFolder | undefined> {
     const opts: vscode.WorkspaceFolderPickOptions = {
         ignoreFocusOut: true,
         placeHolder: 'Select a workspace folder to define an R path for'
     };
+    const currentDocument = vscode?.window?.activeTextEditor?.document?.uri;
     if (isMultiRoot()) {
-        return await vscode.window.showWorkspaceFolderPick(opts);
+        const workspaceFolder = await vscode.window.showWorkspaceFolderPick(opts);
+        if (workspaceFolder) {
+            return workspaceFolder;
+        } else if (currentDocument) {
+            return {
+                index: 0,
+                uri: currentDocument,
+                name: 'untitled'
+            };
+        }
     }
 
-    const currentDocument = vscode?.window?.activeTextEditor?.document?.uri;
     if (currentDocument) {
         const folder = vscode.workspace.getWorkspaceFolder(currentDocument);
         if (folder) {
@@ -201,12 +254,12 @@ async function showWorkspaceFolderQP(): Promise<vscode.WorkspaceFolder> {
             };
         }
     }
+
+    return undefined;
 }
 
-function recommendPath(executable: ExecutableType, workspaceFolder: vscode.WorkspaceFolder): boolean {
-    const renvVersion = getRenvVersion(workspaceFolder?.uri?.fsPath);
+function recommendPath(executable: ExecutableType, workspaceFolder: vscode.WorkspaceFolder, renvVersion?: string): boolean {
     if (renvVersion) {
-        console.log(renvVersion);
         const compatibleBin = renvVersion === executable.rVersion;
         if (compatibleBin) {
             return true;
@@ -215,5 +268,5 @@ function recommendPath(executable: ExecutableType, workspaceFolder: vscode.Works
     }
     const uri = vscode.Uri.file(executable.rBin);
     const possibleWorkspace = vscode.workspace.getWorkspaceFolder(uri);
-    return possibleWorkspace && possibleWorkspace === workspaceFolder;
+    return !!possibleWorkspace && possibleWorkspace === workspaceFolder;
 }

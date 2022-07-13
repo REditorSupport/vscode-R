@@ -40,7 +40,11 @@ export class RExecutablePathStorage {
     }
 
     private mapToString(map: Map<string, string>): string {
-        return JSON.stringify([...map]);
+        try {
+            return JSON.stringify([...map]);
+        } catch (error) {
+            return '';
+        }
     }
 
     private stringToMap(str: string): Map<string, string> {
