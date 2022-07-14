@@ -22,7 +22,7 @@ async function populatePackageNodes(): Promise<void> {
     }
 }
 
-function getPackageNode(name: string): PackageNode {
+function getPackageNode(name: string): PackageNode | undefined {
     const rootNode = globalRHelp?.treeViewWrapper.helpViewProvider.rootItem;
     if (rootNode) {
         return rootNode.pkgRootNode.children?.find(node => node.label === name);
@@ -30,21 +30,20 @@ function getPackageNode(name: string): PackageNode {
 }
 
 export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
+    private readonly attachedNamespacesRootItem: TreeItem;
+    private readonly loadedNamespacesRootItem: TreeItem;
+    private readonly globalEnvRootItem: TreeItem;
     private _onDidChangeTreeData: EventEmitter<void> = new EventEmitter();
-    readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
 
-    refresh(): void {
+    public readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
+    public data: WorkspaceData;
+
+    public refresh(): void {
         this.data = isGuestSession ? guestWorkspace : workspaceData;
         this._onDidChangeTreeData.fire();
     }
 
-    data: WorkspaceData;
-
-    private readonly attachedNamespacesRootItem: TreeItem;
-    private readonly loadedNamespacesRootItem: TreeItem;
-    private readonly globalEnvRootItem: TreeItem;
-
-    constructor() {
+    public constructor() {
         this.attachedNamespacesRootItem = new TreeItem('Attached Namespaces', TreeItemCollapsibleState.Collapsed);
         this.attachedNamespacesRootItem.id = 'attached-namespaces';
         this.attachedNamespacesRootItem.iconPath = new ThemeIcon('library');
@@ -64,11 +63,11 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
         );
     }
 
-    getTreeItem(element: TreeItem): TreeItem {
+    public getTreeItem(element: TreeItem): TreeItem {
         return element;
     }
 
-    async getChildren(element?: TreeItem): Promise<TreeItem[]> {
+    public async getChildren(element?: TreeItem): Promise<TreeItem[]> {
         if (element) {
             if (this.data === undefined) {
                 return [];
@@ -141,7 +140,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                 str,
                 type,
                 size,
-                0,
+                TreeLevel.Parent,
                 dim,
             );
         };
@@ -162,7 +161,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             } else if (a.priority < b.priority) {
                 return 1;
             } else {
-                return 0 || a.label.localeCompare(b.label);
+                return a.label.localeCompare(b.label);
             }
         }
 
@@ -171,11 +170,11 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 }
 
 class PackageItem extends TreeItem {
-    static command : string = 'r.workspaceViewer.package.showQuickPick';
-    label: string;
-    name: string;
-    pkgNode?: PackageNode;
-    constructor(label: string, name: string, pkgNode?: PackageNode) {
+    public static command : string = 'r.workspaceViewer.package.showQuickPick';
+    public label: string;
+    public name: string;
+    public pkgNode?: PackageNode;
+    public constructor(label: string, name: string, pkgNode?: PackageNode) {
         super(label, TreeItemCollapsibleState.None);
         this.name = name;
         this.iconPath = new ThemeIcon('symbol-package');
@@ -191,33 +190,48 @@ class PackageItem extends TreeItem {
     }
 }
 
+enum TreeLevel {
+    Parent = 0,
+    Scalar = 1,
+    Child = 2
+}
+
 export class GlobalEnvItem extends TreeItem {
-    label: string;
-    desc: string;
-    str: string;
-    type: string;
-    treeLevel: number;
-    contextValue: string;
-    priority: number;
+    public label: string;
+    public desc: string;
+    public str: string;
+    public type: string;
+    public treeLevel: number;
+    public contextValue: string;
+    public priority: number;
 
     constructor(
         label: string,
         rClass: string,
         str: string,
         type: string,
-        size: number,
-        treeLevel: number,
+        size?: number,
+        treeLevel?: number,
         dim?: number[],
     ) {
-        super(label, GlobalEnvItem.setCollapsibleState(treeLevel, type, str));
-        this.description = this.getDescription(dim, str, rClass, type);
-        this.tooltip = this.getTooltip(label, rClass, size, treeLevel);
-        this.iconPath = this.getIcon(type, dim);
+        super(
+            label,
+            GlobalEnvItem.setCollapsibleState(treeLevel ?? TreeLevel.Scalar, type, str)
+        );
         this.type = type;
         this.str = str;
-        this.treeLevel = treeLevel;
-        this.contextValue = treeLevel === 0 ? 'rootNode' : `childNode${treeLevel}`;
+        this.treeLevel = treeLevel ?? TreeLevel.Scalar;
         this.priority = dim ? 1 : 0;
+
+        this.description = this.getDescription(
+            dim,
+            str,
+            rClass,
+            type
+        );
+        this.tooltip = this.getTooltip(label, rClass, size, treeLevel);
+        this.iconPath = this.getIcon(type, dim);
+        this.contextValue = treeLevel === 0 ? 'rootNode' : `childNode${this.treeLevel}`;
     }
 
     private getDescription(dim: number[], str: string, rClass: string, type: string): string {
@@ -244,19 +258,19 @@ export class GlobalEnvItem extends TreeItem {
     private getTooltip(
         label:string,
         rClass: string,
-        size: number,
-        treeLevel: number
+        size?: number,
+        treeLevel?: number
     ): string {
-        if (size !== undefined && treeLevel === 0) {
+        if (size && treeLevel === TreeLevel.Parent) {
             return `${label} (${rClass}, ${this.getSizeString(size)})`;
-        } else if (treeLevel === 1) {
-            return null;
+        } else if (treeLevel === TreeLevel.Scalar) {
+            return '';
         } else {
             return `${label} (${rClass})`;
         }
     }
 
-    private getIcon(type: string, dim?: number[]) {
+    private getIcon(type: string, dim?: number[]): vscode.ThemeIcon {
         let name: string;
         if (dim) {
             name = 'symbol-array';
@@ -274,9 +288,8 @@ export class GlobalEnvItem extends TreeItem {
     during the super constructor above. I created it to give full control
     of what elements can have have 'child' nodes os not. It can be expanded
     in the futere for more tree levels.*/
-
-    private static setCollapsibleState(treeLevel: number, type: string, str: string) {
-        if (treeLevel === 0 && collapsibleTypes.includes(type) && str.includes('\n')){
+    private static setCollapsibleState(treeLevel: number, type: string, str: string): vscode.TreeItemCollapsibleState {
+        if (treeLevel === TreeLevel.Parent && collapsibleTypes.includes(type) && str.includes('\n')){
             return TreeItemCollapsibleState.Collapsed;
         } else {
             return TreeItemCollapsibleState.None;
@@ -285,8 +298,8 @@ export class GlobalEnvItem extends TreeItem {
 }
 
 export function clearWorkspace(): void {
-    const removeHiddenItems: boolean = config().get('workspaceViewer.removeHiddenItems');
-    const promptUser: boolean = config().get('workspaceViewer.clearPrompt');
+    const removeHiddenItems: boolean | undefined = config().get('workspaceViewer.removeHiddenItems');
+    const promptUser: boolean | undefined = config().get('workspaceViewer.clearPrompt');
 
     if ((isGuestSession ? guestWorkspace : workspaceData) !== undefined) {
         if (promptUser) {
@@ -316,7 +329,7 @@ export function clearWorkspace(): void {
 }
 
 export function saveWorkspace(): void {
-    if (workspaceData !== undefined) {
+    if (workspaceData) {
         void window.showSaveDialog({
             defaultUri: Uri.file(path.join(workingDir, 'workspace.RData')),
             filters: {
@@ -335,7 +348,7 @@ export function saveWorkspace(): void {
 }
 
 export function loadWorkspace(): void {
-    if (workspaceData !== undefined) {
+    if (workspaceData) {
         void window.showOpenDialog({
             defaultUri: Uri.file(workingDir),
             filters: {
