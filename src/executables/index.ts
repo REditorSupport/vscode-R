@@ -112,6 +112,11 @@ export class RExecutableManager implements vscode.Disposable {
  * @returns boolean
  */
 export function validateRExecutablePath(execPath: string): boolean {
-    const basename = process.platform === 'win32' ? 'R.exe' : 'R';
-    return fs.existsSync(execPath) && (path.basename(execPath) === basename);
+    try {
+        const basename = process.platform === 'win32' ? 'R.exe' : 'R';
+        fs.accessSync(execPath, fs.constants.X_OK);
+        return  (path.basename(execPath) === basename);
+    } catch (error) {
+        return false;
+    }
 }

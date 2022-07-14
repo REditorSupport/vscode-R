@@ -3,6 +3,15 @@ import * as vscode from 'vscode';
 import path = require('path');
 import winreg = require('winreg');
 import { getUniquePaths, AbstractLocatorService } from './shared';
+import { validateRExecutablePath } from '../..';
+
+const WindowsKnownPaths = [
+    path.join(process.env.ProgramFiles, 'R'),
+    path.join(process.env['ProgramFiles(x86)'], 'R'),
+    path.join(process.env.ProgramFiles, 'Microsoft', 'R Open'),
+    path.join(process.env.ProgramFiles, 'Microsoft', 'R Open'),
+];
+
 
 export class WindowsExecLocator extends AbstractLocatorService {
     constructor() {
@@ -62,22 +71,19 @@ export class WindowsExecLocator extends AbstractLocatorService {
 
     private getHomeFromDirs(): string[] {
         const dirBins: string[] = [];
-        const potential_bin_paths: string[] = [
-            '%ProgramFiles%\\R\\',
-            '%ProgramFiles(x86)%\\R\\'
-        ];
-        for (const bin of potential_bin_paths) {
-            const resolvedBin = path.resolve(bin);
-            if (fs.existsSync(resolvedBin)) {
-                const i386 = `${resolvedBin}\\i386\\`;
-                const x64 = `${resolvedBin}\\x64\\`;
+        for (const bin of WindowsKnownPaths) {
+            if (fs.existsSync(bin)) {
+                const dirs = fs.readdirSync(bin);
+                for (const dir of dirs) {
+                    const i386 = `${bin}\\${dir}\\bin\\i386\\R.exe`;
+                    const x64 = `${bin}\\${dir}\\bin\\x64\\R.exe`;
+                    if (validateRExecutablePath(i386)) {
+                        dirBins.push(i386);
+                    }
 
-                if (fs.existsSync(i386)) {
-                    dirBins.push(i386);
-                }
-
-                if (fs.existsSync(x64)) {
-                    dirBins.push(x64);
+                    if (validateRExecutablePath(x64)) {
+                        dirBins.push(x64);
+                    }
                 }
             }
         }
@@ -90,7 +96,7 @@ export class WindowsExecLocator extends AbstractLocatorService {
 
         if (os_paths) {
             for (const os_path of os_paths) {
-                const os_r_path: string = path.join(os_path, 'R' + '.exe');
+                const os_r_path: string = path.join(os_path, '/R.exe');
                 if (fs.existsSync(os_r_path)) {
                     envBins.push(os_r_path);
                 }

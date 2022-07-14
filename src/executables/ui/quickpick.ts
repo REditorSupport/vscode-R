@@ -1,3 +1,4 @@
+import path = require('path');
 import * as vscode from 'vscode';
 
 import { ExecutableNotifications } from '.';
@@ -64,6 +65,9 @@ export class ExecutableQuickPick implements vscode.Disposable {
     private setItems(): void {
         const qpItems: vscode.QuickPickItem[] = [];
         const configPath = config().get<string>(getRPathConfigEntry());
+        const sortExecutables = (a: ExecutableType, b: ExecutableType) => {
+            return -a.rVersion.localeCompare(b.rVersion, undefined, { numeric: true, sensitivity: 'base' });
+        };
         qpItems.push(
             {
                 label: PathQuickPickMenu.search,
@@ -101,7 +105,7 @@ export class ExecutableQuickPick implements vscode.Disposable {
             }
         ];
 
-        [...this.service.executables].forEach((v) => {
+        [...this.service.executables].sort(sortExecutables).forEach((v) => {
             const item = new ExecutableQuickPickItem(v, recommendPath(v, this.currentFolder, renvVersion));
             if (item.recommended) {
                 recommendedItems.push(item);
@@ -118,6 +122,8 @@ export class ExecutableQuickPick implements vscode.Disposable {
                 }
             }
         });
+
+
         this.quickpick.items = [...qpItems, ...recommendedItems, ...virtualItems, ...globalItems];
         for (const item of this.quickpick.items) {
             if (item.description === this.service.getWorkspaceExecutable(this.currentFolder?.uri?.fsPath)?.rBin) {
@@ -172,9 +178,10 @@ export class ExecutableQuickPick implements vscode.Disposable {
                                 canSelectMany: false,
                                 title: ' R executable file'
                             };
-                            void vscode.window.showOpenDialog(opts).then((execPath) => {
-                                if (execPath?.[0].fsPath && validateRExecutablePath(execPath[0].fsPath)) {
-                                    const rExec = this.service.executableFactory.create(execPath[0].fsPath);
+                            void vscode.window.showOpenDialog(opts).then((epath) => {
+                                const execPath = path.normalize(epath?.[0].fsPath);
+                                if (execPath && validateRExecutablePath(execPath)) {
+                                    const rExec = this.service.executableFactory.create(execPath);
                                     this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, rExec);
                                 } else {
                                     void vscode.window.showErrorMessage(ExecutableNotifications.badFolder);

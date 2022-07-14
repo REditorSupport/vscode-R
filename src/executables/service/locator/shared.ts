@@ -1,13 +1,13 @@
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import * as fs from 'fs-extra';
 import * as vscode from 'vscode';
 import { normaliseRPathString } from '../../../util';
 
-export function getRDetailsFromPath(rPath: string): {version: string, arch: string} {
+export function getRDetailsFromPath(rPath: string): { version: string, arch: string } {
     try {
         const path = normaliseRPathString(rPath);
-        const child = execSync(`${path} --version`)?.toString();
-        const versionRegex = /(?<=R version\s)[0-9.]*/g;
+        const child = spawnSync(path, [`--version`]).output.join('\n');
+        const versionRegex = /(?<=R\sversion\s)[0-9.]*/g;
         const archRegex = /[0-9]*-bit/g;
         const out = {
             version: child.match(versionRegex)?.[0] ?? '',
