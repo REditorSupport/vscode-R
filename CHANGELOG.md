@@ -4,6 +4,23 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.5.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.5.1)
+
+New Features:
+
+* R help viewer now highlights code sections on hover and user can click the code to copy it to the clipboard, or press `ctrl+click` (Windows and Linux) or `cmd+click` (macOS) to send it to R terminal by default. A new setting `r.helpPanel.clickCodeExamples` is added to allow customizing the click behavior. (#1138)
+* A new command `Create .lintr` is added. (#1112)
+
+Enhancements:
+
+* R and Rmd files are added to `Create: New File`. (#1119)
+* Improved data viewer column resizing. (#1121)
+
+Fixes:
+
+* Hide environment values in R Markdown preview to prevent accidental deletion (#1117)
+* Opening and closing a list item in the workspace viewer treeview now works properly. (#1150)
+
 ## [2.5.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.5.0)
 
 Announcement:
