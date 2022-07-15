@@ -47,10 +47,18 @@ export class ExecutableStatusItem implements vscode.Disposable {
         }
     }
 
-    public async busy(prom: Promise<unknown>): Promise<void> {
+    public async busy(prom: Promise<boolean>): Promise<void> {
         this.languageStatusItem.busy = true;
-        await prom;
-        this.languageStatusItem.busy = false;
+        await prom.then((v: boolean) => {
+            if (!v) {
+                this.languageStatusItem.severity = vscode.LanguageStatusSeverity.Error;
+            }
+            this.languageStatusItem.busy = false;
+        }).catch(() => {
+            this.languageStatusItem.busy = false;
+            this.languageStatusItem.severity = vscode.LanguageStatusSeverity.Error;
+            this.languageStatusItem.detail = '$(error) Error activating virtual environment';
+        });
     }
 
     public dispose(): void {

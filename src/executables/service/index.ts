@@ -1,24 +1,16 @@
 import * as vscode from 'vscode';
 
 import { validateRExecutablePath } from '..';
-import { ExecutableType, RExecutableFactory } from './class';
+import { RExecutableFactory } from './class';
 import { config, getCurrentWorkspaceFolder, getRPathConfigEntry } from '../../util';
 import { RExecutablePathStorage } from './pathStorage';
 import { RExecutableRegistry } from './registry';
 import { AbstractLocatorService, LocatorServiceFactory } from './locator';
 import { getRenvVersion } from './renv';
+import { ExecutableType, WorkspaceExecutableEvent } from './types';
 
+export * from './types';
 export * from './class';
-
-/**
- * @description
- * @export
- * @interface WorkspaceExecutableEvent
- */
-export interface WorkspaceExecutableEvent {
-    workingFolder: vscode.WorkspaceFolder | undefined,
-    executable: ExecutableType | undefined
-}
 
 /**
  * @description
@@ -49,7 +41,7 @@ export class RExecutableService implements vscode.Disposable {
         this.workspaceExecutables = new Map<string, ExecutableType>();
         this.executableEmitter = new vscode.EventEmitter<ExecutableType>();
         this.workspaceEmitter = new vscode.EventEmitter<WorkspaceExecutableEvent>();
-        this.executablePathLocator.binaryPaths.forEach((path) => {
+        this.executablePathLocator.executablePaths.forEach((path) => {
             this.executableFactory.create(path);
         });
 

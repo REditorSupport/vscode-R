@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import { ExecutableStatusItem, ExecutableQuickPick } from './ui';
 import { isVirtual, RExecutableService, ExecutableType, WorkspaceExecutableEvent } from './service';
 import { extensionContext } from '../extension';
-import { spawnAsync } from '../util';
+import { activateCondaEnvironment } from './conda';
 
 export { ExecutableType as IRExecutable, VirtualExecutableType as IVirtualRExecutable } from './service';
 
@@ -81,24 +81,11 @@ export class RExecutableManager implements vscode.Disposable {
     }
 
 
-    private async activateEnvironment(): Promise<unknown> {
-        if (!this.activeExecutable || !isVirtual(this.activeExecutable) ||
-            process.env.CONDA_DEFAULT_ENV !== this.activeExecutable.name) {
-            return Promise.resolve();
+    private async activateEnvironment(): Promise<boolean> {
+        if (!this.activeExecutable || !isVirtual(this.activeExecutable)) {
+            return Promise.resolve(true);
         }
-
-        const opts = {
-            env: {
-                ...process.env
-            },
-        };
-
-        return spawnAsync(
-            'conda', // hard coded for now
-            this.activeExecutable.activationCommand,
-            opts,
-            undefined
-        );
+        return activateCondaEnvironment(this.activeExecutable?.rBin);
     }
 
 }

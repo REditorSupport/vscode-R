@@ -1,10 +1,9 @@
+import { getCondaName, getRDetailsFromMetaHistory, isCondaInstallation } from '../conda';
 import { getRDetailsFromPath } from './locator';
 import { RExecutableRegistry } from './registry';
+import { IExecutableDetails, ExecutableType } from './types';
 
-export type ExecutableType = RExecutable;
-export type VirtualExecutableType = VirtualRExecutable;
-
-export function isVirtual(executable: RExecutable): executable is VirtualRExecutable {
+export function isVirtual(executable: AbstractExecutable): executable is VirtualRExecutable {
     return executable instanceof VirtualRExecutable;
 }
 
@@ -16,12 +15,12 @@ export class RExecutableFactory {
     }
 
     public create(executablePath: string): ExecutableType {
-        const oldExec = [...this.registry.executables.values()].find((v) => v.rBin === executablePath);
-        if (oldExec) {
-            return oldExec;
+        const cachedExec = [...this.registry.executables.values()].find((v) => v.rBin === executablePath);
+        if (cachedExec) {
+            return cachedExec;
         } else {
-            let executable: RExecutable;
-            if (new RegExp('\\.conda')?.exec(executablePath)) {
+            let executable: AbstractExecutable;
+            if (isCondaInstallation(executablePath)) {
                 executable = new VirtualRExecutable(executablePath);
             } else {
                 executable = new RExecutable(executablePath);
@@ -32,18 +31,10 @@ export class RExecutableFactory {
     }
 }
 
-class RExecutable {
-    private _rBin: string;
-    private _rVersion: string;
-    private _arch: string;
-
-    constructor(bin_path: string) {
-        const details = getRDetailsFromPath(bin_path);
-        this._rBin = bin_path;
-        this._rVersion = details.version;
-        this._arch = details.arch;
-    }
-
+export abstract class AbstractExecutable {
+    protected _rBin: string;
+    protected _rVersion: string;
+    protected _rArch: string;
     public get rBin(): string {
         return this._rBin;
     }
@@ -53,23 +44,43 @@ class RExecutable {
     }
 
     public get rArch(): string {
-        return this._arch;
+        return this._rArch;
+    }
+    public abstract tooltip: string;
+}
+
+
+export class RExecutable extends AbstractExecutable {
+    constructor(executablePath: string) {
+        super();
+        const details = getRDetailsFromPath(executablePath);
+        this._rBin = executablePath;
+        this._rVersion = details.version;
+        this._rArch = details.arch;
     }
 
     public get tooltip(): string {
-        const versionString = this.rVersion ? ` ${this.rVersion}` : '';
-        const archString = this.rArch ? ` ${this.rArch}` : '';
-        return `R${versionString}${archString}`;
+        if (this.rVersion && this.rArch) {
+            return `R ${this.rVersion} ${this.rArch}`;
+        }
+        return `$(error) R`;
+    }
+
+    protected getDetailsFromPath(execPath: string): IExecutableDetails {
+        return getRDetailsFromPath(execPath);
     }
 }
 
-class VirtualRExecutable extends RExecutable {
+export class VirtualRExecutable extends AbstractExecutable {
     private _name: string;
 
-    constructor(bin_path: string) {
-        super(bin_path);
-        const reg = new RegExp('(?<=\\/envs\\/)(.*?)(?=\\/)');
-        this._name = reg?.exec(this.rBin)?.[0] ?? '';
+    constructor(executablePath: string) {
+        super();
+        this._name = getCondaName(executablePath);
+        const details = getRDetailsFromMetaHistory(executablePath);
+        this._rBin = executablePath;
+        this._rVersion = details?.version ?? '';
+        this._rArch = details?.arch ?? '';
     }
 
     public get name(): string {
@@ -77,15 +88,9 @@ class VirtualRExecutable extends RExecutable {
     }
 
     public get tooltip(): string {
-        return `${this.name} (${super.tooltip})`;
-    }
-
-    // todo, hardcoded
-    public get activationCommand(): string[] {
-        if (this.name) {
-            return ['activate', this.name];
-        } else {
-            return ['activate'];
+        if (this.rVersion && this.rArch) {
+            return `${this.name} (R ${this.rVersion} ${this.rArch})`;
         }
+        return `$(error) ${this.name}`;
     }
 }

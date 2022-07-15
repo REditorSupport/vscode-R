@@ -1,39 +1,49 @@
 import * as fs from 'fs-extra';
 import * as vscode from 'vscode';
+import os = require('os');
 import path = require('path');
 import winreg = require('winreg');
 import { getUniquePaths, AbstractLocatorService } from './shared';
 import { validateRExecutablePath } from '../..';
 
-const WindowsKnownPaths = [
-    path.join(process.env.ProgramFiles, 'R'),
-    path.join(process.env['ProgramFiles(x86)'], 'R'),
-    path.join(process.env.ProgramFiles, 'Microsoft', 'R Open'),
-    path.join(process.env.ProgramFiles, 'Microsoft', 'R Open'),
-];
+const WindowsKnownPaths: string[] = [];
+
+if (process.env.ProgramFiles) {
+    WindowsKnownPaths.push(
+        path.join(process?.env?.ProgramFiles, 'R'),
+        path.join(process?.env?.ProgramFiles, 'Microsoft', 'R Open')
+    );
+}
+
+if (process.env['ProgramFiles(x86)']) {
+    WindowsKnownPaths.push(
+        path.join(process?.env?.['ProgramFiles(x86)'], 'R'),
+        path.join(process?.env?.['ProgramFiles(x86)'], 'Microsoft', 'R Open')
+    );
+}
 
 
 export class WindowsExecLocator extends AbstractLocatorService {
     constructor() {
         super();
         this.emitter = new vscode.EventEmitter<string[]>();
-        this._binaryPaths = [];
+        this._executablePaths = [];
     }
     public async refreshPaths(): Promise<void> {
-        this._binaryPaths = getUniquePaths(Array.from(
+        this._executablePaths = getUniquePaths(Array.from(
             new Set([
-                ...this.getHomeFromDirs(),
-                ...this.getHomeFromEnv(),
-                ...await this.getHomeFromRegistry(),
-                // ... this.getHomeFromConda()
+                ...this.getPathFromDirs(),
+                ...this.getPathFromEnv(),
+                ...await this.getPathFromRegistry(),
+                ...this.getPathFromConda()
             ])
         ));
-        this.emitter.fire(this._binaryPaths);
+        this.emitter.fire(this._executablePaths);
     }
 
-    private async getHomeFromRegistry(): Promise<string[]> {
-        const registryBins: string[] = [];
-        const potentialBins = [
+    private async getPathFromRegistry(): Promise<string[]> {
+        const execPaths: string[] = [];
+        const potentialRegs = [
             new winreg({
                 hive: winreg.HKLM,
                 key: '\\SOFTWARE\\R-core\\R',
@@ -44,68 +54,94 @@ export class WindowsExecLocator extends AbstractLocatorService {
             })
         ];
 
-        for (const bin of potentialBins) {
+        for (const reg of potentialRegs) {
             await new Promise(
                 (c, e) => {
-                    bin.get('InstallPath', (err, result) => err === null ? c(result) : e(err));
+                    reg.get('InstallPath', (err, result) => err === null ? c(result) : e(err));
                 }
             ).then((item: winreg.RegistryItem) => {
                 if (item) {
-                    const resolvedBin = item.value;
-                    const i386 = `${resolvedBin}\\i386\\`;
-                    const x64 = `${resolvedBin}\\x64\\`;
+                    const resolvedPath = item.value;
+                    const i386 = `${resolvedPath}\\i386\\`;
+                    const x64 = `${resolvedPath}\\x64\\`;
 
                     if (fs.existsSync(i386)) {
-                        registryBins.push(i386);
+                        execPaths.push(i386);
                     }
 
                     if (fs.existsSync(x64)) {
-                        registryBins.push(x64);
+                        execPaths.push(x64);
                     }
                 }
             });
         }
 
-        return registryBins;
+        return execPaths;
     }
 
-    private getHomeFromDirs(): string[] {
-        const dirBins: string[] = [];
-        for (const bin of WindowsKnownPaths) {
-            if (fs.existsSync(bin)) {
-                const dirs = fs.readdirSync(bin);
+    private getPathFromDirs(): string[] {
+        const execPaths: string[] = [];
+        for (const rPath of WindowsKnownPaths) {
+            if (fs.existsSync(rPath)) {
+                const dirs = fs.readdirSync(rPath);
                 for (const dir of dirs) {
-                    const i386 = `${bin}\\${dir}\\bin\\i386\\R.exe`;
-                    const x64 = `${bin}\\${dir}\\bin\\x64\\R.exe`;
+                    const i386 = `${rPath}\\${dir}\\bin\\i386\\R.exe`;
+                    const x64 = `${rPath}\\${dir}\\bin\\x64\\R.exe`;
+
                     if (validateRExecutablePath(i386)) {
-                        dirBins.push(i386);
+                        execPaths.push(i386);
                     }
 
                     if (validateRExecutablePath(x64)) {
-                        dirBins.push(x64);
+                        execPaths.push(x64);
                     }
                 }
             }
         }
-        return dirBins;
+        return execPaths;
     }
 
-    private getHomeFromEnv(): string[] {
-        const envBins: string[] = [];
-        const os_paths: string[] | string | undefined = process?.env?.PATH?.split(';');
+    private getPathFromEnv(): string[] {
+        const execPaths: string[] = [];
+        const osPaths: string[] | string | undefined = process?.env?.PATH?.split(';');
 
-        if (os_paths) {
-            for (const os_path of os_paths) {
-                const os_r_path: string = path.join(os_path, '/R.exe');
-                if (fs.existsSync(os_r_path)) {
-                    envBins.push(os_r_path);
+        if (osPaths) {
+            for (const osPath of osPaths) {
+                const rPath: string = path.join(osPath, '\\R.exe');
+                if (fs.existsSync(rPath)) {
+                    execPaths.push(rPath);
                 }
             }
         }
 
-        return envBins;
+        return execPaths;
     }
 
-    // todo
-    // private getHomeFromConda() {}
+    private getPathFromConda() {
+        const execPaths: string[] = [];
+        const condaDirs = [
+            `${os.homedir()}\\.conda\\environments.txt`
+        ];
+        for (const rPath of condaDirs) {
+            if (fs.existsSync(rPath)) {
+                const lines = fs.readFileSync(rPath)?.toString();
+                if (lines) {
+                    for (const line of lines.split('\r\n')) {
+                        if (line) {
+                            const potentialDirs = [
+                                `${line}\\lib64\\R\\bin\\R.exe`,
+                                `${line}\\lib\\R\\bin\\R.exe`
+                            ];
+                            for (const dir of potentialDirs) {
+                                if (fs.existsSync(dir)) {
+                                    execPaths.push(dir);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return execPaths;
+    }
 }

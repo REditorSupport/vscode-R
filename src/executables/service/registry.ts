@@ -1,4 +1,4 @@
-import { ExecutableType } from './class';
+import { ExecutableType } from './types';
 
 // necessary to have an executable registry
 // so that we don't spam the (re)creation of executables

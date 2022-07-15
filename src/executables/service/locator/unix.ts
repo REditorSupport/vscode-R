@@ -9,22 +9,22 @@ export class UnixExecLocator extends AbstractLocatorService {
     constructor() {
         super();
         this.emitter = new vscode.EventEmitter<string[]>();
-        this._binaryPaths = [];
+        this._executablePaths = [];
     }
     // eslint-disable-next-line @typescript-eslint/require-await
     public async refreshPaths(): Promise<void> {
-        this._binaryPaths = getUniquePaths(Array.from(
+        this._executablePaths = getUniquePaths(Array.from(
             new Set([
-                ...this.getHomeFromDirs(),
-                ...this.getHomeFromEnv(),
-                ... this.getHomeFromConda()
+                ...this.getPathFromDirs(),
+                ...this.getPathFromEnv(),
+                ... this.getPathFromConda()
             ])
         ));
-        this.emitter.fire(this._binaryPaths);
+        this.emitter.fire(this._executablePaths);
     }
 
-    private getHomeFromDirs(): string[] {
-        const dirBins: string[] = [];
+    private getPathFromDirs(): string[] {
+        const execPaths: string[] = [];
         const potentialPaths: string[] = [
             '/usr/lib64/R/bin/R',
             '/usr/lib/R/bin/R',
@@ -36,30 +36,30 @@ export class UnixExecLocator extends AbstractLocatorService {
 
         for (const bin of potentialPaths) {
             if (fs.existsSync(bin)) {
-                dirBins.push(bin);
+                execPaths.push(bin);
             }
         }
-        return dirBins;
+        return execPaths;
     }
 
-    private getHomeFromConda(): string[] {
-        const dirBins: string[] = [];
-        const conda_dirs = [
+    private getPathFromConda(): string[] {
+        const execPaths: string[] = [];
+        const condaDirs = [
             `${os.homedir()}/.conda/environments.txt`
         ];
-        for (const dir of conda_dirs) {
-            if (fs.existsSync(dir)) {
-                const lines = fs.readFileSync(dir)?.toString();
+        for (const condaEnv of condaDirs) {
+            if (fs.existsSync(condaEnv)) {
+                const lines = fs.readFileSync(condaEnv)?.toString();
                 if (lines) {
                     for (const line of lines.split('\n')) {
                         if (line) {
-                            const potential_dirs = [
+                            const rDirs = [
                                 `${line}/lib64/R/bin/R`,
                                 `${line}/lib/R/bin/R`
                             ];
-                            for (const dir of potential_dirs) {
+                            for (const dir of rDirs) {
                                 if (fs.existsSync(dir)) {
-                                    dirBins.push(dir);
+                                    execPaths.push(dir);
                                 }
                             }
                         }
@@ -67,34 +67,23 @@ export class UnixExecLocator extends AbstractLocatorService {
                 }
             }
         }
-        return dirBins;
+        return execPaths;
     }
 
-    private getHomeFromEnv(): string[] {
-        const envBins: string[] = [];
-        const os_paths: string[] | string | undefined = process?.env?.PATH?.split(';');
+    private getPathFromEnv(): string[] {
+        const execPaths: string[] = [];
+        const osPaths: string[] | string | undefined = process?.env?.PATH?.split(';');
 
-        if (os_paths) {
-            for (const os_path of os_paths) {
-                const os_r_path: string = path.join(os_path, 'R');
-                if (fs.existsSync(os_r_path)) {
-                    envBins.push(os_r_path);
+        if (osPaths) {
+            for (const osPath of osPaths) {
+                const rPath: string = path.join(osPath, 'R');
+                if (fs.existsSync(rPath)) {
+                    execPaths.push(rPath);
                 }
             }
         }
 
-        return envBins;
+        return execPaths;
     }
-
-    // private getHomeFromStorage(): string[] {
-    //     const store = getExecutableStore();
-    //     const storedBins: string[] = [];
-    //     for (const [_, path] of store) {
-    //         if (fs.existsSync(path) && validateRExecutablePath(path)) {
-    //             storedBins.push(path);
-    //         }
-    //     }
-    //     return storedBins;
-    // }
 }
 

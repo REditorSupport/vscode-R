@@ -1,7 +1,7 @@
 import path = require('path');
 import * as vscode from 'vscode';
 
-import { ExecutableNotifications } from '.';
+import { ExecutableNotifications } from './types';
 import { validateRExecutablePath } from '..';
 import { config, getCurrentWorkspaceFolder, getRPathConfigEntry, isMultiRoot } from '../../util';
 import { isVirtual, ExecutableType } from '../service';
@@ -179,13 +179,15 @@ export class ExecutableQuickPick implements vscode.Disposable {
                                 title: ' R executable file'
                             };
                             void vscode.window.showOpenDialog(opts).then((epath) => {
-                                const execPath = path.normalize(epath?.[0].fsPath);
-                                if (execPath && validateRExecutablePath(execPath)) {
-                                    const rExec = this.service.executableFactory.create(execPath);
-                                    this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, rExec);
-                                } else {
-                                    void vscode.window.showErrorMessage(ExecutableNotifications.badFolder);
-                                    this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
+                                if (epath) {
+                                    const execPath = path.normalize(epath?.[0].fsPath);
+                                    if (execPath && validateRExecutablePath(execPath)) {
+                                        const rExec = this.service.executableFactory.create(execPath);
+                                        this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, rExec);
+                                    } else {
+                                        void vscode.window.showErrorMessage(ExecutableNotifications.badFolder);
+                                        this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
+                                    }
                                 }
                             });
                             break;
