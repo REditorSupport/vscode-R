@@ -13,6 +13,7 @@ import { cleanLine } from './lineCache';
 import { globalRHelp } from './extension';
 import { config } from './util';
 import { getChunks } from './rmarkdown';
+import e = require('express');
 
 
 // Get with names(roxygen2:::default_tags())
@@ -45,12 +46,23 @@ export class HoverProvider implements vscode.HoverProvider {
 
         const wordRange = document.getWordRangeAtPosition(position);
         const text = document.getText(wordRange);
-        // use juggling check here for both
-        // null and undefined
-        // eslint-disable-next-line eqeqeq
-        if (session.workspaceData.globalenv[text]?.str == null) {
-            return null;
+
+        if (session.webSocket) {
+            session.webSocket.send(JSON.stringify({
+                type: 'hover',
+                text: text,
+                line: position.line,
+                column: position.character
+            }));
+        } else {
+            // use juggling check here for both
+            // null and undefined
+            // eslint-disable-next-line eqeqeq
+            if (session.workspaceData.globalenv[text]?.str == null) {
+                return null;
+            }
         }
+
         return new vscode.Hover(`\`\`\`\n${session.workspaceData.globalenv[text]?.str}\n\`\`\``);
     }
 }

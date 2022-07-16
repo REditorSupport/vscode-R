@@ -1554,6 +1554,11 @@
           "default": true,
           "description": "Enable R session watcher. Required for workspace viewer and most features to work with an R session. Restart required to take effect."
         },
+        "r.session.useWebSocket": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Use WebSocket to communicate with the R session. Changes the option `vsc.use_websocket` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+        },
         "r.session.watchGlobalEnvironment": {
           "type": "boolean",
           "default": true,

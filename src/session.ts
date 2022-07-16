@@ -8,6 +8,7 @@ import * as fs from 'fs-extra';
 import * as os from 'os';
 import * as path from 'path';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
+import * as WebSocket from 'ws';
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
@@ -47,6 +48,7 @@ export let workingDir: string;
 let rVer: string;
 let pid: string;
 let info: any;
+export let webSocket: WebSocket;
 export let workspaceFile: string;
 let workspaceLockFile: string;
 let workspaceTimeStamp: number;
@@ -761,6 +763,21 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
+
+                        if (webSocket && webSocket.readyState === WebSocket.OPEN) {
+                            webSocket.close();
+                        }
+
+                        webSocket = new WebSocket(`ws://127.0.0.1:${request.port}`, {
+                            headers: {
+                                token: request.token
+                            }
+                        });
+
+                        webSocket.onmessage = (event) => {
+                            console.log(event.data.toString());
+                        };
+
                         purgeAddinPickerItems();
                         if (request.plot_url) {
                             await globalHttpgdManager?.showViewer(request.plot_url);

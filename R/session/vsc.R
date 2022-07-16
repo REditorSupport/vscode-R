@@ -20,6 +20,7 @@ load_settings <- function() {
   }
 
   mapping <- quote(list(
+    vsc.use_websocket = session$useWebSocket,
     vsc.use_httpgd = plot$useHttpgd,
     vsc.show_object_size = workspaceViewer$showObjectSize,
     vsc.rstudioapi = session$emulateRStudioAPI,
@@ -57,6 +58,39 @@ load_settings()
 if (is.null(getOption("help_type"))) {
   options(help_type = "html")
 }
+
+port <- NULL
+token <- NULL
+if (isTRUE(getOption("vsc.use_websocket", FALSE))) {
+  if (requireNamespace("httpuv", quietly = TRUE)) {
+    token <- paste0(sample(c(LETTERS, letters), 16), collapse = "")
+    port <- httpuv::randomPort()
+    server <- httpuv::startServer("127.0.0.1", port,
+      list(
+        onWSOpen = function(ws) {
+          cat("Connection opened.\n")
+          ws_token <- ws$request$HEADERS[["token"]]
+          if (!identical(ws_token, token)) {
+            ws$close(reason = "Unauthorized")
+          }
+
+          ws$onMessage(function(binary, message) {
+            cat(message, "\n")
+            req <- jsonlite::fromJSON(message, simplifyVector = FALSE)
+            ws$send(paste0("reply: ", message))
+          })
+
+          ws$onClose(function() {
+            cat("Connection closed.\n")
+          })
+        }
+      )
+    )
+  } else {
+    message("{httpuv} is required to use WebSocket from the session watcher.")
+  }
+}
+
 
 get_timestamp <- function() {
   format.default(Sys.time(), nsmall = 6, scientific = FALSE)
@@ -510,7 +544,9 @@ attach <- function() {
       version = R.version.string,
       start_time = format(file.info(tempdir)$ctime)
     ),
-    plot_url = if (identical(names(dev.cur()), "httpgd")) httpgd::hgd_url()
+    plot_url = if (identical(names(dev.cur()), "httpgd")) httpgd::hgd_url(),
+    port = port,
+    token = token
   )
 }
 
