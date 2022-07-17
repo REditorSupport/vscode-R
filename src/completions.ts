@@ -13,7 +13,6 @@ import { cleanLine } from './lineCache';
 import { globalRHelp } from './extension';
 import { config } from './util';
 import { getChunks } from './rmarkdown';
-import e = require('express');
 import { CompletionItemKind } from 'vscode-languageclient';
 
 
