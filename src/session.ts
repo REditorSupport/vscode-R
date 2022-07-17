@@ -764,7 +764,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
 
-                        if (webSocket && webSocket.readyState === WebSocket.OPEN) {
+                        if (webSocket && webSocket.readyState === webSocket.OPEN) {
                             webSocket.close();
                         }
 
