@@ -49,17 +49,19 @@ export class HoverProvider implements vscode.HoverProvider {
         let hoverText = null;
 
         if (session.webSocket && session.webSocket.readyState === session.webSocket.OPEN) {
-            session.webSocket.send(JSON.stringify({
-                type: 'hover',
-                text: text,
-                line: position.line,
-                column: position.character
-            }));
-
             const response: string = await new Promise((resolve) => {
+                session.webSocket.send(JSON.stringify({
+                    type: 'hover',
+                    text: text,
+                    line: position.line,
+                    column: position.character
+                }));
                 session.webSocket.onmessage = (data) => {
                     resolve(data.data.toString());
                 };
+                setTimeout(() => {
+                    resolve(null);
+                }, 500);
             });
 
             hoverText = response;
@@ -75,7 +77,11 @@ export class HoverProvider implements vscode.HoverProvider {
             hoverText = session.workspaceData.globalenv[text]?.str;
         }
 
-        return new vscode.Hover(`\`\`\`\n${hoverText}\n\`\`\``);
+        if (hoverText) {
+            return new vscode.Hover(`\`\`\`\n${hoverText}\n\`\`\``);
+        }
+
+        return null;
     }
 }
 
