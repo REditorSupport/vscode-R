@@ -14,6 +14,7 @@ import { globalRHelp } from './extension';
 import { config } from './util';
 import { getChunks } from './rmarkdown';
 import e = require('express');
+import { CompletionItemKind } from 'vscode-languageclient';
 
 
 // Get with names(roxygen2:::default_tags())
@@ -48,7 +49,7 @@ export class HoverProvider implements vscode.HoverProvider {
         const text = document.getText(wordRange);
         let hoverText = null;
 
-        if (session.sessionSocket && session.sessionSocket.isOpen) {
+        if (session.sessionSocket?.isOpen) {
             const response = await session.sessionSocket.sendRequest({
                 type: 'hover',
                 text: text
@@ -130,12 +131,12 @@ export class StaticCompletionItemProvider implements vscode.CompletionItemProvid
 
 
 export class LiveCompletionItemProvider implements vscode.CompletionItemProvider {
-    provideCompletionItems(
+    async provideCompletionItems(
         document: vscode.TextDocument,
         position: vscode.Position,
         token: vscode.CancellationToken,
         completionContext: vscode.CompletionContext
-    ): vscode.CompletionItem[] {
+    ): Promise<vscode.CompletionItem[]> {
         const items = [];
         if (token.isCancellationRequested || !session.workspaceData?.globalenv) {
             return items;
@@ -168,20 +169,34 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             const symbolPosition = new vscode.Position(position.line, position.character - 1);
             const symbolRange = document.getWordRangeAtPosition(symbolPosition);
             const symbol = document.getText(symbolRange);
-            const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
-            const obj = session.workspaceData.globalenv[symbol];
-            let names: string[];
-            if (obj !== undefined) {
-                if (completionContext.triggerCharacter === '$') {
-                    names = obj.names;
-                } else if (completionContext.triggerCharacter === '@') {
-                    names = obj.slots;
+
+            if (session.sessionSocket?.isOpen) {
+                const response: RObjectElement[] = await session.sessionSocket.sendRequest({
+                    type: 'complete',
+                    symbol: symbol,
+                    trigger: completionContext.triggerCharacter
+                }, 500);
+
+                if (response) {
+                    items.push(...getCompletionItemsFromElements(response, '[session]'));
+                }
+            } else {
+                const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
+                const obj = session.workspaceData.globalenv[symbol];
+                let names: string[];
+                if (obj !== undefined) {
+                    if (completionContext.triggerCharacter === '$') {
+                        names = obj.names;
+                    } else if (completionContext.triggerCharacter === '@') {
+                        names = obj.slots;
+                    }
+                }
+
+                if (names) {
+                    items.push(...getCompletionItems(names, vscode.CompletionItemKind.Variable, '[session]', doc));
                 }
             }
 
-            if (names) {
-                items.push(...getCompletionItems(names, vscode.CompletionItemKind.Variable, '[session]', doc));
-            }
         }
 
         if (trigger === undefined || trigger === '[' || trigger === ',' || trigger === '"' || trigger === '\'') {
@@ -194,6 +209,25 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
 
         return items;
     }
+}
+
+interface RObjectElement {
+    name: string;
+    type: string;
+    str: string;
+}
+
+function getCompletionItemsFromElements(elements: RObjectElement[], detail: string): vscode.CompletionItem[] {
+    const len = elements.length.toString().length;
+    let index = 0;
+    return elements.map((e) => {
+        const item = new vscode.CompletionItem(e.name, (e.type === 'closure' || e.type === 'builtin') ? CompletionItemKind.Function : vscode.CompletionItemKind.Variable);
+        item.detail = detail;
+        item.documentation = new vscode.MarkdownString(`\`\`\`r\n${e.str}\n\`\`\``);
+        item.sortText = `0-${index.toString().padStart(len, '0')}`;
+        index++;
+        return item;
+    });
 }
 
 function getCompletionItems(names: string[], kind: vscode.CompletionItemKind, detail: string, documentation: vscode.MarkdownString): vscode.CompletionItem[] {

@@ -67,11 +67,49 @@ if (isTRUE(getOption("vsc.use_websocket", FALSE))) {
     port <- httpuv::randomPort()
 
     request_handlers <- list(
-      hover = function(request) {
-        found <- exists(request$text, globalenv())
-        if (found) {
-          obj <- get(request$text, globalenv())
-          list(str = capture_str(obj))
+      hover = function(text, ...) {
+        found <- exists(text, globalenv())
+        if (!found) return(NULL)
+        obj <- get(text, globalenv())
+        list(str = try_capture_str(obj))
+      },
+
+      complete = function(symbol, trigger, ...) {
+        found <- exists(symbol, globalenv())
+        if (!found) return(NULL)
+        obj <- get(symbol, globalenv())
+
+        if (trigger == "$") {
+          names <- if (is.object(obj)) {
+            .DollarNames(obj, pattern = "")
+          } else if (is.recursive(obj)) {
+            names(obj)
+          } else {
+            NULL
+          }
+
+          result <- lapply(names, function(name) {
+            item <- obj[[name]]
+            list(
+              name = name,
+              type = typeof(item),
+              str = try_capture_str(item)
+            )
+          })
+          return(result)
+        }
+
+        if (trigger == "@" && isS4(obj)) {
+          names <- slotNames(obj)
+          result <- lapply(names, function(name) {
+            item <- slot(obj, name)
+            list(
+              name = name,
+              type = typeof(item),
+              str = try_capture_str(item)
+            )
+          })
+          return(result)
         }
       }
     )
@@ -89,7 +127,7 @@ if (isTRUE(getOption("vsc.use_websocket", FALSE))) {
             cat(message, "\n")
             request <- jsonlite::fromJSON(message, simplifyVector = FALSE)
             handler <- request_handlers[[request$type]]
-            response <- if (is.function(handler)) handler(request)
+            response <- if (is.function(handler)) do.call(handler, request)
             ws$send(jsonlite::toJSON(response, auto_unbox = TRUE, force = TRUE))
           })
 
