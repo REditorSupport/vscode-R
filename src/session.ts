@@ -774,10 +774,6 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                             }
                         });
 
-                        webSocket.onmessage = (event) => {
-                            console.log(event.data.toString());
-                        };
-
                         purgeAddinPickerItems();
                         if (request.plot_url) {
                             await globalHttpgdManager?.showViewer(request.plot_url);

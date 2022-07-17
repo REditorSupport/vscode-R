@@ -31,7 +31,7 @@ const roxygenTagCompletionItems = [
 
 
 export class HoverProvider implements vscode.HoverProvider {
-    provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.Hover {
+    async provideHover(document: vscode.TextDocument, position: vscode.Position): Promise<vscode.Hover> {
         if(!session.workspaceData?.globalenv){
             return null;
         }
@@ -46,6 +46,7 @@ export class HoverProvider implements vscode.HoverProvider {
 
         const wordRange = document.getWordRangeAtPosition(position);
         const text = document.getText(wordRange);
+        let hoverText = null;
 
         if (session.webSocket && session.webSocket.readyState === session.webSocket.OPEN) {
             session.webSocket.send(JSON.stringify({
@@ -54,6 +55,15 @@ export class HoverProvider implements vscode.HoverProvider {
                 line: position.line,
                 column: position.character
             }));
+
+            const response: string = await new Promise((resolve) => {
+                session.webSocket.onmessage = (data) => {
+                    resolve(data.data.toString());
+                };
+            });
+
+            hoverText = response;
+
         } else {
             // use juggling check here for both
             // null and undefined
@@ -61,9 +71,11 @@ export class HoverProvider implements vscode.HoverProvider {
             if (session.workspaceData.globalenv[text]?.str == null) {
                 return null;
             }
+
+            hoverText = session.workspaceData.globalenv[text]?.str;
         }
 
-        return new vscode.Hover(`\`\`\`\n${session.workspaceData.globalenv[text]?.str}\n\`\`\``);
+        return new vscode.Hover(`\`\`\`\n${hoverText}\n\`\`\``);
     }
 }
 
