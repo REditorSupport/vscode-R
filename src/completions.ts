@@ -48,23 +48,15 @@ export class HoverProvider implements vscode.HoverProvider {
         const text = document.getText(wordRange);
         let hoverText = null;
 
-        if (session.webSocket && session.webSocket.readyState === session.webSocket.OPEN) {
-            const response: string = await new Promise((resolve) => {
-                session.webSocket.send(JSON.stringify({
-                    type: 'hover',
-                    text: text,
-                    line: position.line,
-                    column: position.character
-                }));
-                session.webSocket.onmessage = (data) => {
-                    resolve(data.data.toString());
-                };
-                setTimeout(() => {
-                    resolve(null);
-                }, 500);
-            });
+        if (session.sessionSocket && session.sessionSocket.isOpen) {
+            const response = await session.sessionSocket.sendRequest({
+                type: 'hover',
+                text: text
+            }, 500);
 
-            hoverText = response;
+            if (response) {
+                hoverText = response.str;
+            }
 
         } else {
             // use juggling check here for both

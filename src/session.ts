@@ -8,7 +8,7 @@ import * as fs from 'fs-extra';
 import * as os from 'os';
 import * as path from 'path';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
-import * as WebSocket from 'ws';
+import { SessionSocket } from './sessionSocket';
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
@@ -48,7 +48,7 @@ export let workingDir: string;
 let rVer: string;
 let pid: string;
 let info: any;
-export let webSocket: WebSocket;
+export let sessionSocket: SessionSocket;
 export let workspaceFile: string;
 let workspaceLockFile: string;
 let workspaceTimeStamp: number;
@@ -764,11 +764,11 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
 
-                        if (webSocket && webSocket.readyState === webSocket.OPEN) {
-                            webSocket.close();
+                        if (sessionSocket && sessionSocket.readyState === sessionSocket.OPEN) {
+                            sessionSocket.close();
                         }
 
-                        webSocket = new WebSocket(`ws://127.0.0.1:${request.port}`, {
+                        sessionSocket = new SessionSocket(`ws://127.0.0.1:${request.port}`, {
                             headers: {
                                 token: request.token
                             }

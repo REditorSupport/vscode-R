@@ -65,6 +65,17 @@ if (isTRUE(getOption("vsc.use_websocket", FALSE))) {
   if (requireNamespace("httpuv", quietly = TRUE)) {
     token <- paste0(sample(c(LETTERS, letters), 16), collapse = "")
     port <- httpuv::randomPort()
+
+    request_handlers <- list(
+      hover = function(request) {
+        found <- exists(request$text, globalenv())
+        if (found) {
+          obj <- get(request$text, globalenv())
+          list(str = capture_str(obj))
+        }
+      }
+    )
+
     server <- httpuv::startServer("127.0.0.1", port,
       list(
         onWSOpen = function(ws) {
@@ -76,8 +87,10 @@ if (isTRUE(getOption("vsc.use_websocket", FALSE))) {
 
           ws$onMessage(function(binary, message) {
             cat(message, "\n")
-            req <- jsonlite::fromJSON(message, simplifyVector = FALSE)
-            ws$send(paste0("reply: ", message))
+            request <- jsonlite::fromJSON(message, simplifyVector = FALSE)
+            handler <- request_handlers[[request$type]]
+            response <- if (is.function(handler)) handler(request)
+            ws$send(jsonlite::toJSON(response, auto_unbox = TRUE, force = TRUE))
           })
 
           ws$onClose(function() {
