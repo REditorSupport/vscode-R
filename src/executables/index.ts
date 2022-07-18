@@ -5,12 +5,10 @@ import * as vscode from 'vscode';
 import { ExecutableStatusItem, ExecutableQuickPick } from './ui';
 import { isVirtual, RExecutableService, ExecutableType, WorkspaceExecutableEvent } from './service';
 import { extensionContext } from '../extension';
-import { activateCondaEnvironment } from './conda';
-
-export { ExecutableType as IRExecutable, VirtualExecutableType as IVirtualRExecutable } from './service';
+import { activateCondaEnvironment } from './virtual';
 
 // super class that manages relevant sub classes
-export class RExecutableManager implements vscode.Disposable {
+export class RExecutableManager {
     private readonly executableService: RExecutableService;
     private statusBar: ExecutableStatusItem;
     private quickPick: ExecutableQuickPick;
@@ -28,7 +26,9 @@ export class RExecutableManager implements vscode.Disposable {
                     this.reload();
                 }
             }),
-            this
+            this.executableService,
+            this.statusBar,
+            this.quickPick
         );
         this.reload();
     }
@@ -36,12 +36,6 @@ export class RExecutableManager implements vscode.Disposable {
     static async initialize(): Promise<RExecutableManager> {
         const executableService = await RExecutableService.initialize();
         return new this(executableService);
-    }
-
-    public dispose(): void {
-        this.executableService.dispose();
-        this.statusBar.dispose();
-        this.quickPick.dispose();
     }
 
     public get executableQuickPick(): ExecutableQuickPick {

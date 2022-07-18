@@ -3,7 +3,6 @@ import * as vscode from 'vscode';
 import { AbstractExecutable, VirtualRExecutable } from './class';
 
 export type ExecutableType = AbstractExecutable;
-
 export type VirtualExecutableType = VirtualRExecutable;
 
 export interface IExecutableDetails {

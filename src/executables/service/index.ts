@@ -6,7 +6,7 @@ import { config, getCurrentWorkspaceFolder, getRPathConfigEntry } from '../../ut
 import { RExecutablePathStorage } from './pathStorage';
 import { RExecutableRegistry } from './registry';
 import { AbstractLocatorService, LocatorServiceFactory } from './locator';
-import { getRenvVersion } from './renv';
+import { getRenvVersion } from '../virtual';
 import { ExecutableType, WorkspaceExecutableEvent } from './types';
 
 export * from './types';

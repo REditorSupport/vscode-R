@@ -1286,32 +1286,38 @@
         "r.rpath.windows": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable for Windows. Must be \"vanilla\" R, not radian etc.!"
+          "description": "Path to an R executable for Windows. Must be \"vanilla\" R, not radian etc.!",
+          "scope": "machine-overridable"
         },
         "r.rpath.mac": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable for macOS. Must be \"vanilla\" R, not radian etc.!"
+          "description": "Path to an R executable for macOS. Must be \"vanilla\" R, not radian etc.!",
+          "scope": "machine-overridable"
         },
         "r.rpath.linux": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable for Linux. Must be \"vanilla\" R, not radian etc.!"
+          "description": "Path to an R executable for Linux. Must be \"vanilla\" R, not radian etc.!",
+          "scope": "machine-overridable"
         },
         "r.rterm.windows": {
           "type": "string",
           "default": "",
-          "description": "R path for Windows. Can also be radian etc."
+          "description": "R path for Windows. Can also be radian etc.",
+          "scope": "machine-overridable"
         },
         "r.rterm.mac": {
           "type": "string",
           "default": "",
-          "description": "R path for macOS. Can also be radian etc."
+          "description": "R path for macOS. Can also be radian etc.",
+          "scope": "machine-overridable"
         },
         "r.rterm.linux": {
           "type": "string",
           "default": "",
-          "description": "R path for Linux. Can also be radian etc."
+          "description": "R path for Linux. Can also be radian etc.",
+          "scope": "machine-overridable"
         },
         "r.rterm.option": {
           "type": "array",

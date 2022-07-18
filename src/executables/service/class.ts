@@ -1,7 +1,7 @@
-import { getCondaName, getRDetailsFromMetaHistory, isCondaInstallation } from '../conda';
+import { getCondaName, getRDetailsFromMetaHistory, isCondaInstallation } from '../virtual';
 import { getRDetailsFromPath } from './locator';
 import { RExecutableRegistry } from './registry';
-import { IExecutableDetails, ExecutableType } from './types';
+import { ExecutableType } from './types';
 
 export function isVirtual(executable: AbstractExecutable): executable is VirtualRExecutable {
     return executable instanceof VirtualRExecutable;
@@ -64,10 +64,6 @@ export class RExecutable extends AbstractExecutable {
             return `R ${this.rVersion} ${this.rArch}`;
         }
         return `$(error) R`;
-    }
-
-    protected getDetailsFromPath(execPath: string): IExecutableDetails {
-        return getRDetailsFromPath(execPath);
     }
 }
 

@@ -1,5 +1,5 @@
 import path = require('path');
-import { IRenvLock } from './types';
+import { IRenvLock } from '../service/types';
 import * as fs from 'fs-extra';
 
 export function getRenvVersion(workspacePath: string): string | undefined {

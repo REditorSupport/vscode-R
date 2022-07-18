@@ -6,7 +6,7 @@ import { validateRExecutablePath } from '..';
 import { config, getCurrentWorkspaceFolder, getRPathConfigEntry, isMultiRoot } from '../../util';
 import { isVirtual, ExecutableType } from '../service';
 import { RExecutableService } from '../service';
-import { getRenvVersion } from '../service/renv';
+import { getRenvVersion } from '../virtual';
 
 class ExecutableQuickPickItem implements vscode.QuickPickItem {
     public recommended: boolean;
@@ -16,11 +16,13 @@ class ExecutableQuickPickItem implements vscode.QuickPickItem {
     public detail?: string;
     public picked?: boolean;
     public alwaysShow?: boolean;
+    public active: boolean;
     private _executable: ExecutableType;
 
-    constructor(executable: ExecutableType, recommended: boolean) {
+    constructor(executable: ExecutableType, service: RExecutableService, workspaceFolder: vscode.WorkspaceFolder, renvVersion?: string) {
         this._executable = executable;
         this.description = executable.rBin;
+        this.recommended = recommendPath(executable, workspaceFolder, renvVersion);
 
         if (isVirtual(executable)) {
             this.category = 'Virtual';
@@ -28,13 +30,17 @@ class ExecutableQuickPickItem implements vscode.QuickPickItem {
             this.category = 'Global';
         }
 
-        this.recommended = recommended;
-
-        if (recommended) {
-            this.label = `$(star) ${executable.tooltip}`;
+        if (this.recommended) {
+            this.label = `$(star-full) ${executable.tooltip}`;
         } else {
             this.label = executable.tooltip;
         }
+
+        if (service.getWorkspaceExecutable(workspaceFolder?.uri?.fsPath)?.rBin === executable.rBin) {
+            this.label = `$(indent) ${this.label}`;
+            this.active = true;
+        }
+
     }
 
     public get executable(): ExecutableType {
@@ -44,7 +50,7 @@ class ExecutableQuickPickItem implements vscode.QuickPickItem {
 }
 
 enum PathQuickPickMenu {
-    search = '$(plus) Enter R binary path...',
+    search = '$(add) Enter R executable path...',
     configuration = '$(settings-gear) Configuration path'
 }
 
@@ -105,18 +111,23 @@ export class ExecutableQuickPick implements vscode.Disposable {
             }
         ];
 
-        [...this.service.executables].sort(sortExecutables).forEach((v) => {
-            const item = new ExecutableQuickPickItem(v, recommendPath(v, this.currentFolder, renvVersion));
-            if (item.recommended) {
-                recommendedItems.push(item);
+        [...this.service.executables].sort(sortExecutables).forEach((executable) => {
+            const quickPickItem = new ExecutableQuickPickItem(
+                executable,
+                this.service,
+                this.currentFolder,
+                renvVersion
+            );
+            if (quickPickItem.recommended) {
+                recommendedItems.push(quickPickItem);
             } else {
-                switch (item.category) {
+                switch (quickPickItem.category) {
                     case 'Virtual': {
-                        virtualItems.push(item);
+                        virtualItems.push(quickPickItem);
                         break;
                     }
                     case 'Global': {
-                        globalItems.push(item);
+                        globalItems.push(quickPickItem);
                         break;
                     }
                 }
@@ -125,9 +136,9 @@ export class ExecutableQuickPick implements vscode.Disposable {
 
 
         this.quickpick.items = [...qpItems, ...recommendedItems, ...virtualItems, ...globalItems];
-        for (const item of this.quickpick.items) {
-            if (item.description === this.service.getWorkspaceExecutable(this.currentFolder?.uri?.fsPath)?.rBin) {
-                this.quickpick.activeItems = [item];
+        for (const quickPickItem of this.quickpick.items) {
+            if ((quickPickItem as ExecutableQuickPickItem)?.active) {
+                this.quickpick.activeItems = [quickPickItem];
             }
         }
     }

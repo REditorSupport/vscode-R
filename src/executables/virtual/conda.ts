@@ -1,5 +1,5 @@
 
-import { IExecutableDetails } from './service';
+import { IExecutableDetails } from '../service';
 import * as fs from 'fs-extra';
 import * as vscode from 'vscode';
 import path = require('path');

@@ -13,7 +13,7 @@ export class ExecutableStatusItem implements vscode.Disposable {
     private languageStatusItem: vscode.LanguageStatusItem;
 
     private createItem(): vscode.LanguageStatusItem {
-        this.languageStatusItem = vscode.languages.createLanguageStatusItem('R Executable Selector', ['r', 'rmd']);
+        this.languageStatusItem = vscode.languages.createLanguageStatusItem('R Executable Selector', ['r', 'rmd', 'rProfile']);
         this.languageStatusItem.name = 'R Language Service';
         this.languageStatusItem.command = {
             'title': 'Select R executable',

@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getRpath } from './util';
+import { rExecService } from './extension';
 
 
 const TYPE = 'R';
@@ -96,7 +96,7 @@ const rtasks: RTaskInfo[] = [
     }
 ];
 
-function asRTask(rPath: string, folder: vscode.WorkspaceFolder | vscode.TaskScope, info: RTaskInfo): vscode.Task {
+function asRTask(folder: vscode.WorkspaceFolder | vscode.TaskScope, info: RTaskInfo): vscode.Task {
     const args = makeRArgs(info.definition.options ?? defaultOptions, info.definition.code);
     const rtask: vscode.Task = new vscode.Task(
         info.definition,
@@ -104,7 +104,7 @@ function asRTask(rPath: string, folder: vscode.WorkspaceFolder | vscode.TaskScop
         info.name,
         info.definition.type,
         new vscode.ProcessExecution(
-            rPath,
+            rExecService.activeExecutablePath,
             args,
             {
                 cwd: info.definition.cwd,
@@ -122,7 +122,7 @@ export class RTaskProvider implements vscode.TaskProvider {
 
     public type = TYPE;
 
-    public async provideTasks(): Promise<vscode.Task[]> {
+    public provideTasks(): vscode.Task[] {
         const folders = vscode.workspace.workspaceFolders;
 
         if (!folders) {
@@ -130,13 +130,12 @@ export class RTaskProvider implements vscode.TaskProvider {
         }
 
         const tasks: vscode.Task[] = [];
-        const rPath = await getRpath(false);
 
         for (const folder of folders) {
             const isRPackage = fs.existsSync(path.join(folder.uri.fsPath, 'DESCRIPTION'));
             if (isRPackage) {
                 for (const rtask of rtasks) {
-                    const task = asRTask(rPath, folder, rtask);
+                    const task = asRTask(folder, rtask);
                     tasks.push(task);
                 }
             }
@@ -144,13 +143,13 @@ export class RTaskProvider implements vscode.TaskProvider {
         return tasks;
     }
 
+    // eslint-disable-next-line @typescript-eslint/require-await
     public async resolveTask(task: vscode.Task): Promise<vscode.Task> {
         const taskInfo: RTaskInfo = {
             definition: <RTaskDefinition>task.definition,
             group: task.group,
             name: task.name
         };
-        const rPath = await getRpath(false);
-        return asRTask(rPath, vscode.TaskScope.Workspace, taskInfo);
+        return asRTask(vscode.TaskScope.Workspace, taskInfo);
     }
 }
