@@ -7,6 +7,7 @@ import { config, getCurrentWorkspaceFolder, getRPathConfigEntry, isMultiRoot } f
 import { isVirtual, ExecutableType } from '../service';
 import { RExecutableService } from '../service';
 import { getRenvVersion } from '../virtual';
+import { extensionContext } from '../../extension';
 
 class ExecutableQuickPickItem implements vscode.QuickPickItem {
     public recommended: boolean;
@@ -54,18 +55,16 @@ enum PathQuickPickMenu {
     configuration = '$(settings-gear) Configuration path'
 }
 
-export class ExecutableQuickPick implements vscode.Disposable {
+
+export class ExecutableQuickPick {
     private readonly service: RExecutableService;
-    private quickpick: vscode.QuickPick<vscode.QuickPickItem>;
+    private quickpick: vscode.QuickPick<vscode.QuickPickItem | ExecutableQuickPickItem>;
     private currentFolder: vscode.WorkspaceFolder;
 
     public constructor(service: RExecutableService) {
         this.service = service;
         this.currentFolder = getCurrentWorkspaceFolder();
-    }
-
-    public dispose(): void {
-        this.quickpick.dispose();
+        extensionContext.subscriptions.push(this.quickpick);
     }
 
     private setItems(): void {
@@ -178,7 +177,7 @@ export class ExecutableQuickPick implements vscode.Disposable {
                     this.quickpick.hide();
                 }
             });
-            this.quickpick.onDidChangeSelection((items: vscode.QuickPickItem[]) => {
+            this.quickpick.onDidChangeSelection((items: vscode.QuickPickItem[] | ExecutableQuickPickItem[]) => {
                 const qpItem = items[0];
                 if (qpItem.label) {
                     switch (qpItem.label) {
@@ -189,7 +188,7 @@ export class ExecutableQuickPick implements vscode.Disposable {
                                 canSelectMany: false,
                                 title: ' R executable file'
                             };
-                            void vscode.window.showOpenDialog(opts).then((epath) => {
+                            void vscode.window.showOpenDialog(opts).then((epath: vscode.Uri[]) => {
                                 if (epath) {
                                     const execPath = path.normalize(epath?.[0].fsPath);
                                     if (execPath && validateRExecutablePath(execPath)) {
@@ -215,7 +214,13 @@ export class ExecutableQuickPick implements vscode.Disposable {
                             break;
                         }
                         default: {
-                            this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, (qpItem as ExecutableQuickPickItem).executable);
+                            const executable = (qpItem as ExecutableQuickPickItem).executable;
+                            if (executable?.rVersion) {
+                                this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, executable);
+                            } else {
+                                void vscode.window.showErrorMessage(ExecutableNotifications.badInstallation);
+                                this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
+                            }
                             break;
                         }
                     }

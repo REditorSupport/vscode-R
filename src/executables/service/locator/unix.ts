@@ -17,7 +17,7 @@ export class UnixExecLocator extends AbstractLocatorService {
             new Set([
                 ...this.getPathFromDirs(),
                 ...this.getPathFromEnv(),
-                ... this.getPathFromConda()
+                ...this.getPathFromConda()
             ])
         ));
         this.emitter.fire(this._executablePaths);

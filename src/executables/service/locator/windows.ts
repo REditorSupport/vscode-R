@@ -4,7 +4,7 @@ import os = require('os');
 import path = require('path');
 import winreg = require('winreg');
 import { getUniquePaths, AbstractLocatorService } from './shared';
-import { validateRExecutablePath } from '../..';
+
 
 const WindowsKnownPaths: string[] = [];
 
@@ -88,11 +88,11 @@ export class WindowsExecLocator extends AbstractLocatorService {
                     const i386 = `${rPath}\\${dir}\\bin\\i386\\R.exe`;
                     const x64 = `${rPath}\\${dir}\\bin\\x64\\R.exe`;
 
-                    if (validateRExecutablePath(i386)) {
+                    if (fs.existsSync(i386)) {
                         execPaths.push(i386);
                     }
 
-                    if (validateRExecutablePath(x64)) {
+                    if (fs.existsSync(x64)) {
                         execPaths.push(x64);
                     }
                 }

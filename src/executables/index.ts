@@ -27,8 +27,7 @@ export class RExecutableManager {
                 }
             }),
             this.executableService,
-            this.statusBar,
-            this.quickPick
+            this.statusBar
         );
         this.reload();
     }
@@ -95,7 +94,7 @@ export class RExecutableManager {
 export function validateRExecutablePath(execPath: string): boolean {
     try {
         const basename = process.platform === 'win32' ? 'R.exe' : 'R';
-        fs.accessSync(execPath, fs.constants.X_OK);
+        fs.accessSync(execPath, fs.constants.X_OK && fs.constants.R_OK);
         return  (path.basename(execPath) === basename);
     } catch (error) {
         return false;
