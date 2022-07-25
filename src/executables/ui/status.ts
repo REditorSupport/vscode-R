@@ -47,12 +47,9 @@ export class ExecutableStatusItem implements vscode.Disposable {
         }
     }
 
-    public async busy(prom: Promise<boolean>): Promise<void> {
+    public async busy(prom: Promise<void>): Promise<void> {
         this.languageStatusItem.busy = true;
-        await prom.then((v: boolean) => {
-            if (!v) {
-                this.languageStatusItem.severity = vscode.LanguageStatusSeverity.Error;
-            }
+        await prom.then(() => {
             this.languageStatusItem.busy = false;
         }).catch(() => {
             this.languageStatusItem.busy = false;

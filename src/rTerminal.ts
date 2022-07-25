@@ -13,6 +13,7 @@ import { removeSessionFiles } from './session';
 import { config, delay, getRterm } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
+import { modifyEnvVars } from './executables';
 export let rTerm: vscode.Terminal;
 
 export async function runSource(echo: boolean): Promise<void>  {
@@ -86,7 +87,7 @@ export async function runFromLineToEnd(): Promise<void>  {
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     const termPath = await getRterm();
     const shellArgs: string[] = config().get('rterm.option');
-    const termOptions: vscode.TerminalOptions = {
+    let termOptions: vscode.TerminalOptions = {
         name: 'R Interactive',
         shellPath: termPath,
         shellArgs: shellArgs,
@@ -101,7 +102,7 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
             VSCODE_WATCHER_DIR: homeExtDir()
         };
     }
-    termOptions.env['R_BINARY'] = rExecService?.activeExecutable?.rBin;
+    termOptions = modifyEnvVars(termOptions, rExecService.activeExecutable);
     return termOptions;
 }
 

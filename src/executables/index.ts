@@ -1,6 +1,7 @@
 import path = require('path');
 import * as fs from 'fs-extra';
 import * as vscode from 'vscode';
+import * as cp from 'child_process';
 
 import { ExecutableStatusItem, ExecutableQuickPick } from './ui';
 import { isVirtual, RExecutableService, ExecutableType, WorkspaceExecutableEvent } from './service';
@@ -73,16 +74,14 @@ export class RExecutableManager {
         void this.statusBar.busy(loading);
     }
 
-
-    private async activateEnvironment(): Promise<boolean> {
+    private async activateEnvironment(): Promise<void> {
         if (!this.activeExecutable || !isVirtual(this.activeExecutable)) {
-            return Promise.resolve(true);
+            return Promise.resolve();
         }
-        return activateCondaEnvironment(this.activeExecutable?.rBin);
+        await activateCondaEnvironment(this.activeExecutable);
     }
 
 }
-
 
 /**
  * Is the folder of a given executable a valid R installation?
@@ -99,4 +98,30 @@ export function validateRExecutablePath(execPath: string): boolean {
     } catch (error) {
         return false;
     }
+}
+
+
+/**
+ * @description
+ * Takes an options object, and modifies the env values to allow for the injection
+ * of conda env values, and modify R binary paths for various rterms (e.g. radian)
+ * @export
+ * @template T
+ * @param {T} opts
+ * @param {ExecutableType} executable
+ * @returns {*}  {T}
+ */
+export function modifyEnvVars<T extends vscode.TerminalOptions | cp.CommonOptions >(opts: T, executable: ExecutableType): T {
+    const envVars: Record<string, string> = {
+        R_BINARY: executable.rBin
+    };
+    const pathEnv: string = (opts?.env as Record<string, string>)?.PATH ?? process.env?.PATH;
+    if (isVirtual(executable)) {
+        pathEnv ?
+            envVars['PATH'] = `${executable.envVar}:${pathEnv}`
+            :
+            envVars['PATH'] = executable.envVar;
+    }
+    opts['env'] = envVars;
+    return opts;
 }

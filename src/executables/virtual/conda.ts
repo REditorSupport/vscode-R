@@ -1,9 +1,11 @@
 
-import { IExecutableDetails } from '../service';
+import { IExecutableDetails, VirtualExecutableType } from '../service';
 import * as fs from 'fs-extra';
 import * as vscode from 'vscode';
+import * as cp from 'child_process';
 import path = require('path');
-import { spawn } from 'child_process';
+import { exec } from 'child_process';
+import { rExecService, tmpDir } from '../../extension';
 
 export function environmentIsActive(name: string): boolean {
     return process.env.CONDA_DEFAULT_ENV === name ||
@@ -32,7 +34,6 @@ export function getCondaActivationScript(executablePath: string): string {
 }
 
 export function isCondaInstallation(executablePath: string): boolean {
-    console.log(getCondaName(executablePath));
     return fs.existsSync(getCondaMetaDir(executablePath));
 }
 
@@ -52,34 +53,55 @@ export function getRDetailsFromMetaHistory(executablePath: string): IExecutableD
             version: ''
         };
     }
-
 }
 
-export function activateCondaEnvironment(executablePath: string): Promise<boolean> {
+export function getActivationString(executablePath: string): string | undefined {
+    const activationPath = getCondaActivationScript(executablePath);
+    const commands = [
+        activationPath,
+        `conda activate ${getCondaName(executablePath)}`
+    ].join(' & ');
+    return commands;
+}
+
+export function activateCondaEnvironment(executable: VirtualExecutableType): Promise<void> {
     return new Promise((resolve, reject) => {
         try {
-            const opts = {
-                env: process.env,
-                shell: true
-            };
-            const activationPath = (getCondaActivationScript(executablePath));
-            const commands = [
-                activationPath,
-                `conda activate ${getCondaName(executablePath)}`
-            ].join(' & ');
-            const childProc = spawn(
-                commands,
-                undefined,
-                opts
-            );
-            childProc.on('exit', () => resolve(true));
+            let command: string;
+            // need to fake activating conda environment by adding its env vars to the relevant R processes
+            if (process.platform === 'win32') {
+                // this assumes no powershell usage
+                // todo! need to check env saving for windows
+                command = [
+                    getCondaActivationScript(executable.rBin),
+                    `conda activate ${executable.name}`,
+                    `echo $PATH | awk -F':' '{ print $1}' > ${tmpDir()}/${executable.name}Env.txt`
+                ].join(' && ');
+            } else {
+                const unixCondaScript = path.join('/', 'etc', 'profile.d', 'conda.sh');
+                command = [
+                    `source ${unixCondaScript}`,
+                    `conda activate ${executable.name}`,
+                    `echo $PATH | awk -F':' '{ print $1}' > ${tmpDir()}/${executable.name}Env.txt`
+                ].join(' &&');
+            }
+            const childProc = exec(command);
+
             childProc.on('error', (err) => {
                 void vscode.window.showErrorMessage(`Error when activating conda environment: ${err.message}`);
-                reject(false);
+                reject();
+            });
+            childProc.on('exit', () => {
+                executable.envVar = readCondaBinFile(executable);
+                resolve();
             });
         } catch (error) {
             void vscode.window.showErrorMessage(`Error when activating conda environment: ${error as string}`);
-            reject(false);
+            reject();
         }
     });
+}
+
+function readCondaBinFile(executable: VirtualExecutableType) {
+    return fs.readFileSync(`${tmpDir()}/${executable.name}Env.txt`).toString().trim();
 }

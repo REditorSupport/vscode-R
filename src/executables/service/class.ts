@@ -69,14 +69,15 @@ export class RExecutable extends AbstractExecutable {
 
 export class VirtualRExecutable extends AbstractExecutable {
     private _name: string;
+    public envVar: string;
 
     constructor(executablePath: string) {
         super();
         this._name = getCondaName(executablePath);
         const details = getRDetailsFromMetaHistory(executablePath);
-        this._rBin = executablePath;
         this._rVersion = details?.version ?? '';
         this._rArch = details?.arch ?? '';
+        this._rBin = executablePath;
     }
 
     public get name(): string {
@@ -89,4 +90,5 @@ export class VirtualRExecutable extends AbstractExecutable {
         }
         return `$(error) ${this.name}`;
     }
+
 }
