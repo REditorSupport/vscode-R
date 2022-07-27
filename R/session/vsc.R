@@ -59,9 +59,10 @@ if (is.null(getOption("help_type"))) {
   options(help_type = "html")
 }
 
+use_websocket <- isTRUE(getOption("vsc.use_websocket", FALSE))
 port <- NULL
 token <- NULL
-if (isTRUE(getOption("vsc.use_websocket", FALSE))) {
+if (use_websocket) {
   if (requireNamespace("httpuv", quietly = TRUE)) {
     token <- paste0(sample(c(LETTERS, letters), 16), collapse = "")
     port <- httpuv::randomPort()
@@ -139,9 +140,9 @@ if (isTRUE(getOption("vsc.use_websocket", FALSE))) {
     )
   } else {
     message("{httpuv} is required to use WebSocket from the session watcher.")
+    use_websocket <- FALSE
   }
 }
-
 
 get_timestamp <- function() {
   format.default(Sys.time(), nsmall = 6, scientific = FALSE)
@@ -596,8 +597,10 @@ attach <- function() {
       start_time = format(file.info(tempdir)$ctime)
     ),
     plot_url = if (identical(names(dev.cur()), "httpgd")) httpgd::hgd_url(),
-    port = port,
-    token = token
+    server = if (use_websocket) list(
+      port = port,
+      token = token
+    ) else NULL
   )
 }
 

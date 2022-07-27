@@ -764,15 +764,17 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
 
-                        if (sessionSocket && sessionSocket.readyState === sessionSocket.OPEN) {
+                        if (sessionSocket?.isOpen) {
                             sessionSocket.close();
                         }
 
-                        sessionSocket = new SessionSocket(`ws://127.0.0.1:${request.port}`, {
-                            headers: {
-                                token: request.token
-                            }
-                        });
+                        if (request.server) {
+                            sessionSocket = new SessionSocket(`ws://127.0.0.1:${request.server.port}`, {
+                                headers: {
+                                    token: request.server.token
+                                }
+                            });
+                        }
 
                         purgeAddinPickerItems();
                         if (request.plot_url) {
