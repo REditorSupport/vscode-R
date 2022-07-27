@@ -1283,6 +1283,18 @@
       "type": "object",
       "title": "R",
       "properties": {
+        "r.executable.virtual.activateEnvironment": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to automatically activate a conda environment containing a selected executable. *Recommended to keep enabled*",
+          "scope": "machine-overridable"
+        },
+        "r.executable.virtual.condaPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to conda activation script. This will be `conda.sh` on unix or the `Activate` file on windows.",
+          "scope": "machine-overridable"
+        },
         "r.rpath.windows": {
           "type": "string",
           "default": "",

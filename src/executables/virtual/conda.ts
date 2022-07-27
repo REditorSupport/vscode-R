@@ -6,17 +6,21 @@ import * as cp from 'child_process';
 import path = require('path');
 import { exec } from 'child_process';
 import { rExecService, tmpDir } from '../../extension';
+import { config } from '../../util';
 
-export function environmentIsActive(name: string): boolean {
-    return process.env.CONDA_DEFAULT_ENV === name ||
-    process.env.CONDA_PREFIX === name;
+// Misc
+
+export function condaName(executablePath: string): string {
+    return path.basename(condaPrefixPath(executablePath));
 }
 
-export function getCondaName(executablePath: string): string {
-    return path.basename(path.dirname(getCondaMetaDir(executablePath)));
+// Path functions
+
+export function condaPrefixPath(executablePath: string): string {
+    return path.dirname(condaMetaDirPath(executablePath));
 }
 
-export function getCondaMetaDir(executablePath: string): string {
+export function condaMetaDirPath(executablePath: string): string {
     let envDir: string = executablePath;
     for (let index = 0; index < 4; index++) {
         envDir = path.dirname(envDir);
@@ -24,24 +28,39 @@ export function getCondaMetaDir(executablePath: string): string {
     return path.join(envDir, 'conda-meta');
 }
 
-export function getCondaHistoryPath(executablePath: string): string {
-    return path.join(getCondaMetaDir(executablePath), 'history');
+export function condaHistoryPath(executablePath: string): string {
+    return path.join(condaMetaDirPath(executablePath), 'history');
 }
 
-export function getCondaActivationScript(executablePath: string): string {
-    const envDir = path.dirname(getCondaMetaDir(executablePath));
-    return path.join(path.dirname(path.dirname(envDir)), 'Scripts', 'activate');
+export function condaActivationPath(executablePath: string): string {
+    const condaPathConfig = config().get<string>('virtual.condaPath');
+    if (condaPathConfig) {
+        return condaPathConfig;
+    } else if (process.platform === 'win32') {
+        const envDir = path.dirname(condaMetaDirPath(executablePath));
+        return path.join(path.dirname(path.dirname(envDir)), 'Scripts', 'activate');
+    } else {
+        return path.join('/', 'etc', 'profile.d', 'conda.sh');
+    }
+}
+
+// Bools
+
+export function environmentIsActive(executablePath: string): boolean {
+    return process.env.CONDA_DEFAULT_ENV === condaName(executablePath) ||
+    process.env.CONDA_PREFIX === condaPrefixPath(executablePath);
 }
 
 export function isCondaInstallation(executablePath: string): boolean {
-    return fs.existsSync(getCondaMetaDir(executablePath));
+    return fs.existsSync(condaMetaDirPath(executablePath));
 }
+
+// Extension
 
 export function getRDetailsFromMetaHistory(executablePath: string): IExecutableDetails {
     try {
-
         const reg = new RegExp(/([0-9]{2})::r-base-([0-9.]*)/g);
-        const historyContent = fs.readFileSync(getCondaHistoryPath(executablePath))?.toString();
+        const historyContent = fs.readFileSync(condaHistoryPath(executablePath))?.toString();
         const res = reg.exec(historyContent);
         return {
             arch: res?.[1] ? `${res[1]}-bit` : '',
@@ -55,32 +74,24 @@ export function getRDetailsFromMetaHistory(executablePath: string): IExecutableD
     }
 }
 
-export function getActivationString(executablePath: string): string | undefined {
-    const activationPath = getCondaActivationScript(executablePath);
-    const commands = [
-        activationPath,
-        `conda activate ${getCondaName(executablePath)}`
-    ].join(' & ');
-    return commands;
-}
-
 export function activateCondaEnvironment(executable: VirtualExecutableType): Promise<void> {
     return new Promise((resolve, reject) => {
         try {
             let command: string;
             // need to fake activating conda environment by adding its env vars to the relevant R processes
+            const activationPath = condaActivationPath(executable.rBin);
+
             if (process.platform === 'win32') {
                 // this assumes no powershell usage
                 // todo! need to check env saving for windows
                 command = [
-                    getCondaActivationScript(executable.rBin),
+                    activationPath,
                     `conda activate ${executable.name}`,
                     `echo $PATH | awk -F':' '{ print $1}' > ${tmpDir()}/${executable.name}Env.txt`
                 ].join(' && ');
             } else {
-                const unixCondaScript = path.join('/', 'etc', 'profile.d', 'conda.sh');
                 command = [
-                    `source ${unixCondaScript}`,
+                    `source ${activationPath}`,
                     `conda activate ${executable.name}`,
                     `echo $PATH | awk -F':' '{ print $1}' > ${tmpDir()}/${executable.name}Env.txt`
                 ].join(' &&');

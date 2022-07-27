@@ -6,7 +6,8 @@ import * as cp from 'child_process';
 import { ExecutableStatusItem, ExecutableQuickPick } from './ui';
 import { isVirtual, RExecutableService, ExecutableType, WorkspaceExecutableEvent } from './service';
 import { extensionContext } from '../extension';
-import { activateCondaEnvironment } from './virtual';
+import { activateCondaEnvironment, condaPrefixPath } from './virtual';
+import { config } from '../util';
 
 // super class that manages relevant sub classes
 export class RExecutableManager {
@@ -75,7 +76,10 @@ export class RExecutableManager {
     }
 
     private async activateEnvironment(): Promise<void> {
-        if (!this.activeExecutable || !isVirtual(this.activeExecutable)) {
+        if (!this.activeExecutable ||
+            !isVirtual(this.activeExecutable) ||
+            !!this.activeExecutable.envVar
+        ) {
             return Promise.resolve();
         }
         await activateCondaEnvironment(this.activeExecutable);
@@ -116,11 +120,14 @@ export function modifyEnvVars<T extends vscode.TerminalOptions | cp.CommonOption
         R_BINARY: executable.rBin
     };
     const pathEnv: string = (opts?.env as Record<string, string>)?.PATH ?? process.env?.PATH;
-    if (isVirtual(executable)) {
+    if (isVirtual(executable) && executable.envVar) {
         pathEnv ?
             envVars['PATH'] = `${executable.envVar}:${pathEnv}`
             :
             envVars['PATH'] = executable.envVar;
+        envVars['CONDA_PREFIX'] = condaPrefixPath(executable.rBin);
+        envVars['CONDA_DEFAULT_ENV'] = executable.name ?? 'base';
+        envVars['CONDA_PROMPT_MODIFIER'] = `(${envVars['CONDA_DEFAULT_ENV']})`;
     }
     opts['env'] = envVars;
     return opts;

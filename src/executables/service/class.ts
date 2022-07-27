@@ -1,4 +1,4 @@
-import { getCondaName, getRDetailsFromMetaHistory, isCondaInstallation } from '../virtual';
+import { condaName, getRDetailsFromMetaHistory, isCondaInstallation } from '../virtual';
 import { getRDetailsFromPath } from './locator';
 import { RExecutableRegistry } from './registry';
 import { ExecutableType } from './types';
@@ -73,7 +73,7 @@ export class VirtualRExecutable extends AbstractExecutable {
 
     constructor(executablePath: string) {
         super();
-        this._name = getCondaName(executablePath);
+        this._name = condaName(executablePath);
         const details = getRDetailsFromMetaHistory(executablePath);
         this._rVersion = details?.version ?? '';
         this._rArch = details?.arch ?? '';
