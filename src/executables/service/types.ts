@@ -10,13 +10,6 @@ export interface IExecutableDetails {
 	arch: string | undefined
 }
 
-export interface IRenvLock {
-	'R': {
-		'Version': string,
-		'Repositories': Record<string, string>[]
-	};
-}
-
 /**
  * @description
  * @export

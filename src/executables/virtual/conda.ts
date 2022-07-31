@@ -1,11 +1,10 @@
 
-import { IExecutableDetails, VirtualExecutableType } from '../service';
 import * as fs from 'fs-extra';
 import * as vscode from 'vscode';
-import * as cp from 'child_process';
 import path = require('path');
+import { IExecutableDetails, VirtualExecutableType } from '../service';
 import { exec } from 'child_process';
-import { rExecService, tmpDir } from '../../extension';
+import { tmpDir } from '../../extension';
 import { config } from '../../util';
 
 // Misc
@@ -20,7 +19,7 @@ export function condaPrefixPath(executablePath: string): string {
     return path.dirname(condaMetaDirPath(executablePath));
 }
 
-export function condaMetaDirPath(executablePath: string): string {
+function condaMetaDirPath(executablePath: string): string {
     let envDir: string = executablePath;
     for (let index = 0; index < 4; index++) {
         envDir = path.dirname(envDir);
@@ -28,11 +27,11 @@ export function condaMetaDirPath(executablePath: string): string {
     return path.join(envDir, 'conda-meta');
 }
 
-export function condaHistoryPath(executablePath: string): string {
+function condaHistoryPath(executablePath: string): string {
     return path.join(condaMetaDirPath(executablePath), 'history');
 }
 
-export function condaActivationPath(executablePath: string): string {
+function condaActivationPath(executablePath: string): string {
     const condaPathConfig = config().get<string>('virtual.condaPath');
     if (condaPathConfig) {
         return condaPathConfig;
@@ -40,7 +39,7 @@ export function condaActivationPath(executablePath: string): string {
         const envDir = path.dirname(condaMetaDirPath(executablePath));
         return path.join(path.dirname(path.dirname(envDir)), 'Scripts', 'activate');
     } else {
-        return path.join('/', 'etc', 'profile.d', 'conda.sh');
+        return path.join('/', 'usr', 'bin', 'activate');
     }
 }
 

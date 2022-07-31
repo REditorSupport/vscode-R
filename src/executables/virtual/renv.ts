@@ -1,5 +1,5 @@
 import path = require('path');
-import { IRenvLock } from '../service/types';
+import { IRenvJSONLock } from '../virtual/types';
 import * as fs from 'fs-extra';
 
 export function getRenvVersion(workspacePath: string): string | undefined {
@@ -9,7 +9,7 @@ export function getRenvVersion(workspacePath: string): string | undefined {
             if (!fs.existsSync(lockPath)) {
                 return '';
             }
-            const lockContent = fs.readJSONSync(lockPath) as IRenvLock;
+            const lockContent = fs.readJSONSync(lockPath) as IRenvJSONLock;
             return lockContent?.R?.Version ?? '';
         } catch (error) {
             return '';

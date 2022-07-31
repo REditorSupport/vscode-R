@@ -7,7 +7,6 @@ import { ExecutableStatusItem, ExecutableQuickPick } from './ui';
 import { isVirtual, RExecutableService, ExecutableType, WorkspaceExecutableEvent } from './service';
 import { extensionContext } from '../extension';
 import { activateCondaEnvironment, condaPrefixPath } from './virtual';
-import { config } from '../util';
 
 // super class that manages relevant sub classes
 export class RExecutableManager {

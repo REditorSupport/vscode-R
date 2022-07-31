@@ -1,13 +1,23 @@
 import path = require('path');
 import * as vscode from 'vscode';
 
-import { ExecutableNotifications } from './types';
 import { validateRExecutablePath } from '..';
 import { config, getCurrentWorkspaceFolder, getRPathConfigEntry, isMultiRoot } from '../../util';
 import { isVirtual, ExecutableType } from '../service';
 import { RExecutableService } from '../service';
 import { getRenvVersion } from '../virtual';
 import { extensionContext } from '../../extension';
+
+enum ExecutableNotifications {
+    badFolder = 'Supplied R executable path is not a valid R path.',
+    badConfig = 'Configured path is not a valid R executable path.',
+    badInstallation = 'Supplied R executable cannot be launched on this operating system.'
+}
+
+enum PathQuickPickMenu {
+    search = '$(add) Enter R executable path...',
+    configuration = '$(settings-gear) Configuration path'
+}
 
 class ExecutableQuickPickItem implements vscode.QuickPickItem {
     public recommended: boolean;
@@ -49,12 +59,6 @@ class ExecutableQuickPickItem implements vscode.QuickPickItem {
     }
 
 }
-
-enum PathQuickPickMenu {
-    search = '$(add) Enter R executable path...',
-    configuration = '$(settings-gear) Configuration path'
-}
-
 
 export class ExecutableQuickPick {
     private readonly service: RExecutableService;
@@ -173,7 +177,7 @@ export class ExecutableQuickPick {
                     this.setItems();
                     this.quickpick.show();
                 } else {
-                    this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
+                    this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, null);
                     this.quickpick.hide();
                 }
             });
@@ -196,7 +200,7 @@ export class ExecutableQuickPick {
                                         this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, rExec);
                                     } else {
                                         void vscode.window.showErrorMessage(ExecutableNotifications.badFolder);
-                                        this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
+                                        this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, null);
                                     }
                                 }
                             });
@@ -209,7 +213,7 @@ export class ExecutableQuickPick {
                                 this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, rExec);
                             } else {
                                 void vscode.window.showErrorMessage(ExecutableNotifications.badConfig);
-                                this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
+                                this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, null);
                             }
                             break;
                         }
@@ -219,7 +223,7 @@ export class ExecutableQuickPick {
                                 this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, executable);
                             } else {
                                 void vscode.window.showErrorMessage(ExecutableNotifications.badInstallation);
-                                this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
+                                this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, null);
                             }
                             break;
                         }
