@@ -241,9 +241,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
             return;
         }
         let rDocumentPath = util.ToRStringLiteral(wad.fileName, '"');
-        let encodingParam = util.config().get<string>('source.encoding');
-        encodingParam = `encoding = "${encodingParam}"`;
-        rDocumentPath = [rDocumentPath, encodingParam].join(', ');
+
         if (echo) {
             rDocumentPath = [rDocumentPath, 'echo = TRUE'].join(', ');
         }
