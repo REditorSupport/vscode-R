@@ -130,10 +130,9 @@ export class LanguageService implements Disposable {
             },
             revealOutputChannelOn: RevealOutputChannelOn.Never,
             errorHandler: {
-                error: (error) =>    {
+                error: () =>    {
                     return {
-                        action: ErrorAction.Shutdown,
-                        message: error.message
+                        action: ErrorAction.Continue
                     };
                 },
                 closed: () => {
@@ -152,6 +151,7 @@ export class LanguageService implements Disposable {
         }
 
         extensionContext.subscriptions.push(client);
+        await client.start();
         return client;
     }
 
@@ -200,10 +200,7 @@ export class LanguageService implements Disposable {
                     ];
                     const client = await self.createClient(config, documentSelector,
                         path.dirname(document.uri.fsPath), folder, outputChannel);
-                    if (client) {
-                        void client.start();
-                        self.clients.set(key, client);
-                    }
+                    self.clients.set(key, client);
                     self.initSet.delete(key);
                 }
                 return;
@@ -221,10 +218,7 @@ export class LanguageService implements Disposable {
                         { scheme: 'file', language: 'rmd', pattern: pattern },
                     ];
                     const client = await self.createClient(config, documentSelector, folder.uri.fsPath, folder, outputChannel);
-                    if (client) {
-                        void client.start();
-                        self.clients.set(key, client);
-                    }
+                    self.clients.set(key, client);
                     self.initSet.delete(key);
                 }
 
@@ -240,10 +234,7 @@ export class LanguageService implements Disposable {
                             { scheme: 'untitled', language: 'rmd' },
                         ];
                         const client = await self.createClient(config, documentSelector, os.homedir(), undefined, outputChannel);
-                        if (client) {
-                            void client.start();
-                            self.clients.set(key, client);
-                        }
+                        self.clients.set(key, client);
                         self.initSet.delete(key);
                     }
                     return;
@@ -259,10 +250,7 @@ export class LanguageService implements Disposable {
                         ];
                         const client = await self.createClient(config, documentSelector,
                             path.dirname(document.uri.fsPath), undefined, outputChannel);
-                        if (client) {
-                            void client.start();
-                            self.clients.set(key, client);
-                        }
+                        self.clients.set(key, client);
                         self.initSet.delete(key);
                     }
                     return;
