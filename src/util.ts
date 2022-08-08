@@ -281,7 +281,7 @@ export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, p
 // argument path is optional and should be relative to the cran root
 // currently the CRAN root url is hardcoded, this could be replaced by reading
 // the url from config, R, or both
-export async function getCranUrl(path: string = '', cwd?: string): Promise<string> {
+export async function getCranUrl(path: string = '', cwd?: string | URL): Promise<string> {
     const defaultCranUrl = 'https://cran.r-project.org/';
     // get cran URL from R. Returns empty string if option is not set.
     const baseUrl = await executeRCommand('cat(getOption(\'repos\')[\'CRAN\'])', cwd);
@@ -305,7 +305,7 @@ export function getRLibPaths(): string {
 // WARNING: Cannot handle double quotes in the R command! (e.g. `print("hello world")`)
 // Single quotes are ok.
 //
-export async function executeRCommand(rCommand: string, cwd?: string, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
+export async function executeRCommand(rCommand: string, cwd?: string | URL, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
     const rPath = await getRpath();
 
     const options: cp.CommonOptions = {
@@ -338,7 +338,7 @@ export async function executeRCommand(rCommand: string, cwd?: string, fallback?:
         ret = match[1];
     } catch (e) {
         if (fallback) {
-            ret = (typeof fallback === 'function' ? fallback(e) : fallback);
+            ret = (typeof fallback === 'function' ? fallback((e instanceof Error) ? e : undefined) : fallback);
         } else {
             console.warn(e);
         }
@@ -482,7 +482,7 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
                 resolve(result);
             });
         } catch (e) {
-            result.error = (e instanceof Error) ? e : new Error(e);
+            result.error = (e instanceof Error) ? e : undefined;
             resolve(result);
         }
     });
@@ -494,7 +494,7 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
  * @param name the R package name to ask user to install
  * @returns a boolean Promise
  */
-export async function promptToInstallRPackage(name: string, section: string, cwd: string, installMsg?: string, postInstallMsg?: string): Promise<void> {
+export async function promptToInstallRPackage(name: string, section: string, cwd: string | URL, installMsg?: string, postInstallMsg?: string): Promise<void> {
     const _config = config();
     const prompt = _config.get<boolean>(section);
     if (!prompt) {
