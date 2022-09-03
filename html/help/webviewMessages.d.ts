@@ -33,6 +33,10 @@ interface CodeClickedMessage extends IOutMessage {
         metaKey: boolean,
     }
 }
+interface GetScrollYMessage extends IOutMessage {
+    message: 'getScrollY',
+    scrollY: number
+}
 
-type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage | CodeClickedMessage;
+type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage | CodeClickedMessage | GetScrollYMessage;
 

@@ -262,6 +262,9 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         if (refreshTreeView) {
             this.treeViewWrapper.refreshPackageRootNode();
         }
+        for (const panel of this.helpPanels) {
+            await panel.refresh();
+        }
         return true;
     }
 

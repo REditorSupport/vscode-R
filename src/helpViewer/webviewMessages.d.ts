@@ -39,7 +39,11 @@ export interface CodeClickedMessage extends IMessage {
         metaKey: boolean,
     }
 }
+export interface GetScrollYMessage extends IMessage {
+    message: 'getScrollY',
+    scrollY: number
+}
 
-export type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage | CodeClickedMessage;
+export type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage | CodeClickedMessage | GetScrollYMessage;
 
 
