@@ -99,7 +99,7 @@ export const Commands: ICommands = {
             void updateGuestPlot(args[0]);
         },
         [Callback.NotifyGuestPlotManager]: (args: [url: string]): void => {
-            globalHttpgdManager?.showViewer(args[0]);
+            void globalHttpgdManager?.showViewer(args[0]);
         },
         [Callback.OrderDetach]: (): void => {
             void detachGuest();

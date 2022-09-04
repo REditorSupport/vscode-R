@@ -144,6 +144,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // (help related commands are registered in rHelp.initializeHelp)
     };
     for (const key in commands) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
         context.subscriptions.push(vscode.commands.registerCommand(key, commands[key]));
     }
 
