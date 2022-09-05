@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import * as vscode from 'vscode';
@@ -43,7 +44,7 @@ export class HelpPanel {
     private currentEntry: HistoryEntry | undefined = undefined;
     private history: HistoryEntry[] = [];
     private forwardHistory: HistoryEntry[] = [];
-    
+
     // used to get scrollY position from webview:
     private scrollYCallback?: (y: number) => void;
 
@@ -63,7 +64,7 @@ export class HelpPanel {
             this.panel.dispose();
         }
     }
-    
+
     public async refresh(): Promise<void> {
         for (const he of [...this.history, ...this.forwardHistory]) {
             he.isStale = true;
@@ -222,12 +223,12 @@ export class HelpPanel {
             void this.showHistoryEntry(entry);
         }
     }
-    private async showHistoryEntry(entry: HistoryEntry){
+    private async showHistoryEntry(entry: HistoryEntry) {
         let helpFile: HelpFile;
-        if(entry.isStale){
+        if (entry.isStale) {
             helpFile = await this.rHelp.getHelpFileForPath(entry.helpFile.requestPath);
             helpFile.scrollY = entry.helpFile.scrollY;
-        } else{
+        } else {
             helpFile = entry.helpFile;
         }
 
@@ -245,7 +246,7 @@ export class HelpPanel {
                 resolve(y);
             };
         });
-        this.panel?.webview.postMessage({command: 'getScrollY'});
+        void this.panel?.webview.postMessage({ command: 'getScrollY' });
         return scrollYPromise;
     }
 
@@ -332,9 +333,9 @@ export class HelpPanel {
             if (runCode) {
                 void runTextInTerm(msg.code);
             }
-        } else if(msg.message === 'getScrollY'){
+        } else if (msg.message === 'getScrollY') {
             this.scrollYCallback?.(msg.scrollY || 0);
-        } else{
+        } else {
             console.log('Unknown message:', msg);
         }
     }
