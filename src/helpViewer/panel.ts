@@ -39,15 +39,15 @@ export class HelpPanel {
     private webviewStyleUri?: vscode.Uri;
 
     // keep track of history to go back/forward:
-    private currentEntry: HistoryEntry|undefined = undefined;
+    private currentEntry: HistoryEntry | undefined = undefined;
     private history: HistoryEntry[] = [];
     private forwardHistory: HistoryEntry[] = [];
 
-    constructor(options: HelpPanelOptions, rHelp: RHelp, panel?: vscode.WebviewPanel){
+    constructor(options: HelpPanelOptions, rHelp: RHelp, panel?: vscode.WebviewPanel) {
         this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
         this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
         this.rHelp = rHelp;
-        if(panel){
+        if (panel) {
             this.panel = panel;
             this.initializePanel();
         }
@@ -55,7 +55,7 @@ export class HelpPanel {
 
     // used to close files, stop servers etc.
     public dispose(): void {
-        if(this.panel){
+        if (this.panel) {
             this.panel.dispose();
         }
     }
@@ -63,7 +63,7 @@ export class HelpPanel {
     // retrieves the stored webview or creates a new one if the webview was closed
     private getWebview(preserveFocus: boolean = false): vscode.Webview {
         // create webview if necessary
-        if(!this.panel){
+        if (!this.panel) {
             const webViewOptions: vscode.WebviewOptions & vscode.WebviewPanelOptions = {
                 enableScripts: true,
                 enableFindWidget: true,
@@ -84,7 +84,7 @@ export class HelpPanel {
     }
 
     private initializePanel(): void {
-        if(!this.panel){
+        if (!this.panel) {
             return;
         }
         this.panel.iconPath = new UriIcon('help');
@@ -122,13 +122,13 @@ export class HelpPanel {
     }
 
     // shows (internal) help file object in webview
-    public async showHelpFile(helpFile: HelpFile | Promise<HelpFile>, updateHistory = true, currentScrollY = 0, viewer?: vscode.ViewColumn | string, preserveFocus: boolean = false): Promise<boolean>{
+    public async showHelpFile(helpFile: HelpFile | Promise<HelpFile>, updateHistory = true, currentScrollY = 0, viewer?: vscode.ViewColumn | string, preserveFocus: boolean = false): Promise<boolean> {
         if (viewer === undefined) {
             viewer = config().get<string>('session.viewers.viewColumn.helpPanel');
         }
 
         // update this.viewColumn if a valid viewer argument was supplied
-        if (typeof viewer === 'string'){
+        if (typeof viewer === 'string') {
             this.viewColumn = <vscode.ViewColumn>vscode.ViewColumn[String(viewer)];
         }
 
@@ -147,8 +147,8 @@ export class HelpPanel {
         webview.html = helpFile.html;
 
         // update history to enable back/forward
-        if(updateHistory){
-            if(this.currentEntry){
+        if (updateHistory) {
+            if (this.currentEntry) {
                 this.currentEntry.helpFile.scrollY = currentScrollY;
                 this.history.push(this.currentEntry);
             }
@@ -164,14 +164,14 @@ export class HelpPanel {
     }
 
     public async openInExternalBrowser(helpFile?: HelpFile): Promise<boolean> {
-        if(!this.currentEntry){
+        if (!this.currentEntry) {
             return false;
         }
-        if(!helpFile){
+        if (!helpFile) {
             helpFile = this.currentEntry.helpFile;
         }
         const url = helpFile.url;
-        if(!url){
+        if (!url) {
             return false;
         }
         const uri = vscode.Uri.parse(url);
@@ -180,12 +180,12 @@ export class HelpPanel {
 
     // go back/forward in the history of the webview:
     public goBack(): void {
-        void this.panel?.webview.postMessage({command: 'goBack'});
+        void this.panel?.webview.postMessage({ command: 'goBack' });
     }
-    private _goBack(currentScrollY = 0): void{
+    private _goBack(currentScrollY = 0): void {
         const entry = this.history.pop();
-        if(entry){
-            if(this.currentEntry){ // should always be true
+        if (entry) {
+            if (this.currentEntry) { // should always be true
                 this.currentEntry.helpFile.scrollY = currentScrollY;
                 this.forwardHistory.push(this.currentEntry);
             }
@@ -193,26 +193,26 @@ export class HelpPanel {
         }
     }
     public goForward(): void {
-        void this.panel?.webview.postMessage({command: 'goForward'});
+        void this.panel?.webview.postMessage({ command: 'goForward' });
     }
-    private _goForward(currentScrollY = 0): void{
+    private _goForward(currentScrollY = 0): void {
         const entry = this.forwardHistory.pop();
-        if(entry){
-            if(this.currentEntry){ // should always be true
+        if (entry) {
+            if (this.currentEntry) { // should always be true
                 this.currentEntry.helpFile.scrollY = currentScrollY;
                 this.history.push(this.currentEntry);
             }
             this.showHistoryEntry(entry);
         }
     }
-    private showHistoryEntry(entry: HistoryEntry){
+    private showHistoryEntry(entry: HistoryEntry) {
         const helpFile = entry.helpFile;
         void this.showHelpFile(helpFile, false);
     }
 
     // handle message produced by javascript inside the help page
-    private async handleMessage(msg: OutMessage){
-        if(msg.message === 'linkClicked'){
+    private async handleMessage(msg: OutMessage) {
+        if (msg.message === 'linkClicked') {
             // handle hyperlinks clicked in the webview
             // normal navigation does not work in webviews (even on localhost)
             const href: string = msg.href || '';
@@ -222,10 +222,10 @@ export class HelpPanel {
             // remove first to path entries (if these are webview internal stuff):
             const uri = vscode.Uri.parse(href);
             const parts = uri.path.split('/');
-            if(parts[0] !== 'library' && parts[0] !== 'doc'){
+            if (parts[0] !== 'library' && parts[0] !== 'doc') {
                 parts.shift();
             }
-            if(parts[0] !== 'library' && parts[0] !== 'doc'){
+            if (parts[0] !== 'library' && parts[0] !== 'doc') {
                 parts.shift();
             }
 
@@ -236,35 +236,35 @@ export class HelpPanel {
             const helpFile = await this.rHelp.getHelpFileForPath(requestPath);
 
             // if successful, show helpfile:
-            if(helpFile){
-                if(uri.fragment){
+            if (helpFile) {
+                if (uri.fragment) {
                     helpFile.hash = '#' + uri.fragment;
-                } else{
+                } else {
                     helpFile.scrollY = 0;
                 }
-                if(uri.path.endsWith('.pdf')){
+                if (uri.path.endsWith('.pdf')) {
                     void this.openInExternalBrowser(helpFile);
-                } else if(uri.path.endsWith('.R')){
+                } else if (uri.path.endsWith('.R')) {
                     const doc = await vscode.workspace.openTextDocument({
                         language: 'r',
                         content: helpFile.html0
                     });
                     void vscode.window.showTextDocument(doc);
-                } else{
+                } else {
                     void this.showHelpFile(helpFile, true, currentScrollY);
                 }
             }
-        } else if(msg.message === 'mouseClick'){
+        } else if (msg.message === 'mouseClick') {
             // use the additional mouse buttons to go forward/backwards
             const currentScrollY = Number(msg.scrollY) || 0;
             const button: number = Number(msg.button) || 0;
-            if(button === 3){
+            if (button === 3) {
                 this._goBack(currentScrollY);
-            } else if(button === 4){
+            } else if (button === 4) {
                 this._goForward(currentScrollY);
             }
-        } else if(msg.message === 'codeClicked') {
-            if(!msg.code){
+        } else if (msg.message === 'codeClicked') {
+            if (!msg.code) {
                 return;
             }
             // Process modifiers:
@@ -286,20 +286,20 @@ export class HelpPanel {
             );
 
             // Execute action:
-            if(copyCode){
+            if (copyCode) {
                 void vscode.env.clipboard.writeText(msg.code);
                 void vscode.window.showInformationMessage('Copied code example to clipboard.');
             }
-            if(runCode){
+            if (runCode) {
                 void runTextInTerm(msg.code);
             }
-        } else{
+        } else {
             console.log('Unknown message:', msg);
         }
     }
 
     // improves the help display by applying syntax highlighting and adjusting hyperlinks:
-    private pimpMyHelp(helpFile: HelpFile, styleUri?: vscode.Uri|string, scriptUri?: vscode.Uri|string): HelpFile {
+    private pimpMyHelp(helpFile: HelpFile, styleUri?: vscode.Uri | string, scriptUri?: vscode.Uri | string): HelpFile {
 
         // get requestpath of helpfile
         const relPath = helpFile.requestPath + (helpFile.hash || '');
@@ -312,10 +312,10 @@ export class HelpPanel {
         $('body').attr('relpath', relPath);
         $('body').attr('scrollyto', `${helpFile.scrollY ?? -1}`);
 
-        if(styleUri){
+        if (styleUri) {
             $('body').append(`\n<link rel="stylesheet" href="${styleUri.toString()}"></link>`);
         }
-        if(scriptUri){
+        if (scriptUri) {
             $('body').append(`\n<script src=${scriptUri.toString()}></script>`);
         }
 
