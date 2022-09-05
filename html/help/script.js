@@ -13,21 +13,12 @@ window.onmousedown = (ev) => {
         scrollY: window.scrollY
     });
 };
-// handle back/forward requests from vscode ui
-// simulates a mousclick on key 3 or 4
+// handle requests from vscode ui
 window.addEventListener('message', (ev) => {
     const message = ev.data;
-    if (message.command === 'goBack') {
+    if (message.command === 'getScrollY') {
         vscode.postMessage({
-            message: 'mouseClick',
-            button: 3,
-            scrollY: window.scrollY
-        });
-    }
-    else if (message.command === 'goForward') {
-        vscode.postMessage({
-            message: 'mouseClick',
-            button: 4,
+            message: 'getScrollY',
             scrollY: window.scrollY
         });
     }

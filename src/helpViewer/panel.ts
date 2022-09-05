@@ -20,6 +20,7 @@ export interface HelpPanelOptions {
 // internal interface used to store history of help panel
 interface HistoryEntry {
     helpFile: HelpFile;
+    isStale?: boolean; // Used to mark history entries as stale after a refresh
 }
 
 export class HelpPanel {
@@ -42,6 +43,9 @@ export class HelpPanel {
     private currentEntry: HistoryEntry | undefined = undefined;
     private history: HistoryEntry[] = [];
     private forwardHistory: HistoryEntry[] = [];
+    
+    // used to get scrollY position from webview:
+    private scrollYCallback?: (y: number) => void;
 
     constructor(options: HelpPanelOptions, rHelp: RHelp, panel?: vscode.WebviewPanel) {
         this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
@@ -58,6 +62,15 @@ export class HelpPanel {
         if (this.panel) {
             this.panel.dispose();
         }
+    }
+    
+    public async refresh(): Promise<void> {
+        for (const he of [...this.history, ...this.forwardHistory]) {
+            he.isStale = true;
+        }
+        const newHelpFile = await this.rHelp.getHelpFileForPath(this.currentEntry.helpFile.requestPath);
+        newHelpFile.scrollY = await this.getScrollY();
+        await this.showHelpFile(newHelpFile, false, undefined, undefined, true);
     }
 
     // retrieves the stored webview or creates a new one if the webview was closed
@@ -143,7 +156,7 @@ export class HelpPanel {
         // modify html
         helpFile = this.pimpMyHelp(helpFile, this.webviewStyleUri, this.webviewScriptUri);
 
-        // actually show the hel page
+        // actually show the help page
         webview.html = helpFile.html;
 
         // update history to enable back/forward
@@ -179,8 +192,10 @@ export class HelpPanel {
     }
 
     // go back/forward in the history of the webview:
-    public goBack(): void {
-        void this.panel?.webview.postMessage({ command: 'goBack' });
+    public async goBack(): Promise<void> {
+        const scrollY = await this.getScrollY();
+        this._goBack(scrollY);
+
     }
     private _goBack(currentScrollY = 0): void {
         const entry = this.history.pop();
@@ -189,11 +204,13 @@ export class HelpPanel {
                 this.currentEntry.helpFile.scrollY = currentScrollY;
                 this.forwardHistory.push(this.currentEntry);
             }
-            this.showHistoryEntry(entry);
+            void this.showHistoryEntry(entry);
         }
     }
-    public goForward(): void {
-        void this.panel?.webview.postMessage({ command: 'goForward' });
+    public async goForward(): Promise<void> {
+        const scrollY = await this.getScrollY();
+        this._goForward(scrollY);
+
     }
     private _goForward(currentScrollY = 0): void {
         const entry = this.forwardHistory.pop();
@@ -202,12 +219,34 @@ export class HelpPanel {
                 this.currentEntry.helpFile.scrollY = currentScrollY;
                 this.history.push(this.currentEntry);
             }
-            this.showHistoryEntry(entry);
+            void this.showHistoryEntry(entry);
         }
     }
-    private showHistoryEntry(entry: HistoryEntry) {
-        const helpFile = entry.helpFile;
+    private async showHistoryEntry(entry: HistoryEntry){
+        let helpFile: HelpFile;
+        if(entry.isStale){
+            helpFile = await this.rHelp.getHelpFileForPath(entry.helpFile.requestPath);
+            helpFile.scrollY = entry.helpFile.scrollY;
+        } else{
+            helpFile = entry.helpFile;
+        }
+
         void this.showHelpFile(helpFile, false);
+    }
+
+    // Get current scrollY from webview
+    private async getScrollY(): Promise<number> {
+        this.scrollYCallback?.(0);
+        const scrollYPromise = new Promise<number>((resolve, reject) => {
+            const timeout = setTimeout(() => reject('GetScrollY message timed out after 1s'), 1000);
+            this.scrollYCallback = (y: number) => {
+                clearTimeout(timeout);
+                this.scrollYCallback = undefined;
+                resolve(y);
+            };
+        });
+        this.panel?.webview.postMessage({command: 'getScrollY'});
+        return scrollYPromise;
     }
 
     // handle message produced by javascript inside the help page
@@ -293,7 +332,9 @@ export class HelpPanel {
             if (runCode) {
                 void runTextInTerm(msg.code);
             }
-        } else {
+        } else if(msg.message === 'getScrollY'){
+            this.scrollYCallback?.(msg.scrollY || 0);
+        } else{
             console.log('Unknown message:', msg);
         }
     }
