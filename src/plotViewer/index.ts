@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -759,7 +760,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
 
     protected postWebviewMessage(msg: InMessage): void {
-        this.webviewPanel?.webview.postMessage(msg);
+        void this.webviewPanel?.webview.postMessage(msg);
     }
 
 

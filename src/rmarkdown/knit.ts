@@ -99,7 +99,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
             }
         }
 
-        let yamlText = undefined;
+        let yamlText: string = undefined;
         if (startLine + 1 < endLine) {
             yamlText = lines.slice(startLine + 1, endLine).join('\n');
         }

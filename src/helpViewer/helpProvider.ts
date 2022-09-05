@@ -241,7 +241,7 @@ export class AliasProvider {
         // try to make new aliases (returns undefined if unsuccessful):
         const newAliases = await this.makeAllAliases();
         this.aliases = newAliases;
-        this.persistentState?.update('r.helpPanel.cachedAliases', newAliases);
+        await this.persistentState?.update('r.helpPanel.cachedAliases', newAliases);
         return newAliases;
     }
 
