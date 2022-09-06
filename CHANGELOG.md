@@ -4,6 +4,17 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.5.3](https://github.com/REditorSupport/vscode-R/releases/tag/v2.5.3)
+
+Enhancements:
+
+* Reload help pages on refresh. (#1188)
+* Upgrade to vscode-languageclient 8.0.2. (#1173)
+
+Fixes:
+
+* Remove `encoding` from knitting so that renderers that do not have an encoding parameter (e.g. `quarto::quarto_render()`) now work properly. (#1167)
+
 ## [2.5.2](https://github.com/REditorSupport/vscode-R/releases/tag/v2.5.2)
 
 New Features:
