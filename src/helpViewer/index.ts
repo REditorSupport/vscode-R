@@ -583,7 +583,7 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
         const codeSections = $('pre');
         codeSections.each((i, section) => {
             const innerHtml = $(section).html();
-            const newPres = innerHtml.split('\n\n').map(s => `<pre>${s}</pre>`);
+            const newPres = innerHtml.split('\n\n').map(s => s && `<pre>${s}</pre>`);
             const newHtml = '<div class="preDiv">' + newPres.join('\n') + '</div>';
             $(section).replaceWith(newHtml);
         });
