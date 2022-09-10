@@ -79,14 +79,15 @@ export class LanguageService implements Disposable {
         }
 
         const rScriptPath = extensionContext.asAbsolutePath('R/languageServer.R');
+        const scriptExpression = `"base::source('${rScriptPath.replaceAll('\\', '\\\\')}')"`;
         const options = { cwd: cwd, env: env };
         const args = config.get<string[]>('lsp.args').concat(
             '--silent',
             '--slave',
             '--no-save',
             '--no-restore',
-            '-f',
-            rScriptPath
+            '-e',
+            scriptExpression
         );
 
         const tcpServerOptions = () => new Promise<DisposableProcess | StreamInfo>((resolve, reject) => {
