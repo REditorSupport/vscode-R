@@ -79,7 +79,10 @@ export class LanguageService implements Disposable {
         }
 
         const rScriptPath = extensionContext.asAbsolutePath('R/languageServer.R');
-        const scriptExpression = `"base::source('${rScriptPath.replaceAll('\\', '\\\\')}')"`;
+        const scriptExpression = (process.platform === 'win32' ? 
+            `"base::source('${rScriptPath.replaceAll('\\', '\\\\')}')"` :
+            `base::source('${rScriptPath}')`
+        );
         const options = { cwd: cwd, env: env };
         const args = config.get<string[]>('lsp.args').concat(
             '--silent',

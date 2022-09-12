@@ -47,7 +47,10 @@ export class HelpProvider {
 
         // starts the background help server and waits forever to keep the R process running
         const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
-        const scriptExpression = `"base::source('${scriptPath.replaceAll('\\', '\\\\')}')"`;
+        const scriptExpression = (process.platform === 'win32' ? 
+            `"base::source('${scriptPath.replaceAll('\\', '\\\\')}')"` :
+            `base::source('${scriptPath}')`
+        );
         const args = [
             '--silent',
             '--slave',
