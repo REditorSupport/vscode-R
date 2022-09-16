@@ -1893,9 +1893,11 @@
   },
   "withWebpack": {
     "scripts": {
-      "vscode:prepublish": "webpack --mode production",
-      "compile": "webpack --mode none",
+      "vscode:prepublish": "tsc -p ./html/help && tsc -p ./html/httpgd && webpack --mode production",
+      "compile": "tsc -p ./html/help && tsc -p ./html/httpgd && webpack --mode none",
       "watch": "webpack --mode none --watch",
+      "watchHelp": "tsc -p ./html/help --watch",
+      "watchHttpgd": "tsc -p ./html/httpgd --watch",
       "pretest": "tsc -p ./",
       "test": "node ./out/test/runTest.js",
       "lint": "eslint src --ext ts"
