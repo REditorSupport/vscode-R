@@ -2,10 +2,10 @@
 {
     "compilerOptions": {
         "module": "commonjs",
-        "target": "es2018",
+        "target": "ES2021",
         "outDir": "out",
         "lib": [
-            "es2018"
+            "ES2021"
         ],
         "sourceMap": true,
         // "strictNullChecks": true,

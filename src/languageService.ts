@@ -85,7 +85,9 @@ export class LanguageService implements Disposable {
             '--slave',
             '--no-save',
             '--no-restore',
-            '-f',
+            '-e',
+            'base::source(base::commandArgs(TRUE))',
+            '--args',
             rScriptPath
         );
 

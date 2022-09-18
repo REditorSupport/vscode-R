@@ -47,13 +47,14 @@ export class HelpProvider {
 
         // starts the background help server and waits forever to keep the R process running
         const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
-        // const cmd = `${this.rPath} --silent --slave --no-save --no-restore -f "${scriptPath}"`;
         const args = [
             '--silent',
             '--slave',
             '--no-save',
             '--no-restore',
-            '-f',
+            '-e',
+            'base::source(base::commandArgs(TRUE))',
+            '--args',
             scriptPath
         ];
         const cpOptions = {
