@@ -567,6 +567,8 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
     if (!helpFile.isHtml) {
         const html = escapeHtml(helpFile.html);
         helpFile.html = `<html><head></head><body><pre>${html}</pre></body></html>`;
+        helpFile.isModified = true;
+        return helpFile;
     }
 
     // parse the html string
