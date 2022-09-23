@@ -55,6 +55,7 @@
     "onCommand:r.goToNextChunk",
     "onCommand:r.createGitignore",
     "onCommand:r.createLintrConfig",
+    "onCommand:r.generateCCppProperties",
     "onCommand:r.runCommandWithSelectionOrWord",
     "onCommand:r.runCommandWithEditorPath",
     "onCommand:r.runCommand",
@@ -429,6 +430,11 @@
         "title": "Create .lintr to the workspace",
         "category": "R",
         "command": "r.createLintrConfig"
+      },
+      {
+        "title": "Generate 'c_cpp_properties.json'",
+        "category": "R",
+        "command": "r.generateCCppProperties"
       },
       {
         "title": "Preview Dataframe",

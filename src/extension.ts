@@ -10,6 +10,7 @@ import path = require('path');
 import * as preview from './preview';
 import * as rGitignore from './rGitignore';
 import * as lintrConfig from './lintrConfig';
+import * as cppProperties from './cppProperties';
 import * as rTerminal from './rTerminal';
 import * as session from './session';
 import * as util from './util';
@@ -113,6 +114,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
         'r.createLintrConfig': lintrConfig.createLintrConfig,
+        'r.generateCCppProperties': cppProperties.generateCppProperties,
         'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
 
         // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758
