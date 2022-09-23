@@ -82,6 +82,9 @@ async function generateCppPropertiesProc(workspaceFolder: string) {
 
     const envDefines = compileInfo.compDefines;
 
+    // If no standard is set on linux, the C standard seems to default to the c++ one.
+    const envCStd = compileStdC.includes('++') ? '${default}' : compileStdC;
+
     const platformName = platformChoose('Win32', 'Mac', 'Linux');
 
     // Build json
@@ -91,7 +94,7 @@ async function generateCppPropertiesProc(workspaceFolder: string) {
             'defines': envDefines,
             'includePath': envIncludes,
             'compilerPath': compilerPath,
-            'cStandard': compileStdC,
+            'cStandard': envCStd,
             'cppStandard': compileStdCpp,
             'intelliSenseMode': intelliSense
         }],
