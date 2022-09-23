@@ -39,8 +39,26 @@ async function generateCppPropertiesProc(workspaceFolder: string) {
     const rPath = await getRpath();
 
     // Collect information from running the compiler
+    const configureFile = platformChoose('configure.win', 'configure', 'configure');
+    const cleanupFile = platformChoose('cleanup.win', 'cleanup', 'cleanup');
+
+    if (fs.existsSync(path.join(workspaceFolder, configureFile))) {
+        await executeRCommand(`system("sh ./${configureFile}")`, workspaceFolder, (e: Error) => {
+            void window.showErrorMessage(e.message);
+            return '';
+        });
+    }
+
     const compileOutputCpp = collectCopilerOutput(rPath, workspaceFolder, 'cpp');
     const compileOutputC = collectCopilerOutput(rPath, workspaceFolder, 'c');
+
+    if (fs.existsSync(path.join(workspaceFolder, cleanupFile))) {
+        await executeRCommand(`system("sh ./${cleanupFile}")`, workspaceFolder, (e: Error) => {
+            void window.showErrorMessage(e.message);
+            return '';
+        });
+    }
+
     const compileInfo = extractCompilerInfo(compileOutputCpp);
     const compileStdCpp = extractCompilerStd(compileOutputCpp);
     const compileStdC = extractCompilerStd(compileOutputC);
