@@ -6,6 +6,7 @@ import * as path from 'path';
 import { window } from 'vscode';
 import { getRpath, getCurrentWorkspaceFolder, executeRCommand } from './util';
 import { execSync } from 'child_process';
+import { extensionContext } from './extension';
 
 export async function generateCppProperties(): Promise<void> {
     const currentWorkspaceFolder = getCurrentWorkspaceFolder()?.uri.fsPath;
@@ -110,25 +111,19 @@ async function generateCppPropertiesProc(workspaceFolder: string) {
     fs.writeFileSync(path.join(vscodeDir, 'c_cpp_properties.json'), ser);
 }
 
-function encodeRCommand(command: string) {
-    command = command.replaceAll('\\', '\\\\');
-    command = command.replaceAll(' ', '');
-    command = command.replaceAll('"', '\'');
-    return command;
-}
-
 async function collectRLinkingTo(workspaceFolder: string): Promise<string[]> {
     if (!fs.existsSync(path.join(workspaceFolder, 'DESCRIPTION'))) {
         return [];
     }
 
-    // R 'DESCRIPTION' file is in DCF (Debian config file) format
-    const rCodeExtractDeps = `cat(paste(vapply(strsplit(gsub("\\s|\\n|(\\([^\\)]*\\))", "", unname(read.dcf("DESCRIPTION","LinkingTo")[1,])),",")[[1]], function(pkg) { system.file("include",package=pkg) }, character(1)), collapse = "////"))`;
-
-    const linkingToIncludesStr = await executeRCommand(encodeRCommand(rCodeExtractDeps), workspaceFolder, (e: Error) => {
+    const rScript = extensionContext.asAbsolutePath('R/cppproperties/extractLinkingTo.R').replace(/\\/g, '/');
+    const linkingToIncludesStr = await executeRCommand(`source('${rScript}')`, workspaceFolder, (e: Error) => {
         void window.showErrorMessage(e.message);
         return '';
     });
+    if (linkingToIncludesStr === '') {
+        return [];
+    }
     return linkingToIncludesStr.split('////');
 }
 
