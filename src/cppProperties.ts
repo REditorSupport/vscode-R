@@ -49,8 +49,8 @@ async function generateCppPropertiesProc(workspaceFolder: string) {
         });
     }
 
-    const compileOutputCpp = collectCopilerOutput(rPath, workspaceFolder, 'cpp');
-    const compileOutputC = collectCopilerOutput(rPath, workspaceFolder, 'c');
+    const compileOutputCpp = collectCompilerOutput(rPath, workspaceFolder, 'cpp');
+    const compileOutputC = collectCompilerOutput(rPath, workspaceFolder, 'c');
 
     if (fs.existsSync(path.join(workspaceFolder, cleanupFile))) {
         await executeRCommand(`system("sh ./${cleanupFile}")`, workspaceFolder, (e: Error) => {
@@ -188,7 +188,7 @@ function createTempDir(root: string): string {
     return tempDir;
 }
 
-function collectCopilerOutput(rPath: string, workspaceFolder: string, testExtension: 'cpp' | 'c') {
+function collectCompilerOutput(rPath: string, workspaceFolder: string, testExtension: 'cpp' | 'c') {
 
     const makevarsFiles = ['Makevars', 'Makevars.win', 'Makevars.ucrt'];
 
