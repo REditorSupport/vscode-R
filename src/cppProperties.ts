@@ -70,7 +70,7 @@ async function generateCppPropertiesProc(workspaceFolder: string) {
     });
 
     const intelliSensePlatform = platformChoose('windows', 'macos', 'linux');
-    const intelliSenseComp = compileCall.includes('clang') ? 'clang' : 'gcc';
+    const intelliSenseComp = compileCall ? (compileCall.includes('clang') ? 'clang' : 'gcc') : 'gcc';
     const intelliSense = `${intelliSensePlatform}-${intelliSenseComp}-${process.arch}`;
 
     // Collect information from 'DESCRIPTION'
@@ -84,7 +84,7 @@ async function generateCppPropertiesProc(workspaceFolder: string) {
     const envDefines = compileInfo.compDefines;
 
     // If no standard is set on linux, the C standard seems to default to the c++ one.
-    const envCStd = compileStdC.includes('++') ? '${default}' : compileStdC;
+    const envCStd = (!compileStdC || compileStdC.includes('++')) ? '${default}' : compileStdC;
 
     const platformName = platformChoose('Win32', 'Mac', 'Linux');
 
@@ -121,7 +121,7 @@ async function collectRLinkingTo(workspaceFolder: string): Promise<string[]> {
         void window.showErrorMessage(e.message);
         return '';
     });
-    if (linkingToIncludesStr === '') {
+    if (!linkingToIncludesStr || linkingToIncludesStr === '') {
         return [];
     }
     return linkingToIncludesStr.split('////');
@@ -141,15 +141,14 @@ function extractCompilerInfo(compileOutput: string) {
     const compIncludes: string[] = [];
     const compLookup = { 'D': compDefines, 'I': compIncludes };
 
-    let m: RegExpExecArray;
+    let m: RegExpExecArray | null;
     while ((m = rxCompArg.exec(compileOutput)) !== null) {
         if (m.index === rxCompArg.lastIndex) {
             rxCompArg.lastIndex++;
         }
 
         // The regex guarantees that the first group is 'I' or 'D'
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-        compLookup[m[1]].push(ensureUnquoted(m[2]));
+        compLookup[(m[1] as 'D' | 'I')].push(ensureUnquoted(m[2]));
     }
 
     return {
@@ -158,18 +157,18 @@ function extractCompilerInfo(compileOutput: string) {
     };
 }
 
-function extractCompilerStd(compileOutput: string): string | null {
+function extractCompilerStd(compileOutput: string): string | undefined {
     const rxStd = /-std=(\S+)/;
 
     const stdMatch = compileOutput.match(rxStd);
     return stdMatch?.[1];
 }
 
-function extractCompilerCall(compileOutput: string): string | null {
+function extractCompilerCall(compileOutput: string): string | undefined {
     const rxComp = /("[^"]+"|[\S]+)/;
     const ccalls = compileOutput.split('\n');
     if (ccalls.length < 2) {
-        return null;
+        return undefined;
     }
 
     const m = ccalls[1].match(rxComp);
