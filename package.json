@@ -55,6 +55,7 @@
     "onCommand:r.goToNextChunk",
     "onCommand:r.createGitignore",
     "onCommand:r.createLintrConfig",
+    "onCommand:r.generateCCppProperties",
     "onCommand:r.runCommandWithSelectionOrWord",
     "onCommand:r.runCommandWithEditorPath",
     "onCommand:r.runCommand",
@@ -474,6 +475,11 @@
         "title": "Test",
         "category": "R Package",
         "command": "r.test"
+      },
+      {
+        "title": "Generate C/C++ Configuration",
+        "category": "R Package",
+        "command": "r.generateCCppProperties"
       },
       {
         "title": "Attach Active Terminal",
