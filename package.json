@@ -432,11 +432,6 @@
         "command": "r.createLintrConfig"
       },
       {
-        "title": "Generate 'c_cpp_properties.json'",
-        "category": "R",
-        "command": "r.generateCCppProperties"
-      },
-      {
         "title": "Preview Dataframe",
         "category": "R",
         "command": "r.previewDataframe"
@@ -480,6 +475,11 @@
         "title": "Test",
         "category": "R Package",
         "command": "r.test"
+      },
+      {
+        "title": "Generate C/C++ Configuration",
+        "category": "R Package",
+        "command": "r.generateCCppProperties"
       },
       {
         "title": "Attach Active Terminal",
