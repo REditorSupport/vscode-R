@@ -116,7 +116,7 @@ async function collectRLinkingTo(workspaceFolder: string): Promise<string[]> {
         return [];
     }
 
-    const rScript = extensionContext.asAbsolutePath('R/cppproperties/extractLinkingTo.R').replace(/\\/g, '/');
+    const rScript = extensionContext.asAbsolutePath('R/cppProperties/extractLinkingTo.R').replace(/\\/g, '/');
     const linkingToIncludesStr = await executeRCommand(`source('${rScript}')`, workspaceFolder, (e: Error) => {
         void window.showErrorMessage(e.message);
         return '';
