@@ -117,14 +117,14 @@ async function collectRLinkingTo(workspaceFolder: string): Promise<string[]> {
     }
 
     const rScript = extensionContext.asAbsolutePath('R/cppProperties/extractLinkingTo.R').replace(/\\/g, '/');
-    const linkingToIncludesStr = await executeRCommand(`source('${rScript}')`, workspaceFolder, (e: Error) => {
+    const linkingToIncludesStr = (await executeRCommand(`source('${rScript}')`, workspaceFolder, (e: Error) => {
         void window.showErrorMessage(e.message);
         return '';
-    });
+    }))?.trim();
     if (!linkingToIncludesStr || linkingToIncludesStr === '') {
         return [];
     }
-    return linkingToIncludesStr.split('////');
+    return linkingToIncludesStr.split(/\r?\n/g).map(decodeURI);
 }
 
 function ensureUnquoted(str: string): string {

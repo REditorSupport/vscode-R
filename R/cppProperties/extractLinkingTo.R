@@ -9,5 +9,6 @@ if (length(deps) == 0) { # Empty file
     deps <- vapply(deps, function(pkg) {
         system.file("include", package = pkg)
     }, character(1)) # Lookup include dir
+    deps <- utils::URLencode(deps)
 }
-cat(paste(deps, collapse = "////")) # Collapse for returning (Newline is technically allowed in posix paths)
+writeLines(deps)
