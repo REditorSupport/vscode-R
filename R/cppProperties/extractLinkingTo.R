@@ -1,4 +1,3 @@
-
 deps <- read.dcf("DESCRIPTION", "LinkingTo")
 if (length(deps) == 0) { # Empty file
     deps <- ""
