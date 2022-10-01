@@ -1,10 +1,9 @@
 'use strict';
 
-import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { window } from 'vscode';
-import { getRpath, getCurrentWorkspaceFolder, executeRCommand } from './util';
+import { getRpath, getCurrentWorkspaceFolder, executeRCommand, createTempDir } from './util';
 import { execSync } from 'child_process';
 import { extensionContext } from './extension';
 
@@ -176,13 +175,6 @@ function extractCompilerCall(compileOutput: string): string | undefined {
 
     const m = ccalls[1].match(rxComp);
     return m?.[1];
-}
-
-function createTempDir(root: string): string {
-    let tempDir: string;
-    while (fs.existsSync(tempDir = path.join(root, `___temp_${randomBytes(8).toString('hex')}`))) { /* Name clash */ }
-    fs.mkdirSync(tempDir);
-    return tempDir;
 }
 
 function collectCompilerOutput(rPath: string, workspaceFolder: string, testExtension: 'cpp' | 'c') {

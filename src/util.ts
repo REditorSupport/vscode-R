@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
 import { extensionContext } from './extension';
+import { randomBytes } from 'crypto';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -531,4 +532,19 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
                 void _config.update(section, false);
             }
         });
+}
+
+/**
+ * Create temporary directory. Will avoid name clashes. Caller must delete directory after use.
+ * 
+ * @param root Parent folder.
+ * @param hidden If set to true, directory will be prefixed with a '.' (ignored on windows).
+ * @returns Path to the temporary directory.
+ */
+export function createTempDir(root: string, hidden?: boolean): string {
+    const hidePrefix = (!hidden || process.platform === 'win32') ? '' : '.';
+    let tempDir: string;
+    while (fs.existsSync(tempDir = path.join(root, `${hidePrefix}___temp_${randomBytes(8).toString('hex')}`))) { /* Name clash */ }
+    fs.mkdirSync(tempDir);
+    return tempDir;
 }
