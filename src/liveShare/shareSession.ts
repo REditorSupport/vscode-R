@@ -19,7 +19,7 @@ let info: IRequest['info'];
 // Used to keep track of shared browsers
 export const browserDisposables: { Disposable: vscode.Disposable, url: string, name: string }[] = [];
 
-interface IRequest {
+export interface IRequest {
     command: string;
     time?: string;
     pid?: string;

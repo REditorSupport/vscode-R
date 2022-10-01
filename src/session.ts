@@ -1,8 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 'use strict';
 
 import * as fs from 'fs-extra';
@@ -15,6 +10,7 @@ import { FSWatcher } from 'fs-extra';
 import { config, readContent, UriIcon } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
+import { IRequest } from './liveShare/shareSession';
 import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
@@ -56,9 +52,9 @@ let plotLockFile: string;
 let plotTimeStamp: number;
 let workspaceWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
-let activeBrowserPanel: WebviewPanel;
-let activeBrowserUri: Uri;
-let activeBrowserExternalUri: Uri;
+let activeBrowserPanel: WebviewPanel | undefined;
+let activeBrowserUri: Uri | undefined;
+let activeBrowserExternalUri: Uri | undefined;
 
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
@@ -182,7 +178,7 @@ async function updatePlot() {
             void commands.executeCommand('vscode.open', Uri.file(plotFile), {
                 preserveFocus: true,
                 preview: true,
-                viewColumn: ViewColumn[config().get<string>('session.viewers.viewColumn.plot')],
+                viewColumn: ViewColumn[(config().get<string>('session.viewers.viewColumn.plot') || 'Two') as keyof typeof ViewColumn],
             });
             console.info('[updatePlot] Done');
             if (isLiveShare()) {
@@ -203,7 +199,7 @@ async function updateWorkspace() {
         workspaceTimeStamp = newTimeStamp;
         if (fs.existsSync(workspaceFile)) {
             const content = await fs.readFile(workspaceFile, 'utf8');
-            workspaceData = JSON.parse(content);
+            workspaceData = JSON.parse(content) as WorkspaceData;
             void rWorkspace?.refresh();
             console.info('[updateWorkspace] Done');
             if (isLiveShare()) {
@@ -227,7 +223,7 @@ export async function showBrowser(url: string, title: string, viewer: string | b
             title,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[String(viewer)],
+                viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
             },
             {
                 enableFindWidget: true,
@@ -290,7 +286,9 @@ export function refreshBrowser(): void {
     console.log('[refreshBrowser]');
     if (activeBrowserPanel) {
         activeBrowserPanel.webview.html = '';
-        activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserExternalUri);
+        if (activeBrowserExternalUri) {
+            activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserExternalUri);
+        }
     }
 }
 
@@ -311,7 +309,7 @@ export async function showWebView(file: string, title: string, viewer: string | 
         const panel = window.createWebviewPanel('webview', title,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[String(viewer)],
+                viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
             },
             {
                 enableScripts: true,
@@ -336,7 +334,7 @@ export async function showDataView(source: string, type: string, title: string, 
         const panel = window.createWebviewPanel('dataview', title,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[viewer],
+                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
             },
             {
                 enableScripts: true,
@@ -351,7 +349,7 @@ export async function showDataView(source: string, type: string, title: string, 
         const panel = window.createWebviewPanel('dataview', title,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[viewer],
+                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
             },
             {
                 enableScripts: true,
@@ -365,12 +363,12 @@ export async function showDataView(source: string, type: string, title: string, 
     } else {
         if (isGuestSession) {
             const fileContent = await rGuestService.requestFileContent(file, 'utf8');
-            await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer]);
+            await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer as keyof typeof ViewColumn]);
         } else {
             await commands.executeCommand('vscode.open', Uri.file(file), {
                 preserveFocus: true,
                 preview: true,
-                viewColumn: ViewColumn[viewer],
+                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
             });
         }
     }
@@ -379,7 +377,7 @@ export async function showDataView(source: string, type: string, title: string, 
 
 export async function getTableHtml(webview: Webview, file: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
-    const pageSize = config().get<number>('session.data.pageSize');
+    const pageSize = config().get<number>('session.data.pageSize') || 500;
     const content = await readContent(file, 'utf8');
     return `
 <!DOCTYPE html>
@@ -734,7 +732,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         requestTimeStamp = newTimeStamp;
         const requestContent = await fs.readFile(requestFile, 'utf8');
         console.info(`[updateRequest] request: ${requestContent}`);
-        const request = JSON.parse(requestContent);
+        const request: IRequest = JSON.parse(requestContent) as IRequest;
         if (isFromWorkspace(request.wd)) {
             if (request.uuid === null || request.uuid === undefined || request.uuid === UUID) {
                 switch (request.command) {
