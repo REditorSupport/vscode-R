@@ -133,8 +133,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // workspace viewer
         'r.workspaceViewer.refreshEntry': () => rWorkspace?.refresh(),
-        'r.workspaceViewer.view': (node: workspaceViewer.GlobalEnvItem) => workspaceViewer.viewItem(node.label),
-        'r.workspaceViewer.remove': (node: workspaceViewer.GlobalEnvItem) => workspaceViewer.removeItem(node.label),
+        'r.workspaceViewer.view': (node: workspaceViewer.GlobalEnvItem) => node.label && workspaceViewer.viewItem(node.label),
+        'r.workspaceViewer.remove': (node: workspaceViewer.GlobalEnvItem) => node.label && workspaceViewer.removeItem(node.label),
         'r.workspaceViewer.clear': workspaceViewer.clearWorkspace,
         'r.workspaceViewer.load': workspaceViewer.loadWorkspace,
         'r.workspaceViewer.save': workspaceViewer.saveWorkspace,
