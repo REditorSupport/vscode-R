@@ -32,7 +32,7 @@ export const tmpDir = (): string => util.getDir(path.join(homeExtDir(), 'tmp'));
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
-export let enableSessionWatcher: boolean = undefined;
+export let enableSessionWatcher: boolean | undefined = undefined;
 export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
 export let rmdPreviewManager: rmarkdown.RMarkdownPreviewManager | undefined = undefined;
 export let rmdKnitManager: rmarkdown.RMarkdownKnitManager | undefined = undefined;
@@ -80,10 +80,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.runSourcewithEcho': () => { void rTerminal.runSource(true); },
 
         // rmd related
-        'r.knitRmd': () => { void rmdKnitManager.knitRmd(false, undefined); },
-        'r.knitRmdToPdf': () => { void rmdKnitManager.knitRmd(false, 'pdf_document'); },
-        'r.knitRmdToHtml': () => { void rmdKnitManager.knitRmd(false, 'html_document'); },
-        'r.knitRmdToAll': () => { void rmdKnitManager.knitRmd(false, 'all'); },
+        'r.knitRmd': () => { void rmdKnitManager?.knitRmd(false, undefined); },
+        'r.knitRmdToPdf': () => { void rmdKnitManager?.knitRmd(false, 'pdf_document'); },
+        'r.knitRmdToHtml': () => { void rmdKnitManager?.knitRmd(false, 'html_document'); },
+        'r.knitRmdToAll': () => { void rmdKnitManager?.knitRmd(false, 'all'); },
         'r.selectCurrentChunk': rmarkdown.selectCurrentChunk,
         'r.runCurrentChunk': rmarkdown.runCurrentChunk,
         'r.runPreviousChunk': rmarkdown.runPreviousChunk,
@@ -97,15 +97,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.runChunks': rTerminal.runChunksInTerm,
 
         'r.rmarkdown.newDraft': () => rmarkdown.newDraft(),
-        'r.rmarkdown.setKnitDirectory': () => rmdKnitManager.setKnitDir(),
-        'r.rmarkdown.showPreviewToSide': () => rmdPreviewManager.previewRmd(vscode.ViewColumn.Beside),
-        'r.rmarkdown.showPreview': (uri: vscode.Uri) => rmdPreviewManager.previewRmd(vscode.ViewColumn.Active, uri),
-        'r.rmarkdown.preview.refresh': () => rmdPreviewManager.updatePreview(),
-        'r.rmarkdown.preview.openExternal': () => void rmdPreviewManager.openExternalBrowser(),
-        'r.rmarkdown.preview.showSource': () => rmdPreviewManager.showSource(),
-        'r.rmarkdown.preview.toggleStyle': () => rmdPreviewManager.toggleTheme(),
-        'r.rmarkdown.preview.enableAutoRefresh': () => rmdPreviewManager.enableAutoRefresh(),
-        'r.rmarkdown.preview.disableAutoRefresh': () => rmdPreviewManager.disableAutoRefresh(),
+        'r.rmarkdown.setKnitDirectory': () => rmdKnitManager?.setKnitDir(),
+        'r.rmarkdown.showPreviewToSide': () => rmdPreviewManager?.previewRmd(vscode.ViewColumn.Beside),
+        'r.rmarkdown.showPreview': (uri: vscode.Uri) => rmdPreviewManager?.previewRmd(vscode.ViewColumn.Active, uri),
+        'r.rmarkdown.preview.refresh': () => rmdPreviewManager?.updatePreview(),
+        'r.rmarkdown.preview.openExternal': () => void rmdPreviewManager?.openExternalBrowser(),
+        'r.rmarkdown.preview.showSource': () => rmdPreviewManager?.showSource(),
+        'r.rmarkdown.preview.toggleStyle': () => rmdPreviewManager?.toggleTheme(),
+        'r.rmarkdown.preview.enableAutoRefresh': () => rmdPreviewManager?.enableAutoRefresh(),
+        'r.rmarkdown.preview.disableAutoRefresh': () => rmdPreviewManager?.disableAutoRefresh(),
 
         // file creation (under file submenu)
         'r.rmarkdown.newFileDraft': () => rmarkdown.newDraft(),
@@ -145,9 +145,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // (help related commands are registered in rHelp.initializeHelp)
     };
-    for (const key in commands) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        context.subscriptions.push(vscode.commands.registerCommand(key, commands[key]));
+    for (const [key, value] of Object.entries(commands)) {
+        context.subscriptions.push(vscode.commands.registerCommand(key, value));
     }
 
 

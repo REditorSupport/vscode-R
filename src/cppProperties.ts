@@ -38,6 +38,9 @@ function platformChoose<A, B, C>(win32: A, darwin: B, other: C): A | B | C {
 // See: https://code.visualstudio.com/docs/cpp/c-cpp-properties-schema-reference
 async function generateCppPropertiesProc(workspaceFolder: string) {
     const rPath = await getRpath();
+    if (!rPath) {
+        return;
+    }
 
     // Collect information from running the compiler
     const configureFile = platformChoose('configure.win', 'configure', 'configure');
@@ -64,10 +67,10 @@ async function generateCppPropertiesProc(workspaceFolder: string) {
     const compileStdCpp = extractCompilerStd(compileOutputCpp);
     const compileStdC = extractCompilerStd(compileOutputC);
     const compileCall = extractCompilerCall(compileOutputCpp);
-    const compilerPath = await executeRCommand(`cat(Sys.which("${compileCall}"))`, workspaceFolder, (e: Error) => {
+    const compilerPath = compileCall ? await executeRCommand(`cat(Sys.which("${compileCall}"))`, workspaceFolder, (e: Error) => {
         void window.showErrorMessage(e.message);
         return '';
-    });
+    }) : '';
 
     const intelliSensePlatform = platformChoose('windows', 'macos', 'linux');
     const intelliSenseComp = compileCall ? (compileCall.includes('clang') ? 'clang' : 'gcc') : 'gcc';
