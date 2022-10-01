@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
-import { DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
+import { catchAsError, DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
 
 export interface RHelpProviderOptions {
     // path of the R executable
@@ -305,7 +305,7 @@ export class AliasProvider {
             return <AllPackageAliases>JSON.parse(json) || {};
         } catch (e) {
             console.log(e);
-            void window.showErrorMessage((<{ message: string }>e).message);
+            void window.showErrorMessage(catchAsError(e).message);
         }
     }
 }

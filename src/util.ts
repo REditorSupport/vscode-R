@@ -343,7 +343,7 @@ export async function executeRCommand(rCommand: string, cwd?: string | URL, fall
         ret = match[1];
     } catch (e) {
         if (fallback) {
-            ret = (typeof fallback === 'function' ? fallback((e instanceof Error) ? e : Error('Undefined error')) : fallback);
+            ret = (typeof fallback === 'function' ? fallback(catchAsError(e)) : fallback);
         } else {
             console.warn(e);
         }
@@ -547,4 +547,23 @@ export function createTempDir(root: string, hidden?: boolean): string {
     while (fs.existsSync(tempDir = path.join(root, `${hidePrefix}___temp_${randomBytes(8).toString('hex')}`))) { /* Name clash */ }
     fs.mkdirSync(tempDir);
     return tempDir;
+}
+
+/**
+ * Utility function for converting 'unknown' types to errors.
+ * 
+ * Usage:
+ * 
+ * ```ts
+ * try { ... } 
+ * catch (e) { 
+ *  const err: Error = catchAsError(e); 
+ * }
+ * ```
+ * @param err 
+ * @param fallbackMessage 
+ * @returns 
+ */
+export function catchAsError(err: unknown, fallbackMessage?: string): Error {
+    return (err instanceof Error) ? err : Error(fallbackMessage ?? 'Unknown error');
 }

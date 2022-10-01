@@ -1,6 +1,6 @@
 import { QuickPickItem, QuickPickOptions, Uri, window, workspace, env } from 'vscode';
 import { extensionContext } from '../extension';
-import { executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral, spawnAsync, getConfirmation } from '../util';
+import { executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral, spawnAsync, getConfirmation, catchAsError } from '../util';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -64,7 +64,7 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
         return items;
     } catch (e) {
         console.log(e);
-        void window.showErrorMessage((<{ message: string }>e).message);
+        void window.showErrorMessage(catchAsError(e).message);
         return undefined;
     }
 }
