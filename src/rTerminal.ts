@@ -47,12 +47,18 @@ export async function runSelectionRetainCursor(): Promise<void> {
 
 export async function runSelectionOrWord(rFunctionName: string[]): Promise<void> {
     const text = selection.getWordOrSelection();
+    if (!text) {
+        return;
+    }
     const wrappedText = selection.surroundSelection(text, rFunctionName);
     await runTextInTerm(wrappedText);
 }
 
 export async function runCommandWithSelectionOrWord(rCommand: string): Promise<void>  {
     const text = selection.getWordOrSelection();
+    if (!text) {
+        return;
+    }
     const call = rCommand.replace(/\$\$/g, text);
     await runTextInTerm(call);
 }
@@ -222,6 +228,9 @@ export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
 
 export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): Promise<void> {
     const selection = getSelection();
+    if (!selection) {
+        return;
+    }
     if (moveCursor && selection.linesDownToMoveCursor > 0) {
         const textEditor = vscode.window.activeTextEditor;
         if (!textEditor) {

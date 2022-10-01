@@ -4,16 +4,20 @@ import { Position, Range, window } from 'vscode';
 
 import { LineCache } from './lineCache';
 
-export function getWordOrSelection(): string {
-    const selection = window.activeTextEditor.selection;
-    const currentDocument = window.activeTextEditor.document;
+export function getWordOrSelection(): string | undefined {
+    const textEditor = window.activeTextEditor;
+    if (!textEditor) {
+        return;
+    }
+    const selection = textEditor.selection;
+    const currentDocument = textEditor.document;
     let text: string;
     if ((selection.start.line === selection.end.line) &&
         (selection.start.character === selection.end.character)) {
         const wordRange = currentDocument.getWordRangeAtPosition(selection.start);
         text = currentDocument.getText(wordRange);
     } else {
-        text = currentDocument.getText(window.activeTextEditor.selection);
+        text = currentDocument.getText(textEditor.selection);
     }
 
     return text;
@@ -39,9 +43,14 @@ export interface RSelection {
     range: Range;
 }
 
-export function getSelection(): RSelection {
-    const currentDocument = window.activeTextEditor.document;
-    const { start, end } = window.activeTextEditor.selection;
+export function getSelection(): RSelection | undefined {
+    const textEditor = window.activeTextEditor;
+    if (!textEditor) {
+        return;
+    }
+
+    const currentDocument = textEditor.document;
+    const { start, end } = textEditor.selection;
     const selection = {
         linesDownToMoveCursor: 0,
         selectedText: '',
@@ -56,7 +65,7 @@ export function getSelection(): RSelection {
             (x) => currentDocument.lineAt(x).text,
             currentDocument.lineCount
         );
-        const charactersOnLine = window.activeTextEditor.document.lineAt(endLine).text.length;
+        const charactersOnLine = textEditor.document.lineAt(endLine).text.length;
         const newStart = new Position(startLine, 0);
         const newEnd = new Position(endLine, charactersOnLine);
         selection.linesDownToMoveCursor = endLine + 1 - start.line;
@@ -74,7 +83,6 @@ export function getSelection(): RSelection {
 class PositionNeg {
     public line: number;
     public character: number;
-    public cter: number;
     public constructor(line: number, character: number) {
         this.line = line;
         this.character = character;
@@ -82,9 +90,8 @@ class PositionNeg {
 }
 
 function doBracketsMatch(a: string, b: string): boolean {
-    const matches = { '(': ')', '[': ']', '{': '}', ')': '(', ']': '[', '}': '{' };
-
-    return matches[a] === b;
+    const matches = new Map(Object.entries({ '(': ')', '[': ']', '{': '}', ')': '(', ']': '[', '}': '{' }));
+    return matches.get(a) === b;
 }
 
 function isBracket(c: string, lookingForward: boolean) {
@@ -216,7 +223,7 @@ export function extendSelection(line: number, getLine: (line: number) => string,
             getEndsInOperatorFromCache,
             lineCount
         );
-        poss[Number(lookingForward)] = nextPos;
+        poss[lookingForward ? 1 : 0] = nextPos;
         if (quoteChar === '') {
             if (isQuote(nextChar)) {
                 quoteChar = nextChar;
@@ -227,8 +234,8 @@ export function extendSelection(line: number, getLine: (line: number) => string,
                     if (unmatched[lookingForward ? 1 : 0].length === 0) {
                         lookingForward = !lookingForward;
                         unmatched[lookingForward ? 1 : 0].push(nextChar);
-                        flagsFinish[Number(lookingForward)] = false;
-                    } else if (!doBracketsMatch(nextChar, unmatched[lookingForward ? 1 : 0].pop())) {
+                        flagsFinish[lookingForward ? 1 : 0] = false;
+                    } else if (!doBracketsMatch(nextChar, unmatched[lookingForward ? 1 : 0].pop() ?? '')) {
                         flagAbort = true;
                     }
                 }
@@ -255,7 +262,7 @@ export function extendSelection(line: number, getLine: (line: number) => string,
         if (isEndOfCodeLine) {
             if (unmatched[lookingForward ? 1 : 0].length === 0) {
                 // We have found everything we need to in this direction. Continue looking in the other direction.
-                flagsFinish[Number(lookingForward)] = true;
+                flagsFinish[lookingForward ? 1 : 0] = true;
                 lookingForward = !lookingForward;
             } else if (isEndOfFile) {
                 // Have hit the start or end of the file without finding the matching bracket.

@@ -36,7 +36,7 @@ export async function previewEnvironment(): Promise<void> {
 export async function previewDataframe(): Promise<boolean | undefined> {
     if (config().get('sessionWatcher')) {
         const symbol = getWordOrSelection();
-        await runTextInTerm(`View(${symbol})`);
+        await runTextInTerm(`View(${symbol || 'undefined'})`);
     } else {
         if (!checkcsv()) {
             return;
@@ -47,6 +47,9 @@ export async function previewDataframe(): Promise<boolean | undefined> {
         }
 
         const dataframeName = getWordOrSelection();
+        if (!dataframeName) {
+            return;
+        }
 
         if (!checkForSpecialCharacters(dataframeName)) {
             void window.showInformationMessage('This does not appear to be a dataframe.');
