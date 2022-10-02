@@ -18,9 +18,12 @@ interface TemplateItem extends QuickPickItem {
     info: TemplateInfo;
 }
 
-async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
+async function getTemplateItems(cwd: string): Promise<TemplateItem[] | undefined> {
     const lim = '---vsc---';
     const rPath = await getRpath();
+    if (!rPath) {
+        return undefined;
+    }
     const options: cp.CommonOptions = {
         cwd: cwd,
         env: {
@@ -46,7 +49,7 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
         }
         const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
         const match = re.exec(result.stdout);
-        if (match.length !== 2) {
+        if (!match || match.length !== 2) {
             throw new Error('Could not parse R output.');
         }
         const json = match[1];
@@ -69,7 +72,7 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[]> {
     }
 }
 
-async function launchTemplatePicker(cwd: string): Promise<TemplateItem> {
+async function launchTemplatePicker(cwd: string): Promise<TemplateItem | undefined> {
     const options: QuickPickOptions = {
         matchOnDescription: true,
         matchOnDetail: true,
@@ -87,7 +90,7 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem> {
             return selection;
         } else {
             void window.showInformationMessage('No templates found. Would you like to browse the wiki page for R packages that provide R Markdown templates?', 'Yes', 'No')
-                .then((select: string) => {
+                .then((select: string | undefined) => {
                     if (select === 'Yes') {
                         void env.openExternal(Uri.parse('https://github.com/REditorSupport/vscode-R/wiki/R-Markdown#templates'));
                     }
@@ -97,7 +100,7 @@ async function launchTemplatePicker(cwd: string): Promise<TemplateItem> {
     return undefined;
 }
 
-async function makeDraft(file: string, template: TemplateItem, cwd: string): Promise<string> {
+async function makeDraft(file: string, template: TemplateItem, cwd: string): Promise<string | undefined> {
     const fileString = ToRStringLiteral(file, '');
     const cmd = `cat(normalizePath(rmarkdown::draft(file='${fileString}', template='${template.info.id}', package='${template.info.package}', edit=FALSE)))`;
     return await executeRCommand(cmd, cwd, (e: Error) => {
