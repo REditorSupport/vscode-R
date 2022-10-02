@@ -82,7 +82,10 @@ export function attachActiveGuest(): void {
 // as this is handled by the session.ts variant
 // the force parameter is used for ensuring that the 'attach' case is appropriately called on guest join
 export async function updateGuestRequest(file: string, force: boolean = false): Promise<void> {
-    const requestContent: string = await readContent(file, 'utf8');
+    const requestContent: string | undefined = await readContent(file, 'utf8');
+    if (!requestContent) {
+        return;
+    }
     console.info(`[updateGuestRequest] request: ${requestContent}`);
     if (typeof (requestContent) !== 'string') {
         return;

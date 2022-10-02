@@ -267,7 +267,7 @@ export async function runChunksInTerm(chunks: vscode.Range[]): Promise<void> {
 
 export async function runTextInTerm(text: string, execute: boolean = true): Promise<void> {
     if (isGuestSession) {
-        rGuestService.requestRunTextInTerm(text);
+        rGuestService?.requestRunTextInTerm(text);
     } else {
         const term = await chooseTerminal();
         if (term === undefined) {

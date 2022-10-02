@@ -18,14 +18,14 @@ async function populatePackageNodes(): Promise<void> {
     if (rootNode) {
         // ensure the pkgRootNode is populated.
         await rootNode.getChildren();
-        await rootNode.pkgRootNode.getChildren();
+        await rootNode?.pkgRootNode?.getChildren();
     }
 }
 
 function getPackageNode(name: string): PackageNode | undefined {
     const rootNode = globalRHelp?.treeViewWrapper.helpViewProvider.rootItem;
     if (rootNode) {
-        return rootNode.pkgRootNode.children?.find(node => node.label === name);
+        return rootNode?.pkgRootNode?.children?.find(node => node.label === name);
     }
 }
 

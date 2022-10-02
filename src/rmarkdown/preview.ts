@@ -53,7 +53,7 @@ class RMarkdownPreview extends vscode.Disposable {
     }
 
     public async refreshContent(useCodeTheme: boolean) {
-        this.getHtmlContent(await readContent(this.outputUri.fsPath, 'utf8'));
+        this.getHtmlContent(await readContent(this.outputUri.fsPath, 'utf8') ?? '');
         this.styleHtml(useCodeTheme);
     }
 

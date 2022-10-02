@@ -169,11 +169,11 @@ export function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined 
 //
 // If it is a guest, the guest service requests the host
 // to read the file, and pass back its contents to the guest
-export function readContent(file: PathLike | number): Promise<Buffer>;
-export function readContent(file: PathLike | number, encoding: string): Promise<string>;
-export function readContent(file: PathLike | number, encoding?: string): Promise<string | Buffer> {
+export function readContent(file: PathLike | number): Promise<Buffer> | undefined;
+export function readContent(file: PathLike | number, encoding: string): Promise<string> | undefined;
+export function readContent(file: PathLike | number, encoding?: string): Promise<string | Buffer> | undefined {
     if (isGuestSession) {
-        return encoding === undefined ? rGuestService.requestFileContent(file) : rGuestService.requestFileContent(file, encoding);
+        return encoding === undefined ? rGuestService?.requestFileContent(file) : rGuestService?.requestFileContent(file, encoding);
     } else {
         return encoding === undefined ? readFile(file) : readFile(file, encoding);
     }
