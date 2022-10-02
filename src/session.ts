@@ -92,7 +92,7 @@ export function attachActive(): void {
         console.info('[attachActive]');
         void runTextInTerm('.vsc.attach()');
         if (isLiveShare() && shareWorkspace) {
-            rHostService.notifyRequest(requestFile, true);
+            rHostService?.notifyRequest(requestFile, true);
         }
     } else {
         void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
@@ -182,7 +182,7 @@ async function updatePlot() {
             });
             console.info('[updatePlot] Done');
             if (isLiveShare()) {
-                void rHostService.notifyPlot(plotFile);
+                void rHostService?.notifyPlot(plotFile);
             }
         } else {
             console.info('[updatePlot] File not found');
@@ -203,7 +203,7 @@ async function updateWorkspace() {
             void rWorkspace?.refresh();
             console.info('[updateWorkspace] Done');
             if (isLiveShare()) {
-                rHostService.notifyWorkspace(workspaceData);
+                rHostService?.notifyWorkspace(workspaceData);
             }
         } else {
             console.info('[updateWorkspace] File not found');
@@ -362,8 +362,10 @@ export async function showDataView(source: string, type: string, title: string, 
         panel.webview.html = content;
     } else {
         if (isGuestSession) {
-            const fileContent = await rGuestService.requestFileContent(file, 'utf8');
-            await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer as keyof typeof ViewColumn]);
+            const fileContent = await rGuestService?.requestFileContent(file, 'utf8');
+            if (fileContent) {
+                await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer as keyof typeof ViewColumn]);
+            }
         } else {
             await commands.executeCommand('vscode.open', Uri.file(file), {
                 preserveFocus: true,
@@ -638,7 +640,7 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 
 export async function getWebviewHtml(webview: Webview, file: string, title: string, dir: string, webviewDir: string): Promise<string> {
     const observerPath = Uri.file(path.join(webviewDir, 'observer.js'));
-    const body = (await readContent(file, 'utf8')).toString()
+    const body = (await readContent(file, 'utf8') || '').toString()
         .replace(/<(\w+)(.*)\s+(href|src)="(?!\w+:)/g,
             `<$1 $2 $3="${String(webview.asWebviewUri(Uri.file(dir)))}/`);
 
@@ -723,6 +725,10 @@ export async function writeSuccessResponse(responseSessionDir: string): Promise<
     await writeResponse({ result: true }, responseSessionDir);
 }
 
+type ISessionRequest = {
+    plot_url?: string,
+} & IRequest;
+
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     console.info('[updateRequest] Started');
     console.info(`[updateRequest] requestFile: ${requestFile}`);
@@ -732,12 +738,12 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         requestTimeStamp = newTimeStamp;
         const requestContent = await fs.readFile(requestFile, 'utf8');
         console.info(`[updateRequest] request: ${requestContent}`);
-        const request: IRequest = JSON.parse(requestContent) as IRequest;
-        if (isFromWorkspace(request.wd)) {
+        const request = JSON.parse(requestContent) as ISessionRequest;
+        if (request.wd && isFromWorkspace(request.wd)) {
             if (request.uuid === null || request.uuid === undefined || request.uuid === UUID) {
                 switch (request.command) {
                     case 'help': {
-                        if (globalRHelp) {
+                        if (globalRHelp && request.requestPath) {
                             console.log(request.requestPath);
                             await globalRHelp.showHelpForPath(request.requestPath, request.viewer);
                         }
@@ -750,6 +756,9 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         break;
                     }
                     case 'attach': {
+                        if (!request.tempdir || !request.wd) {
+                            return;
+                        }
                         rVer = String(request.version);
                         pid = String(request.pid);
                         info = request.info;
@@ -757,7 +766,8 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         workingDir = request.wd;
                         console.info(`[updateRequest] attach PID: ${pid}`);
                         sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
-                        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
+                        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-unsafe-member-access
+                        sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
                         purgeAddinPickerItems();
@@ -767,20 +777,28 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         break;
                     }
                     case 'browser': {
-                        await showBrowser(request.url, request.title, request.viewer);
+                        if (request.url && request.title && request.viewer) {
+                            await showBrowser(request.url, request.title, request.viewer);
+                        }
                         break;
                     }
                     case 'webview': {
-                        await showWebView(request.file, request.title, request.viewer);
+                        if (request.file && request.title && request.viewer) {
+                            await showWebView(request.file, request.title, request.viewer);
+                        }
                         break;
                     }
                     case 'dataview': {
-                        await showDataView(request.source,
-                            request.type, request.title, request.file, request.viewer);
+                        if (request.source && request.type && request.file && request.title && request.viewer) {
+                            await showDataView(request.source,
+                                request.type, request.title, request.file, request.viewer);
+                        }
                         break;
                     }
                     case 'rstudioapi': {
-                        await dispatchRStudioAPICall(request.action, request.args, request.sd);
+                        if (request.action && request.args && request.sd) {
+                            await dispatchRStudioAPICall(request.action, request.args, request.sd);
+                        }
                         break;
                     }
                     default:
@@ -791,7 +809,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
             console.info(`[updateRequest] Ignored request outside workspace`);
         }
         if (isLiveShare()) {
-            void rHostService.notifyRequest(requestFile);
+            void rHostService?.notifyRequest(requestFile);
         }
     }
 }
