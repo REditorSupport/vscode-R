@@ -519,7 +519,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
                 ? await this.helpProvider.getHelpFileFromRequestPath(
                     requestPath,
                 )
-                : await rGuestService.requestHelpContent(requestPath);
+                : await rGuestService?.requestHelpContent(requestPath);
             this.cachedHelpFiles.set(requestPath, helpFile);
         }
 

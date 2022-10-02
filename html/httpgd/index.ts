@@ -172,7 +172,7 @@ function togglePreviewPlotLayout(newStyle: PreviewPlotLayout): void {
     smallPlotDiv.classList.add(newStyle);
 }
 
-function toggleFullWindowMode(useFullWindow): void {
+function toggleFullWindowMode(useFullWindow: boolean): void {
     isFullWindow = useFullWindow;
     if(useFullWindow){
         document.body.classList.add('fullWindow');

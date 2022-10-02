@@ -1,9 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 declare function acquireVsCodeApi(): VsCode;
 
 const vscode = acquireVsCodeApi();
@@ -20,8 +14,10 @@ window.onmousedown = (ev) => {
 
 
 // handle requests from vscode ui
-window.addEventListener('message', (ev) => {
+window.addEventListener('message', (ev: MessageEvent) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const message = ev.data;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
     if(message.command === 'getScrollY'){
         vscode.postMessage({
             message: 'getScrollY',
