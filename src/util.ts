@@ -567,3 +567,23 @@ export function createTempDir(root: string, hidden?: boolean): string {
 export function catchAsError(err: unknown, fallbackMessage?: string): Error {
     return (err instanceof Error) ? err : Error(fallbackMessage ?? 'Unknown error');
 }
+
+
+
+export function asViewColumn(s: string | undefined | vscode.ViewColumn): vscode.ViewColumn | undefined;
+export function asViewColumn(s: string | undefined | vscode.ViewColumn, fallback: vscode.ViewColumn): vscode.ViewColumn;
+export function asViewColumn(s: string | undefined | vscode.ViewColumn, fallback?: vscode.ViewColumn): vscode.ViewColumn | undefined {
+    if(!s){
+        return fallback;
+    }
+    if(typeof s !== 'string'){
+        // s is already ViewColumn:
+        return s;
+    }
+    if(Object.keys(vscode.ViewColumn).includes(s)){
+        const sKey = s as keyof typeof vscode.ViewColumn;
+        return(vscode.ViewColumn[sKey]);
+    }
+    return fallback;
+}
+
