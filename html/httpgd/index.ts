@@ -30,7 +30,6 @@ const largePlotDiv = document.querySelector('#largePlot') as HTMLDivElement;
 const largeSvg = largePlotDiv.querySelector('svg') as SVGElement;
 const cssLink = document.querySelector('link.overwrites') as HTMLLinkElement;
 const smallPlotDiv = document.querySelector('#smallPlots') as HTMLDivElement;
-const placeholderDiv = document.querySelector('#placeholder') as HTMLDivElement;
 
 
 function getSmallPlots(): HTMLAnchorElement[] {
