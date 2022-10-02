@@ -570,19 +570,20 @@ export function catchAsError(err: unknown, fallbackMessage?: string): Error {
 
 
 
+const VIEW_COLUMN_KEYS = Object.keys(vscode.ViewColumn).filter(x => isNaN(parseInt(x)));
+
 export function asViewColumn(s: string | undefined | vscode.ViewColumn): vscode.ViewColumn | undefined;
 export function asViewColumn(s: string | undefined | vscode.ViewColumn, fallback: vscode.ViewColumn): vscode.ViewColumn;
 export function asViewColumn(s: string | undefined | vscode.ViewColumn, fallback?: vscode.ViewColumn): vscode.ViewColumn | undefined {
-    if(!s){
+    if (!s) {
         return fallback;
     }
-    if(typeof s !== 'string'){
+    if (typeof s !== 'string') {
         // s is already ViewColumn:
         return s;
     }
-    if(Object.keys(vscode.ViewColumn).includes(s)){
-        const sKey = s as keyof typeof vscode.ViewColumn;
-        return(vscode.ViewColumn[sKey]);
+    if (VIEW_COLUMN_KEYS.includes(s)) {
+        return vscode.ViewColumn[s as keyof typeof vscode.ViewColumn];
     }
     return fallback;
 }
