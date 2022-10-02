@@ -28,6 +28,11 @@ export interface CodeClickConfig {
     'Shift+Click': CodeClickAction,
 }
 const CODE_CLICKS: (keyof CodeClickConfig)[] = ['Click', 'Ctrl+Click', 'Shift+Click'];
+export const codeClickConfigDefault = {
+    'Click': 'Copy',
+    'Ctrl+Click': 'Run',
+    'Shift+Click': 'Ignore',
+};
 
 // Initialization function that is called once when activating the extension
 export async function initializeHelp(
@@ -39,6 +44,9 @@ export async function initializeHelp(
 
     // get the "vanilla" R path from config
     const rPath = await getRpath();
+    if(!rPath){
+        return undefined;
+    }
 
     // get the current working directory from vscode
     const cwd = vscode.workspace.workspaceFolders?.length
@@ -207,6 +215,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
     private helpPanelOptions: HelpOptions
 
     constructor(options: HelpOptions) {
+        this.rPath = options.rPath;
         this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
         this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
         const pkgListener = () => {
@@ -579,18 +588,21 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
 
     // Split code examples at empty lines:
     const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
-    const isEnabled = CODE_CLICKS.some(k => codeClickConfig[k] !== 'Ignore');
+    const isEnabled = CODE_CLICKS.some(k => codeClickConfig?.[k] !== 'Ignore');
     if(isEnabled){
         $('body').addClass('preClickable');
         const codeSections = $('pre');
         codeSections.each((i, section) => {
             const innerHtml = $(section).html();
+            if(!innerHtml){
+                return;
+            }
             const newPres = innerHtml.split('\n\n').map(s => s && `<pre>${s}</pre>`);
             const newHtml = '<div class="preDiv">' + newPres.join('\n') + '</div>';
             $(section).replaceWith(newHtml);
         });
     }
-    if(codeClickConfig.Click !== 'Ignore'){
+    if(codeClickConfig?.Click !== 'Ignore'){
         $('body').addClass('preHoverPointer');
     }
 

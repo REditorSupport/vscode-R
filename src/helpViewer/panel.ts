@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 
 import { CodeClickConfig, HelpFile, RHelp } from '.';
-import { setContext, UriIcon, config } from '../util';
+import { setContext, UriIcon, config, asViewColumn } from '../util';
 import { runTextInTerm } from '../rTerminal';
 import { OutMessage } from './webviewMessages';
 
@@ -30,7 +30,6 @@ export class HelpPanel {
 
     // the webview panel where the help is shown
     public panel?: vscode.WebviewPanel;
-    private viewColumn: vscode.ViewColumn = vscode.ViewColumn.Two;
 
     // locations on disk, only changed on construction
     readonly webviewScriptFile: vscode.Uri; // the javascript added to help pages
@@ -69,13 +68,19 @@ export class HelpPanel {
         for (const he of [...this.history, ...this.forwardHistory]) {
             he.isStale = true;
         }
+        if(!this.currentEntry){
+            return;
+        }
         const newHelpFile = await this.rHelp.getHelpFileForPath(this.currentEntry.helpFile.requestPath);
+        if(!newHelpFile){
+            return;
+        }
         newHelpFile.scrollY = await this.getScrollY();
         await this.showHelpFile(newHelpFile, false, undefined, undefined, true);
     }
 
     // retrieves the stored webview or creates a new one if the webview was closed
-    private getWebview(preserveFocus: boolean = false): vscode.Webview {
+    private getWebview(preserveFocus: boolean = false, viewColumn: vscode.ViewColumn = vscode.ViewColumn.Two): vscode.Webview {
         // create webview if necessary
         if (!this.panel) {
             const webViewOptions: vscode.WebviewOptions & vscode.WebviewPanelOptions = {
@@ -84,7 +89,7 @@ export class HelpPanel {
                 retainContextWhenHidden: true // keep scroll position when not focussed
             };
             const showOptions = {
-                viewColumn: this.viewColumn,
+                viewColumn: viewColumn,
                 preserveFocus: preserveFocus
             };
             this.panel = vscode.window.createWebviewPanel('rhelp', 'R Help', showOptions, webViewOptions);
@@ -137,17 +142,12 @@ export class HelpPanel {
 
     // shows (internal) help file object in webview
     public async showHelpFile(helpFile: HelpFile | Promise<HelpFile>, updateHistory = true, currentScrollY = 0, viewer?: vscode.ViewColumn | string, preserveFocus: boolean = false): Promise<boolean> {
-        if (viewer === undefined) {
-            viewer = config().get<string>('session.viewers.viewColumn.helpPanel');
-        }
 
-        // update this.viewColumn if a valid viewer argument was supplied
-        if (typeof viewer === 'string') {
-            this.viewColumn = <vscode.ViewColumn>vscode.ViewColumn[String(viewer)];
-        }
+        viewer ||= config().get<string>('session.viewers.viewColumn.helpPanel');
+        const viewColumn = asViewColumn(viewer);
 
         // get or create webview:
-        const webview = this.getWebview(preserveFocus);
+        const webview = this.getWebview(preserveFocus, viewColumn);
 
         // make sure helpFile is not a promise:
         helpFile = await helpFile;
@@ -226,7 +226,9 @@ export class HelpPanel {
     private async showHistoryEntry(entry: HistoryEntry) {
         let helpFile: HelpFile;
         if (entry.isStale) {
-            helpFile = await this.rHelp.getHelpFileForPath(entry.helpFile.requestPath);
+            // Fallback to stale helpFile.
+            // Handle differently?
+            helpFile = await this.rHelp.getHelpFileForPath(entry.helpFile.requestPath) || entry.helpFile;
             helpFile.scrollY = entry.helpFile.scrollY;
         } else {
             helpFile = entry.helpFile;
@@ -315,14 +317,14 @@ export class HelpPanel {
             // Check wheter to copy or run the code (or both or none)
             const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
             const runCode = (
-                isCtrlClick && codeClickConfig['Ctrl+Click'] === 'Run'
-                || isShiftClick && codeClickConfig['Shift+Click'] === 'Run'
-                || isNormalClick && codeClickConfig['Click'] === 'Run'
+                isCtrlClick && codeClickConfig?.['Ctrl+Click'] === 'Run'
+                || isShiftClick && codeClickConfig?.['Shift+Click'] === 'Run'
+                || isNormalClick && codeClickConfig?.['Click'] === 'Run'
             );
             const copyCode = (
-                isCtrlClick && codeClickConfig['Ctrl+Click'] === 'Copy'
-                || isShiftClick && codeClickConfig['Shift+Click'] === 'Copy'
-                || isNormalClick && codeClickConfig['Click'] === 'Copy'
+                isCtrlClick && codeClickConfig?.['Ctrl+Click'] === 'Copy'
+                || isShiftClick && codeClickConfig?.['Shift+Click'] === 'Copy'
+                || isNormalClick && codeClickConfig?.['Click'] === 'Copy'
             );
 
             // Execute action:

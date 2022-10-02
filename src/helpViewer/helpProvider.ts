@@ -298,7 +298,7 @@ export class AliasProvider {
             }
             const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
             const match = re.exec(result.stdout);
-            if (match.length !== 2) {
+            if (match?.length !== 2) {
                 throw new Error('Could not parse R output.');
             }
             const json = match[1];
