@@ -43,6 +43,7 @@ export let sessionDir: string;
 export let workingDir: string;
 let rVer: string;
 let pid: string;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let info: any;
 export let workspaceFile: string;
 let workspaceLockFile: string;
