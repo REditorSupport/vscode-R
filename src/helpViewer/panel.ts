@@ -361,7 +361,7 @@ export class HelpPanel {
             const linkUrl = $(this).attr('href');
             if (linkUrl) {
                 if (linkUrl.match(/katex/)) {
-                    const newUrl = new URL(linkUrl, url.origin).toString();
+                    const newUrl = new URL(linkUrl, url.origin);
                     $(this).attr('href', newUrl.toString());
                 } else {
                     $(this).remove();
@@ -374,7 +374,7 @@ export class HelpPanel {
             const scriptUrl = $(this).attr('src');
             if (scriptUrl) {
                 if (scriptUrl.match(/katex/)) {
-                    const newUrl = new URL(scriptUrl, url.origin).toString();
+                    const newUrl = new URL(scriptUrl, url.origin);
                     $(this).attr('src', newUrl.toString());
                 } else {
                     $(this).remove();
