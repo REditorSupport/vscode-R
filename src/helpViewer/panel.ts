@@ -354,11 +354,29 @@ export class HelpPanel {
         $('body').attr('relpath', relPath);
         $('body').attr('scrollyto', `${helpFile.scrollY ?? -1}`);
 
+        const url = new URL(helpFile.url);
+        $('head link,script').each(function () {
+            if ($(this).attr('href')) {
+                if ($(this).attr('href').match(/katex/)) {
+                    $(this).attr('href', url.origin + $(this).attr('href'));
+                } else {
+                    $(this).remove();
+                }
+            }
+            if ($(this).attr('src')) {
+                if ($(this).attr('src').match(/katex/)) {
+                    $(this).attr('src', url.origin + $(this).attr('src'));
+                } else {
+                    $(this).remove();
+                }
+            }
+        });
+
         if (styleUri) {
-            $('body').append(`\n<link rel="stylesheet" href="${styleUri.toString()}"></link>`);
+            $('body').append(`\n<link rel="stylesheet" href="${styleUri.toString(true)}"></link>`);
         }
         if (scriptUri) {
-            $('body').append(`\n<script src=${scriptUri.toString()}></script>`);
+            $('body').append(`\n<script src=${scriptUri.toString(true)}></script>`);
         }
 
 
