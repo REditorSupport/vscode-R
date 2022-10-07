@@ -355,17 +355,25 @@ export class HelpPanel {
         $('body').attr('scrollyto', `${helpFile.scrollY ?? -1}`);
 
         const url = new URL(helpFile.url);
-        $('head link,script').each(function () {
-            if ($(this).attr('href')) {
-                if ($(this).attr('href').match(/katex/)) {
-                    $(this).attr('href', url.origin + $(this).attr('href'));
+
+        // replace katex css urls with http://localhost:<port>/ origin
+        $('head link').each(function () {
+            const linkUrl = $(this).attr('href');
+            if (linkUrl) {
+                if (linkUrl.match(/katex/)) {
+                    $(this).attr('href', url.origin + linkUrl);
                 } else {
                     $(this).remove();
                 }
             }
-            if ($(this).attr('src')) {
-                if ($(this).attr('src').match(/katex/)) {
-                    $(this).attr('src', url.origin + $(this).attr('src'));
+        });
+
+        // replace katex js urls with http://localhost:<port>/ origin
+        $('head script').each(function () {
+            const scriptUrl = $(this).attr('src');
+            if (scriptUrl) {
+                if (scriptUrl.match(/katex/)) {
+                    $(this).attr('src', url.origin + scriptUrl);
                 } else {
                     $(this).remove();
                 }
