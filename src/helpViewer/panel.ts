@@ -354,13 +354,14 @@ export class HelpPanel {
         $('body').attr('relpath', relPath);
         $('body').attr('scrollyto', `${helpFile.scrollY ?? -1}`);
 
+        // replace katex js/css urls with http://localhost:<port>/ origin
+        // and remove others.
         const url = new URL(helpFile.url);
 
-        // replace katex css urls with http://localhost:<port>/ origin
-        $('head link').each(function () {
+        $('link').each(function () {
             const linkUrl = $(this).attr('href');
             if (linkUrl) {
-                if (linkUrl.match(/katex/)) {
+                if (linkUrl.includes('katex')) {
                     const newUrl = new URL(linkUrl, url.origin);
                     $(this).attr('href', newUrl.toString());
                 } else {
@@ -369,11 +370,10 @@ export class HelpPanel {
             }
         });
 
-        // replace katex js urls with http://localhost:<port>/ origin
-        $('head script').each(function () {
+        $('script').each(function () {
             const scriptUrl = $(this).attr('src');
             if (scriptUrl) {
-                if (scriptUrl.match(/katex/)) {
+                if (scriptUrl.includes('katex')) {
                     const newUrl = new URL(scriptUrl, url.origin);
                     $(this).attr('src', newUrl.toString());
                 } else {
