@@ -356,34 +356,38 @@ export class HelpPanel {
         $('body').attr('relpath', relPath);
         $('body').attr('scrollyto', `${helpFile.scrollY ?? -1}`);
 
-        // replace katex js/css urls with http://localhost:<port>/ origin
-        // and remove others.
-        const url = new URL(helpFile.url);
+        if (helpFile.url) {
+            // replace katex js/css urls with http://localhost:<port>/ origin
+            // and remove others.
+            const url = new URL(helpFile.url);
 
-        $('link').each(function () {
-            const linkUrl = $(this).attr('href');
-            if (linkUrl) {
-                if (linkUrl.includes('katex')) {
-                    const newUrl = new URL(linkUrl, url.origin);
-                    $(this).attr('href', newUrl.toString());
-                } else {
-                    $(this).remove();
+            $('link').each((i, e) => {
+                const obj = $(e);
+                const linkUrl = obj.attr('href');
+                if (linkUrl) {
+                    if (linkUrl.includes('katex')) {
+                        const newUrl = new URL(linkUrl, url.origin);
+                        obj.attr('href', newUrl.toString());
+                    } else {
+                        obj.remove();
+                    }
                 }
-            }
-        });
+            });
 
-        $('script').each(function () {
-            const scriptUrl = $(this).attr('src');
-            if (scriptUrl) {
-                if (scriptUrl.includes('katex')) {
-                    const newUrl = new URL(scriptUrl, url.origin);
-                    $(this).attr('src', newUrl.toString());
-                } else {
-                    $(this).remove();
+            $('script').each((i, e) => {
+                const obj = $(e);
+                const scriptUrl = obj.attr('src');
+                if (scriptUrl) {
+                    if (scriptUrl.includes('katex')) {
+                        const newUrl = new URL(scriptUrl, url.origin);
+                        obj.attr('src', newUrl.toString());
+                    } else {
+                        obj.remove();
+                    }
                 }
-            }
-        });
-
+            });
+        }
+        
         if (styleUri) {
             $('body').append(`\n<link rel="stylesheet" href="${styleUri.toString(true)}"></link>`);
         }
