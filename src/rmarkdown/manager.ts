@@ -24,18 +24,18 @@ interface IKnitArgs {
     scriptPath: string;
     rCmd?: string;
     rOutputFormat?: string;
-    callback: (...args: unknown[]) => boolean;
-    onRejection?: (...args: unknown[]) => unknown;
+    callback: (dat: string, childProcess?: util.DisposableProcess) => boolean;
+    onRejection?: (filePath: string, rejection: IKnitRejection) => unknown;
 }
 
 export abstract class RMarkdownManager {
-    protected rPath: string = undefined;
+    protected rPath: string | undefined = undefined;
     protected rMarkdownOutput: vscode.OutputChannel = rMarkdownOutput;
     // uri that are in the process of knitting
     // so that we can't spam the knit/preview button
     protected busyUriStore: Set<string> = new Set<string>();
 
-    protected getKnitDir(knitDir: string, docPath: string): string {
+    protected getKnitDir(knitDir: string | undefined, docPath: string): string | undefined {
         switch (knitDir) {
             // the directory containing the R Markdown document
             case KnitWorkingDirectory.documentDirectory: {
@@ -89,19 +89,24 @@ export abstract class RMarkdownManager {
                     cwd: args.workingDirectory,
                 };
 
-                let childProcess: DisposableProcess;
+                let childProcess: DisposableProcess | undefined = undefined;
                 try {
+                    if (!this.rPath) {
+                        throw new Error('R path not defined');
+                    }
+
                     childProcess = spawn(this.rPath, cpArgs, processOptions, () => {
                         rMarkdownOutput.appendLine('[VSC-R] terminating R process');
                         printOutput = false;
                     });
-                    progress.report({
+                    progress?.report({
                         increment: 0,
                         message: '0%'
                     });
                 } catch (e: unknown) {
                     console.warn(`[VSC-R] error: ${e as string}`);
                     reject({ cp: childProcess, wasCancelled: false });
+                    return;
                 }
 
                 this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process started`);
@@ -123,7 +128,7 @@ export abstract class RMarkdownManager {
                         if (percentRegOutput) {
                             for (const item of percentRegOutput) {
                                 const perc = Number(item);
-                                progress.report(
+                                progress?.report(
                                     {
                                         increment: perc - currentProgress,
                                         message: `${perc}%`
@@ -133,10 +138,14 @@ export abstract class RMarkdownManager {
                             }
                         }
                         if (token?.isCancellationRequested) {
-                            resolve(childProcess);
+                            if (childProcess) {
+                                resolve(childProcess);
+                            }
                         } else {
                             if (args.callback(dat, childProcess)) {
-                                resolve(childProcess);
+                                if (childProcess) {
+                                    resolve(childProcess);
+                                }
                             }
                         }
                     }
@@ -151,7 +160,7 @@ export abstract class RMarkdownManager {
 
                 childProcess.on('exit', (code, signal) => {
                     this.rMarkdownOutput.appendLine(`[VSC-R] ${fileName} process exited ` +
-                        (signal ? `from signal '${signal}'` : `with exit code ${code}`));
+                        (signal ? `from signal '${signal}'` : `with exit code ${code || 'null'}`));
                     if (code !== 0) {
                         reject({ cp: childProcess, wasCancelled: false });
                     }
@@ -164,12 +173,17 @@ export abstract class RMarkdownManager {
         );
     }
 
-    protected async knitWithProgress(args: IKnitArgs): Promise<DisposableProcess> {
-        let childProcess: DisposableProcess = undefined;
+    protected async knitWithProgress(args: IKnitArgs): Promise<DisposableProcess | undefined> {
+        let childProcess: DisposableProcess | undefined = undefined;
         await util.doWithProgress(
-            async (token: vscode.CancellationToken, progress: vscode.Progress<unknown>) => {
+            (async (
+                token: vscode.CancellationToken | undefined, 
+                progress: vscode.Progress<{
+                    message?: string | undefined;
+                    increment?: number | undefined;
+                }> | undefined) => {
                 childProcess = await this.knitDocument(args, token, progress) as DisposableProcess;
-            },
+            }),
             vscode.ProgressLocation.Notification,
             `Knitting ${args.fileName} ${args.rOutputFormat ? 'to ' + args.rOutputFormat : ''} `,
             true

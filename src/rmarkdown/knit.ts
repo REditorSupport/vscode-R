@@ -1,15 +1,15 @@
 import * as util from '../util';
 import * as vscode from 'vscode';
 import * as fs from 'fs-extra';
-import path = require('path');
-import yaml = require('js-yaml');
+import * as path from 'path';
+import * as yaml from 'js-yaml';
 
 import { RMarkdownManager, KnitWorkingDirectory } from './manager';
 import { runTextInTerm } from '../rTerminal';
 import { extensionContext, rmdPreviewManager } from '../extension';
 import { DisposableProcess } from '../util';
 
-export let knitDir: KnitWorkingDirectory = util.config().get<KnitWorkingDirectory>('rmarkdown.knit.defaults.knitWorkingDirectory') ?? undefined;
+export let knitDir: KnitWorkingDirectory | undefined = util.config().get<KnitWorkingDirectory>('rmarkdown.knit.defaults.knitWorkingDirectory') ?? undefined;
 
 interface IKnitQuickPickItem {
     label: string,
@@ -27,11 +27,14 @@ interface IYamlFrontmatter {
 }
 
 export class RMarkdownKnitManager extends RMarkdownManager {
-    private async renderDocument(rDocumentPath: string, docPath: string, docName: string, yamlParams: IYamlFrontmatter, outputFormat?: string): Promise<DisposableProcess> {
+    private async renderDocument(rDocumentPath: string, docPath: string, docName: string, yamlParams: IYamlFrontmatter, outputFormat?: string): Promise<DisposableProcess | undefined> {
         const openOutfile: boolean = util.config().get<boolean>('rmarkdown.knit.openOutputFile') ?? false;
         const knitWorkingDir = this.getKnitDir(knitDir, docPath);
         const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : '';
         const knitCommand = await this.getKnitCommand(yamlParams, rDocumentPath, outputFormat);
+        if (!knitCommand) {
+            return;
+        }
         this.rPath = await util.getRpath();
 
         const lim = '<<<vsc>>>';
@@ -64,7 +67,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
         return await this.knitWithProgress(
             {
-                workingDirectory: knitWorkingDir,
+                workingDirectory: knitWorkingDirText,
                 fileName: docName,
                 filePath: rDocumentPath,
                 scriptArgs: scriptValues,
@@ -99,17 +102,17 @@ export class RMarkdownKnitManager extends RMarkdownManager {
             }
         }
 
-        let yamlText: string = undefined;
+        let yamlText: string | undefined = undefined;
         if (startLine + 1 < endLine) {
             yamlText = lines.slice(startLine + 1, endLine).join('\n');
         }
 
-        let paramObj = {};
+        let paramObj: IYamlFrontmatter = {};
         if (yamlText) {
             try {
                 paramObj = yaml.load(
                     yamlText
-                );
+                ) as IYamlFrontmatter;
             } catch (e) {
                 console.error(`Could not parse YAML frontmatter for "${docPath}". Error: ${String(e)}`);
             }
@@ -118,7 +121,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
         return paramObj;
     }
 
-    private async getKnitCommand(yamlParams: IYamlFrontmatter, docPath: string, outputFormat: string): Promise<string> {
+    private async getKnitCommand(yamlParams: IYamlFrontmatter, docPath: string, outputFormat?: string): Promise<string | undefined> {
         let knitCommand: string;
 
         if (!yamlParams?.['site']) {
@@ -138,6 +141,9 @@ export class RMarkdownKnitManager extends RMarkdownManager {
                 `rmarkdown::render_site(${docPath})`;
         } else {
             const cmd = util.config().get<string>('rmarkdown.knit.command');
+            if (!cmd) {
+                return;
+            }
             knitCommand = outputFormat ?
                 `${cmd}(${docPath}, output_format = '${outputFormat}')` :
                 `${cmd}(${docPath})`;
@@ -150,7 +156,10 @@ export class RMarkdownKnitManager extends RMarkdownManager {
     // the definition of what constitutes an R Markdown site differs
     // depending on the type of R Markdown site (i.e., "simple" vs. blogdown sites)
     private async findSiteParam(): Promise<string | undefined> {
-        const wad = vscode.window.activeTextEditor.document.uri.fsPath;
+        const wad = vscode.window.activeTextEditor?.document.uri.fsPath;
+        if (!wad) {
+            return;
+        }
         const rootFolder = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath ?? path.dirname(wad);
         const indexFile = (await vscode.workspace.findFiles(new vscode.RelativePattern(rootFolder, 'index.{Rmd,rmd, md}'), null, 1))?.[0];
         const siteRoot = path.join(path.dirname(wad), '_site.yml');
@@ -176,8 +185,9 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
     // alters the working directory for evaluating chunks
     public setKnitDir(): void {
-        const currentDocumentWorkspacePath: string = vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor?.document?.uri)?.uri?.fsPath;
-        const currentDocumentFolderPath: string = path.dirname(vscode.window?.activeTextEditor.document?.uri?.fsPath);
+        const textEditor = vscode.window.activeTextEditor;
+        const currentDocumentWorkspacePath: string | undefined = textEditor ? vscode.workspace.getWorkspaceFolder(textEditor.document.uri)?.uri.fsPath : undefined;
+        const currentDocumentFolderPath: string | undefined = textEditor ? path.dirname(textEditor.document.uri.fsPath) : undefined;
         const items: IKnitQuickPickItem[] = [];
 
         if (currentDocumentWorkspacePath) {
@@ -213,7 +223,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
             ).then(async choice => {
                 if (choice?.value && knitDir !== choice.value) {
                     knitDir = choice.value;
-                    await rmdPreviewManager.updatePreview();
+                    await rmdPreviewManager?.updatePreview();
                 }
             });
         } else {
@@ -223,13 +233,19 @@ export class RMarkdownKnitManager extends RMarkdownManager {
     }
 
     public async knitRmd(echo: boolean, outputFormat?: string): Promise<void> {
-        const wad: vscode.TextDocument = vscode.window.activeTextEditor.document;
+        const textEditor = vscode.window.activeTextEditor;
+        if (!textEditor) {
+            void vscode.window.showWarningMessage('No text editor active.');
+            return;
+        }
+
+        const wad: vscode.TextDocument = textEditor.document;
 
         // handle untitled rmd
-        if (vscode.window.activeTextEditor.document.isUntitled) {
+        if (textEditor.document.isUntitled) {
             void vscode.window.showWarningMessage('Cannot knit an untitled file. Please save the document.');
             await vscode.commands.executeCommand('workbench.action.files.save').then(() => {
-                if (!vscode.window.activeTextEditor.document.isUntitled) {
+                if (!textEditor.document.isUntitled) {
                     void this.knitRmd(echo, outputFormat);
                 }
             });
@@ -248,7 +264,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
 
         // allow users to opt out of background process
         if (util.config().get<boolean>('rmarkdown.knit.useBackgroundProcess')) {
-            const busyPath = wad.uri.fsPath + outputFormat;
+            const busyPath = wad.uri.fsPath + (outputFormat ?? '');
             if (this.busyUriStore.has(busyPath)) {
                 return;
             }

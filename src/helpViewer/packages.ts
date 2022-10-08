@@ -3,8 +3,7 @@ import * as cheerio from 'cheerio';
 import * as vscode from 'vscode';
 
 import { RHelp } from '.';
-import { getRpath, getConfirmation, executeAsTask, doWithProgress, getCranUrl } from '../util';
-import { AliasProvider } from './helpProvider';
+import { getConfirmation, executeAsTask, doWithProgress, getCranUrl } from '../util';
 import { getPackagesFromCran } from './cran';
 
 
@@ -81,8 +80,6 @@ export interface PackageManagerOptions {
 export class PackageManager {
 
     readonly rHelp: RHelp;
-
-    readonly aliasProvider: AliasProvider;
 
     readonly state: vscode.Memento;
 
@@ -195,7 +192,7 @@ export class PackageManager {
 
     // remove a specified package. The packagename is selected e.g. in the help tree-view
     public async removePackage(pkgName: string): Promise<boolean> {
-        const rPath = await getRpath();
+        const rPath = this.rHelp.rPath;
         const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `remove.packages('${pkgName}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
         const confirmation = 'Yes, remove package!';
@@ -212,7 +209,7 @@ export class PackageManager {
     // actually install packages
     // confirmation can be skipped (e.g. if the user has confimred before)
     public async installPackages(pkgNames: string[], skipConfirmation: boolean = false): Promise<boolean> {
-        const rPath = await getRpath();
+        const rPath = this.rHelp.rPath;
         const cranUrl = await getCranUrl('', this.cwd);
         const args = [`--silent`, '--slave', `-e`, `install.packages(c(${pkgNames.map(v => `'${v}'`).join(',')}),repos='${cranUrl}')`];
         const cmd = `${rPath} ${args.join(' ')}`;
@@ -228,7 +225,7 @@ export class PackageManager {
     }
 
     public async updatePackages(skipConfirmation: boolean = false): Promise<boolean> {
-        const rPath = await getRpath();
+        const rPath = this.rHelp.rPath;
         const cranUrl = await getCranUrl('', this.cwd);
         const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `update.packages(ask=FALSE,repos='${cranUrl}')`];
         const cmd = `${rPath} ${args.join(' ')}`;

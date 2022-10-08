@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
-import { DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
+import { catchAsError, DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
 
 export interface RHelpProviderOptions {
     // path of the R executable
@@ -298,14 +298,14 @@ export class AliasProvider {
             }
             const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
             const match = re.exec(result.stdout);
-            if (match.length !== 2) {
+            if (match?.length !== 2) {
                 throw new Error('Could not parse R output.');
             }
             const json = match[1];
             return <AllPackageAliases>JSON.parse(json) || {};
         } catch (e) {
             console.log(e);
-            void window.showErrorMessage((<{ message: string }>e).message);
+            void window.showErrorMessage(catchAsError(e).message);
         }
     }
 }

@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
 import { extensionContext } from './extension';
+import { randomBytes } from 'crypto';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -22,7 +23,7 @@ function getRfromEnvPath(platform: string) {
         fileExtension = '.exe';
     }
 
-    const os_paths: string[] | string = process.env.PATH.split(splitChar);
+    const os_paths: string[] | string = process.env.PATH ? process.env.PATH.split(splitChar) : [];
     for (const os_path of os_paths) {
         const os_r_path: string = path.join(os_path, 'R' + fileExtension);
         if (fs.existsSync(os_r_path)) {
@@ -67,8 +68,8 @@ export function getRPathConfigEntry(term: boolean = false): string {
     return `${trunc}.${platform}`;
 }
 
-export async function getRpath(quote = false, overwriteConfig?: string): Promise<string> {
-    let rpath = '';
+export async function getRpath(quote = false, overwriteConfig?: string): Promise<string | undefined> {
+    let rpath: string | undefined = '';
 
     // try the config entry specified in the function arg:
     if (overwriteConfig) {
@@ -146,7 +147,7 @@ export function checkIfFileExists(filePath: string): boolean {
     return existsSync(filePath);
 }
 
-export function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder {
+export function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
     if (vscode.workspace.workspaceFolders !== undefined) {
         if (vscode.workspace.workspaceFolders.length === 1) {
             return vscode.workspace.workspaceFolders[0];
@@ -168,11 +169,11 @@ export function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder {
 //
 // If it is a guest, the guest service requests the host
 // to read the file, and pass back its contents to the guest
-export function readContent(file: PathLike | number): Promise<Buffer>;
-export function readContent(file: PathLike | number, encoding: string): Promise<string>;
-export function readContent(file: PathLike | number, encoding?: string): Promise<string | Buffer> {
+export function readContent(file: PathLike | number): Promise<Buffer> | undefined;
+export function readContent(file: PathLike | number, encoding: string): Promise<string> | undefined;
+export function readContent(file: PathLike | number, encoding?: string): Promise<string | Buffer> | undefined {
     if (isGuestSession) {
-        return encoding === undefined ? rGuestService.requestFileContent(file) : rGuestService.requestFileContent(file, encoding);
+        return encoding === undefined ? rGuestService?.requestFileContent(file) : rGuestService?.requestFileContent(file, encoding);
     } else {
         return encoding === undefined ? readFile(file) : readFile(file, encoding);
     }
@@ -223,16 +224,20 @@ export async function executeAsTask(name: string, cmdOrProcess: string, args?: s
     let taskExecution: vscode.ShellExecution | vscode.ProcessExecution;
     if(asProcess){
         taskDefinition = { type: 'process'};
-        taskExecution = new vscode.ProcessExecution(
+        taskExecution = args ? new vscode.ProcessExecution(
             cmdOrProcess,
             args
+        ) : new vscode.ProcessExecution(
+            cmdOrProcess
         );
-    } else{
+    } else {
         taskDefinition = { type: 'shell' };
-        const quotedArgs = args.map<vscode.ShellQuotedString>(arg => { return { value: arg, quoting: vscode.ShellQuoting.Weak }; });
-        taskExecution = new vscode.ShellExecution(
+        const quotedArgs = args && args.map<vscode.ShellQuotedString>(arg => { return { value: arg, quoting: vscode.ShellQuoting.Weak }; });
+        taskExecution = quotedArgs ? new vscode.ShellExecution(
             cmdOrProcess,
             quotedArgs
+        ) : new vscode.ShellExecution(
+            cmdOrProcess
         );
     }
     const task = new vscode.Task(
@@ -259,22 +264,19 @@ export async function executeAsTask(name: string, cmdOrProcess: string, args?: s
 // executes a callback and shows a 'busy' progress bar during the execution
 // synchronous callbacks are converted to async to properly render the progress bar
 // default location is in the help pages tree view
-export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, progress?: vscode.Progress<T>) => T | Promise<T>, location: (string | vscode.ProgressLocation) = vscode.ProgressLocation.Window, title?: string, cancellable?: boolean): Promise<T> {
+export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, progress?: vscode.Progress<{ message?: string; increment?: number }>) => T | Promise<T>, location: (string | vscode.ProgressLocation) = vscode.ProgressLocation.Window, title?: string, cancellable?: boolean): Promise<T> {
     const location2 = (typeof location === 'string' ? { viewId: location } : location);
     const options: vscode.ProgressOptions = {
         location: location2,
         cancellable: cancellable ?? false,
         title: title
     };
-    let ret: T;
-    await vscode.window.withProgress(options, async (progress, token) => {
-        const retPromise = new Promise<T>((resolve) => setTimeout(() => {
+    return await vscode.window.withProgress(options, async (progress, token) => {
+        return await new Promise<T>((resolve) => setTimeout(() => {
             const ret = cb(token, progress);
             resolve(ret);
         }));
-        ret = await retPromise;
     });
-    return ret;
 }
 
 // get the URL of a CRAN website
@@ -294,8 +296,8 @@ export async function getCranUrl(path: string = '', cwd?: string | URL): Promise
     return url;
 }
 
-export function getRLibPaths(): string {
-    return config().get<string[]>('libPaths').join('\n');
+export function getRLibPaths(): string | undefined {
+    return config().get<string[]>('libPaths')?.join('\n');
 }
 
 // executes an R command returns its output to stdout
@@ -307,6 +309,9 @@ export function getRLibPaths(): string {
 //
 export async function executeRCommand(rCommand: string, cwd?: string | URL, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
     const rPath = await getRpath();
+    if (!rPath) {
+        return undefined;
+    }
 
     const options: cp.CommonOptions = {
         cwd: cwd,
@@ -323,7 +328,7 @@ export async function executeRCommand(rCommand: string, cwd?: string | URL, fall
         '-e', `cat('${lim}')`
     ];
 
-    let ret: string = undefined;
+    let ret: string | undefined = undefined;
 
     try {
         const result = await spawnAsync(rPath, args, options);
@@ -332,13 +337,13 @@ export async function executeRCommand(rCommand: string, cwd?: string | URL, fall
         }
         const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
         const match = re.exec(result.stdout);
-        if (match.length !== 2) {
+        if (!match || match.length !== 2) {
             throw new Error('Could not parse R output.');
         }
         ret = match[1];
     } catch (e) {
         if (fallback) {
-            ret = (typeof fallback === 'function' ? fallback((e instanceof Error) ? e : undefined) : fallback);
+            ret = (typeof fallback === 'function' ? fallback(catchAsError(e)) : fallback);
         } else {
             console.warn(e);
         }
@@ -429,19 +434,21 @@ export function asDisposable<T>(toDispose: T, disposeFunction: (...args: unknown
 export type DisposableProcess = cp.ChildProcessWithoutNullStreams & vscode.Disposable;
 export function spawn(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
     const proc = cp.spawn(command, args, options);
-    console.log(`Process ${proc.pid} spawned`);
+    console.log(proc.pid ? `Process ${proc.pid} spawned` : 'Process failed to spawn');
     let running = true;
     const exitHandler = () => {
         running = false;
-        console.log(`Process ${proc.pid} exited`);
+        console.log(`Process ${proc.pid || ''} exited`);
     };
     proc.on('exit', exitHandler);
     proc.on('error', exitHandler);
     const disposable = asDisposable(proc, () => {
         if (running) {
-            console.log(`Process ${proc.pid} terminating`);
+            console.log(`Process ${proc.pid || ''} terminating`);
             if (process.platform === 'win32') {
-                cp.spawnSync('taskkill', ['/pid', proc.pid.toString(), '/f', '/t']);
+                if (proc.pid !== undefined) {
+                    cp.spawnSync('taskkill', ['/pid', proc.pid.toString(), '/f', '/t']);
+                }
             } else {
                 proc.kill('SIGKILL');
             }
@@ -455,18 +462,22 @@ export function spawn(command: string, args?: ReadonlyArray<string>, options?: c
 
 export async function spawnAsync(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): Promise<cp.SpawnSyncReturns<string>> {
     return new Promise((resolve) => {
+
         const result: cp.SpawnSyncReturns<string> = {
             error: undefined,
-            pid: undefined,
-            output: undefined,
+            pid: -1,
+            output: [],
             stdout: '',
             stderr: '',
-            status: undefined,
-            signal: undefined
+            status: null,
+            signal: null
         };
+        
         try {
             const childProcess = spawn(command, args, options, onDisposed);
-            result.pid = childProcess.pid;
+            if (childProcess.pid !== undefined) {
+                result.pid = childProcess.pid;
+            }
             childProcess.stdout?.on('data', (chunk: Buffer) => {
                 result.stdout += chunk.toString();
             });
@@ -508,6 +519,10 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
             if (select === 'Yes') {
                 const repo = await getCranUrl('', cwd);
                 const rPath = await getRpath();
+                if (!rPath) {
+                    void vscode.window.showErrorMessage('R path not set', 'OK');
+                    return;
+                }
                 const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `install.packages('${name}', repos='${repo}')`];
                 void executeAsTask('Install Package', rPath, args, true);
                 if (postInstallMsg) {
@@ -518,3 +533,58 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
             }
         });
 }
+
+/**
+ * Create temporary directory. Will avoid name clashes. Caller must delete directory after use.
+ * 
+ * @param root Parent folder.
+ * @param hidden If set to true, directory will be prefixed with a '.' (ignored on windows).
+ * @returns Path to the temporary directory.
+ */
+export function createTempDir(root: string, hidden?: boolean): string {
+    const hidePrefix = (!hidden || process.platform === 'win32') ? '' : '.';
+    let tempDir: string;
+    while (fs.existsSync(tempDir = path.join(root, `${hidePrefix}___temp_${randomBytes(8).toString('hex')}`))) { /* Name clash */ }
+    fs.mkdirSync(tempDir);
+    return tempDir;
+}
+
+/**
+ * Utility function for converting 'unknown' types to errors.
+ * 
+ * Usage:
+ * 
+ * ```ts
+ * try { ... } 
+ * catch (e) { 
+ *  const err: Error = catchAsError(e); 
+ * }
+ * ```
+ * @param err 
+ * @param fallbackMessage 
+ * @returns 
+ */
+export function catchAsError(err: unknown, fallbackMessage?: string): Error {
+    return (err instanceof Error) ? err : Error(fallbackMessage ?? 'Unknown error');
+}
+
+
+
+const VIEW_COLUMN_KEYS = Object.keys(vscode.ViewColumn).filter(x => isNaN(parseInt(x)));
+
+export function asViewColumn(s: string | undefined | vscode.ViewColumn): vscode.ViewColumn | undefined;
+export function asViewColumn(s: string | undefined | vscode.ViewColumn, fallback: vscode.ViewColumn): vscode.ViewColumn;
+export function asViewColumn(s: string | undefined | vscode.ViewColumn, fallback?: vscode.ViewColumn): vscode.ViewColumn | undefined {
+    if (!s) {
+        return fallback;
+    }
+    if (typeof s !== 'string') {
+        // s is already ViewColumn:
+        return s;
+    }
+    if (VIEW_COLUMN_KEYS.includes(s)) {
+        return vscode.ViewColumn[s as keyof typeof vscode.ViewColumn];
+    }
+    return fallback;
+}
+

@@ -101,7 +101,7 @@ function asRTask(rPath: string, folder: vscode.WorkspaceFolder | vscode.TaskScop
     const rtask: vscode.Task = new vscode.Task(
         info.definition,
         folder,
-        info.name,
+        info.name ?? 'Unnamed',
         info.definition.type,
         new vscode.ProcessExecution(
             rPath,
@@ -131,6 +131,9 @@ export class RTaskProvider implements vscode.TaskProvider {
 
         const tasks: vscode.Task[] = [];
         const rPath = await getRpath(false);
+        if (!rPath) {
+            return [];
+        }
 
         for (const folder of folders) {
             const isRPackage = fs.existsSync(path.join(folder.uri.fsPath, 'DESCRIPTION'));
@@ -151,6 +154,9 @@ export class RTaskProvider implements vscode.TaskProvider {
             name: task.name
         };
         const rPath = await getRpath(false);
+        if (!rPath) {
+            throw 'R path not set.';
+        }
         return asRTask(rPath, vscode.TaskScope.Workspace, taskInfo);
     }
 }

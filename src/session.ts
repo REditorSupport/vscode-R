@@ -1,8 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 'use strict';
 
 import * as fs from 'fs-extra';
@@ -15,6 +10,7 @@ import { FSWatcher } from 'fs-extra';
 import { config, readContent, UriIcon } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
+import { IRequest } from './liveShare/shareSession';
 import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
@@ -47,6 +43,7 @@ export let sessionDir: string;
 export let workingDir: string;
 let rVer: string;
 let pid: string;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let info: any;
 export let workspaceFile: string;
 let workspaceLockFile: string;
@@ -56,9 +53,9 @@ let plotLockFile: string;
 let plotTimeStamp: number;
 let workspaceWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
-let activeBrowserPanel: WebviewPanel;
-let activeBrowserUri: Uri;
-let activeBrowserExternalUri: Uri;
+let activeBrowserPanel: WebviewPanel | undefined;
+let activeBrowserUri: Uri | undefined;
+let activeBrowserExternalUri: Uri | undefined;
 
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
@@ -96,7 +93,7 @@ export function attachActive(): void {
         console.info('[attachActive]');
         void runTextInTerm('.vsc.attach()');
         if (isLiveShare() && shareWorkspace) {
-            rHostService.notifyRequest(requestFile, true);
+            rHostService?.notifyRequest(requestFile, true);
         }
     } else {
         void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
@@ -182,11 +179,11 @@ async function updatePlot() {
             void commands.executeCommand('vscode.open', Uri.file(plotFile), {
                 preserveFocus: true,
                 preview: true,
-                viewColumn: ViewColumn[config().get<string>('session.viewers.viewColumn.plot')],
+                viewColumn: ViewColumn[(config().get<string>('session.viewers.viewColumn.plot') || 'Two') as keyof typeof ViewColumn],
             });
             console.info('[updatePlot] Done');
             if (isLiveShare()) {
-                void rHostService.notifyPlot(plotFile);
+                void rHostService?.notifyPlot(plotFile);
             }
         } else {
             console.info('[updatePlot] File not found');
@@ -203,11 +200,11 @@ async function updateWorkspace() {
         workspaceTimeStamp = newTimeStamp;
         if (fs.existsSync(workspaceFile)) {
             const content = await fs.readFile(workspaceFile, 'utf8');
-            workspaceData = JSON.parse(content);
+            workspaceData = JSON.parse(content) as WorkspaceData;
             void rWorkspace?.refresh();
             console.info('[updateWorkspace] Done');
             if (isLiveShare()) {
-                rHostService.notifyWorkspace(workspaceData);
+                rHostService?.notifyWorkspace(workspaceData);
             }
         } else {
             console.info('[updateWorkspace] File not found');
@@ -227,7 +224,7 @@ export async function showBrowser(url: string, title: string, viewer: string | b
             title,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[String(viewer)],
+                viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
             },
             {
                 enableFindWidget: true,
@@ -290,7 +287,9 @@ export function refreshBrowser(): void {
     console.log('[refreshBrowser]');
     if (activeBrowserPanel) {
         activeBrowserPanel.webview.html = '';
-        activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserExternalUri);
+        if (activeBrowserExternalUri) {
+            activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserExternalUri);
+        }
     }
 }
 
@@ -311,7 +310,7 @@ export async function showWebView(file: string, title: string, viewer: string | 
         const panel = window.createWebviewPanel('webview', title,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[String(viewer)],
+                viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
             },
             {
                 enableScripts: true,
@@ -336,7 +335,7 @@ export async function showDataView(source: string, type: string, title: string, 
         const panel = window.createWebviewPanel('dataview', title,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[viewer],
+                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
             },
             {
                 enableScripts: true,
@@ -351,7 +350,7 @@ export async function showDataView(source: string, type: string, title: string, 
         const panel = window.createWebviewPanel('dataview', title,
             {
                 preserveFocus: true,
-                viewColumn: ViewColumn[viewer],
+                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
             },
             {
                 enableScripts: true,
@@ -364,13 +363,15 @@ export async function showDataView(source: string, type: string, title: string, 
         panel.webview.html = content;
     } else {
         if (isGuestSession) {
-            const fileContent = await rGuestService.requestFileContent(file, 'utf8');
-            await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer]);
+            const fileContent = await rGuestService?.requestFileContent(file, 'utf8');
+            if (fileContent) {
+                await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer as keyof typeof ViewColumn]);
+            }
         } else {
             await commands.executeCommand('vscode.open', Uri.file(file), {
                 preserveFocus: true,
                 preview: true,
-                viewColumn: ViewColumn[viewer],
+                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
             });
         }
     }
@@ -379,7 +380,7 @@ export async function showDataView(source: string, type: string, title: string, 
 
 export async function getTableHtml(webview: Webview, file: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
-    const pageSize = config().get<number>('session.data.pageSize');
+    const pageSize = config().get<number>('session.data.pageSize') || 500;
     const content = await readContent(file, 'utf8');
     return `
 <!DOCTYPE html>
@@ -640,7 +641,7 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 
 export async function getWebviewHtml(webview: Webview, file: string, title: string, dir: string, webviewDir: string): Promise<string> {
     const observerPath = Uri.file(path.join(webviewDir, 'observer.js'));
-    const body = (await readContent(file, 'utf8')).toString()
+    const body = (await readContent(file, 'utf8') || '').toString()
         .replace(/<(\w+)(.*)\s+(href|src)="(?!\w+:)/g,
             `<$1 $2 $3="${String(webview.asWebviewUri(Uri.file(dir)))}/`);
 
@@ -725,6 +726,10 @@ export async function writeSuccessResponse(responseSessionDir: string): Promise<
     await writeResponse({ result: true }, responseSessionDir);
 }
 
+type ISessionRequest = {
+    plot_url?: string,
+} & IRequest;
+
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     console.info('[updateRequest] Started');
     console.info(`[updateRequest] requestFile: ${requestFile}`);
@@ -734,12 +739,12 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
         requestTimeStamp = newTimeStamp;
         const requestContent = await fs.readFile(requestFile, 'utf8');
         console.info(`[updateRequest] request: ${requestContent}`);
-        const request = JSON.parse(requestContent);
-        if (isFromWorkspace(request.wd)) {
+        const request = JSON.parse(requestContent) as ISessionRequest;
+        if (request.wd && isFromWorkspace(request.wd)) {
             if (request.uuid === null || request.uuid === undefined || request.uuid === UUID) {
                 switch (request.command) {
                     case 'help': {
-                        if (globalRHelp) {
+                        if (globalRHelp && request.requestPath) {
                             console.log(request.requestPath);
                             await globalRHelp.showHelpForPath(request.requestPath, request.viewer);
                         }
@@ -752,6 +757,9 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         break;
                     }
                     case 'attach': {
+                        if (!request.tempdir || !request.wd) {
+                            return;
+                        }
                         rVer = String(request.version);
                         pid = String(request.pid);
                         info = request.info;
@@ -759,7 +767,8 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         workingDir = request.wd;
                         console.info(`[updateRequest] attach PID: ${pid}`);
                         sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
-                        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
+                        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-unsafe-member-access
+                        sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
                         purgeAddinPickerItems();
@@ -769,20 +778,28 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         break;
                     }
                     case 'browser': {
-                        await showBrowser(request.url, request.title, request.viewer);
+                        if (request.url && request.title && request.viewer) {
+                            await showBrowser(request.url, request.title, request.viewer);
+                        }
                         break;
                     }
                     case 'webview': {
-                        await showWebView(request.file, request.title, request.viewer);
+                        if (request.file && request.title && request.viewer) {
+                            await showWebView(request.file, request.title, request.viewer);
+                        }
                         break;
                     }
                     case 'dataview': {
-                        await showDataView(request.source,
-                            request.type, request.title, request.file, request.viewer);
+                        if (request.source && request.type && request.file && request.title && request.viewer) {
+                            await showDataView(request.source,
+                                request.type, request.title, request.file, request.viewer);
+                        }
                         break;
                     }
                     case 'rstudioapi': {
-                        await dispatchRStudioAPICall(request.action, request.args, request.sd);
+                        if (request.action && request.args && request.sd) {
+                            await dispatchRStudioAPICall(request.action, request.args, request.sd);
+                        }
                         break;
                     }
                     default:
@@ -793,7 +810,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
             console.info(`[updateRequest] Ignored request outside workspace`);
         }
         if (isLiveShare()) {
-            void rHostService.notifyRequest(requestFile);
+            void rHostService?.notifyRequest(requestFile);
         }
     }
 }

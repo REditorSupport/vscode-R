@@ -8,8 +8,11 @@
             "ES2021"
         ],
         "sourceMap": true,
-        // "strictNullChecks": true,
-        "rootDir": "src"
+        "rootDir": "src",
+        "strict": true,
+        "noImplicitAny": true,
+        "noImplicitThis": true,
+        "noFallthroughCasesInSwitch": true
     },
     "exclude": [
         "html",

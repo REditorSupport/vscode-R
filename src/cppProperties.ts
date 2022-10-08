@@ -1,10 +1,9 @@
 'use strict';
 
-import { randomBytes } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { window } from 'vscode';
-import { getRpath, getCurrentWorkspaceFolder, executeRCommand } from './util';
+import { getRpath, getCurrentWorkspaceFolder, executeRCommand, createTempDir } from './util';
 import { execSync } from 'child_process';
 import { extensionContext } from './extension';
 
@@ -38,6 +37,9 @@ function platformChoose<A, B, C>(win32: A, darwin: B, other: C): A | B | C {
 // See: https://code.visualstudio.com/docs/cpp/c-cpp-properties-schema-reference
 async function generateCppPropertiesProc(workspaceFolder: string) {
     const rPath = await getRpath();
+    if (!rPath) {
+        return;
+    }
 
     // Collect information from running the compiler
     const configureFile = platformChoose('configure.win', 'configure', 'configure');
@@ -64,10 +66,10 @@ async function generateCppPropertiesProc(workspaceFolder: string) {
     const compileStdCpp = extractCompilerStd(compileOutputCpp);
     const compileStdC = extractCompilerStd(compileOutputC);
     const compileCall = extractCompilerCall(compileOutputCpp);
-    const compilerPath = await executeRCommand(`cat(Sys.which("${compileCall}"))`, workspaceFolder, (e: Error) => {
+    const compilerPath = compileCall ? await executeRCommand(`cat(Sys.which("${compileCall}"))`, workspaceFolder, (e: Error) => {
         void window.showErrorMessage(e.message);
         return '';
-    });
+    }) : '';
 
     const intelliSensePlatform = platformChoose('windows', 'macos', 'linux');
     const intelliSenseComp = compileCall ? (compileCall.includes('clang') ? 'clang' : 'gcc') : 'gcc';
@@ -173,13 +175,6 @@ function extractCompilerCall(compileOutput: string): string | undefined {
 
     const m = ccalls[1].match(rxComp);
     return m?.[1];
-}
-
-function createTempDir(root: string): string {
-    let tempDir: string;
-    while (fs.existsSync(tempDir = path.join(root, `___temp_${randomBytes(8).toString('hex')}`))) { /* Name clash */ }
-    fs.mkdirSync(tempDir);
-    return tempDir;
 }
 
 function collectCompilerOutput(rPath: string, workspaceFolder: string, testExtension: 'cpp' | 'c') {
