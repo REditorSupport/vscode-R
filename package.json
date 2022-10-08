@@ -1919,10 +1919,8 @@
     "@types/mocha": "^8.2.2",
     "@types/node": "^16.11.7",
     "@types/node-fetch": "^2.5.10",
-    "@types/showdown": "^1.9.3",
     "@types/vscode": "^1.67.0",
     "@types/winreg": "^1.2.31",
-    "@types/ws": "^7.4.4",
     "@typescript-eslint/eslint-plugin": "^5.30.0",
     "@typescript-eslint/parser": "^5.30.0",
     "copy-webpack-plugin": "^9.0.0",
@@ -1934,8 +1932,7 @@
     "typescript": "^4.7.2",
     "vscode-test": "^1.5.2",
     "webpack": "^5.38.1",
-    "webpack-cli": "^4.7.2",
-    "yamljs": "^0.3.0"
+    "webpack-cli": "^4.7.2"
   },
   "dependencies": {
     "ag-grid-community": "^28.1.1",
@@ -1949,11 +1946,8 @@
     "jquery.json-viewer": "^1.5.0",
     "js-yaml": "^4.1.0",
     "node-fetch": "^2.6.7",
-    "popper.js": "^1.16.1",
-    "showdown": "^1.9.1",
     "vscode-languageclient": "^8.0.2",
     "vsls": "^1.0.4753",
-    "winreg": "^1.2.4",
-    "ws": "^7.4.6"
+    "winreg": "^1.2.4"
   }
 }
