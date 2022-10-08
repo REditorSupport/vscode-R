@@ -70,7 +70,7 @@ export function detachGuest(): void {
 }
 
 export function attachActiveGuest(): void {
-    if (config().get<boolean>('sessionWatcher', false)) {
+    if (config().get<boolean>('sessionWatcher', true)) {
         console.info('[attachActiveGuest]');
         void rGuestService?.requestAttach();
     } else {

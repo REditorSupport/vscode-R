@@ -73,7 +73,7 @@ export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
             chunkRanges.push(chunkRange);
 
             // Enable/disable only CodeLens, without affecting chunk background color.
-            if (config().get<boolean>('rmarkdown.enableCodeLens', false) && (chunk.language === 'r') || isRDocument(document)) {
+            if (config().get<boolean>('rmarkdown.enableCodeLens', true) && (chunk.language === 'r') || isRDocument(document)) {
                 if (token.isCancellationRequested) {
                     break;
                 }
