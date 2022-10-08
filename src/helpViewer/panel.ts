@@ -80,13 +80,19 @@ export class HelpPanel {
     }
 
     // retrieves the stored webview or creates a new one if the webview was closed
-    private getWebview(preserveFocus: boolean = false, viewColumn: vscode.ViewColumn = vscode.ViewColumn.Two): vscode.Webview {
+    private getWebview(port: number | undefined = 0, preserveFocus: boolean = false, viewColumn: vscode.ViewColumn = vscode.ViewColumn.Two): vscode.Webview {
         // create webview if necessary
         if (!this.panel) {
             const webViewOptions: vscode.WebviewOptions & vscode.WebviewPanelOptions = {
                 enableScripts: true,
                 enableFindWidget: true,
-                retainContextWhenHidden: true // keep scroll position when not focussed
+                retainContextWhenHidden: true, // keep scroll position when not focussed
+                portMapping: port ? [
+                    {
+                        webviewPort: port,
+                        extensionHostPort: port
+                    }
+                ] : undefined
             };
             const showOptions = {
                 viewColumn: viewColumn,
@@ -146,9 +152,6 @@ export class HelpPanel {
         viewer ||= config().get<string>('session.viewers.viewColumn.helpPanel');
         const viewColumn = asViewColumn(viewer);
 
-        // get or create webview:
-        const webview = this.getWebview(preserveFocus, viewColumn);
-
         // make sure helpFile is not a promise:
         helpFile = await helpFile;
 
@@ -156,6 +159,10 @@ export class HelpPanel {
 
         // modify html
         helpFile = this.pimpMyHelp(helpFile, this.webviewStyleUri, this.webviewScriptUri);
+
+        // get or create webview:
+        const helpUrl = helpFile.url ? new URL(helpFile.url) : undefined;
+        const webview = this.getWebview(helpUrl ? Number(helpUrl.port) : undefined, preserveFocus, viewColumn);
 
         // actually show the help page
         webview.html = helpFile.html;
