@@ -80,19 +80,13 @@ export class HelpPanel {
     }
 
     // retrieves the stored webview or creates a new one if the webview was closed
-    private getWebview(port: number | undefined = 0, preserveFocus: boolean = false, viewColumn: vscode.ViewColumn = vscode.ViewColumn.Two): vscode.Webview {
+    private getWebview(preserveFocus: boolean = false, viewColumn: vscode.ViewColumn = vscode.ViewColumn.Two): vscode.Webview {
         // create webview if necessary
         if (!this.panel) {
             const webViewOptions: vscode.WebviewOptions & vscode.WebviewPanelOptions = {
                 enableScripts: true,
                 enableFindWidget: true,
-                retainContextWhenHidden: true, // keep scroll position when not focussed
-                portMapping: port ? [
-                    {
-                        webviewPort: port,
-                        extensionHostPort: port
-                    }
-                ] : undefined
+                retainContextWhenHidden: true // keep scroll position when not focussed
             };
             const showOptions = {
                 viewColumn: viewColumn,
@@ -158,11 +152,10 @@ export class HelpPanel {
         helpFile.scrollY = helpFile.scrollY || 0;
 
         // modify html
-        helpFile = this.pimpMyHelp(helpFile, this.webviewStyleUri, this.webviewScriptUri);
+        helpFile = await this.pimpMyHelp(helpFile, this.webviewStyleUri, this.webviewScriptUri);
 
         // get or create webview:
-        const helpUrl = helpFile.url ? new URL(helpFile.url) : undefined;
-        const webview = this.getWebview(helpUrl ? Number(helpUrl.port) : undefined, preserveFocus, viewColumn);
+        const webview = this.getWebview(preserveFocus, viewColumn);
 
         // actually show the help page
         webview.html = helpFile.html;
@@ -350,7 +343,7 @@ export class HelpPanel {
     }
 
     // improves the help display by applying syntax highlighting and adjusting hyperlinks:
-    private pimpMyHelp(helpFile: HelpFile, styleUri?: vscode.Uri | string, scriptUri?: vscode.Uri | string): HelpFile {
+    private async pimpMyHelp(helpFile: HelpFile, styleUri?: vscode.Uri | string, scriptUri?: vscode.Uri | string): Promise<HelpFile> {
 
         // get requestpath of helpfile
         const relPath = helpFile.requestPath + (helpFile.hash || '');
@@ -367,13 +360,14 @@ export class HelpPanel {
             // replace katex js/css urls with http://localhost:<port>/ origin
             // and remove others.
             const url = new URL(helpFile.url);
+            const externalUri = (await vscode.env.asExternalUri(vscode.Uri.parse(url.origin))).toString(true);
 
             $('link').each((i, e) => {
                 const obj = $(e);
                 const linkUrl = obj.attr('href');
                 if (linkUrl) {
                     if (linkUrl.includes('katex')) {
-                        const newUrl = new URL(linkUrl, url.origin);
+                        const newUrl = new URL(linkUrl, externalUri);
                         obj.attr('href', newUrl.toString());
                     } else {
                         obj.remove();
@@ -386,7 +380,7 @@ export class HelpPanel {
                 const scriptUrl = obj.attr('src');
                 if (scriptUrl) {
                     if (scriptUrl.includes('katex')) {
-                        const newUrl = new URL(scriptUrl, url.origin);
+                        const newUrl = new URL(scriptUrl, externalUri);
                         obj.attr('src', newUrl.toString());
                     } else {
                         obj.remove();
@@ -394,7 +388,7 @@ export class HelpPanel {
                 }
             });
         }
-        
+
         if (styleUri) {
             $('body').append(`\n<link rel="stylesheet" href="${styleUri.toString(true)}"></link>`);
         }
