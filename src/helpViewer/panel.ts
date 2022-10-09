@@ -146,6 +146,9 @@ export class HelpPanel {
         viewer ||= config().get<string>('session.viewers.viewColumn.helpPanel');
         const viewColumn = asViewColumn(viewer);
 
+        // get or create webview:
+        const webview = this.getWebview(preserveFocus, viewColumn);
+
         // make sure helpFile is not a promise:
         helpFile = await helpFile;
 
@@ -153,9 +156,6 @@ export class HelpPanel {
 
         // modify html
         helpFile = await this.pimpMyHelp(helpFile, this.webviewStyleUri, this.webviewScriptUri);
-
-        // get or create webview:
-        const webview = this.getWebview(preserveFocus, viewColumn);
 
         // actually show the help page
         webview.html = helpFile.html;
@@ -360,33 +360,34 @@ export class HelpPanel {
             // replace katex js/css urls with http://localhost:<port>/ origin
             // and remove others.
             const url = new URL(helpFile.url);
-            const externalUri = (await vscode.env.asExternalUri(vscode.Uri.parse(url.origin))).toString(true);
 
-            $('link').each((i, e) => {
-                const obj = $(e);
+            for (const elem of $('link')) {
+                const obj = $(elem);
                 const linkUrl = obj.attr('href');
                 if (linkUrl) {
                     if (linkUrl.includes('katex')) {
-                        const newUrl = new URL(linkUrl, externalUri);
-                        obj.attr('href', newUrl.toString());
+                        const newUrl = new URL(linkUrl, url.origin);
+                        const newUri = await vscode.env.asExternalUri(vscode.Uri.parse(newUrl.toString()));
+                        obj.attr('href', newUri.toString(true));
                     } else {
                         obj.remove();
                     }
                 }
-            });
+            }
 
-            $('script').each((i, e) => {
-                const obj = $(e);
+            for (const elem of $('script')) {
+                const obj = $(elem);
                 const scriptUrl = obj.attr('src');
                 if (scriptUrl) {
                     if (scriptUrl.includes('katex')) {
-                        const newUrl = new URL(scriptUrl, externalUri);
-                        obj.attr('src', newUrl.toString());
+                        const newUrl = new URL(scriptUrl, url.origin);
+                        const newUri = await vscode.env.asExternalUri(vscode.Uri.parse(newUrl.toString()));
+                        obj.attr('src', newUri.toString(true));
                     } else {
                         obj.remove();
                     }
                 }
-            });
+            }
         }
 
         if (styleUri) {
