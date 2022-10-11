@@ -22,6 +22,7 @@ class RMarkdownPreview extends vscode.Disposable {
     fileWatcher: fs.FSWatcher | undefined;
     autoRefresh: boolean;
     mtime: number;
+    isRendering: boolean;
 
     constructor(title: string, cp: DisposableProcess | undefined, panel: vscode.WebviewPanel,
         resourceViewColumn: vscode.ViewColumn, outputUri: vscode.Uri, filePath: string,
@@ -40,6 +41,7 @@ class RMarkdownPreview extends vscode.Disposable {
         this.outputUri = outputUri;
         this.autoRefresh = autoRefresh;
         this.mtime = fs.statSync(filePath).mtime.getTime();
+        this.isRendering = false;
         void this.refreshContent(useCodeTheme);
         this.startFileWatcher(RMarkdownPreviewManager, filePath);
     }
@@ -61,7 +63,7 @@ class RMarkdownPreview extends vscode.Disposable {
         let fsTimeout: NodeJS.Timeout | null;
         const fileWatcher = fs.watch(filePath, {}, () => {
             const mtime = fs.statSync(filePath).mtime.getTime();
-            if (this.autoRefresh && !fsTimeout && mtime !== this.mtime) {
+            if (this.autoRefresh && !this.isRendering && !fsTimeout && mtime !== this.mtime) {
                 fsTimeout = setTimeout(() => { fsTimeout = null; }, 1000);
                 this.mtime = mtime;
                 void RMarkdownPreviewManager.updatePreview(this);
@@ -285,6 +287,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         toUpdate?.cp?.dispose();
 
         if (toUpdate && previewUri) {
+            toUpdate.isRendering = true;
             const childProcess: DisposableProcess | void = await this.previewDocument(previewUri, toUpdate.title).catch(() => {
                 void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
                 this.rMarkdownOutput.show(true);
@@ -296,6 +299,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             }
 
             this.refreshPanel(toUpdate);
+            toUpdate.isRendering = false;
         }
 
     }
