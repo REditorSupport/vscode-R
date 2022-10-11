@@ -4,6 +4,22 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.6.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.6.0)
+
+New Features:
+
+* A new command "R: Generate C/C++ Configuration" is added to support auto-generating [`c_cpp_properties.json`](https://code.visualstudio.com/docs/cpp/customize-default-settings-cpp) in an R package with C/C++ code for [C/C++](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools) Extension to provide IntelliSense. (#1205, thanks @nx10)
+
+Enhancements:
+
+* Support showing KeTeX formula in help viewer. (#1213)
+
+Fixes:
+
+* Fixed empty line at the end of help pages as clickable example. (#1194)
+* Avoid code highlighting in DESCRIPTION files in help viewer as code examples. (#1199)
+* Saving a rmd file no longer triggers the preview to refresh if it is still rendering. (#1219)
+
 ## [2.5.3](https://github.com/REditorSupport/vscode-R/releases/tag/v2.5.3)
 
 Enhancements:
