@@ -33,6 +33,8 @@
     "onLanguage:rd",
     "onLanguage:rmd",
     "onLanguage:debian-control.r",
+    "onLanguage:namespace.r",
+    "onLanguage:buildignore.r",
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
     "onCommand:r.createRTerm",
     "onCommand:r.runSource",
@@ -183,6 +185,26 @@
           ".lintr"
         ],
         "configuration": "./language/dcf-configuration.json"
+      },
+      {
+        "id": "namespace.r",
+        "aliases": [
+          "R NAMESPACE"
+        ],
+        "filenames": [
+          "NAMESPACE"
+        ],
+        "configuration": "./language/rnamespace-configuration.json"
+      },
+      {
+        "id": "buildignore.r",
+        "aliases": [
+          "R ignore"
+        ],
+        "filenames": [
+          ".Rbuildignore"
+        ],
+        "configuration": "./language/rbuildignore-configuration.json"
       }
     ],
     "snippets": [
@@ -287,6 +309,16 @@
         "injectTo": [
           "source.cpp"
         ]
+      },
+      {
+        "language": "namespace.r",
+        "scopeName": "namespace.r",
+        "path": "./syntax/rnamespace.json"
+      },
+      {
+        "language": "buildignore.r",
+        "scopeName": "buildignore.r",
+        "path": "./syntax/rbuildignore.json"
       }
     ],
     "commands": [
