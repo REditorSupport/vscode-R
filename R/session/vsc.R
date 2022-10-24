@@ -28,6 +28,7 @@ load_settings <- function() {
     vsc.object_timeout = session$objectTimeout,
     vsc.globalenv = session$watchGlobalEnvironment,
     vsc.plot = setting(session$viewers$viewColumn$plot, Disable = FALSE),
+    vsc.dev.args = c(width = plot$devArgs$width, height = plot$devArgs$height),
     vsc.browser = setting(session$viewers$viewColumn$browser, Disable = FALSE),
     vsc.viewer = setting(session$viewers$viewColumn$viewer, Disable = FALSE),
     vsc.page_viewer = setting(session$viewers$viewColumn$pageViewer, Disable = FALSE),
