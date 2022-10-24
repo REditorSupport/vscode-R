@@ -134,20 +134,20 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                 break;
             }
             case 'browser': {
-                if (request.url && request.title && request.viewer) {
+                if (request.url && request.title && request.viewer !== undefined) {
                     await showBrowser(request.url, request.title, request.viewer);
                 }
                 break;
             }
             case 'webview': {
-                if (request.file && request.title && request.viewer) {
+                if (request.file && request.title && request.viewer !== undefined) {
                     await showWebView(request.file, request.title, request.viewer);
                 }
                 break;
             }
             case 'dataview': {
                 if (request.source && request.type && request.title && request.file
-                    && request.viewer) {
+                    && request.viewer !== undefined) {
                     await showDataView(request.source,
                         request.type, request.title, request.file, request.viewer);
                 }
