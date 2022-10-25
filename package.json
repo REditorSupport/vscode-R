@@ -1778,12 +1778,24 @@
             "width": {
               "type": "number",
               "description": "Width of the graphic device.",
-              "default": 800
+              "default": 480
             },
             "height": {
               "type": "number",
               "description": "Height of the graphic device.",
-              "default": 1200
+              "default": 480
+            },
+            "units": {
+              "type": "string",
+              "default": "px"
+            },
+            "pointsize": {
+              "type": "number",
+              "default": 12
+            },
+            "bg": {
+              "type": "string",
+              "default": "white"
             }
           },
           "additionalProperties": false
