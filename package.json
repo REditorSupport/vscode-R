@@ -442,6 +442,11 @@
         "command": "r.previewEnvironment"
       },
       {
+        "title": "Create NEWS",
+        "category": "R Package",
+        "command": "r.useNewsMd"
+      },
+      {
         "title": "Initialise A Git Repository",
         "category": "R Package",
         "command": "r.useGit"

@@ -123,6 +123,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.release': () => rTerminal.runTextInTerm('devtools::release()'),
         'r.useVersion': () => rTerminal.runTextInTerm('usethis::use_version()'),
         'r.useCranComments': () => rTerminal.runTextInTerm('usethis::use_cran_comments()'),
+        'r.useNewsMd': () => rTerminal.runTextInTerm('usethis::use_news_md()'),
         'r.useGit': () => rTerminal.runTextInTerm('usethis::use_git()'),
         'r.useGitHub': () => rTerminal.runTextInTerm('usethis::use_github()'),
 
