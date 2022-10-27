@@ -116,6 +116,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.createLintrConfig': lintrConfig.createLintrConfig,
         'r.generateCCppProperties': cppProperties.generateCppProperties,
         'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
+        'r.devMode': () => rTerminal.runTextInTerm('devtools::dev_mode()'),
         'r.spellCheck': () => rTerminal.runTextInTerm('devtools::spell_check()'),
         'r.release': () => rTerminal.runTextInTerm('devtools::release()'),
 

@@ -447,6 +447,11 @@
         "command": "r.loadAll"
       },
       {
+        "title": "Toggle Development Mode",
+        "category": "R Package",
+        "command": "r.devMode"
+      },
+      {
         "title": "Spell check",
         "category": "R Package",
         "command": "r.spellCheck"
