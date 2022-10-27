@@ -452,6 +452,11 @@
         "command": "r.release"
       },
       {
+        "title": "Spell check",
+        "category": "R Package",
+        "command": "r.spellCheck"
+      },
+      {
         "title": "Build",
         "category": "R Package",
         "command": "r.build"

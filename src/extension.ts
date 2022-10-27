@@ -117,6 +117,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.generateCCppProperties': cppProperties.generateCppProperties,
         'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
         'r.release': () => rTerminal.runTextInTerm('devtools::release()'),
+        'r.spellCheck': () => rTerminal.runTextInTerm('devtools::spell_check()'),
 
         // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758
         'r.build': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build'),
