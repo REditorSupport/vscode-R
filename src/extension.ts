@@ -126,6 +126,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.useNewsMd': () => rTerminal.runTextInTerm('usethis::use_news_md()'),
         'r.useGit': () => rTerminal.runTextInTerm('usethis::use_git()'),
         'r.useGitHub': () => rTerminal.runTextInTerm('usethis::use_github()'),
+        'r.pkgdownBuildSite': () => rTerminal.runTextInTerm('pkgdown::build_site()'),
 
         // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758
         'r.build': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build'),

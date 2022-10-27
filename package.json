@@ -467,6 +467,11 @@
         "command": "r.useCranComments"
       },
       {
+        "title": "Build {pkgdown} Web Site",
+        "category": "R Package",
+        "command": "r.pkgdownBuildSite"
+      },
+      {
         "title": "Load All",
         "category": "R Package",
         "command": "r.loadAll"
