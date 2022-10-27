@@ -447,6 +447,11 @@
         "command": "r.loadAll"
       },
       {
+        "title": "Release",
+        "category": "R Package",
+        "command": "r.release"
+      },
+      {
         "title": "Build",
         "category": "R Package",
         "command": "r.build"
@@ -1767,7 +1772,7 @@
           "default": false,
           "description": "Default boolean value for automatically sharing R browser ports with guests."
         },
-        "r.plot.devArgs" :{
+        "r.plot.devArgs": {
           "type": "object",
           "markdownDescription": "The arguments for the png device to replay user graphics to show in VSCode. Requires `#r.plot.useHttpgd#` to be set to `false`. \n\nChanges the option `vsc.dev.args` in R.",
           "default": {

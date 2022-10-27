@@ -70,7 +70,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.thead': () => rTerminal.runSelectionOrWord(['t', 'head']),
         'r.names': () => rTerminal.runSelectionOrWord(['names']),
         'r.runSource': () => { void rTerminal.runSource(false); },
-        'r.runSelection':  (code?: string) => { code ? void rTerminal.runTextInTerm(code) : void rTerminal.runSelection(); },
+        'r.runSelection': (code?: string) => { code ? void rTerminal.runTextInTerm(code) : void rTerminal.runSelection(); },
         'r.runFromLineToEnd': rTerminal.runFromLineToEnd,
         'r.runFromBeginningToLine': rTerminal.runFromBeginningToLine,
         'r.runSelectionRetainCursor': rTerminal.runSelectionRetainCursor,
@@ -109,13 +109,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // file creation (under file submenu)
         'r.rmarkdown.newFileDraft': () => rmarkdown.newDraft(),
-        'r.newFileDocument': () => vscode.workspace.openTextDocument({language: 'r'}).then((v) => vscode.window.showTextDocument(v)),
+        'r.newFileDocument': () => vscode.workspace.openTextDocument({ language: 'r' }).then((v) => vscode.window.showTextDocument(v)),
 
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
         'r.createLintrConfig': lintrConfig.createLintrConfig,
         'r.generateCCppProperties': cppProperties.generateCppProperties,
         'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
+        'r.release': () => rTerminal.runTextInTerm('devtools::release()'),
 
         // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758
         'r.build': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build'),
