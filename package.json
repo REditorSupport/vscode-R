@@ -447,6 +447,11 @@
         "command": "r.useVersion"
       },
       {
+        "title": "CRAN Submission Comments",
+        "category": "R Package",
+        "command": "r.useCranComments"
+      },
+      {
         "title": "Load All",
         "category": "R Package",
         "command": "r.loadAll"
