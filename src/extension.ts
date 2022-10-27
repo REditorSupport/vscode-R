@@ -9,6 +9,8 @@ import path = require('path');
 // functions etc. implemented in this extension
 import * as preview from './preview';
 import * as rGitignore from './rGitignore';
+import * as lintrConfig from './lintrConfig';
+import * as cppProperties from './cppProperties';
 import * as rTerminal from './rTerminal';
 import * as session from './session';
 import * as util from './util';
@@ -21,6 +23,7 @@ import * as completions from './completions';
 import * as rShare from './liveShare';
 import * as httpgdViewer from './plotViewer';
 import * as languageService from './languageService';
+import { RTaskProvider } from './tasks';
 
 
 // global objects used in other files
@@ -29,7 +32,7 @@ export const tmpDir = (): string => util.getDir(path.join(homeExtDir(), 'tmp'));
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
-export let enableSessionWatcher: boolean = undefined;
+export let enableSessionWatcher: boolean | undefined = undefined;
 export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
 export let rmdPreviewManager: rmarkdown.RMarkdownPreviewManager | undefined = undefined;
 export let rmdKnitManager: rmarkdown.RMarkdownKnitManager | undefined = undefined;
@@ -67,7 +70,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.thead': () => rTerminal.runSelectionOrWord(['t', 'head']),
         'r.names': () => rTerminal.runSelectionOrWord(['names']),
         'r.runSource': () => { void rTerminal.runSource(false); },
-        'r.runSelection': rTerminal.runSelection,
+        'r.runSelection':  (code?: string) => { code ? void rTerminal.runTextInTerm(code) : void rTerminal.runSelection(); },
         'r.runFromLineToEnd': rTerminal.runFromLineToEnd,
         'r.runFromBeginningToLine': rTerminal.runFromBeginningToLine,
         'r.runSelectionRetainCursor': rTerminal.runSelectionRetainCursor,
@@ -77,10 +80,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.runSourcewithEcho': () => { void rTerminal.runSource(true); },
 
         // rmd related
-        'r.knitRmd': () => { void rmdKnitManager.knitRmd(false, undefined); },
-        'r.knitRmdToPdf': () => { void rmdKnitManager.knitRmd(false, 'pdf_document'); },
-        'r.knitRmdToHtml': () => { void rmdKnitManager.knitRmd(false, 'html_document'); },
-        'r.knitRmdToAll': () => { void rmdKnitManager.knitRmd(false, 'all'); },
+        'r.knitRmd': () => { void rmdKnitManager?.knitRmd(false, undefined); },
+        'r.knitRmdToPdf': () => { void rmdKnitManager?.knitRmd(false, 'pdf_document'); },
+        'r.knitRmdToHtml': () => { void rmdKnitManager?.knitRmd(false, 'html_document'); },
+        'r.knitRmdToAll': () => { void rmdKnitManager?.knitRmd(false, 'all'); },
         'r.selectCurrentChunk': rmarkdown.selectCurrentChunk,
         'r.runCurrentChunk': rmarkdown.runCurrentChunk,
         'r.runPreviousChunk': rmarkdown.runPreviousChunk,
@@ -93,22 +96,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.goToNextChunk': rmarkdown.goToNextChunk,
         'r.runChunks': rTerminal.runChunksInTerm,
 
-        'r.rmarkdown.setKnitDirectory': () => rmdKnitManager.setKnitDir(),
-        'r.rmarkdown.showPreviewToSide': () => rmdPreviewManager.previewRmd(vscode.ViewColumn.Beside),
-        'r.rmarkdown.showPreview': (uri: vscode.Uri) => rmdPreviewManager.previewRmd(vscode.ViewColumn.Active, uri),
-        'r.rmarkdown.preview.refresh': () => rmdPreviewManager.updatePreview(),
-        'r.rmarkdown.preview.openExternal': () => void rmdPreviewManager.openExternalBrowser(),
-        'r.rmarkdown.preview.showSource': () => rmdPreviewManager.showSource(),
-        'r.rmarkdown.preview.toggleStyle': () => rmdPreviewManager.toggleTheme(),
-        'r.rmarkdown.preview.enableAutoRefresh': () => rmdPreviewManager.enableAutoRefresh(),
-        'r.rmarkdown.preview.disableAutoRefresh': () => rmdPreviewManager.disableAutoRefresh(),
+        'r.rmarkdown.newDraft': () => rmarkdown.newDraft(),
+        'r.rmarkdown.setKnitDirectory': () => rmdKnitManager?.setKnitDir(),
+        'r.rmarkdown.showPreviewToSide': () => rmdPreviewManager?.previewRmd(vscode.ViewColumn.Beside),
+        'r.rmarkdown.showPreview': (uri: vscode.Uri) => rmdPreviewManager?.previewRmd(vscode.ViewColumn.Active, uri),
+        'r.rmarkdown.preview.refresh': () => rmdPreviewManager?.updatePreview(),
+        'r.rmarkdown.preview.openExternal': () => void rmdPreviewManager?.openExternalBrowser(),
+        'r.rmarkdown.preview.showSource': () => rmdPreviewManager?.showSource(),
+        'r.rmarkdown.preview.toggleStyle': () => rmdPreviewManager?.toggleTheme(),
+        'r.rmarkdown.preview.enableAutoRefresh': () => rmdPreviewManager?.enableAutoRefresh(),
+        'r.rmarkdown.preview.disableAutoRefresh': () => rmdPreviewManager?.disableAutoRefresh(),
+
+        // file creation (under file submenu)
+        'r.rmarkdown.newFileDraft': () => rmarkdown.newDraft(),
+        'r.newFileDocument': () => vscode.workspace.openTextDocument({language: 'r'}).then((v) => vscode.window.showTextDocument(v)),
 
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
+        'r.createLintrConfig': lintrConfig.createLintrConfig,
+        'r.generateCCppProperties': cppProperties.generateCppProperties,
         'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
 
         // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758
         'r.build': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build'),
+        'r.buildBinary': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build Binary'),
         'r.check': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Check'),
         'r.document': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Document'),
         'r.install': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Install'),
@@ -122,8 +133,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // workspace viewer
         'r.workspaceViewer.refreshEntry': () => rWorkspace?.refresh(),
-        'r.workspaceViewer.view': (node: workspaceViewer.WorkspaceItem) => workspaceViewer.viewItem(node.label),
-        'r.workspaceViewer.remove': (node: workspaceViewer.WorkspaceItem) => workspaceViewer.removeItem(node.label),
+        'r.workspaceViewer.view': (node: workspaceViewer.GlobalEnvItem) => node.label && workspaceViewer.viewItem(node.label),
+        'r.workspaceViewer.remove': (node: workspaceViewer.GlobalEnvItem) => node.label && workspaceViewer.removeItem(node.label),
         'r.workspaceViewer.clear': workspaceViewer.clearWorkspace,
         'r.workspaceViewer.load': workspaceViewer.loadWorkspace,
         'r.workspaceViewer.save': workspaceViewer.saveWorkspace,
@@ -134,8 +145,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // (help related commands are registered in rHelp.initializeHelp)
     };
-    for (const key in commands) {
-        context.subscriptions.push(vscode.commands.registerCommand(key, commands[key]));
+    for (const [key, value] of Object.entries(commands)) {
+        context.subscriptions.push(vscode.commands.registerCommand(key, value));
     }
 
 
@@ -203,26 +214,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     await rShare.initLiveShare(context);
 
     // register task provider
-    const type = 'R';
-    vscode.tasks.registerTaskProvider(type, {
-        provideTasks() {
-            return [
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Build', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::build()"')),
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Check', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::check()"')),
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Document', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::document()"')),
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Install', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::install()"')),
-                new vscode.Task({ type: type }, vscode.TaskScope.Workspace, 'Test', 'R',
-                    new vscode.ShellExecution('Rscript -e "devtools::test()"')),
-            ];
-        },
-        resolveTask(task: vscode.Task) {
-            return task;
-        }
-    });
+    const taskProvider = new RTaskProvider();
+    vscode.tasks.registerTaskProvider(taskProvider.type, taskProvider);
 
     // deploy session watcher (if configured by user)
     if (enableSessionWatcher) {

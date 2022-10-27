@@ -4,6 +4,140 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.6.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.6.0)
+
+New Features:
+
+* A new command "R: Generate C/C++ Configuration" is added to support auto-generating [`c_cpp_properties.json`](https://code.visualstudio.com/docs/cpp/customize-default-settings-cpp) in an R package with C/C++ code for [C/C++](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools) Extension to provide IntelliSense. (#1205, thanks @nx10)
+
+Enhancements:
+
+* Support showing KeTeX formula in help viewer. (#1213)
+
+Fixes:
+
+* Fixed empty line at the end of help pages as clickable example. (#1194)
+* Avoid code highlighting in DESCRIPTION files in help viewer as code examples. (#1199)
+* Saving a rmd file no longer triggers the preview to refresh if it is still rendering. (#1219)
+
+## [2.5.3](https://github.com/REditorSupport/vscode-R/releases/tag/v2.5.3)
+
+Enhancements:
+
+* Reload help pages on refresh. (#1188)
+* Upgrade to vscode-languageclient 8.0.2. (#1173)
+
+Fixes:
+
+* Remove `encoding` from knitting so that renderers that do not have an encoding parameter (e.g. `quarto::quarto_render()`) now work properly. (#1167)
+
+## [2.5.2](https://github.com/REditorSupport/vscode-R/releases/tag/v2.5.2)
+
+New Features:
+
+* R help viewer now highlights code sections on hover and user can click the code to copy it to the clipboard, or press `ctrl+click` (Windows and Linux) or `cmd+click` (macOS) to send it to R terminal by default. A new setting `r.helpPanel.clickCodeExamples` is added to allow customizing the click behavior. (#1138)
+* A new command `Create .lintr` is added. (#1112)
+
+Enhancements:
+
+* R and Rmd files are added to `Create: New File`. (#1119)
+* Improved data viewer column resizing. (#1121)
+
+Fixes:
+
+* Hide environment values in R Markdown preview to prevent accidental deletion (#1117)
+* Opening and closing a list item in the workspace viewer treeview now works properly. (#1150)
+
+## [2.5.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.5.0)
+
+Announcement:
+
+* [vscode-R](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r) has been transferred to `REditorSupport` as the publisher in the VS Code Marketplace. The unique identifier has been updated to `REditorSupport.r`. (#690)
+* [R in Visual Studio Code](https://code.visualstudio.com/docs/languages/r) topic is added to the VS Code documentation.
+
+New Features:
+
+* A new setting `r.libPaths` is added to support additional library paths to be appended to `.libPaths()` when R background processes (R language server and help server) are launched. It could be useful for projects with [renv](https://rstudio.github.io/renv/articles/renv.html) enabled where required packages (e.g. `languageserver` and `jsonlite`) to use vscode-R are only installed in other location. For more details, checkout the [wiki](https://github.com/REditorSupport/vscode-R/wiki/Working-with-renv-enabled-projects). (#1071, #1097, #1098)
+
+Enhancements:
+
+* The R package build task is separated into Build and Build Binary tasks. (#1029, thanks @Yunuuuu)
+* Hide smart knit environment variables to prevent accidental deletion. (#1060)
+* A new setting `r.session.data.pageSize` is added to support adjusting the page size of the data viewer. The default is now 500. (#1068)
+* The check for languageserver package installation is improved and the prompt could be disabled. (#1071)
+* The R Markdown code chunk snippet supports language choice. (#1082, thanks @jooyoungseo)
+* It will prompt instead of showing empty choice when no R Markdown templates are found. (#1089)
+
+Fixes:
+
+* Guard against evaluation of active bindings in the global environment. (#1038)
+* The `http` prefix is unnecessary and removed from several code snippets. (#1084, #1085, thanks @jooyoungseo)
+* R Markdown knit and preview scripts now use `loadNamespace()` instead of `requireNamespace()` to fail early if necessary packages are unavailable. (#1086)
+
+## [2.4.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.4.0)
+
+New Features:
+
+* Added "R Markdown: New Draft" command to choose a template for a new R Markdown document. (#984)
+* Added *Attached Namespaces* and *Loaded Namespaces* to the workspace viewer. (#1022)
+
+Enhancements:
+
+* `spawn` is consistently used to run R scripts and commands. (#985)
+* Added a problemMatcher for testthat output from Test task. (#989, thanks @gowerc)
+* Code chunk snippets now preserve selected text. (#1001)
+* Added more useful Shiny and R Markdown snippets. (#1009, #1012, thanks @jooyoungseo).
+* Provides optional `code` argument to `r.runSelection` command for other extensions to execute interactive R code. (#1017, thanks @jjallaire)
+* Supports lambda function declaration in syntax higlighting. (#1025)
+
+Fixes:
+
+* Fixed code detection with mixed quotes. (#988, thanks @gowerc)
+* Fixed syntax highlighting for variables starting with `function`. (#992, thanks @gowerc)
+* Fixed R task definition and `resolveTask`. (#994)
+* Fixed auto port forwarding for httpgd plot viewer in LiveShare session. (#1026)
+
+## [2.3.8](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.8)
+
+Fixes:
+
+* Fixes languageserver detection failure on Windows by avoiding rpath quoting. (#981)
+
+## [2.3.7](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.7)
+
+Note:
+
+* After v2.3.4, httpgd plot viewer requires `httpgd` 1.2.0 or later. If the plot viewer shows 404 error, installing the latest release of `httpgd` should resolve the problem. (#972)
+
+Enhancements:
+
+* Data viewer supports [Apache Arrow Table](https://arrow.apache.org/docs/r) and `r.session.data.rowLimit` setting is added to limit the number of rows to show. (#945, thanks @eitsupi)
+* R gitignore file is updated and "R: Create gitignore" also supports multi-root workspace. (#949, thanks @eitsupi).
+* Httpgd plot viewer has a delay before refreshing to avoid redrawing too often. (#956)
+* Shell commands used in tasks use strong quoting. (#964, thanks @shrektan)
+* User will be prompted to install `languageserver` if the package is missing. (#965, @shrektan)
+* DCF syntax is updated to support syntax highlighting of `.lintr`. (#970, thanks @eitsupi)
+* Column headers show the class and type of each column in tooltips. (#974, thanks @eitsupi)
+* Extension is activated if the workspace folder contains `*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}` at any level of sub-folders. (#979)
+
+Fixes:
+
+* Fix typo in command line arguments. (#954, thanks @achey2016)
+* R Markdown commenting uses HTML-style comments outside code blocks. (#958)
+* R Markdown rendering process gets `LANG` environment variable to properly handle unicode characters. (#961, thanks @shrektan)
+
+## [2.3.6](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.6)
+
+Enhancements:
+
+* Added raw string syntax. (#922)
+* Added support for both single and double brackets in code-server's URI template. (#934, thanks @benz0li)
+
+Fixes:
+
+* Fixed syntax highlighting so that variables and function parameters are highlighted more consistently. (#939)
+* R processes are now properly terminated on extension deactivation. (#941, thanks @albertosantini and @Yunuuuu)
+
 ## [2.3.5](https://github.com/REditorSupport/vscode-R/releases/tag/v2.3.5)
 
 Enhancements:

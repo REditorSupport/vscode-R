@@ -2,10 +2,10 @@
   "name": "r",
   "displayName": "R",
   "description": "R Extension for Visual Studio Code",
-  "version": "2.3.5",
+  "version": "2.6.0",
   "author": "REditorSupport",
   "license": "SEE LICENSE IN LICENSE",
-  "publisher": "Ikuyadeu",
+  "publisher": "REditorSupport",
   "icon": "images/Rlogo.png",
   "repository": {
     "type": "git",
@@ -26,14 +26,14 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": "^1.67.0"
   },
   "activationEvents": [
     "onLanguage:r",
     "onLanguage:rd",
     "onLanguage:rmd",
     "onLanguage:debian-control.r",
-    "workspaceContains:*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
+    "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
     "onCommand:r.createRTerm",
     "onCommand:r.runSource",
     "onCommand:r.knitRmd",
@@ -54,6 +54,8 @@
     "onCommand:r.goToPreviousChunk",
     "onCommand:r.goToNextChunk",
     "onCommand:r.createGitignore",
+    "onCommand:r.createLintrConfig",
+    "onCommand:r.generateCCppProperties",
     "onCommand:r.runCommandWithSelectionOrWord",
     "onCommand:r.runCommandWithEditorPath",
     "onCommand:r.runCommand",
@@ -177,7 +179,8 @@
           "R DCF"
         ],
         "filenames": [
-          "DESCRIPTION"
+          "DESCRIPTION",
+          ".lintr"
         ],
         "configuration": "./language/dcf-configuration.json"
       }
@@ -290,32 +293,43 @@
       {
         "command": "r.workspaceViewer.refreshEntry",
         "title": "Manual Refresh",
-        "icon": "$(refresh)"
+        "icon": "$(refresh)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.view",
         "title": "View",
-        "icon": "$(open-preview)"
+        "icon": "$(open-preview)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.clear",
         "title": "Clear environment",
-        "icon": "$(clear-all)"
+        "icon": "$(clear-all)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.remove",
         "title": "Remove",
-        "icon": "$(close)"
+        "icon": "$(close)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.save",
         "title": "Save workspace",
-        "icon": "$(save)"
+        "icon": "$(save)",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.workspaceViewer.load",
         "title": "Load workspace",
-        "icon": "$(folder-opened)"
+        "icon": "$(folder-opened)",
+        "category": "R Workspace Viewer"
+      },
+      {
+        "command": "r.workspaceViewer.package.showQuickPick",
+        "title": "Show QuickPick",
+        "category": "R Workspace Viewer"
       },
       {
         "command": "r.browser.refresh",
@@ -331,7 +345,8 @@
       },
       {
         "command": "r.showHelp",
-        "title": "R: Show help"
+        "title": "Show help",
+        "category": "R"
       },
       {
         "command": "editor.action.webvieweditor.showFind",
@@ -412,6 +427,11 @@
         "command": "r.createGitignore"
       },
       {
+        "title": "Create .lintr to the workspace",
+        "category": "R",
+        "command": "r.createLintrConfig"
+      },
+      {
         "title": "Preview Dataframe",
         "category": "R",
         "command": "r.previewDataframe"
@@ -432,6 +452,11 @@
         "command": "r.build"
       },
       {
+        "title": "Build Binary",
+        "category": "R Package",
+        "command": "r.buildBinary"
+      },
+      {
         "title": "Check",
         "category": "R Package",
         "command": "r.check"
@@ -450,6 +475,11 @@
         "title": "Test",
         "category": "R Package",
         "command": "r.test"
+      },
+      {
+        "title": "Generate C/C++ Configuration",
+        "category": "R Package",
+        "command": "r.generateCCppProperties"
       },
       {
         "title": "Attach Active Terminal",
@@ -537,8 +567,25 @@
         "command": "r.goToNextChunk"
       },
       {
+        "title": "New Draft",
+        "category": "R Markdown",
+        "command": "r.rmarkdown.newDraft"
+      },
+      {
+        "title": "R Markdown (rmd)",
+        "category": "R Markdown",
+        "when": false,
+        "command": "r.rmarkdown.newFileDraft"
+      },
+      {
+        "title": "R Document (r)",
+        "category": "R",
+        "when": false,
+        "command": "r.newFileDocument"
+      },
+      {
         "command": "r.rmarkdown.setKnitDirectory",
-        "title": "R: Set Knit directory",
+        "title": "Set Knit directory",
         "icon": "$(zap)",
         "category": "R Markdown"
       },
@@ -597,113 +644,133 @@
       },
       {
         "command": "r.helpPanel.back",
-        "title": "R Help Panel: Go Back",
+        "title": "Go Back",
+        "category": "R Help Panel",
         "enablement": "r.helpPanel.canGoBack",
         "icon": "$(arrow-left)"
       },
       {
         "command": "r.helpPanel.forward",
-        "title": "R Help Panel: Go Forward",
+        "title": "Go Forward",
+        "category": "R Help Panel",
         "enablement": "r.helpPanel.canGoForward",
         "icon": "$(arrow-right)"
       },
       {
         "command": "r.helpPanel.openExternal",
-        "title": "R Help Panel: Open in external browser",
+        "title": "Open in external browser",
+        "category": "R Help Panel",
         "icon": "$(link-external)"
       },
       {
         "title": "Search Package Topics",
+        "category": "R Help Panel",
         "command": "r.helpPanel.searchPackage",
         "icon": "$(search)"
       },
       {
         "title": "Open Topic in new Panel",
+        "category": "R Help Panel",
         "command": "r.helpPanel.openInNewPanel",
         "icon": "$(add)"
       },
       {
         "title": "Clear Cached Files",
+        "category": "R Help Panel",
         "command": "r.helpPanel.clearCache",
         "icon": "$(refresh)"
       },
       {
         "title": "Filter Packages",
+        "category": "R Help Panel",
         "command": "r.helpPanel.filterPackages",
         "icon": "$(filter)"
       },
       {
         "title": "Remove from favorites",
+        "category": "R Help Panel",
         "command": "r.helpPanel.removeFromFavorites",
         "icon": "$(star-full)"
       },
       {
         "title": "Add to favorites",
+        "category": "R Help Panel",
         "command": "r.helpPanel.addToFavorites",
         "icon": "$(star-empty)"
       },
       {
         "title": "Show all packages",
+        "category": "R Help Panel",
         "command": "r.helpPanel.showAllPackages",
         "icon": "$(star-full)"
       },
       {
         "title": "Show only favorites",
+        "category": "R Help Panel",
         "command": "r.helpPanel.showOnlyFavorites",
         "icon": "$(star-empty)"
       },
       {
         "title": "Remove Package",
+        "category": "R Help Panel",
         "command": "r.helpPanel.removePackage",
         "icon": "$(trash)"
       },
       {
         "title": "Update Installed Packages",
+        "category": "R Help Panel",
         "command": "r.helpPanel.updateInstalledPackages",
         "icon": "$(clone)"
       },
       {
         "title": "Update/reinstall Package",
+        "category": "R Help Panel",
         "command": "r.helpPanel.updatePackage",
         "icon": "$(cloud-download)"
       },
       {
         "title": "Install multiple packages",
+        "category": "R Help Panel",
         "command": "r.helpPanel.installPackages",
         "icon": "$(expand-all)"
       },
       {
         "title": "Show QuickPick",
+        "category": "R Help Panel",
         "command": "r.helpPanel.showQuickPick",
         "icon": "$(zap)"
       },
       {
         "title": "Summarize Identical Topics",
+        "category": "R Help Panel",
         "command": "r.helpPanel.summarizeTopics",
         "icon": "$(fold)"
       },
       {
         "title": "Don't Summarize Identical Topics",
+        "category": "R Help Panel",
         "command": "r.helpPanel.unsummarizeTopics",
         "icon": "$(unfold)"
       },
       {
         "title": "Open help for selection",
-        "category": "R",
+        "category": "R Help Panel",
         "command": "r.helpPanel.openForSelection"
       },
       {
         "title": "Open help for path",
-        "category": "R",
+        "category": "R Help Panel",
         "command": "r.helpPanel.openForPath"
       },
       {
         "command": "r.liveShare.toggle",
+        "category": "R Live Share",
         "title": "Toggle"
       },
       {
         "command": "r.liveShare.retry",
         "title": "Retry connection to Live Share service",
+        "category": "R Live Share",
         "icon": "$(refresh)"
       },
       {
@@ -1194,6 +1261,16 @@
         {
           "command": "r.knitRmdToAll"
         }
+      ],
+      "file/newFile": [
+        {
+          "group": "R",
+          "command": "r.rmarkdown.newFileDraft"
+        },
+        {
+          "group": "R",
+          "command": "r.newFileDocument"
+        }
       ]
     },
     "submenus": [
@@ -1210,32 +1287,32 @@
         "r.rpath.windows": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable for Windows. Must be \"vanilla\" R, not radian etc.!"
+          "description": "Path to an R executable to launch R background processes (Windows). Must be \"vanilla\" R, not radian etc.!"
         },
         "r.rpath.mac": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable for macOS. Must be \"vanilla\" R, not radian etc.!"
+          "description": "Path to an R executable to launch R background processes (macOS). Must be \"vanilla\" R, not radian etc.!"
         },
         "r.rpath.linux": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable for Linux. Must be \"vanilla\" R, not radian etc.!"
+          "description": "Path to an R executable to launch R background processes (Linux). Must be \"vanilla\" R, not radian etc.!"
         },
         "r.rterm.windows": {
           "type": "string",
           "default": "",
-          "description": "R path for Windows. Can also be radian etc."
+          "description": "R path for interactive terminals (Windows). Can also be radian etc."
         },
         "r.rterm.mac": {
           "type": "string",
           "default": "",
-          "description": "R path for macOS. Can also be radian etc."
+          "description": "R path for interactive terminals (macOS). Can also be radian etc."
         },
         "r.rterm.linux": {
           "type": "string",
           "default": "",
-          "description": "R path for Linux. Can also be radian etc."
+          "description": "R path for interactive terminals (Linux). Can also be radian etc."
         },
         "r.rterm.option": {
           "type": "array",
@@ -1248,6 +1325,14 @@
             "type": "string"
           }
         },
+        "r.libPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Additional library paths to launch R background processes (R languageserver, help server, etc.). These paths will be appended to `.libPaths()` on process startup. It could be useful for projects with [renv](https://rstudio.github.io/renv/index.html) enabled."
+        },
         "r.lsp.enabled": {
           "type": "boolean",
           "default": true,
@@ -1255,23 +1340,31 @@
         },
         "r.lsp.args": {
           "type": "array",
+          "items": {
+            "type": "string"
+          },
           "default": [],
-          "description": "The command line arguments to use when launching R Language Server"
+          "description": "The command line arguments to use when launching R Language Server."
+        },
+        "r.lsp.promptToInstall": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prompt to install R Language Server if it is not installed."
         },
         "r.lsp.debug": {
           "type": "boolean",
           "default": false,
-          "description": "Debug R Language Server"
+          "description": "Debug R Language Server."
         },
         "r.lsp.diagnostics": {
           "type": "boolean",
           "default": true,
-          "description": "Enable Diagnostics"
+          "description": "Enable diagnostics."
         },
         "r.lsp.lang": {
           "type": "string",
           "default": "",
-          "description": "Override default LANG environment variable"
+          "markdownDescription": "Override default `LANG` environment variable."
         },
         "r.lsp.use_stdio": {
           "type": "boolean",
@@ -1304,7 +1397,7 @@
         "r.rmarkdown.enableCodeLens": {
           "type": "boolean",
           "default": true,
-          "description": "Enable RMarkdown CodeLens, which are inline commands/buttons e.g. 'Run Chunk | Run Above' shown on the first line of each code chunk.\n\n- Click the buttons to run commands.\n- Hover on the buttons to show tooltips.\n- CodeLens commands are customizable via settings UI (Rmarkdown: Code Lens commands) or settings.json `r.rmarkdown.codeLensCommands`"
+          "markdownDescription": "Enable RMarkdown CodeLens, which are inline commands/buttons e.g. 'Run Chunk | Run Above' shown on the first line of each code chunk.\n\n- Click the buttons to run commands.\n- Hover on the buttons to show tooltips.\n- CodeLens commands are customizable via `#r.rmarkdown.codeLensCommands#` or settings.json `r.rmarkdown.codeLensCommands`"
         },
         "r.rmarkdown.chunkBackgroundColor": {
           "type": "string",
@@ -1383,10 +1476,64 @@
           "default": true,
           "markdownDescription": "Show links to matching help pages in hover"
         },
+        "r.helpPanel.clickCodeExamples": {
+          "type": "object",
+          "markdownDescription": "What happens when clicking code examples on help pages. Might require restarting to take effect.",
+          "default": {
+            "Click": "Copy",
+            "Ctrl+Click": "Run",
+            "Shift+Click": "Ignore"
+          },
+          "properties": {
+            "Click": {
+              "type": "string",
+              "default": "Copy",
+              "enum": [
+                "Ignore",
+                "Copy",
+                "Run"
+              ],
+              "enumDescriptions": [
+                "Do nothing",
+                "Copy the code to the clipboard",
+                "Run the code in the terminal"
+              ]
+            },
+            "Ctrl+Click": {
+              "type": "string",
+              "default": "Run",
+              "enum": [
+                "Ignore",
+                "Copy",
+                "Run"
+              ],
+              "enumDescriptions": [
+                "Do nothing",
+                "Copy the code to the clipboard",
+                "Run the code in the terminal"
+              ]
+            },
+            "Shift+Click": {
+              "type": "string",
+              "default": "Ignore",
+              "enum": [
+                "Ignore",
+                "Copy",
+                "Run"
+              ],
+              "enumDescriptions": [
+                "Do nothing",
+                "Copy the code to the clipboard",
+                "Run the code in the terminal"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
         "r.source.encoding": {
           "type": "string",
           "default": "UTF-8",
-          "description": "An optional encoding to pass to R when executing the file, i.e. 'source(FILE, encoding=ENCODING)'."
+          "markdownDescription": "An optional encoding to pass to R when executing the file, i.e. `source(FILE, encoding=ENCODING)`."
         },
         "r.source.focus": {
           "type": "string",
@@ -1396,7 +1543,12 @@
             "terminal",
             "none"
           ],
-          "description": "What to show/focus after running code. Set to 'editor' or 'terminal' to show the terminal. Set to 'none' to not show the terminal."
+          "enumDescriptions": [
+            "Focus editor when sending code to terminal",
+            "Focus terminal when sending code to terminal",
+            "Do not show terminal when sending code to terminal"
+          ],
+          "description": "What to show/focus after sending code to terminal."
         },
         "r.alwaysUseActiveTerminal": {
           "type": "boolean",
@@ -1447,6 +1599,16 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Changes the option `vsc.rstudioapi` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+        },
+        "r.session.data.rowLimit": {
+          "type": "integer",
+          "default": 0,
+          "markdownDescription": "The maximum number of rows to be displayed in the data viewer. `0` means no limit. Changes the option `vsc.row_limit` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+        },
+        "r.session.data.pageSize": {
+          "type": "integer",
+          "default": 500,
+          "markdownDescription": "The maximum number of rows per page in the data viewer. `0` means to disable pagination."
         },
         "r.session.viewers.viewColumn": {
           "type": "object",
@@ -1530,7 +1692,7 @@
             },
             "view": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by View()? \n\nChanges the option 'vsc.plot' in R.",
+              "description": "Which view column to show the WebView triggered by View()? \n\nChanges the option 'vsc.view' in R.",
               "enum": [
                 "Two",
                 "Active",
@@ -1568,7 +1730,7 @@
         "r.rtermSendDelay": {
           "type": "integer",
           "default": 8,
-          "description": "Delay in milliseconds before sending each line to rterm (only applies if r.bracketedPaste is false)"
+          "markdownDescription": "Delay in milliseconds before sending each line to rterm. Requires `#r.bracketedPaste#` to be `false`."
         },
         "r.workspaceViewer.showObjectSize": {
           "type": "boolean",
@@ -1588,7 +1750,7 @@
         "r.liveShare.timeout": {
           "type": "integer",
           "default": 10000,
-          "description": "Time in milliseconds before aborting attempt to connect to Live Share API"
+          "description": "Time in milliseconds before aborting attempt to connect to Live Share API."
         },
         "r.liveShare.defaults.commandForward": {
           "type": "boolean",
@@ -1605,10 +1767,43 @@
           "default": false,
           "description": "Default boolean value for automatically sharing R browser ports with guests."
         },
+        "r.plot.devArgs" :{
+          "type": "object",
+          "markdownDescription": "The arguments for the png device to replay user graphics to show in VSCode. Requires `#r.plot.useHttpgd#` to be set to `false`. \n\nChanges the option `vsc.dev.args` in R.",
+          "default": {
+            "width": 800,
+            "height": 1200
+          },
+          "properties": {
+            "width": {
+              "type": "number",
+              "description": "Width of the graphic device.",
+              "default": 480
+            },
+            "height": {
+              "type": "number",
+              "description": "Height of the graphic device.",
+              "default": 480
+            },
+            "units": {
+              "type": "string",
+              "default": "px"
+            },
+            "pointsize": {
+              "type": "number",
+              "default": 12
+            },
+            "bg": {
+              "type": "string",
+              "default": "white"
+            }
+          },
+          "additionalProperties": false
+        },
         "r.plot.useHttpgd": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer. Changes the option `vsc.use_httpgd` in R."
+          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer. Changes the option `vsc.use_httpgd` in R.\n\nRequires the `httpgd` R package version 1.2.0 or later."
         },
         "r.plot.defaults.colorTheme": {
           "type": "string",
@@ -1621,7 +1816,7 @@
             "Match background and primary stroke color to the current color theme (Or apply custom CSS overwrites, if specified in `#r.plot.customStyleOverwrites#`)",
             "Use original colors"
           ],
-          "markdownDescription": "Which color theme to use when launching the plot viewer."
+          "markdownDescription": "Which color theme to use when launching the httpgd plot viewer."
         },
         "r.plot.defaults.plotPreviewLayout": {
           "type": "string",
@@ -1641,7 +1836,7 @@
         "r.plot.defaults.fullWindowMode": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Whether to use full window mode when launching the plot viewer."
+          "markdownDescription": "Whether to use full window mode when launching the httpgd plot viewer."
         },
         "r.plot.timing.resizeInterval": {
           "type": "number",
@@ -1662,7 +1857,71 @@
     },
     "taskDefinitions": [
       {
-        "type": "R"
+        "type": "R",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "x <- 'Hello, World!'",
+              "print(x)"
+            ],
+            "description": "R code to be executed"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "--no-echo",
+              "--no-restore"
+            ],
+            "description": "Command line options used to invoke R. (see R --help)"
+          },
+          "cwd": {
+            "type": "string",
+            "default": "${workspaceRoot}",
+            "description": "The current working directory of the executed program or shell. If omitted, the current workspace root will be used."
+          },
+          "env": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "description": "The environment of the executed program or shell. If omitted, the current process environment will be used."
+          }
+        }
+      }
+    ],
+    "problemMatchers": [
+      {
+        "name": "testthat",
+        "owner": "R",
+        "severity": "error",
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}/tests/testthat"
+        ],
+        "pattern": [
+          {
+            "regexp": "^(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):(\\d+)\\):\\s(.*)",
+            "file": 2,
+            "line": 3,
+            "column": 4,
+            "message": 5
+          },
+          {
+            "regexp": "^(.*)$",
+            "message": 1
+          }
+        ]
       }
     ]
   },
@@ -1670,15 +1929,19 @@
     "vscode:prepublish": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
     "compile": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
     "watch": "tsc -p . --watch",
+    "watchHelp": "tsc -p ./html/help --watch",
+    "watchHttpgd": "tsc -p ./html/httpgd --watch",
     "pretest": "tsc -p ./",
     "test": "node ./out/test/runTest.js",
     "lint": "eslint src --ext ts"
   },
   "withWebpack": {
     "scripts": {
-      "vscode:prepublish": "webpack --mode production",
-      "compile": "webpack --mode none",
+      "vscode:prepublish": "tsc -p ./html/help && tsc -p ./html/httpgd && webpack --mode production",
+      "compile": "tsc -p ./html/help && tsc -p ./html/httpgd && webpack --mode none",
       "watch": "webpack --mode none --watch",
+      "watchHelp": "tsc -p ./html/help --watch",
+      "watchHttpgd": "tsc -p ./html/httpgd --watch",
       "pretest": "tsc -p ./",
       "test": "node ./out/test/runTest.js",
       "lint": "eslint src --ext ts"
@@ -1690,46 +1953,40 @@
     "@types/ejs": "^3.0.6",
     "@types/express": "^4.17.12",
     "@types/fs-extra": "^9.0.11",
+    "@types/glob": "^8.0.0",
     "@types/js-yaml": "^4.0.2",
     "@types/mocha": "^8.2.2",
-    "@types/node": "^14.17.3",
+    "@types/node": "^16.11.7",
     "@types/node-fetch": "^2.5.10",
-    "@types/showdown": "^1.9.3",
-    "@types/vscode": "^1.60.0",
+    "@types/vscode": "^1.67.0",
     "@types/winreg": "^1.2.31",
-    "@types/ws": "^7.4.4",
-    "@typescript-eslint/eslint-plugin": "4.25.0",
-    "@typescript-eslint/parser": "4.25.0",
+    "@typescript-eslint/eslint-plugin": "^5.30.0",
+    "@typescript-eslint/parser": "^5.30.0",
     "copy-webpack-plugin": "^9.0.0",
     "devreplay": "^1.9.31",
     "eslint": "^7.28.0",
     "eslint-plugin-jsdoc": "^35.1.3",
-    "mocha": "^8.4.0",
-    "ts-loader": "^9.2.3",
-    "typescript": "^4.3.2",
+    "mocha": "^9.1.0",
+    "ts-loader": "^9.3.1",
+    "typescript": "^4.7.2",
     "vscode-test": "^1.5.2",
     "webpack": "^5.38.1",
-    "webpack-cli": "^4.7.2",
-    "yamljs": "^0.3.0"
+    "webpack-cli": "^4.7.2"
   },
   "dependencies": {
-    "ag-grid-community": "^26.0.0",
+    "ag-grid-community": "^28.1.1",
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
-    "ejs": "^3.1.6",
+    "ejs": "^3.1.7",
     "fs-extra": "^10.0.0",
     "highlight.js": "^10.7.3",
     "httpgd": "^0.1.6",
     "jquery": "^3.6.0",
-    "jquery.json-viewer": "^1.4.0",
+    "jquery.json-viewer": "^1.5.0",
     "js-yaml": "^4.1.0",
-    "node-fetch": "^2.6.1",
-    "popper.js": "^1.16.1",
-    "showdown": "^1.9.1",
-    "tree-kill": "^1.2.2",
-    "vscode-languageclient": "^7.0.0",
+    "node-fetch": "^2.6.7",
+    "vscode-languageclient": "^8.0.2",
     "vsls": "^1.0.4753",
-    "winreg": "^1.2.4",
-    "ws": "^7.4.6"
+    "winreg": "^1.2.4"
   }
 }

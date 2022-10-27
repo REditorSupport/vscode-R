@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import * as vscode from 'vscode';
 
 import { RHelp } from '.';
+import { extensionContext } from '../extension';
 import { doWithProgress } from '../util';
 import { Package, Topic, TopicType } from './packages';
 
@@ -8,7 +10,7 @@ import { Package, Topic, TopicType } from './packages';
 const CollapsibleState = vscode.TreeItemCollapsibleState;
 
 
-// the commands contributed in package.json for the tree view 
+// the commands contributed in package.json for the tree view
 // the commands are registered in HelpTreeWrapper.constructor
 // the node-objects only need to handle the keys ('QUICKPICK' etc.) in Node.handleCommand()
 const nodeCommands = {
@@ -28,7 +30,7 @@ const nodeCommands = {
     unsummarizeTopics: 'r.helpPanel.unsummarizeTopics',
     installPackages: 'r.helpPanel.installPackages',
     updateInstalledPackages: 'r.helpPanel.updateInstalledPackages'
-};
+} as const;
 
 // used to avoid typos when handling commands
 type cmdName = keyof typeof nodeCommands;
@@ -44,6 +46,7 @@ type cmdName = keyof typeof nodeCommands;
 // necessary to implement Node.refresh(),
 // which is used to signal from a node that its contents/children have changed
 export class HelpTreeWrapper {
+    public readonly viewId = 'rHelpPages';
     public rHelp: RHelp;
     public helpView: vscode.TreeView<Node>;
     public helpViewProvider: HelpViewProvider;
@@ -52,7 +55,7 @@ export class HelpTreeWrapper {
         this.rHelp = rHelp;
         this.helpViewProvider = new HelpViewProvider(this);
         this.helpView = vscode.window.createTreeView(
-            'rHelpPages',
+            this.viewId,
             {
                 treeDataProvider: this.helpViewProvider,
                 showCollapseAll: true
@@ -61,12 +64,13 @@ export class HelpTreeWrapper {
 
         // register the commands defiend in `nodeCommands`
         // they still need to be defined in package.json (apart from CALLBACK)
-        for(const cmd in nodeCommands){
-            vscode.commands.registerCommand(nodeCommands[cmd], (node: Node | undefined) => {
-                // treeview-root is represented by `undefined`
+        for (const cmd in nodeCommands) {
+            const cmdTyped = cmd as cmdName; // Ok since `cmdName` is defiend as `keyof typeof nodeCommands`
+            extensionContext.subscriptions.push(vscode.commands.registerCommand(nodeCommands[cmdTyped], (node: Node | undefined) => {
+                // treeview-root is represented by `undefined`:
                 node ||= this.helpViewProvider.rootItem;
-                node.handleCommand(<cmdName>cmd);
-            });
+                node.handleCommand(cmdTyped);
+            }));
         }
     }
 
@@ -75,7 +79,7 @@ export class HelpTreeWrapper {
             listener(node);
         }
     }
-    
+
     public refreshPackageRootNode(): void {
         this.helpViewProvider.rootItem?.pkgRootNode?.refresh();
     }
@@ -92,7 +96,7 @@ export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
         this.rootItem = new RootNode(wrapper);
     }
 
-    onDidChangeTreeData(listener: (e: Node) => void): vscode.Disposable {
+    onDidChangeTreeData(listener: (e: Node | undefined) => void): vscode.Disposable {
         this.listeners.push(listener);
         return new vscode.Disposable(() => {
             // do nothing
@@ -118,11 +122,11 @@ export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
 // rather than modifying this class!
 abstract class Node extends vscode.TreeItem{
     // TreeItem (defaults for this usecase)
-    public description: string;
+    public description?: string;
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None;
     public contextValue: string = '';
-    public label: string;
-    public tooltip: string;
+    public label?: string;
+    public tooltip?: string;
 
     // set to null/undefined in derived class to expand/collapse on click
     public command = {
@@ -132,7 +136,7 @@ abstract class Node extends vscode.TreeItem{
     } as vscode.Command | undefined;
 
     // Node
-    public parent: Node | undefined;
+    public parent: Node | undefined = undefined;
     public children?: Node[] = undefined;
 
     // These can be used to modify the behaviour of a node when showed as/in a quickpick:
@@ -143,24 +147,19 @@ abstract class Node extends vscode.TreeItem{
 
     // These are shared between nodes to access functions of the help panel etc.
     // could also be static?
-    protected readonly wrapper: HelpTreeWrapper;
-    protected readonly rootNode: RootNode;
-    protected readonly rHelp: RHelp;
+    readonly wrapper: HelpTreeWrapper;
+    readonly rootNode?: RootNode;
 
     // used to give unique ids to nodes
     static newId: number = 0;
 
     // The default constructor just copies some info from parent
-    constructor(parent?: Node, wrapper?: HelpTreeWrapper){
+    constructor(parent: Node | undefined, wrapper: HelpTreeWrapper){
         super('');
+        this.wrapper = wrapper;
         if(parent){
-            wrapper ||= parent.wrapper;
             this.parent = parent;
             this.rootNode = parent.rootNode;
-        }
-        if(wrapper){
-            this.wrapper = wrapper;
-            this.rHelp = this.wrapper.rHelp;
         }
         this.id = `${Node.newId++}`;
     }
@@ -281,14 +280,15 @@ abstract class Node extends vscode.TreeItem{
     }
 }
 
-abstract class MetaNode extends Node {
-    // abstract parent class nodes that don't represent packages, topics etc.
-    // delete?
+abstract class NonRootNode extends Node {
+    parent: RootNode | NonRootNode;
+    rootNode: RootNode;
+    public constructor(parent: RootNode | NonRootNode){
+        super(parent, parent.wrapper);
+        this.parent = parent;
+        this.rootNode = parent.rootNode;
+    }
 }
-
-
-
-
 
 
 
@@ -301,11 +301,11 @@ abstract class MetaNode extends Node {
 
 
 // Root of the node. Is not actually used by vscode, but as 'imaginary' root item.
-class RootNode extends MetaNode {
+class RootNode extends Node {
     public collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
     public label = 'root';
-    public pkgRootNode: PkgRootNode;
-    protected readonly rootNode = this;
+    public pkgRootNode?: PkgRootNode;
+    readonly rootNode = this;
 
     constructor(wrapper: HelpTreeWrapper){
         super(undefined, wrapper);
@@ -328,7 +328,7 @@ class RootNode extends MetaNode {
 }
 
 // contains the list of installed packages
-class PkgRootNode extends MetaNode {
+class PkgRootNode extends NonRootNode {
     // TreeItem
     public label = 'Help Topics by Package';
     public iconPath = new vscode.ThemeIcon('list-unordered');
@@ -339,7 +339,6 @@ class PkgRootNode extends MetaNode {
 
     // Node
     public children?: PackageNode[];
-    public parent: RootNode;
 
     // quickpick
     public qpPrompt = 'Please select a package.';
@@ -392,14 +391,14 @@ class PkgRootNode extends MetaNode {
 
     refresh(clearCache: boolean = false, refreshChildren: boolean = true){
         if(clearCache){
-            this.rHelp.clearCachedFiles(`/doc/html/packages.html`);
-            void this.rHelp.packageManager.clearCachedFiles(`/doc/html/packages.html`);
+            this.wrapper.rHelp.clearCachedFiles(`/doc/html/packages.html`);
+            void this.wrapper.rHelp.packageManager.clearCachedFiles(`/doc/html/packages.html`);
         }
         super.refresh(refreshChildren);
     }
 
     async makeChildren() {
-        let packages = await this.rHelp.packageManager.getPackages(false);
+        let packages = await this.wrapper.rHelp.packageManager.getPackages(false);
 
         if(!packages){
             return [];
@@ -427,14 +426,11 @@ class PkgRootNode extends MetaNode {
 
 
 // contains the topics belonging to an individual package
-class PackageNode extends Node {
+export class PackageNode extends NonRootNode {
     // TreeItem
     public command = undefined;
     public collapsibleState = CollapsibleState.Collapsed;
     public contextValue = Node.makeContextValue('QUICKPICK', 'clearCache', 'removePackage', 'updatePackage');
-
-    // Node
-    public parent: PkgRootNode;
 
     // QuickPick
     public qpPrompt = 'Please select a Topic.';
@@ -453,31 +449,31 @@ class PackageNode extends Node {
         } else{
             this.addContextValues('addToFavorites');
         }
-        if(this.pkg.isFavorite && !this.parent.showOnlyFavorites){
+        if(this.pkg.isFavorite && !this.rootNode.pkgRootNode?.showOnlyFavorites){
             this.iconPath = new vscode.ThemeIcon('star-full');
         }
     }
 
-    public async _handleCommand(cmd: cmdName){
+    public async _handleCommand(cmd: cmdName): Promise<void> {
         if(cmd === 'clearCache'){
             // useful e.g. when working on a package
-            this.rHelp.clearCachedFiles(new RegExp(`^/library/${this.pkg.name}/`));
+            this.wrapper.rHelp.clearCachedFiles(new RegExp(`^/library/${this.pkg.name}/`));
             this.refresh();
         } else if(cmd === 'addToFavorites'){
-            this.rHelp.packageManager.addFavorite(this.pkg.name);
+            this.wrapper.rHelp.packageManager.addFavorite(this.pkg.name);
             this.parent.refresh();
         } else if(cmd === 'removeFromFavorites'){
-            this.rHelp.packageManager.removeFavorite(this.pkg.name);
+            this.wrapper.rHelp.packageManager.removeFavorite(this.pkg.name);
             this.parent.refresh();
         } else if(cmd === 'updatePackage'){
-            const success = await this.rHelp.packageManager.installPackages([this.pkg.name]);
+            const success = await this.wrapper.rHelp.packageManager.installPackages([this.pkg.name]);
             // only reinstall if user confirmed removing the package (success === true)
             // might still refresh if install was attempted but failed
             if(success){
                 this.parent.refresh(true);
             }
         } else if(cmd === 'removePackage'){
-            const success = await this.rHelp.packageManager.removePackage(this.pkg.name);
+            const success = await this.wrapper.rHelp.packageManager.removePackage(this.pkg.name);
             // only refresh if user confirmed removing the package (success === true)
             // might still refresh if removing was attempted but failed
             if(success){
@@ -486,24 +482,21 @@ class PackageNode extends Node {
         }
     }
 
-    async makeChildren(forQuickPick: boolean = false) {
+    async makeChildren(forQuickPick: boolean = false): Promise<TopicNode[]> {
         const summarizeTopics = (
-            forQuickPick ? false : (this.parent.summarizeTopics ?? true)
+            forQuickPick ? false : (this.rootNode.pkgRootNode?.summarizeTopics ?? true)
         );
-        const topics = await this.rHelp.packageManager.getTopics(this.pkg.name, summarizeTopics, false);
+        const topics = await this.wrapper.rHelp.packageManager.getTopics(this.pkg.name, summarizeTopics, false);
         const ret = topics?.map(topic => new TopicNode(this, topic)) || [];
         return ret;
     }
 }
 
 // Node representing an individual topic/help page
-class TopicNode extends Node {
+class TopicNode extends NonRootNode {
     // TreeItem
     iconPath = new vscode.ThemeIcon('circle-filled');
     contextValue = Node.makeContextValue('openInNewPanel');
-
-    // Node
-    parent: PackageNode;
 
     // Topic
     topic: Topic;
@@ -517,10 +510,10 @@ class TopicNode extends Node {
 
     protected _handleCommand(cmd: cmdName){
         if(cmd === 'CALLBACK'){
-            void this.rHelp.showHelpForPath(this.topic.helpPath);
+            void this.wrapper.rHelp.showHelpForPath(this.topic.helpPath);
         } else if(cmd === 'openInNewPanel'){
-            void this.rHelp.makeNewHelpPanel();
-            void this.rHelp.showHelpForPath(this.topic.helpPath);
+            void this.wrapper.rHelp.makeNewHelpPanel();
+            void this.wrapper.rHelp.showHelpForPath(this.topic.helpPath);
         }
     }
 
@@ -544,64 +537,62 @@ class TopicNode extends Node {
 /////////////
 // The following nodes only implement an individual command each
 
-class HomeNode extends MetaNode {
+class HomeNode extends NonRootNode {
     label = 'Home';
     collapsibleState = CollapsibleState.None;
     iconPath = new vscode.ThemeIcon('home');
     contextValue = Node.makeContextValue('openInNewPanel');
-    
+
     _handleCommand(cmd: cmdName){
         if(cmd === 'openInNewPanel'){
-            void this.rHelp.makeNewHelpPanel();
-            void this.rHelp.showHelpForPath('doc/html/index.html');
+            void this.wrapper.rHelp.makeNewHelpPanel();
+            void this.wrapper.rHelp.showHelpForPath('doc/html/index.html');
         }
     }
 
     callBack(){
-        void this.rHelp.showHelpForPath('doc/html/index.html');
+        void this.wrapper.rHelp.showHelpForPath('doc/html/index.html');
     }
 }
 
-class Search1Node extends MetaNode {
-	label = 'Open Help Topic using `?`';
+class Search1Node extends NonRootNode {
+    label = 'Open Help Topic using `?`';
     iconPath = new vscode.ThemeIcon('zap');
-    
+
     callBack(){
-        void this.rHelp.searchHelpByAlias();
+        void this.wrapper.rHelp.searchHelpByAlias();
     }
 }
 
-class Search2Node extends MetaNode {
-	label = 'Search Help Topics using `??`';
+class Search2Node extends NonRootNode {
+    label = 'Search Help Topics using `??`';
     iconPath = new vscode.ThemeIcon('search');
 
     callBack(){
-        void this.rHelp.searchHelpByText();
+        void this.wrapper.rHelp.searchHelpByText();
     }
 }
 
-class RefreshNode extends MetaNode {
-    parent: RootNode;
-	label = 'Clear Cache & Restart Help Server';
+class RefreshNode extends NonRootNode {
+    label = 'Clear Cache & Restart Help Server';
     iconPath = new vscode.ThemeIcon('refresh');
 
     async callBack(){
-        await doWithProgress(() => this.rHelp.refresh());
-        this.parent.pkgRootNode.refresh();
+        await doWithProgress(() => this.wrapper.rHelp.refresh(), this.wrapper.viewId);
+        this.rootNode.pkgRootNode?.refresh();
     }
 }
 
-class OpenForSelectionNode extends MetaNode {
-    parent: RootNode;
+class OpenForSelectionNode extends NonRootNode {
     label = 'Open Help Page for Selected Text';
     iconPath = new vscode.ThemeIcon('symbol-key');
-    
+
     callBack(){
-        void this.rHelp.openHelpForSelection();
+        void this.wrapper.rHelp.openHelpForSelection();
     }
 }
 
-class InstallPackageNode extends MetaNode {
+class InstallPackageNode extends NonRootNode {
     label = 'Install CRAN Package';
     iconPath = new vscode.ThemeIcon('cloud-download');
 
@@ -609,21 +600,21 @@ class InstallPackageNode extends MetaNode {
 
     public async _handleCommand(cmd: cmdName){
         if(cmd === 'installPackages'){
-            const ret = await this.rHelp.packageManager.pickAndInstallPackages(true);
+            const ret = await this.wrapper.rHelp.packageManager.pickAndInstallPackages(true);
             if(ret){
-                this.rootNode.pkgRootNode.refresh(true);
+                this.rootNode.pkgRootNode?.refresh(true);
             }
         } else if(cmd === 'updateInstalledPackages'){
-            const ret = await this.rHelp.packageManager.updatePackages();
+            const ret = await this.wrapper.rHelp.packageManager.updatePackages();
             if(ret){
-                this.rootNode.pkgRootNode.refresh(true);
+                this.rootNode.pkgRootNode?.refresh(true);
             }
         }
     }
 
     async callBack(){
-        await this.rHelp.packageManager.pickAndInstallPackages();
-        this.rootNode.pkgRootNode.refresh(true);
+        await this.wrapper.rHelp.packageManager.pickAndInstallPackages();
+        this.rootNode.pkgRootNode?.refresh(true);
     }
 }
 

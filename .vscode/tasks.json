@@ -10,6 +10,7 @@
       "command": "vsce",
       "args": [
         "package",
+        "--yarn",
         "-o",
         "${workspaceFolderBasename}.vsix"
       ]
@@ -33,11 +34,7 @@
     {
       "type": "npm",
       "script": "compile",
-      "problemMatcher": "$tsc-watch",
-      "isBackground": true,
-      "presentation": {
-        "reveal": "never"
-      }
+      "problemMatcher": "$tsc"
     },
     {
       "type": "npm",
@@ -51,16 +48,39 @@
     },
     {
       "type": "npm",
+      "script": "watchHelp",
+      "group": "build",
+      "problemMatcher": "$tsc-watch",
+      "isBackground": true
+    },
+    {
+      "type": "npm",
+      "script": "watchHttpgd",
+      "group": "build",
+      "problemMatcher": "$tsc-watch",
+      "isBackground": true
+    },
+    {
+      "label": "watchAll",
+      "dependsOn": [
+        "npm: watch",
+        "npm: watchHelp",
+        "npm: watchHttpgd"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "type": "npm",
       "script": "pretest",
       "problemMatcher": "$tsc-watch",
       "isBackground": true,
       "presentation": {
         "reveal": "never"
       },
-     "group": {
-       "kind": "test",
-       "isDefault": true
-     },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
     }
   ]
 }

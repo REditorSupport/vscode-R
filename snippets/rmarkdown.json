@@ -9,6 +9,21 @@
 		"body": "*${1:${TM_SELECTED_TEXT}}*$0",
 		"description": "Insert italic text"
 	},
+	"Insert superscript": {
+		"prefix": "superscript",
+		"body": "^${1:${TM_SELECTED_TEXT}}^$0",
+		"description": "Insert superscript"
+	},
+	"Insert subscript": {
+		"prefix": "subscript",
+		"body": "~${1:${TM_SELECTED_TEXT}}~$0",
+		"description": "Insert subscript"
+	},
+	"Insert strikeout": {
+		"prefix": "strikeout",
+		"body": "~~${1:${TM_SELECTED_TEXT}}~~$0",
+		"description": "Insert strikeout"
+	},
 	"Insert quoted text": {
 		"prefix": "quote",
 		"body": "> ${1:${TM_SELECTED_TEXT}}",
@@ -53,6 +68,36 @@
 		],
 		"description": "Insert ordered list"
 	},
+	"Insert unordered item": {
+		"prefix": "unordered item",
+		"body": "- ${1:${TM_SELECTED_TEXT}}",
+		"description": "Insert unordered item"
+	},
+	"Insert ordered item": {
+		"prefix": "ordered item",
+		"body": "1. ${1:${TM_SELECTED_TEXT}}",
+		"description": "Insert ordered item"
+	},
+	"Insert task list": {
+		"prefix": "task list",
+		"body": [
+			"- [${1|x, |}] ${2:first}",
+			"- [${3|x, |}] ${4:second}",
+			"- [${5|x, |}] ${6:third}",
+			"$0"
+		],
+		"description": "Insert task list"
+	},
+	"Insert checked item": {
+		"prefix": "checked item",
+		"body": "- [x] ${1:${TM_SELECTED_TEXT}}",
+		"description": "Insert checked item"
+	},
+	"Insert unchecked item": {
+		"prefix": "unchecked item",
+		"body": "- [ ] ${1:${TM_SELECTED_TEXT}}",
+		"description": "Insert unchecked item"
+	},
 	"Insert horizontal rule": {
 		"prefix": "horizontal rule",
 		"body": "----------\n",
@@ -60,19 +105,19 @@
 	},
 	"Insert link": {
 		"prefix": "link",
-		"body": "[${1:text}](http://${2:link})$0",
+		"body": "[${1:text}](${2:link})$0",
 		"description": "Insert link"
 	},
 	"Insert image": {
 		"prefix": "image",
-		"body": "![${1:alt}](http://${2:link})$0",
+		"body": "![${1:alt}](${2:link})$0",
 		"description": "Insert image"
 	},
 	"Insert code chunk": {
 		"prefix": "code chunk",
 		"body": [
-			"```{${1:language}}",
-			"$0",
+			"```{${1|language,awk,bash,coffee,gawk,groovy,haskell,lein,mysql,node,octave,perl,psql,Rscript,ruby,sas,scala,sed,sh,stata,zsh,asis,asy,block,block2,bslib,c,cat,cc,comment,css,dot,embed,fortran,fortran95,go,highlight,js,julia,python,R,Rcpp,sass,scss,sql\\, connection=db,stan\\, output.var=\"stanmodel\",targets,tikz,verbatim,exec\\, command=\"\"|}}",
+			"${TM_SELECTED_TEXT}$0",
 			"```"
 		],
 		"description": "Insert code chunk"
@@ -81,9 +126,334 @@
 		"prefix": "r code chunk",
 		"body": [
 			"```{r}",
-			"$0",
+			"${TM_SELECTED_TEXT}$0",
 			"```"
 		],
 		"description": "Insert R code chunk"
+	},
+	"Insert inline R code": {
+		"prefix": "inline r code",
+		"body": "`r ${1:${TM_SELECTED_TEXT}}`$0",
+		"description": "Insert inline R code"
+	},
+	"Insert inline footnotes": {
+		"prefix": "inline footnotes",
+		"body": "^[${1:Inline footnotes text.}]$0",
+		"description": "Insert inline footnotes"
+	},
+	"Insert speaker notes": {
+		"prefix": "speaker notes",
+		"body": [
+			"::: notes",
+			"",
+			"${TM_SELECTED_TEXT}$0",
+			"",
+			":::"
+		],
+		"description": "Insert speaker notes"
+	},
+	"Insert two columns": {
+		"prefix": "two columns",
+		"body": [
+			":::::: {.columns}",
+			"::: {.column}",
+			"",
+			"${1:Content of the left column.}",
+			"",
+			":::",
+			"::: {.column}",
+			"",
+			"${2:Content of the right column.}",
+			"",
+			":::",
+			"::::::$0"
+		],
+		"description": "Insert (side-by-side) two columns"
+	},
+	"Insert incremental list": {
+		"prefix": "incremental list",
+		"body": [
+			"::: incremental",
+			"",
+			"- ${1:first}",
+			"- ${2:second}",
+			"- ${3:third}",
+			"$0",
+			"",
+			":::"
+		],
+		"description": "Insert incremental list"
+	},
+	"Insert nonincremental list": {
+		"prefix": "nonincremental list",
+		"body": [
+			"::: nonincremental",
+			"",
+			"- ${1:first}",
+			"- ${2:second}",
+			"- ${3:third}",
+			"$0",
+			"",
+			":::"
+		],
+		"description": "Insert nonincremental list"
+	},
+	"Insert incremental fenced block": {
+		"prefix": "incremental fenced block",
+		"body": [
+			"::: incremental",
+			"",
+			"${1:${TM_SELECTED_TEXT}}$0",
+			"",
+			":::"
+		],
+		"description": "Insert incremental fenced block"
+	},
+	"Insert nonincremental fenced block": {
+		"prefix": "nonincremental fenced block",
+		"body": [
+			"::: nonincremental",
+			"",
+			"${1:${TM_SELECTED_TEXT}}$0",
+			"",
+			":::"
+		],
+		"description": "Insert nonincremental fenced block"
+	},
+	"Insert reference list": {
+		"prefix": "reference list",
+		"body": [
+			"::: {#refs}",
+			":::$0"
+		],
+		"description": "Insert reference list"
+	},
+	"Insert bookdown theorem": {
+		"prefix": "theorem",
+		"body": [
+			"::: {.theorem #${1:label} name=\"${2:theorem name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown theorem"
+	},
+	"Cross-reference bookdown theorem": {
+		"prefix": "cross-reference theorem",
+		"body": [
+			"Theorem \\@ref(thm:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown theorem"
+	},
+	"Insert bookdown lemma": {
+		"prefix": "lemma",
+		"body": [
+			"::: {.lemma #${1:label} name=\"${2:lemma name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown lemma"
+	},
+	"Cross-reference bookdown lemma": {
+		"prefix": "cross-reference lemma",
+		"body": [
+			"Lemma \\@ref(lem:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown lemma"
+	},
+	"Insert bookdown corollary": {
+		"prefix": "corollary",
+		"body": [
+			"::: {.corollary #${1:label} name=\"${2:corollary name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown corollary"
+	},
+	"Cross-reference bookdown corollary": {
+		"prefix": "cross-reference corollary",
+		"body": [
+			"Corollary \\@ref(cor:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown corollary"
+	},
+	"Insert bookdown proposition": {
+		"prefix": "proposition",
+		"body": [
+			"::: {.proposition #${1:label} name=\"${2:proposition name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown proposition"
+	},
+	"Cross-reference bookdown proposition": {
+		"prefix": "cross-reference proposition",
+		"body": [
+			"Proposition \\@ref(prp:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown proposition"
+	},
+	"Insert bookdown conjecture": {
+		"prefix": "conjecture",
+		"body": [
+			"::: {.conjecture #${1:label} name=\"${2:conjecture name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown conjecture"
+	},
+	"Cross-reference bookdown conjecture": {
+		"prefix": "cross-reference conjecture",
+		"body": [
+			"Conjecture \\@ref(cnj:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown conjecture"
+	},
+	"Insert bookdown definition": {
+		"prefix": "definition",
+		"body": [
+			"::: {.definition #${1:label} name=\"${2:definition name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown definition"
+	},
+	"Cross-reference bookdown definition": {
+		"prefix": "cross-reference definition",
+		"body": [
+			"Definition \\@ref(def:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown definition"
+	},
+	"Insert bookdown example": {
+		"prefix": "example",
+		"body": [
+			"::: {.example #${1:label} name=\"${2:example name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown example"
+	},
+	"Cross-reference bookdown example": {
+		"prefix": "cross-reference example",
+		"body": [
+			"Example \\@ref(exm:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown example"
+	},
+	"Insert bookdown exercise": {
+		"prefix": "exercise",
+		"body": [
+			"::: {.exercise #${1:label} name=\"${2:exercise name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown exercise"
+	},
+	"Cross-reference bookdown exercise": {
+		"prefix": "cross-reference exercise",
+		"body": [
+			"Exercise \\@ref(exr:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown exercise"
+	},
+	"Insert bookdown hypothesis": {
+		"prefix": "hypothesis",
+		"body": [
+			"::: {.hypothesis #${1:label} name=\"${2:hypothesis name}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			":::"
+		],
+		"description": "Insert bookdown hypothesis"
+	},
+	"Cross-reference bookdown hypothesis": {
+		"prefix": "cross-reference hypothesis",
+		"body": [
+			"Hypothesis \\@ref(hyp:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown hypothesis"
+	},
+	"Insert bookdown equation": {
+		"prefix": "equation",
+		"body": [
+			"\\begin{equation}",
+			"${TM_SELECTED_TEXT}$0",
+			"(\\#eq:${1:label})",
+			"\\end{equation}"
+		],
+		"description": "Insert bookdown equation"
+	},
+	"Cross-reference bookdown equation": {
+		"prefix": "cross-reference equation",
+		"body": [
+			"Equation \\@ref(eq:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown equation"
+	},
+	"Cross-reference bookdown table": {
+		"prefix": "cross-reference table",
+		"body": [
+			"Table \\@ref(tab:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown table"
+	},
+	"Insert figure chunk": {
+		"prefix": "figure chunk",
+		"body": [
+			"```{r ${1:label}, fig.cap = \"${2:Figure caption.}\", fig.alt = \"${3:Alt text.}\"}",
+			"${TM_SELECTED_TEXT}$0",
+			"```"
+		],
+		"description": "Insert figure chunk"
+	},
+	"Insert external figure chunk": {
+		"prefix": "external figure chunk",
+		"body": [
+			"```{r ${1:label}, fig.cap = \"${2:Figure caption.}\", fig.alt = \"${3:Alt text.}\"}",
+			"knitr::include_graphics(\"${4:path/to/file.png}\")",
+			"```"
+		],
+		"description": "Insert external figure chunk"
+	},
+	"Cross-reference bookdown figure": {
+		"prefix": "cross-reference figure",
+		"body": [
+			"Figure \\@ref(fig:${1:label})$0"
+		],
+		"description": "Cross-reference bookdown figure"
+	},
+	"Insert bookdown section label": {
+		"prefix": "section label",
+		"body": [
+			"${TM_SELECTED_TEXT} {#${1:label}}$0"
+		],
+		"description": "Insert bookdown section label"
+	},
+	"Cross-reference bookdown section": {
+		"prefix": "cross-reference section",
+		"body": [
+			"Section \\@ref(${1:label})$0"
+		],
+		"description": "Cross-reference bookdown section"
+	},
+	"Insert bookdown part": {
+		"prefix": "part",
+		"body": [
+			"# (PART) Part ${1:I} {-}$0"
+		],
+		"description": "Insert bookdown part"
+	},
+	"Insert unnumbered bookdown part": {
+		"prefix": "unnumbered part",
+		"body": [
+			"# (PART\\*) Part ${1:I} {-}$0"
+		],
+		"description": "Insert bookdown unnumbered part"
+	},
+	"Insert bookdown appendix": {
+		"prefix": "appendix",
+		"body": [
+			"# (APPENDIX) Appendix {-}$0"
+		],
+		"description": "Insert bookdown appendix"
 	}
 }

@@ -8,7 +8,10 @@
             "DOM"
         ],
         "sourceMap": false,
-        "strictNullChecks": true,
-        "rootDir": "."
+        "rootDir": ".",
+        "strict": true,
+        "noImplicitAny": true,
+        "noImplicitThis": true,
+        "noFallthroughCasesInSwitch": true
     }
 }

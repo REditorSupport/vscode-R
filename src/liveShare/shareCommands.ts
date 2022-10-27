@@ -3,11 +3,11 @@ import * as vscode from 'vscode';
 import * as fs from 'fs-extra';
 
 import { rHostService, isGuest, service } from '.';
-import { updateGuestRequest, updateGuestGlobalenv, updateGuestPlot, detachGuest } from './shareSession';
+import { updateGuestRequest, updateGuestWorkspace, updateGuestPlot, detachGuest } from './shareSession';
 import { forwardCommands, shareWorkspace } from './shareTree';
 
 import { runTextInTerm } from '../rTerminal';
-import { requestFile } from '../session';
+import { requestFile, WorkspaceData } from '../session';
 import { HelpFile } from '../helpViewer';
 import { globalHttpgdManager, globalRHelp } from '../extension';
 
@@ -31,7 +31,7 @@ interface ICommands {
 // used for notify & request events
 // (mainly to prevent typos)
 export const enum Callback {
-    NotifyEnvUpdate = 'NotifyEnvUpdate',
+    NotifyWorkspaceUpdate = 'NotifyWorkspaceUpdate',
     NotifyPlotUpdate = 'NotifyPlotUpdate',
     NotifyRequestUpdate = 'NotifyRequestUpdate',
     NotifyMessage = 'NotifyMessage',
@@ -62,7 +62,7 @@ export const Commands: ICommands = {
         // Command arguments are sent from the guest to the host,
         // and then the host sends the arguments to the console
         [Callback.RequestAttachGuest]: (): void => {
-            if (shareWorkspace) {
+            if (shareWorkspace && rHostService) {
                 void rHostService.notifyRequest(requestFile, true);
             } else {
                 void liveShareRequest(Callback.NotifyMessage, 'The host has not enabled guest attach.', MessageType.warning);
@@ -76,8 +76,8 @@ export const Commands: ICommands = {
             }
 
         },
-        [Callback.GetHelpFileContent]: (args: [text: string]): Promise<HelpFile | null> => {
-            return globalRHelp.getHelpFileForPath(args[0]);
+        [Callback.GetHelpFileContent]: (args: [text: string]): Promise<HelpFile | undefined> | undefined => {
+            return globalRHelp?.getHelpFileForPath(args[0]);
         },
         /// File Handling ///
         // Host reads content from file, then passes the content
@@ -92,14 +92,14 @@ export const Commands: ICommands = {
         [Callback.NotifyRequestUpdate]: (args: [file: string, force: boolean]): void => {
             void updateGuestRequest(args[0], args[1]);
         },
-        [Callback.NotifyEnvUpdate]: (args: [hostEnv: string]): void => {
-            void updateGuestGlobalenv(args[0]);
+        [Callback.NotifyWorkspaceUpdate]: (args: [hostWorkspace: WorkspaceData]): void => {
+            void updateGuestWorkspace(args[0]);
         },
         [Callback.NotifyPlotUpdate]: (args: [file: string]): void => {
             void updateGuestPlot(args[0]);
         },
         [Callback.NotifyGuestPlotManager]: (args: [url: string]): void => {
-            globalHttpgdManager?.showViewer(args[0]);
+            void globalHttpgdManager?.showViewer(args[0]);
         },
         [Callback.OrderDetach]: (): void => {
             void detachGuest();

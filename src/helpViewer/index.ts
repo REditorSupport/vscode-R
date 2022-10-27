@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import * as vscode from 'vscode';
@@ -20,6 +21,19 @@ import {HelpTreeWrapper} from './treeView';
 import {PackageManager} from './packages';
 import {isGuestSession, rGuestService} from '../liveShare';
 
+export type CodeClickAction = 'Ignore' | 'Copy' | 'Run';
+export interface CodeClickConfig {
+    'Click': CodeClickAction,
+    'Ctrl+Click': CodeClickAction,
+    'Shift+Click': CodeClickAction,
+}
+const CODE_CLICKS: (keyof CodeClickConfig)[] = ['Click', 'Ctrl+Click', 'Shift+Click'];
+export const codeClickConfigDefault = {
+    'Click': 'Copy',
+    'Ctrl+Click': 'Run',
+    'Shift+Click': 'Ignore',
+};
+
 // Initialization function that is called once when activating the extension
 export async function initializeHelp(
     context: vscode.ExtensionContext,
@@ -29,7 +43,10 @@ export async function initializeHelp(
     void vscode.commands.executeCommand('setContext', 'r.helpViewer.show', true);
 
     // get the "vanilla" R path from config
-    const rPath = await getRpath(false);
+    const rPath = await getRpath();
+    if(!rPath){
+        return undefined;
+    }
 
     // get the current working directory from vscode
     const cwd = vscode.workspace.workspaceFolders?.length
@@ -44,8 +61,8 @@ export async function initializeHelp(
         cacheConfig === 'Workspace'
             ? context.workspaceState
             : cacheConfig === 'Global'
-            ? context.globalState
-            : new DummyMemento();
+                ? context.globalState
+                : new DummyMemento();
 
     // Gather options used in r help related files
     const rHelpOptions: HelpOptions = {
@@ -160,8 +177,7 @@ export interface HelpOptions {
 
 // The name api.HelpPanel is a bit misleading
 // This class manages all R-help and R-packages related functions
-export class RHelp
-    implements api.HelpPanel, vscode.WebviewPanelSerializer<string>
+export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<string>
 {
     // Path of a vanilla R installation
     readonly rPath: string
@@ -199,6 +215,7 @@ export class RHelp
     private helpPanelOptions: HelpOptions
 
     constructor(options: HelpOptions) {
+        this.rPath = options.rPath;
         this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
         this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
         const pkgListener = () => {
@@ -254,6 +271,9 @@ export class RHelp
         await this.packageManager?.refresh?.();
         if (refreshTreeView) {
             this.treeViewWrapper.refreshPackageRootNode();
+        }
+        for (const panel of this.helpPanels) {
+            await panel.refresh();
         }
         return true;
     }
@@ -421,8 +441,9 @@ export class RHelp
 
     // helper function to get aliases from aliasprovider
     private async getAllAliases(): Promise<Alias[] | undefined> {
-        const aliases = await doWithProgress(() =>
-            this.aliasProvider.getAllAliases(),
+        const aliases = await doWithProgress(
+            () => this.aliasProvider.getAllAliases(),
+            vscode.ProgressLocation.Window
         );
         if (!aliases) {
             void vscode.window.showErrorMessage(
@@ -496,9 +517,9 @@ export class RHelp
         if (!this.cachedHelpFiles.has(requestPath)) {
             const helpFile = !isGuestSession
                 ? await this.helpProvider.getHelpFileFromRequestPath(
-                      requestPath,
-                  )
-                : await rGuestService.requestHelpContent(requestPath);
+                    requestPath,
+                )
+                : await rGuestService?.requestHelpContent(requestPath);
             this.cachedHelpFiles.set(requestPath, helpFile);
         }
 
@@ -555,6 +576,8 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
     if (!helpFile.isHtml) {
         const html = escapeHtml(helpFile.html);
         helpFile.html = `<html><head></head><body><pre>${html}</pre></body></html>`;
+        helpFile.isModified = true;
+        return helpFile;
     }
 
     // parse the html string
@@ -562,6 +585,26 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
 
     // Remove style elements specified in the html itself (replaced with custom CSS)
     $('head style').remove();
+
+    // Split code examples at empty lines:
+    const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
+    const isEnabled = CODE_CLICKS.some(k => codeClickConfig?.[k] !== 'Ignore');
+    if(isEnabled){
+        $('body').addClass('preClickable');
+        const codeSections = $('pre');
+        codeSections.each((i, section) => {
+            const innerHtml = $(section).html();
+            if(!innerHtml){
+                return;
+            }
+            const newPres = innerHtml.split('\n\n').map(s => s && `<pre>${s}</pre>`);
+            const newHtml = '<div class="preDiv">' + newPres.join('\n') + '</div>';
+            $(section).replaceWith(newHtml);
+        });
+    }
+    if(codeClickConfig?.Click !== 'Ignore'){
+        $('body').addClass('preHoverPointer');
+    }
 
     // Apply syntax highlighting:
     if (config().get<boolean>('helpPanel.enableSyntaxHighlighting')) {

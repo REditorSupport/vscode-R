@@ -14,29 +14,27 @@ export class LineCache {
         this.lineCache = new Map<number, string>();
         this.endsInOperatorCache = new Map<number, boolean>();
     }
-    public addLineToCache(line: number): void {
+    // Returns [Line, EndsInOperator]
+    public addLineToCache(line: number): [string, boolean] {
         const cleaned = cleanLine(this.getLine(line));
         const endsInOperator = doesLineEndInOperator(cleaned);
         this.lineCache.set(line, cleaned);
         this.endsInOperatorCache.set(line, endsInOperator);
+        return [cleaned, endsInOperator];
     }
     public getEndsInOperatorFromCache(line: number): boolean {
-        const lineInCache = this.lineCache.has(line);
-        if (!lineInCache) {
-            this.addLineToCache(line);
+        const lineInCache = this.endsInOperatorCache.get(line);
+        if (lineInCache === undefined) {
+            return this.addLineToCache(line)[1];
         }
-        const s = this.endsInOperatorCache.get(line);
-
-        return (s);
+        return lineInCache;
     }
     public getLineFromCache(line: number): string {
-        const lineInCache = this.lineCache.has(line);
-        if (!lineInCache) {
-            this.addLineToCache(line);
+        const lineInCache = this.lineCache.get(line);
+        if (lineInCache === undefined) {
+            return this.addLineToCache(line)[0];
         }
-        const s = this.lineCache.get(line);
-
-        return (s);
+        return lineInCache;
     }
 }
 
@@ -54,7 +52,11 @@ export function cleanLine(text: string): string {
     for (let i = 0; i < text.length; i++) {
         const c = text[i];
         if (isQuote(c)) {
-            withinQuotes = (withinQuotes === c) ? null : c;
+            if (withinQuotes === null) {
+                withinQuotes = c;
+            } else if (withinQuotes === c) {
+                withinQuotes = null;
+            }
         }
         if (isComment(c) && !withinQuotes) {
             break;
@@ -62,7 +64,6 @@ export function cleanLine(text: string): string {
 
         cleaned += c;
     }
-
     return (cleaned.trimEnd());
 }
 

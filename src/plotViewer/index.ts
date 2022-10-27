@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -9,13 +10,14 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as ejs from 'ejs';
 
-import { config, setContext, UriIcon } from '../util';
+import { asViewColumn, config, setContext, UriIcon } from '../util';
 
 import { extensionContext } from '../extension';
 
 import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage, PreviewPlotLayout, PreviewPlotLayoutMessage, ToggleFullWindowMessage } from './webviewMessages';
 import { HttpgdIdResponse, HttpgdPlotId, HttpgdRendererId } from 'httpgd/lib/types';
 import { Response } from 'node-fetch';
+import { autoShareBrowser, isHost, shareServer } from '../liveShare';
 
 const commands = [
     'showViewers',
@@ -44,7 +46,9 @@ export function initializeHttpgd(): HttpgdManager {
     for (const cmd of commands) {
         const fullCommand = `r.plot.${cmd}`;
         const cb = httpgdManager.getCommandHandler(cmd);
-        vscode.commands.registerCommand(fullCommand, cb);
+        extensionContext.subscriptions.push(
+            vscode.commands.registerCommand(fullCommand, cb)
+        );
     }
     return httpgdManager;
 }
@@ -65,7 +69,7 @@ export class HttpgdManager {
         };
     }
 
-    public showViewer(urlString: string): void {
+    public async showViewer(urlString: string): Promise<void> {
         const url = new URL(urlString);
         const host = url.host;
         const token = url.searchParams.get('token') || undefined;
@@ -86,6 +90,10 @@ export class HttpgdManager {
             this.viewerOptions.fullWindow = conf.get('plot.defaults.fullWindowMode', false);
             this.viewerOptions.token = token;
             const viewer = new HttpgdViewer(host, this.viewerOptions);
+            if (isHost() && autoShareBrowser) {
+                const disposable = await shareServer(url, 'httpgd');
+                viewer.webviewPanel?.onDidDispose(() => void disposable.dispose());
+            }
             this.viewers.unshift(viewer);
         }
     }
@@ -121,7 +129,7 @@ export class HttpgdManager {
         };
         const urlString = await vscode.window.showInputBox(options);
         if (urlString) {
-            this.showViewer(urlString);
+            await this.showViewer(urlString);
         }
     }
 
@@ -278,22 +286,22 @@ export class HttpgdViewer implements IHttpgdViewer {
     customOverwriteCssPath?: string;
 
     // Size of the view area:
-    viewHeight: number;
-    viewWidth: number;
+    viewHeight: number = 600;
+    viewWidth: number = 800;
 
     // Size of the shown plot (as computed):
-    plotHeight: number;
-    plotWidth: number;
+    plotHeight: number = 600;
+    plotWidth: number = 800;
 
     readonly zoom0: number = 1;
     zoom: number = this.zoom0;
 
-    resizeTimeout?: NodeJS.Timeout;
+    protected resizeTimeout?: NodeJS.Timeout;
     readonly resizeTimeoutLength: number = 1300;
 
-    refreshTimeout?: NodeJS.Timeout;
+    protected refreshTimeout?: NodeJS.Timeout;
     readonly refreshTimeoutLength: number = 10;
-    
+
     private lastExportUri?: vscode.Uri;
 
     readonly htmlTemplate: string;
@@ -331,7 +339,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
         this.api = new Httpgd(this.host, this.token, true);
         this.api.onPlotsChanged((newState) => {
-            void this.refreshPlots(newState.plots);
+            void this.refreshPlotsDelayed(newState.plots);
         });
         this.api.onConnectionChanged(() => {
             // todo
@@ -350,7 +358,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.htmlTemplate = fs.readFileSync(path.join(this.htmlRoot, 'index.ejs'), 'utf-8');
         this.smallPlotTemplate = fs.readFileSync(path.join(this.htmlRoot, 'smallPlot.ejs'), 'utf-8');
         this.showOptions = {
-            viewColumn: options.viewColumn ?? vscode.ViewColumn[conf.get<string>('session.viewers.viewColumn.plot') || 'Two'],
+            viewColumn: options.viewColumn ?? asViewColumn(conf.get<string>('session.viewers.viewColumn.plot'), vscode.ViewColumn.Two),
             preserveFocus: !!options.preserveFocus
         };
         this.webviewOptions = {
@@ -568,6 +576,19 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.updatePlot(plt);
     }
 
+    protected async refreshPlotsDelayed(plotsIdResponse: HttpgdIdResponse[], redraw: boolean = false, force: boolean = false): Promise<void> {
+        if(this.refreshTimeoutLength === 0){
+            await this.refreshPlots(plotsIdResponse, redraw, force);
+        } else{
+            clearTimeout(this.refreshTimeout);
+            this.refreshTimeout = setTimeout(() => {
+                void this.refreshPlots(plotsIdResponse, redraw, force).then(() =>
+                    this.refreshTimeout = undefined
+                );
+            }, this.refreshTimeoutLength);
+        }
+    }
+
     protected async refreshPlots(plotsIdResponse: HttpgdIdResponse[], redraw: boolean = false, force: boolean = false): Promise<void> {
         const nPlots = this.plots.length;
         let plotIds = plotsIdResponse.map((x) => x.id);
@@ -624,7 +645,7 @@ export class HttpgdViewer implements IHttpgdViewer {
 
     // get content of a single plot
     protected async getPlotContent(id: HttpgdPlotId, width: number, height: number, zoom: number): Promise<HttpgdPlot<string>> {
-        
+
         const args = {
             id: id,
             height: height,
@@ -632,10 +653,10 @@ export class HttpgdViewer implements IHttpgdViewer {
             zoom: zoom,
             renderer: 'svgp'
         };
-        
+
         const plotContent = await this.api.getPlot(args);
         const svg = await plotContent?.text() || '';
-        
+
         const plt: HttpgdPlot<string> = {
             id: id,
             data: svg,
@@ -739,7 +760,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
 
     protected postWebviewMessage(msg: InMessage): void {
-        this.webviewPanel?.webview.postMessage(msg);
+        void this.webviewPanel?.webview.postMessage(msg);
     }
 
 
@@ -813,16 +834,16 @@ export class HttpgdViewer implements IHttpgdViewer {
         const plt = await this.api.getPlot({
             id: this.activePlot,
             renderer: rendererId
-        }) as unknown as Response; // I am not sure why eslint thinks this is the 
-        // browser Response object and not the node-fetch one. 
+        }) as unknown as Response; // I am not sure why eslint thinks this is the
+        // browser Response object and not the node-fetch one.
         // cross-fetch problem or config problem in vscode-r?
-        
+
         const dest = fs.createWriteStream(outFile);
         dest.on('error', (err) => void vscode.window.showErrorMessage(
             `Export failed: ${err.message}`
         ));
         dest.on('close', () => void vscode.window.showInformationMessage(
-            `Export done: ${outFile}`
+            `Export done: ${outFile || ''}`
         ));
         void plt.body.pipe(dest);
     }
