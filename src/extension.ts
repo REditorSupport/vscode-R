@@ -119,6 +119,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.devMode': () => rTerminal.runTextInTerm('devtools::dev_mode()'),
         'r.spellCheck': () => rTerminal.runTextInTerm('devtools::spell_check()'),
         'r.checkRhub': () => rTerminal.runTextInTerm('devtools::check_rhub()'),
+        'r.checkWinDevel': () => rTerminal.runTextInTerm('devtools::check_win_devel()'),
         'r.release': () => rTerminal.runTextInTerm('devtools::release()'),
 
         // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758

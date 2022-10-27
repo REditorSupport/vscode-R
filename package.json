@@ -462,6 +462,11 @@
         "command": "r.checkRhub"
       },
       {
+        "title": "CRAN Checks for Package on Win-Builder",
+        "category": "R Package",
+        "command": "r.checkWinDevel"
+      },
+      {
         "title": "CRAN Release",
         "category": "R Package",
         "command": "r.release"
