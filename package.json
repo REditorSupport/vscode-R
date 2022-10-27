@@ -442,6 +442,11 @@
         "command": "r.previewEnvironment"
       },
       {
+        "title": "Increment Package Version",
+        "category": "R Package",
+        "command": "r.useVersion"
+      },
+      {
         "title": "Load All",
         "category": "R Package",
         "command": "r.loadAll"
