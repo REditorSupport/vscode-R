@@ -447,6 +447,11 @@
         "command": "r.useGit"
       },
       {
+        "title": "Connect a Local Repo with GitHub",
+        "category": "R Package",
+        "command": "r.useGitHub"
+      },
+      {
         "title": "Increment Package Version",
         "category": "R Package",
         "command": "r.useVersion"
