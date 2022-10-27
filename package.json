@@ -457,6 +457,11 @@
         "command": "r.spellCheck"
       },
       {
+        "title": "CRAN Checks for Package on R-Hub",
+        "category": "R Package",
+        "command": "r.checkRhub"
+      },
+      {
         "title": "CRAN Release",
         "category": "R Package",
         "command": "r.release"
