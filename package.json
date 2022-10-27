@@ -442,6 +442,11 @@
         "command": "r.previewEnvironment"
       },
       {
+        "title": "Initialise A Git Repository",
+        "category": "R Package",
+        "command": "r.useGit"
+      },
+      {
         "title": "Increment Package Version",
         "category": "R Package",
         "command": "r.useVersion"
