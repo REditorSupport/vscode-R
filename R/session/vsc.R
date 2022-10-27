@@ -542,7 +542,7 @@ show_browser <- function(url, title = url, ...,
   if (nzchar(proxy_uri)) {
     is_base_path <- grepl("\\:\\d+$", url)
     url <- sub("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:)?",
-      sub("\\{\\{?port\\}\\}?", "", proxy_uri), url)
+      sub("\\{\\{?port\\}\\}?/?", "", proxy_uri), url)
     if (is_base_path) {
       url <- paste0(url, "/")
     }
@@ -599,7 +599,7 @@ show_webview <- function(url, title, ..., viewer) {
   if (nzchar(proxy_uri)) {
     is_base_path <- grepl("\\:\\d+$", url)
     url <- sub("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:)?",
-      sub("\\{\\{?port\\}\\}?", "", proxy_uri), url)
+      sub("\\{\\{?port\\}\\}?/?", "", proxy_uri), url)
     if (is_base_path) {
       url <- paste0(url, "/")
     }
