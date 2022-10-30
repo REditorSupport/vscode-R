@@ -289,14 +289,14 @@ export function extendSelection(line: number, getLine: (line: number) => string,
  * @param text A block of R code as a string
  */
 export function removeLeadingComments(text: string): string {
-    let textArray = text.split('\n');
+    const textArray = text.split('\n');
     let endSearchIndex = 0;
-    for (let lineContent of textArray) {
-        if (lineContent.search("(^ *$|^ *#)") !== -1) {
+    for (const lineContent of textArray) {
+        if (lineContent.search('(^ *$|^ *#)') !== -1) {
             endSearchIndex += 1;
         } else {
-            break
+            break;
         }
     }
-    return textArray.slice(endSearchIndex).join("\n");
+    return textArray.slice(endSearchIndex).join('\n');
 }
