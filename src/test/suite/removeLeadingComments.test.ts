@@ -46,6 +46,7 @@ suite('removeLeadingComments Tests', () => {
         const input = `\
         
         # a leading comment
+        # Another leading comment
         
         function (x) {
             y = x
