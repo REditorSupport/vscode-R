@@ -72,7 +72,9 @@ export function getSelection(): RSelection | undefined {
         selection.range = new Range(newStart, newEnd);
     }
 
-    selection.selectedText = currentDocument.getText(selection.range).trim();
+    selection.selectedText = removeLeadingComments(
+        currentDocument.getText(selection.range).trim()
+    );
 
     return selection;
 }
@@ -277,4 +279,25 @@ export function extendSelection(line: number, getLine: (line: number) => string,
     }
 
     return ({ startLine: poss[0].line, endLine: poss[1].line });
+}
+
+
+/**
+ * This function removes leading R comments from a block of code text
+ * I.e. All blank and commented out lines are removed up until we hit the first
+ * non-blank / non-comment line.
+ * @param text A block of R code as a string
+ */
+export function removeLeadingComments(text: string): string {
+    let textArray = text.split('\n');
+    let endSearchIndex = 0;
+    for (let lineNumber in textArray) {
+        let lineContent = textArray[lineNumber]
+        if (lineContent.search("(^ *$|^ *#)") !== -1) {
+        endSearchIndex += 1;
+        } else {
+        break
+        }
+    }
+    return textArray.slice(endSearchIndex).join("\n");
 }
