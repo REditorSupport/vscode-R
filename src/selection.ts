@@ -291,12 +291,11 @@ export function extendSelection(line: number, getLine: (line: number) => string,
 export function removeLeadingComments(text: string): string {
     let textArray = text.split('\n');
     let endSearchIndex = 0;
-    for (let lineNumber in textArray) {
-        let lineContent = textArray[lineNumber]
+    for (let lineContent of textArray) {
         if (lineContent.search("(^ *$|^ *#)") !== -1) {
-        endSearchIndex += 1;
+            endSearchIndex += 1;
         } else {
-        break
+            break
         }
     }
     return textArray.slice(endSearchIndex).join("\n");
