@@ -4,6 +4,17 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.6.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.6.1)
+
+Enhancements:
+
+* A new setting `r.plot.devArgs` is added to allow customizing png device arguments (e.g. width and height) for the PNG plot viewer. (#1235)
+
+Fixes:
+
+* Fixed opening requested file externally when viewer is disabled. (#1209)
+* Support trailing slash in code-server's URI template. (#1241)
+
 ## [2.6.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.6.0)
 
 New Features:
