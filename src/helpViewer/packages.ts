@@ -179,7 +179,7 @@ export class PackageManager {
         if(!packages?.length){
             return false;
         }
-        const pkgs = await pickPackages(packages, 'Please selecte a package.', pickMany);
+        const pkgs = await pickPackages(packages, 'Please select a package.', pickMany);
         if(pkgs?.length){
             const pkgsConfirmed = await confirmPackages('Are you sure you want to install these packages?', pkgs);
             if(pkgsConfirmed?.length){
