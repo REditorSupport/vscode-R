@@ -1911,7 +1911,7 @@
         ],
         "pattern": [
           {
-            "regexp": "^(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):(\\d+)\\):\\s(.*)",
+            "regexp": "^(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):?(\\d+)?\\):\\s(.*)",
             "file": 2,
             "line": 3,
             "column": 4,
