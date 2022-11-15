@@ -1464,6 +1464,14 @@
           ],
           "default": "None"
         },
+        "r.helpPanel.previewLocalPackages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["."],
+          "markdownDescription": "Which local directories to try for local help pages previewer. Set to `[]` to disable."
+        },
         "r.helpPanel.rpath": {
           "type": "string",
           "default": "",

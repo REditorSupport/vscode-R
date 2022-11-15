@@ -74,8 +74,8 @@ export class HelpLinkHoverProvider implements vscode.HoverProvider {
         const token = document.getText(wordRange);
         const aliases = await globalRHelp?.getMatchingAliases(token) || [];
         const mds = aliases.map(a => {
-            const cmdText = `${a.package}::${a.name}`;
-            const args = [`/library/${a.package}/html/${a.alias}.html`];
+            const cmdText = `${a.package}::${a.alias}`;
+            const args = [`/library/${a.package}/html/${a.name}.html`];
             const encodedArgs = encodeURIComponent(JSON.stringify(args));
             const cmd = 'command:r.helpPanel.openForPath';
             const cmdUri = vscode.Uri.parse(`${cmd}?${encodedArgs}`);
