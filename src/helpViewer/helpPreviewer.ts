@@ -262,8 +262,6 @@ export class RLocalHelpPreviewer {
             helpFile.rPath = path.join(this.packageDir, rFileMatch?.[1]);
         }
 
-        fs.writeFileSync(path.join(this.packageDir, 'test.html'), helpFile.html);
-
         return helpFile;
     }
 
