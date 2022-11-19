@@ -16,6 +16,7 @@ import {
     escapeHtml,
     makeWebviewCommandUriString,
     uniqueEntries,
+    isFileSafe,
 } from '../util';
 import {HelpPanel} from './panel';
 import {HelpProvider, AliasProvider} from './helpProvider';
@@ -706,7 +707,7 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
     // Highlight help preview:
     if(helpFile.isPreview){
         let rdInfo: string;
-        if(helpFile.rdPath){
+        if(helpFile.rdPath && isFileSafe(helpFile.rdPath)){
             const localRdPath = vscode.workspace.asRelativePath(helpFile.rdPath);
             const rdUri = vscode.Uri.file(helpFile.rdPath);
             const cmdUri = makeWebviewCommandUriString('vscode.open', rdUri);
@@ -716,9 +717,14 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
         }
         if(helpFile.rPath){
             const localRPath = vscode.workspace.asRelativePath(helpFile.rPath);
-            const rUri = vscode.Uri.file(helpFile.rPath);
-            const cmdUri = makeWebviewCommandUriString('vscode.open', rUri);
-            const rHref = `<a href="${cmdUri}" title="Open File">${localRPath}</a>`;
+            let rHref: string;
+            if(isFileSafe(helpFile.rPath)){
+                const rUri = vscode.Uri.file(helpFile.rPath);
+                const cmdUri = makeWebviewCommandUriString('vscode.open', rUri);
+                rHref = `<a href="${cmdUri}" title="Open File">${localRPath}</a>`;
+            } else{
+                rHref = localRPath;
+            }
             rdInfo += `, based on Roxygen comments in ${rHref}`;
         }
         const infoBlock = `<div class="previewInfo"> Preview generated from ${rdInfo}. </div>`;
