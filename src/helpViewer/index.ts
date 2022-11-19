@@ -678,47 +678,49 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
         const html = escapeHtml(helpFile.html);
         helpFile.html = `<html><head></head><body><pre>${html}</pre></body></html>`;
         helpFile.isModified = true;
-        return helpFile;
     }
-
-    // parse the html string
+    
+    // parse the html string for futher modifications
     const $ = cheerio.load(helpFile.html);
 
-    // Remove style elements specified in the html itself (replaced with custom CSS)
-    $('head style').remove();
-    
-    // Split code examples at empty lines:
-    const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
-    const isEnabled = CODE_CLICKS.some(k => codeClickConfig?.[k] !== 'Ignore');
-    if(isEnabled){
-        $('body').addClass('preClickable');
-        const codeSections = $('pre');
-        codeSections.each((i, section) => {
-            const innerHtml = $(section).html();
-            if(!innerHtml){
-                return;
-            }
-            const newPres = innerHtml.split('\n\n').map(s => s && `<pre class=preCodeExample>${s}</pre>`);
-            const newHtml = '<div class="preDiv">' + newPres.join('\n') + '</div>';
-            $(section).replaceWith(newHtml);
-        });
-    }
-    if(codeClickConfig?.Click !== 'Ignore'){
-        $('body').addClass('preHoverPointer');
-    }
-
-    // Apply syntax highlighting:
-    if (config().get<boolean>('helpPanel.enableSyntaxHighlighting')) {
-        // find all code sections, enclosed by <pre>...</pre>
-        const codeSections = $('pre');
-
-        // apply syntax highlighting to each code section:
-        codeSections.each((i, section) => {
-            const styledCode = hljs.highlight($(section).text() || '', {
-                language: 'r',
+    // use .isHtml as proxy for syntax highlighting, clickable <pre> etc.
+    if(helpFile.isHtml){
+        // Remove style elements specified in the html itself (replaced with custom CSS)
+        $('head style').remove();
+        
+        // Split code examples at empty lines:
+        const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
+        const isEnabled = CODE_CLICKS.some(k => codeClickConfig?.[k] !== 'Ignore');
+        if(isEnabled){
+            $('body').addClass('preClickable');
+            const codeSections = $('pre');
+            codeSections.each((i, section) => {
+                const innerHtml = $(section).html();
+                if(!innerHtml){
+                    return;
+                }
+                const newPres = innerHtml.split('\n\n').map(s => s && `<pre class=preCodeExample>${s}</pre>`);
+                const newHtml = '<div class="preDiv">' + newPres.join('\n') + '</div>';
+                $(section).replaceWith(newHtml);
             });
-            $(section).html(styledCode.value);
-        });
+        }
+        if(codeClickConfig?.Click !== 'Ignore'){
+            $('body').addClass('preHoverPointer');
+        }
+
+        // Apply syntax highlighting:
+        if (config().get<boolean>('helpPanel.enableSyntaxHighlighting')) {
+            // find all code sections, enclosed by <pre>...</pre>
+            const codeSections = $('pre');
+
+            // apply syntax highlighting to each code section:
+            codeSections.each((i, section) => {
+                const styledCode = hljs.highlight($(section).text() || '', {
+                    language: 'r',
+                });
+                $(section).html(styledCode.value);
+            });
+        }
     }
 
     // Highlight help preview:
@@ -732,7 +734,7 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
             const cmdUri = makeWebviewCommandUriString('r.helpPanel.openFileByPath', rdUri.fsPath, true);
             rdInfo = `<a href="${cmdUri}" title="Open File">${localRdPath}</a>`;
         } else{
-            rdInfo = `an .Rd file`;
+            rdInfo = `a local file`;
         }
         if(helpFile.rPath){
             const localRPath = vscode.workspace.asRelativePath(helpFile.rPath);

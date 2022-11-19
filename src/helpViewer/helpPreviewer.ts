@@ -243,6 +243,8 @@ export class RLocalHelpPreviewer {
         console.log(`Identified topic: ${topic}`);
         if(topic === '00Index'){
             return this.getHelpForIndexPath(requestPath);
+        } else if(topic === 'DESCRIPTION'){
+            return this.getHelpForDescription(requestPath);
         } else{
             return this.getHelpForTopic(topic, requestPath);
         }
@@ -328,14 +330,37 @@ export class RLocalHelpPreviewer {
                 return topic;
             });
         }
+
+        const descriptionTopic: Topic = {
+            name: 'DESCRIPTION',
+            description: '',
+            helpPath: `/library/${pkgName}/DESCRIPTION`,
+            type: TopicType.META
+        };
+
         const indexTopic: Topic = {
             name: 'Index',
             description: '',
             helpPath: `/library/${pkgName}/html/00Index.html`,
             type: TopicType.INDEX
         };
-        topics.unshift(indexTopic);
+        topics.unshift(indexTopic, descriptionTopic);
         return topics;
+    }
+    
+    private getHelpForDescription(requestPath: string): rHelp.HelpFile | undefined {
+        const desc = readFileSyncSafe(this.descriptionPath);
+        if(!desc){
+            return undefined;
+        }
+        const helpFile: rHelp.HelpFile = {
+            html: desc,
+            requestPath: requestPath,
+            isPreview: true,
+            rdPath: this.descriptionPath, // might need to be handled separately if info-text changes
+            packageDir: this.packageDir
+        };
+        return helpFile;
     }
     
     private getHelpForIndexPath(requestPath: string): rHelp.HelpFile | undefined {
@@ -382,7 +407,7 @@ function parseRequestPath(requestPath: string): {
     pkg?: string,
     topic?: string
 } {
-    const re = /^\/?library\/([^/]*)\/(?:html|help)\/([^/]*?)(?:\.html.*)?$/;
+    const re = /^\/?library\/([^/]*)\/(?:html|help)?\/?([^/]*?)(?:\.html.*)?$/;
     const m = re.exec(requestPath);
     return {
         pkg: m?.[1],
