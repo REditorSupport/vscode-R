@@ -70,9 +70,10 @@ export async function initializeHelp(
 
     // Gather options used in r help related files
     const rHelpOptions: HelpOptions = {
-        webviewScriptPath: context.asAbsolutePath('/html/help/script.js'),
-        webviewStylePath: context.asAbsolutePath('/html/help/theme.css'),
-        rScriptFile: context.asAbsolutePath('R/help/getAliases.R'),
+        webviewScriptPath: context.asAbsolutePath('./html/help/script.js'),
+        webviewStylePath: context.asAbsolutePath('./html/help/theme.css'),
+        rScriptFile: context.asAbsolutePath('./R/help/getAliases.R'),
+        indexTemplatePath: context.asAbsolutePath('./html/help/00Index.ejs'),
         rPath: rPath,
         cwd: cwd,
         persistentState: persistentState,
@@ -156,6 +157,8 @@ export interface HelpFile {
     hash?: string
     // if the file is a real file
     isRealFile?: boolean
+    // can be set to true to indicate that the file is a (virtual) 00Index.html file
+    isIndex?: boolean
     // can be used to scroll the document to a certain position when loading
     // useful to remember scroll position when going back/forward
     scrollY?: number
@@ -197,6 +200,8 @@ export interface HelpOptions {
     persistentState: vscode.Memento
     // used by some helper classes:
     rHelp?: RHelp
+    // path to .ejs file to be used as 00Index.html in previewed packages
+    indexTemplatePath: string;
 }
 
 // The name api.HelpPanel is a bit misleading
@@ -260,6 +265,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
             void this.refreshPreviewer(previewer);
         };
         this.helpPreviewerOptions = {
+            indexTemplatePath: options.indexTemplatePath,
             rPath: this.rPath,
             previewListener: previewListener
         };
@@ -718,7 +724,9 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
     // Highlight help preview:
     if(helpFile.isPreview){
         let rdInfo: string;
-        if(helpFile.rdPath && isFileSafe(helpFile.rdPath)){
+        if(helpFile.isIndex){
+            rdInfo = 'local .Rd files';
+        } else if(helpFile.rdPath && isFileSafe(helpFile.rdPath)){
             const localRdPath = vscode.workspace.asRelativePath(helpFile.rdPath);
             const rdUri = vscode.Uri.file(helpFile.rdPath);
             const cmdUri = makeWebviewCommandUriString('r.helpPanel.openFileByPath', rdUri.fsPath, true);

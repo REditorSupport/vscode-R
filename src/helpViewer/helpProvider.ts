@@ -125,9 +125,12 @@ export class HelpProvider {
         }
         const html = await rep.text();
 
+        // read "corrected" request path, that was forwarded to
+        const requestPath1 = rep.url.replace(/^http:\/\/localhost:[0-9]*\//, '');
+
         // return help file
         const ret: rHelp.HelpFile = {
-            requestPath: requestPath,
+            requestPath: requestPath1,
             html: html,
             isRealFile: false,
             url: url

@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as rHelp from './index';
+import * as ejs from 'ejs';
 import { isDirSafe, isFileSafe, readFileSyncSafe, config } from '../util';
 import { Topic, TopicType } from './packages';
 
@@ -14,6 +15,19 @@ interface LocalPackageInfo {
     title?: string;
 }
 
+interface EjsTopic {
+    name: string;
+    href: string;
+    title: string;
+}
+interface EjsData {
+    packageTitle: string;
+    packageName: string;
+    packageVersion: string;
+    topics: EjsTopic[];
+}
+
+
 
 export type PreviewListener = (previewer: RLocalHelpPreviewer) => void;
 
@@ -22,6 +36,8 @@ export interface RHelpPreviewerOptions {
     rPath: string;
     // listener to notify when package-files change
     previewListener?: PreviewListener;
+    // path to .ejs file to be used as 00Index.html in previewed packages
+    indexTemplatePath: string;
 }
 
 export function makePreviewerList(options: RHelpPreviewerOptions): RLocalHelpPreviewer[] {
@@ -46,6 +62,8 @@ export function makePreviewerList(options: RHelpPreviewerOptions): RLocalHelpPre
 }
 
 const DUMMY_TOPIC_TITLE = '<UNNAMED TOPIC>';
+const DUMMY_TOPIC_VERSION = '?.?.?';
+const DUMMY_PACKAGE_TITLE = '<UNTITLED PACKAGE>';
 
 export class RLocalHelpPreviewer {
 
@@ -53,6 +71,7 @@ export class RLocalHelpPreviewer {
     private readonly descriptionPath: string;
     private readonly manDir: string;
     private readonly rPath: string;
+    private readonly indexTemplate: string;
     private previewListener: () => void;
     
     public isPackageDir: boolean = false;
@@ -72,6 +91,7 @@ export class RLocalHelpPreviewer {
         this.previewListener = () => options.previewListener?.(this);
         this.isPackageDir = this.watchFiles();
         this.dummyPackageName = `<UNNAMED_PACKAGE_${unnamedId}>`;
+        this.indexTemplate = fs.readFileSync(options.indexTemplatePath, 'utf-8');
     }
 
     public refresh(): void {
@@ -177,8 +197,18 @@ export class RLocalHelpPreviewer {
         return packageInfo;
     }
     
-    public getPackageName(): string {
-        return this.getPackageInfo()?.name || this.dummyPackageName;
+    public getPackageName(safe?: boolean): string {
+        let ret = this.getPackageInfo()?.name || this.dummyPackageName;
+        if(safe){
+            ret = ret.replaceAll(/[^a-zA-Z0-9.]/g, '');
+            if(ret.match(/^[0-9.]/) || ret.length < 2){
+                ret = 'XX' + ret;
+            }
+            if(ret.match(/\.$/)){
+                ret = ret + 'XX';
+            }
+        }
+        return ret;
     }
     
     public getRdPathForTopic(topic: string): string | undefined {
@@ -200,23 +230,25 @@ export class RLocalHelpPreviewer {
         }
 
         console.log(`Trying path: ${requestPath}`);
-
-        const re = /^\/?library\/([^/]*)\/(?:html|help)\/([^/]*?)(?:\.html.*)?$/;
-        const m = re.exec(requestPath);
-        const pkg = m?.[1];
-        const topic = m?.[2].replace(/^dot-/, '.');
-
-        const packageInfo = this.getPackageInfo();
+        const {pkg, topic} = parseRequestPath(requestPath);
 
         if(!pkg || !topic){
             console.log(`Invalid path: ${requestPath}`);
             return undefined;
-        } else if(pkg !== packageInfo?.name){
+        } else if(pkg !== this.getPackageName()){
             console.log(`Package name does not match description file: ${pkg}`);
             return undefined;
         }
 
         console.log(`Identified topic: ${topic}`);
+        if(topic === '00Index'){
+            return this.getHelpForIndexPath(requestPath);
+        } else{
+            return this.getHelpForTopic(topic, requestPath);
+        }
+    }
+    
+    private getHelpForTopic(topic: string, requestPath: string): undefined | rHelp.HelpFile {
         const rdFileName = this.getRdPathForTopic(topic);
         if(!rdFileName){
             console.log('No matching .Rd file found.');
@@ -225,6 +257,8 @@ export class RLocalHelpPreviewer {
             console.log(`.Rd file does not exist: ${rdFileName}`);
             return undefined;
         }
+        
+        const packageInfo = this.getPackageInfo();
 
         const args = [
             '--silent',
@@ -235,8 +269,8 @@ export class RLocalHelpPreviewer {
             'tools::Rd2HTML(base::commandArgs(TRUE)[1],package=base::commandArgs(TRUE)[2:3],dynamic=TRUE)',
             '--args',
             rdFileName,
-            packageInfo.name || '',
-            packageInfo.version || ''
+            this.getPackageName(true),
+            packageInfo?.version || DUMMY_TOPIC_VERSION
         ];
         
         const spawnRet = cp.spawnSync(this.rPath, args, {encoding: 'utf-8'});
@@ -261,7 +295,7 @@ export class RLocalHelpPreviewer {
         if(rFileMatch){
             helpFile.rPath = path.join(this.packageDir, rFileMatch?.[1]);
         }
-
+        
         return helpFile;
     }
 
@@ -294,10 +328,67 @@ export class RLocalHelpPreviewer {
                 return topic;
             });
         }
+        const indexTopic: Topic = {
+            name: 'Index',
+            description: '',
+            helpPath: `/library/${pkgName}/html/00Index.html`,
+            type: TopicType.INDEX
+        };
+        topics.unshift(indexTopic);
         return topics;
+    }
+    
+    private getHelpForIndexPath(requestPath: string): rHelp.HelpFile | undefined {
+        const html = this.makeIndexHtml();
+        if(!html){
+            return undefined;
+        }
+
+        const helpFile: rHelp.HelpFile = {
+            html: html,
+            requestPath: requestPath,
+            isPreview: true,
+            isIndex: true,
+            rdPath: undefined,
+            packageDir: this.packageDir
+        };
+
+        return helpFile;
+    }
+    
+    private makeIndexHtml(): string | undefined {
+        const pkgInfo = this.getPackageInfo();
+        if(!pkgInfo){
+            return undefined;
+        }
+        const aliases = this.getAliases() || [];
+        const topics = aliases.map(alias => ({
+            name: alias.name,
+            title: alias.title || DUMMY_TOPIC_TITLE,
+            href: `${alias.name}.html`
+        }));
+        const ejsData: EjsData = {
+            packageName: pkgInfo.name || this.dummyPackageName,
+            packageTitle: pkgInfo.title || DUMMY_PACKAGE_TITLE,
+            packageVersion: pkgInfo.version || DUMMY_TOPIC_VERSION,
+            topics: topics
+        };
+        const html = ejs.render(this.indexTemplate, ejsData);
+        return html;
     }
 }
 
+function parseRequestPath(requestPath: string): {
+    pkg?: string,
+    topic?: string
+} {
+    const re = /^\/?library\/([^/]*)\/(?:html|help)\/([^/]*?)(?:\.html.*)?$/;
+    const m = re.exec(requestPath);
+    return {
+        pkg: m?.[1],
+        topic: m?.[2].replace(/^dot-/, '.')
+    };
+}
 
 interface RdAlias {
     filepath: string;
