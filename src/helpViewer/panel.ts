@@ -308,6 +308,8 @@ export class HelpPanel {
                 } else {
                     void this.showHelpFile(helpFile, true, currentScrollY);
                 }
+            } else{
+                void vscode.window.showWarningMessage(`Did not find help page for path ${requestPath}`);
             }
         } else if (msg.message === 'mouseClick') {
             // use the additional mouse buttons to go forward/backwards
