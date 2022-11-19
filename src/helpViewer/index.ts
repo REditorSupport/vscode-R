@@ -121,6 +121,17 @@ export async function initializeHelp(
                     }
                 },
             ),
+            vscode.commands.registerCommand(
+                'r.helpPanel.openFileByPath',
+                async (filepath: string, warn?: boolean) => {
+                    if(isFileSafe(filepath)){
+                        const uri = vscode.Uri.file(filepath);
+                        await vscode.window.showTextDocument(uri);
+                    } else if(warn){
+                        await vscode.window.showWarningMessage(`The file does not exist: ${filepath}`);
+                    }
+                }
+            )
         );
 
         vscode.window.registerWebviewPanelSerializer('rhelp', rHelp);
@@ -710,7 +721,7 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
         if(helpFile.rdPath && isFileSafe(helpFile.rdPath)){
             const localRdPath = vscode.workspace.asRelativePath(helpFile.rdPath);
             const rdUri = vscode.Uri.file(helpFile.rdPath);
-            const cmdUri = makeWebviewCommandUriString('vscode.open', rdUri);
+            const cmdUri = makeWebviewCommandUriString('r.helpPanel.openFileByPath', rdUri.fsPath, true);
             rdInfo = `<a href="${cmdUri}" title="Open File">${localRdPath}</a>`;
         } else{
             rdInfo = `an .Rd file`;
@@ -720,7 +731,7 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
             let rHref: string;
             if(isFileSafe(helpFile.rPath)){
                 const rUri = vscode.Uri.file(helpFile.rPath);
-                const cmdUri = makeWebviewCommandUriString('vscode.open', rUri);
+                const cmdUri = makeWebviewCommandUriString('r.helpPanel.openFileByPath', rUri.fsPath, true);
                 rHref = `<a href="${cmdUri}" title="Open File">${localRPath}</a>`;
             } else{
                 rHref = localRPath;
