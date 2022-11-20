@@ -660,6 +660,7 @@
         "command": "r.helpPanel.openExternal",
         "title": "Open in external browser",
         "category": "R Help Panel",
+        "enablement": "r.helpPanel.canOpenExternal",
         "icon": "$(link-external)"
       },
       {

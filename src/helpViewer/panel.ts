@@ -146,6 +146,7 @@ export class HelpPanel {
 
 
     public async setContextValues(): Promise<void> {
+        await setContext('r.helpPanel.canOpenExternal', !!this.currentEntry?.helpFile.url);
         await setContext('r.helpPanel.active', !!this.panel?.active);
         await setContext('r.helpPanel.canGoBack', this.history.length > 0);
         await setContext('r.helpPanel.canGoForward', this.forwardHistory.length > 0);
