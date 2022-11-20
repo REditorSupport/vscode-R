@@ -672,8 +672,9 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
     helpFile.html0 = helpFile.html;
 
     // Make sure the helpfile content is actually html
-    const re = new RegExp('<html[^\\n]*>.*</html>', 'ms');
-    helpFile.isHtml = !!re.exec(helpFile.html);
+    const re = /^<!DOCTYPE html/;
+    const re2 = new RegExp('<html[^\\n]*>.*</html>', 'ms');
+    helpFile.isHtml = (!!re.exec(helpFile.html) || !!re2.exec(helpFile.html));
     if (!helpFile.isHtml) {
         const html = escapeHtml(helpFile.html);
         helpFile.html = `<html><head></head><body><pre>${html}</pre></body></html>`;
