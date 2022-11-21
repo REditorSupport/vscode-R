@@ -263,7 +263,7 @@ export class RLocalHelpPreviewer {
 
         // Add path of .R containing Roxygen documentation
         const rdTxt = fs.readFileSync(rdFileName, 'utf-8').replaceAll(/\r/g, '');
-        const rFileMatch = rdTxt.match(/^% Please edit documentation in (.*\.R)$/m);
+        const rFileMatch = rdTxt.match(/^% Please edit documentation in (.*)$/m);
         if(rFileMatch){
             const localRPaths = rFileMatch?.[1].split(',').map(s => s.trim());
             helpFile.rPaths = localRPaths.map(p => path.join(this.packageDir, p));
