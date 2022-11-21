@@ -263,11 +263,8 @@ export class RLocalHelpPreviewer {
 
         // Add path of .R containing Roxygen documentation
         const rdTxt = fs.readFileSync(rdFileName, 'utf-8').replaceAll(/\r/g, '');
-        const rFileMatch = rdTxt.match(/^% Please edit documentation in (.*)$/m);
-        if(rFileMatch){
-            const localRPaths = rFileMatch?.[1].split(',').map(s => s.trim());
-            helpFile.rPaths = localRPaths.map(p => path.join(this.packageDir, p));
-        }
+        const localRPaths = extractRPaths(rdTxt);
+        helpFile.rPaths = localRPaths?.map(p => path.join(this.packageDir, p));
         return helpFile;
     }
 
@@ -396,6 +393,39 @@ export class RLocalHelpPreviewer {
     }
 
 }
+
+
+// Helper function to extract the names of R files referenced in an .Rd file
+function extractRPaths(rdTxt: string): string[] | undefined {
+    // Find the commented lines at the begining of the document
+    const lines = rdTxt.replaceAll(/\r/g, '').split('\n');
+    const firstRealLine = lines.findIndex(lines => !lines.startsWith('% '));
+    if(firstRealLine >= 0){
+        lines.splice(firstRealLine);
+    }
+    
+    // Join lines that were split (these start with "%   ")
+    const CONTINUED_LINE_START = '%   ';
+    const longLines = [];
+    for(const line of lines){
+        if(line.startsWith(CONTINUED_LINE_START) && longLines.length){
+            longLines[longLines.length - 1] += ' ' + line.substring(CONTINUED_LINE_START.length);
+        } else{
+            longLines.push(line);
+        }
+    }
+    
+    // Find the line that references R files
+    for(const line of longLines){
+        const rFileMatch = line.match(/^% Please edit documentation in (.*)$/);
+        if(rFileMatch){
+            const localRPaths = rFileMatch?.[1].split(',').map(s => s.trim());
+            return localRPaths;
+        }
+    }
+    return undefined;
+}
+
 
 // Helper function to parse a request path
 // Accepts e.g. paths of the forms
