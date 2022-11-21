@@ -169,7 +169,7 @@ export interface HelpFile {
     // the .Rd file that this is based on (if it is a preview)
     rdPath?: string;
     // if available, the .R file from which the documentation is generated
-    rPath?: string;
+    rPaths?: string[];
     // if available, the directory of the previewed R package
     packageDir?: string;
 }
@@ -737,17 +737,18 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
         } else{
             rdInfo = `a local file`;
         }
-        if(helpFile.rPath){
-            const localRPath = vscode.workspace.asRelativePath(helpFile.rPath);
-            let rHref: string;
-            if(isFileSafe(helpFile.rPath)){
-                const rUri = vscode.Uri.file(helpFile.rPath);
-                const cmdUri = makeWebviewCommandUriString('r.helpPanel.openFileByPath', rUri.fsPath, true);
-                rHref = `<a href="${cmdUri}" title="Open File">${localRPath}</a>`;
-            } else{
-                rHref = localRPath;
-            }
-            rdInfo += `, based on Roxygen comments in ${rHref}`;
+        if(helpFile.rPaths?.length){
+            const rHrefs = helpFile.rPaths.map(rPath => {
+                const localRPath = vscode.workspace.asRelativePath(rPath);
+                if(isFileSafe(rPath)){
+                    const rUri = vscode.Uri.file(rPath);
+                    const cmdUri = makeWebviewCommandUriString('r.helpPanel.openFileByPath', rUri.fsPath, true);
+                    return `<a href="${cmdUri}" title="Open File">${localRPath}</a>`;
+                } else{
+                    return localRPath;
+                }
+            });
+            rdInfo += `, based on Roxygen comments in ${rHrefs.join(', ')}`;
         }
         const infoBlock = `<div class="previewInfo"> Preview generated from ${rdInfo}. </div>`;
         $('body').prepend(infoBlock);
