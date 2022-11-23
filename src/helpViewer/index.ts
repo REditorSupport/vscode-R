@@ -728,7 +728,7 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
     if(helpFile.isPreview){
         let rdInfo: string;
         if(helpFile.isIndex){
-            rdInfo = 'local .Rd files';
+            rdInfo = 'local .Rd files. Might containt non-exported entries that will not be present in the installed Index';
         } else if(helpFile.rdPath && isFileSafe(helpFile.rdPath)){
             const localRdPath = vscode.workspace.asRelativePath(helpFile.rdPath);
             const rdUri = vscode.Uri.file(helpFile.rdPath);

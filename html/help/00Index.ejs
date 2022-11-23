@@ -27,12 +27,8 @@
         <table width="100%">
             <% topics.forEach((topic)=> { %>
                 <tr>
-                    <td style="width: 25%;"><a href="<%= topic.href %>">
-                            <%= topic.name %>
-                        </a></td>
-                    <td>
-                        <%= topic.title %>
-                    </td>
+                    <td style="width: 25%;"><a href="<%= topic.href %>"><%= topic.name %></a></td>
+                    <td><%= topic.title %></td>
                 </tr>
             <% }) %>
         </table>

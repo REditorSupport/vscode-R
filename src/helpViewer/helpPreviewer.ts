@@ -318,7 +318,7 @@ export class RLocalHelpPreviewer {
         }
         const aliases = this.getAliases();
         const topics = aliases.map(alias => ({
-            name: alias.name,
+            name: alias.alias,
             title: alias.title || DUMMY_TOPIC_TITLE,
             href: `${alias.name}.html`
         }));
