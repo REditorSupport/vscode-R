@@ -1,0 +1,27 @@
+{
+    "scopeName": "buildignore.r",
+    "fileTypes": [
+        ".Rbuildignore"
+    ],
+    "patterns": [
+        {
+            "include": "#ignore-line"
+        }
+    ],
+    "repository": {
+        "ignore-line": {
+            "patterns": [
+                {
+                    "comment": "source.regexp.python and source.js.regexp both work",
+                    "begin": "^",
+                    "end": "$",
+                    "patterns": [
+                        {
+                            "include": "source.js.regexp"
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}
