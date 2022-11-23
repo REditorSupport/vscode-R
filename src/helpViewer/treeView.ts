@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { RHelp } from '.';
 import { extensionContext } from '../extension';
 import { doWithProgress } from '../util';
+import { RLocalHelpPreviewer } from './helpPreviewer';
 import { Package, Topic, TopicType } from './packages';
 
 // this enum is re-assigned just for code readability
@@ -62,7 +63,7 @@ export class HelpTreeWrapper {
             }
         );
 
-        // register the commands defiend in `nodeCommands`
+        // register the commands defined in `nodeCommands`
         // they still need to be defined in package.json (apart from CALLBACK)
         for (const cmd in nodeCommands) {
             const cmdTyped = cmd as cmdName; // Ok since `cmdName` is defiend as `keyof typeof nodeCommands`
@@ -74,7 +75,7 @@ export class HelpTreeWrapper {
         }
     }
 
-    refreshNode(node: Node | undefined): void {
+    public refreshNode(node: Node | undefined): void {
         for(const listener of this.helpViewProvider.listeners){
             listener(node);
         }
@@ -82,6 +83,18 @@ export class HelpTreeWrapper {
 
     public refreshPackageRootNode(): void {
         this.helpViewProvider.rootItem?.pkgRootNode?.refresh();
+    }
+    
+    public refreshPreviewNode(packageDir: string): void {
+        this.helpViewProvider.rootItem.previewChildren?.forEach(node => {
+            if(node.packageDir === packageDir){
+                node.refresh(true);
+            }
+        });
+    }
+
+    public refreshRootNode(): void {
+        this.helpViewProvider.rootItem.refresh(true);
     }
 }
 
@@ -304,15 +317,18 @@ abstract class NonRootNode extends Node {
 class RootNode extends Node {
     public collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
     public label = 'root';
-    public pkgRootNode?: PkgRootNode;
     readonly rootNode = this;
+
+    public pkgRootNode?: PkgRootNode;
+    public staticChildren?: NonRootNode[];
+    public previewChildren?: PreviewPackageNode[];
 
     constructor(wrapper: HelpTreeWrapper){
         super(undefined, wrapper);
     }
     makeChildren(){
-        this.pkgRootNode = new PkgRootNode(this);
-        return [
+        this.pkgRootNode ||= new PkgRootNode(this);
+        this.staticChildren ||= [
             new HomeNode(this),
             new Search1Node(this),
             new Search2Node(this),
@@ -321,8 +337,16 @@ class RootNode extends Node {
             new InstallPackageNode(this),
             this.pkgRootNode,
         ];
+        this.previewChildren ||= this.wrapper.rHelp.previewProviders.map(
+            previewer => new PreviewPackageNode(this, previewer)
+        );
+        return [...this.staticChildren, ...this.previewChildren];
     }
-    refresh(){
+    public refresh(refreshChildren: boolean = true){
+        if(refreshChildren){
+            this.children = undefined;
+            this.previewChildren = undefined;
+        }
         this.wrapper.refreshNode(undefined);
     }
 }
@@ -486,7 +510,7 @@ export class PackageNode extends NonRootNode {
         const summarizeTopics = (
             forQuickPick ? false : (this.rootNode.pkgRootNode?.summarizeTopics ?? true)
         );
-        const topics = await this.wrapper.rHelp.packageManager.getTopics(this.pkg.name, summarizeTopics, false);
+        const topics = await this.wrapper.rHelp.packageManager.getTopics(this.pkg.name, summarizeTopics);
         const ret = topics?.map(topic => new TopicNode(this, topic)) || [];
         return ret;
     }
@@ -517,7 +541,7 @@ class TopicNode extends NonRootNode {
         }
     }
 
-    constructor(parent: PackageNode, topic: Topic){
+    constructor(parent: NonRootNode, topic: Topic){
         super(parent);
         this.topic = topic;
         this.label = topic.name;
@@ -532,6 +556,76 @@ class TopicNode extends NonRootNode {
         }
     }
 }
+
+/////////////
+// Preview for documentation of local package
+class PreviewPackageNode extends NonRootNode {
+    public label = 'Local Preview';
+    public collapsibleState = CollapsibleState.Collapsed;
+    public iconPath = new vscode.ThemeIcon('eye');
+    public command = undefined;
+    public contextValue = Node.makeContextValue('QUICKPICK', 'unsummarizeTopics');
+    public qpPrompt = 'Please select a Topic.'
+
+    public summarizeTopics: boolean = true;
+
+    public packageDir: string;
+
+    private helpPreview: RLocalHelpPreviewer;
+
+    constructor(parent: RootNode, helpPreview: RLocalHelpPreviewer){
+        super(parent);
+        this.helpPreview = helpPreview;
+        this.packageDir = helpPreview?.packageDir;
+        this.refreshMetaInfo();
+    }
+
+    _handleCommand(cmd: cmdName){
+        if(cmd === 'unsummarizeTopics'){
+            this.summarizeTopics = false;
+            this.replaceContextValue('unsummarizeTopics', 'summarizeTopics');
+            this.refreshChildren(); // clears the 'grandchildren'
+            this.refresh(true);
+        } else if(cmd === 'summarizeTopics'){
+            this.summarizeTopics = true;
+            this.replaceContextValue('summarizeTopics', 'unsummarizeTopics');
+            this.refreshChildren(); // clears the 'grandchildren'
+            this.refresh(true);
+        }
+    }
+
+    makeChildren(forQuickPick: boolean = false): TopicNode[] {
+        const summarizeTopics = (
+            forQuickPick ? false : (this.summarizeTopics ?? true)
+        );
+        const topics = this.helpPreview?.getTreeViewTopics(summarizeTopics) || [];
+        const ret = topics.map(topic => new TopicNode(this, topic)) || [];
+        return ret;
+    }
+    
+    private refreshMetaInfo(): void {
+        this.label = `Preview: ${this.helpPreview.getPackageName()}`;
+        const pkgInfo = this.helpPreview.getPackageInfo();
+        const toolTipParts: string[] = [];
+        if(pkgInfo?.version){
+            toolTipParts.push('v' + pkgInfo.version);
+        }
+        if(pkgInfo?.title){
+            toolTipParts.push(pkgInfo.title);
+        }
+        this.tooltip = toolTipParts.join(' - ');
+    }
+    
+    // Can be called by a method from the node itself or externally to refresh the node in the treeview
+    public refresh(refreshChildren: boolean = true){
+        this.refreshMetaInfo();
+        if(refreshChildren){
+            this.children = undefined;
+        }
+        this.wrapper.refreshNode(this);
+    }
+}
+
 
 
 /////////////
@@ -580,6 +674,7 @@ class RefreshNode extends NonRootNode {
     async callBack(){
         await doWithProgress(() => this.wrapper.rHelp.refresh(), this.wrapper.viewId);
         this.rootNode.pkgRootNode?.refresh();
+        this.rootNode.refresh();
     }
 }
 

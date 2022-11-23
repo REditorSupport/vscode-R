@@ -10,7 +10,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as ejs from 'ejs';
 
-import { asViewColumn, config, setContext, UriIcon } from '../util';
+import { asViewColumn, config, setContext, UriIcon, makeWebviewCommandUriString } from '../util';
 
 import { extensionContext } from '../extension';
 
@@ -704,10 +704,6 @@ export class HttpgdViewer implements IHttpgdViewer {
             const webViewUri = this.webviewPanel.webview.asWebviewUri(localUri);
             return webViewUri.toString();
         };
-        const makeCommandUri = (command: string, ...args: any[]) => {
-            const argString = encodeURIComponent(JSON.stringify(args));
-            return `command:${command}?${argString}`;
-        };
         let overwriteCssPath = '';
         if (this.customOverwriteCssPath) {
             const uri = vscode.Uri.file(this.customOverwriteCssPath);
@@ -724,7 +720,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             host: this.host,
             asLocalPath: asLocalPath,
             asWebViewPath: asWebViewPath,
-            makeCommandUri: makeCommandUri,
+            makeCommandUri: makeWebviewCommandUriString,
             overwriteCssPath: overwriteCssPath
         };
         return ejsData;

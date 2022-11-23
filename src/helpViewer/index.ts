@@ -14,12 +14,16 @@ import {
     DummyMemento,
     getRPathConfigEntry,
     escapeHtml,
+    makeWebviewCommandUriString,
+    uniqueEntries,
+    isFileSafe,
 } from '../util';
 import {HelpPanel} from './panel';
 import {HelpProvider, AliasProvider} from './helpProvider';
 import {HelpTreeWrapper} from './treeView';
 import {PackageManager} from './packages';
 import {isGuestSession, rGuestService} from '../liveShare';
+import { makePreviewerList, RHelpPreviewerOptions, RLocalHelpPreviewer } from './helpPreviewer';
 
 export type CodeClickAction = 'Ignore' | 'Copy' | 'Run';
 export interface CodeClickConfig {
@@ -66,9 +70,10 @@ export async function initializeHelp(
 
     // Gather options used in r help related files
     const rHelpOptions: HelpOptions = {
-        webviewScriptPath: context.asAbsolutePath('/html/help/script.js'),
-        webviewStylePath: context.asAbsolutePath('/html/help/theme.css'),
-        rScriptFile: context.asAbsolutePath('R/help/getAliases.R'),
+        webviewScriptPath: context.asAbsolutePath('./html/help/script.js'),
+        webviewStylePath: context.asAbsolutePath('./html/help/theme.css'),
+        rScriptFile: context.asAbsolutePath('./R/help/getAliases.R'),
+        indexTemplatePath: context.asAbsolutePath('./html/help/00Index.ejs'),
         rPath: rPath,
         cwd: cwd,
         persistentState: persistentState,
@@ -79,6 +84,7 @@ export async function initializeHelp(
     try {
         rHelp = new RHelp(rHelpOptions);
     } catch (e) {
+        console.log('Error while launching R Help:', e);
         void vscode.window.showErrorMessage(`Help Panel not available`);
     }
 
@@ -116,6 +122,17 @@ export async function initializeHelp(
                     }
                 },
             ),
+            vscode.commands.registerCommand(
+                'r.helpPanel.openFileByPath',
+                async (filepath: string, warn?: boolean) => {
+                    if(isFileSafe(filepath)){
+                        const uri = vscode.Uri.file(filepath);
+                        await vscode.window.showTextDocument(uri);
+                    } else if(warn){
+                        await vscode.window.showWarningMessage(`The file does not exist: ${filepath}`);
+                    }
+                }
+            )
         );
 
         vscode.window.registerWebviewPanelSerializer('rhelp', rHelp);
@@ -140,18 +157,28 @@ export interface HelpFile {
     hash?: string
     // if the file is a real file
     isRealFile?: boolean
+    // can be set to true to indicate that the file is a (virtual) 00Index.html file
+    isIndex?: boolean
     // can be used to scroll the document to a certain position when loading
     // useful to remember scroll position when going back/forward
     scrollY?: number
     // used to open the file in an external browser
     url?: string
+    // indicates that this is a preview generated from a .Rd file
+    isPreview?: boolean;
+    // the .Rd file that this is based on (if it is a preview)
+    rdPath?: string;
+    // if available, the .R file from which the documentation is generated
+    rPaths?: string[];
+    // if available, the directory of the previewed R package
+    packageDir?: string;
 }
 
 // Internal representation of an "Alias"
 export interface Alias {
-    // name of a help topic as presented to the user
+    // main name of a help topic 
     name: string
-    // name of a help topic as used by the help server
+    // one of possibly many aliases of the same help topic
     alias: string
     // name of the package the alias is from
     package: string
@@ -173,6 +200,8 @@ export interface HelpOptions {
     persistentState: vscode.Memento
     // used by some helper classes:
     rHelp?: RHelp
+    // path to .ejs file to be used as 00Index.html in previewed packages
+    indexTemplatePath: string;
 }
 
 // The name api.HelpPanel is a bit misleading
@@ -191,6 +220,9 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 
     // Provides a list of aliases:
     readonly aliasProvider: AliasProvider
+    
+    // Provides previews of local help pages:
+    readonly previewProviders: RLocalHelpPreviewer[]
 
     // Show/Install/Remove packages:
     readonly packageManager: PackageManager
@@ -213,13 +245,14 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 
     // The options used when creating this instance
     private helpPanelOptions: HelpOptions
+    private helpPreviewerOptions: RHelpPreviewerOptions
 
     constructor(options: HelpOptions) {
         this.rPath = options.rPath;
         this.webviewScriptFile = vscode.Uri.file(options.webviewScriptPath);
         this.webviewStyleFile = vscode.Uri.file(options.webviewStylePath);
         const pkgListener = () => {
-            void console.log('Restarting Help Server...');
+            console.log('Restarting Help Server...');
             void this.refresh(true);
         };
         this.helpProvider = new HelpProvider({
@@ -227,6 +260,16 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
             pkgListener: pkgListener,
         });
         this.aliasProvider = new AliasProvider(options);
+        const previewListener = (previewer: RLocalHelpPreviewer) => {
+            console.log(`Refreshing R Help preview: ${previewer.packageDir}`);
+            void this.refreshPreviewer(previewer);
+        };
+        this.helpPreviewerOptions = {
+            indexTemplatePath: options.indexTemplatePath,
+            rPath: this.rPath,
+            previewListener: previewListener
+        };
+        this.previewProviders = makePreviewerList(this.helpPreviewerOptions);
         this.packageManager = new PackageManager({...options, rHelp: this});
         this.treeViewWrapper = new HelpTreeWrapper(this);
         this.helpPanelOptions = options;
@@ -249,6 +292,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
             this.packageManager,
             this.treeViewWrapper,
             ...this.helpPanels,
+            ...this.previewProviders
         ];
         for (const child of children) {
             if (
@@ -269,13 +313,41 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         await this.helpProvider?.refresh?.();
         await this.aliasProvider?.refresh?.();
         await this.packageManager?.refresh?.();
-        if (refreshTreeView) {
-            this.treeViewWrapper.refreshPackageRootNode();
+
+        // completely replace previewers
+        while(this.previewProviders.length){
+            this.previewProviders.pop()?.dispose();
         }
+        this.previewProviders.push(...makePreviewerList(this.helpPreviewerOptions));
+
+        // refresh helpPanels
         for (const panel of this.helpPanels) {
             await panel.refresh();
         }
+
+        // refresh tree view
+        if (refreshTreeView) {
+            this.treeViewWrapper.refreshPackageRootNode();
+            this.treeViewWrapper.refreshRootNode();
+        }
         return true;
+    }
+
+    // refresh only a certain preview:
+    public refreshPreviewer(previewer: RLocalHelpPreviewer): void {
+        if(previewer.isDisposed){
+            const ind = this.previewProviders.indexOf(previewer);
+            if(ind >= 0){
+                this.previewProviders.splice(ind, 1);
+                this.treeViewWrapper.refreshRootNode();
+            }
+            void vscode.window.showWarningMessage(`Disposing R-Help Previewer for: ${previewer.packageDir}`);
+        } else{
+            for (const panel of this.helpPanels) {
+                void panel.refreshPreview(previewer.packageDir);
+            }
+            this.treeViewWrapper.refreshPreviewNode(previewer.packageDir);
+        }
     }
 
     // refresh cached help info only for a specific file/package
@@ -418,16 +490,26 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
     public async getMatchingAliases(
         token: string,
     ): Promise<Alias[] | undefined> {
-        const aliases = await this.getAllAliases();
+        const aliases = await this.getAllAliases(true);
+        if(!aliases){
+            return undefined;
+        }
 
-        const matchingAliases = aliases?.filter(
+        const matchingAliases = aliases.filter(
             (alias) =>
-                token === alias.name ||
-                token === `${alias.package}::${alias.name}` ||
-                token === `${alias.package}:::${alias.name}`,
+                token === alias.alias ||
+                token === `${alias.package}::${alias.alias}` ||
+                token === `${alias.package}:::${alias.alias}`,
         );
+        
+        // Filter out identical aliases. This would cause noticeable delay on the full list.
+        const aliasesIdentical = (a1: Alias, a2: Alias) => (
+            a1.package === a2.package
+            && a1.name.replace(/^dot-/, '.') === a2.name.replace(/^dot-/, '.')
+        );
+        const uniqueAliases = uniqueEntries(matchingAliases, aliasesIdentical);
 
-        return matchingAliases;
+        return uniqueAliases;
     }
 
     // search function, similar to calling `?` in R
@@ -440,7 +522,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
     }
 
     // helper function to get aliases from aliasprovider
-    private async getAllAliases(): Promise<Alias[] | undefined> {
+    private async getAllAliases(includePreview: boolean = false): Promise<Alias[] | undefined> {
         const aliases = await doWithProgress(
             () => this.aliasProvider.getAllAliases(),
             vscode.ProgressLocation.Window
@@ -449,6 +531,13 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
             void vscode.window.showErrorMessage(
                 `Failed to get list of R functions. Make sure that \`jsonlite\` is installed and r.${getRPathConfigEntry()} points to a valid R executable.`,
             );
+            return undefined;
+        }
+        if(includePreview){
+            const previewAliases: Alias[] = this.previewProviders.flatMap(previewer => {
+                return previewer.getAliases() || [];
+            });
+            aliases.push(...previewAliases);
         }
         return aliases;
     }
@@ -467,8 +556,8 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         const qpItems: (vscode.QuickPickItem & Alias)[] = aliases.map((v) => {
             return {
                 ...v,
-                label: v.name,
-                description: `(${v.package}::${v.name})`,
+                label: v.alias,
+                description: `(${v.package}::${v.alias})`,
             };
         });
         const qpOptions = {
@@ -484,7 +573,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         preserveFocus: boolean = false,
     ): Promise<boolean> {
         return this.showHelpForPath(
-            `/library/${alias.package}/html/${alias.alias}.html`,
+            `/library/${alias.package}/html/${alias.name}.html`,
             undefined,
             preserveFocus,
         );
@@ -512,13 +601,19 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
     public async getHelpFileForPath(
         requestPath: string,
         modify: boolean = true,
+        skipCache: boolean = false
     ): Promise<HelpFile | undefined> {
+        // try to get a preview first
+        const preview = this.getHelpPreviewForPath(requestPath);
+        if(preview){
+            pimpMyHelp(preview);
+            return preview;
+        }
+
         // get helpFile from helpProvider if not cached
-        if (!this.cachedHelpFiles.has(requestPath)) {
+        if (skipCache || !this.cachedHelpFiles.has(requestPath)) {
             const helpFile = !isGuestSession
-                ? await this.helpProvider.getHelpFileFromRequestPath(
-                    requestPath,
-                )
+                ? await this.helpProvider.getHelpFileFromRequestPath(requestPath)
                 : await rGuestService?.requestHelpContent(requestPath);
             this.cachedHelpFiles.set(requestPath, helpFile);
         }
@@ -538,6 +633,16 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         };
 
         return helpFile;
+    }
+    
+    private getHelpPreviewForPath(requestPath: string): HelpFile | undefined {
+        for (const previewer of this.previewProviders) {
+            const ret = previewer.getHelpFileFromRequestPath(requestPath);
+            if(ret){
+                return ret;
+            }
+        }
+        return undefined;
     }
 
     // shows (internal) help file object in webview
@@ -571,53 +676,86 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
     helpFile.html0 = helpFile.html;
 
     // Make sure the helpfile content is actually html
-    const re = new RegExp('<html[^\\n]*>.*</html>', 'ms');
-    helpFile.isHtml = !!re.exec(helpFile.html);
+    const re = /^<!DOCTYPE html/;
+    const re2 = new RegExp('<html[^\\n]*>.*</html>', 'ms');
+    helpFile.isHtml = (!!re.exec(helpFile.html) || !!re2.exec(helpFile.html));
     if (!helpFile.isHtml) {
         const html = escapeHtml(helpFile.html);
         helpFile.html = `<html><head></head><body><pre>${html}</pre></body></html>`;
         helpFile.isModified = true;
-        return helpFile;
     }
-
-    // parse the html string
+    
+    // parse the html string for futher modifications
     const $ = cheerio.load(helpFile.html);
 
-    // Remove style elements specified in the html itself (replaced with custom CSS)
-    $('head style').remove();
-
-    // Split code examples at empty lines:
-    const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
-    const isEnabled = CODE_CLICKS.some(k => codeClickConfig?.[k] !== 'Ignore');
-    if(isEnabled){
-        $('body').addClass('preClickable');
-        const codeSections = $('pre');
-        codeSections.each((i, section) => {
-            const innerHtml = $(section).html();
-            if(!innerHtml){
-                return;
-            }
-            const newPres = innerHtml.split('\n\n').map(s => s && `<pre>${s}</pre>`);
-            const newHtml = '<div class="preDiv">' + newPres.join('\n') + '</div>';
-            $(section).replaceWith(newHtml);
-        });
-    }
-    if(codeClickConfig?.Click !== 'Ignore'){
-        $('body').addClass('preHoverPointer');
-    }
-
-    // Apply syntax highlighting:
-    if (config().get<boolean>('helpPanel.enableSyntaxHighlighting')) {
-        // find all code sections, enclosed by <pre>...</pre>
-        const codeSections = $('pre');
-
-        // apply syntax highlighting to each code section:
-        codeSections.each((i, section) => {
-            const styledCode = hljs.highlight($(section).text() || '', {
-                language: 'r',
+    // use .isHtml as proxy for syntax highlighting, clickable <pre> etc.
+    if(helpFile.isHtml){
+        // Remove style elements specified in the html itself (replaced with custom CSS)
+        $('head style').remove();
+        
+        // Split code examples at empty lines:
+        const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
+        const isEnabled = CODE_CLICKS.some(k => codeClickConfig?.[k] !== 'Ignore');
+        if(isEnabled){
+            $('body').addClass('preClickable');
+            const codeSections = $('pre');
+            codeSections.each((i, section) => {
+                const innerHtml = $(section).html();
+                if(!innerHtml){
+                    return;
+                }
+                const newPres = innerHtml.split('\n\n').map(s => s && `<pre class=preCodeExample>${s}</pre>`);
+                const newHtml = '<div class="preDiv">' + newPres.join('\n') + '</div>';
+                $(section).replaceWith(newHtml);
             });
-            $(section).html(styledCode.value);
-        });
+        }
+        if(codeClickConfig?.Click !== 'Ignore'){
+            $('body').addClass('preHoverPointer');
+        }
+
+        // Apply syntax highlighting:
+        if (config().get<boolean>('helpPanel.enableSyntaxHighlighting')) {
+            // find all code sections, enclosed by <pre>...</pre>
+            const codeSections = $('pre');
+
+            // apply syntax highlighting to each code section:
+            codeSections.each((i, section) => {
+                const styledCode = hljs.highlight($(section).text() || '', {
+                    language: 'r',
+                });
+                $(section).html(styledCode.value);
+            });
+        }
+    }
+
+    // Highlight help preview:
+    if(helpFile.isPreview){
+        let rdInfo: string;
+        if(helpFile.isIndex){
+            rdInfo = 'local .Rd files. Might containt non-exported entries that will not be present in the installed Index';
+        } else if(helpFile.rdPath && isFileSafe(helpFile.rdPath)){
+            const localRdPath = vscode.workspace.asRelativePath(helpFile.rdPath);
+            const rdUri = vscode.Uri.file(helpFile.rdPath);
+            const cmdUri = makeWebviewCommandUriString('r.helpPanel.openFileByPath', rdUri.fsPath, true);
+            rdInfo = `<a href="${cmdUri}" title="Open File">${localRdPath}</a>`;
+        } else{
+            rdInfo = `a local file`;
+        }
+        if(helpFile.rPaths?.length){
+            const rHrefs = helpFile.rPaths.map(rPath => {
+                const localRPath = vscode.workspace.asRelativePath(rPath);
+                if(isFileSafe(rPath)){
+                    const rUri = vscode.Uri.file(rPath);
+                    const cmdUri = makeWebviewCommandUriString('r.helpPanel.openFileByPath', rUri.fsPath, true);
+                    return `<a href="${cmdUri}" title="Open File">${localRPath}</a>`;
+                } else{
+                    return localRPath;
+                }
+            });
+            rdInfo += `, based on Roxygen comments in ${rHrefs.join(', ')}`;
+        }
+        const infoBlock = `<div class="previewInfo"> Preview generated from ${rdInfo}. </div>`;
+        $('body').prepend(infoBlock);
     }
 
     // replace html of the helpfile
