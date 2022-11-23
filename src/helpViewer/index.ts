@@ -490,7 +490,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
     public async getMatchingAliases(
         token: string,
     ): Promise<Alias[] | undefined> {
-        const aliases = await this.getAllAliases();
+        const aliases = await this.getAllAliases(true);
         if(!aliases){
             return undefined;
         }
@@ -502,6 +502,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
                 token === `${alias.package}:::${alias.alias}`,
         );
         
+        // Filter out identical aliases. This would cause noticeable delay on the full list.
         const aliasesIdentical = (a1: Alias, a2: Alias) => (
             a1.package === a2.package
             && a1.name.replace(/^dot-/, '.') === a2.name.replace(/^dot-/, '.')
@@ -521,21 +522,24 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
     }
 
     // helper function to get aliases from aliasprovider
-    private async getAllAliases(): Promise<Alias[] | undefined> {
-        const previewAliases: Alias[] = this.previewProviders.flatMap(previewer => {
-            return previewer.getAliases() || [];
-        });
-        const installedAliases = await doWithProgress(
+    private async getAllAliases(includePreview: boolean = false): Promise<Alias[] | undefined> {
+        const aliases = await doWithProgress(
             () => this.aliasProvider.getAllAliases(),
             vscode.ProgressLocation.Window
         );
-        if (!installedAliases) {
+        if (!aliases) {
             void vscode.window.showErrorMessage(
                 `Failed to get list of R functions. Make sure that \`jsonlite\` is installed and r.${getRPathConfigEntry()} points to a valid R executable.`,
             );
-            return previewAliases;
+            return undefined;
         }
-        return [...previewAliases, ...installedAliases];
+        if(includePreview){
+            const previewAliases: Alias[] = this.previewProviders.flatMap(previewer => {
+                return previewer.getAliases() || [];
+            });
+            aliases.push(...previewAliases);
+        }
+        return aliases;
     }
 
     // let the user pick an alias from a supplied list of aliases
