@@ -238,7 +238,7 @@ export class RLocalHelpPreviewer {
             '--no-save',
             '--no-restore',
             '-e',
-            'tools::Rd2HTML(base::commandArgs(TRUE)[1],package=base::commandArgs(TRUE)[2:3],dynamic=TRUE)',
+            'tools::Rd2HTML(base::commandArgs(TRUE)[1],package=base::commandArgs(TRUE)[2:3],dynamic=TRUE,encoding="utf-8")',
             '--args',
             rdFileName,
             this.getPackageName(true),
