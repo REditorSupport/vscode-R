@@ -54,6 +54,8 @@ export interface RHelpPreviewerOptions {
     previewListener?: (previewer: RLocalHelpPreviewer) => void;
     // path to .ejs file to be used as 00Index.html in previewed packages
     indexTemplatePath: string;
+    // path of the script used to convert .Rd to html
+    rdToHtmlScriptFile: string
 }
 
 export function makePreviewerList(options: RHelpPreviewerOptions): RLocalHelpPreviewer[] {
@@ -90,6 +92,9 @@ export class RLocalHelpPreviewer {
     private readonly indexTemplate: string;
     private callPreviewListener: () => void;
 
+    // path of the script used to convert .Rd to html
+    private readonly rdToHtmlScriptFile: string;
+
     public isPackageDir: boolean = false;
     public isDisposed: boolean = false;
 
@@ -108,6 +113,7 @@ export class RLocalHelpPreviewer {
         this.isPackageDir = this.watchFiles();
         this.dummyPackageName = `UnnamedPackage${unnamedId}`;
         this.indexTemplate = fs.readFileSync(options.indexTemplatePath, 'utf-8');
+        this.rdToHtmlScriptFile = options.rdToHtmlScriptFile;
     }
 
     public refresh(): void {
@@ -228,29 +234,14 @@ export class RLocalHelpPreviewer {
             return undefined;
         }
 
-        const rd2HtmlArgs = [
-            `base::commandArgs(TRUE)[1]`,
-            `package=base::commandArgs(TRUE)[2:3]`,
-            `dynamic=TRUE`,
-            `encoding='utf-8'`,
-            `macros=e`,
-            `stages=c('build','install','render')`
-        ].join(',');
-        const commands = [
-            `e <- tools::loadPkgRdMacros(base::commandArgs(TRUE)[4])`,
-            `e <- tools::loadRdMacros(file.path(R.home('share'), 'Rd', 'macros', 'system.Rd'), macros = e)`,
-            `tools::Rd2HTML(${rd2HtmlArgs})`
-        ];
-        const expr = commands.join(';');
-
         // Convert .Rd to HTML
         const args = [
             '--silent',
             '--slave',
             '--no-save',
             '--no-restore',
-            '-e',
-            expr,
+            '-f',
+            this.rdToHtmlScriptFile,
             '--args',
             rdFileName,
             this.getPackageName(true),

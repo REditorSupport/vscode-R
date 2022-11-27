@@ -74,6 +74,7 @@ export async function initializeHelp(
         webviewStylePath: context.asAbsolutePath('./html/help/theme.css'),
         rScriptFile: context.asAbsolutePath('./R/help/getAliases.R'),
         indexTemplatePath: context.asAbsolutePath('./html/help/00Index.ejs'),
+        rdToHtmlScriptFile: context.asAbsolutePath('./R/help/rdToHtml.R'),
         rPath: rPath,
         cwd: cwd,
         persistentState: persistentState,
@@ -196,6 +197,8 @@ export interface HelpOptions {
     cwd?: string
     // path of getAliases.R
     rScriptFile: string
+    // path of the script used to convert .Rd to html
+    rdToHtmlScriptFile: string
     // persistent state, either global or workspace specific
     persistentState: vscode.Memento
     // used by some helper classes:
@@ -266,6 +269,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         };
         this.helpPreviewerOptions = {
             indexTemplatePath: options.indexTemplatePath,
+            rdToHtmlScriptFile: options.rdToHtmlScriptFile,
             rPath: this.rPath,
             previewListener: previewListener
         };
