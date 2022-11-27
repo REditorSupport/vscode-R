@@ -14,10 +14,9 @@ e <- tools::loadRdMacros(file.path(R.home("share"), "Rd", "macros", "system.Rd")
 
 tools::Rd2HTML(
     args[1],
-    package=args[2:3],
-    dynamic=TRUE,
-    encoding="utf-8",
-    macros=e,
-    stages=c("build", "install", "render")
+    package = args[2:3],
+    dynamic = TRUE,
+    encoding = "utf-8",
+    macros = e,
+    stages = c("build", "install", "render")
 )
-
