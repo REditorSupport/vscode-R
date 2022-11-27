@@ -33,12 +33,12 @@ export enum TopicType {
 export interface Topic {
     name: string;
     description: string;
-    pkgName: string;
-    href?: string;
-    helpPath: string;
     type: TopicType;
     aliases?: string[];
-    isGrouped?: boolean;
+    helpPath: string;
+}
+interface TopicExtra extends Topic {
+    href: string;
 }
 
 
@@ -179,7 +179,7 @@ export class PackageManager {
         if(!packages?.length){
             return false;
         }
-        const pkgs = await pickPackages(packages, 'Please selecte a package.', pickMany);
+        const pkgs = await pickPackages(packages, 'Please select a package.', pickMany);
         if(pkgs?.length){
             const pkgsConfirmed = await confirmPackages('Are you sure you want to install these packages?', pkgs);
             if(pkgsConfirmed?.length){
@@ -275,7 +275,7 @@ export class PackageManager {
 
     // parses a package's index file to produce a list of help topics
     // highlights ths 'home' topic and adds entries for the package index and DESCRIPTION file
-    public async getTopics(pkgName: string, summarize: boolean = false, skipMeta: boolean = false): Promise<Topic[] | undefined> {
+    public async getTopics(pkgName: string, summarize: boolean = false): Promise<Topic[] | undefined> {
 
         const indexEntries = await this.getParsedIndexFile(`/library/${pkgName}/html/00Index.html`);
 
@@ -283,9 +283,8 @@ export class PackageManager {
             return undefined;
         }
 
-        const topics: Topic[] = indexEntries.map(v => {
-            const topic: Topic & {href: string} = {
-                pkgName: pkgName,
+        const topics: TopicExtra[] = indexEntries.map(v => {
+            const topic: TopicExtra = {
                 name: v.name,
                 description: v.description,
                 href: v.href || v.name,
@@ -293,45 +292,41 @@ export class PackageManager {
                 helpPath: '' // replaced below
             };
 
-            topic.type = (topic.name === `${topic.pkgName}-package` ? TopicType.HOME : TopicType.NORMAL);
+            topic.type = (topic.name === `${pkgName}-package` ? TopicType.HOME : TopicType.NORMAL);
 
             topic.helpPath = (
-                topic.pkgName === 'doc' ?
+                pkgName === 'doc' ?
                     `/doc/html/${topic.href}` :
-                    `/library/${topic.pkgName}/html/${topic.href}`
+                    `/library/${pkgName}/html/${topic.href}`
             );
             return topic;
         });
 
-        if(!skipMeta){
-            const ind = topics.findIndex(v => v.type === TopicType.HOME);
-            let homeTopic: Topic | undefined = undefined;
-            if(ind >= 0){
-                homeTopic = topics.splice(ind, 1)[0];
-            }
+        const ind = topics.findIndex(v => v.type === TopicType.HOME);
+        let homeTopic: TopicExtra | undefined = undefined;
+        if(ind >= 0){
+            homeTopic = topics.splice(ind, 1)[0];
+        }
 
-            const indexTopic: Topic = {
-                pkgName: pkgName,
-                name: 'Index',
-                description: '',
-                href: '00Index.html',
-                helpPath: `/library/${pkgName}/html/00Index.html`,
-                type: TopicType.INDEX
-            };
+        const indexTopic: TopicExtra = {
+            name: 'Index',
+            description: '',
+            href: '00Index.html',
+            helpPath: `/library/${pkgName}/html/00Index.html`,
+            type: TopicType.INDEX
+        };
 
-            const descriptionTopic: Topic = {
-                pkgName: pkgName,
-                name: 'DESCRIPTION',
-                description: '',
-                href: '../DESCRIPTION',
-                helpPath: `/library/${pkgName}/DESCRIPTION`,
-                type: TopicType.META
-            };
+        const descriptionTopic: TopicExtra = {
+            name: 'DESCRIPTION',
+            description: '',
+            href: '../DESCRIPTION',
+            helpPath: `/library/${pkgName}/DESCRIPTION`,
+            type: TopicType.META
+        };
 
-            topics.unshift(indexTopic, descriptionTopic);
-            if(homeTopic){
-                topics.unshift(homeTopic);
-            }
+        topics.unshift(indexTopic, descriptionTopic);
+        if(homeTopic){
+            topics.unshift(homeTopic);
         }
 
         const ret = (summarize ? summarizeTopics(topics) : topics);
@@ -469,7 +464,6 @@ function summarizeTopics(topics: Topic[]): Topic[] {
     const topicMap = new Map<string, Topic>();
     for(const topic of topics){
         if(topicMap.has(topic.helpPath)){
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
             const newTopic = <Topic>topicMap.get(topic.helpPath); // checked above that key is present
             if(newTopic.aliases){
                 newTopic.aliases.push(topic.name);
@@ -479,7 +473,6 @@ function summarizeTopics(topics: Topic[]): Topic[] {
         } else{
             const newTopic: Topic = {
                 ...topic,
-                isGrouped: true
             };
             if(newTopic.type === TopicType.NORMAL && newTopic.description){
                 newTopic.aliases = [newTopic.name];

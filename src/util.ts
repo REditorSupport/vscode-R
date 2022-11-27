@@ -588,3 +588,57 @@ export function asViewColumn(s: string | undefined | vscode.ViewColumn, fallback
     return fallback;
 }
 
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function makeWebviewCommandUriString(command: string, ...args: any[]): string {
+    const argString = encodeURIComponent(JSON.stringify(args));
+    return `command:${command}?${argString}`;
+}
+
+// Tries to read a file, returns undefined if an error occurs (e.g. the file does not exist)
+export function readFileSyncSafe(
+    path: fs.PathOrFileDescriptor,
+    encoding: BufferEncoding = 'utf-8'
+): string | undefined {
+    try {
+        return fs.readFileSync(path, {encoding:encoding});
+    } catch (e) {
+        return undefined;
+    }
+}
+
+// Tries to read a dir, returns undefined if an error occurs (e.g. the dir does not exist)
+export function readdirSyncSafe(
+    path: fs.PathLike,
+    encoding: BufferEncoding = 'utf-8'
+){
+    try {
+        return fs.readdirSync(path, {encoding: encoding});
+    } catch (e) {
+        return undefined;
+    }
+}
+
+export function statSyncSafe(path: fs.PathLike): fs.Stats | undefined {
+    try {
+        return fs.statSync(path);
+    } catch (e) {
+        
+    }
+}
+
+export function isDirSafe(path: fs.PathLike): boolean {
+    return !!fs.statSync(path, {throwIfNoEntry: false})?.isDirectory();
+}
+
+export function isFileSafe(path: fs.PathLike): boolean {
+    return !!fs.statSync(path, {throwIfNoEntry: false})?.isFile();
+}
+
+// Keeps only the unique entries in an array, optionally with a custom comparison function
+export function uniqueEntries<T>(array: T[], isIdentical: (x: T, y: T) => boolean = (x, y) => (x === y)){
+    function uniqueFunction(v: T, index: number, array: T[]): boolean {
+        return array.findIndex(v2 => isIdentical(v2, v)) === index;
+    }
+    return array.filter(uniqueFunction);
+}

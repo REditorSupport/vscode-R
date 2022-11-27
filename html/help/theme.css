@@ -25,6 +25,26 @@ a ~ div.header {
   display: none;
 }
 
+/* Styling for preview info box */
+.previewInfo {
+  position: relative;
+  left: -20px;
+  width: calc(100% + 40px);
+  background-color: var(--vscode-list-inactiveSelectionBackground);
+  box-sizing: border-box;
+  text-align: center;
+
+  padding-top: 0.5em;
+  padding-bottom: 0.5em;
+  padding-left: calc(0.5em + 20px);
+  padding-right: calc(0.5em + 20px);
+  /* margin-top: 1.5em; */
+  margin-bottom: 1em;
+
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
 /* Styling for clickable code sections */
 pre, code {
   font-family: var(--vscode-editor-font-family);
@@ -40,7 +60,7 @@ pre, code {
 .preHoverPointer .preDiv:hover {
   cursor: pointer;
 }
-.preClickable pre:hover {
+.preClickable .preCodeExample:hover {
   background-color: var(--vscode-list-hoverBackground);
 }
 

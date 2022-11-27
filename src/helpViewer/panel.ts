@@ -68,10 +68,20 @@ export class HelpPanel {
         for (const he of [...this.history, ...this.forwardHistory]) {
             he.isStale = true;
         }
+        await this.refreshCurrentEntry();
+    }
+    
+    public async refreshPreview(packageDir: string): Promise<void> {
+        if(this.currentEntry?.helpFile.packageDir === packageDir){
+            await this.refreshCurrentEntry();
+        }
+    }
+    
+    private async refreshCurrentEntry(): Promise<void> {
         if(!this.currentEntry){
             return;
         }
-        const newHelpFile = await this.rHelp.getHelpFileForPath(this.currentEntry.helpFile.requestPath);
+        const newHelpFile = await this.rHelp.getHelpFileForPath(this.currentEntry.helpFile.requestPath, undefined, true);
         if(!newHelpFile){
             return;
         }
@@ -86,6 +96,7 @@ export class HelpPanel {
             const webViewOptions: vscode.WebviewOptions & vscode.WebviewPanelOptions = {
                 enableScripts: true,
                 enableFindWidget: true,
+                enableCommandUris: true,
                 retainContextWhenHidden: true // keep scroll position when not focussed
             };
             const showOptions = {
@@ -135,6 +146,7 @@ export class HelpPanel {
 
 
     public async setContextValues(): Promise<void> {
+        await setContext('r.helpPanel.canOpenExternal', !!this.currentEntry?.helpFile.url);
         await setContext('r.helpPanel.active', !!this.panel?.active);
         await setContext('r.helpPanel.canGoBack', this.history.length > 0);
         await setContext('r.helpPanel.canGoForward', this.forwardHistory.length > 0);
@@ -169,7 +181,8 @@ export class HelpPanel {
             this.forwardHistory = [];
         }
         this.currentEntry = {
-            helpFile: helpFile
+            helpFile: helpFile,
+            isStale: helpFile.isPreview
         };
 
         await this.setContextValues();
@@ -228,7 +241,8 @@ export class HelpPanel {
         if (entry.isStale) {
             // Fallback to stale helpFile.
             // Handle differently?
-            helpFile = await this.rHelp.getHelpFileForPath(entry.helpFile.requestPath) || entry.helpFile;
+            const newHelpFile = await this.rHelp.getHelpFileForPath(entry.helpFile.requestPath, true, true);
+            helpFile = newHelpFile || entry.helpFile;
             helpFile.scrollY = entry.helpFile.scrollY;
         } else {
             helpFile = entry.helpFile;
@@ -295,6 +309,8 @@ export class HelpPanel {
                 } else {
                     void this.showHelpFile(helpFile, true, currentScrollY);
                 }
+            } else{
+                void vscode.window.showWarningMessage(`Did not find help page for path ${requestPath}`);
             }
         } else if (msg.message === 'mouseClick') {
             // use the additional mouse buttons to go forward/backwards

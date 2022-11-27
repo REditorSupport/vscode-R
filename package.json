@@ -33,6 +33,8 @@
     "onLanguage:rd",
     "onLanguage:rmd",
     "onLanguage:debian-control.r",
+    "onLanguage:namespace.r",
+    "onLanguage:buildignore.r",
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
     "onCommand:r.createRTerm",
     "onCommand:r.runSource",
@@ -183,6 +185,26 @@
           ".lintr"
         ],
         "configuration": "./language/dcf-configuration.json"
+      },
+      {
+        "id": "namespace.r",
+        "aliases": [
+          "R NAMESPACE"
+        ],
+        "filenames": [
+          "NAMESPACE"
+        ],
+        "configuration": "./language/rnamespace-configuration.json"
+      },
+      {
+        "id": "buildignore.r",
+        "aliases": [
+          "R ignore"
+        ],
+        "filenames": [
+          ".Rbuildignore"
+        ],
+        "configuration": "./language/rbuildignore-configuration.json"
       }
     ],
     "snippets": [
@@ -287,6 +309,16 @@
         "injectTo": [
           "source.cpp"
         ]
+      },
+      {
+        "language": "namespace.r",
+        "scopeName": "namespace.r",
+        "path": "./syntax/rnamespace.json"
+      },
+      {
+        "language": "buildignore.r",
+        "scopeName": "buildignore.r",
+        "path": "./syntax/rbuildignore.json"
       }
     ],
     "commands": [
@@ -675,6 +707,7 @@
         "command": "r.helpPanel.openExternal",
         "title": "Open in external browser",
         "category": "R Help Panel",
+        "enablement": "r.helpPanel.canOpenExternal",
         "icon": "$(link-external)"
       },
       {
@@ -1479,6 +1512,14 @@
           ],
           "default": "None"
         },
+        "r.helpPanel.previewLocalPackages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["."],
+          "markdownDescription": "Which local directories to try for local help pages previewer. Set to `[]` to disable."
+        },
         "r.helpPanel.rpath": {
           "type": "string",
           "default": "",
@@ -1926,7 +1967,7 @@
         ],
         "pattern": [
           {
-            "regexp": "^(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):(\\d+)\\):\\s(.*)",
+            "regexp": "^(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):?(\\d+)?\\):\\s(.*)",
             "file": 2,
             "line": 3,
             "column": 4,
