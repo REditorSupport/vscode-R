@@ -54,6 +54,8 @@ export interface RHelpPreviewerOptions {
     previewListener?: (previewer: RLocalHelpPreviewer) => void;
     // path to .ejs file to be used as 00Index.html in previewed packages
     indexTemplatePath: string;
+    // path of the script used to convert .Rd to html
+    rdToHtmlScriptFile: string
 }
 
 export function makePreviewerList(options: RHelpPreviewerOptions): RLocalHelpPreviewer[] {
@@ -90,6 +92,9 @@ export class RLocalHelpPreviewer {
     private readonly indexTemplate: string;
     private callPreviewListener: () => void;
 
+    // path of the script used to convert .Rd to html
+    private readonly rdToHtmlScriptFile: string;
+
     public isPackageDir: boolean = false;
     public isDisposed: boolean = false;
 
@@ -108,6 +113,7 @@ export class RLocalHelpPreviewer {
         this.isPackageDir = this.watchFiles();
         this.dummyPackageName = `UnnamedPackage${unnamedId}`;
         this.indexTemplate = fs.readFileSync(options.indexTemplatePath, 'utf-8');
+        this.rdToHtmlScriptFile = options.rdToHtmlScriptFile;
     }
 
     public refresh(): void {
@@ -196,14 +202,11 @@ export class RLocalHelpPreviewer {
     }
 
     public getPackageName(safe?: boolean): string {
-        let ret = this.getPackageInfo()?.name || this.dummyPackageName;
-        if(safe){
-            ret = ret.replaceAll(/[^a-zA-Z0-9.]/g, '');
-            if(ret.match(/^[0-9.]/) || ret.length < 2 || ret.match(/\.$/)){
-                ret = this.dummyPackageName;
-            }
+        const packageName = this.getPackageInfo()?.name;
+        if(!packageName || (safe && !isValidPackageName(packageName))){
+            return this.dummyPackageName;
         }
-        return ret;
+        return packageName;
     }
 
     // Methods that imitate the HelpProvider
@@ -237,16 +240,20 @@ export class RLocalHelpPreviewer {
             '--slave',
             '--no-save',
             '--no-restore',
-            '-e',
-            'tools::Rd2HTML(base::commandArgs(TRUE)[1],package=base::commandArgs(TRUE)[2:3],dynamic=TRUE,encoding="utf-8")',
+            '-f',
+            this.rdToHtmlScriptFile,
             '--args',
             rdFileName,
             this.getPackageName(true),
-            this.getPackageInfo()?.version || DUMMY_TOPIC_VERSION
+            this.getPackageInfo()?.version || DUMMY_TOPIC_VERSION,
+            this.packageDir
         ];
         const spawnRet = cp.spawnSync(this.rPath, args, {encoding: 'utf-8'});
         if(spawnRet.status){
-            console.log(`Failed to convert .Rd file ${rdFileName} (status: ${spawnRet.status})`);
+            // The user expects this to work, so we show a warning if it doesn't:
+            const msg = `Failed to convert .Rd file ${rdFileName} (status: ${spawnRet.status}): ${spawnRet.stderr}`;
+            void vscode.window.showWarningMessage(msg);
+            console.log(msg);
             console.log(spawnRet.stderr);
             console.log(spawnRet.error);
             return undefined;
@@ -455,6 +462,15 @@ function rdAliasToTreeViewTopic(rdAlias: RdAlias, pkgName: string): Topic {
         description: rdAlias.title || DUMMY_TOPIC_TITLE
     };
     return ret;
+}
+
+
+// Check if a package name is valid
+function isValidPackageName(pkgName: string): boolean {
+    // regex to chekc pkgName (length >=2 implied):
+    // /^[beging with letter][letters,numbers,dot][not end with .]$/
+    const re = /^[a-zA-Z][a-zA-Z0-9.]*[a-zA-Z0-9]$/;
+    return !!re.exec(pkgName);
 }
 
 
