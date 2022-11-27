@@ -10,14 +10,14 @@
 args <- base::commandArgs(TRUE)
 
 e <- tools::loadPkgRdMacros(args[4])
-e <- tools::loadRdMacros(file.path(R.home('share'), 'Rd', 'macros', 'system.Rd'), macros = e)
+e <- tools::loadRdMacros(file.path(R.home("share"), "Rd", "macros", "system.Rd"), macros = e)
 
 tools::Rd2HTML(
     args[1],
     package=args[2:3],
     dynamic=TRUE,
-    encoding='utf-8',
+    encoding="utf-8",
     macros=e,
-    stages=c('build','install','render')
+    stages=c("build","install","render")
 )
 
