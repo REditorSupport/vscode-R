@@ -18,6 +18,6 @@ tools::Rd2HTML(
     dynamic=TRUE,
     encoding="utf-8",
     macros=e,
-    stages=c("build","install","render")
+    stages=c("build", "install", "render")
 )
 
