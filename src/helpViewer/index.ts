@@ -698,7 +698,7 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
         $('head style').remove();
 
         // strip tags: <code class="language-R">...
-        const preCodes = $('pre>code.language-R');
+        const preCodes = $('pre>code');
         preCodes.each((_, pc) => {
             $(pc).replaceWith($(pc).html() || '');
         });
