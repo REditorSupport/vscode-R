@@ -696,7 +696,13 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
     if(helpFile.isHtml){
         // Remove style elements specified in the html itself (replaced with custom CSS)
         $('head style').remove();
-        
+
+        // strip tags: <code class="language-R">...
+        const preCodes = $('pre>code');
+        preCodes.each((_, pc) => {
+            $(pc).replaceWith($(pc).html() || '');
+        });
+
         // Split code examples at empty lines:
         const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
         const isEnabled = CODE_CLICKS.some(k => codeClickConfig?.[k] !== 'Ignore');
