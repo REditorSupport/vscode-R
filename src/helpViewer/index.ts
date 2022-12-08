@@ -608,7 +608,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         skipCache: boolean = false
     ): Promise<HelpFile | undefined> {
         // try to get a preview first
-        const preview = this.getHelpPreviewForPath(requestPath);
+        const preview = await this.getHelpPreviewForPath(requestPath);
         if(preview){
             pimpMyHelp(preview);
             return preview;
@@ -639,9 +639,9 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         return helpFile;
     }
     
-    private getHelpPreviewForPath(requestPath: string): HelpFile | undefined {
+    private async getHelpPreviewForPath(requestPath: string): Promise<HelpFile | undefined> {
         for (const previewer of this.previewProviders) {
-            const ret = previewer.getHelpFileFromRequestPath(requestPath);
+            const ret = await previewer.getHelpFileFromRequestPath(requestPath);
             if(ret){
                 return ret;
             }

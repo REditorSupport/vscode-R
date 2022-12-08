@@ -1,11 +1,10 @@
 
-import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as rHelp from './index';
 import * as ejs from 'ejs';
-import { isDirSafe, isFileSafe, readFileSyncSafe, config } from '../util';
+import { isDirSafe, isFileSafe, readFileSyncSafe, config, spawnAsync } from '../util';
 import { Topic, TopicType } from './packages';
 
 
@@ -210,7 +209,7 @@ export class RLocalHelpPreviewer {
     }
 
     // Methods that imitate the HelpProvider
-    public getHelpFileFromRequestPath(requestPath: string): undefined | rHelp.HelpFile {
+    public async getHelpFileFromRequestPath(requestPath: string): Promise<undefined | rHelp.HelpFile> {
         if(this.isDisposed){
             return undefined;
         }
@@ -224,10 +223,10 @@ export class RLocalHelpPreviewer {
         if(topic === 'DESCRIPTION'){
             return this.getHelpForDescription(requestPath);
         }
-        return this.getHelpForTopic(topic, requestPath);
+        return await this.getHelpForTopic(topic, requestPath);
     }
 
-    private getHelpForTopic(topic: string, requestPath: string): undefined | rHelp.HelpFile {
+    private async getHelpForTopic(topic: string, requestPath: string): Promise<undefined | rHelp.HelpFile> {
         // Make sure the topic has a valid .Rd file
         const rdFileName = this.getRdPathForTopic(topic);
         if(!rdFileName || !isFileSafe(rdFileName)){
@@ -248,7 +247,7 @@ export class RLocalHelpPreviewer {
             this.getPackageInfo()?.version || DUMMY_TOPIC_VERSION,
             this.packageDir
         ];
-        const spawnRet = cp.spawnSync(this.rPath, args, {encoding: 'utf-8'});
+        const spawnRet = await spawnAsync(this.rPath, args);
         if(spawnRet.status){
             // The user expects this to work, so we show a warning if it doesn't:
             const msg = `Failed to convert .Rd file ${rdFileName} (status: ${spawnRet.status}): ${spawnRet.stderr}`;
