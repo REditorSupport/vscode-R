@@ -608,7 +608,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         skipCache: boolean = false
     ): Promise<HelpFile | undefined> {
         // try to get a preview first
-        const preview = this.getHelpPreviewForPath(requestPath);
+        const preview = await this.getHelpPreviewForPath(requestPath);
         if(preview){
             pimpMyHelp(preview);
             return preview;
@@ -639,9 +639,9 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         return helpFile;
     }
     
-    private getHelpPreviewForPath(requestPath: string): HelpFile | undefined {
+    private async getHelpPreviewForPath(requestPath: string): Promise<HelpFile | undefined> {
         for (const previewer of this.previewProviders) {
-            const ret = previewer.getHelpFileFromRequestPath(requestPath);
+            const ret = await previewer.getHelpFileFromRequestPath(requestPath);
             if(ret){
                 return ret;
             }
@@ -696,7 +696,13 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
     if(helpFile.isHtml){
         // Remove style elements specified in the html itself (replaced with custom CSS)
         $('head style').remove();
-        
+
+        // strip tags: <code class="language-R">...
+        const preCodes = $('pre>code');
+        preCodes.each((_, pc) => {
+            $(pc).replaceWith($(pc).html() || '');
+        });
+
         // Split code examples at empty lines:
         const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
         const isEnabled = CODE_CLICKS.some(k => codeClickConfig?.[k] !== 'Ignore');

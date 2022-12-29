@@ -4,6 +4,26 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.7.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.7.0)
+
+New Features:
+
+* New syntax highlighting support for `NAMESPACE` and `.Rbuildignore`. (#1221, thanks @nx10)
+* Support help preview in package development. (#1259, #1266)
+
+Enhancements:
+
+* The extension is re-published to [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r). ([open-vsx#591](https://github.com/open-vsx/publish-extensions/issues/591)).
+* The WebView panel now supports htmlwidgets using Web Workers. (#1261, thanks @anthonynorth)
+* Code block detection now includes parentheses, which is more consistent with RStudio behavior. (#1269)
+
+Fixes:
+
+* `View()` no longer stops with `tibble()` that contains objects that do not
+implement `asJSON()` method. (#1255)
+* Fixed the regex for detecting problems reported by testthat from tasks. (#1257, thans @gowerc)
+* Fixed syntax highlighting in help preview under R 4.2.x. (#1268)
+
 ## [2.6.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.6.1)
 
 Enhancements:

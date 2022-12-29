@@ -326,7 +326,8 @@ if (show_view) {
   get_column_def <- function(name, field, value) {
     filter <- TRUE
     tooltip <- sprintf(
-      "class: [%s], type: %s",
+      "%s, class: [%s], type: %s",
+      name,
       toString(class(value)),
       typeof(value)
     )

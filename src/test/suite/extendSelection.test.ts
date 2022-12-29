@@ -111,12 +111,12 @@ suite('extendSelection Tests', () => {
         function f(i: number) {return (doc[i]); }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 5);
-        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
-        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 4);
-        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
-        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
-        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 2);
-        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 4);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 5);
         assert.strictEqual(extendSelection(5, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(5, f, doc.length).endLine, 5);
     });
@@ -133,8 +133,8 @@ suite('extendSelection Tests', () => {
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 4);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(2, f, doc.length).endLine, 4);
-        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
-        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
+        assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(3, f, doc.length).endLine, 4);
         assert.strictEqual(extendSelection(4, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(4, f, doc.length).endLine, 4);
     });
@@ -157,8 +157,8 @@ suite('extendSelection Tests', () => {
         assert.strictEqual(extendSelection(3, f, doc.length).endLine, 6);
         assert.strictEqual(extendSelection(4, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(4, f, doc.length).endLine, 6);
-        assert.strictEqual(extendSelection(5, f, doc.length).startLine, 5);
-        assert.strictEqual(extendSelection(5, f, doc.length).endLine, 5);
+        assert.strictEqual(extendSelection(5, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(5, f, doc.length).endLine, 6);
         assert.strictEqual(extendSelection(6, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(6, f, doc.length).endLine, 6);
 
@@ -182,8 +182,8 @@ suite('extendSelection Tests', () => {
         assert.strictEqual(extendSelection(4, f2, doc2.length).endLine, 7);
         assert.strictEqual(extendSelection(5, f2, doc2.length).startLine, 0);
         assert.strictEqual(extendSelection(5, f2, doc2.length).endLine, 7);
-        assert.strictEqual(extendSelection(6, f2, doc2.length).startLine, 6);
-        assert.strictEqual(extendSelection(6, f2, doc2.length).endLine, 6);
+        assert.strictEqual(extendSelection(6, f2, doc2.length).startLine, 0);
+        assert.strictEqual(extendSelection(6, f2, doc2.length).endLine, 7);
         assert.strictEqual(extendSelection(7, f2, doc2.length).startLine, 0);
         assert.strictEqual(extendSelection(7, f2, doc2.length).endLine, 7);
     });
@@ -195,15 +195,15 @@ suite('extendSelection Tests', () => {
           a = data.frame(x = 2,  #  3. RStudio sends lines 2-4; vscode-R sends 3-4
             y = 3)               #  4. RStudio sends lines 2-4; vscode-R sends 3-4
           print(                 #  5. RStudio sends lines 5-15; vscode-R sends 5-15
-            a[                   #  6. RStudio sends lines 5-15; vscode-R sends 6-14
+            a[                   #  6. RStudio sends lines 5-15; vscode-R sends 5-15
               if (TRUE) {        #  7. RStudio sends lines 7-13; vscode-R sends 7-13
                 {                #  8. RStudio sends lines 8-12; vscode-R sends 8-12
                   (              #  9. RStudio sends lines 9-11; vscode-R sends 9-11
-                    1            # 10. RStudio sends lines 9-11; vscode-R sends 10
+                    1            # 10. RStudio sends lines 9-11; vscode-R sends 9-11
                   )              # 11. RStudio sends lines 9-11; vscode-R sends 9-11
                 }                # 12. RStudio sends lines 8-12; vscode-R sends 8-12
               }                  # 13. RStudio sends lines 5-15; vscode-R sends 7-13
-              ]                  # 14. RStudio sends lines 5-15; vscode-R sends 6-14
+              ]                  # 14. RStudio sends lines 5-15; vscode-R sends 5-15
           )                      # 15. RStudio sends lines 5-15; vscode-R sends 5-15
                                  # 16. RStudio sends lines 16-17; vscode-R sends 1-17
         }                        # 17. RStudio sends lines 1-17; vscode-R sends 1-17
@@ -219,24 +219,24 @@ suite('extendSelection Tests', () => {
         assert.strictEqual(extendSelection(4, f, doc.length).endLine, 4);
         assert.strictEqual(extendSelection(5, f, doc.length).startLine, 5);
         assert.strictEqual(extendSelection(5, f, doc.length).endLine, 15);
-        assert.strictEqual(extendSelection(6, f, doc.length).startLine, 6);
-        assert.strictEqual(extendSelection(6, f, doc.length).endLine, 14);
+        assert.strictEqual(extendSelection(6, f, doc.length).startLine, 5);
+        assert.strictEqual(extendSelection(6, f, doc.length).endLine, 15);
         assert.strictEqual(extendSelection(7, f, doc.length).startLine, 7);
         assert.strictEqual(extendSelection(7, f, doc.length).endLine, 13);
         assert.strictEqual(extendSelection(8, f, doc.length).startLine, 8);
         assert.strictEqual(extendSelection(8, f, doc.length).endLine, 12);
         assert.strictEqual(extendSelection(9, f, doc.length).startLine, 9);
         assert.strictEqual(extendSelection(9, f, doc.length).endLine, 11);
-        assert.strictEqual(extendSelection(10, f, doc.length).startLine, 10);
-        assert.strictEqual(extendSelection(10, f, doc.length).endLine, 10);
+        assert.strictEqual(extendSelection(10, f, doc.length).startLine, 9);
+        assert.strictEqual(extendSelection(10, f, doc.length).endLine, 11);
         assert.strictEqual(extendSelection(11, f, doc.length).startLine, 9);
         assert.strictEqual(extendSelection(11, f, doc.length).endLine, 11);
         assert.strictEqual(extendSelection(12, f, doc.length).startLine, 8);
         assert.strictEqual(extendSelection(12, f, doc.length).endLine, 12);
         assert.strictEqual(extendSelection(13, f, doc.length).startLine, 7);
         assert.strictEqual(extendSelection(13, f, doc.length).endLine, 13);
-        assert.strictEqual(extendSelection(14, f, doc.length).startLine, 6);
-        assert.strictEqual(extendSelection(14, f, doc.length).endLine, 14);
+        assert.strictEqual(extendSelection(14, f, doc.length).startLine, 5);
+        assert.strictEqual(extendSelection(14, f, doc.length).endLine, 15);
         assert.strictEqual(extendSelection(15, f, doc.length).startLine, 5);
         assert.strictEqual(extendSelection(15, f, doc.length).endLine, 15);
         assert.strictEqual(extendSelection(16, f, doc.length).startLine, 0);
@@ -419,32 +419,32 @@ suite('extendSelection Tests', () => {
     test('Selecting shorter RStudio comparison', () => {
         const doc = `
         (                     # 1. RStudio and vscode-R send lines 1-9
-            {                 # 2. RStudio and vscode-R send lines 2-8
+            {                 # 2. RStudio and vscode-R send lines 1-9
                 (             # 3. RStudio and vscode-R send lines 3-7
-                    (         # 4. RStudio sends lines 3-7; vscode-R sends lines 4-6
-                        1     # 5. RStudio sends lines 3-7; vscode-R sends line 5
-                    )         # 6. RStudio sends lines 3-7; vscode-R sends lines 4-6
+                    (         # 4. RStudio and vscode-R send lines 3-7
+                        1     # 5. RStudio and vscode-R send lines 3-7
+                    )         # 6. RStudio and vscode-R send lines 3-7
                 )             # 7. RStudio and vscode-R send lines 3-7
-            }                 # 8. RStudio sends lines 1-9; vscode-R sends lines 2-8
+            }                 # 8. RStudio and vscode-R send lines 1-9
         )                     # 9. RStudio and vscode-R send lines 1-9
         `.split('\n');
         function f(i: number) {return (doc[i]); }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 9);
-        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
-        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 8);
+        assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(2, f, doc.length).endLine, 9);
         assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
         assert.strictEqual(extendSelection(3, f, doc.length).endLine, 7);
-        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 4);
-        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 6);
-        assert.strictEqual(extendSelection(5, f, doc.length).startLine, 5);
-        assert.strictEqual(extendSelection(5, f, doc.length).endLine, 5);
-        assert.strictEqual(extendSelection(6, f, doc.length).startLine, 4);
-        assert.strictEqual(extendSelection(6, f, doc.length).endLine, 6);
+        assert.strictEqual(extendSelection(4, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(4, f, doc.length).endLine, 7);
+        assert.strictEqual(extendSelection(5, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(5, f, doc.length).endLine, 7);
+        assert.strictEqual(extendSelection(6, f, doc.length).startLine, 3);
+        assert.strictEqual(extendSelection(6, f, doc.length).endLine, 7);
         assert.strictEqual(extendSelection(7, f, doc.length).startLine, 3);
         assert.strictEqual(extendSelection(7, f, doc.length).endLine, 7);
-        assert.strictEqual(extendSelection(8, f, doc.length).startLine, 2);
-        assert.strictEqual(extendSelection(8, f, doc.length).endLine, 8);
+        assert.strictEqual(extendSelection(8, f, doc.length).startLine, 0);
+        assert.strictEqual(extendSelection(8, f, doc.length).endLine, 9);
         assert.strictEqual(extendSelection(9, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(9, f, doc.length).endLine, 9);
     });
