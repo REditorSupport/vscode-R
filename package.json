@@ -1576,6 +1576,11 @@
           "default": "UTF-8",
           "markdownDescription": "An optional encoding to pass to R when executing the file, i.e. `source(FILE, encoding=ENCODING)`."
         },
+        "r.source.echo": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Should the file be executed with echo option set to TRUE by default, i.e. `source(FILE, echo=TRUE)`?"
+        },
         "r.source.focus": {
           "type": "string",
           "default": "editor",

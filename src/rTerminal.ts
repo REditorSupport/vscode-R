@@ -30,7 +30,11 @@ export async function runSource(echo: boolean): Promise<void>  {
         return;
     }
     encodingParam = `encoding = "${encodingParam}"`;
+    const echoParam = util.config().get<boolean>('source.echo');
     rPath = [rPath, encodingParam].join(', ');
+    if (echoParam) {
+        echo = true;
+    }
     if (echo) {
         rPath = [rPath, 'echo = TRUE'].join(', ');
     }
