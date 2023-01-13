@@ -45,7 +45,6 @@ module.exports = {
       { from: './node_modules/ag-grid-community/dist/ag-grid-community.min.noStyle.js', to: 'resources' },
       { from: './node_modules/ag-grid-community/dist/styles/ag-grid.min.css', to: 'resources' },
       { from: './node_modules/ag-grid-community/dist/styles/ag-theme-balham.min.css', to: 'resources' },
-      { from: './node_modules/ag-grid-community/dist/styles/ag-theme-balham-dark.min.css', to: 'resources' },
     ]
   }),
   ],

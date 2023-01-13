@@ -2015,7 +2015,7 @@
     "webpack-cli": "^4.7.2"
   },
   "dependencies": {
-    "ag-grid-community": "^28.1.1",
+    "ag-grid-community": "^29.0.0",
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
     "ejs": "^3.1.7",
