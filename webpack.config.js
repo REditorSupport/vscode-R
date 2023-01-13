@@ -40,12 +40,12 @@ module.exports = {
   plugins: [
     new CopyPlugin({
       patterns: [
-      { from: './node_modules/jquery/dist/jquery.min.js', to: 'resources' },
-      { from: './node_modules/jquery.json-viewer/json-viewer', to: 'resources' },
-      { from: './node_modules/ag-grid-community/dist/ag-grid-community.min.noStyle.js', to: 'resources' },
-      { from: './node_modules/ag-grid-community/dist/styles/ag-grid.min.css', to: 'resources' },
-      { from: './node_modules/ag-grid-community/dist/styles/ag-theme-balham.min.css', to: 'resources' },
-    ]
-  }),
+        { from: './node_modules/jquery/dist/jquery.min.js', to: 'resources' },
+        { from: './node_modules/jquery.json-viewer/json-viewer', to: 'resources' },
+        { from: './node_modules/ag-grid-community/dist/ag-grid-community.min.noStyle.js', to: 'resources' },
+        { from: './node_modules/ag-grid-community/dist/styles/ag-grid.min.css', to: 'resources' },
+        { from: './node_modules/ag-grid-community/dist/styles/ag-theme-balham.min.css', to: 'resources' },
+      ]
+    }),
   ],
 };
