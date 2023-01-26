@@ -479,6 +479,11 @@
         "command": "r.loadAll"
       },
       {
+        "title": "Load All (reset = FALSE)",
+        "category": "R Package",
+        "command": "r.loadAllCached"
+      },
+      {
         "title": "Build",
         "category": "R Package",
         "command": "r.build"
