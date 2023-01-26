@@ -116,6 +116,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.createLintrConfig': lintrConfig.createLintrConfig,
         'r.generateCCppProperties': cppProperties.generateCppProperties,
         'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
+        'r.loadAllCached': () => rTerminal.runTextInTerm('devtools::load_all(reset = FALSE)'),
 
         // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758
         'r.build': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build'),
