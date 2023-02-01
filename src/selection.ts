@@ -3,6 +3,7 @@
 import { Position, Range, window } from 'vscode';
 
 import { LineCache } from './lineCache';
+import { config } from './util';
 
 export function getWordOrSelection(): string | undefined {
     const textEditor = window.activeTextEditor;
@@ -72,9 +73,13 @@ export function getSelection(): RSelection | undefined {
         selection.range = new Range(newStart, newEnd);
     }
 
-    selection.selectedText = removeLeadingComments(
-        currentDocument.getText(selection.range).trim()
-    );
+    let selectedText = currentDocument.getText(selection.range).trim();
+
+    if (config().get<boolean>('removeLeadingComments')) {
+        selectedText = removeLeadingComments(selectedText);
+    }
+
+    selection.selectedText = selectedText;
 
     return selection;
 }

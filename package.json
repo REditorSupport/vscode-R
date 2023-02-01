@@ -1558,7 +1558,12 @@
         "r.bracketedPaste": {
           "type": "boolean",
           "default": false,
-          "description": "Use bracketed paste mode when sending code to console. Enable for Radian console."
+          "markdownDescription": "Use bracketed paste mode when sending code to terminal. Enable for [radian](https://github.com/randy3k/radian) console."
+        },
+        "r.removeLeadingComments": {
+          "type": "boolean",
+          "default": false,
+          "description": "Remove leading comments when sending code to terminal."
         },
         "r.sessionWatcher": {
           "type": "boolean",
