@@ -3,6 +3,7 @@
 import { Position, Range, window } from 'vscode';
 
 import { LineCache } from './lineCache';
+import { config } from './util';
 
 export function getWordOrSelection(): string | undefined {
     const textEditor = window.activeTextEditor;
@@ -72,7 +73,13 @@ export function getSelection(): RSelection | undefined {
         selection.range = new Range(newStart, newEnd);
     }
 
-    selection.selectedText = currentDocument.getText(selection.range).trim();
+    let selectedText = currentDocument.getText(selection.range).trim();
+
+    if (config().get<boolean>('removeLeadingComments')) {
+        selectedText = removeLeadingComments(selectedText);
+    }
+
+    selection.selectedText = selectedText;
 
     return selection;
 }
@@ -277,4 +284,24 @@ export function extendSelection(line: number, getLine: (line: number) => string,
     }
 
     return ({ startLine: poss[0].line, endLine: poss[1].line });
+}
+
+
+/**
+ * This function removes leading R comments from a block of code text
+ * I.e. All blank and commented out lines are removed up until we hit the first
+ * non-blank / non-comment line.
+ * @param text A block of R code as a string
+ */
+export function removeLeadingComments(text: string): string {
+    const textArray = text.split('\n');
+    let endSearchIndex = 0;
+    for (const lineContent of textArray) {
+        if (lineContent.search('(^ *$|^ *#)') !== -1) {
+            endSearchIndex += 1;
+        } else {
+            break;
+        }
+    }
+    return textArray.slice(endSearchIndex).join('\n');
 }
