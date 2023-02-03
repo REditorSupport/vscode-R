@@ -1502,7 +1502,9 @@
           "items": {
             "type": "string"
           },
-          "default": ["."],
+          "default": [
+            "."
+          ],
           "markdownDescription": "Which local directories to try for local help pages previewer. Set to `[]` to disable."
         },
         "r.helpPanel.rpath": {
@@ -1818,7 +1820,7 @@
           "default": false,
           "description": "Default boolean value for automatically sharing R browser ports with guests."
         },
-        "r.plot.devArgs" :{
+        "r.plot.devArgs": {
           "type": "object",
           "markdownDescription": "The arguments for the png device to replay user graphics to show in VSCode. Requires `#r.plot.useHttpgd#` to be set to `false`. \n\nChanges the option `vsc.dev.args` in R.",
           "default": {
@@ -2020,11 +2022,11 @@
     "mocha": "^9.1.0",
     "ts-loader": "^9.3.1",
     "typescript": "^4.7.2",
-    "vscode-test": "^1.5.2",
     "webpack": "^5.38.1",
     "webpack-cli": "^4.7.2"
   },
   "dependencies": {
+    "@vscode/test-electron": "^2.2.3",
     "ag-grid-community": "^28.1.1",
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
