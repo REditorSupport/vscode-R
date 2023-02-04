@@ -13,6 +13,7 @@ async function main() {
         const extensionTestsPath = path.resolve(__dirname, './suite/index');
 
         // Download VS Code, unzip it and run the integration test
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
         await runTests({ extensionDevelopmentPath, extensionTestsPath });
     } catch (err) {
         console.error('Failed to run tests');
@@ -20,4 +21,4 @@ async function main() {
     }
 }
 
-main();
+void main();
