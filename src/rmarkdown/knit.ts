@@ -262,7 +262,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
         if (!isSaved) {
             return;
         }
-        let rDocumentPath = util.ToRStringLiteral(wad.fileName, '"')
+        let rDocumentPath = util.ToRStringLiteral(wad.fileName, '"');
 
         if (echo) {
             rDocumentPath = [rDocumentPath, 'echo = TRUE'].join(', ');
