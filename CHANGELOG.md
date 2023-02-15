@@ -4,6 +4,23 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.7.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.7.1)
+
+New Features:
+
+* A new setting `r.source.echo` is added to support sending `source(file, echo = TRUE)` by default. (#1286, thanks @jakub-jedrusiak)
+* A new setting `r.removeLeadingComments` is added to remove leading comments when sending code to terminal. (#1245, thanks @gowerc)
+
+Enhancements:
+
+* Help page previews from `.Rd` files are now generated asynchronously. (#1273)
+* Column name is also displayed in the column tooltip in a data viewer. (#1278, thanks @eitsupi)
+* Upgrade ag-grid-community to v29.0.0 (#1290)
+
+Fixes:
+
+* Fixed broken tests (#1302)
+
 ## [2.7.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.7.0)
 
 New Features:
