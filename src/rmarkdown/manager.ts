@@ -177,7 +177,7 @@ export abstract class RMarkdownManager {
         let childProcess: DisposableProcess | undefined = undefined;
         await util.doWithProgress(
             (async (
-                token: vscode.CancellationToken | undefined, 
+                token: vscode.CancellationToken | undefined,
                 progress: vscode.Progress<{
                     message?: string | undefined;
                     increment?: number | undefined;
