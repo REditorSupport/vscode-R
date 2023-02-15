@@ -9,7 +9,7 @@ import { runTextInTerm } from '../rTerminal';
 import { extensionContext, rmdPreviewManager } from '../extension';
 import { DisposableProcess } from '../util';
 
-export let knitDir: KnitWorkingDirectory | undefined = util.config().get<KnitWorkingDirectory>('rmarkdown.knit.defaults.knitWorkingDirectory') ?? undefined;
+export let knitDir: KnitWorkingDirectory | undefined;
 
 interface IKnitQuickPickItem {
     label: string,
@@ -27,6 +27,12 @@ interface IYamlFrontmatter {
 }
 
 export class RMarkdownKnitManager extends RMarkdownManager {
+    constructor() {
+        super();
+        knitDir = util.config().get<KnitWorkingDirectory>('rmarkdown.knit.defaults.knitWorkingDirectory') ?? undefined;
+    }
+
+
     private async renderDocument(rDocumentPath: string, docPath: string, docName: string, yamlParams: IYamlFrontmatter, outputFormat?: string): Promise<DisposableProcess | undefined> {
         const openOutfile: boolean = util.config().get<boolean>('rmarkdown.knit.openOutputFile') ?? false;
         const knitWorkingDir = this.getKnitDir(knitDir, docPath);
