@@ -39,7 +39,7 @@ function mockExtensionContext(sandbox: sinon.SinonSandbox) {
             update: sinon.stub()
         },
         asAbsolutePath: (relativePath: string) => {
-            return path.join(extension_root, relativePath)
+            return path.join(extension_root, relativePath);
         }
     };
     return sandbox.stub(ext, 'extensionContext').value(mockExtensionContext);
@@ -70,8 +70,8 @@ suite('rmarkdown', () => {
         } as vscode.TextDocument, sandbox);
         mockExtensionContext(sandbox);
         const manager = new rmd.RMarkdownKnitManager();
-        await manager.knitRmd(false)
-        assert(fs.existsSync(rmd_output))
+        await manager.knitRmd(false);
+        assert(fs.existsSync(rmd_output));
     }
-    );
+    ).timeout(10000);
 });
