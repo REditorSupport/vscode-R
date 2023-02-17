@@ -472,7 +472,7 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
             status: null,
             signal: null
         };
-        
+
         try {
             const childProcess = spawn(command, args, options, onDisposed);
             if (childProcess.pid !== undefined) {
@@ -536,7 +536,7 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
 
 /**
  * Create temporary directory. Will avoid name clashes. Caller must delete directory after use.
- * 
+ *
  * @param root Parent folder.
  * @param hidden If set to true, directory will be prefixed with a '.' (ignored on windows).
  * @returns Path to the temporary directory.
@@ -551,18 +551,18 @@ export function createTempDir(root: string, hidden?: boolean): string {
 
 /**
  * Utility function for converting 'unknown' types to errors.
- * 
+ *
  * Usage:
- * 
+ *
  * ```ts
- * try { ... } 
- * catch (e) { 
- *  const err: Error = catchAsError(e); 
+ * try { ... }
+ * catch (e) {
+ *  const err: Error = catchAsError(e);
  * }
  * ```
- * @param err 
- * @param fallbackMessage 
- * @returns 
+ * @param err
+ * @param fallbackMessage
+ * @returns
  */
 export function catchAsError(err: unknown, fallbackMessage?: string): Error {
     return (err instanceof Error) ? err : Error(fallbackMessage ?? 'Unknown error');
@@ -623,7 +623,7 @@ export function statSyncSafe(path: fs.PathLike): fs.Stats | undefined {
     try {
         return fs.statSync(path);
     } catch (e) {
-        
+
     }
 }
 

@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "R Extension for Visual Studio Code",
-  "version": "2.7.0",
+  "version": "2.7.1",
   "author": "REditorSupport",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "REditorSupport",
@@ -1517,7 +1517,9 @@
           "items": {
             "type": "string"
           },
-          "default": ["."],
+          "default": [
+            "."
+          ],
           "markdownDescription": "Which local directories to try for local help pages previewer. Set to `[]` to disable."
         },
         "r.helpPanel.rpath": {
@@ -1591,6 +1593,11 @@
           "default": "UTF-8",
           "markdownDescription": "An optional encoding to pass to R when executing the file, i.e. `source(FILE, encoding=ENCODING)`."
         },
+        "r.source.echo": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Should the file be executed with echo option set to TRUE by default, i.e. `source(FILE, echo=TRUE)`?"
+        },
         "r.source.focus": {
           "type": "string",
           "default": "editor",
@@ -1614,7 +1621,12 @@
         "r.bracketedPaste": {
           "type": "boolean",
           "default": false,
-          "description": "Use bracketed paste mode when sending code to console. Enable for Radian console."
+          "markdownDescription": "Use bracketed paste mode when sending code to terminal. Enable for [radian](https://github.com/randy3k/radian) console."
+        },
+        "r.removeLeadingComments": {
+          "type": "boolean",
+          "default": false,
+          "description": "Remove leading comments when sending code to terminal."
         },
         "r.sessionWatcher": {
           "type": "boolean",
@@ -2014,23 +2026,25 @@
     "@types/mocha": "^8.2.2",
     "@types/node": "^16.11.7",
     "@types/node-fetch": "^2.5.10",
+    "@types/sinon": "^10.0.13",
     "@types/vscode": "^1.67.0",
     "@types/winreg": "^1.2.31",
     "@typescript-eslint/eslint-plugin": "^5.30.0",
     "@typescript-eslint/parser": "^5.30.0",
+    "@vscode/test-electron": "^2.2.3",
     "copy-webpack-plugin": "^9.0.0",
     "devreplay": "^1.9.31",
     "eslint": "^7.28.0",
     "eslint-plugin-jsdoc": "^35.1.3",
     "mocha": "^9.1.0",
+    "sinon": "^15.0.1",
     "ts-loader": "^9.3.1",
     "typescript": "^4.7.2",
-    "vscode-test": "^1.5.2",
     "webpack": "^5.38.1",
     "webpack-cli": "^4.7.2"
   },
   "dependencies": {
-    "ag-grid-community": "^28.1.1",
+    "ag-grid-community": "^29.0.0",
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
     "ejs": "^3.1.7",
