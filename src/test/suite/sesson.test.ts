@@ -14,9 +14,7 @@ const workspaceFile = path.join(extension_root, 'test', 'rFiles', 'session', 'wo
 function mockWorkspaceData(sandbox: sinon.SinonSandbox) {
     const content = fs.readFileSync(workspaceFile, 'utf8');
     const workspaceData = JSON.parse(content) as session.WorkspaceData;
-    return sandbox.stub(session, 'workspaceData').value(
-        workspaceData as session.WorkspaceData
-    )
+    return sandbox.stub(session, 'workspaceData').value(workspaceData);
 }
 
 suite('Workspace Viewer', () => {
@@ -31,7 +29,7 @@ suite('Workspace Viewer', () => {
         sandbox.restore();
     });
 
-    test("has 3 nodes", async () => {
+    test('has 3 nodes', async () => {
         mockExtensionContext(extension_root, sandbox);
         mockWorkspaceData(sandbox);
         workspaceViewer = new workspace.WorkspaceDataProvider();
@@ -40,17 +38,17 @@ suite('Workspace Viewer', () => {
         assert.strictEqual(nodes.length, 3);
     });
 
-    test("search node", async () => {
+    test('search node', async () => {
         const search = await workspaceViewer.getChildren(nodes[0]);
         assert.strictEqual(search.length, 10);
     });
 
-    test("attached node", async () => {
+    test('attached node', async () => {
         const attached = await workspaceViewer.getChildren(nodes[1]);
         assert.strictEqual(attached.length, 14);
     });
 
-    test("env node", async () => {
+    test('env node', async () => {
         const env: workspace.GlobalEnvItem[] = await workspaceViewer.getChildren(nodes[2]) as workspace.GlobalEnvItem[];
         assert.strictEqual(env.length, 9);
     });
