@@ -18,6 +18,8 @@ module.exports = {
   },
   devtool: 'source-map',
   externals: {
+    'utf-8-validate': 'commonjs utf-8-validate',
+    bufferutil: 'commonjs bufferutil',
     vscode: 'commonjs vscode' // the vscode-module is created on-the-fly and must be excluded. Add other modules that cannot be webpack'ed, 📖 -> https://webpack.js.org/configuration/externals/
   },
   resolve: {
@@ -40,13 +42,12 @@ module.exports = {
   plugins: [
     new CopyPlugin({
       patterns: [
-      { from: './node_modules/jquery/dist/jquery.min.js', to: 'resources' },
-      { from: './node_modules/jquery.json-viewer/json-viewer', to: 'resources' },
-      { from: './node_modules/ag-grid-community/dist/ag-grid-community.min.noStyle.js', to: 'resources' },
-      { from: './node_modules/ag-grid-community/dist/styles/ag-grid.min.css', to: 'resources' },
-      { from: './node_modules/ag-grid-community/dist/styles/ag-theme-balham.min.css', to: 'resources' },
-      { from: './node_modules/ag-grid-community/dist/styles/ag-theme-balham-dark.min.css', to: 'resources' },
-    ]
-  }),
+        { from: './node_modules/jquery/dist/jquery.min.js', to: 'resources' },
+        { from: './node_modules/jquery.json-viewer/json-viewer', to: 'resources' },
+        { from: './node_modules/ag-grid-community/dist/ag-grid-community.min.noStyle.js', to: 'resources' },
+        { from: './node_modules/ag-grid-community/styles/ag-grid.min.css', to: 'resources' },
+        { from: './node_modules/ag-grid-community/styles/ag-theme-balham.min.css', to: 'resources' },
+      ]
+    }),
   ],
 };

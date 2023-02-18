@@ -28,6 +28,7 @@ load_settings <- function() {
     vsc.object_timeout = session$objectTimeout,
     vsc.globalenv = session$watchGlobalEnvironment,
     vsc.plot = setting(session$viewers$viewColumn$plot, Disable = FALSE),
+    vsc.dev.args = plot$devArgs,
     vsc.browser = setting(session$viewers$viewColumn$browser, Disable = FALSE),
     vsc.viewer = setting(session$viewers$viewColumn$viewer, Disable = FALSE),
     vsc.page_viewer = setting(session$viewers$viewColumn$pageViewer, Disable = FALSE),
@@ -325,7 +326,8 @@ if (show_view) {
   get_column_def <- function(name, field, value) {
     filter <- TRUE
     tooltip <- sprintf(
-      "class: [%s], type: %s",
+      "%s, class: [%s], type: %s",
+      name,
       toString(class(value)),
       typeof(value)
     )
@@ -465,13 +467,13 @@ if (show_view) {
       x <- as_truncated_data(x)
       data <- dataview_table(x)
       file <- tempfile(tmpdir = tempdir, fileext = ".json")
-      jsonlite::write_json(data, file, na = "string", null = "null", auto_unbox = TRUE)
+      jsonlite::write_json(data, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
       request("dataview", source = "table", type = "json",
         title = title, file = file, viewer = viewer, uuid = uuid)
     } else if (is.list(x)) {
       tryCatch({
         file <- tempfile(tmpdir = tempdir, fileext = ".json")
-        jsonlite::write_json(x, file, na = "string", null = "null", auto_unbox = TRUE)
+        jsonlite::write_json(x, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
         request("dataview", source = "list", type = "json",
           title = title, file = file, viewer = viewer, uuid = uuid)
       }, error = function(e) {
@@ -541,7 +543,7 @@ show_browser <- function(url, title = url, ...,
   if (nzchar(proxy_uri)) {
     is_base_path <- grepl("\\:\\d+$", url)
     url <- sub("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:)?",
-      sub("\\{\\{?port\\}\\}?", "", proxy_uri), url)
+      sub("\\{\\{?port\\}\\}?/?", "", proxy_uri), url)
     if (is_base_path) {
       url <- paste0(url, "/")
     }
@@ -598,7 +600,7 @@ show_webview <- function(url, title, ..., viewer) {
   if (nzchar(proxy_uri)) {
     is_base_path <- grepl("\\:\\d+$", url)
     url <- sub("^https?\\://(127\\.0\\.0\\.1|localhost)(\\:)?",
-      sub("\\{\\{?port\\}\\}?", "", proxy_uri), url)
+      sub("\\{\\{?port\\}\\}?/?", "", proxy_uri), url)
     if (is_base_path) {
       url <- paste0(url, "/")
     }

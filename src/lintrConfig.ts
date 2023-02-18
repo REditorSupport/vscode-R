@@ -5,7 +5,7 @@ import { join } from 'path';
 import { window } from 'vscode';
 import { executeRCommand, getCurrentWorkspaceFolder } from './util';
 
-export async function createLintrConfig(): Promise<string> {
+export async function createLintrConfig(): Promise<string | undefined> {
     const currentWorkspaceFolder = getCurrentWorkspaceFolder()?.uri.fsPath;
     if (currentWorkspaceFolder === undefined) {
         void window.showWarningMessage('Please open a workspace folder to create .lintr');

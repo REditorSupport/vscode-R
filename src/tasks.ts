@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { rExecService } from './extension';
+import { getRpath } from './util';
 
 
 const TYPE = 'R';
@@ -96,15 +96,15 @@ const rtasks: RTaskInfo[] = [
     }
 ];
 
-function asRTask(folder: vscode.WorkspaceFolder | vscode.TaskScope, info: RTaskInfo): vscode.Task {
+function asRTask(rPath: string, folder: vscode.WorkspaceFolder | vscode.TaskScope, info: RTaskInfo): vscode.Task {
     const args = makeRArgs(info.definition.options ?? defaultOptions, info.definition.code);
     const rtask: vscode.Task = new vscode.Task(
         info.definition,
         folder,
-        info.name,
+        info.name ?? 'Unnamed',
         info.definition.type,
         new vscode.ProcessExecution(
-            rExecService.activeExecutablePath,
+            rPath,
             args,
             {
                 cwd: info.definition.cwd,
@@ -122,7 +122,7 @@ export class RTaskProvider implements vscode.TaskProvider {
 
     public type = TYPE;
 
-    public provideTasks(): vscode.Task[] {
+    public async provideTasks(): Promise<vscode.Task[]> {
         const folders = vscode.workspace.workspaceFolders;
 
         if (!folders) {
@@ -130,12 +130,16 @@ export class RTaskProvider implements vscode.TaskProvider {
         }
 
         const tasks: vscode.Task[] = [];
+        const rPath = await getRpath(false);
+        if (!rPath) {
+            return [];
+        }
 
         for (const folder of folders) {
             const isRPackage = fs.existsSync(path.join(folder.uri.fsPath, 'DESCRIPTION'));
             if (isRPackage) {
                 for (const rtask of rtasks) {
-                    const task = asRTask(folder, rtask);
+                    const task = asRTask(rPath, folder, rtask);
                     tasks.push(task);
                 }
             }
@@ -143,13 +147,16 @@ export class RTaskProvider implements vscode.TaskProvider {
         return tasks;
     }
 
-    // eslint-disable-next-line @typescript-eslint/require-await
     public async resolveTask(task: vscode.Task): Promise<vscode.Task> {
         const taskInfo: RTaskInfo = {
             definition: <RTaskDefinition>task.definition,
             group: task.group,
             name: task.name
         };
-        return asRTask(vscode.TaskScope.Workspace, taskInfo);
+        const rPath = await getRpath(false);
+        if (!rPath) {
+            throw 'R path not set.';
+        }
+        return asRTask(rPath, vscode.TaskScope.Workspace, taskInfo);
     }
 }

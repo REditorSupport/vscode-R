@@ -1,10 +1,10 @@
 import { Memento, window } from 'vscode';
-import * as http from 'http';
+import * as nodeFetch from 'node-fetch';
 import * as cp from 'child_process';
 
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
-import { DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
+import { catchAsError, DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
 
 export interface RHelpProviderOptions {
     // path of the R executable
@@ -47,13 +47,14 @@ export class HelpProvider {
 
         // starts the background help server and waits forever to keep the R process running
         const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
-        // const cmd = `${this.rPath} --silent --slave --no-save --no-restore -f "${scriptPath}"`;
         const args = [
             '--silent',
             '--slave',
             '--no-save',
             '--no-restore',
-            '-f',
+            '-e',
+            'base::source(base::commandArgs(TRUE))',
+            '--args',
             scriptPath
         ];
         const cpOptions = {
@@ -113,64 +114,29 @@ export class HelpProvider {
 
         // remove leading '/'
         while(requestPath.startsWith('/')){
-            requestPath = requestPath.substr(1);
-        }
-
-        interface HtmlResult {
-            content?: string,
-            redirect?: string
+            requestPath = requestPath.slice(1);
         }
 
         // forward request to R instance
-        // below is just a complicated way of getting a http response from the help server
-        let url = `http://localhost:${port}/${requestPath}`;
-        let html = '';
-        const maxForwards = 3;
-        for (let index = 0; index < maxForwards; index++) {
-            const htmlPromise = new Promise<HtmlResult>((resolve, reject) => {
-                let content = '';
-                http.get(url, (res: http.IncomingMessage) => {
-                    if(res.statusCode === 302){
-                        resolve({redirect: res.headers.location});
-                    } else{
-                        res.on('data', (chunk) => {
-                            try{
-                                // eslint-disable-next-line
-                                content += chunk.toString();
-                            } catch(e){
-                                reject();
-                            }
-                        });
-                        res.on('close', () => {
-                            resolve({content: content});
-                        });
-                        res.on('error', () => {
-                            reject();
-                        });
-                    }
-                });
-            });
-            const htmlResult = await htmlPromise;
-            if(htmlResult.redirect){
-                const newUrl = new URL(htmlResult.redirect, url);
-                requestPath = newUrl.pathname;
-                url = newUrl.toString();
-            } else{
-                html = htmlResult.content || '';
-                break;
-            }
+        const url = `http://localhost:${port}/${requestPath}`;
+        const rep = await nodeFetch.default(url);
+        if(rep.status !== 200){
+            return undefined;
         }
+        const html = await rep.text();
+
+        // read "corrected" request path, that was forwarded to
+        const requestPath1 = rep.url.replace(/^http:\/\/localhost:[0-9]*\//, '');
 
         // return help file
         const ret: rHelp.HelpFile = {
-            requestPath: requestPath,
+            requestPath: requestPath1,
             html: html,
             isRealFile: false,
             url: url
         };
         return ret;
     }
-
 
     dispose(): void {
         this.cp.dispose();
@@ -241,7 +207,7 @@ export class AliasProvider {
         // try to make new aliases (returns undefined if unsuccessful):
         const newAliases = await this.makeAllAliases();
         this.aliases = newAliases;
-        this.persistentState?.update('r.helpPanel.cachedAliases', newAliases);
+        await this.persistentState?.update('r.helpPanel.cachedAliases', newAliases);
         return newAliases;
     }
 
@@ -260,8 +226,8 @@ export class AliasProvider {
             const pkgAliases = allPackageAliases[pkg].aliases || {};
             for(const fncName in pkgAliases){
                 allAliases.push({
-                    name: fncName,
-                    alias: pkgAliases[fncName],
+                    name: pkgAliases[fncName],
+                    alias: fncName,
                     package: pkgName
                 });
             }
@@ -297,14 +263,14 @@ export class AliasProvider {
             }
             const re = new RegExp(`${lim}(.*)${lim}`, 'ms');
             const match = re.exec(result.stdout);
-            if (match.length !== 2) {
+            if (match?.length !== 2) {
                 throw new Error('Could not parse R output.');
             }
             const json = match[1];
             return <AllPackageAliases>JSON.parse(json) || {};
         } catch (e) {
             console.log(e);
-            void window.showErrorMessage((<{ message: string }>e).message);
+            void window.showErrorMessage(catchAsError(e).message);
         }
     }
 }

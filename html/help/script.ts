@@ -1,9 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 declare function acquireVsCodeApi(): VsCode;
 
 const vscode = acquireVsCodeApi();
@@ -19,20 +13,14 @@ window.onmousedown = (ev) => {
 };
 
 
-// handle back/forward requests from vscode ui
-// simulates a mousclick on key 3 or 4
-window.addEventListener('message', (ev) => {
+// handle requests from vscode ui
+window.addEventListener('message', (ev: MessageEvent) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const message = ev.data;
-    if(message.command === 'goBack'){
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    if(message.command === 'getScrollY'){
         vscode.postMessage({
-            message: 'mouseClick',
-            button: 3,
-            scrollY: window.scrollY
-        });
-    } else if(message.command === 'goForward'){
-        vscode.postMessage({
-            message: 'mouseClick',
-            button: 4,
+            message: 'getScrollY',
             scrollY: window.scrollY
         });
     }
@@ -89,7 +77,6 @@ window.document.body.onload = () => {
     // notify vscode when code is clicked:
     if(document.body.classList.contains('preClickable')){
         const codeElements = document.getElementsByTagName('pre');
-        console.log(codeElements);
         for(let i=0; i<codeElements.length; i++){
             const el = codeElements[i];
             el.onclick = (me: MouseEvent) => {

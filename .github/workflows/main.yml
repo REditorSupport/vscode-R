@@ -10,10 +10,10 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: "13.x"
+          node-version: 16
       - run: yarn install
       - name: Run tests
         uses: GabrielBB/xvfb-action@v1.0
@@ -24,29 +24,29 @@ jobs:
     env:
       VSIX_FILE: vscode-R.vsix
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - run: node $SCRIPT_DIR/enableWebpack.js
       - run: yarn install
       - uses: lannonbr/vsce-action@master
         with:
           args: "package -o $VSIX_FILE"
-      - uses: actions/upload-artifact@v1
+      - uses: actions/upload-artifact@v3
         with:
           name: ${{ env.VSIX_FILE }}
           path: ${{ env.VSIX_FILE }}
   eslint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: "13.x"
+          node-version: 16
       - run: yarn install
       - run: yarn run lint
   markdownlint-cli:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - uses: nosborn/github-action-markdown-cli@v1.1.1
         with:
           files: .
@@ -57,7 +57,7 @@ jobs:
     container:
       image: rocker/tidyverse:latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install apt-get dependencies
         run: |
           apt-get update
@@ -73,10 +73,10 @@ jobs:
   devreplay:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
-          node-version: "13.x"
+          node-version: 16
       - run: yarn install
       - name: Run devreplay
         run: ./node_modules/.bin/devreplay ./src devreplay.json

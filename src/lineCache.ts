@@ -14,29 +14,27 @@ export class LineCache {
         this.lineCache = new Map<number, string>();
         this.endsInOperatorCache = new Map<number, boolean>();
     }
-    public addLineToCache(line: number): void {
+    // Returns [Line, EndsInOperator]
+    public addLineToCache(line: number): [string, boolean] {
         const cleaned = cleanLine(this.getLine(line));
         const endsInOperator = doesLineEndInOperator(cleaned);
         this.lineCache.set(line, cleaned);
         this.endsInOperatorCache.set(line, endsInOperator);
+        return [cleaned, endsInOperator];
     }
     public getEndsInOperatorFromCache(line: number): boolean {
-        const lineInCache = this.lineCache.has(line);
-        if (!lineInCache) {
-            this.addLineToCache(line);
+        const lineInCache = this.endsInOperatorCache.get(line);
+        if (lineInCache === undefined) {
+            return this.addLineToCache(line)[1];
         }
-        const s = this.endsInOperatorCache.get(line);
-
-        return (s);
+        return lineInCache;
     }
     public getLineFromCache(line: number): string {
-        const lineInCache = this.lineCache.has(line);
-        if (!lineInCache) {
-            this.addLineToCache(line);
+        const lineInCache = this.lineCache.get(line);
+        if (lineInCache === undefined) {
+            return this.addLineToCache(line)[0];
         }
-        const s = this.lineCache.get(line);
-
-        return (s);
+        return lineInCache;
     }
 }
 
@@ -70,7 +68,7 @@ export function cleanLine(text: string): string {
 }
 
 function doesLineEndInOperator(text: string) {
-    const endingOperatorIndex = text.search(/(,|\+|!|\$|\^|&|\*|-|=|:|~|\||\/|\?|<|>|%.*%)(\s*|\s*#.*)$/);
+    const endingOperatorIndex = text.search(/(\(|,|\+|!|\$|\^|&|\*|-|=|:|~|\||\/|\?|<|>|%.*%)(\s*|\s*#.*)$/);
     const spacesOnlyIndex = text.search(/^\s*$/);
 
     return ((endingOperatorIndex >= 0) || (spacesOnlyIndex >= 0));

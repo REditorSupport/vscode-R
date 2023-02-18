@@ -18,14 +18,14 @@ async function populatePackageNodes(): Promise<void> {
     if (rootNode) {
         // ensure the pkgRootNode is populated.
         await rootNode.getChildren();
-        await rootNode.pkgRootNode.getChildren();
+        await rootNode?.pkgRootNode?.getChildren();
     }
 }
 
 function getPackageNode(name: string): PackageNode | undefined {
     const rootNode = globalRHelp?.treeViewWrapper.helpViewProvider.rootItem;
     if (rootNode) {
-        return rootNode.pkgRootNode.children?.find(node => node.label === name);
+        return rootNode?.pkgRootNode?.children?.find(node => node.label === name);
     }
 }
 
@@ -36,7 +36,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     private _onDidChangeTreeData: EventEmitter<void> = new EventEmitter();
 
     public readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
-    public data: WorkspaceData;
+    public data: WorkspaceData | undefined;
 
     public refresh(): void {
         this.data = isGuestSession ? guestWorkspace : workspaceData;
@@ -115,6 +115,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                             element.treeLevel + 1
                         )
                     );
+            } else {
+                return [];
             }
         } else {
             const treeItems = [this.attachedNamespacesRootItem, this.loadedNamespacesRootItem];
@@ -161,7 +163,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             } else if (a.priority < b.priority) {
                 return 1;
             } else {
-                return a.label.localeCompare(b.label);
+                return (a.label && b.label) ? a.label.localeCompare(b.label) : 0;
             }
         }
 
@@ -171,7 +173,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 
 class PackageItem extends TreeItem {
     public static command : string = 'r.workspaceViewer.package.showQuickPick';
-    public label: string;
+    public label?: string;
     public name: string;
     public pkgNode?: PackageNode;
     public constructor(label: string, name: string, pkgNode?: PackageNode) {
@@ -197,8 +199,8 @@ enum TreeLevel {
 }
 
 export class GlobalEnvItem extends TreeItem {
-    public label: string;
-    public desc: string;
+    public label?: string;
+    public desc?: string;
     public str: string;
     public type: string;
     public treeLevel: number;
@@ -234,7 +236,7 @@ export class GlobalEnvItem extends TreeItem {
         this.contextValue = treeLevel === 0 ? 'rootNode' : `childNode${this.treeLevel}`;
     }
 
-    private getDescription(dim: number[], str: string, rClass: string, type: string): string {
+    private getDescription(dim: number[] | undefined, str: string, rClass: string, type: string): string {
         if (dim && type === 'list') {
             if (dim[1] === 1) {
                 return `${rClass}: ${dim[0]} obs. of ${dim[1]} variable`;

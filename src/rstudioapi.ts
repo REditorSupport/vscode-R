@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/restrict-plus-operands */
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
@@ -115,7 +116,7 @@ export async function documentContext(id: string) {
     };
 }
 
-export async function insertOrModifyText(query: any[], id: string = null) {
+export async function insertOrModifyText(query: any[], id: string | null = null) {
 
 
     const target = findTargetUri(id);
@@ -217,7 +218,8 @@ export async function documentSaveAll(): Promise<void> {
     await workspace.saveAll();
 }
 
-export function projectPath(): { path: string; } {
+// TODO: very similar to ./utils.getCurrentWorkspaceFolder()
+export function projectPath(): { path: string | undefined; } {
 
     if (typeof workspace.workspaceFolders !== 'undefined') {
         // Is there a root folder open?
@@ -252,7 +254,11 @@ export function projectPath(): { path: string; } {
 }
 
 export async function documentNew(text: string, type: string, position: number[]): Promise<void> {
-    const documentUri = Uri.parse('untitled:' + path.join(projectPath().path, 'new_document.' + type));
+    const currentProjectPath = projectPath().path; 
+    if (!currentProjectPath) {
+        return; // TODO: Report failure
+    }
+    const documentUri = Uri.parse('untitled:' + path.join(currentProjectPath, 'new_document.' + type));
     const targetDocument = await workspace.openTextDocument(documentUri);
     const edit = new WorkspaceEdit();
     const docLines = targetDocument.lineCount;
@@ -279,7 +285,7 @@ interface AddinItem extends QuickPickItem {
     package: string;
 }
 
-let addinQuickPicks: AddinItem[] = undefined;
+let addinQuickPicks: AddinItem[] | undefined = undefined;
 
 export async function getAddinPickerItems(): Promise<AddinItem[]> {
 
@@ -333,7 +339,7 @@ export async function launchAddinPicker(): Promise<void> {
         placeHolder: '',
         onDidSelectItem: undefined
     };
-    const addinSelection: AddinItem =
+    const addinSelection: AddinItem | undefined =
         await window.showQuickPick<AddinItem>(getAddinPickerItems(), addinPickerOptions);
 
     if (!(typeof addinSelection === 'undefined')) {
@@ -437,7 +443,7 @@ function getLastActiveTextEditor() {
         lastActiveTextEditor : window.activeTextEditor);
 }
 
-function findTargetUri(id: string) {
+function findTargetUri(id: string | null) {
     return (id === null ?
         getLastActiveTextEditor().document.uri : Uri.parse(id));
 }
