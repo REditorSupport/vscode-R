@@ -155,6 +155,7 @@ export class RTaskProvider implements vscode.TaskProvider {
         };
         const rPath = getRpath(false);
         if (!rPath) {
+            void vscode.window.showErrorMessage('Cannot run task. No valid R executable path set.');
             throw 'R path not set.';
         }
         return asRTask(rPath, vscode.TaskScope.Workspace, taskInfo);

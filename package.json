@@ -323,6 +323,11 @@
     ],
     "commands": [
       {
+        "category": "R",
+        "command": "r.setExecutable",
+        "title": "Select executable"
+      },
+      {
         "command": "r.workspaceViewer.refreshEntry",
         "title": "Manual Refresh",
         "icon": "$(refresh)",
@@ -1317,35 +1322,53 @@
       "type": "object",
       "title": "R",
       "properties": {
+        "r.executable.virtual.activateEnvironment": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to automatically activate a conda environment containing a selected executable. *Recommended to keep enabled*",
+          "scope": "machine-overridable"
+        },
+        "r.executable.virtual.condaPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to conda activation script. This will be `conda.sh` on unix or the `Activate` file on windows.",
+          "scope": "machine-overridable"
+        },
         "r.rpath.windows": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable to launch R background processes (Windows). Must be \"vanilla\" R, not radian etc.!"
+          "description": "Path to an R executable to launch R background processes (Windows). Must be \"vanilla\" R, not radian etc.!",
+          "scope": "machine-overridable"
         },
         "r.rpath.mac": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable to launch R background processes (macOS). Must be \"vanilla\" R, not radian etc.!"
+          "description": "Path to an R executable to launch R background processes (macOS). Must be \"vanilla\" R, not radian etc.!",
+          "scope": "machine-overridable"
         },
         "r.rpath.linux": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable to launch R background processes (Linux). Must be \"vanilla\" R, not radian etc.!"
+          "description": "Path to an R executable to launch R background processes (Linux). Must be \"vanilla\" R, not radian etc.!",
+          "scope": "machine-overridable"
         },
         "r.rterm.windows": {
           "type": "string",
           "default": "",
-          "description": "R path for interactive terminals (Windows). Can also be radian etc."
+          "description": "R path for interactive terminals (Windows). Can also be radian etc.",
+          "scope": "machine-overridable"
         },
         "r.rterm.mac": {
           "type": "string",
           "default": "",
-          "description": "R path for interactive terminals (macOS). Can also be radian etc."
+          "description": "R path for interactive terminals (macOS). Can also be radian etc.",
+          "scope": "machine-overridable"
         },
         "r.rterm.linux": {
           "type": "string",
           "default": "",
-          "description": "R path for interactive terminals (Linux). Can also be radian etc."
+          "description": "R path for interactive terminals (Linux). Can also be radian etc.",
+          "scope": "machine-overridable"
         },
         "r.rterm.option": {
           "type": "array",

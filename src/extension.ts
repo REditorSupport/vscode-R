@@ -202,7 +202,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     globalHttpgdManager = httpgdViewer.initializeHttpgd();
 
     // initialize the package/help related functions
-    globalRHelp = await rHelp.initializeHelp(context, rExtension);
+    globalRHelp = rHelp.initializeHelp(context, rExtension);
 
     // register codelens and complmetion providers for r markdown
     vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());
