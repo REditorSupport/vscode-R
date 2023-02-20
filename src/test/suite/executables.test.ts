@@ -3,13 +3,17 @@ import sinon = require('sinon');
 import path = require('path');
 import assert = require('assert');
 
+
+import * as ext from '../../extension';
 import * as exec from '../../executables/service';
 import { ExecutableStatusItem } from '../../executables/ui';
 import { mockExtensionContext } from '../common';
+import { RExecutablePathStorage } from '../../executables/service/pathStorage';
+import { DummyMemento } from '../../util';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
-suite('Language status item', () => {
+suite('Language Status Item', () => {
     let sandbox: sinon.SinonSandbox;
     setup(() => {
         sandbox = sinon.createSandbox();
@@ -63,5 +67,50 @@ suite('Language status item', () => {
         assert.strictEqual(statusItem.busy, false);
         assert.strictEqual(statusItem.severity, vscode.LanguageStatusSeverity.Warning);
 
+    });
+});
+
+suite('Executable Path Storage', () => {
+    let sandbox: sinon.SinonSandbox;
+    setup(() => {
+        sandbox = sinon.createSandbox();
+    });
+    teardown(() => {
+        sandbox.restore();
+    });
+    test('path storage + retrieval', () => {
+        const mockExtensionContext = {
+            environmentVariableCollection: sandbox.stub(),
+            extension: sandbox.stub(),
+            extensionMode: sandbox.stub(),
+            extensionPath: sandbox.stub(),
+            extensionUri: sandbox.stub(),
+            globalState: new DummyMemento(),
+            globalStorageUri: sandbox.stub(),
+            logUri: sandbox.stub(),
+            secrets: sandbox.stub(),
+            storageUri: sandbox.stub(),
+            subscriptions: [],
+            workspaceState: {
+                get: sinon.stub(),
+                update: sinon.stub()
+            },
+            asAbsolutePath: (relativePath: string) => {
+                return path.join(extension_root, relativePath);
+            }
+        };
+        sandbox.stub(ext, 'extensionContext').value(mockExtensionContext);
+        const pathStorage = new RExecutablePathStorage();
+        pathStorage.setExecutablePath('/working/1', '/bin/1');
+        assert.strictEqual(
+            pathStorage.getExecutablePath('/working/1'),
+            '/bin/1'
+        );
+
+        const pathStorage2 = new RExecutablePathStorage();
+        assert.strictEqual(
+            pathStorage2.getExecutablePath('/working/1'),
+            '/bin/1'
+        );
     });
 });

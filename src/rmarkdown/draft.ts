@@ -20,7 +20,7 @@ interface TemplateItem extends QuickPickItem {
 
 async function getTemplateItems(cwd: string): Promise<TemplateItem[] | undefined> {
     const lim = '---vsc---';
-    const rPath = await getRpath();
+    const rPath = getRpath();
     if (!rPath) {
         return undefined;
     }

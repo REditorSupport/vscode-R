@@ -53,7 +53,7 @@ export class LanguageService implements Disposable {
         let client: LanguageClient;
 
         const debug = config.get<boolean>('lsp.debug');
-        const rPath = await getRpath() || ''; // TODO: Abort gracefully
+        const rPath = getRpath() || ''; // TODO: Abort gracefully
         if (debug) {
             console.log(`R path: ${rPath}`);
         }

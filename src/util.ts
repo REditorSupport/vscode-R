@@ -7,7 +7,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
-import { extensionContext } from './extension';
+import { extensionContext, rExecService } from './extension';
 import { randomBytes } from 'crypto';
 
 export function config(): vscode.WorkspaceConfiguration {
@@ -68,27 +68,14 @@ export function getRPathConfigEntry(term: boolean = false): string {
     return `${trunc}.${platform}`;
 }
 
-export async function getRpath(quote = false, overwriteConfig?: string): Promise<string | undefined> {
+export function getRpath(quote = false): string | undefined {
     let rpath: string | undefined = '';
 
-    // try the config entry specified in the function arg:
-    if (overwriteConfig) {
-        rpath = config().get<string>(overwriteConfig);
-    }
-
-    // try the os-specific config entry for the rpath:
-    const configEntry = getRPathConfigEntry();
-    rpath ||= config().get<string>(configEntry);
-
-    // read from path/registry:
-    rpath ||= await getRpathFromSystem();
-
-    // represent all invalid paths (undefined, '', null) as undefined:
-    rpath ||= undefined;
+    rpath = rExecService?.activeExecutablePath;
 
     if (!rpath) {
         // inform user about missing R path:
-        void vscode.window.showErrorMessage(`Cannot find R to use for help, package installation etc. Change setting r.${configEntry} to R path.`);
+        void vscode.window.showErrorMessage(`Cannot find R to use for help, package installation etc. Set executable path to R path.`);
     } else if (quote && /^[^'"].* .*[^'"]$/.exec(rpath)) {
         // if requested and rpath contains spaces, add quotes:
         rpath = `"${rpath}"`;
@@ -308,7 +295,7 @@ export function getRLibPaths(): string | undefined {
 // Single quotes are ok.
 //
 export async function executeRCommand(rCommand: string, cwd?: string | URL, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
-    const rPath = await getRpath();
+    const rPath = getRpath();
     if (!rPath) {
         return undefined;
     }
@@ -518,7 +505,7 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
         .then(async function (select) {
             if (select === 'Yes') {
                 const repo = await getCranUrl('', cwd);
-                const rPath = await getRpath();
+                const rPath = getRpath();
                 if (!rPath) {
                     void vscode.window.showErrorMessage('R path not set', 'OK');
                     return;

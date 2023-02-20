@@ -122,7 +122,7 @@ export class RTaskProvider implements vscode.TaskProvider {
 
     public type = TYPE;
 
-    public async provideTasks(): Promise<vscode.Task[]> {
+    public provideTasks(): vscode.Task[] {
         const folders = vscode.workspace.workspaceFolders;
 
         if (!folders) {
@@ -130,7 +130,7 @@ export class RTaskProvider implements vscode.TaskProvider {
         }
 
         const tasks: vscode.Task[] = [];
-        const rPath = await getRpath(false);
+        const rPath = getRpath(false);
         if (!rPath) {
             return [];
         }
@@ -147,13 +147,13 @@ export class RTaskProvider implements vscode.TaskProvider {
         return tasks;
     }
 
-    public async resolveTask(task: vscode.Task): Promise<vscode.Task> {
+    public resolveTask(task: vscode.Task): vscode.Task {
         const taskInfo: RTaskInfo = {
             definition: <RTaskDefinition>task.definition,
             group: task.group,
             name: task.name
         };
-        const rPath = await getRpath(false);
+        const rPath = getRpath(false);
         if (!rPath) {
             throw 'R path not set.';
         }

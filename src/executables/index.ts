@@ -50,6 +50,11 @@ export class RExecutableManager {
         return this.executableService.activeExecutable?.rBin;
     }
 
+    /**
+     * Get the associated R executable for a given working directory path
+     * @param workingDir
+     * @returns
+     */
     public getExecutablePath(workingDir: string): string | undefined {
         return this.executableService.getWorkspaceExecutable(workingDir)?.rBin;
     }

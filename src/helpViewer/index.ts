@@ -39,15 +39,15 @@ export const codeClickConfigDefault = {
 };
 
 // Initialization function that is called once when activating the extension
-export async function initializeHelp(
+export function initializeHelp(
     context: vscode.ExtensionContext,
     rExtension: api.RExtension,
-): Promise<RHelp | undefined> {
+): RHelp | undefined {
     // set context value to indicate that the help related tree-view should be shown
     void vscode.commands.executeCommand('setContext', 'r.helpViewer.show', true);
 
     // get the "vanilla" R path from config
-    const rPath = await getRpath();
+    const rPath = getRpath();
     if(!rPath){
         return undefined;
     }
@@ -177,7 +177,7 @@ export interface HelpFile {
 
 // Internal representation of an "Alias"
 export interface Alias {
-    // main name of a help topic 
+    // main name of a help topic
     name: string
     // one of possibly many aliases of the same help topic
     alias: string
@@ -223,7 +223,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 
     // Provides a list of aliases:
     readonly aliasProvider: AliasProvider
-    
+
     // Provides previews of local help pages:
     readonly previewProviders: RLocalHelpPreviewer[]
 
@@ -505,7 +505,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
                 token === `${alias.package}::${alias.alias}` ||
                 token === `${alias.package}:::${alias.alias}`,
         );
-        
+
         // Filter out identical aliases. This would cause noticeable delay on the full list.
         const aliasesIdentical = (a1: Alias, a2: Alias) => (
             a1.package === a2.package
@@ -638,7 +638,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 
         return helpFile;
     }
-    
+
     private async getHelpPreviewForPath(requestPath: string): Promise<HelpFile | undefined> {
         for (const previewer of this.previewProviders) {
             const ret = await previewer.getHelpFileFromRequestPath(requestPath);
@@ -688,7 +688,7 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
         helpFile.html = `<html><head></head><body><pre>${html}</pre></body></html>`;
         helpFile.isModified = true;
     }
-    
+
     // parse the html string for futher modifications
     const $ = cheerio.load(helpFile.html);
 

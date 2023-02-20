@@ -54,7 +54,7 @@ export class RExecutablePathStorage {
 
     private stringToMap(str: string): Map<string, string> {
         try {
-            return new Map(JSON.parse(str));
+            return new Map(JSON.parse(str) as Map<string, string>);
         } catch (error) {
             return new Map<string, string>();
         }
