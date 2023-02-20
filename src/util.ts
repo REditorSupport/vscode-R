@@ -2,7 +2,6 @@
 
 import { existsSync, PathLike, readFile } from 'fs-extra';
 import * as fs from 'fs';
-import winreg = require('winreg');
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
@@ -12,50 +11,6 @@ import { randomBytes } from 'crypto';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
-}
-
-function getRfromEnvPath(platform: string) {
-    let splitChar = ':';
-    let fileExtension = '';
-
-    if (platform === 'win32') {
-        splitChar = ';';
-        fileExtension = '.exe';
-    }
-
-    const os_paths: string[] | string = process.env.PATH ? process.env.PATH.split(splitChar) : [];
-    for (const os_path of os_paths) {
-        const os_r_path: string = path.join(os_path, 'R' + fileExtension);
-        if (fs.existsSync(os_r_path)) {
-            return os_r_path;
-        }
-    }
-    return '';
-}
-
-export async function getRpathFromSystem(): Promise<string> {
-
-    let rpath = '';
-    const platform: string = process.platform;
-
-    rpath ||= getRfromEnvPath(platform);
-
-    if ( !rpath && platform === 'win32') {
-        // Find path from registry
-        try {
-            const key = new winreg({
-                hive: winreg.HKLM,
-                key: '\\Software\\R-Core\\R',
-            });
-            const item: winreg.RegistryItem = await new Promise((c, e) =>
-                key.get('InstallPath', (err, result) => err === null ? c(result) : e(err)));
-            rpath = path.join(item.value, 'bin', 'R.exe');
-        } catch (e) {
-            rpath = '';
-        }
-    }
-
-    return rpath;
 }
 
 export function getRPathConfigEntry(term: boolean = false): string {
@@ -90,17 +45,17 @@ export function getRpath(quote = false): string | undefined {
     return rpath;
 }
 
-export async function getRterm(): Promise<string | undefined> {
+export function getRterm(): string | undefined {
     const configEntry = getRPathConfigEntry(true);
     let rpath = config().get<string>(configEntry);
 
-    rpath ||= await getRpathFromSystem();
+    rpath ||= getRpath();
 
     if (rpath !== '') {
         return rpath;
     }
 
-    void vscode.window.showErrorMessage(`Cannot find R for creating R terminal. Change setting r.${configEntry} to R path.`);
+    void vscode.window.showErrorMessage(`Cannot find R for creating R terminal. Set executable path to R path.`);
     return undefined;
 }
 

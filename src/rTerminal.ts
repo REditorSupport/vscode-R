@@ -6,6 +6,8 @@ import { isDeepStrictEqual } from 'util';
 import * as vscode from 'vscode';
 
 import { extensionContext, homeExtDir } from './extension';
+import { modifyEnvVars } from './executables';
+import { rExecService } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
@@ -114,10 +116,10 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
-export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
-    const termPath = await getRterm();
+export function makeTerminalOptions(): vscode.TerminalOptions {
+    const termPath = getRterm();
     const shellArgs: string[] = config().get('rterm.option') || [];
-    const termOptions: vscode.TerminalOptions = {
+    let termOptions: vscode.TerminalOptions = {
         name: 'R Interactive',
         shellPath: termPath,
         shellArgs: shellArgs,
@@ -132,11 +134,14 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
             VSCODE_WATCHER_DIR: homeExtDir()
         };
     }
+    if (rExecService?.activeExecutable) {
+        termOptions = modifyEnvVars(termOptions, rExecService.activeExecutable);
+    }
     return termOptions;
 }
 
-export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
-    const termOptions = await makeTerminalOptions();
+export function createRTerm(preserveshow?: boolean): boolean {
+    const termOptions = makeTerminalOptions();
     const termPath = termOptions.shellPath;
     if(!termPath){
         void vscode.window.showErrorMessage('Could not find R path. Please check r.term and r.path setting.');
@@ -150,11 +155,11 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     return true;
 }
 
-export async function restartRTerminal(): Promise<void>{
+export function restartRTerminal(): void {
     if (typeof rTerm !== 'undefined'){
         rTerm.dispose();
         deleteTerminal(rTerm);
-        await createRTerm(true);
+        createRTerm(true);
     }
 }
 
