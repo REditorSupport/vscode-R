@@ -32,9 +32,9 @@ export class RExecutableFactory {
 }
 
 export abstract class AbstractExecutable {
-    protected _rBin: string;
-    protected _rVersion: string;
-    protected _rArch: string;
+    protected _rBin!: string;
+    protected _rVersion!: string;
+    protected _rArch!: string;
     public get rBin(): string {
         return this._rBin;
     }
@@ -69,7 +69,7 @@ export class RExecutable extends AbstractExecutable {
 
 export class VirtualRExecutable extends AbstractExecutable {
     private _name: string;
-    public envVar: string;
+    public envVar!: string;
 
     constructor(executablePath: string) {
         super();

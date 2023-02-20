@@ -27,7 +27,7 @@ class ExecutableQuickPickItem implements vscode.QuickPickItem {
     public detail?: string;
     public picked?: boolean;
     public alwaysShow?: boolean;
-    public active: boolean;
+    public active!: boolean;
     private _executable: ExecutableType;
 
     constructor(executable: ExecutableType, service: RExecutableService, workspaceFolder: vscode.WorkspaceFolder, renvVersion?: string) {
@@ -62,8 +62,8 @@ class ExecutableQuickPickItem implements vscode.QuickPickItem {
 
 export class ExecutableQuickPick {
     private readonly service: RExecutableService;
-    private quickpick: vscode.QuickPick<vscode.QuickPickItem | ExecutableQuickPickItem>;
-    private currentFolder: vscode.WorkspaceFolder;
+    private quickpick!: vscode.QuickPick<vscode.QuickPickItem | ExecutableQuickPickItem>;
+    private currentFolder: vscode.WorkspaceFolder | undefined;
 
     public constructor(service: RExecutableService) {
         this.service = service;
@@ -94,7 +94,7 @@ export class ExecutableQuickPick {
             });
         }
 
-        const renvVersion = getRenvVersion(this.currentFolder.uri.fsPath) ?? undefined;
+        const renvVersion = this.currentFolder?.uri?.fsPath ? getRenvVersion(this.currentFolder?.uri?.fsPath) : undefined;
         const recommendedItems: vscode.QuickPickItem[] = [
             {
                 label: 'Recommended',
@@ -115,23 +115,25 @@ export class ExecutableQuickPick {
         ];
 
         [...this.service.executables].sort(sortExecutables).forEach((executable) => {
-            const quickPickItem = new ExecutableQuickPickItem(
-                executable,
-                this.service,
-                this.currentFolder,
-                renvVersion
-            );
-            if (quickPickItem.recommended) {
-                recommendedItems.push(quickPickItem);
-            } else {
-                switch (quickPickItem.category) {
-                    case 'Virtual': {
-                        virtualItems.push(quickPickItem);
-                        break;
-                    }
-                    case 'Global': {
-                        globalItems.push(quickPickItem);
-                        break;
+            if (this.currentFolder) {
+                const quickPickItem = new ExecutableQuickPickItem(
+                    executable,
+                    this.service,
+                    this.currentFolder,
+                    renvVersion
+                );
+                if (quickPickItem.recommended) {
+                    recommendedItems.push(quickPickItem);
+                } else {
+                    switch (quickPickItem.category) {
+                        case 'Virtual': {
+                            virtualItems.push(quickPickItem);
+                            break;
+                        }
+                        case 'Global': {
+                            globalItems.push(quickPickItem);
+                            break;
+                        }
                     }
                 }
             }
@@ -177,11 +179,13 @@ export class ExecutableQuickPick {
                     this.setItems();
                     this.quickpick.show();
                 } else {
-                    this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, null);
+                    if (this.currentFolder) {
+                        this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
+                    }
                     this.quickpick.hide();
                 }
             });
-            this.quickpick.onDidChangeSelection((items: vscode.QuickPickItem[] | ExecutableQuickPickItem[]) => {
+            this.quickpick.onDidChangeSelection((items: readonly vscode.QuickPickItem[] | ExecutableQuickPickItem[]) => {
                 const qpItem = items[0];
                 if (qpItem.label) {
                     switch (qpItem.label) {
@@ -192,15 +196,15 @@ export class ExecutableQuickPick {
                                 canSelectMany: false,
                                 title: ' R executable file'
                             };
-                            void vscode.window.showOpenDialog(opts).then((epath: vscode.Uri[]) => {
-                                if (epath) {
+                            void vscode.window.showOpenDialog(opts).then((epath: vscode.Uri[] | undefined) => {
+                                if (epath && this.currentFolder) {
                                     const execPath = path.normalize(epath?.[0].fsPath);
                                     if (execPath && validateRExecutablePath(execPath)) {
                                         const rExec = this.service.executableFactory.create(execPath);
                                         this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, rExec);
                                     } else {
                                         void vscode.window.showErrorMessage(ExecutableNotifications.badFolder);
-                                        this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, null);
+                                        this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
                                     }
                                 }
                             });
@@ -208,22 +212,26 @@ export class ExecutableQuickPick {
                         }
                         case PathQuickPickMenu.configuration: {
                             const configPath = config().get<string>(getRPathConfigEntry());
-                            if (configPath && validateRExecutablePath(configPath)) {
-                                const rExec = this.service.executableFactory.create(configPath);
-                                this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, rExec);
-                            } else {
-                                void vscode.window.showErrorMessage(ExecutableNotifications.badConfig);
-                                this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, null);
+                            if (this.currentFolder) {
+                                if (configPath && validateRExecutablePath(configPath)) {
+                                    const rExec = this.service.executableFactory.create(configPath);
+                                    this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, rExec);
+                                } else {
+                                    void vscode.window.showErrorMessage(ExecutableNotifications.badConfig);
+                                    this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
+                                }
                             }
                             break;
                         }
                         default: {
                             const executable = (qpItem as ExecutableQuickPickItem).executable;
-                            if (executable?.rVersion) {
-                                this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, executable);
-                            } else {
-                                void vscode.window.showErrorMessage(ExecutableNotifications.badInstallation);
-                                this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, null);
+                            if (this.currentFolder) {
+                                if (executable?.rVersion) {
+                                    this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, executable);
+                                } else {
+                                    void vscode.window.showErrorMessage(ExecutableNotifications.badInstallation);
+                                    this.service.setWorkspaceExecutable(this.currentFolder?.uri?.fsPath, undefined);
+                                }
                             }
                             break;
                         }
@@ -237,9 +245,12 @@ export class ExecutableQuickPick {
         return await new Promise((res) => {
             setupQuickpickOpts();
             setupQuickpickListeners(res);
-            void showWorkspaceFolderQP().then((folder: vscode.WorkspaceFolder) => {
+            void showWorkspaceFolderQP().then((folder: vscode.WorkspaceFolder | undefined) => {
                 this.currentFolder = folder;
-                const currentExec = this.service.getWorkspaceExecutable(folder?.uri?.fsPath);
+                let currentExec;
+                if (this.currentFolder) {
+                    currentExec = this.service.getWorkspaceExecutable(this.currentFolder?.uri?.fsPath);
+                }
                 if (currentExec) {
                     this.quickpick.placeholder = `Current path: ${currentExec.rBin}`;
                 } else {

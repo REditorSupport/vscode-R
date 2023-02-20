@@ -65,7 +65,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     const commands = {
         // create R terminal
         'r.createRTerm': rTerminal.createRTerm,
-        'r.setExecutable': () => rExecService.executableQuickPick.showQuickPick(),
+        'r.setExecutable': () => rExecService?.executableQuickPick.showQuickPick(),
 
         // run code from editor in terminal
         'r.nrow': () => rTerminal.runSelectionOrWord(['nrow']),

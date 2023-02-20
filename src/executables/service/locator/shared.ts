@@ -59,8 +59,8 @@ export function getUniquePaths(paths: string[]): string[] {
 }
 
 export abstract class AbstractLocatorService {
-    protected _executablePaths: string[];
-    protected emitter: vscode.EventEmitter<string[]>;
+    protected _executablePaths!: string[];
+    protected emitter!: vscode.EventEmitter<string[]>;
     public abstract refreshPaths(): Promise<void>;
     public get hasPaths(): boolean {
         return this._executablePaths.length > 0;

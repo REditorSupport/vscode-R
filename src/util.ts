@@ -642,3 +642,16 @@ export function uniqueEntries<T>(array: T[], isIdentical: (x: T, y: T) => boolea
     }
     return array.filter(uniqueFunction);
 }
+
+export function isMultiRoot(): boolean {
+    const folders = vscode?.workspace?.workspaceFolders;
+    if (folders) {
+        return folders.length > 1;
+    } else {
+        return false;
+    }
+}
+
+export function normaliseRPathString(path: string): string {
+    return path.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+}

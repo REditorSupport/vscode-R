@@ -59,9 +59,9 @@ export class WindowsExecLocator extends AbstractLocatorService {
                 (c, e) => {
                     reg.get('InstallPath', (err, result) => err === null ? c(result) : e(err));
                 }
-            ).then((item: winreg.RegistryItem) => {
+            ).then((item: unknown) => {
                 if (item) {
-                    const resolvedPath = item.value;
+                    const resolvedPath = (item as winreg.RegistryItem).value;
                     const i386 = `${resolvedPath}\\i386\\`;
                     const x64 = `${resolvedPath}\\x64\\`;
 

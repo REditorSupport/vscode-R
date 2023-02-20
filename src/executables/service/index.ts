@@ -27,7 +27,7 @@ export class RExecutableService implements vscode.Disposable {
     private workspaceEmitter: vscode.EventEmitter<WorkspaceExecutableEvent>;
     private workspaceExecutables: Map<string, ExecutableType | undefined>;
 
-    public readonly ready: Thenable<this>;
+    public readonly ready!: Thenable<this>;
 
     /**
      * Creates an instance of RExecutableService.
@@ -69,16 +69,19 @@ export class RExecutableService implements vscode.Disposable {
      * @memberof RExecutableService
      */
     public set activeExecutable(executable: ExecutableType | undefined) {
-        if (executable === undefined) {
-            this.workspaceExecutables.delete(getCurrentWorkspaceFolder().uri.fsPath);
-            this.executableStorage.setExecutablePath(getCurrentWorkspaceFolder().uri.fsPath, null);
-            console.log('[RExecutableService] executable cleared');
-            this.executableEmitter.fire(null);
-        } else if (this.activeExecutable !== executable) {
-            this.workspaceExecutables.set(getCurrentWorkspaceFolder().uri.fsPath, executable);
-            this.executableStorage.setExecutablePath(getCurrentWorkspaceFolder().uri.fsPath, executable.rBin);
-            console.log('[RExecutableService] executable changed');
-            this.executableEmitter.fire(executable);
+        const currentWorkspace = getCurrentWorkspaceFolder()?.uri?.fsPath;
+        if (currentWorkspace) {
+            if (executable === undefined) {
+                this.workspaceExecutables.delete(currentWorkspace);
+                this.executableStorage.setExecutablePath(currentWorkspace, undefined);
+                console.log('[RExecutableService] executable cleared');
+                this.executableEmitter.fire(undefined);
+            } else if (this.activeExecutable !== executable) {
+                this.workspaceExecutables.set(currentWorkspace, executable);
+                this.executableStorage.setExecutablePath(currentWorkspace, executable.rBin);
+                console.log('[RExecutableService] executable changed');
+                this.executableEmitter.fire(executable);
+            }
         }
     }
 
@@ -113,8 +116,8 @@ export class RExecutableService implements vscode.Disposable {
     public setWorkspaceExecutable(folder: string, executable: ExecutableType | undefined): void {
         if (this.workspaceExecutables.get(folder) !== executable) {
             if (!executable) {
-                this.executableStorage.setExecutablePath(folder, null);
-                this.workspaceEmitter.fire({ workingFolder: null, executable: executable });
+                this.executableStorage.setExecutablePath(folder, undefined);
+                this.workspaceEmitter.fire({ workingFolder: undefined, executable: executable });
             } else {
                 const workspaceFolderUri = vscode.Uri.file(folder);
                 this.workspaceEmitter.fire({ workingFolder: vscode.workspace.getWorkspaceFolder(workspaceFolderUri), executable: executable });

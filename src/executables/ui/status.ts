@@ -5,12 +5,12 @@ import { RExecutableService } from '../service';
 
 enum BinText {
     name = 'R Language Indicator',
-    missing = '$(warning) Select executable'
+    missing = '$(warning) Select R executable'
 }
 
 export class ExecutableStatusItem implements vscode.Disposable {
     private readonly service: RExecutableService;
-    private languageStatusItem: vscode.LanguageStatusItem;
+    private languageStatusItem!: vscode.LanguageStatusItem;
 
     private createItem(): vscode.LanguageStatusItem {
         this.languageStatusItem = vscode.languages.createLanguageStatusItem('R Executable Selector', ['r', 'rmd', 'rProfile']);
@@ -26,6 +26,18 @@ export class ExecutableStatusItem implements vscode.Disposable {
     public constructor(service: RExecutableService) {
         this.service = service;
         this.createItem();
+    }
+
+    public get text(): string {
+        return this.languageStatusItem.text;
+    }
+
+    public get busy(): boolean {
+        return this.languageStatusItem.busy;
+    }
+
+    public get severity(): vscode.LanguageStatusSeverity {
+        return this.languageStatusItem.severity;
     }
 
     public refresh(): void {
@@ -47,7 +59,7 @@ export class ExecutableStatusItem implements vscode.Disposable {
         }
     }
 
-    public async busy(prom: Promise<void>): Promise<void> {
+    public async makeBusy(prom: Promise<void>): Promise<void> {
         this.languageStatusItem.busy = true;
         await prom.catch(() => {
             this.languageStatusItem.severity = vscode.LanguageStatusSeverity.Error;

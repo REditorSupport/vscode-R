@@ -22,7 +22,7 @@ export class RExecutableManager {
             this.onDidChangeActiveExecutable(() => {
                 this.reload();
             }),
-            vscode.window.onDidChangeActiveTextEditor((e: vscode.TextEditor) => {
+            vscode.window.onDidChangeActiveTextEditor((e: vscode.TextEditor |  undefined) => {
                 if (e?.document) {
                     this.reload();
                 }
@@ -40,6 +40,10 @@ export class RExecutableManager {
 
     public get executableQuickPick(): ExecutableQuickPick {
         return this.quickPick;
+    }
+
+    public get languageStatusItem(): ExecutableStatusItem {
+        return this.statusBar;
     }
 
     public get activeExecutablePath(): string | undefined {
@@ -71,7 +75,7 @@ export class RExecutableManager {
     public reload(): void {
         this.statusBar.refresh();
         const loading = this.activateEnvironment();
-        void this.statusBar.busy(loading);
+        void this.statusBar.makeBusy(loading);
     }
 
     private async activateEnvironment(): Promise<void> {

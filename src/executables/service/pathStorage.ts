@@ -23,7 +23,12 @@ export class RExecutablePathStorage {
     }
 
     public getActiveExecutablePath(): string | undefined {
-        return this.store.get(getCurrentWorkspaceFolder().uri.fsPath);
+        const currentWorkspace = getCurrentWorkspaceFolder()?.uri?.fsPath;
+        if (currentWorkspace) {
+            return this.store.get(currentWorkspace);
+        } else {
+            return undefined;
+        }
     }
 
     public getExecutablePath(workingDir: string): string | undefined {
