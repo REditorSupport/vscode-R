@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 
 import { validateRExecutablePath } from '..';
 import { config, getCurrentWorkspaceFolder, getRPathConfigEntry, isMultiRoot } from '../../util';
-import { isVirtual, ExecutableType } from '../service';
+import { isVirtual, RExecutableType } from '../service';
 import { RExecutableService } from '../service';
 import { getRenvVersion } from '../virtual';
 import { extensionContext } from '../../extension';
@@ -16,7 +16,8 @@ enum ExecutableNotifications {
 
 enum PathQuickPickMenu {
     search = '$(add) Enter R executable path...',
-    configuration = '$(settings-gear) Configuration path'
+    configuration = '$(settings-gear) Configuration path',
+    badPath = 'Invalid R path'
 }
 
 class ExecutableQuickPickItem implements vscode.QuickPickItem {
@@ -28,9 +29,9 @@ class ExecutableQuickPickItem implements vscode.QuickPickItem {
     public picked?: boolean;
     public alwaysShow?: boolean;
     public active!: boolean;
-    private _executable: ExecutableType;
+    private _executable: RExecutableType;
 
-    constructor(executable: ExecutableType, service: RExecutableService, workspaceFolder: vscode.WorkspaceFolder, renvVersion?: string) {
+    constructor(executable: RExecutableType, service: RExecutableService, workspaceFolder: vscode.WorkspaceFolder, renvVersion?: string) {
         this._executable = executable;
         this.description = executable.rBin;
         this.recommended = recommendPath(executable, workspaceFolder, renvVersion);
@@ -54,7 +55,7 @@ class ExecutableQuickPickItem implements vscode.QuickPickItem {
 
     }
 
-    public get executable(): ExecutableType {
+    public get executable(): RExecutableType {
         return this._executable;
     }
 
@@ -74,7 +75,7 @@ export class ExecutableQuickPick {
     private setItems(): void {
         const qpItems: vscode.QuickPickItem[] = [];
         const configPath = config().get<string>(getRPathConfigEntry());
-        const sortExecutables = (a: ExecutableType, b: ExecutableType) => {
+        const sortExecutables = (a: RExecutableType, b: RExecutableType) => {
             return -a.rVersion.localeCompare(b.rVersion, undefined, { numeric: true, sensitivity: 'base' });
         };
         qpItems.push(
@@ -89,7 +90,7 @@ export class ExecutableQuickPick {
                 label: PathQuickPickMenu.configuration,
                 alwaysShow: true,
                 description: configPath,
-                detail: validateRExecutablePath(configPath) ? '' : 'Invalid R folder',
+                detail: validateRExecutablePath(configPath) ? '' : PathQuickPickMenu.badPath,
                 picked: false
             });
         }
@@ -298,7 +299,7 @@ async function showWorkspaceFolderQP(): Promise<vscode.WorkspaceFolder | undefin
     return undefined;
 }
 
-function recommendPath(executable: ExecutableType, workspaceFolder: vscode.WorkspaceFolder, renvVersion?: string): boolean {
+function recommendPath(executable: RExecutableType, workspaceFolder: vscode.WorkspaceFolder, renvVersion?: string): boolean {
     if (renvVersion) {
         const compatibleBin = renvVersion === executable.rVersion;
         if (compatibleBin) {

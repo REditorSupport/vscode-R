@@ -70,6 +70,9 @@ export class UnixExecLocator extends AbstractLocatorService {
         return execPaths;
     }
 
+    /**
+     * @returns Array of paths to R executables found in PATH variable
+     */
     private getPathFromEnv(): string[] {
         const execPaths: string[] = [];
         const osPaths: string[] | string | undefined = process?.env?.PATH?.split(';');

@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 
-import { AbstractExecutable, VirtualRExecutable } from './class';
+import { AbstractRExecutable, VirtualRExecutable } from './class';
 
-export type ExecutableType = AbstractExecutable;
-export type VirtualExecutableType = VirtualRExecutable;
+export type RExecutableType = AbstractRExecutable;
+export type VirtualRExecutableType = VirtualRExecutable;
 
 export interface IExecutableDetails {
 	version: string | undefined,
@@ -17,5 +17,5 @@ export interface IExecutableDetails {
  */
 export interface WorkspaceExecutableEvent {
 	workingFolder: vscode.WorkspaceFolder | undefined,
-	executable: ExecutableType | undefined
+	executable: RExecutableType | undefined
 }

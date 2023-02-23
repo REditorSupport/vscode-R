@@ -2,7 +2,7 @@
 import * as fs from 'fs-extra';
 import * as vscode from 'vscode';
 import path = require('path');
-import { IExecutableDetails, VirtualExecutableType } from '../service';
+import { IExecutableDetails, VirtualRExecutableType } from '../service';
 import { exec } from 'child_process';
 import { tmpDir } from '../../extension';
 import { config } from '../../util';
@@ -73,7 +73,7 @@ export function getRDetailsFromMetaHistory(executablePath: string): IExecutableD
     }
 }
 
-export function activateCondaEnvironment(executable: VirtualExecutableType): Promise<void> {
+export function activateCondaEnvironment(executable: VirtualRExecutableType): Promise<void> {
     return new Promise((resolve, reject) => {
         try {
             let command: string;
@@ -112,6 +112,6 @@ export function activateCondaEnvironment(executable: VirtualExecutableType): Pro
     });
 }
 
-function readCondaBinFile(executable: VirtualExecutableType) {
+function readCondaBinFile(executable: VirtualRExecutableType) {
     return fs.readFileSync(`${tmpDir()}/${executable.name}Env.txt`).toString().trim();
 }

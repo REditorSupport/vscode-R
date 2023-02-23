@@ -157,16 +157,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // keep track of terminals
     context.subscriptions.push(vscode.window.onDidCloseTerminal(rTerminal.deleteTerminal));
 
-    // start language service
-    if (util.config().get<boolean>('lsp.enabled')) {
-        const lsp = vscode.extensions.getExtension('reditorsupport.r-lsp');
-        if (lsp) {
-            void vscode.window.showInformationMessage('The R language server extension has been integrated into vscode-R. You need to disable or uninstall REditorSupport.r-lsp and reload window to use the new version.');
-            void vscode.commands.executeCommand('workbench.extensions.search', '@installed r-lsp');
-        } else {
-            context.subscriptions.push(new languageService.LanguageService());
-        }
+    if (rExecService.activeExecutable) {
+        activateServices(context, rExtension);
     }
+
+    // todo, this is a stopgap
+    rExecService?.onDidChangeActiveExecutable((exec) => {
+        if (exec) {
+            activateServices(context, rExtension);
+        }
+    });
+
 
     // register on-enter rule for roxygen comments
     const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
@@ -190,19 +191,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // register terminal-provider
     context.subscriptions.push(vscode.window.registerTerminalProfileProvider('r.terminal-profile',
         {
-            async provideTerminalProfile() {
+            provideTerminalProfile() {
                 return {
-                    options: await rTerminal.makeTerminalOptions()
+                    options: rTerminal.makeTerminalOptions()
                 };
             }
         }
     ));
-
-    // initialize httpgd viewer
-    globalHttpgdManager = httpgdViewer.initializeHttpgd();
-
-    // initialize the package/help related functions
-    globalRHelp = rHelp.initializeHelp(context, rExtension);
 
     // register codelens and complmetion providers for r markdown
     vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());
@@ -258,4 +253,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     }
 
     return rExtension;
+}
+
+function activateServices(context: vscode.ExtensionContext, rExtension: apiImplementation.RExtensionImplementation) {
+    if (util.config().get<boolean>('lsp.enabled')) {
+        const lsp = vscode.extensions.getExtension('reditorsupport.r-lsp');
+        if (lsp) {
+            void vscode.window.showInformationMessage('The R language server extension has been integrated into vscode-R. You need to disable or uninstall REditorSupport.r-lsp and reload window to use the new version.');
+            void vscode.commands.executeCommand('workbench.extensions.search', '@installed r-lsp');
+        } else {
+            context.subscriptions.push(new languageService.LanguageService());
+        }
+    }
+    // initialize httpgd viewer
+    globalHttpgdManager = httpgdViewer.initializeHttpgd();
+    // initialize the package/help related functions
+    globalRHelp = rHelp.initializeHelp(context, rExtension);
 }

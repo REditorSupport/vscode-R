@@ -2,6 +2,10 @@ import { extensionContext } from '../../extension';
 import { getCurrentWorkspaceFolder } from '../../util';
 
 
+/**
+ * Stores and retrieves R executable paths for
+ * different workspace folders in vscode
+ */
 export class RExecutablePathStorage {
     private store: Map<string, string>;
 
@@ -13,6 +17,13 @@ export class RExecutablePathStorage {
         return this.store;
     }
 
+    /**
+     * Sets the executable path for the given working directory.
+     * If binPath is undefined, it removes the executable path
+     * for the given working directory.
+     * @param workingDir
+     * @param binPath
+     */
     public setExecutablePath(workingDir: string, binPath: string | undefined): void {
         if (binPath) {
             this.store.set(workingDir, binPath);

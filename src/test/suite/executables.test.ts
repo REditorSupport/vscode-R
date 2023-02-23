@@ -24,7 +24,7 @@ suite('Language Status Item', () => {
 
     test('text', () => {
         mockExtensionContext(extension_root, sandbox);
-        let executableValue: exec.ExecutableType | undefined = undefined;
+        let executableValue: exec.RExecutableType | undefined = undefined;
         const statusItem = new ExecutableStatusItem({
             get activeExecutable() {
                 return executableValue;
@@ -40,7 +40,7 @@ suite('Language Status Item', () => {
                 return `R 4.0 64-bit`;
             },
             rVersion: '4.0'
-        } as exec.ExecutableType;
+        } as exec.RExecutableType;
         statusItem.refresh();
         assert.strictEqual(
             statusItem.text,

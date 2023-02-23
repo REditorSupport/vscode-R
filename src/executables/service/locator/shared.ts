@@ -3,6 +3,12 @@ import * as fs from 'fs-extra';
 import * as vscode from 'vscode';
 import { normaliseRPathString } from '../../../util';
 
+/**
+ * Parses R version and architecture from a given R executable path.
+ *
+ * @param rPath string representing the path to an R executable.
+ * @returns object with R version and architecture as strings
+ */
 export function getRDetailsFromPath(rPath: string): { version: string, arch: string } {
     try {
         const path = normaliseRPathString(rPath);

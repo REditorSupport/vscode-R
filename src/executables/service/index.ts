@@ -7,7 +7,7 @@ import { RExecutablePathStorage } from './pathStorage';
 import { RExecutableRegistry } from './registry';
 import { AbstractLocatorService, LocatorServiceFactory } from './locator';
 import { getRenvVersion } from '../virtual';
-import { ExecutableType, WorkspaceExecutableEvent } from './types';
+import { RExecutableType, WorkspaceExecutableEvent } from './types';
 
 export * from './types';
 export * from './class';
@@ -23,9 +23,9 @@ export class RExecutableService implements vscode.Disposable {
     public executablePathLocator: AbstractLocatorService;
     private executableStorage: RExecutablePathStorage;
     private executableRegistry: RExecutableRegistry;
-    private executableEmitter: vscode.EventEmitter<ExecutableType | undefined>;
+    private executableEmitter: vscode.EventEmitter<RExecutableType | undefined>;
     private workspaceEmitter: vscode.EventEmitter<WorkspaceExecutableEvent>;
-    private workspaceExecutables: Map<string, ExecutableType | undefined>;
+    private workspaceExecutables: Map<string, RExecutableType | undefined>;
 
     public readonly ready!: Thenable<this>;
 
@@ -38,8 +38,8 @@ export class RExecutableService implements vscode.Disposable {
         this.executableRegistry = new RExecutableRegistry();
         this.executableStorage = new RExecutablePathStorage();
         this.executableFactory = new RExecutableFactory(this.executableRegistry);
-        this.workspaceExecutables = new Map<string, ExecutableType>();
-        this.executableEmitter = new vscode.EventEmitter<ExecutableType>();
+        this.workspaceExecutables = new Map<string, RExecutableType>();
+        this.executableEmitter = new vscode.EventEmitter<RExecutableType>();
         this.workspaceEmitter = new vscode.EventEmitter<WorkspaceExecutableEvent>();
         this.executablePathLocator.executablePaths.forEach((path) => {
             this.executableFactory.create(path);
@@ -56,11 +56,12 @@ export class RExecutableService implements vscode.Disposable {
 
     /**
      * @description
+     * Get a list of all registered executables
      * @readonly
-     * @type {Set<ExecutableType>}
+     * @type {Set<RExecutableType>}
      * @memberof RExecutableService
      */
-    public get executables(): Set<ExecutableType> {
+    public get executables(): Set<RExecutableType> {
         return this.executableRegistry.executables;
     }
 
@@ -68,7 +69,7 @@ export class RExecutableService implements vscode.Disposable {
      * @description
      * @memberof RExecutableService
      */
-    public set activeExecutable(executable: ExecutableType | undefined) {
+    public set activeExecutable(executable: RExecutableType | undefined) {
         const currentWorkspace = getCurrentWorkspaceFolder()?.uri?.fsPath;
         if (currentWorkspace) {
             if (executable === undefined) {
@@ -92,7 +93,7 @@ export class RExecutableService implements vscode.Disposable {
      * @type {RExecutable}
      * @memberof RExecutableService
      */
-    public get activeExecutable(): ExecutableType | undefined {
+    public get activeExecutable(): RExecutableType | undefined {
         const currWorkspacePath = getCurrentWorkspaceFolder()?.uri?.fsPath;
         if (currWorkspacePath) {
             return this.workspaceExecutables.get(currWorkspacePath);
@@ -113,7 +114,7 @@ export class RExecutableService implements vscode.Disposable {
      * @param {RExecutable} executable
      * @memberof RExecutableService
      */
-    public setWorkspaceExecutable(folder: string, executable: ExecutableType | undefined): void {
+    public setWorkspaceExecutable(folder: string, executable: RExecutableType | undefined): void {
         if (this.workspaceExecutables.get(folder) !== executable) {
             if (!executable) {
                 this.executableStorage.setExecutablePath(folder, undefined);
@@ -135,7 +136,7 @@ export class RExecutableService implements vscode.Disposable {
      * @returns {*}  {RExecutable}
      * @memberof RExecutableService
      */
-    public getWorkspaceExecutable(folder: string): ExecutableType | undefined {
+    public getWorkspaceExecutable(folder: string): RExecutableType | undefined {
         return this.workspaceExecutables.get(folder);
     }
 
@@ -147,7 +148,7 @@ export class RExecutableService implements vscode.Disposable {
      * @type {vscode.Event<RExecutable>}
      * @memberof RExecutableService
      */
-    public get onDidChangeActiveExecutable(): vscode.Event<ExecutableType | undefined> {
+    public get onDidChangeActiveExecutable(): vscode.Event<RExecutableType | undefined> {
         return this.executableEmitter.event;
     }
 

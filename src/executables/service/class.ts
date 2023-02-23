@@ -1,12 +1,16 @@
 import { condaName, getRDetailsFromMetaHistory, isCondaInstallation } from '../virtual';
 import { getRDetailsFromPath } from './locator';
 import { RExecutableRegistry } from './registry';
-import { ExecutableType } from './types';
+import { RExecutableType } from './types';
 
-export function isVirtual(executable: AbstractExecutable): executable is VirtualRExecutable {
+export function isVirtual(executable: AbstractRExecutable): executable is VirtualRExecutable {
     return executable instanceof VirtualRExecutable;
 }
 
+/**
+ * Creates and caches instances of RExecutableType
+ * based on the provided executable path.
+ */
 export class RExecutableFactory {
     private readonly registry: RExecutableRegistry;
 
@@ -14,12 +18,12 @@ export class RExecutableFactory {
         this.registry = registry;
     }
 
-    public create(executablePath: string): ExecutableType {
+    public create(executablePath: string): RExecutableType {
         const cachedExec = [...this.registry.executables.values()].find((v) => v.rBin === executablePath);
         if (cachedExec) {
             return cachedExec;
         } else {
-            let executable: AbstractExecutable;
+            let executable: AbstractRExecutable;
             if (isCondaInstallation(executablePath)) {
                 executable = new VirtualRExecutable(executablePath);
             } else {
@@ -31,7 +35,7 @@ export class RExecutableFactory {
     }
 }
 
-export abstract class AbstractExecutable {
+export abstract class AbstractRExecutable {
     protected _rBin!: string;
     protected _rVersion!: string;
     protected _rArch!: string;
@@ -50,7 +54,7 @@ export abstract class AbstractExecutable {
 }
 
 
-export class RExecutable extends AbstractExecutable {
+export class RExecutable extends AbstractRExecutable {
     constructor(executablePath: string) {
         super();
         const details = getRDetailsFromPath(executablePath);
@@ -67,7 +71,7 @@ export class RExecutable extends AbstractExecutable {
     }
 }
 
-export class VirtualRExecutable extends AbstractExecutable {
+export class VirtualRExecutable extends AbstractRExecutable {
     private _name: string;
     public envVar!: string;
 

@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 
 import { ExecutableStatusItem, ExecutableQuickPick } from './ui';
-import { isVirtual, RExecutableService, ExecutableType, WorkspaceExecutableEvent } from './service';
+import { isVirtual, RExecutableService, RExecutableType, WorkspaceExecutableEvent } from './service';
 import { extensionContext } from '../extension';
 import { activateCondaEnvironment, condaPrefixPath } from './virtual';
 
@@ -22,7 +22,7 @@ export class RExecutableManager {
             this.onDidChangeActiveExecutable(() => {
                 this.reload();
             }),
-            vscode.window.onDidChangeActiveTextEditor((e: vscode.TextEditor |  undefined) => {
+            vscode.window.onDidChangeActiveTextEditor((e: vscode.TextEditor | undefined) => {
                 if (e?.document) {
                     this.reload();
                 }
@@ -59,11 +59,11 @@ export class RExecutableManager {
         return this.executableService.getWorkspaceExecutable(workingDir)?.rBin;
     }
 
-    public get activeExecutable(): ExecutableType | undefined {
+    public get activeExecutable(): RExecutableType | undefined {
         return this.executableService.activeExecutable;
     }
 
-    public get onDidChangeActiveExecutable(): vscode.Event<ExecutableType | undefined> {
+    public get onDidChangeActiveExecutable(): vscode.Event<RExecutableType | undefined> {
         return this.executableService.onDidChangeActiveExecutable;
     }
 
@@ -83,6 +83,11 @@ export class RExecutableManager {
         void this.statusBar.makeBusy(loading);
     }
 
+    /**
+     * Activates a Conda environment, but only if the currently active executable is virtual
+     * and has no obtained environmental variable . If determined that activation is not necessary,
+     * a resolved promise will be returned.
+     */
     private async activateEnvironment(): Promise<void> {
         if (!this.activeExecutable ||
             !isVirtual(this.activeExecutable) ||
@@ -106,7 +111,7 @@ export function validateRExecutablePath(execPath: string): boolean {
     try {
         const basename = process.platform === 'win32' ? 'R.exe' : 'R';
         fs.accessSync(execPath, fs.constants.X_OK && fs.constants.R_OK);
-        return  (path.basename(execPath) === basename);
+        return (path.basename(execPath) === basename);
     } catch (error) {
         return false;
     }
@@ -120,10 +125,10 @@ export function validateRExecutablePath(execPath: string): boolean {
  * @export
  * @template T
  * @param {T} opts
- * @param {ExecutableType} executable
+ * @param {RExecutableType} executable
  * @returns {*}  {T}
  */
-export function modifyEnvVars<T extends vscode.TerminalOptions | cp.CommonOptions >(opts: T, executable: ExecutableType): T {
+export function modifyEnvVars<T extends vscode.TerminalOptions | cp.CommonOptions>(opts: T, executable: RExecutableType): T {
     const envVars: Record<string, string> = {
         R_BINARY: executable.rBin
     };
