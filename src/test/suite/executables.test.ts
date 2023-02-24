@@ -10,10 +10,11 @@ import { ExecutableStatusItem } from '../../executables/ui';
 import { mockExtensionContext } from '../common';
 import { RExecutablePathStorage } from '../../executables/service/pathStorage';
 import { DummyMemento } from '../../util';
+import { LocatorServiceFactory } from '../../executables/service/locator';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
-suite('Language Status Item', () => {
+suite('R Executable Service', () => {
     let sandbox: sinon.SinonSandbox;
     setup(() => {
         sandbox = sinon.createSandbox();
@@ -22,7 +23,7 @@ suite('Language Status Item', () => {
         sandbox.restore();
     });
 
-    test('text', () => {
+    test('status item text', () => {
         mockExtensionContext(extension_root, sandbox);
         let executableValue: exec.RExecutableType | undefined = undefined;
         const statusItem = new ExecutableStatusItem({
@@ -49,7 +50,7 @@ suite('Language Status Item', () => {
         statusItem.dispose();
     });
 
-    test('loading indicator', async () => {
+    test('status item loading indicator', async () => {
         mockExtensionContext(extension_root, sandbox);
         const dummyPromise: Promise<void> = new Promise(() => {
             //
@@ -66,18 +67,8 @@ suite('Language Status Item', () => {
         await statusItem.makeBusy(Promise.resolve());
         assert.strictEqual(statusItem.busy, false);
         assert.strictEqual(statusItem.severity, vscode.LanguageStatusSeverity.Warning);
+    });
 
-    });
-});
-
-suite('Executable Path Storage', () => {
-    let sandbox: sinon.SinonSandbox;
-    setup(() => {
-        sandbox = sinon.createSandbox();
-    });
-    teardown(() => {
-        sandbox.restore();
-    });
     test('path storage + retrieval', () => {
         const mockExtensionContext = {
             environmentVariableCollection: sandbox.stub(),
@@ -112,5 +103,11 @@ suite('Executable Path Storage', () => {
             pathStorage2.getExecutablePath('/working/1'),
             '/bin/1'
         );
+    });
+
+    test('executable locator', async () => {
+        const locator = LocatorServiceFactory.getLocator();
+        await locator.refreshPaths();
+        assert.strictEqual(locator.executablePaths.length, 1);
     });
 });

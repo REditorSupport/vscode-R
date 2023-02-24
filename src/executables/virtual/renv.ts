@@ -1,6 +1,6 @@
 import path = require('path');
-import { IRenvJSONLock } from '../virtual/types';
 import * as fs from 'fs-extra';
+import { IRenvJSONLock } from '../virtual/types';
 
 export function getRenvVersion(workspacePath: string): string | undefined {
     if (isRenvWorkspace(workspacePath)) {
