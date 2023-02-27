@@ -8,12 +8,21 @@ enum BinText {
     missing = '$(warning) Select R executable'
 }
 
+const rFileTypes = [
+    'r',
+    'rmd',
+    'rProfile',
+    'rd',
+    'rproj',
+    'rnw'
+];
+
 export class ExecutableStatusItem implements vscode.Disposable {
     private readonly service: RExecutableService;
     private languageStatusItem!: vscode.LanguageStatusItem;
 
     private createItem(): vscode.LanguageStatusItem {
-        this.languageStatusItem = vscode.languages.createLanguageStatusItem('R Executable Selector', ['r', 'rmd', 'rProfile']);
+        this.languageStatusItem = vscode.languages.createLanguageStatusItem('R Executable Selector', rFileTypes);
         this.languageStatusItem.name = 'R Language Service';
         this.languageStatusItem.command = {
             'title': 'Select R executable',

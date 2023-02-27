@@ -90,9 +90,9 @@ export class VirtualRExecutable extends AbstractRExecutable {
 
     public get tooltip(): string {
         if (this.rVersion && this.rArch) {
-            return `${this.name} (R ${this.rVersion} ${this.rArch})`;
+            return `R ${this.rVersion} ${this.rArch} ('${this.name}')`;
         }
-        return `$(error) ${this.name}`;
+        return `$(error) '${this.name}'`;
     }
 
 }

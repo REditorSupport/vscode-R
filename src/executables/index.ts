@@ -85,7 +85,7 @@ export class RExecutableManager {
 
     /**
      * Activates a Conda environment, but only if the currently active executable is virtual
-     * and has no obtained environmental variable . If determined that activation is not necessary,
+     * and has no obtained environmental variable. If determined that activation is not necessary,
      * a resolved promise will be returned.
      */
     private async activateEnvironment(): Promise<void> {

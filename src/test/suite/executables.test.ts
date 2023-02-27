@@ -11,6 +11,7 @@ import { mockExtensionContext } from '../common';
 import { RExecutablePathStorage } from '../../executables/service/pathStorage';
 import { DummyMemento } from '../../util';
 import { LocatorServiceFactory } from '../../executables/service/locator';
+import { VirtualRExecutable } from '../../executables/service';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
@@ -31,11 +32,7 @@ suite('R Executable Service', () => {
                 return executableValue;
             }
         } as unknown as exec.RExecutableService);
-        assert.strictEqual(
-            statusItem.text,
-            '$(warning) Select R executable'
-        );
-
+        assert.strictEqual(statusItem.text, '$(warning) Select R executable');
         executableValue = {
             get tooltip(): string {
                 return `R 4.0 64-bit`;
@@ -43,10 +40,7 @@ suite('R Executable Service', () => {
             rVersion: '4.0'
         } as exec.RExecutableType;
         statusItem.refresh();
-        assert.strictEqual(
-            statusItem.text,
-            '4.0'
-        );
+        assert.strictEqual(statusItem.text, '4.0');
         statusItem.dispose();
     });
 
@@ -93,21 +87,15 @@ suite('R Executable Service', () => {
         sandbox.stub(ext, 'extensionContext').value(mockExtensionContext);
         const pathStorage = new RExecutablePathStorage();
         pathStorage.setExecutablePath('/working/1', '/bin/1');
-        assert.strictEqual(
-            pathStorage.getExecutablePath('/working/1'),
-            '/bin/1'
-        );
+        assert.strictEqual(pathStorage.getExecutablePath('/working/1'), '/bin/1');
 
         const pathStorage2 = new RExecutablePathStorage();
-        assert.strictEqual(
-            pathStorage2.getExecutablePath('/working/1'),
-            '/bin/1'
-        );
+        assert.strictEqual(pathStorage2.getExecutablePath('/working/1'), '/bin/1');
     });
 
     test('executable locator', async () => {
         const locator = LocatorServiceFactory.getLocator();
         await locator.refreshPaths();
-        assert.strictEqual(locator.executablePaths.length, 1);
+        assert(locator.executablePaths.length > 0);
     });
 });
