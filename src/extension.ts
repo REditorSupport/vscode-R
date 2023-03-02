@@ -241,13 +241,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // register the R Workspace tree view
         // creates a custom context value for the workspace view
         // only shows view when session watcher is enabled
+        rWorkspace = new workspaceViewer.WorkspaceDataProvider();
 
         // if session watcher is active, register dyamic completion provider
         const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
         vscode.languages.registerCompletionItemProvider(['r', 'rmd'], new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
 
-    rWorkspace = new workspaceViewer.WorkspaceDataProvider(enableSessionWatcher);
+    void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
 
     return rExtension;
 }

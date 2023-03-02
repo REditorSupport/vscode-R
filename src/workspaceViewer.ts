@@ -30,9 +30,9 @@ function getPackageNode(name: string): PackageNode | undefined {
 }
 
 export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
-    private readonly attachedNamespacesRootItem: TreeItem | undefined;
-    private readonly loadedNamespacesRootItem: TreeItem | undefined;
-    private readonly globalEnvRootItem: TreeItem | undefined;
+    private readonly attachedNamespacesRootItem: TreeItem;
+    private readonly loadedNamespacesRootItem: TreeItem;
+    private readonly globalEnvRootItem: TreeItem;
     private _onDidChangeTreeData: EventEmitter<void> = new EventEmitter();
 
     public readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
@@ -43,29 +43,26 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
         this._onDidChangeTreeData.fire();
     }
 
-    public constructor(sessionEnabled: boolean) {
-        if (sessionEnabled) {
-            this.attachedNamespacesRootItem = new TreeItem('Attached Namespaces', TreeItemCollapsibleState.Collapsed);
-            this.attachedNamespacesRootItem.id = 'attached-namespaces';
-            this.attachedNamespacesRootItem.iconPath = new ThemeIcon('library');
+    public constructor() {
+        this.attachedNamespacesRootItem = new TreeItem('Attached Namespaces', TreeItemCollapsibleState.Collapsed);
+        this.attachedNamespacesRootItem.id = 'attached-namespaces';
+        this.attachedNamespacesRootItem.iconPath = new ThemeIcon('library');
 
-            this.loadedNamespacesRootItem = new TreeItem('Loaded Namespaces', TreeItemCollapsibleState.Collapsed);
-            this.loadedNamespacesRootItem.id = 'loaded-namespaces';
-            this.loadedNamespacesRootItem.iconPath = new ThemeIcon('package');
+        this.loadedNamespacesRootItem = new TreeItem('Loaded Namespaces', TreeItemCollapsibleState.Collapsed);
+        this.loadedNamespacesRootItem.id = 'loaded-namespaces';
+        this.loadedNamespacesRootItem.iconPath = new ThemeIcon('package');
 
-            this.globalEnvRootItem = new TreeItem('Global Environment', TreeItemCollapsibleState.Expanded);
-            this.globalEnvRootItem.id = 'globalenv';
-            this.globalEnvRootItem.iconPath = new ThemeIcon('menu');
+        this.globalEnvRootItem = new TreeItem('Global Environment', TreeItemCollapsibleState.Expanded);
+        this.globalEnvRootItem.id = 'globalenv';
+        this.globalEnvRootItem.iconPath = new ThemeIcon('menu');
 
-            extensionContext.subscriptions.push(
-                vscode.commands.registerCommand(PackageItem.command, async (node: PackageNode) => {
-                    await node.showQuickPick();
-                })
-            );
-        }
+        extensionContext.subscriptions.push(
+            vscode.commands.registerCommand(PackageItem.command, async (node: PackageNode) => {
+                await node.showQuickPick();
+            })
+        );
 
         vscode.window.registerTreeDataProvider('workspaceViewer', this);
-        void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', sessionEnabled);
     }
 
     public getTreeItem(element: TreeItem): TreeItem {
@@ -177,7 +174,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 }
 
 class PackageItem extends TreeItem {
-    public static command : string = 'r.workspaceViewer.package.showQuickPick';
+    public static command: string = 'r.workspaceViewer.package.showQuickPick';
     public label?: string;
     public name: string;
     public pkgNode?: PackageNode;
@@ -263,7 +260,7 @@ export class GlobalEnvItem extends TreeItem {
     }
 
     private getTooltip(
-        label:string,
+        label: string,
         rClass: string,
         size?: number,
         treeLevel?: number
@@ -296,7 +293,7 @@ export class GlobalEnvItem extends TreeItem {
     of what elements can have have 'child' nodes os not. It can be expanded
     in the futere for more tree levels.*/
     private static setCollapsibleState(treeLevel: number, type: string, str: string): vscode.TreeItemCollapsibleState {
-        if (treeLevel === TreeLevel.Parent && collapsibleTypes.includes(type) && str.includes('\n')){
+        if (treeLevel === TreeLevel.Parent && collapsibleTypes.includes(type) && str.includes('\n')) {
             return TreeItemCollapsibleState.Collapsed;
         } else {
             return TreeItemCollapsibleState.None;
