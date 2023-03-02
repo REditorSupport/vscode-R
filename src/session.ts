@@ -125,6 +125,7 @@ export function removeSessionFiles(): void {
     if (sessionDirectoryExists()) {
         removeDirectory(sessionDir);
     }
+    clearWorkspaceData();
     console.info('[removeSessionFiles] Done');
 }
 
@@ -814,4 +815,9 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
             void rHostService?.notifyRequest(requestFile);
         }
     }
+}
+
+export function clearWorkspaceData(): void {
+    workspaceData.globalenv = {};
+    rWorkspace?.refresh();
 }
