@@ -819,5 +819,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
 
 export function clearWorkspaceData(): void {
     workspaceData.globalenv = {};
+    workspaceData.loaded_namespaces = [];
+    workspaceData.search = [];
     rWorkspace?.refresh();
 }
