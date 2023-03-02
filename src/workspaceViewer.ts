@@ -30,9 +30,9 @@ function getPackageNode(name: string): PackageNode | undefined {
 }
 
 export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
-    private readonly attachedNamespacesRootItem: TreeItem;
-    private readonly loadedNamespacesRootItem: TreeItem;
-    private readonly globalEnvRootItem: TreeItem;
+    private readonly attachedNamespacesRootItem: TreeItem | undefined;
+    private readonly loadedNamespacesRootItem: TreeItem | undefined;
+    private readonly globalEnvRootItem: TreeItem | undefined;
     private _onDidChangeTreeData: EventEmitter<void> = new EventEmitter();
 
     public readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
@@ -43,24 +43,29 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
         this._onDidChangeTreeData.fire();
     }
 
-    public constructor() {
-        this.attachedNamespacesRootItem = new TreeItem('Attached Namespaces', TreeItemCollapsibleState.Collapsed);
-        this.attachedNamespacesRootItem.id = 'attached-namespaces';
-        this.attachedNamespacesRootItem.iconPath = new ThemeIcon('library');
+    public constructor(sessionEnabled: boolean) {
+        if (sessionEnabled) {
+            this.attachedNamespacesRootItem = new TreeItem('Attached Namespaces', TreeItemCollapsibleState.Collapsed);
+            this.attachedNamespacesRootItem.id = 'attached-namespaces';
+            this.attachedNamespacesRootItem.iconPath = new ThemeIcon('library');
 
-        this.loadedNamespacesRootItem = new TreeItem('Loaded Namespaces', TreeItemCollapsibleState.Collapsed);
-        this.loadedNamespacesRootItem.id = 'loaded-namespaces';
-        this.loadedNamespacesRootItem.iconPath = new ThemeIcon('package');
+            this.loadedNamespacesRootItem = new TreeItem('Loaded Namespaces', TreeItemCollapsibleState.Collapsed);
+            this.loadedNamespacesRootItem.id = 'loaded-namespaces';
+            this.loadedNamespacesRootItem.iconPath = new ThemeIcon('package');
 
-        this.globalEnvRootItem = new TreeItem('Global Environment', TreeItemCollapsibleState.Expanded);
-        this.globalEnvRootItem.id = 'globalenv';
-        this.globalEnvRootItem.iconPath = new ThemeIcon('menu');
+            this.globalEnvRootItem = new TreeItem('Global Environment', TreeItemCollapsibleState.Expanded);
+            this.globalEnvRootItem.id = 'globalenv';
+            this.globalEnvRootItem.iconPath = new ThemeIcon('menu');
 
-        extensionContext.subscriptions.push(
-            vscode.commands.registerCommand(PackageItem.command, async (node: PackageNode) => {
-                await node.showQuickPick();
-            })
-        );
+            extensionContext.subscriptions.push(
+                vscode.commands.registerCommand(PackageItem.command, async (node: PackageNode) => {
+                    await node.showQuickPick();
+                })
+            );
+        }
+
+        vscode.window.registerTreeDataProvider('workspaceViewer', this);
+        void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', sessionEnabled);
     }
 
     public getTreeItem(element: TreeItem): TreeItem {

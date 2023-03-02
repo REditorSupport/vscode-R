@@ -94,8 +94,7 @@
           "id": "workspaceViewer",
           "name": "Workspace",
           "icon": "./images/Rlogo.svg",
-          "contextualTitle": "R",
-          "when": "r.WorkspaceViewer:show"
+          "contextualTitle": "R"
         },
         {
           "id": "rHelpPages",
@@ -117,7 +116,8 @@
     "viewsWelcome": [
       {
         "view": "workspaceViewer",
-        "contents": "R workspace is empty."
+        "when": "!r.WorkspaceViewer:show",
+        "contents": "R workspace viewer requires that the [session watcher be enabled](https://github.com/REditorSupport/vscode-R/wiki/R-Session-watcher)."
       },
       {
         "view": "rHelpPages",
