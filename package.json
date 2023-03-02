@@ -94,8 +94,7 @@
           "id": "workspaceViewer",
           "name": "Workspace",
           "icon": "./images/Rlogo.svg",
-          "contextualTitle": "R",
-          "when": "r.WorkspaceViewer:show"
+          "contextualTitle": "R"
         },
         {
           "id": "rHelpPages",
@@ -117,7 +116,8 @@
     "viewsWelcome": [
       {
         "view": "workspaceViewer",
-        "contents": "R workspace is empty."
+        "when": "!r.WorkspaceViewer:show",
+        "contents": "R workspace viewer requires that the [session watcher be enabled](https://github.com/REditorSupport/vscode-R/wiki/R-Session-watcher)."
       },
       {
         "view": "rHelpPages",
@@ -1246,22 +1246,22 @@
         {
           "command": "r.workspaceViewer.load",
           "group": "navigation@0",
-          "when": "view == workspaceViewer && !r.liveShare:isGuest"
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer && !r.liveShare:isGuest"
         },
         {
           "command": "r.workspaceViewer.save",
           "group": "navigation@1",
-          "when": "view == workspaceViewer && !r.liveShare:isGuest"
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer && !r.liveShare:isGuest"
         },
         {
           "command": "r.workspaceViewer.clear",
           "group": "navigation@2",
-          "when": "view == workspaceViewer"
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer"
         },
         {
           "command": "r.workspaceViewer.refreshEntry",
           "group": "navigation@3",
-          "when": "view == workspaceViewer"
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer"
         },
         {
           "command": "r.helpPanel.showQuickPick",

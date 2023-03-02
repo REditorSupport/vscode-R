@@ -61,6 +61,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                 await node.showQuickPick();
             })
         );
+
+        vscode.window.registerTreeDataProvider('workspaceViewer', this);
     }
 
     public getTreeItem(element: TreeItem): TreeItem {
@@ -172,7 +174,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 }
 
 class PackageItem extends TreeItem {
-    public static command : string = 'r.workspaceViewer.package.showQuickPick';
+    public static command: string = 'r.workspaceViewer.package.showQuickPick';
     public label?: string;
     public name: string;
     public pkgNode?: PackageNode;
@@ -258,7 +260,7 @@ export class GlobalEnvItem extends TreeItem {
     }
 
     private getTooltip(
-        label:string,
+        label: string,
         rClass: string,
         size?: number,
         treeLevel?: number
@@ -291,7 +293,7 @@ export class GlobalEnvItem extends TreeItem {
     of what elements can have have 'child' nodes os not. It can be expanded
     in the futere for more tree levels.*/
     private static setCollapsibleState(treeLevel: number, type: string, str: string): vscode.TreeItemCollapsibleState {
-        if (treeLevel === TreeLevel.Parent && collapsibleTypes.includes(type) && str.includes('\n')){
+        if (treeLevel === TreeLevel.Parent && collapsibleTypes.includes(type) && str.includes('\n')) {
             return TreeItemCollapsibleState.Collapsed;
         } else {
             return TreeItemCollapsibleState.None;
