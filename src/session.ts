@@ -11,7 +11,7 @@ import { config, readContent, UriIcon } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { IRequest } from './liveShare/shareSession';
-import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
+import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext, sessionStatusBarItem } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
 export interface GlobalEnv {
@@ -125,7 +125,6 @@ export function removeSessionFiles(): void {
     if (sessionDirectoryExists()) {
         removeDirectory(sessionDir);
     }
-    clearWorkspaceData();
     console.info('[removeSessionFiles] Done');
 }
 
@@ -779,6 +778,10 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         }
                         break;
                     }
+                    case 'detach': {
+                        cleanupSession();
+                        break;
+                    }
                     case 'browser': {
                         if (request.url && request.title && request.viewer !== undefined) {
                             await showBrowser(request.url, request.title, request.viewer);
@@ -817,9 +820,14 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     }
 }
 
-export function clearWorkspaceData(): void {
+export function cleanupSession(): void {
+    if (sessionStatusBarItem) {
+        sessionStatusBarItem.text = 'R: (not attached)';
+        sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
+    }
     workspaceData.globalenv = {};
     workspaceData.loaded_namespaces = [];
     workspaceData.search = [];
     rWorkspace?.refresh();
+    removeSessionFiles();
 }

@@ -36,6 +36,7 @@ export let enableSessionWatcher: boolean | undefined = undefined;
 export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
 export let rmdPreviewManager: rmarkdown.RMarkdownPreviewManager | undefined = undefined;
 export let rmdKnitManager: rmarkdown.RMarkdownKnitManager | undefined = undefined;
+export let sessionStatusBarItem: vscode.StatusBarItem | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -225,7 +226,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
             // create status bar item that contains info about the session watcher
             console.info('Create sessionStatusBarItem');
-            const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+            sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
             sessionStatusBarItem.command = 'r.attachActive';
             sessionStatusBarItem.text = 'R: (not attached)';
             sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
