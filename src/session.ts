@@ -734,6 +734,7 @@ type ISessionRequest = {
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     console.info('[updateRequest] Started');
     console.info(`[updateRequest] requestFile: ${requestFile}`);
+
     const lockContent = await fs.readFile(requestLockFile, 'utf8');
     const newTimeStamp = Number.parseFloat(lockContent);
     if (newTimeStamp !== requestTimeStamp) {
@@ -776,6 +777,11 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         if (request.plot_url) {
                             await globalHttpgdManager?.showViewer(request.plot_url);
                         }
+                        watchProcess(Number(pid)).then((v) => {
+                            if (v === Number(pid)) {
+                                cleanupSession();
+                            }
+                        })
                         break;
                     }
                     case 'detach': {
@@ -830,4 +836,25 @@ export function cleanupSession(): void {
     workspaceData.search = [];
     rWorkspace?.refresh();
     removeSessionFiles();
+}
+
+async function watchProcess(pid: number): Promise<number> {
+    function pidIsRunning(pid: number) {
+        try {
+            process.kill(pid, 0);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    let res = true;
+    do {
+        res = pidIsRunning(pid);
+        await new Promise(resolve => {
+            setTimeout(resolve, 1000);
+        })
+
+    } while(res)
+    return pid;
 }
