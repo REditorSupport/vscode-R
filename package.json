@@ -454,7 +454,7 @@
         "command": "r.names"
       },
       {
-        "title": "Show view for a selected object",
+        "title": "View selected object",
         "category": "R",
         "command": "r.view"
       },
