@@ -777,15 +777,15 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         if (request.plot_url) {
                             await globalHttpgdManager?.showViewer(request.plot_url);
                         }
-                        void watchProcess(Number(pid)).then((v) => {
-                            if (v === Number(pid)) {
-                                cleanupSession();
-                            }
+                        void watchProcess(pid).then((v: string) => {
+                            cleanupSession(v);
                         });
                         break;
                     }
                     case 'detach': {
-                        cleanupSession();
+                        if (request.pid) {
+                            cleanupSession(request.pid);
+                        }
                         break;
                     }
                     case 'browser': {
@@ -826,19 +826,21 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     }
 }
 
-export function cleanupSession(): void {
-    if (sessionStatusBarItem) {
-        sessionStatusBarItem.text = 'R: (not attached)';
-        sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
+export function cleanupSession(pidArg: string): void {
+    if (pid === pidArg) {
+        if (sessionStatusBarItem) {
+            sessionStatusBarItem.text = 'R: (not attached)';
+            sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
+        }
+        workspaceData.globalenv = {};
+        workspaceData.loaded_namespaces = [];
+        workspaceData.search = [];
+        rWorkspace?.refresh();
+        removeSessionFiles();
     }
-    workspaceData.globalenv = {};
-    workspaceData.loaded_namespaces = [];
-    workspaceData.search = [];
-    rWorkspace?.refresh();
-    removeSessionFiles();
 }
 
-async function watchProcess(pid: number): Promise<number> {
+async function watchProcess(pid: string): Promise<string> {
     function pidIsRunning(pid: number) {
         try {
             process.kill(pid, 0);
@@ -848,9 +850,11 @@ async function watchProcess(pid: number): Promise<number> {
         }
     }
 
+    const pidArg = Number(pid);
+
     let res = true;
     do {
-        res = pidIsRunning(pid);
+        res = pidIsRunning(pidArg);
         await new Promise(resolve => {
             setTimeout(resolve, 1000);
         });

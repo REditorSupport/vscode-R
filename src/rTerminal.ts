@@ -162,7 +162,11 @@ export function deleteTerminal(term: vscode.Terminal): void {
     if (isDeepStrictEqual(term, rTerm)) {
         rTerm = undefined;
         if (config().get<boolean>('sessionWatcher')) {
-            cleanupSession();
+            term.processId.then((v) => {
+                if (v) {
+                    cleanupSession(v.toString());
+                }
+            });
         }
     }
 }

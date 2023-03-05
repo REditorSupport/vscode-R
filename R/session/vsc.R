@@ -792,4 +792,4 @@ print.hsearch <- function(x, ...) {
   invisible(NULL)
 }
 
-reg.finalizer(globalenv(), function(e) .vsc$request("detach"), onexit = TRUE)
+reg.finalizer(globalenv(), function(e) .vsc$request("detach", pid = pid), onexit = TRUE)
