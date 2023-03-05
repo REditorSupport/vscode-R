@@ -777,11 +777,11 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         if (request.plot_url) {
                             await globalHttpgdManager?.showViewer(request.plot_url);
                         }
-                        watchProcess(Number(pid)).then((v) => {
+                        void watchProcess(Number(pid)).then((v) => {
                             if (v === Number(pid)) {
                                 cleanupSession();
                             }
-                        })
+                        });
                         break;
                     }
                     case 'detach': {
@@ -853,8 +853,8 @@ async function watchProcess(pid: number): Promise<number> {
         res = pidIsRunning(pid);
         await new Promise(resolve => {
             setTimeout(resolve, 1000);
-        })
+        });
 
-    } while(res)
+    } while (res);
     return pid;
 }
