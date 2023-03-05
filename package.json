@@ -454,6 +454,11 @@
         "command": "r.names"
       },
       {
+        "title": "View selected object",
+        "category": "R",
+        "command": "r.view"
+      },
+      {
         "title": "Create gitignore",
         "category": "R",
         "command": "r.createGitignore"
