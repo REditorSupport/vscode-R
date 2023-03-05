@@ -11,7 +11,7 @@ import { config, readContent, UriIcon } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { IRequest } from './liveShare/shareSession';
-import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext } from './extension';
+import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext, sessionStatusBarItem } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
 export interface GlobalEnv {
@@ -734,6 +734,7 @@ type ISessionRequest = {
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     console.info('[updateRequest] Started');
     console.info(`[updateRequest] requestFile: ${requestFile}`);
+
     const lockContent = await fs.readFile(requestLockFile, 'utf8');
     const newTimeStamp = Number.parseFloat(lockContent);
     if (newTimeStamp !== requestTimeStamp) {
@@ -776,6 +777,15 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         if (request.plot_url) {
                             await globalHttpgdManager?.showViewer(request.plot_url);
                         }
+                        void watchProcess(Number(pid)).then((v) => {
+                            if (v === Number(pid)) {
+                                cleanupSession();
+                            }
+                        });
+                        break;
+                    }
+                    case 'detach': {
+                        cleanupSession();
                         break;
                     }
                     case 'browser': {
@@ -814,4 +824,37 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
             void rHostService?.notifyRequest(requestFile);
         }
     }
+}
+
+export function cleanupSession(): void {
+    if (sessionStatusBarItem) {
+        sessionStatusBarItem.text = 'R: (not attached)';
+        sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
+    }
+    workspaceData.globalenv = {};
+    workspaceData.loaded_namespaces = [];
+    workspaceData.search = [];
+    rWorkspace?.refresh();
+    removeSessionFiles();
+}
+
+async function watchProcess(pid: number): Promise<number> {
+    function pidIsRunning(pid: number) {
+        try {
+            process.kill(pid, 0);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    let res = true;
+    do {
+        res = pidIsRunning(pid);
+        await new Promise(resolve => {
+            setTimeout(resolve, 1000);
+        });
+
+    } while (res);
+    return pid;
 }

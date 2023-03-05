@@ -791,3 +791,5 @@ print.hsearch <- function(x, ...) {
   registerS3method(generic, class, method, envir = parent.frame())
   invisible(NULL)
 }
+
+reg.finalizer(globalenv(), function(e) .vsc$request("detach"), onexit = TRUE)

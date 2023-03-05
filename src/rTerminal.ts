@@ -9,7 +9,7 @@ import { extensionContext, homeExtDir } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { removeSessionFiles } from './session';
+import { cleanupSession } from './session';
 import { config, delay, getRterm } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
@@ -162,7 +162,7 @@ export function deleteTerminal(term: vscode.Terminal): void {
     if (isDeepStrictEqual(term, rTerm)) {
         rTerm = undefined;
         if (config().get<boolean>('sessionWatcher')) {
-            removeSessionFiles();
+            cleanupSession();
         }
     }
 }
