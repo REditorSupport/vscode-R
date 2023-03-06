@@ -998,6 +998,10 @@
         {
           "command": "r.workspaceViewer.remove",
           "when": "false"
+        },
+        {
+          "command": "r.workspaceViewer.package.showQuickPick",
+          "when": "false"
         }
       ],
       "editor/title/run": [
