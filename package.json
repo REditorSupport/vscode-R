@@ -326,7 +326,8 @@
         "command": "r.workspaceViewer.refreshEntry",
         "title": "Manual Refresh",
         "icon": "$(refresh)",
-        "category": "R Workspace Viewer"
+        "category": "R Workspace Viewer",
+        "enablement": "rSessionActive"
       },
       {
         "command": "r.workspaceViewer.view",
@@ -338,7 +339,8 @@
         "command": "r.workspaceViewer.clear",
         "title": "Clear environment",
         "icon": "$(clear-all)",
-        "category": "R Workspace Viewer"
+        "category": "R Workspace Viewer",
+        "enablement": "rSessionActive"
       },
       {
         "command": "r.workspaceViewer.remove",
@@ -350,7 +352,8 @@
         "command": "r.workspaceViewer.save",
         "title": "Save workspace",
         "icon": "$(save)",
-        "category": "R Workspace Viewer"
+        "category": "R Workspace Viewer",
+        "enablement": "rSessionActive"
       },
       {
         "command": "r.workspaceViewer.load",
@@ -987,6 +990,16 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "r.workspaceViewer.view",
+          "when": "false"
+        },
+        {
+          "command": "r.workspaceViewer.remove",
+          "when": "false"
+        }
+      ],
       "editor/title/run": [
         {
           "when": "editorLangId == r",

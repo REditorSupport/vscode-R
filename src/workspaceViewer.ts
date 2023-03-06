@@ -352,22 +352,21 @@ export function saveWorkspace(): void {
 }
 
 export function loadWorkspace(): void {
-    if (workspaceData) {
-        void window.showOpenDialog({
-            defaultUri: Uri.file(workingDir),
-            filters: {
-                'Data': ['RData'],
-            },
-            title: 'Load workspace'
-        }).then(async (uri: Uri[] | undefined) => {
-            if (uri) {
-                const savePath = uri[0].fsPath.split(path.sep).join(path.posix.sep);
-                return runTextInTerm(
-                    `load("${(savePath)}")`
-                );
-            }
-        });
-    }
+    const defaultUri = workingDir ? Uri.file(workingDir) : vscode.window.activeTextEditor?.document.uri;
+    void window.showOpenDialog({
+        defaultUri: defaultUri,
+        filters: {
+            'Data': ['RData'],
+        },
+        title: 'Load workspace'
+    }).then(async (uri: Uri[] | undefined) => {
+        if (uri) {
+            const savePath = uri[0].fsPath.split(path.sep).join(path.posix.sep);
+            return runTextInTerm(
+                `load("${(savePath)}")`
+            );
+        }
+    });
 }
 
 export function viewItem(node: string): void {
