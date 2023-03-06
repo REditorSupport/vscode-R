@@ -17,7 +17,6 @@ Fixes:
 
 * Workspace viewer now has a fallback message instead of causing error if session watcher is disabled. (#1317)
 
-
 ## [2.7.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.7.1)
 
 New Features:
