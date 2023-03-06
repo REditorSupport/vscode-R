@@ -7,7 +7,7 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
-import { config, readContent, UriIcon } from './util';
+import { config, readContent, setContext, UriIcon } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { IRequest } from './liveShare/shareSession';
@@ -774,17 +774,18 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
                         purgeAddinPickerItems();
+                        await setContext('rSessionActive', true);
                         if (request.plot_url) {
                             await globalHttpgdManager?.showViewer(request.plot_url);
                         }
                         void watchProcess(pid).then((v: string) => {
-                            cleanupSession(v);
+                            void cleanupSession(v);
                         });
                         break;
                     }
                     case 'detach': {
                         if (request.pid) {
-                            cleanupSession(request.pid);
+                            await cleanupSession(request.pid);
                         }
                         break;
                     }
@@ -826,7 +827,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     }
 }
 
-export function cleanupSession(pidArg: string): void {
+export async function cleanupSession(pidArg: string): Promise<void> {
     if (pid === pidArg) {
         if (sessionStatusBarItem) {
             sessionStatusBarItem.text = 'R: (not attached)';
@@ -837,6 +838,7 @@ export function cleanupSession(pidArg: string): void {
         workspaceData.search = [];
         rWorkspace?.refresh();
         removeSessionFiles();
+        await setContext('rSessionActive', false);
     }
 }
 
