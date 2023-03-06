@@ -4,6 +4,20 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.7.2](https://github.com/REditorSupport/vscode-R/releases/tag/v2.7.2)
+
+Enhancements:
+
+* Upgrade vscode-languageclient to 8.1.0 (#1315)
+* Workspace viewer will be cleaned-up when the attached R session exits. (#1318, #1321)
+* A new command `r.view` is added to view selected objects. (#1319, thanks @yeyun1999)
+* Workspace viewer commands that require an attached R session are now disabled when no R session is attached. (#1323)
+
+Fixes:
+
+* Workspace viewer now has a fallback message instead of causing error if session watcher is disabled. (#1317)
+
+
 ## [2.7.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.7.1)
 
 New Features:
