@@ -1002,6 +1002,82 @@
         {
           "command": "r.workspaceViewer.package.showQuickPick",
           "when": "false"
+        },
+        {
+          "command": "r.helpPanel.back",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.forward",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.openExternal",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.searchPackage",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.openInNewPanel",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.clearCache",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.filterPackages",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.removeFromFavorites",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.addToFavorites",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.showAllPackages",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.showOnlyFavorites",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.removePackage",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.updateInstalledPackages",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.updatePackage",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.installPackages",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.showQuickPick",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.summarizeTopics",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.unsummarizeTopics",
+          "when": "false"
+        },
+        {
+          "command": "r.helpPanel.openForPath",
+          "when": "false"
         }
       ],
       "editor/title/run": [
