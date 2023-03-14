@@ -1078,6 +1078,10 @@
         {
           "command": "r.helpPanel.openForPath",
           "when": "false"
+        },
+        {
+          "command": "r.liveShare.toggle",
+          "when": "false"
         }
       ],
       "editor/title/run": [
