@@ -89,6 +89,8 @@ class RMarkdownPreview extends vscode.Disposable {
 
         // make the output chunks a little lighter to stand out
         let chunkCol = String(config().get('rmarkdown.chunkBackgroundColor'));
+        const fontSize = config().get<number>('rmarkdown.preview.fontSize', 14);
+
         let outCol: string;
         if (chunkCol) {
             const colReg = /[0-9.]+/g;
@@ -108,7 +110,24 @@ class RMarkdownPreview extends vscode.Disposable {
             body {
                 color: var(--vscode-editor-foreground);
                 background: var(--vscode-editor-background);
+                font-size: ${fontSize}px;
             }
+            h1, .h1 {
+                font-size: ${fontSize + 20}px;
+            }
+            h2, .h2 {
+                font-size: ${fontSize + 16}px;
+            }
+            h3, .h3 {
+                font-size: ${fontSize + 10}px;
+            }
+            h4, .h4 {
+                font-size: ${fontSize + 4}px;
+            }
+            h5, .h5 {
+                font-size: ${fontSize + 2}px;
+            }
+
             .hljs {
                 color: var(--vscode-editor-foreground);
             }
