@@ -22,10 +22,22 @@ ret <- lapply(rownames(ip), function(row) {
     aliases = NULL
   )
   if (file.exists(filename)) {
-    info[["aliases"]] <- as.list(readRDS(filename))
+    info[["aliases"]] <- tryCatch(
+        expr = as.list(readRDS(filename)),
+        error = function(e) {
+            warning(
+                "An error occurred while reading the ",
+                "aliases file (aliases.rds) for package ",
+                pkg,
+                ". Try reinstalling/uninstalling the package.",
+            )
+            print(e)
+        }
+    )
   }
   info
 })
+
 names(ret) <- rownames(ip)
 
 lim <- Sys.getenv("VSCR_LIM")
