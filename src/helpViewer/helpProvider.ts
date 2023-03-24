@@ -161,7 +161,8 @@ interface PackageAliases {
     aliasFile?: string;
     aliases?: {
         [key: string]: string;
-    }
+    },
+    error?: string
 }
 interface AllPackageAliases {
     [key: string]: PackageAliases
@@ -221,9 +222,16 @@ export class AliasProvider {
 
         // flatten aliases into one list:
         const allAliases: rHelp.Alias[] = [];
-        for(const pkg in allPackageAliases){
-            const pkgName = allPackageAliases[pkg].package || pkg;
-            const pkgAliases = allPackageAliases[pkg].aliases || {};
+        for (const pkg in allPackageAliases) {
+            const item = allPackageAliases[pkg];
+            const pkgName = item.package || pkg;
+
+            if (item.error) {
+                void window.showErrorMessage(`An error occurred while reading the aliases file for package ${pkgName}: ${item.error}. The package files may be corrupted. Try reinstalling the package.`);
+                continue;
+            }
+
+            const pkgAliases = item.aliases || {};
             for(const fncName in pkgAliases){
                 allAliases.push({
                     name: pkgAliases[fncName],
