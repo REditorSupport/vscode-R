@@ -731,6 +731,10 @@ export async function writeSuccessResponse(responseSessionDir: string): Promise<
 
 type ISessionRequest = {
     plot_url?: string,
+    server?: {
+        port: number,
+        token: string
+    }
 } & IRequest;
 
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
@@ -847,6 +851,9 @@ export async function cleanupSession(pidArg: string): Promise<void> {
         if (sessionStatusBarItem) {
             sessionStatusBarItem.text = 'R: (not attached)';
             sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
+        }
+        if (sessionSocket?.isOpen) {
+            sessionSocket.close();
         }
         workspaceData.globalenv = {};
         workspaceData.loaded_namespaces = [];
