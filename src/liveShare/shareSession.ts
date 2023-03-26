@@ -2,7 +2,7 @@ import path = require('path');
 import * as vscode from 'vscode';
 
 import { extensionContext, globalHttpgdManager, globalRHelp, rWorkspace } from '../extension';
-import { config, readContent } from '../util';
+import { asViewColumn, config, readContent } from '../util';
 import { showBrowser, showDataView, showWebView, WorkspaceData } from '../session';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from '.';
 import { autoShareBrowser } from './shareTree';
@@ -10,7 +10,7 @@ import { docProvider, docScheme } from './virtualDocs';
 
 // Workspace Vars
 let guestPid: string;
-export let guestWorkspace: WorkspaceData;
+export let guestWorkspace: WorkspaceData | undefined;
 export let guestResDir: string;
 let rVer: string;
 let info: IRequest['info'];
@@ -19,7 +19,7 @@ let info: IRequest['info'];
 // Used to keep track of shared browsers
 export const browserDisposables: { Disposable: vscode.Disposable, url: string, name: string }[] = [];
 
-interface IRequest {
+export interface IRequest {
     command: string;
     time?: string;
     pid?: string;
@@ -57,7 +57,7 @@ export function initGuest(context: vscode.ExtensionContext): void {
         sessionStatusBarItem,
         vscode.workspace.registerTextDocumentContentProvider(docScheme, docProvider)
     );
-    rGuestService.setStatusBarItem(sessionStatusBarItem);
+    rGuestService?.setStatusBarItem(sessionStatusBarItem);
     guestResDir = path.join(context.extensionPath, 'dist', 'resources');
 }
 
@@ -70,9 +70,9 @@ export function detachGuest(): void {
 }
 
 export function attachActiveGuest(): void {
-    if (config().get<boolean>('sessionWatcher')) {
+    if (config().get<boolean>('sessionWatcher', true)) {
         console.info('[attachActiveGuest]');
-        void rGuestService.requestAttach();
+        void rGuestService?.requestAttach();
     } else {
         void vscode.window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }
@@ -82,7 +82,10 @@ export function attachActiveGuest(): void {
 // as this is handled by the session.ts variant
 // the force parameter is used for ensuring that the 'attach' case is appropriately called on guest join
 export async function updateGuestRequest(file: string, force: boolean = false): Promise<void> {
-    const requestContent: string = await readContent(file, 'utf8');
+    const requestContent: string | undefined = await readContent(file, 'utf8');
+    if (!requestContent) {
+        return;
+    }
     console.info(`[updateGuestRequest] request: ${requestContent}`);
     if (typeof (requestContent) !== 'string') {
         return;
@@ -107,7 +110,9 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
             case 'help': {
                 if (globalRHelp) {
                     console.log(request.requestPath);
-                    await globalRHelp.showHelpForPath(request.requestPath, request.viewer);
+                    if (request.requestPath) {
+                        await globalRHelp.showHelpForPath(request.requestPath, request.viewer);
+                    }
                 }
                 break;
             }
@@ -123,21 +128,29 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                 info = request.info;
                 console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
                 sessionStatusBarItem.text = `Guest R ${rVer}: ${guestPid}`;
-                sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${guestPid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to host terminal.`;
+                // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+                sessionStatusBarItem.tooltip = `${info?.version || 'unknown version'}\nProcess ID: ${guestPid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to host terminal.`;
                 sessionStatusBarItem.show();
                 break;
             }
             case 'browser': {
-                await showBrowser(request.url, request.title, request.viewer);
+                if (request.url && request.title && request.viewer !== undefined) {
+                    await showBrowser(request.url, request.title, request.viewer);
+                }
                 break;
             }
             case 'webview': {
-                await showWebView(request.file, request.title, request.viewer);
+                if (request.file && request.title && request.viewer !== undefined) {
+                    await showWebView(request.file, request.title, request.viewer);
+                }
                 break;
             }
             case 'dataview': {
-                await showDataView(request.source,
-                    request.type, request.title, request.file, request.viewer);
+                if (request.source && request.type && request.title && request.file
+                    && request.viewer !== undefined) {
+                    await showDataView(request.source,
+                        request.type, request.title, request.file, request.viewer);
+                }
                 break;
             }
             case 'rstudioapi': {
@@ -162,11 +175,12 @@ export function updateGuestWorkspace(hostWorkspace: WorkspaceData): void {
 
 // Instead of creating a file, we pass the base64 of the plot image
 // to the guest, and read that into an html page
-let panel: vscode.WebviewPanel = undefined;
+let panel: vscode.WebviewPanel | undefined = undefined;
 export async function updateGuestPlot(file: string): Promise<void> {
     const plotContent = await readContent(file, 'base64');
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const guestPlotView: vscode.ViewColumn = vscode.ViewColumn[config().get<string>('session.viewers.viewColumn.plot')];
+    
+    const guestPlotView: vscode.ViewColumn = asViewColumn(config().get<string>('session.viewers.viewColumn.plot'), vscode.ViewColumn.Two);
     if (plotContent) {
         if (panel) {
             panel.webview.html = getGuestImageHtml(plotContent);

@@ -8,6 +8,8 @@ node_modules
 dist
 .vscode-test
 
+html/**/*.js
+
 *.temp
 *.tmp
 tmp.*

@@ -11,9 +11,9 @@ export let rLiveShareProvider: LiveShareTreeProvider;
 
 export function initTreeView(): void {
     // get default bool values from settings
-    shareWorkspace = config().get('liveShare.defaults.shareWorkspace');
-    forwardCommands = config().get('liveShare.defaults.commandForward');
-    autoShareBrowser = config().get('liveShare.defaults.shareBrowser');
+    shareWorkspace = config().get('liveShare.defaults.shareWorkspace', true);
+    forwardCommands = config().get('liveShare.defaults.commandForward', false);
+    autoShareBrowser = config().get('liveShare.defaults.shareBrowser', false);
 
     // create tree view for host controls
     rLiveShareProvider = new LiveShareTreeProvider();
@@ -37,7 +37,7 @@ export class LiveShareTreeProvider implements vscode.TreeDataProvider<Node> {
 
     // If a node needs to be collapsible,
     // change the element condition & return value
-    getChildren(element?: Node): Node[] {
+    getChildren(element?: Node): Node[] | undefined {
         if (element) {
             return;
         } else {
@@ -48,8 +48,8 @@ export class LiveShareTreeProvider implements vscode.TreeDataProvider<Node> {
     // To add a tree item to the LiveShare R view,
     // write a class object that extends Node and
     // add it to the list of nodes here
-    private getNodes(): Node[] {
-        let items: Node[] = undefined;
+    private getNodes(): Node[] | undefined {
+        let items: Node[] | undefined = undefined;
         if (isLiveShare()) {
             items = [
                 new ShareNode(),
@@ -64,12 +64,12 @@ export class LiveShareTreeProvider implements vscode.TreeDataProvider<Node> {
 
 // Base class for adding to
 abstract class Node extends vscode.TreeItem {
-    public label: string;
-    public tooltip: string;
-    public contextValue: string;
-    public description: string;
-    public iconPath: vscode.ThemeIcon;
-    public collapsibleState: vscode.TreeItemCollapsibleState;
+    public label?: string;
+    public tooltip?: string;
+    public contextValue?: string;
+    public description?: string;
+    public iconPath?: vscode.ThemeIcon;
+    public collapsibleState?: vscode.TreeItemCollapsibleState;
 
     constructor() {
         super('');
@@ -82,12 +82,12 @@ abstract class Node extends vscode.TreeItem {
 // If a toggle is not required, extend a different Node type.
 export abstract class ToggleNode extends Node {
     public toggle(treeProvider: LiveShareTreeProvider): void { treeProvider.refresh(); }
-    public label: string;
-    public tooltip: string;
-    public contextValue: string;
-    public description: string;
-    public iconPath: vscode.ThemeIcon;
-    public collapsibleState: vscode.TreeItemCollapsibleState;
+    public label?: string;
+    public tooltip?: string;
+    public contextValue?: string;
+    public description?: string;
+    public iconPath?: vscode.ThemeIcon;
+    public collapsibleState?: vscode.TreeItemCollapsibleState;
 
     constructor(bool: boolean) {
         super();
@@ -102,9 +102,9 @@ class ShareNode extends ToggleNode {
         shareWorkspace = !shareWorkspace;
         this.description = shareWorkspace === true ? 'Enabled' : 'Disabled';
         if (shareWorkspace) {
-            void rHostService.notifyRequest(requestFile, true);
+            void rHostService?.notifyRequest(requestFile, true);
         } else {
-            void rHostService.orderGuestDetach();
+            void rHostService?.orderGuestDetach();
         }
         treeProvider.refresh();
     }
@@ -112,7 +112,7 @@ class ShareNode extends ToggleNode {
     public label: string = 'Share R Workspace';
     public tooltip: string = 'Whether guests can access the current R session and its workspace';
     public contextValue: string = 'shareNode';
-    public description: string;
+    public description?: string;
     public iconPath: vscode.ThemeIcon = new vscode.ThemeIcon('broadcast');
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None;
 

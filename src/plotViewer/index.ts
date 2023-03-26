@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -9,7 +10,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as ejs from 'ejs';
 
-import { config, setContext, UriIcon } from '../util';
+import { asViewColumn, config, setContext, UriIcon, makeWebviewCommandUriString } from '../util';
 
 import { extensionContext } from '../extension';
 
@@ -285,12 +286,12 @@ export class HttpgdViewer implements IHttpgdViewer {
     customOverwriteCssPath?: string;
 
     // Size of the view area:
-    viewHeight: number;
-    viewWidth: number;
+    viewHeight: number = 600;
+    viewWidth: number = 800;
 
     // Size of the shown plot (as computed):
-    plotHeight: number;
-    plotWidth: number;
+    plotHeight: number = 600;
+    plotWidth: number = 800;
 
     readonly zoom0: number = 1;
     zoom: number = this.zoom0;
@@ -357,7 +358,7 @@ export class HttpgdViewer implements IHttpgdViewer {
         this.htmlTemplate = fs.readFileSync(path.join(this.htmlRoot, 'index.ejs'), 'utf-8');
         this.smallPlotTemplate = fs.readFileSync(path.join(this.htmlRoot, 'smallPlot.ejs'), 'utf-8');
         this.showOptions = {
-            viewColumn: options.viewColumn ?? vscode.ViewColumn[conf.get<string>('session.viewers.viewColumn.plot') || 'Two'],
+            viewColumn: options.viewColumn ?? asViewColumn(conf.get<string>('session.viewers.viewColumn.plot'), vscode.ViewColumn.Two),
             preserveFocus: !!options.preserveFocus
         };
         this.webviewOptions = {
@@ -703,10 +704,6 @@ export class HttpgdViewer implements IHttpgdViewer {
             const webViewUri = this.webviewPanel.webview.asWebviewUri(localUri);
             return webViewUri.toString();
         };
-        const makeCommandUri = (command: string, ...args: any[]) => {
-            const argString = encodeURIComponent(JSON.stringify(args));
-            return `command:${command}?${argString}`;
-        };
         let overwriteCssPath = '';
         if (this.customOverwriteCssPath) {
             const uri = vscode.Uri.file(this.customOverwriteCssPath);
@@ -723,7 +720,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             host: this.host,
             asLocalPath: asLocalPath,
             asWebViewPath: asWebViewPath,
-            makeCommandUri: makeCommandUri,
+            makeCommandUri: makeWebviewCommandUriString,
             overwriteCssPath: overwriteCssPath
         };
         return ejsData;
@@ -759,7 +756,7 @@ export class HttpgdViewer implements IHttpgdViewer {
     }
 
     protected postWebviewMessage(msg: InMessage): void {
-        this.webviewPanel?.webview.postMessage(msg);
+        void this.webviewPanel?.webview.postMessage(msg);
     }
 
 
@@ -842,7 +839,7 @@ export class HttpgdViewer implements IHttpgdViewer {
             `Export failed: ${err.message}`
         ));
         dest.on('close', () => void vscode.window.showInformationMessage(
-            `Export done: ${outFile}`
+            `Export done: ${outFile || ''}`
         ));
         void plt.body.pipe(dest);
     }

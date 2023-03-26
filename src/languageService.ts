@@ -1,12 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import os = require('os');
-import path = require('path');
-import net = require('net');
-import url = require('url');
+import * as os from 'os';
+import { dirname } from 'path';
+import * as net from 'net';
+import { URL } from 'url';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
 import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn } from './util';
@@ -25,15 +20,16 @@ export class LanguageService implements Disposable {
         return this.stopLanguageService();
     }
 
-    private spawnServer(client: LanguageClient, rPath: string, args: readonly string[], options: CommonOptions): DisposableProcess {
+    private spawnServer(client: LanguageClient, rPath: string, args: readonly string[], options: CommonOptions & { cwd: string }): DisposableProcess {
         const childProcess = spawn(rPath, args, options);
-        client.outputChannel.appendLine(`R Language Server (${childProcess.pid}) started`);
+        const pid = childProcess.pid || -1;
+        client.outputChannel.appendLine(`R Language Server (${pid}) started`);
         childProcess.stderr.on('data', (chunk: Buffer) => {
             client.outputChannel.appendLine(chunk.toString());
         });
         childProcess.on('exit', (code, signal) => {
-            client.outputChannel.appendLine(`R Language Server (${childProcess.pid}) exited ` +
-                (signal ? `from signal ${signal}` : `with exit code ${code}`));
+            client.outputChannel.appendLine(`R Language Server (${pid}) exited ` +
+                (signal ? `from signal ${signal}` : `with exit code ${code || 'null'}`));
             if (code !== 0) {
                 if (code === 10) {
                     // languageserver is not installed.
@@ -52,17 +48,17 @@ export class LanguageService implements Disposable {
     }
 
     private async createClient(config: WorkspaceConfiguration, selector: DocumentFilter[],
-        cwd: string, workspaceFolder: WorkspaceFolder, outputChannel: OutputChannel): Promise<LanguageClient> {
+        cwd: string, workspaceFolder: WorkspaceFolder | undefined, outputChannel: OutputChannel): Promise<LanguageClient> {
 
         let client: LanguageClient;
 
         const debug = config.get<boolean>('lsp.debug');
-        const rPath = await getRpath();
+        const rPath = await getRpath() || ''; // TODO: Abort gracefully
         if (debug) {
             console.log(`R path: ${rPath}`);
         }
         const use_stdio = config.get<boolean>('lsp.use_stdio');
-        const env = Object.create(process.env);
+        const env = Object.create(process.env) as NodeJS.ProcessEnv;
         env.VSCR_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
         env.VSCR_LIB_PATHS = getRLibPaths();
 
@@ -74,17 +70,20 @@ export class LanguageService implements Disposable {
         }
 
         if (debug) {
+            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
             console.log(`LANG: ${env.LANG}`);
         }
 
         const rScriptPath = extensionContext.asAbsolutePath('R/languageServer.R');
         const options = { cwd: cwd, env: env };
-        const args = config.get<string[]>('lsp.args').concat(
+        const args = (config.get<string[]>('lsp.args') ?? []).concat(
             '--silent',
             '--slave',
             '--no-save',
             '--no-restore',
-            '-f',
+            '-e',
+            'base::source(base::commandArgs(TRUE))',
+            '--args',
             rScriptPath
         );
 
@@ -118,7 +117,7 @@ export class LanguageService implements Disposable {
             uriConverters: {
                 // VS Code by default %-encodes even the colon after the drive letter
                 // NodeJS handles it much better
-                code2Protocol: uri => new url.URL(uri.toString(true)).toString(),
+                code2Protocol: uri => new URL(uri.toString(true)).toString(),
                 protocol2Code: str => Uri.parse(str)
             },
             workspaceFolder: workspaceFolder,
@@ -130,8 +129,16 @@ export class LanguageService implements Disposable {
             },
             revealOutputChannelOn: RevealOutputChannelOn.Never,
             errorHandler: {
-                error: () => ErrorAction.Shutdown,
-                closed: () => CloseAction.DoNotRestart,
+                error: () =>    {
+                    return {
+                        action: ErrorAction.Continue
+                    };
+                },
+                closed: () => {
+                    return {
+                        action: CloseAction.DoNotRestart
+                    };
+                },
             },
         };
 
@@ -141,6 +148,9 @@ export class LanguageService implements Disposable {
         } else {
             client = new LanguageClient('r', 'R Language Server', tcpServerOptions, clientOptions);
         }
+
+        extensionContext.subscriptions.push(client);
+        await client.start();
         return client;
     }
 
@@ -150,7 +160,7 @@ export class LanguageService implements Disposable {
         }
         this.initSet.add(name);
         const client = this.clients.get(name);
-        return client && client.needsStop();
+        return (!!client) && client.needsStop();
     }
 
     private getKey(uri: Uri): string {
@@ -188,11 +198,8 @@ export class LanguageService implements Disposable {
                         { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}` },
                     ];
                     const client = await self.createClient(config, documentSelector,
-                        path.dirname(document.uri.fsPath), folder, outputChannel);
-                    if (client) {
-                        extensionContext.subscriptions.push(client.start());
-                        self.clients.set(key, client);
-                    }
+                        dirname(document.uri.fsPath), folder, outputChannel);
+                    self.clients.set(key, client);
                     self.initSet.delete(key);
                 }
                 return;
@@ -210,10 +217,7 @@ export class LanguageService implements Disposable {
                         { scheme: 'file', language: 'rmd', pattern: pattern },
                     ];
                     const client = await self.createClient(config, documentSelector, folder.uri.fsPath, folder, outputChannel);
-                    if (client) {
-                        extensionContext.subscriptions.push(client.start());
-                        self.clients.set(key, client);
-                    }
+                    self.clients.set(key, client);
                     self.initSet.delete(key);
                 }
 
@@ -229,10 +233,7 @@ export class LanguageService implements Disposable {
                             { scheme: 'untitled', language: 'rmd' },
                         ];
                         const client = await self.createClient(config, documentSelector, os.homedir(), undefined, outputChannel);
-                        if (client) {
-                            extensionContext.subscriptions.push(client.start());
-                            self.clients.set(key, client);
-                        }
+                        self.clients.set(key, client);
                         self.initSet.delete(key);
                     }
                     return;
@@ -247,11 +248,8 @@ export class LanguageService implements Disposable {
                             { scheme: 'file', pattern: document.uri.fsPath },
                         ];
                         const client = await self.createClient(config, documentSelector,
-                            path.dirname(document.uri.fsPath), undefined, outputChannel);
-                        if (client) {
-                            extensionContext.subscriptions.push(client.start());
-                            self.clients.set(key, client);
-                        }
+                            dirname(document.uri.fsPath), undefined, outputChannel);
+                        self.clients.set(key, client);
                         self.initSet.delete(key);
                     }
                     return;

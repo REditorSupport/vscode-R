@@ -18,14 +18,14 @@ async function populatePackageNodes(): Promise<void> {
     if (rootNode) {
         // ensure the pkgRootNode is populated.
         await rootNode.getChildren();
-        await rootNode.pkgRootNode.getChildren();
+        await rootNode?.pkgRootNode?.getChildren();
     }
 }
 
 function getPackageNode(name: string): PackageNode | undefined {
     const rootNode = globalRHelp?.treeViewWrapper.helpViewProvider.rootItem;
     if (rootNode) {
-        return rootNode.pkgRootNode.children?.find(node => node.label === name);
+        return rootNode?.pkgRootNode?.children?.find(node => node.label === name);
     }
 }
 
@@ -36,7 +36,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     private _onDidChangeTreeData: EventEmitter<void> = new EventEmitter();
 
     public readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
-    public data: WorkspaceData;
+    public data: WorkspaceData | undefined;
 
     public refresh(): void {
         this.data = isGuestSession ? guestWorkspace : workspaceData;
@@ -61,6 +61,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                 await node.showQuickPick();
             })
         );
+
+        vscode.window.registerTreeDataProvider('workspaceViewer', this);
     }
 
     public getTreeItem(element: TreeItem): TreeItem {
@@ -115,6 +117,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                             element.treeLevel + 1
                         )
                     );
+            } else {
+                return [];
             }
         } else {
             const treeItems = [this.attachedNamespacesRootItem, this.loadedNamespacesRootItem];
@@ -161,7 +165,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             } else if (a.priority < b.priority) {
                 return 1;
             } else {
-                return a.label.localeCompare(b.label);
+                return (a.label && b.label) ? a.label.localeCompare(b.label) : 0;
             }
         }
 
@@ -170,8 +174,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 }
 
 class PackageItem extends TreeItem {
-    public static command : string = 'r.workspaceViewer.package.showQuickPick';
-    public label: string;
+    public static command: string = 'r.workspaceViewer.package.showQuickPick';
+    public label?: string;
     public name: string;
     public pkgNode?: PackageNode;
     public constructor(label: string, name: string, pkgNode?: PackageNode) {
@@ -197,8 +201,8 @@ enum TreeLevel {
 }
 
 export class GlobalEnvItem extends TreeItem {
-    public label: string;
-    public desc: string;
+    public label?: string;
+    public desc?: string;
     public str: string;
     public type: string;
     public treeLevel: number;
@@ -234,7 +238,7 @@ export class GlobalEnvItem extends TreeItem {
         this.contextValue = treeLevel === 0 ? 'rootNode' : `childNode${this.treeLevel}`;
     }
 
-    private getDescription(dim: number[], str: string, rClass: string, type: string): string {
+    private getDescription(dim: number[] | undefined, str: string, rClass: string, type: string): string {
         if (dim && type === 'list') {
             if (dim[1] === 1) {
                 return `${rClass}: ${dim[0]} obs. of ${dim[1]} variable`;
@@ -256,7 +260,7 @@ export class GlobalEnvItem extends TreeItem {
     }
 
     private getTooltip(
-        label:string,
+        label: string,
         rClass: string,
         size?: number,
         treeLevel?: number
@@ -289,7 +293,7 @@ export class GlobalEnvItem extends TreeItem {
     of what elements can have have 'child' nodes os not. It can be expanded
     in the futere for more tree levels.*/
     private static setCollapsibleState(treeLevel: number, type: string, str: string): vscode.TreeItemCollapsibleState {
-        if (treeLevel === TreeLevel.Parent && collapsibleTypes.includes(type) && str.includes('\n')){
+        if (treeLevel === TreeLevel.Parent && collapsibleTypes.includes(type) && str.includes('\n')) {
             return TreeItemCollapsibleState.Collapsed;
         } else {
             return TreeItemCollapsibleState.None;
@@ -348,22 +352,21 @@ export function saveWorkspace(): void {
 }
 
 export function loadWorkspace(): void {
-    if (workspaceData) {
-        void window.showOpenDialog({
-            defaultUri: Uri.file(workingDir),
-            filters: {
-                'Data': ['RData'],
-            },
-            title: 'Load workspace'
-        }).then(async (uri: Uri[] | undefined) => {
-            if (uri) {
-                const savePath = uri[0].fsPath.split(path.sep).join(path.posix.sep);
-                return runTextInTerm(
-                    `load("${(savePath)}")`
-                );
-            }
-        });
-    }
+    const defaultUri = workingDir ? Uri.file(workingDir) : vscode.window.activeTextEditor?.document.uri;
+    void window.showOpenDialog({
+        defaultUri: defaultUri,
+        filters: {
+            'Data': ['RData'],
+        },
+        title: 'Load workspace'
+    }).then(async (uri: Uri[] | undefined) => {
+        if (uri) {
+            const savePath = uri[0].fsPath.split(path.sep).join(path.posix.sep);
+            return runTextInTerm(
+                `load("${(savePath)}")`
+            );
+        }
+    });
 }
 
 export function viewItem(node: string): void {

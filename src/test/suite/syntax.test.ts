@@ -53,6 +53,7 @@ suite('Syntax Highlighting', () => {
         const re = new RegExp(function_pattern_fixed);
         const line = 'x <- function(x) {';
         const match = re.exec(line);
+        assert.ok(match);
         assert.strictEqual(match[3], 'function');
     });
 
@@ -60,6 +61,7 @@ suite('Syntax Highlighting', () => {
         const re = new RegExp(function_pattern_fixed);
         const line = 'x <- function  (x) {';
         const match = re.exec(line);
+        assert.ok(match);
         assert.strictEqual(match[3], 'function');
     });
 

@@ -14,7 +14,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - run: node $SCRIPT_DIR/enableWebpack.js
       - run: yarn install
       - uses: lannonbr/vsce-action@master
@@ -23,7 +23,7 @@ jobs:
       - name: Identify output file # can be retrieved as steps.filenames.outputs.file_out
         id: filenames
         run: echo "::set-output name=file_out::$(ls | grep "^.*\.vsix$" | head -1)"
-      - uses: actions/upload-artifact@v1
+      - uses: actions/upload-artifact@v3
         with:
           name: ${{ steps.filenames.outputs.file_out }}
           path: ${{ steps.filenames.outputs.file_out }}
@@ -35,7 +35,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           path: "artifacts/"
       - name: Get version from tag
@@ -55,14 +55,14 @@ jobs:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - run: node $SCRIPT_DIR/enableWebpack.js
       - run: yarn install
-      # - name: Publish to Open VSX Registry
-      #   uses: HaaLeo/publish-vscode-extension@v1
-      #   id: publishToOpenVSX
-      #   with:
-      #     pat: ${{ secrets.OPEN_VSX_TOKEN }}
+      - name: Publish to Open VSX Registry
+        uses: HaaLeo/publish-vscode-extension@v1
+        id: publishToOpenVSX
+        with:
+          pat: ${{ secrets.OPEN_VSX_TOKEN }}
       - name: Publish to Visual Studio Marketplace
         uses: HaaLeo/publish-vscode-extension@v1
         with:

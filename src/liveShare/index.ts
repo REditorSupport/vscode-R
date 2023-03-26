@@ -18,15 +18,15 @@ import { WorkspaceData, workspaceData } from '../session';
 import { config } from '../util';
 
 /// LiveShare
-export let rHostService: HostService = undefined;
-export let rGuestService: GuestService = undefined;
+export let rHostService: HostService | undefined = undefined;
+export let rGuestService: GuestService | undefined = undefined;
 export let liveSession: vsls.LiveShare;
 export let isGuestSession: boolean;
 export let _sessionStatusBarItem: vscode.StatusBarItem;
 
 // service vars
 export const ShareProviderName = 'vscode-r';
-export let service: vsls.SharedServiceProxy | vsls.SharedService | null = undefined;
+export let service: vsls.SharedServiceProxy | vsls.SharedService | null = null;
 
 // random number to fake a UUID for differentiating between
 // host calls and guest calls (specifically for the workspace
@@ -144,11 +144,11 @@ export async function LiveSessionListener(): Promise<void> {
                 break;
             case vsls.Role.Guest:
                 console.log('[LiveSessionListener] guest event');
-                await rGuestService.startService();
+                await rGuestService?.startService();
                 break;
             case vsls.Role.Host:
                 console.log('[LiveSessionListener] host event');
-                await rHostService.startService();
+                await rHostService?.startService();
                 rLiveShareProvider.refresh();
                 break;
             default:
@@ -305,7 +305,7 @@ export class GuestService {
     // of having their own /tmp/ files
     public async requestFileContent(file: fs.PathLike | number): Promise<Buffer>;
     public async requestFileContent(file: fs.PathLike | number, encoding: string): Promise<string>;
-    public async requestFileContent(file: fs.PathLike | number, encoding?: string): Promise<string | Buffer> {
+    public async requestFileContent(file: fs.PathLike | number, encoding?: string): Promise<string | Buffer | undefined> {
         if (this._isStarted) {
             if (encoding !== undefined) {
                 const content: string | unknown = await liveShareRequest(Callback.GetFileContent, file, encoding);
@@ -325,7 +325,7 @@ export class GuestService {
         }
     }
 
-    public async requestHelpContent(file: string): Promise<HelpFile> {
+    public async requestHelpContent(file: string): Promise<HelpFile | undefined> {
         const content: string | null | unknown = await liveShareRequest(Callback.GetHelpFileContent, file);
         if (content) {
             return content as HelpFile;
@@ -341,7 +341,7 @@ export class GuestService {
 // This is used instead of relying on context disposables,
 // as an R session can continue even when liveshare is ended
 async function sessionCleanup(): Promise<void> {
-    if (rHostService.isStarted()) {
+    if (rHostService?.isStarted()) {
         console.log('[HostService] stopping service');
         await rHostService.stopService();
         for (const [key, item] of browserDisposables.entries()) {

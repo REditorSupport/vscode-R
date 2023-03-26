@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 'use strict';
 
 import { writeFile } from 'fs-extra';
@@ -5,7 +6,7 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { window } from 'vscode';
 import { extensionContext } from './extension';
-import { getCurrentWorkspaceFolder } from './util';
+import { catchAsError, getCurrentWorkspaceFolder } from './util';
 
 export async function createGitignore(): Promise<void> {
     // .gitignore template from "https://github.com/github/gitignore/blob/main/R.gitignore"
@@ -33,7 +34,7 @@ export async function createGitignore(): Promise<void> {
                 void window.showErrorMessage(err.name);
             }
         } catch (e) {
-            void window.showErrorMessage(e);
+            void window.showErrorMessage(catchAsError(e).message);
         }
     });
 }

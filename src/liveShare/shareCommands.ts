@@ -62,7 +62,7 @@ export const Commands: ICommands = {
         // Command arguments are sent from the guest to the host,
         // and then the host sends the arguments to the console
         [Callback.RequestAttachGuest]: (): void => {
-            if (shareWorkspace) {
+            if (shareWorkspace && rHostService) {
                 void rHostService.notifyRequest(requestFile, true);
             } else {
                 void liveShareRequest(Callback.NotifyMessage, 'The host has not enabled guest attach.', MessageType.warning);
@@ -76,8 +76,8 @@ export const Commands: ICommands = {
             }
 
         },
-        [Callback.GetHelpFileContent]: (args: [text: string]): Promise<HelpFile | null> => {
-            return globalRHelp.getHelpFileForPath(args[0]);
+        [Callback.GetHelpFileContent]: (args: [text: string]): Promise<HelpFile | undefined> | undefined => {
+            return globalRHelp?.getHelpFileForPath(args[0]);
         },
         /// File Handling ///
         // Host reads content from file, then passes the content
@@ -99,7 +99,7 @@ export const Commands: ICommands = {
             void updateGuestPlot(args[0]);
         },
         [Callback.NotifyGuestPlotManager]: (args: [url: string]): void => {
-            globalHttpgdManager?.showViewer(args[0]);
+            void globalHttpgdManager?.showViewer(args[0]);
         },
         [Callback.OrderDetach]: (): void => {
             void detachGuest();

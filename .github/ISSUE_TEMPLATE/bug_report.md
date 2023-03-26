@@ -4,7 +4,6 @@ about: Create a report to help us improve
 title: ''
 labels: bug
 assignees: ''
-
 ---
 
 <!-- Is the issue about auto-completion, hover help, go to definition,
@@ -24,13 +23,13 @@ Steps to reproduce the behavior:
 3. Scroll down to '....'
 4. See error
 
-## Do you want to fix by self? (We hope your help!)
+**Can you fix this issue by yourself? (We appreciate the help)**
 
 Yes / No
 
-## (If yes,) what kind of help do you want? (e.g. Which file should I fix, Survey (related documents)
+**(If yes,) can we assist you with anything?**
 
-(If related)setting.json
+**(If applicable) Please attach `setting.json`**
 
 ```jsonc
 // R.exe path for windows
@@ -69,7 +68,7 @@ A clear and concise description of what you expected to happen.
 
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
-You can show the keybord contents by pressing `F1` and `Developer: toggle screencast mode`
+You can show the keyboard contents by pressing `F1` and `Developer: toggle screencast mode`
 
 **Environment (please complete the following information):**
 

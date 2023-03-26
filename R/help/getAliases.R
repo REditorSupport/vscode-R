@@ -22,10 +22,19 @@ ret <- lapply(rownames(ip), function(row) {
     aliases = NULL
   )
   if (file.exists(filename)) {
-    info[["aliases"]] <- as.list(readRDS(filename))
+    res <- tryCatch(
+      expr = as.list(readRDS(filename)),
+      error = conditionMessage
+    )
+    if (is.list(res)) {
+      info$aliases <- res
+    } else {
+      info$error <- res
+    }
   }
   info
 })
+
 names(ret) <- rownames(ip)
 
 lim <- Sys.getenv("VSCR_LIM")
