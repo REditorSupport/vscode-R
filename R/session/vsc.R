@@ -10,6 +10,12 @@ request_lock_file <- file.path(dir_watcher, "request.lock")
 settings_file <- file.path(dir_watcher, "settings.json")
 user_options <- names(options())
 
+logger <- if (getOption("vsc.debug", FALSE)) {
+  function(...) cat(..., "\n", sep = "")
+} else {
+  function(...) invisible()
+}
+
 load_settings <- function() {
   if (!file.exists(settings_file)) {
     return(FALSE)
@@ -65,21 +71,21 @@ port <- NULL
 token <- NULL
 if (use_websocket) {
   if (requireNamespace("httpuv", quietly = TRUE)) {
-    token <- paste0(sample(c(LETTERS, letters), 16), collapse = "")
     port <- httpuv::randomPort()
+    token <- sprintf("%d:%d:%.6f", pid, port, Sys.time())
 
     request_handlers <- list(
       hover = function(text, ...) {
-        found <- exists(text, globalenv())
+        found <- exists(text, .GlobalEnv)
         if (!found) return(NULL)
-        obj <- get(text, globalenv())
+        obj <- get(text, .GlobalEnv)
         list(str = try_capture_str(obj))
       },
 
       complete = function(symbol, trigger, ...) {
-        found <- exists(symbol, globalenv())
+        found <- exists(symbol, .GlobalEnv)
         if (!found) return(NULL)
-        obj <- get(symbol, globalenv())
+        obj <- get(symbol, .GlobalEnv)
 
         if (trigger == "$") {
           names <- if (is.object(obj)) {
@@ -119,14 +125,14 @@ if (use_websocket) {
     server <- httpuv::startServer("127.0.0.1", port,
       list(
         onWSOpen = function(ws) {
-          cat("Connection opened.\n")
+          logger("Connection opened.\n")
           ws_token <- ws$request$HEADERS[["token"]]
           if (!identical(ws_token, token)) {
             ws$close(reason = "Unauthorized")
           }
 
           ws$onMessage(function(binary, message) {
-            cat(message, "\n")
+            logger(message, "\n")
             request <- jsonlite::fromJSON(message, simplifyVector = FALSE)
             handler <- request_handlers[[request$type]]
             response <- if (is.function(handler)) do.call(handler, request)
@@ -134,7 +140,7 @@ if (use_websocket) {
           })
 
           ws$onClose(function() {
-            cat("Connection closed.\n")
+            logger("Connection closed.\n")
           })
         }
       )
@@ -146,7 +152,7 @@ if (use_websocket) {
 }
 
 get_timestamp <- function() {
-  format.default(Sys.time(), nsmall = 6, scientific = FALSE)
+  sprintf("%.6f", Sys.time())
 }
 
 scalar <- function(x) {
@@ -882,4 +888,4 @@ print.hsearch <- function(x, ...) {
   invisible(NULL)
 }
 
-reg.finalizer(globalenv(), function(e) .vsc$request("detach"), onexit = TRUE)
+reg.finalizer(.GlobalEnv, function(e) .vsc$request("detach"), onexit = TRUE)
