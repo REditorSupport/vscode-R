@@ -166,13 +166,13 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             });
         } else if(trigger === '$' || trigger === '@') {
             const symbolPosition = new vscode.Position(position.line, position.character - 1);
-            const symbolRange = document.getWordRangeAtPosition(symbolPosition);
-            const symbol = document.getText(symbolRange);
-
             if (session.sessionSocket?.isOpen) {
+                const re = /([a-zA-Z0-9._$@ ])+(?<![@$])/;
+                const exprRange = document.getWordRangeAtPosition(symbolPosition, re)?.with({ end: symbolPosition });
+                const expr = document.getText(exprRange);
                 const response: RObjectElement[] = await session.sessionSocket.sendRequest({
                     type: 'complete',
-                    symbol: symbol,
+                    expr: expr,
                     trigger: completionContext.triggerCharacter
                 }, 500);
 
@@ -180,6 +180,8 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
                     items.push(...getCompletionItemsFromElements(response, '[session]'));
                 }
             } else {
+                const symbolRange = document.getWordRangeAtPosition(symbolPosition);
+                const symbol = document.getText(symbolRange);
                 const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
                 const obj = session.workspaceData.globalenv[symbol];
                 let names: string[] | undefined;

@@ -82,10 +82,16 @@ if (use_websocket) {
         list(str = try_capture_str(obj))
       },
 
-      complete = function(symbol, trigger, ...) {
-        found <- exists(symbol, .GlobalEnv)
-        if (!found) return(NULL)
-        obj <- get(symbol, .GlobalEnv)
+      complete = function(expr, trigger, ...) {
+        cat(expr, "\n")
+        obj <- tryCatch({
+          expr <- parse(text = expr, keep.source = FALSE)[[1]]
+          eval(expr, .GlobalEnv)
+        }, error = function(e) NULL)
+
+        if (is.null(obj)) {
+          return(NULL)
+        }
 
         if (trigger == "$") {
           names <- if (is.object(obj)) {
