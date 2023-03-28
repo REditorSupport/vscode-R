@@ -83,7 +83,6 @@ if (use_websocket) {
       },
 
       complete = function(expr, trigger, ...) {
-        cat(expr, "\n")
         obj <- tryCatch({
           expr <- parse(text = expr, keep.source = FALSE)[[1]]
           eval(expr, .GlobalEnv)
