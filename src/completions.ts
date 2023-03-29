@@ -44,14 +44,16 @@ export class HoverProvider implements vscode.HoverProvider {
             }
         }
 
-        const wordRange = document.getWordRangeAtPosition(position);
-        const text = document.getText(wordRange);
+        let hoverRange = document.getWordRangeAtPosition(position);
         let hoverText = null;
 
         if (session.sessionSocket?.isOpen) {
+            const exprRegex = /([a-zA-Z0-9._$@ ])+(?<![@$])/;
+            hoverRange = document.getWordRangeAtPosition(position, exprRegex)?.with({ end: hoverRange?.end });
+            const expr = document.getText(hoverRange);
             const response = await session.sessionSocket.sendRequest({
                 type: 'hover',
-                text: text
+                expr: expr
             }, 500);
 
             if (response) {
@@ -59,18 +61,20 @@ export class HoverProvider implements vscode.HoverProvider {
             }
 
         } else {
+            const symbol = document.getText(hoverRange);
+
             // use juggling check here for both
             // null and undefined
             // eslint-disable-next-line eqeqeq
-            if (session.workspaceData.globalenv[text]?.str == null) {
+            if (session.workspaceData.globalenv[symbol]?.str == null) {
                 return null;
             }
 
-            hoverText = session.workspaceData.globalenv[text]?.str;
+            hoverText = session.workspaceData.globalenv[symbol]?.str;
         }
 
         if (hoverText) {
-            return new vscode.Hover(`\`\`\`\n${hoverText}\n\`\`\``);
+            return new vscode.Hover(`\`\`\`\n${hoverText}\n\`\`\``, hoverRange);
         }
 
         return null;

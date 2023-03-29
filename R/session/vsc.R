@@ -75,11 +75,12 @@ if (use_websocket) {
     token <- sprintf("%d:%d:%.6f", pid, port, Sys.time())
 
     request_handlers <- list(
-      hover = function(text, ...) {
-        found <- exists(text, .GlobalEnv)
-        if (!found) return(NULL)
-        obj <- get(text, .GlobalEnv)
-        list(str = try_capture_str(obj))
+      hover = function(expr, ...) {
+        tryCatch({
+          expr <- parse(text = expr, keep.source = FALSE)[[1]]
+          obj <- eval(expr, .GlobalEnv)
+          list(str = capture_str(obj))
+        }, error = function(e) NULL)
       },
 
       complete = function(expr, trigger, ...) {
