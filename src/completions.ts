@@ -62,9 +62,10 @@ export class HoverProvider implements vscode.HoverProvider {
 
         } else {
             const symbol = document.getText(hoverRange);
+            const str = session.workspaceData.globalenv[symbol]?.str;
 
-            if (session.workspaceData.globalenv[symbol]?.str) {
-                hoverText = session.workspaceData.globalenv[symbol]?.str;
+            if (str) {
+                hoverText = str;
             }
         }
 
