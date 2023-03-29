@@ -1723,7 +1723,7 @@
         "r.session.useWebSocket": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Use WebSocket to communicate with the R session. Changes the option `vsc.use_websocket` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+          "markdownDescription": "Enable experimental use of WebSocket to communicate with the R session. Changes the option `vsc.use_websocket` in R. Requires `#r.sessionWatcher#` to be set to `true`. Requires the `httpuv` R package."
         },
         "r.session.watchGlobalEnvironment": {
           "type": "boolean",
