@@ -63,14 +63,9 @@ export class HoverProvider implements vscode.HoverProvider {
         } else {
             const symbol = document.getText(hoverRange);
 
-            // use juggling check here for both
-            // null and undefined
-            // eslint-disable-next-line eqeqeq
-            if (session.workspaceData.globalenv[symbol]?.str == null) {
-                return null;
+            if (session.workspaceData.globalenv[symbol]?.str) {
+                hoverText = session.workspaceData.globalenv[symbol]?.str;
             }
-
-            hoverText = session.workspaceData.globalenv[symbol]?.str;
         }
 
         if (hoverText) {
