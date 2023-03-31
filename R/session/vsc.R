@@ -71,10 +71,6 @@ port <- NULL
 token <- NULL
 if (use_websocket) {
   if (requireNamespace("httpuv", quietly = TRUE)) {
-    host <- "127.0.0.1"
-    port <- httpuv::randomPort()
-    token <- sprintf("%d:%d:%.6f", pid, port, Sys.time())
-
     request_handlers <- list(
       hover = function(expr, ...) {
         tryCatch({
@@ -129,51 +125,63 @@ if (use_websocket) {
       }
     )
 
-    server <- httpuv::startServer(host, port,
-      list(
-        call = function(req) {
-          logger("http req ",
-            req[["REMOTE_ADDR"]], ":",
-            req[["REMOTE_PORT"]], " ",
-            req[["REQUEST_METHOD"]], " ",
-            req[["HTTP_USER_AGENT"]]
-          )
+    server <- getOption("vsc.server")
+    if (!is.null(server) && server$isRunning()) {
+      host <- server$getHost()
+      port <- server$getPort()
+      token <- attr(server, "token")
+    } else {
+      host <- "127.0.0.1"
+      port <- httpuv::randomPort()
+      token <- sprintf("%d:%d:%.6f", pid, port, Sys.time())
+      server <- httpuv::startServer(host, port,
+        list(
+          call = function(req) {
+            logger("http req ",
+              req[["REMOTE_ADDR"]], ":",
+              req[["REMOTE_PORT"]], " ",
+              req[["REQUEST_METHOD"]], " ",
+              req[["HTTP_USER_AGENT"]]
+            )
 
-          if (!identical(req[["HTTP_AUTHORIZATION"]], token)) {
-            return(list(
-              status = 401L,
+            if (!identical(req[["HTTP_AUTHORIZATION"]], token)) {
+              return(list(
+                status = 401L,
+                headers = list(
+                  "Content-Type" = "text/plain"
+                ),
+                body = "Unauthorized"
+              ))
+            }
+
+            if (!identical(req[["HTTP_CONTENT_TYPE"]], "application/json")) {
+              return(list(
+                status = 400L,
+                headers = list(
+                  "Content-Type" = "text/plain"
+                ),
+                body = "Bad request"
+              ))
+            }
+
+            content <- req$rook.input$read_lines()
+            request <- jsonlite::fromJSON(content, simplifyVector = FALSE)
+            handler <- request_handlers[[request$type]]
+            response <- if (is.function(handler)) do.call(handler, request)
+
+            list(
+              status = 200L,
               headers = list(
-                "Content-Type" = "text/plain"
+                "Content-Type" = "application/json"
               ),
-              body = "Unauthorized"
-            ))
+              body = jsonlite::toJSON(response, auto_unbox = TRUE, force = TRUE)
+            )
           }
-
-          if (!identical(req[["HTTP_CONTENT_TYPE"]], "application/json")) {
-            return(list(
-              status = 400L,
-              headers = list(
-                "Content-Type" = "text/plain"
-              ),
-              body = "Bad request"
-            ))
-          }
-
-          content <- req$rook.input$read_lines()
-          request <- jsonlite::fromJSON(content, simplifyVector = FALSE)
-          handler <- request_handlers[[request$type]]
-          response <- if (is.function(handler)) do.call(handler, request)
-
-          list(
-            status = 200L,
-            headers = list(
-              "Content-Type" = "application/json"
-            ),
-            body = jsonlite::toJSON(response, auto_unbox = TRUE, force = TRUE)
-          )
-        }
+        )
       )
-    )
+      attr(server, "token") <- token
+      options(vsc.server = server)
+    }
   } else {
     message("{httpuv} is required to use WebSocket from the session watcher.")
     use_websocket <- FALSE
