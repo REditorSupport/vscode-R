@@ -71,6 +71,7 @@ port <- NULL
 token <- NULL
 if (use_websocket) {
   if (requireNamespace("httpuv", quietly = TRUE)) {
+    host <- "127.0.0.1"
     port <- httpuv::randomPort()
     token <- sprintf("%d:%d:%.6f", pid, port, Sys.time())
 
@@ -128,26 +129,48 @@ if (use_websocket) {
       }
     )
 
-    server <- httpuv::startServer("127.0.0.1", port,
+    server <- httpuv::startServer(host, port,
       list(
-        onWSOpen = function(ws) {
-          logger("Connection opened.\n")
-          ws_token <- ws$request$HEADERS[["token"]]
-          if (!identical(ws_token, token)) {
-            ws$close(reason = "Unauthorized")
+        call = function(req) {
+          logger("http req ",
+            req[["REMOTE_ADDR"]], ":",
+            req[["REMOTE_PORT"]], " ",
+            req[["REQUEST_METHOD"]], " ",
+            req[["HTTP_USER_AGENT"]]
+          )
+
+          if (!identical(req[["HTTP_AUTHORIZATION"]], token)) {
+            return(list(
+              status = 401L,
+              headers = list(
+                "Content-Type" = "text/plain"
+              ),
+              body = "Unauthorized"
+            ))
           }
 
-          ws$onMessage(function(binary, message) {
-            logger(message, "\n")
-            request <- jsonlite::fromJSON(message, simplifyVector = FALSE)
-            handler <- request_handlers[[request$type]]
-            response <- if (is.function(handler)) do.call(handler, request)
-            ws$send(jsonlite::toJSON(response, auto_unbox = TRUE, force = TRUE))
-          })
+          if (!identical(req[["HTTP_CONTENT_TYPE"]], "application/json")) {
+            return(list(
+              status = 400L,
+              headers = list(
+                "Content-Type" = "text/plain"
+              ),
+              body = "Bad request"
+            ))
+          }
 
-          ws$onClose(function() {
-            logger("Connection closed.\n")
-          })
+          content <- req$rook.input$read_lines()
+          request <- jsonlite::fromJSON(content, simplifyVector = FALSE)
+          handler <- request_handlers[[request$type]]
+          response <- if (is.function(handler)) do.call(handler, request)
+
+          list(
+            status = 200L,
+            headers = list(
+              "Content-Type" = "application/json"
+            ),
+            body = jsonlite::toJSON(response, auto_unbox = TRUE, force = TRUE)
+          )
         }
       )
     )
@@ -612,6 +635,7 @@ attach <- function() {
     ),
     plot_url = if (identical(names(dev.cur()), "httpgd")) httpgd::hgd_url(),
     server = if (use_websocket) list(
+      host = host,
       port = port,
       token = token
     ) else NULL

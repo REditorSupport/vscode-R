@@ -47,14 +47,14 @@ export class HoverProvider implements vscode.HoverProvider {
         let hoverRange = document.getWordRangeAtPosition(position);
         let hoverText = null;
 
-        if (session.sessionSocket?.isOpen) {
+        if (session.server) {
             const exprRegex = /([a-zA-Z0-9._$@ ])+(?<![@$])/;
             hoverRange = document.getWordRangeAtPosition(position, exprRegex)?.with({ end: hoverRange?.end });
             const expr = document.getText(hoverRange);
-            const response = await session.sessionSocket.sendRequest({
+            const response = await session.sessionRequest(session.server, {
                 type: 'hover',
                 expr: expr
-            }, 500);
+            });
 
             if (response) {
                 hoverText = response.str;
@@ -166,15 +166,15 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             });
         } else if(trigger === '$' || trigger === '@') {
             const symbolPosition = new vscode.Position(position.line, position.character - 1);
-            if (session.sessionSocket?.isOpen) {
+            if (session.server) {
                 const re = /([a-zA-Z0-9._$@ ])+(?<![@$])/;
                 const exprRange = document.getWordRangeAtPosition(symbolPosition, re)?.with({ end: symbolPosition });
                 const expr = document.getText(exprRange);
-                const response: RObjectElement[] = await session.sessionSocket.sendRequest({
+                const response: RObjectElement[] = await session.sessionRequest(session.server, {
                     type: 'complete',
                     expr: expr,
                     trigger: completionContext.triggerCharacter
-                }, 500);
+                });
 
                 if (response) {
                     items.push(...getCompletionItemsFromElements(response, '[session]'));
