@@ -67,8 +67,6 @@ if (is.null(getOption("help_type"))) {
 }
 
 use_websocket <- isTRUE(getOption("vsc.use_websocket", FALSE))
-port <- NULL
-token <- NULL
 if (use_websocket) {
   if (requireNamespace("httpuv", quietly = TRUE)) {
     request_handlers <- list(
