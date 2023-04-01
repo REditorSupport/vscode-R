@@ -26,7 +26,7 @@ load_settings <- function() {
   }
 
   mapping <- quote(list(
-    vsc.use_websocket = session$useWebSocket,
+    vsc.use_webserver = session$useWebServer,
     vsc.use_httpgd = plot$useHttpgd,
     vsc.show_object_size = workspaceViewer$showObjectSize,
     vsc.rstudioapi = session$emulateRStudioAPI,
@@ -66,8 +66,8 @@ if (is.null(getOption("help_type"))) {
   options(help_type = "html")
 }
 
-use_websocket <- isTRUE(getOption("vsc.use_websocket", FALSE))
-if (use_websocket) {
+use_webserver <- isTRUE(getOption("vsc.use_webserver", FALSE))
+if (use_webserver) {
   if (requireNamespace("httpuv", quietly = TRUE)) {
     request_handlers <- list(
       hover = function(expr, ...) {
@@ -182,7 +182,7 @@ if (use_websocket) {
     }
   } else {
     message("{httpuv} is required to use WebSocket from the session watcher.")
-    use_websocket <- FALSE
+    use_webserver <- FALSE
   }
 }
 
@@ -640,7 +640,7 @@ attach <- function() {
       start_time = format(file.info(tempdir)$ctime)
     ),
     plot_url = if (identical(names(dev.cur()), "httpgd")) httpgd::hgd_url(),
-    server = if (use_websocket) list(
+    server = if (use_webserver) list(
       host = host,
       port = port,
       token = token
