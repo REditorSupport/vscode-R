@@ -135,12 +135,16 @@ if (use_webserver) {
       server <- httpuv::startServer(host, port,
         list(
           call = function(req) {
-            logger("http req ",
+            logger("http request ",
               req[["REMOTE_ADDR"]], ":",
               req[["REMOTE_PORT"]], " ",
               req[["REQUEST_METHOD"]], " ",
               req[["HTTP_USER_AGENT"]]
             )
+
+            if (!nzchar(req[["REMOTE_ADDR"]]) || identical(req[["REMOTE_PORT"]], "0")) {
+              return(NULL)
+            }
 
             if (!identical(req[["HTTP_AUTHORIZATION"]], token)) {
               return(list(
