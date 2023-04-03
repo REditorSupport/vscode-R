@@ -134,7 +134,7 @@ if (use_webserver) {
       token <- sprintf("%d:%d:%.6f", pid, port, Sys.time())
       server <- httpuv::startServer(host, port,
         list(
-          call = function(req) {
+          onHeaders = function(req) {
             logger("http request ",
               req[["REMOTE_ADDR"]], ":",
               req[["REMOTE_PORT"]], " ",
@@ -165,7 +165,8 @@ if (use_webserver) {
                 body = "Bad request"
               ))
             }
-
+          },
+          call = function(req) {
             content <- req$rook.input$read_lines()
             request <- jsonlite::fromJSON(content, simplifyVector = FALSE)
             handler <- request_handlers[[request$type]]
