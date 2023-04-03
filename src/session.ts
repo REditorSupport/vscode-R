@@ -53,7 +53,7 @@ let rVer: string;
 let pid: string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let info: any;
-const httpAgent = new Agent({ keepAlive: true, timeout: 500 });
+const httpAgent = new Agent({ keepAlive: true });
 export let server: SessionServer | undefined;
 export let workspaceFile: string;
 let workspaceLockFile: string;
@@ -893,6 +893,8 @@ export async function sessionRequest(server: SessionServer, data: any): Promise<
                 Authorization: server.token
             },
             body: JSON.stringify(data),
+            follow: 0,
+            timeout: 500,
         });
 
         if (!response.ok) {
