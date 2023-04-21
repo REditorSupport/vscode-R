@@ -186,7 +186,7 @@ if (use_webserver) {
       options(vsc.server = server)
     }
   } else {
-    message("{httpuv} is required to use WebSocket from the session watcher.")
+    message("{httpuv} is required to use WebServer from the session watcher.")
     use_webserver <- FALSE
   }
 }
