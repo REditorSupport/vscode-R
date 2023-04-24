@@ -3,6 +3,8 @@
 import * as fs from 'fs-extra';
 import * as os from 'os';
 import * as path from 'path';
+import { Agent } from 'http';
+import fetch from 'node-fetch';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
 
 import { runTextInTerm } from './rTerminal';
@@ -33,6 +35,12 @@ export interface WorkspaceData {
     globalenv: GlobalEnv;
 }
 
+export interface SessionServer {
+    host: string;
+    port: number;
+    token: string;
+}
+
 export let workspaceData: WorkspaceData;
 let resDir: string;
 export let requestFile: string;
@@ -45,6 +53,8 @@ let rVer: string;
 let pid: string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let info: any;
+const httpAgent = new Agent({ keepAlive: true });
+export let server: SessionServer | undefined;
 export let workspaceFile: string;
 let workspaceLockFile: string;
 let workspaceTimeStamp: number;
@@ -728,6 +738,7 @@ export async function writeSuccessResponse(responseSessionDir: string): Promise<
 
 type ISessionRequest = {
     plot_url?: string,
+    server?: SessionServer
 } & IRequest;
 
 async function updateRequest(sessionStatusBarItem: StatusBarItem) {
@@ -772,6 +783,11 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
                         sessionStatusBarItem.show();
                         updateSessionWatcher();
+
+                        if (request.server) {
+                            server = request.server;
+                        }
+
                         purgeAddinPickerItems();
                         await setContext('rSessionActive', true);
                         if (request.plot_url) {
@@ -832,6 +848,7 @@ export async function cleanupSession(pidArg: string): Promise<void> {
             sessionStatusBarItem.text = 'R: (not attached)';
             sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
         }
+        server = undefined;
         workspaceData.globalenv = {};
         workspaceData.loaded_namespaces = [];
         workspaceData.search = [];
@@ -862,4 +879,36 @@ async function watchProcess(pid: string): Promise<string> {
 
     } while (res);
     return pid;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function sessionRequest(server: SessionServer, data: any): Promise<any> {
+    try {
+        const response = await fetch(`http://${server.host}:${server.port}`, {
+            agent: httpAgent,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                Authorization: server.token
+            },
+            body: JSON.stringify(data),
+            follow: 0,
+            timeout: 500,
+        });
+
+        if (!response.ok) {
+            throw new Error(`Error! status: ${response.status}`);
+        }
+
+        return response.json();
+    } catch (error) {
+        if (error instanceof Error) {
+            console.log('error message: ', error.message);
+        } else {
+            console.log('unexpected error: ', error);
+        }
+
+        return undefined;
+    }
 }

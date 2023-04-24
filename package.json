@@ -1720,6 +1720,11 @@
           "default": true,
           "description": "Enable R session watcher. Required for workspace viewer and most features to work with an R session. Restart required to take effect."
         },
+        "r.session.useWebServer": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Enable experimental use of web server in the R session to handle session requests from the extension. Changes the option `vsc.use_webserver` in R. Requires `#r.sessionWatcher#` to be set to `true`. Requires the `httpuv` R package."
+        },
         "r.session.watchGlobalEnvironment": {
           "type": "boolean",
           "default": true,

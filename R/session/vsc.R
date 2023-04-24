@@ -10,6 +10,12 @@ request_lock_file <- file.path(dir_watcher, "request.lock")
 settings_file <- file.path(dir_watcher, "settings.json")
 user_options <- names(options())
 
+logger <- if (getOption("vsc.debug", FALSE)) {
+  function(...) cat(..., "\n", sep = "")
+} else {
+  function(...) invisible()
+}
+
 load_settings <- function() {
   if (!file.exists(settings_file)) {
     return(FALSE)
@@ -20,6 +26,7 @@ load_settings <- function() {
   }
 
   mapping <- quote(list(
+    vsc.use_webserver = session$useWebServer,
     vsc.use_httpgd = plot$useHttpgd,
     vsc.show_object_size = workspaceViewer$showObjectSize,
     vsc.rstudioapi = session$emulateRStudioAPI,
@@ -59,8 +66,133 @@ if (is.null(getOption("help_type"))) {
   options(help_type = "html")
 }
 
+use_webserver <- isTRUE(getOption("vsc.use_webserver", FALSE))
+if (use_webserver) {
+  if (requireNamespace("httpuv", quietly = TRUE)) {
+    request_handlers <- list(
+      hover = function(expr, ...) {
+        tryCatch({
+          expr <- parse(text = expr, keep.source = FALSE)[[1]]
+          obj <- eval(expr, .GlobalEnv)
+          list(str = capture_str(obj))
+        }, error = function(e) NULL)
+      },
+
+      complete = function(expr, trigger, ...) {
+        obj <- tryCatch({
+          expr <- parse(text = expr, keep.source = FALSE)[[1]]
+          eval(expr, .GlobalEnv)
+        }, error = function(e) NULL)
+
+        if (is.null(obj)) {
+          return(NULL)
+        }
+
+        if (trigger == "$") {
+          names <- if (is.object(obj)) {
+            .DollarNames(obj, pattern = "")
+          } else if (is.recursive(obj)) {
+            names(obj)
+          } else {
+            NULL
+          }
+
+          result <- lapply(names, function(name) {
+            item <- obj[[name]]
+            list(
+              name = name,
+              type = typeof(item),
+              str = try_capture_str(item)
+            )
+          })
+          return(result)
+        }
+
+        if (trigger == "@" && isS4(obj)) {
+          names <- slotNames(obj)
+          result <- lapply(names, function(name) {
+            item <- slot(obj, name)
+            list(
+              name = name,
+              type = typeof(item),
+              str = try_capture_str(item)
+            )
+          })
+          return(result)
+        }
+      }
+    )
+
+    server <- getOption("vsc.server")
+    if (!is.null(server) && server$isRunning()) {
+      host <- server$getHost()
+      port <- server$getPort()
+      token <- attr(server, "token")
+    } else {
+      host <- "127.0.0.1"
+      port <- httpuv::randomPort()
+      token <- sprintf("%d:%d:%.6f", pid, port, Sys.time())
+      server <- httpuv::startServer(host, port,
+        list(
+          onHeaders = function(req) {
+            logger("http request ",
+              req[["REMOTE_ADDR"]], ":",
+              req[["REMOTE_PORT"]], " ",
+              req[["REQUEST_METHOD"]], " ",
+              req[["HTTP_USER_AGENT"]]
+            )
+
+            if (!nzchar(req[["REMOTE_ADDR"]]) || identical(req[["REMOTE_PORT"]], "0")) {
+              return(NULL)
+            }
+
+            if (!identical(req[["HTTP_AUTHORIZATION"]], token)) {
+              return(list(
+                status = 401L,
+                headers = list(
+                  "Content-Type" = "text/plain"
+                ),
+                body = "Unauthorized"
+              ))
+            }
+
+            if (!identical(req[["HTTP_CONTENT_TYPE"]], "application/json")) {
+              return(list(
+                status = 400L,
+                headers = list(
+                  "Content-Type" = "text/plain"
+                ),
+                body = "Bad request"
+              ))
+            }
+          },
+          call = function(req) {
+            content <- req$rook.input$read_lines()
+            request <- jsonlite::fromJSON(content, simplifyVector = FALSE)
+            handler <- request_handlers[[request$type]]
+            response <- if (is.function(handler)) do.call(handler, request)
+
+            list(
+              status = 200L,
+              headers = list(
+                "Content-Type" = "application/json"
+              ),
+              body = jsonlite::toJSON(response, auto_unbox = TRUE, force = TRUE)
+            )
+          }
+        )
+      )
+      attr(server, "token") <- token
+      options(vsc.server = server)
+    }
+  } else {
+    message("{httpuv} is required to use WebServer from the session watcher.")
+    use_webserver <- FALSE
+  }
+}
+
 get_timestamp <- function() {
-  format.default(Sys.time(), nsmall = 6, scientific = FALSE)
+  sprintf("%.6f", Sys.time())
 }
 
 scalar <- function(x) {
@@ -512,7 +644,12 @@ attach <- function() {
       version = R.version.string,
       start_time = format(file.info(tempdir)$ctime)
     ),
-    plot_url = if (identical(names(dev.cur()), "httpgd")) httpgd::hgd_url()
+    plot_url = if (identical(names(dev.cur()), "httpgd")) httpgd::hgd_url(),
+    server = if (use_webserver) list(
+      host = host,
+      port = port,
+      token = token
+    ) else NULL
   )
 }
 
@@ -792,4 +929,4 @@ print.hsearch <- function(x, ...) {
   invisible(NULL)
 }
 
-reg.finalizer(globalenv(), function(e) .vsc$request("detach"), onexit = TRUE)
+reg.finalizer(.GlobalEnv, function(e) .vsc$request("detach"), onexit = TRUE)
