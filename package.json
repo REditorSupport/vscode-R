@@ -1544,10 +1544,10 @@
           "default": true,
           "markdownDescription": "Enable automatic refresh of R Markdown preview on file update."
         },
-        "r.rmarkdown.preview.fontSize": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Controls the font size in pixels used in the R Markdown preview. When unspecified, `#markdown.preview.fontSize#` is used."
+        "r.rmarkdown.preview.zoom": {
+          "type": "number",
+          "default": 1,
+          "markdownDescription": "Controls the zoom of the R Markdown preview."
         },
         "r.rmarkdown.knit.useBackgroundProcess": {
           "type": "boolean",
