@@ -87,8 +87,11 @@ class RMarkdownPreview extends vscode.Disposable {
         const $ = cheerio.load(content);
         this.htmlLightContent = $.html();
 
+        const zoom = config().get<number>('rmarkdown.preview.zoom', 1);
+
         // make the output chunks a little lighter to stand out
         let chunkCol = String(config().get('rmarkdown.chunkBackgroundColor'));
+
         let outCol: string;
         if (chunkCol) {
             const colReg = /[0-9.]+/g;
@@ -106,6 +109,7 @@ class RMarkdownPreview extends vscode.Disposable {
         const style =
             `<style>
             body {
+                zoom: ${zoom};
                 color: var(--vscode-editor-foreground);
                 background: var(--vscode-editor-background);
             }
