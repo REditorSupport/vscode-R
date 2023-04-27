@@ -87,11 +87,10 @@ class RMarkdownPreview extends vscode.Disposable {
         const $ = cheerio.load(content);
         this.htmlLightContent = $.html();
 
+        const zoom = config().get<number>('rmarkdown.preview.zoom', 1);
+
         // make the output chunks a little lighter to stand out
         let chunkCol = String(config().get('rmarkdown.chunkBackgroundColor'));
-        const fallbackSize = vscode.workspace.getConfiguration('markdown').get<number>('preview.fontSize', 14);
-        let fontSize = Number(config().get<string>('rmarkdown.preview.fontSize'));
-        fontSize = fontSize > 0 ? fontSize : fallbackSize;
 
         let outCol: string;
         if (chunkCol) {
@@ -109,29 +108,11 @@ class RMarkdownPreview extends vscode.Disposable {
 
         const style =
             `<style>
-            * {
-                font-size: ${fontSize}px !important;
-            }
             body {
+                zoom: ${zoom};
                 color: var(--vscode-editor-foreground);
                 background: var(--vscode-editor-background);
             }
-            h1, .h1 {
-                font-size: ${fontSize + 20}px !important;
-            }
-            h2, .h2 {
-                font-size: ${fontSize + 16}px !important;
-            }
-            h3, .h3 {
-                font-size: ${fontSize + 10}px !important;
-            }
-            h4, .h4 {
-                font-size: ${fontSize + 4}px !important;
-            }
-            h5, .h5 {
-                font-size: ${fontSize + 2}px !important;
-            }
-
             .hljs {
                 color: var(--vscode-editor-foreground);
             }
