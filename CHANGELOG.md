@@ -4,6 +4,25 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.8.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.7.3)
+
+New Features:
+
+* A new experimental setting `r.session.useWebServer` is added to support communicating with R session via a web server running in R. This requires R package `httpuv` to be installed. Currently,
+it enhances the session symbol completion when accessing R object via `$` and `@`. *This feature is
+experimental and may be subject to change in the future.* (#1151)
+* A new setting `r.rmarkdown.preview.zoom` is added to support the default zoom level or R markdown
+preview. (#1333)
+
+Enhancements:
+
+* Improve message when error occurs on loading R packages. (#1334, thanks to @csaybar)
+* Upgrade ag-grid-community to v29.3.0 (#1346)
+
+Fixes:
+
+* Commands that are not intended in the command pallete are now hidden. (#1327, #1330)
+
 ## [2.7.2](https://github.com/REditorSupport/vscode-R/releases/tag/v2.7.2)
 
 Enhancements:
