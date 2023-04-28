@@ -4,7 +4,7 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
-## [2.8.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.7.3)
+## [2.8.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.0)
 
 New Features:
 
