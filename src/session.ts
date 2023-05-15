@@ -390,7 +390,7 @@ export async function showDataView(source: string, type: string, title: string, 
 
 export async function getTableHtml(webview: Webview, file: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
-    const pageSize = config().get<number>('session.data.pageSize') || 500;
+    const pageSize = config().get<number>('session.data.pageSize', 500);
     const content = await readContent(file, 'utf8');
     return `
 <!DOCTYPE html>
