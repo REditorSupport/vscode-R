@@ -1506,6 +1506,11 @@
           "default": false,
           "description": "Use STDIO connection instead of TCP. (Unix/macOS users only)"
         },
+        "r.lsp.multiServer": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Use multiple language server processes for [multi-root workspaces](https://code.visualstudio.com/docs/editor/multi-root-workspaces)."
+        },
         "r.rmarkdown.codeLensCommands": {
           "type": "array",
           "items": {

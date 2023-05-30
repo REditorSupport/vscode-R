@@ -10,10 +10,16 @@ import { CommonOptions } from 'child_process';
 
 export class LanguageService implements Disposable {
     private client: LanguageClient | undefined;
+    private readonly clients: Map<string, LanguageClient> = new Map();
+    private readonly initSet: Set<string> = new Set();
+    private readonly config: WorkspaceConfiguration;
+    private readonly outputChannel: OutputChannel;
 
     constructor() {
+        this.outputChannel = window.createOutputChannel('R Language Server');
         this.client = undefined;
-        this.startLanguageService(this);
+        this.config = workspace.getConfiguration('r');
+        void this.startLanguageService(this);
     }
 
     dispose(): Thenable<void> {
@@ -154,23 +160,175 @@ export class LanguageService implements Disposable {
         return client;
     }
 
+
+    private checkClient(name: string): boolean {
+        if (this.initSet.has(name)) {
+            return true;
+        }
+        this.initSet.add(name);
+        const client = this.clients.get(name);
+        return (!!client) && client.needsStop();
+    }
+
+    private getKey(uri: Uri): string {
+        switch (uri.scheme) {
+            case 'untitled':
+                return uri.scheme;
+            case 'vscode-notebook-cell':
+                return `vscode-notebook:${uri.fsPath}`;
+            default:
+                return uri.toString(true);
+        }
+    }
+
+    private startMultiLanguageService(self: LanguageService): void {
+        async function didOpenTextDocument(document: TextDocument) {
+            if (document.uri.scheme !== 'file' && document.uri.scheme !== 'untitled' && document.uri.scheme !== 'vscode-notebook-cell') {
+                return;
+            }
+
+            if (document.languageId !== 'r' && document.languageId !== 'rmd') {
+                return;
+            }
+
+            const folder = workspace.getWorkspaceFolder(document.uri);
+
+            // Each notebook uses a server started from parent folder
+            if (document.uri.scheme === 'vscode-notebook-cell') {
+                const key = self.getKey(document.uri);
+                if (!self.checkClient(key)) {
+                    console.log(`Start language server for ${document.uri.toString(true)}`);
+                    const documentSelector: DocumentFilter[] = [
+                        { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}` },
+                    ];
+                    const client = await self.createClient(self.config, documentSelector,
+                        dirname(document.uri.fsPath), folder, self.outputChannel);
+                    self.clients.set(key, client);
+                    self.initSet.delete(key);
+                }
+                return;
+            }
+
+            if (folder) {
+
+                // Each workspace uses a server started from the workspace folder
+                const key = self.getKey(folder.uri);
+                if (!self.checkClient(key)) {
+                    console.log(`Start language server for ${document.uri.toString(true)}`);
+                    const pattern = `${folder.uri.fsPath}/**/*`;
+                    const documentSelector: DocumentFilter[] = [
+                        { scheme: 'file', language: 'r', pattern: pattern },
+                        { scheme: 'file', language: 'rmd', pattern: pattern },
+                    ];
+                    const client = await self.createClient(self.config, documentSelector, folder.uri.fsPath, folder, self.outputChannel);
+                    self.clients.set(key, client);
+                    self.initSet.delete(key);
+                }
+
+            } else {
+
+                // All untitled documents share a server started from home folder
+                if (document.uri.scheme === 'untitled') {
+                    const key = self.getKey(document.uri);
+                    if (!self.checkClient(key)) {
+                        console.log(`Start language server for ${document.uri.toString(true)}`);
+                        const documentSelector: DocumentFilter[] = [
+                            { scheme: 'untitled', language: 'r' },
+                            { scheme: 'untitled', language: 'rmd' },
+                        ];
+                        const client = await self.createClient(self.config, documentSelector, os.homedir(), undefined, self.outputChannel);
+                        self.clients.set(key, client);
+                        self.initSet.delete(key);
+                    }
+                    return;
+                }
+
+                // Each file outside workspace uses a server started from parent folder
+                if (document.uri.scheme === 'file') {
+                    const key = self.getKey(document.uri);
+                    if (!self.checkClient(key)) {
+                        console.log(`Start language server for ${document.uri.toString(true)}`);
+                        const documentSelector: DocumentFilter[] = [
+                            { scheme: 'file', pattern: document.uri.fsPath },
+                        ];
+                        const client = await self.createClient(self.config, documentSelector,
+                            dirname(document.uri.fsPath), undefined, self.outputChannel);
+                        self.clients.set(key, client);
+                        self.initSet.delete(key);
+                    }
+                    return;
+                }
+            }
+        }
+
+        function didCloseTextDocument(document: TextDocument): void {
+            if (document.uri.scheme === 'untitled') {
+                const result = workspace.textDocuments.find((doc) => doc.uri.scheme === 'untitled');
+                if (result) {
+                    // Stop the language server when all untitled documents are closed.
+                    return;
+                }
+            }
+
+            if (document.uri.scheme === 'vscode-notebook-cell') {
+                const result = workspace.textDocuments.find((doc) =>
+                    doc.uri.scheme === document.uri.scheme && doc.uri.fsPath === document.uri.fsPath);
+                if (result) {
+                    // Stop the language server when all cell documents are closed (notebook closed).
+                    return;
+                }
+            }
+
+            // Stop the language server when single file outside workspace is closed, or the above cases.
+            const key = self.getKey(document.uri);
+            const client = self.clients.get(key);
+            if (client) {
+                self.clients.delete(key);
+                self.initSet.delete(key);
+                void client.stop();
+            }
+        }
+
+        workspace.onDidOpenTextDocument(didOpenTextDocument);
+        workspace.onDidCloseTextDocument(didCloseTextDocument);
+        workspace.textDocuments.forEach((doc) => void didOpenTextDocument(doc));
+        workspace.onDidChangeWorkspaceFolders((event) => {
+            for (const folder of event.removed) {
+                const key = self.getKey(folder.uri);
+                const client = self.clients.get(key);
+                if (client) {
+                    self.clients.delete(key);
+                    self.initSet.delete(key);
+                    void client.stop();
+                }
+            }
+        });
+    }
+
     private async startLanguageService(self: LanguageService): Promise<void> {
-        const config = workspace.getConfiguration('r');
-        const outputChannel: OutputChannel = window.createOutputChannel('R Language Server');
+        if (self.config.get<boolean>('r.lsp.multiServer')) {
+            return this.startMultiLanguageService(self);
+        } else {
+            const documentSelector: DocumentFilter[] = [
+                { language: 'r' },
+                { language: 'rmd' },
+            ];
 
-        const documentSelector: DocumentFilter[] = [
-            { language: 'r' },
-            { language: 'rmd' },
-        ];
-
-        self.client = await self.createClient(config, documentSelector,
-            os.homedir(), undefined, outputChannel);
+            self.client = await self.createClient(self.config, documentSelector,
+                os.homedir(), undefined, self.outputChannel);
+        }
     }
 
     private stopLanguageService(): Thenable<void> {
+        const promises: Thenable<void>[] = [];
         if (this.client && this.client.needsStop()) {
-            return this.client.stop();
+            promises.push(this.client.stop());
         }
-        return Promise.resolve(undefined);
+        for (const client of this.clients.values()) {
+            if (client.needsStop()) {
+                promises.push(client.stop());
+            }
+        }
+        return Promise.all(promises).then(() => undefined);
     }
 }
