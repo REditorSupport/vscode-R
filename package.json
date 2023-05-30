@@ -1509,7 +1509,7 @@
         "r.lsp.multiServer": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Use multiple language server processes for [multi-root workspaces](https://code.visualstudio.com/docs/editor/multi-root-workspaces)."
+          "markdownDescription": "Use multiple language servers for [multi-root workspaces](https://code.visualstudio.com/docs/editor/multi-root-workspaces)."
         },
         "r.rmarkdown.codeLensCommands": {
           "type": "array",
