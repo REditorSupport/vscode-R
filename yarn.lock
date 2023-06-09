@@ -629,10 +629,10 @@ acorn@^8.5.0, acorn@^8.7.1:
   resolved "https://registry.yarnpkg.com/acorn/-/acorn-8.8.2.tgz#1b2f25db02af965399b9776b0c2c391276d37c4a"
   integrity sha512-xjIYgE8HBrkpd/sJqOGNspf8uHG+NOHGOw6a/Urj8taM2EXfdNAH2oFcPeIFfsv3+kz/mJrS5VuMqbNLjCa2vw==
 
-ag-grid-community@^29.3.0:
-  version "29.3.0"
-  resolved "https://registry.yarnpkg.com/ag-grid-community/-/ag-grid-community-29.3.0.tgz#e117915ef0f14de8caf607d8f5c0bd84a13d7361"
-  integrity sha512-cuoe2K1FjyqqtWqrFxstc757lO56VPdHFDvFM9onFe67dwbmB7SzT6oO1ID+Tv1YzbCPiZYZ1+AADR/HUKcCBg==
+ag-grid-community@^30.0.0:
+  version "30.0.0"
+  resolved "https://registry.yarnpkg.com/ag-grid-community/-/ag-grid-community-30.0.0.tgz#044361654abbc99f8dd0094c096d4c21f88661df"
+  integrity sha512-KwYJCvcadVPi//wc4Amxp44WuOcSPFHoPsoZlKUpRMhf4vwbTJW2Qksoqsd6iqHzgOW6C7kbxlHmC89hw/8faw==
 
 agent-base@6:
   version "6.0.2"
