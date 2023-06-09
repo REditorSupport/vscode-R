@@ -621,18 +621,18 @@ export function readdirSyncSafe(
 
 export function statSyncSafe(path: fs.PathLike): fs.Stats | undefined {
     try {
-        return fs.statSync(path);
+        return fs.statSync(path, { throwIfNoEntry: false });
     } catch (e) {
-
+        return undefined;
     }
 }
 
 export function isDirSafe(path: fs.PathLike): boolean {
-    return !!fs.statSync(path, {throwIfNoEntry: false})?.isDirectory();
+    return !!statSyncSafe(path)?.isDirectory();
 }
 
 export function isFileSafe(path: fs.PathLike): boolean {
-    return !!fs.statSync(path, {throwIfNoEntry: false})?.isFile();
+    return !!statSyncSafe(path)?.isFile();
 }
 
 // Keeps only the unique entries in an array, optionally with a custom comparison function
