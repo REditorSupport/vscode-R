@@ -86,7 +86,8 @@ function parseCranTable(html: string, baseUrl: string): Package[] {
         rows.each((rowIndex, row) => {
             if (rowIndex === 0) return; // Skip the header row
             const date = $(row).find('td:nth-child(1)').text().trim();
-            const url = $(row).find('td:nth-child(2) a').attr('href');
+            const href = $(row).find('td:nth-child(2) a').attr('href');
+            const url = href ? new URL(href, baseUrl).toString() : undefined;
             const name = $(row).find('td:nth-child(2) span').text().trim();
             const title = $(row).find('td:nth-child(3)').text().trim();
             ret.push({
@@ -103,6 +104,3 @@ function parseCranTable(html: string, baseUrl: string): Package[] {
 
     return retSorted;
 }
-
-
-
