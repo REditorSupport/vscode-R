@@ -314,8 +314,9 @@ export class LanguageService implements Disposable {
                 { language: 'rmd' },
             ];
 
-            self.client = await self.createClient(self.config, documentSelector,
-                os.homedir(), undefined, self.outputChannel);
+            const workspaceFolder = workspace.workspaceFolders?.[0];
+            const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : os.homedir();
+            self.client = await self.createClient(self.config, documentSelector, cwd, workspaceFolder, self.outputChannel);
         }
     }
 
