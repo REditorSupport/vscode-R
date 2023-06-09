@@ -4,6 +4,19 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.8.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.1)
+
+Enhancements:
+
+* A new setting `r.lsp.multiServer` is added. If disabled, only a single language server will be spawned from the first workspace folder to handle all requests from all workspaces and files. (#1375)
+* Upgrade ag-grid-community to v30.0.0 (#1379)
+
+Fixes:
+
+* Fix handling `r.session.data.pageSize = 0`. (#1364)
+* Fix help panel in remote host. (#1374)
+* Fix missing package names in "Install CRAN Package". (#1377)
+
 ## [2.8.0](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.0)
 
 New Features:
