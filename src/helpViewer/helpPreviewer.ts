@@ -103,7 +103,7 @@ export class RLocalHelpPreviewer {
 
     private readonly dummyPackageName: string;
 
-    constructor(options: RHelpPreviewerOptions, packageDir: string, unnamedId: number = 1){
+    constructor(options: RHelpPreviewerOptions, packageDir: string, unnamedId: number = 1) {
         this.packageDir = packageDir;
         this.descriptionPath = path.join(this.packageDir, 'DESCRIPTION');
         this.manDir = path.join(this.packageDir, 'man');
