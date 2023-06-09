@@ -322,13 +322,11 @@ export class LanguageService implements Disposable {
 
     private stopLanguageService(): Thenable<void> {
         const promises: Thenable<void>[] = [];
-        if (this.client && this.client.needsStop()) {
+        if (this.client) {
             promises.push(this.client.stop());
         }
         for (const client of this.clients.values()) {
-            if (client.needsStop()) {
-                promises.push(client.stop());
-            }
+            promises.push(client.stop());
         }
         return Promise.all(promises).then(() => undefined);
     }
