@@ -9,11 +9,17 @@ import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 
 export class LanguageService implements Disposable {
+    private client: LanguageClient | undefined;
     private readonly clients: Map<string, LanguageClient> = new Map();
     private readonly initSet: Set<string> = new Set();
+    private readonly config: WorkspaceConfiguration;
+    private readonly outputChannel: OutputChannel;
 
     constructor() {
-        this.startLanguageService(this);
+        this.outputChannel = window.createOutputChannel('R Language Server');
+        this.client = undefined;
+        this.config = workspace.getConfiguration('r');
+        void this.startLanguageService(this);
     }
 
     dispose(): Thenable<void> {
@@ -154,6 +160,7 @@ export class LanguageService implements Disposable {
         return client;
     }
 
+
     private checkClient(name: string): boolean {
         if (this.initSet.has(name)) {
             return true;
@@ -174,10 +181,7 @@ export class LanguageService implements Disposable {
         }
     }
 
-    private startLanguageService(self: LanguageService): void {
-        const config = workspace.getConfiguration('r');
-        const outputChannel: OutputChannel = window.createOutputChannel('R Language Server');
-
+    private startMultiLanguageService(self: LanguageService): void {
         async function didOpenTextDocument(document: TextDocument) {
             if (document.uri.scheme !== 'file' && document.uri.scheme !== 'untitled' && document.uri.scheme !== 'vscode-notebook-cell') {
                 return;
@@ -197,8 +201,8 @@ export class LanguageService implements Disposable {
                     const documentSelector: DocumentFilter[] = [
                         { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}` },
                     ];
-                    const client = await self.createClient(config, documentSelector,
-                        dirname(document.uri.fsPath), folder, outputChannel);
+                    const client = await self.createClient(self.config, documentSelector,
+                        dirname(document.uri.fsPath), folder, self.outputChannel);
                     self.clients.set(key, client);
                     self.initSet.delete(key);
                 }
@@ -216,7 +220,7 @@ export class LanguageService implements Disposable {
                         { scheme: 'file', language: 'r', pattern: pattern },
                         { scheme: 'file', language: 'rmd', pattern: pattern },
                     ];
-                    const client = await self.createClient(config, documentSelector, folder.uri.fsPath, folder, outputChannel);
+                    const client = await self.createClient(self.config, documentSelector, folder.uri.fsPath, folder, self.outputChannel);
                     self.clients.set(key, client);
                     self.initSet.delete(key);
                 }
@@ -232,7 +236,7 @@ export class LanguageService implements Disposable {
                             { scheme: 'untitled', language: 'r' },
                             { scheme: 'untitled', language: 'rmd' },
                         ];
-                        const client = await self.createClient(config, documentSelector, os.homedir(), undefined, outputChannel);
+                        const client = await self.createClient(self.config, documentSelector, os.homedir(), undefined, self.outputChannel);
                         self.clients.set(key, client);
                         self.initSet.delete(key);
                     }
@@ -247,8 +251,8 @@ export class LanguageService implements Disposable {
                         const documentSelector: DocumentFilter[] = [
                             { scheme: 'file', pattern: document.uri.fsPath },
                         ];
-                        const client = await self.createClient(config, documentSelector,
-                            dirname(document.uri.fsPath), undefined, outputChannel);
+                        const client = await self.createClient(self.config, documentSelector,
+                            dirname(document.uri.fsPath), undefined, self.outputChannel);
                         self.clients.set(key, client);
                         self.initSet.delete(key);
                     }
@@ -301,8 +305,26 @@ export class LanguageService implements Disposable {
         });
     }
 
+    private async startLanguageService(self: LanguageService): Promise<void> {
+        if (self.config.get<boolean>('r.lsp.multiServer')) {
+            return this.startMultiLanguageService(self);
+        } else {
+            const documentSelector: DocumentFilter[] = [
+                { language: 'r' },
+                { language: 'rmd' },
+            ];
+
+            const workspaceFolder = workspace.workspaceFolders?.[0];
+            const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : os.homedir();
+            self.client = await self.createClient(self.config, documentSelector, cwd, workspaceFolder, self.outputChannel);
+        }
+    }
+
     private stopLanguageService(): Thenable<void> {
         const promises: Thenable<void>[] = [];
+        if (this.client) {
+            promises.push(this.client.stop());
+        }
         for (const client of this.clients.values()) {
             promises.push(client.stop());
         }
