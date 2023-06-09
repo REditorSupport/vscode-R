@@ -7,10 +7,11 @@ type ParseFunction = (html: string, baseUrl: string) => Package[];
 
 export async function getPackagesFromCran(cranUrl: string): Promise<Package[]> {
     const cranSites: {url: string, parseFunction: ParseFunction}[] = [
-        {
-            url: new URL('stats/descriptions', cranUrl).toString(),
-            parseFunction: parseCranJson
-        },
+        // NOTE: Not working any more
+        // {
+        //     url: new URL('stats/descriptions', cranUrl).toString(),
+        //     parseFunction: parseCranJson
+        // },
         {
             url: new URL('web/packages/available_packages_by_date.html', cranUrl).toString(),
             parseFunction: parseCranTable
@@ -83,28 +84,19 @@ function parseCranTable(html: string, baseUrl: string): Package[] {
     tables.each((tableIndex, table) => {
         const rows = $('tr', table);
         rows.each((rowIndex, row) => {
-            const elements = $('td', row);
-            if(elements.length === 3){
-
-                const e0 = elements[0];
-                const e1 = elements[1];
-                const e2 = elements[2];
-                if(
-                    e0.type === 'tag' && e1.type === 'tag' &&
-                    e0.firstChild?.type === 'text' && e1.children[1].type === 'tag' &&
-                    e2.type === 'tag'
-                ){
-                    const href = e1.children[1].attribs['href'];
-                    const url = new URL(href, baseUrl).toString();
-                    ret.push({
-                        date: (e0.firstChild.data || '').trim(),
-                        name: (e1.children[1].firstChild?.data || '').trim(),
-                        href: url,
-                        description: (e2.firstChild?.data || '').trim(),
-                        isCran: true
-                    });
-                }
-            }
+            if (rowIndex === 0) return; // Skip the header row
+            const date = $(row).find('td:nth-child(1)').text().trim();
+            const href = $(row).find('td:nth-child(2) a').attr('href');
+            const url = href ? new URL(href, baseUrl).toString() : undefined;
+            const name = $(row).find('td:nth-child(2) span').text().trim();
+            const title = $(row).find('td:nth-child(3)').text().trim();
+            ret.push({
+                date: date,
+                name: name,
+                href: url,
+                description: title,
+                isCran: true
+            });
         });
     });
 
@@ -112,6 +104,3 @@ function parseCranTable(html: string, baseUrl: string): Package[] {
 
     return retSorted;
 }
-
-
-
