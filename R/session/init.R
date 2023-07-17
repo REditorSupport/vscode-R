@@ -95,7 +95,7 @@ init_last <- function() {
   )
 
   # Attach to vscode
-  exports$.vsc.attach()
+  #exports$.vsc.attach()
 
   invisible()
 }

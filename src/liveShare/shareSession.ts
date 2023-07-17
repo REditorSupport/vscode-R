@@ -6,7 +6,6 @@ import { asViewColumn, config, readContent } from '../util';
 import { showBrowser, showDataView, showWebView, WorkspaceData } from '../session';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from '.';
 import { autoShareBrowser } from './shareTree';
-import { docProvider, docScheme } from './virtualDocs';
 
 // Workspace Vars
 let guestPid: string;
@@ -19,7 +18,7 @@ let info: IRequest['info'];
 // Used to keep track of shared browsers
 export const browserDisposables: { Disposable: vscode.Disposable, url: string, name: string }[] = [];
 
-export interface IRequest {
+export type IRequest = {
     command: string;
     time?: string;
     pid?: string;
@@ -30,6 +29,7 @@ export interface IRequest {
     file?: string;
     viewer?: string;
     plot?: string;
+    workspaceData?: WorkspaceData;
     action?: string;
     args?: unknown;
     sd?: string;
@@ -43,7 +43,17 @@ export interface IRequest {
         command: string,
         start_time: string
     };
-}
+} & (
+    {
+        coomad: 'dataview';
+        type: 'json';
+        data: object;
+    } | {
+        coomad: 'dataview';
+        type: 'txt' | 'R';
+        data: string;
+    }
+)
 
 export function initGuest(context: vscode.ExtensionContext): void {
     // create status bar item that contains info about the *guest* session watcher
@@ -54,8 +64,7 @@ export function initGuest(context: vscode.ExtensionContext): void {
     sessionStatusBarItem.tooltip = 'Click to attach to host terminal';
     sessionStatusBarItem.show();
     context.subscriptions.push(
-        sessionStatusBarItem,
-        vscode.workspace.registerTextDocumentContentProvider(docScheme, docProvider)
+        sessionStatusBarItem
     );
     rGuestService?.setStatusBarItem(sessionStatusBarItem);
     guestResDir = path.join(context.extensionPath, 'dist', 'resources');
@@ -149,7 +158,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                 if (request.source && request.type && request.title && request.file
                     && request.viewer !== undefined) {
                     await showDataView(request.source,
-                        request.type, request.title, request.file, request.viewer);
+                        request.type, request.title, request.file, request.data, request.viewer);
                 }
                 break;
             }

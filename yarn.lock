@@ -1009,6 +1009,11 @@ copy-webpack-plugin@^9.0.0:
     schema-utils "^3.0.0"
     serialize-javascript "^5.0.1"
 
+core-js@^3.6.5:
+  version "3.31.1"
+  resolved "https://registry.yarnpkg.com/core-js/-/core-js-3.31.1.tgz#f2b0eea9be9da0def2c5fece71064a7e5d687653"
+  integrity sha512-2sKLtfq1eFST7l7v62zaqXacPc7uG8ZAya8ogijLhTtaKNcpzpB4TMoTw2Si+8GYKRwFPMMtUT0263QFWFfqyQ==
+
 core-util-is@~1.0.0:
   version "1.0.3"
   resolved "https://registry.npmjs.org/core-util-is/-/core-util-is-1.0.3.tgz"
@@ -2373,6 +2378,35 @@ progress@^2.0.0:
   resolved "https://registry.npmjs.org/progress/-/progress-2.0.3.tgz"
   integrity sha512-7PiHtLll5LdnKIMw100I+8xJXR5gW2QwWYkT6iJva0bXitZKa/XMrSbdmg3r2Xnaidz9Qumd0VPaMrZlF9V9sA==
 
+promise-duplex@^6.0.0:
+  version "6.0.0"
+  resolved "https://registry.yarnpkg.com/promise-duplex/-/promise-duplex-6.0.0.tgz#9d9d13383ac0f70701b9f095ffd486f106c2232e"
+  integrity sha512-ZL7rquzjTFzInDBeWYcsT+qddolNvzigahk6MI6qLSbQvlyRRCJkU3JztgaVunzvkH28smRa2Qu/cY9RXtSkgA==
+  dependencies:
+    core-js "^3.6.5"
+    promise-readable "^6.0.0"
+    promise-writable "^6.0.0"
+
+promise-readable@^6.0.0:
+  version "6.0.0"
+  resolved "https://registry.yarnpkg.com/promise-readable/-/promise-readable-6.0.0.tgz#ab1ec1a3daa53ed8764b61902fb7f3de3242025a"
+  integrity sha512-5NxtmUswijvX5cAM0zPSy6yiCXH/eKBpiiBq6JfAUrmngMquMbzcBhF2qA+ocs4rYYKdvAfv3cOvZxADLtL1CA==
+  dependencies:
+    core-js "^3.6.5"
+
+promise-socket@^7.0.0:
+  version "7.0.0"
+  resolved "https://registry.yarnpkg.com/promise-socket/-/promise-socket-7.0.0.tgz#20c147c417033a50fe7e1d1236a46ff59d4280b3"
+  integrity sha512-Oic9BrxmcHOPEnzKp2Js+ehFyvsbd0WxsE5khweCTHuRvdzbXjHUZmSDT6F9TW8SIkAJ0lCzoHjMYnb0WQJPiw==
+  dependencies:
+    promise-duplex "^6.0.0"
+    tslib "^2.0.1"
+
+promise-writable@^6.0.0:
+  version "6.0.0"
+  resolved "https://registry.yarnpkg.com/promise-writable/-/promise-writable-6.0.0.tgz#4d703e75873a4e755a39bdb926a37f41538e507f"
+  integrity sha512-b81zre/itgJFS7dwWzIdKNVVqvLiUxYRS/wolUB0H1YY/tAaS146XGKa4Q/5wCbsnXLyn0MCeV6f8HHe4iUHLg==
+
 punycode@^2.1.0:
   version "2.1.1"
   resolved "https://registry.npmjs.org/punycode/-/punycode-2.1.1.tgz"
@@ -2780,6 +2814,11 @@ tslib@^1.8.1:
   version "1.14.1"
   resolved "https://registry.npmjs.org/tslib/-/tslib-1.14.1.tgz"
   integrity sha512-Xni35NKzjgMrwevysHTCArtLDpPvye8zV/0E4EyYn43P7/7qvQwPh9BGkHewbMulVntbigmcT7rdX3BNo9wRJg==
+
+tslib@^2.0.1:
+  version "2.6.0"
+  resolved "https://registry.yarnpkg.com/tslib/-/tslib-2.6.0.tgz#b295854684dbda164e181d259a22cd779dcd7bc3"
+  integrity sha512-7At1WUettjcSRHXCyYtTselblcHl9PJFFVKiCAy/bY97+BPZXSQ2wbq0P9s8tK2G7dFQfNnlJnPAiArVBVBsfA==
 
 tslib@^2.2.0:
   version "2.3.0"

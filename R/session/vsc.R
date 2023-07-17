@@ -8,6 +8,7 @@ dir_watcher <- Sys.getenv("VSCODE_WATCHER_DIR", file.path(homedir, ".vscode-R"))
 request_file <- file.path(dir_watcher, "request.log")
 request_lock_file <- file.path(dir_watcher, "request.lock")
 settings_file <- file.path(dir_watcher, "settings.json")
+request_tcp_connection <- NA
 user_options <- names(options())
 
 logger <- if (getOption("vsc.debug", FALSE)) {
@@ -208,9 +209,12 @@ request <- function(command, ...) {
     command = command,
     ...
   )
-  jsonlite::write_json(obj, request_file,
-    auto_unbox = TRUE, null = "null", force = TRUE)
-  cat(get_timestamp(), file = request_lock_file)
+  request_target <- if (is.na(request_tcp_connection)) request_file else request_tcp_connection
+  jsonlite::write_json(obj, request_target,
+    auto_unbox = TRUE, na = "string", null = "null", force = TRUE)
+  if (is.na(request_tcp_connection)) {
+    cat(get_timestamp(), file = request_lock_file)
+  }
 }
 
 try_catch_timeout <- function(expr, timeout = Inf, ...) {
@@ -369,8 +373,12 @@ update_workspace <- function(...) {
       loaded_namespaces = loadedNamespaces(),
       globalenv = if (show_globalenv) inspect_env(.GlobalEnv, globalenv_cache) else NULL
     )
-    jsonlite::write_json(data, workspace_file, force = TRUE, pretty = FALSE)
-    cat(get_timestamp(), file = workspace_lock_file)
+    if (is.na(request_tcp_connection)) {
+      jsonlite::write_json(data, workspace_file, force = TRUE, pretty = FALSE)
+      cat(get_timestamp(), file = workspace_lock_file)
+    } else {
+      request("updateWorkspace", workspaceData = data)
+    }
   }, error = message)
   TRUE
 }
@@ -419,6 +427,7 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
     }
   )
 
+  # TODO: Make this be available by TCP only as well
   update_plot <- function(...) {
     tryCatch({
       if (plot_updated && check_null_dev()) {
@@ -595,47 +604,64 @@ if (show_view) {
         )
       }
     }
+    send_data_request <- function(data, source, type, ...) {
+      if (is.na(request_tcp_connection)) {
+        file <- tempfile(tmpdir = tempdir, ...)
+        if (type == "json") {
+          jsonlite::write_json(data, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
+        } else {
+          writeLines(code, file)
+        }
+        request("dataview", source = source, type = type,
+          title = title, file = file, viewer = viewer, uuid = uuid)
+      } else {
+        request("dataview", source = source, type = type,
+          title = title, data = data, viewer = viewer, uuid = uuid)
+      }
+    }
     if (is.data.frame(x) || is.matrix(x)) {
       x <- as_truncated_data(x)
       data <- dataview_table(x)
-      file <- tempfile(tmpdir = tempdir, fileext = ".json")
-      jsonlite::write_json(data, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
-      request("dataview", source = "table", type = "json",
-        title = title, file = file, viewer = viewer, uuid = uuid)
+      send_data_request(data, source = "table", type = "json", fileext = ".json")
     } else if (is.list(x)) {
       tryCatch({
-        file <- tempfile(tmpdir = tempdir, fileext = ".json")
-        jsonlite::write_json(x, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
-        request("dataview", source = "list", type = "json",
-          title = title, file = file, viewer = viewer, uuid = uuid)
+        send_data_request(x, source = "list", type = "json", fileext = ".json")
       }, error = function(e) {
-        file <- file.path(tempdir, paste0(make.names(title), ".txt"))
         text <- utils::capture.output(print(x))
-        writeLines(text, file)
-        request("dataview", source = "object", type = "txt",
-          title = title, file = file, viewer = viewer, uuid = uuid)
+        send_data_request(text, source = "object", type = "txt", paste0(make.names(title)), fileext = ".txt")
       })
     } else {
-      file <- file.path(tempdir, paste0(make.names(title), ".R"))
       if (is.primitive(x)) {
         code <- utils::capture.output(print(x))
       } else {
         code <- deparse(x)
       }
-      writeLines(code, file)
-      request("dataview", source = "object", type = "R",
-        title = title, file = file, viewer = viewer, uuid = uuid)
+      send_data_request(code, source = "object", type = "R", paste0(make.names(title)), fileext = ".R")
     }
   }
 
   rebind("View", show_dataview, "utils")
 }
 
-attach <- function() {
+attach <- function(host = "127.0.0.1", port = NA) {
   load_settings()
   if (rstudioapi_enabled()) {
     rstudioapi_util_env$update_addin_registry(addin_registry)
   }
+  if (!is.na(request_tcp_connection)) {
+    close(request_tcp_connection)
+    request_tcp_connection <<- NA
+  }
+  if (!is.na(port)) {
+    request_tcp_connection <<- socketConnection(
+      host = host,
+      port = port,
+      blocking = TRUE,
+      server = FALSE,
+      open = "a+"
+    )
+  }
+  parent <- parent.env(environment())
   request("attach",
     version = sprintf("%s.%s", R.version$major, R.version$minor),
     tempdir = tempdir,
@@ -646,9 +672,9 @@ attach <- function() {
     ),
     plot_url = if (identical(names(dev.cur()), "httpgd")) httpgd::hgd_url(),
     server = if (use_webserver) list(
-      host = host,
-      port = port,
-      token = token
+      host = parent$host,
+      port = parent$port,
+      token = parent$token
     ) else NULL
   )
 }
@@ -929,4 +955,9 @@ print.hsearch <- function(x, ...) {
   invisible(NULL)
 }
 
-reg.finalizer(.GlobalEnv, function(e) .vsc$request("detach"), onexit = TRUE)
+reg.finalizer(.GlobalEnv, function(e) {
+  .vsc$request("detach")
+  if (!is.na(request_tcp_connection)) {
+    close(request_tcp_connection)
+  }
+}, onexit = TRUE)
