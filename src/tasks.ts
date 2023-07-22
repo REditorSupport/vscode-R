@@ -4,12 +4,14 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getRpath } from './util';
+import { extensionContext } from './extension';
 
 
-const TYPE = 'R';
+export const R_TASK_TYPE = 'R';
+
 
 interface RTaskDefinition extends vscode.TaskDefinition {
-    type: string,
+    type: typeof R_TASK_TYPE,
     code: string[],
     options?: string[],
     cwd?: string,
@@ -37,7 +39,7 @@ const defaultOptions: string[] = ['--no-echo', '--no-restore'];
 const rtasks: RTaskInfo[] = [
     {
         definition: {
-            type: TYPE,
+            type: R_TASK_TYPE,
             code: ['devtools::test()']
         },
         name: 'Test',
@@ -47,7 +49,7 @@ const rtasks: RTaskInfo[] = [
 
     {
         definition: {
-            type: TYPE,
+            type: R_TASK_TYPE,
             code: ['devtools::build()']
         },
         name: 'Build',
@@ -57,7 +59,7 @@ const rtasks: RTaskInfo[] = [
 
     {
         definition: {
-            type: TYPE,
+            type: R_TASK_TYPE,
             code: ['devtools::build(binary = TRUE, args = c(\'--preclean\'))']
         },
         name: 'Build Binary',
@@ -67,7 +69,7 @@ const rtasks: RTaskInfo[] = [
 
     {
         definition: {
-            type: TYPE,
+            type: R_TASK_TYPE,
             code: ['devtools::check()']
         },
         name: 'Check',
@@ -77,7 +79,7 @@ const rtasks: RTaskInfo[] = [
 
     {
         definition: {
-            type: TYPE,
+            type: R_TASK_TYPE,
             code: ['devtools::document()']
         },
         name: 'Document',
@@ -87,7 +89,7 @@ const rtasks: RTaskInfo[] = [
 
     {
         definition: {
-            type: TYPE,
+            type: R_TASK_TYPE,
             code: ['devtools::install()']
         },
         name: 'Install',
@@ -96,7 +98,7 @@ const rtasks: RTaskInfo[] = [
     }
 ];
 
-function asRTask(rPath: string, folder: vscode.WorkspaceFolder | vscode.TaskScope, info: RTaskInfo): vscode.Task {
+function asRTask0(rPath: string, folder: vscode.WorkspaceFolder | vscode.TaskScope, info: RTaskInfo): vscode.Task {
     const args = makeRArgs(info.definition.options ?? defaultOptions, info.definition.code);
     const rtask: vscode.Task = new vscode.Task(
         info.definition,
@@ -118,9 +120,39 @@ function asRTask(rPath: string, folder: vscode.WorkspaceFolder | vscode.TaskScop
     return rtask;
 }
 
-export class RTaskProvider implements vscode.TaskProvider {
+function asRTask(rPath: string, folder: vscode.WorkspaceFolder | vscode.TaskScope, info: RTaskInfo): vscode.Task {
+    // const args = makeRArgs(info.definition.options ?? defaultOptions, info.definition.code);
+    const args = [
+        '--silent',
+        '--no-save',
+        '--no-restore',
+    ];
+    const rProfile = extensionContext.asAbsolutePath('R/interactiveTask.Rprofile');
+    const rtask: vscode.Task = new vscode.Task(
+        info.definition,
+        folder,
+        info.name ?? 'Unnamed',
+        info.definition.type,
+        new vscode.ProcessExecution(
+            rPath,
+            args,
+            {
+                cwd: info.definition.cwd,
+                env: {
+                    ...info.definition.env,
+                    R_PROFILE_USER: rProfile,
+                    VSCODE_EVAL_CODE: info.definition.code.join('; ')
+                }
+            }
+        ),
+        info.problemMatchers
+    );
 
-    public type = TYPE;
+    rtask.group = info.group;
+    return rtask;
+}
+
+export class RTaskProvider implements vscode.TaskProvider {
 
     public async provideTasks(): Promise<vscode.Task[]> {
         const folders = vscode.workspace.workspaceFolders;
