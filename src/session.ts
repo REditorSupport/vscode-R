@@ -93,9 +93,11 @@ export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
 
-    const initPath = path.join(extensionPath, 'R', 'session', 'init.R');
-    const linkPath = path.join(homeExtDir(), 'init.R');
-    fs.writeFileSync(linkPath, `local(source("${initPath.replace(/\\/g, '\\\\')}", chdir = TRUE, local = TRUE))\n`);
+    for (const initFileName of ['init.R', 'init_late.R']) {
+        const initPath = path.join(extensionPath, 'R', 'session', initFileName);
+        const linkPath = path.join(homeExtDir(), initFileName);
+        fs.writeFileSync(linkPath, `local(source("${initPath.replace(/\\/g, '\\\\')}", chdir = TRUE, local = TRUE))\n`);
+    }
 
     writeSettings();
     workspace.onDidChangeConfiguration(event => {
