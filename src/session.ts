@@ -71,6 +71,23 @@ let plotWatcher: FSWatcher;
 let activeBrowserPanel: WebviewPanel | undefined;
 let activeBrowserUri: Uri | undefined;
 let activeBrowserExternalUri: Uri | undefined;
+let incomingRequestServerAddressInfo: AddressInfo | undefined = undefined;
+let attached = false;
+
+const addressToStr = (addressInfo: AddressInfo) => `${addressInfo.address}:${addressInfo.port}`;
+
+function updateSessionStatusBarItem(sessionStatusBarItem: StatusBarItem) {
+    const addressInfoStr = incomingRequestServerAddressInfo && addressToStr(incomingRequestServerAddressInfo);
+    if (attached) {
+        sessionStatusBarItem.text = `R ${rVer}: ${pid}` + (addressInfoStr ? ` (Connected via ${addressInfoStr})` : '');
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-unsafe-member-access
+        sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\n${addressInfoStr ? (`Connected via TCP address: ${addressInfoStr}\n`) : ''}Command: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
+    } else {
+        sessionStatusBarItem.text = `R: (not attached${addressInfoStr ? `, listening on ${addressInfoStr}` : ''})`;
+        sessionStatusBarItem.tooltip = 'Click to attach active terminal.';// TODO: Make clicking be aware of TCP R connections
+    }
+    sessionStatusBarItem.show();
+}
 
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
@@ -792,52 +809,62 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
 
 function startIncomingRequestServer(ip: string, sessionStatusBarItem: StatusBarItem) {
     const incomingRequestServer = new Server(async (socket: Socket) => {
+        console.info(`Incoming connection to the request server from ${addressToStr(socket.address() as AddressInfo)}`)
         if (incomingRequestServerConnected) {
-            // TODO: Add some details (ip+port) of the incoming connection
             console.error('A new connection to the incoming request server tries to connect but another connection currently connected!');
             return;
         }
 
         console.info('A new connection to the incoming request server has been established.');
         incomingRequestServerConnected = true;
-        // TODO: Handle correct status bar update
-    
-        const promiseSocket = new PromiseSocket(socket);
 
-        console.info("Waiting for TCP input...")
-    
-        // TODO: Handle Exceptions
-        let contentToProcess = "";
-        while (true) {
-            const currentChunk = await promiseSocket.read();
-            if (currentChunk === undefined) {
-                console.info("Incoming request server socket EOF")
-                // The end of the socket
-    
-                // TODO: Verify a correct detach!
-                // TODO: Verify that `contentToProcess` is empty!
-                incomingRequestServerConnected = false;
-                return;
-            }
-            // otherwise
-    
-            contentToProcess = contentToProcess + currentChunk;
-    
-            const requests = contentToProcess.split((/\r?\n/));
-            for (let i = 0; i < requests.length - 1; ++i) {
-                const requestContent = requests[i];
+        try {
+            const promiseSocket = new PromiseSocket(socket);
+            console.info("Waiting for TCP input...")
+        
+            let contentToProcess = "";
+            while (true) {
+                    const currentChunk = await promiseSocket.read();
+                    if (currentChunk === undefined) {
+                        // The end of the socket
+                        console.info("Incoming request server socket EOF");
 
-                //console.debug(`TCP Request received from client: ${requestContent}.`);
-                const request = JSON.parse(requestContent) as ISessionRequest;
-                await processRequest(request, socket, sessionStatusBarItem);
+                        // Force cleaning even if somehow not detached
+                        await cleanupSession();
+            
+                        if (contentToProcess) {
+                            console.error("TCP connection recieved EOF, but the last content didn't end up with line break.")
+                        }
+                        incomingRequestServerConnected = false;
+                        return;
+                    }
+                    // otherwise
+            
+                    contentToProcess = contentToProcess + currentChunk;
+        
+                const requests = contentToProcess.split((/\r?\n/));
+                for (let i = 0; i < requests.length - 1; ++i) {
+                    const requestContent = requests[i];
+
+                    //console.debug(`TCP Request received from client: ${requestContent}.`);
+                    const request = JSON.parse(requestContent) as ISessionRequest;
+                    await processRequest(request, socket, sessionStatusBarItem);
+                }
+                contentToProcess = requests[requests.length - 1];
             }
-            contentToProcess = requests[requests.length - 1];
+        } catch (err) {
+            console.error(`Error while processing TCP connection: ${err}`);
+
+            await cleanupSession();
+            incomingRequestServerConnected = false;
         }
     });
 
     const server = incomingRequestServer.listen(0, ip, function() {
-        const addressInfo = server.address() as AddressInfo;
-        console.info(`Started listening on ${addressInfo.address}:${addressInfo.port}`);
+        incomingRequestServerAddressInfo = server.address() as AddressInfo;
+        console.info(`Started listening on ${addressToStr(incomingRequestServerAddressInfo)}`);
+
+        updateSessionStatusBarItem(sessionStatusBarItem);
     });
 
     return server;
@@ -885,16 +912,15 @@ export async function processRequest(request: ISessionRequest, socket: Socket | 
             if (!request.tempdir || !request.wd) {
                 return;
             }
+            attached = true;
             rVer = String(request.version);
             pid = String(request.pid);
             info = request.info;
             sessionDir = path.join(request.tempdir, 'vscode-R');
             workingDir = request.wd;
+            // TODO: Log and show correct TCP info here
             console.info(`[updateRequest] attach PID: ${pid}`);
-            sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
-            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-unsafe-member-access
-            sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
-            sessionStatusBarItem.show();
+            updateSessionStatusBarItem(sessionStatusBarItem);
             if (socket == null) {
                 updateSessionWatcher();
             }
@@ -915,9 +941,13 @@ export async function processRequest(request: ISessionRequest, socket: Socket | 
             }
             break;
         }
-        case 'detach': {// Only on filesystem based session?
-            if (request.pid) {
-                await cleanupSession(request.pid);
+        case 'detach': {
+            if (socket == null) {
+                if (request.pid) {
+                    await cleanupSession(request.pid);
+                }
+            } else {
+                await cleanupSession();
             }
             break;
         }
@@ -963,11 +993,11 @@ export async function processRequest(request: ISessionRequest, socket: Socket | 
     }
 }
 
-export async function cleanupSession(pidArg: string): Promise<void> {
-    if (pid === pidArg) {
+export async function cleanupSession(pidArg?: string): Promise<void> {
+    if (pidArg === undefined || pid === pidArg) {
+        attached = false;
         if (sessionStatusBarItem) {
-            sessionStatusBarItem.text = 'R: (not attached)';
-            sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
+            updateSessionStatusBarItem(sessionStatusBarItem);
         }
         server = undefined;
         workspaceData.globalenv = {};
