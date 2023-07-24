@@ -72,7 +72,7 @@ let activeBrowserPanel: WebviewPanel | undefined;
 let activeBrowserUri: Uri | undefined;
 let activeBrowserExternalUri: Uri | undefined;
 let incomingRequestServerAddressInfo: AddressInfo | undefined = undefined;
-let attached = false;
+export let attached = false;
 
 const addressToStr = (addressInfo: AddressInfo) => `${addressInfo.address}:${addressInfo.port}`;
 
@@ -84,7 +84,7 @@ function updateSessionStatusBarItem(sessionStatusBarItem: StatusBarItem) {
         sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\n${addressInfoStr ? (`Connected via TCP address: ${addressInfoStr}\n`) : ''}Command: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
     } else {
         sessionStatusBarItem.text = `R: (not attached${addressInfoStr ? `, listening on ${addressInfoStr}` : ''})`;
-        sessionStatusBarItem.tooltip = 'Click to attach active terminal.';// TODO: Make clicking be aware of TCP R connections
+        sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
     }
     sessionStatusBarItem.show();
 }
@@ -126,6 +126,7 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
 export function attachActive(): void {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
+        // TODO: Connect it via TCP connection instead, if available in the configurations (and the server is up)
         void runTextInTerm('.vsc.attach()');
         if (isLiveShare() && shareWorkspace) {
             rHostService?.notifyRequest(requestFile, true);

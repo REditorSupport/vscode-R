@@ -9,7 +9,7 @@ import { extensionContext, homeExtDir } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession } from './session';
+import { cleanupSession, attached } from './session';
 import { config, delay, getRterm } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
@@ -227,8 +227,12 @@ export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
     }
 
     if (rTerm === undefined) {
-        await createRTerm(true);
-        await delay(200); // Let RTerm warm up
+        if (attached && vscode.window.activeTerminal) {
+            return vscode.window.activeTerminal;
+        } else {
+            await createRTerm(true);
+            await delay(200); // Let RTerm warm up
+        }
     }
 
     return rTerm;
