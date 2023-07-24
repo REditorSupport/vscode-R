@@ -29,6 +29,8 @@ export type IRequest = {
     file?: string;
     viewer?: string;
     plot?: string;
+    format?: string;
+    plot_base64?: string;
     workspaceData?: WorkspaceData;
     action?: string;
     args?: unknown;

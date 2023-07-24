@@ -17,7 +17,7 @@ init_first <- function() {
   }
 
   # check requried packages
-  required_packages <- c("jsonlite", "rlang")
+  required_packages <- c("jsonlite", "rlang", "readr")
   missing_packages <- required_packages[
     !vapply(required_packages, requireNamespace,
       logical(1L), quietly = TRUE)

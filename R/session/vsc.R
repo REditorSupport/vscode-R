@@ -427,7 +427,6 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
     }
   )
 
-  # TODO: Make this be available by TCP only as well
   update_plot <- function(...) {
     tryCatch({
       if (plot_updated && check_null_dev()) {
@@ -439,6 +438,13 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
           on.exit({
             dev.off()
             cat(get_timestamp(), file = plot_lock_file)
+            if (request_tcp_connection) {
+              tryCatch({
+                  plot_file_content <- readr::read_file_raw(plot_file)
+                  format <- "image/png"# right now only this format is supported
+                  request("plot", format = format, plot_base64 = jsonlite::base64_enc(plot_file_content))
+              }, error = message)
+            }
           })
           replayPlot(record)
         }

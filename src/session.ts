@@ -4,6 +4,7 @@ import * as fs from 'fs-extra';
 import * as os from 'os';
 import * as path from 'path';
 import { Agent } from 'http';
+import * as tmp from 'tmp';
 import { AddressInfo, Server, Socket } from 'node:net';
 import { PromiseSocket } from 'promise-socket';
 import fetch from 'node-fetch';
@@ -193,11 +194,7 @@ async function updatePlot() {
     if (newTimeStamp !== plotTimeStamp) {
         plotTimeStamp = newTimeStamp;
         if (fs.existsSync(plotFile) && fs.statSync(plotFile).size > 0) {
-            void commands.executeCommand('vscode.open', Uri.file(plotFile), {
-                preserveFocus: true,
-                preview: true,
-                viewColumn: ViewColumn[(config().get<string>('session.viewers.viewColumn.plot') || 'Two') as keyof typeof ViewColumn],
-            });
+            showPlot(plotFile);
             console.info('[updatePlot] Done');
             if (isLiveShare()) {
                 void rHostService?.notifyPlot(plotFile);
@@ -206,6 +203,14 @@ async function updatePlot() {
             console.info('[updatePlot] File not found');
         }
     }
+}
+
+function showPlot(plotFile: string) {
+    void commands.executeCommand('vscode.open', Uri.file(plotFile), {
+        preserveFocus: true,
+        preview: true,
+        viewColumn: ViewColumn[(config().get<string>('session.viewers.viewColumn.plot') || 'Two') as keyof typeof ViewColumn],
+    });
 }
 
 async function updateWorkspace() {
@@ -842,6 +847,18 @@ function startIncomingRequestServer(ip: string, sessionStatusBarItem: StatusBarI
     return server;
 }
 
+const create_tmp_file: (options: tmp.FileOptions) => Promise<{ name: string, fd: number, removeCallback: () => void }> =
+    (options) => new Promise((resolve, reject) => {
+        tmp.file(options, (err, name, fd, removeCallback) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve({ name, fd, removeCallback });
+            }
+        });
+    }
+);
+
 export async function processRequest(request: ISessionRequest, socket: Socket | null, sessionStatusBarItem: StatusBarItem) {
     switch (request.command) {
         case 'help': {
@@ -925,6 +942,18 @@ export async function processRequest(request: ISessionRequest, socket: Socket | 
                 await showDataView(request.source,
                     request.type, request.title, request.file, request.data, request.viewer);
             }
+            break;
+        }
+        case 'plot': {
+            if (request.format !== 'image/png') {
+                console.info(`Error: the format ${request.format} isn't supported, only image/png is supported for now.`);
+                break;
+            }
+
+            const { name: filePath, fd } = await create_tmp_file({ postfix: '.png' });
+            const arrayData = Buffer.from(request.plot_base64!, 'base64');
+            await fs.writeFile(fd, arrayData);
+            showPlot(filePath);
             break;
         }
         case 'rstudioapi': {

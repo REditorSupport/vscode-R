@@ -2129,6 +2129,7 @@
     "@types/node": "^16.11.7",
     "@types/node-fetch": "^2.5.10",
     "@types/sinon": "^10.0.13",
+    "@types/tmp": "^0.2.3",
     "@types/vscode": "^1.67.0",
     "@types/winreg": "^1.2.31",
     "@typescript-eslint/eslint-plugin": "^5.30.0",
@@ -2158,6 +2159,7 @@
     "js-yaml": "^4.1.0",
     "node-fetch": "^2.6.7",
     "promise-socket": "^7.0.0",
+    "tmp": "^0.2.1",
     "vscode-languageclient": "^8.1.0",
     "vsls": "^1.0.4753",
     "winreg": "^1.2.4"
