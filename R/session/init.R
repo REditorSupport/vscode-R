@@ -51,6 +51,13 @@ init_last <- function() {
     rm(".First.sys", envir = globalenv())
   )
 
+  if (nzchar(Sys.getenv("VSCODE_INIT_R"))) {
+    .vsc.attach(
+      host = Sys.getenv("VSCODE_ATTACH_HOST", unset = NA),
+      port = strtoi(Sys.getenv("VSCODE_ATTACH_PORT", unset = NA))
+    )
+  }
+
   invisible()
 }
 

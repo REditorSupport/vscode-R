@@ -1730,6 +1730,21 @@
           "default": true,
           "description": "Enable R session watcher. Required for workspace viewer and most features to work with an R session. Restart required to take effect."
         },
+        "r.sessionWatcherTCPServer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable TCP server connection for watching over R sessions. Requires `#r.sessionWatcher#` to be set to `true`. Requires reloading for changes to take effect."
+        },
+        "r.sessionWatcherTCPServerHostName": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "The host name to listen for watching over R sessions. E.g. 127.0.0.1 for local connection only, and 0.0.0.0 for global exposure (security note: use the latter only in a secured close local network!). Requires `#r.sessionWatcher#` and `r.sessionWatcher.TCPServer` to be set to `true`. Requires reloading for changes to take effect."
+        },
+        "r.sessionWatcherTCPServerPort": {
+          "type": "integer",
+          "default": 0,
+          "description": "The port to listen to, or 0 for automatic port selection (recommended). Requires `#r.sessionWatcher#` and `r.sessionWatcher.TCPServer` to be set to `true`. Requires reloading for changes to take effect."
+        },
         "r.session.useWebServer": {
           "type": "boolean",
           "default": false,

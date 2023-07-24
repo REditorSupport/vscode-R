@@ -71,7 +71,7 @@ let plotWatcher: FSWatcher;
 let activeBrowserPanel: WebviewPanel | undefined;
 let activeBrowserUri: Uri | undefined;
 let activeBrowserExternalUri: Uri | undefined;
-let incomingRequestServerAddressInfo: AddressInfo | undefined = undefined;
+export let incomingRequestServerAddressInfo: AddressInfo | undefined = undefined;
 export let attached = false;
 
 const addressToStr = (addressInfo: AddressInfo) => `${addressInfo.address}:${addressInfo.port}`;
@@ -120,7 +120,9 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
         void updateRequest(sessionStatusBarItem);
     });
 
-    void startIncomingRequestServer('0.0.0.0', sessionStatusBarItem);// TODO: Make it more configurable
+    if (config().get<boolean>('sessionWatcherTCPServer')) {
+        void startIncomingRequestServer(sessionStatusBarItem);
+    }
 
     console.info('[startRequestWatcher] Done');
 }
@@ -128,8 +130,11 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
 export function attachActive(): void {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
-        // TODO: Connect it via TCP connection instead, if available in the configurations (and the server is up)
-        void runTextInTerm('.vsc.attach()');
+        if (incomingRequestServerAddressInfo) {
+            void runTextInTerm(`.vsc.attach(host=${incomingRequestServerAddressInfo.address}, port=${incomingRequestServerAddressInfo.port}L)`);
+        } else {
+            void runTextInTerm('.vsc.attach()');
+        }
         if (isLiveShare() && shareWorkspace) {
             rHostService?.notifyRequest(requestFile, true);
         }
@@ -810,7 +815,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
     }
 }
 
-function startIncomingRequestServer(ip: string, sessionStatusBarItem: StatusBarItem) {
+function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
     const incomingRequestServer = new Server(async (socket: Socket) => {
         console.info(`Incoming connection to the request server from ${addressToStr(socket.address() as AddressInfo)}`)
         if (incomingRequestServerConnected) {
@@ -863,7 +868,8 @@ function startIncomingRequestServer(ip: string, sessionStatusBarItem: StatusBarI
         }
     });
 
-    const server = incomingRequestServer.listen(0, ip, function() {
+    const server = incomingRequestServer.listen(config().get<number>('sessionWatcherTCPServerPort'),
+        config().get<string>('sessionWatcherTCPServerHostName'), function() {
         incomingRequestServerAddressInfo = server.address() as AddressInfo;
         console.info(`Started listening on ${addressToStr(incomingRequestServerAddressInfo)}`);
 

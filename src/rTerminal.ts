@@ -9,7 +9,7 @@ import { extensionContext, homeExtDir } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession, attached } from './session';
+import { cleanupSession, attached, incomingRequestServerAddressInfo } from './session';
 import { config, delay, getRterm } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
@@ -129,7 +129,9 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
             VSCODE_INIT_R: initR,
-            VSCODE_WATCHER_DIR: homeExtDir()
+            VSCODE_WATCHER_DIR: homeExtDir(),
+            VSCODE_ATTACH_HOST: incomingRequestServerAddressInfo?.address,
+            VSCODE_ATTACH_PORT: incomingRequestServerAddressInfo?.port?.toString(),
         };
     }
     return termOptions;
