@@ -791,7 +791,6 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
 }
 
 function startIncomingRequestServer(ip: string, sessionStatusBarItem: StatusBarItem) {
-    console.info("Test Here")
     const incomingRequestServer = new Server(async (socket: Socket) => {
         if (incomingRequestServerConnected) {
             // TODO: Add some details (ip+port) of the incoming connection
@@ -811,9 +810,8 @@ function startIncomingRequestServer(ip: string, sessionStatusBarItem: StatusBarI
         let contentToProcess = "";
         while (true) {
             const currentChunk = await promiseSocket.read();
-            console.info("Got something")
             if (currentChunk === undefined) {
-                console.info("Should close the socket now")
+                console.info("Incoming request server socket EOF")
                 // The end of the socket
     
                 // TODO: Verify a correct detach!
@@ -829,15 +827,13 @@ function startIncomingRequestServer(ip: string, sessionStatusBarItem: StatusBarI
             for (let i = 0; i < requests.length - 1; ++i) {
                 const requestContent = requests[i];
 
-                console.info(`TCP Request received from client: ${requestContent}.`);
-                console.info(`TCP request: ${requestContent}`);
+                //console.debug(`TCP Request received from client: ${requestContent}.`);
                 const request = JSON.parse(requestContent) as ISessionRequest;
                 await processRequest(request, socket, sessionStatusBarItem);
             }
             contentToProcess = requests[requests.length - 1];
         }
     });
-    console.info("Test After")
 
     const server = incomingRequestServer.listen(0, ip, function() {
         const addressInfo = server.address() as AddressInfo;
