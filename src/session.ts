@@ -120,7 +120,7 @@ export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
         void updateRequest(sessionStatusBarItem);
     });
 
-    if (config().get<boolean>('sessionWatcherTCPServer')) {
+    if (config().get<boolean>('sessionWatcherTcpServer')) {
         void startIncomingRequestServer(sessionStatusBarItem);
     }
 
@@ -875,8 +875,8 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
         }
     });
 
-    const server = incomingRequestServer.listen(config().get<number>('sessionWatcherTCPServerPort'),
-        config().get<string>('sessionWatcherTCPServerHostName'), function() {
+    const server = incomingRequestServer.listen(config().get<number>('sessionWatcherTcpServerPort'),
+        config().get<string>('sessionWatcherTcpServerHostName'), function() {
             incomingRequestServerAddressInfo = server.address() as AddressInfo;
             console.info(`Started listening on ${addressToStr(incomingRequestServerAddressInfo)}`);
 
