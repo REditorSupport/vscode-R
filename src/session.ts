@@ -372,16 +372,16 @@ export async function showWebView(file: string, title: string, viewer: string | 
 }
 
 export async function showDataView(source: string, type: string, title: string, file: string | undefined, data: string | object | undefined, viewer: string): Promise<void> {
-    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}`);
+    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file ?? 'none'}, viewer: ${viewer}`);
     console.debug(`data: ${JSON.stringify(data)}`);
 
     const getDataContent = async () : Promise<string | undefined> => {
         if (file === undefined) {
-            return typeof data == "string" ? data : JSON.stringify(data);
+            return typeof data === 'string' ? data : JSON.stringify(data);
         } else {
             const fileContent = await readContent(file, 'utf8');
-            if (fileContent == null) {
-                console.error("Error: File wasn't found!");
+            if (fileContent === undefined) {
+                console.error('Error: File wasn\'t found!');
                 return undefined;
             }
         }
@@ -404,9 +404,11 @@ export async function showDataView(source: string, type: string, title: string, 
                 localResourceRoots: [Uri.file(resDir)],
             });
         const fileContent = await getDataContent();
-        const content = await getTableHtml(panel.webview, fileContent!);
-        panel.iconPath = new UriIcon('open-preview');
-        panel.webview.html = content;
+        if (fileContent !== undefined) {
+            const content = getTableHtml(panel.webview, fileContent);
+            panel.iconPath = new UriIcon('open-preview');
+            panel.webview.html = content;
+        }
     } else if (source === 'list') {
         const panel = window.createWebviewPanel('dataview', title,
             {
@@ -420,14 +422,16 @@ export async function showDataView(source: string, type: string, title: string, 
                 localResourceRoots: [Uri.file(resDir)],
             });
         const fileContent = await getDataContent();
-        const content = await getListHtml(panel.webview, fileContent!);
-        panel.iconPath = new UriIcon('open-preview');
-        panel.webview.html = content;
+        if (fileContent !== undefined) {
+            const content = getListHtml(panel.webview, fileContent);
+            panel.iconPath = new UriIcon('open-preview');
+            panel.webview.html = content;
+        }
     } else {
         if (isGuestSession || file === undefined) {
             const fileContent = file === undefined ? data as string : await rGuestService?.requestFileContent(file, 'utf8');
             if (fileContent) {
-                await openVirtualDoc(file ?? "R View", fileContent, true, true, ViewColumn[viewer as keyof typeof ViewColumn]);
+                await openVirtualDoc(file ?? 'R View', fileContent, true, true, ViewColumn[viewer as keyof typeof ViewColumn]);
             }
         } else {
             await commands.executeCommand('vscode.open', Uri.file(file), {
@@ -440,7 +444,7 @@ export async function showDataView(source: string, type: string, title: string, 
     console.info('[showDataView] Done');
 }
 
-export async function getTableHtml(webview: Webview, content: string): Promise<string> {
+export function getTableHtml(webview: Webview, content: string): string {
     resDir = isGuestSession ? guestResDir : resDir;
     const pageSize = config().get<number>('session.data.pageSize', 500);
     return `
@@ -626,7 +630,7 @@ export async function getTableHtml(webview: Webview, content: string): Promise<s
 `;
 }
 
-export async function getListHtml(webview: Webview, content: string): Promise<string> {
+export function getListHtml(webview: Webview, content: string): string {
     resDir = isGuestSession ? guestResDir : resDir;
 
     return `
@@ -816,8 +820,9 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
 }
 
 function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
     const incomingRequestServer = new Server(async (socket: Socket) => {
-        console.info(`Incoming connection to the request server from ${addressToStr(socket.address() as AddressInfo)}`)
+        console.info(`Incoming connection to the request server from ${addressToStr(socket.address() as AddressInfo)}`);
         if (incomingRequestServerConnected) {
             console.error('A new connection to the incoming request server tries to connect but another connection currently connected!');
             return;
@@ -828,27 +833,28 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
 
         try {
             const promiseSocket = new PromiseSocket(socket);
-            console.info("Waiting for TCP input...")
+            console.info('Waiting for TCP input...');
         
-            let contentToProcess = "";
+            let contentToProcess = '';
+            // eslint-disable-next-line no-constant-condition
             while (true) {
-                    const currentChunk = await promiseSocket.read();
-                    if (currentChunk === undefined) {
-                        // The end of the socket
-                        console.info("Incoming request server socket EOF");
+                const currentChunk = await promiseSocket.read() as string | undefined;
+                if (currentChunk === undefined) {
+                    // The end of the socket
+                    console.info('Incoming request server socket EOF');
 
-                        // Force cleaning even if somehow not detached
-                        await cleanupSession();
-            
-                        if (contentToProcess) {
-                            console.error("TCP connection recieved EOF, but the last content didn't end up with line break.")
-                        }
-                        incomingRequestServerConnected = false;
-                        return;
+                    // Force cleaning even if somehow not detached
+                    await cleanupSession();
+        
+                    if (contentToProcess) {
+                        console.error('TCP connection recieved EOF, but the last content didn\'t end up with line break.');
                     }
-                    // otherwise
-            
-                    contentToProcess = contentToProcess + currentChunk;
+                    incomingRequestServerConnected = false;
+                    return;
+                }
+                // otherwise
+        
+                contentToProcess = contentToProcess + currentChunk;
         
                 const requests = contentToProcess.split((/\r?\n/));
                 for (let i = 0; i < requests.length - 1; ++i) {
@@ -861,6 +867,7 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
                 contentToProcess = requests[requests.length - 1];
             }
         } catch (err) {
+            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
             console.error(`Error while processing TCP connection: ${err}`);
 
             await cleanupSession();
@@ -870,11 +877,11 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
 
     const server = incomingRequestServer.listen(config().get<number>('sessionWatcherTCPServerPort'),
         config().get<string>('sessionWatcherTCPServerHostName'), function() {
-        incomingRequestServerAddressInfo = server.address() as AddressInfo;
-        console.info(`Started listening on ${addressToStr(incomingRequestServerAddressInfo)}`);
+            incomingRequestServerAddressInfo = server.address() as AddressInfo;
+            console.info(`Started listening on ${addressToStr(incomingRequestServerAddressInfo)}`);
 
-        updateSessionStatusBarItem(sessionStatusBarItem);
-    });
+            updateSessionStatusBarItem(sessionStatusBarItem);
+        });
 
     return server;
 }
@@ -889,7 +896,7 @@ const create_tmp_file: (options: tmp.FileOptions) => Promise<{ name: string, fd:
             }
         });
     }
-);
+    );
 
 export async function processRequest(request: ISessionRequest, socket: Socket | null, sessionStatusBarItem: StatusBarItem) {
     switch (request.command) {
@@ -907,8 +914,8 @@ export async function processRequest(request: ISessionRequest, socket: Socket | 
             break;
         }
         case 'updateWorkspace' : {
-            if (request.workspaceData == null) {
-                console.error("[updateRequest] workspaceData is not set!")
+            if (!request.workspaceData) {
+                console.error('[updateRequest] workspaceData is not set!');
                 return;
             }
 
@@ -930,7 +937,7 @@ export async function processRequest(request: ISessionRequest, socket: Socket | 
             // TODO: Log and show correct TCP info here
             console.info(`[updateRequest] attach PID: ${pid}`);
             updateSessionStatusBarItem(sessionStatusBarItem);
-            if (socket == null) {
+            if (socket === null) {
                 updateSessionWatcher();
             }
 
@@ -943,7 +950,7 @@ export async function processRequest(request: ISessionRequest, socket: Socket | 
             if (request.plot_url) {
                 await globalHttpgdManager?.showViewer(request.plot_url);
             }
-            if (socket == null) {
+            if (socket === null) {
                 void watchProcess(pid).then((v: string) => {
                     void cleanupSession(v);
                 });
@@ -951,7 +958,7 @@ export async function processRequest(request: ISessionRequest, socket: Socket | 
             break;
         }
         case 'detach': {
-            if (socket == null) {
+            if (socket === null) {
                 if (request.pid) {
                     await cleanupSession(request.pid);
                 }
@@ -981,14 +988,16 @@ export async function processRequest(request: ISessionRequest, socket: Socket | 
         }
         case 'plot': {
             if (request.format !== 'image/png') {
-                console.info(`Error: the format ${request.format} isn't supported, only image/png is supported for now.`);
+                console.info(`Error: the format ${request.format || '(none)'} isn't supported, only image/png is supported for now.`);
                 break;
             }
 
-            const { name: filePath, fd } = await create_tmp_file({ postfix: '.png' });
-            const arrayData = Buffer.from(request.plot_base64!, 'base64');
-            await fs.writeFile(fd, arrayData);
-            showPlot(filePath);
+            if (request.plot_base64) {
+                const { name: filePath, fd } = await create_tmp_file({ postfix: '.png' });
+                const arrayData = Buffer.from(request.plot_base64, 'base64');
+                await fs.writeFile(fd, arrayData);
+                showPlot(filePath);
+            }
             break;
         }
         case 'rstudioapi': {
