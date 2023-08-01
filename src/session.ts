@@ -131,7 +131,7 @@ export function attachActive(): void {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
         if (incomingRequestServerAddressInfo) {
-            void runTextInTerm(`.vsc.attach(host=${incomingRequestServerAddressInfo.address}, port=${incomingRequestServerAddressInfo.port}L)`);
+            void runTextInTerm(`.vsc.attach(host=${JSON.stringify(os.hostname())}, port=${incomingRequestServerAddressInfo.port}L)`);
         } else {
             void runTextInTerm('.vsc.attach()');
         }

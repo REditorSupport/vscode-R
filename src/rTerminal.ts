@@ -1,6 +1,7 @@
 'use strict';
 
 import * as path from 'path';
+import * as os from 'os';
 import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
@@ -130,7 +131,7 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
             R_PROFILE_USER: newRprofile,
             VSCODE_INIT_R: initR,
             VSCODE_WATCHER_DIR: homeExtDir(),
-            VSCODE_ATTACH_HOST: incomingRequestServerAddressInfo?.address,
+            VSCODE_ATTACH_HOST: os.hostname(),
             VSCODE_ATTACH_PORT: incomingRequestServerAddressInfo?.port?.toString(),
         };
     }
