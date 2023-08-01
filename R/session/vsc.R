@@ -962,8 +962,12 @@ print.hsearch <- function(x, ...) {
 }
 
 reg.finalizer(.GlobalEnv, function(e) {
-  .vsc$request("detach")
-  if (!is.na(request_tcp_connection)) {
-    close(request_tcp_connection)
-  }
+  # TODO: When exiting radian by EOF("CTRL+D") when coonecting to vsc by TCP,
+  #  the TCP connection is getting closed before we're able to call detach...
+  tryCatch({
+    .vsc$request("detach")
+    if (!is.na(request_tcp_connection)) {
+      close(request_tcp_connection)
+    }
+  }, error = function(e) NULL)
 }, onexit = TRUE)
