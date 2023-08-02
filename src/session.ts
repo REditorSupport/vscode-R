@@ -53,7 +53,7 @@ let requestTimeStamp: number;
 let responseTimeStamp: number;
 export let sessionDir: string;
 export let workingDir: string;
-let incomingRequestServerConnected = false;
+let incomingRequestServerCurrentSocket: Socket | null = null;
 let rVer: string;
 let pid: string;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -73,6 +73,15 @@ let activeBrowserUri: Uri | undefined;
 let activeBrowserExternalUri: Uri | undefined;
 export let incomingRequestServerAddressInfo: AddressInfo | undefined = undefined;
 export let attached = false;
+
+class AnotherSocketConnectionError extends Error {
+    finishCleaningCallback: () => void;
+
+    constructor (finishCleaningCallback: () => void) {
+        super();
+        this.finishCleaningCallback = finishCleaningCallback;
+    }
+}
 
 const addressToStr = (addressInfo: AddressInfo) => `${addressInfo.address}:${addressInfo.port}`;
 
@@ -823,13 +832,29 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
     const incomingRequestServer = new Server(async (socket: Socket) => {
         console.info(`Incoming connection to the request server from ${addressToStr(socket.address() as AddressInfo)}`);
-        if (incomingRequestServerConnected) {
-            console.error('A new connection to the incoming request server tries to connect but another connection currently connected!');
-            return;
+        if (incomingRequestServerCurrentSocket !== null) {
+            console.info('Closing existing connection to the incoming request server since a new one is pending.');
+
+            let resolveHandle: (() => void) | null = null;
+            let wasHandledQuick = false;
+            const promise = new Promise<void>((resolve) => {
+                resolveHandle = resolve;
+            });
+            const callback = () => {
+                if (resolveHandle === null) {
+                    wasHandledQuick = true;
+                } else {
+                    resolveHandle();
+                }
+            };
+            incomingRequestServerCurrentSocket.destroy(new AnotherSocketConnectionError(callback));
+            if (!wasHandledQuick) {
+                await promise;
+            }
         }
 
         console.info('A new connection to the incoming request server has been established.');
-        incomingRequestServerConnected = true;
+        incomingRequestServerCurrentSocket = socket;
 
         try {
             const promiseSocket = new PromiseSocket(socket);
@@ -849,7 +874,7 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
                     if (contentToProcess) {
                         console.error('TCP connection recieved EOF, but the last content didn\'t end up with line break.');
                     }
-                    incomingRequestServerConnected = false;
+                    incomingRequestServerCurrentSocket = null;
                     return;
                 }
                 // otherwise
@@ -867,11 +892,19 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
                 contentToProcess = requests[requests.length - 1];
             }
         } catch (err) {
-            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-            console.error(`Error while processing TCP connection: ${err}`);
+            if (err instanceof AnotherSocketConnectionError) {
+                console.error(`Closing this TCP connection since another one is pending.`);
+            } else {
+                // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+                console.error(`Error while processing TCP connection: ${err}`);
+            }
 
             await cleanupSession();
-            incomingRequestServerConnected = false;
+            incomingRequestServerCurrentSocket = null;
+
+            if (err instanceof AnotherSocketConnectionError) {
+                err.finishCleaningCallback();
+            }
         }
     });
 
