@@ -438,7 +438,7 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
           on.exit({
             dev.off()
             cat(get_timestamp(), file = plot_lock_file)
-            if (request_tcp_connection) {
+            if (!is.na(request_tcp_connection)) {
               tryCatch({
                   plot_file_content <- readr::read_file_raw(plot_file)
                   format <- "image/png"# right now only this format is supported
