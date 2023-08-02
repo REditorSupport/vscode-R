@@ -17,6 +17,7 @@ source(file.path(dir_init, "vsc.R"), local = .vsc)
 exports <- local({
 .vsc <- .vsc
 .vsc.attach <- .vsc$attach
+.vsc.detach <- .vsc$detach
 .vsc.view <- .vsc$show_dataview
 .vsc.browser <- .vsc$show_browser
 .vsc.viewer <- .vsc$show_viewer

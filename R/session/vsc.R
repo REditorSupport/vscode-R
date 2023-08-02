@@ -655,8 +655,7 @@ attach <- function(host = "127.0.0.1", port = NA) {
     rstudioapi_util_env$update_addin_registry(addin_registry)
   }
   if (!is.na(request_tcp_connection)) {
-    close(request_tcp_connection)
-    request_tcp_connection <<- NA
+    detach()
   }
   if (!is.na(port)) {
     request_tcp_connection <<- socketConnection(
@@ -683,6 +682,14 @@ attach <- function(host = "127.0.0.1", port = NA) {
       token = parent$token
     ) else NULL
   )
+}
+
+detach <- function() {
+    request("detach")
+    if (!is.na(request_tcp_connection)) {
+      close(request_tcp_connection)
+      request_tcp_connection <<- NA
+    }
 }
 
 path_to_uri <- function(path) {
@@ -965,9 +972,6 @@ reg.finalizer(.GlobalEnv, function(e) {
   # TODO: When exiting radian by EOF("CTRL+D") when coonecting to vsc by TCP,
   #  the TCP connection is getting closed before we're able to call detach...
   tryCatch({
-    .vsc$request("detach")
-    if (!is.na(request_tcp_connection)) {
-      close(request_tcp_connection)
-    }
+    detach()
   }, error = function(e) NULL)
 }, onexit = TRUE)
