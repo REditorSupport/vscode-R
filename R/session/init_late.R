@@ -22,7 +22,6 @@ exports <- local({
 .vsc.browser <- .vsc$show_browser
 .vsc.viewer <- .vsc$show_viewer
 .vsc.page_viewer <- .vsc$show_page_viewer
-View <- .vsc.view
 environment()
 })
 attach(exports, name = .vsc.name, warn.conflicts = FALSE)

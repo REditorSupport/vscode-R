@@ -9,7 +9,24 @@ request_file <- file.path(dir_watcher, "request.log")
 request_lock_file <- file.path(dir_watcher, "request.lock")
 settings_file <- file.path(dir_watcher, "settings.json")
 request_tcp_connection <- NA
+request_is_attached <- FALSE
+before_attach_options <- list()
+options_when_connected_list <- list()
+options_when_connected <- function(...) {
+  l <- list(...)
+  mapply(function(option, value) {
+    options_when_connected_list[[option]] <<- value
+  }, names(l), l)
+}
+before_attach_hooks <- list()
+hooks_when_connected_list <- list()
+hook_when_connected <- function(hook, cb) {
+  hooks_when_connected_list[[hook]] <<- cb
+}
 user_options <- names(options())
+created_devices <- c()
+View_impl <- NULL
+old_view_impl <- View
 
 logger <- if (getOption("vsc.debug", FALSE)) {
   function(...) cat(..., "\n", sep = "")
@@ -64,7 +81,7 @@ load_settings <- function() {
 load_settings()
 
 if (is.null(getOption("help_type"))) {
-  options(help_type = "html")
+  options_when_connected(help_type = "html")
 }
 
 use_webserver <- isTRUE(getOption("vsc.use_webserver", FALSE))
@@ -389,10 +406,11 @@ removeTaskCallback("vsc.plot")
 use_httpgd <- identical(getOption("vsc.use_httpgd", FALSE), TRUE)
 show_plot <- !identical(getOption("vsc.plot", "Two"), FALSE)
 if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
-  options(device = function(...) {
+  options_when_connected(device = function(...) {
     httpgd::hgd(
       silent = TRUE
     )
+    created_devices <<- append(created_devices, dev.cur())
     .vsc$request("httpgd", url = httpgd::hgd_url())
   })
 } else if (use_httpgd) {
@@ -417,12 +435,13 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
     }
   }
 
-  options(
+  options_when_connected(
     device = function(...) {
       pdf(NULL,
         width = null_dev_size[[1L]],
         height = null_dev_size[[2L]],
         bg = "white")
+      created_devices <<- append(created_devices, dev.cur())
       dev.control(displaylist = "enable")
     }
   )
@@ -436,7 +455,9 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
           dev_args <- getOption("vsc.dev.args")
           do.call(png, c(list(filename = plot_file), dev_args))
           on.exit({
+            cur_dev <- dev.cur()
             dev.off()
+            created_devices <<- created_devices[created_devices != cur_dev]
             cat(get_timestamp(), file = plot_lock_file)
             if (!is.na(request_tcp_connection)) {
               tryCatch({
@@ -453,12 +474,12 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
     TRUE
   }
 
-  setHook("plot.new", new_plot, "replace")
-  setHook("grid.newpage", new_plot, "replace")
+  hook_when_connected("plot.new", new_plot)
+  hook_when_connected("grid.newpage", new_plot)
 
   rebind(".External.graphics", function(...) {
     out <- .Primitive(".External.graphics")(...)
-    if (check_null_dev()) {
+    if (request_is_attached && check_null_dev()) {
       plot_updated <<- TRUE
     }
     out
@@ -646,16 +667,16 @@ if (show_view) {
     }
   }
 
-  rebind("View", show_dataview, "utils")
+  View_impl <- show_dataview
 }
 
 attach <- function(host = "127.0.0.1", port = NA) {
+  if (request_is_attached) {
+    detach()
+  }
   load_settings()
   if (rstudioapi_enabled()) {
     rstudioapi_util_env$update_addin_registry(addin_registry)
-  }
-  if (!is.na(request_tcp_connection)) {
-    detach()
   }
   if (!is.na(port)) {
     request_tcp_connection <<- socketConnection(
@@ -682,6 +703,23 @@ attach <- function(host = "127.0.0.1", port = NA) {
       token = parent$token
     ) else NULL
   )
+  if (!request_is_attached) {
+    options_name <- names(options_when_connected_list)
+    before_attach_options <<- setNames(lapply(options_name, function(option) getOption(option)), options_name)
+
+    hooks_name <- names(hooks_when_connected_list)
+    before_attach_hooks <<- setNames(lapply(hooks_name, function(hook_name) getHook(hook_name)), hooks_name)
+
+    old_view_impl <<- View
+    if (!is.null(View_impl)) {
+      rebind("View", View_impl, "utils")
+    }
+  }
+  do.call(options, options_when_connected_list)
+  mapply(function(hook_name, cb) {
+    setHook(hook_name, cb, "replace")
+  }, hooks_name, hooks_when_connected_list)
+  request_is_attached <<- TRUE
 }
 
 detach <- function() {
@@ -690,6 +728,25 @@ detach <- function() {
       close(request_tcp_connection)
       request_tcp_connection <<- NA
     }
+  if (request_is_attached) {
+    # restore previous options
+    options_name <- names(options_when_connected_list)
+    do.call(options, setNames(before_attach_options[options_name], options_name))
+
+    # restore previous hooks
+    hooks_name <- names(hooks_when_connected_list)
+    mapply(function(hook_name, cbs) {
+      setHook(hook_name, cbs, "replace")
+    }, hooks_name, before_attach_hooks[hooks_name])
+
+    if (!is.null(View_impl)) {
+      rebind("View", old_view_impl, "utils")
+    }
+
+    lapply(created_devices, function(dev) dev.off(dev))
+    created_devices <<- c()
+  }
+  request_is_attached <<- FALSE
 }
 
 path_to_uri <- function(path) {
@@ -827,7 +884,7 @@ show_page_viewer <- function(url, title = NULL, ...,
   show_webview(url = url, title = title, ..., viewer = viewer)
 }
 
-options(
+options_when_connected(
   browser = show_browser,
   viewer = show_viewer,
   page_viewer = show_page_viewer
@@ -882,7 +939,7 @@ if (rstudioapi_enabled()) {
   rstudioapi_env <- new.env(parent = rstudioapi_util_env)
   source(file.path(dir_init, "rstudioapi_util.R"), local = rstudioapi_util_env)
   source(file.path(dir_init, "rstudioapi.R"), local = rstudioapi_env)
-  setHook(
+  hook_when_connected(
     packageEvent("rstudioapi", "onLoad"),
     function(...) {
       rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
@@ -900,7 +957,7 @@ if (rstudioapi_enabled()) {
 
 print.help_files_with_topic <- function(h, ...) {
   viewer <- getOption("vsc.helpPanel", "Two")
-  if (!identical(FALSE, viewer) && length(h) >= 1 && is.character(h)) {
+  if (request_is_attached && !identical(FALSE, viewer) && length(h) >= 1 && is.character(h)) {
     file <- h[1]
     path <- dirname(file)
     dirpath <- dirname(path)
@@ -921,7 +978,7 @@ print.help_files_with_topic <- function(h, ...) {
 
 print.hsearch <- function(x, ...) {
   viewer <- getOption("vsc.helpPanel", "Two")
-  if (!identical(FALSE, viewer) && length(x) >= 1) {
+  if (request_is_attached && !identical(FALSE, viewer) && length(x) >= 1) {
     requestPath <- paste0(
       "/doc/html/Search?pattern=",
       tools:::escapeAmpersand(x$pattern),
