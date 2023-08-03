@@ -967,7 +967,6 @@ export async function processRequest(request: ISessionRequest, socket: Socket | 
             info = request.info;
             sessionDir = path.join(request.tempdir, 'vscode-R');
             workingDir = request.wd;
-            // TODO: Log and show correct TCP info here
             console.info(`[updateRequest] attach PID: ${pid}`);
             updateSessionStatusBarItem(sessionStatusBarItem);
             if (socket === null) {
