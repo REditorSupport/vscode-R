@@ -139,6 +139,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.launchAddinPicker': rstudioapi.launchAddinPicker,
 
         // workspace viewer
+        'r.workspaceViewer.detachSession': session.detach,
         'r.workspaceViewer.refreshEntry': () => rWorkspace?.refresh(),
         'r.workspaceViewer.view': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.viewItem(node.label),
         'r.workspaceViewer.remove': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.removeItem(node.label),

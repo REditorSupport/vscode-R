@@ -323,6 +323,13 @@
     ],
     "commands": [
       {
+        "command": "r.workspaceViewer.detachSession",
+        "title": "Detach Session",
+        "icon": "$(debug-disconnect)",
+        "category": "R Workspace Viewer",
+        "enablement": "rSessionActive"
+      },
+      {
         "command": "r.workspaceViewer.refreshEntry",
         "title": "Manual Refresh",
         "icon": "$(refresh)",
@@ -1364,6 +1371,11 @@
           "command": "r.workspaceViewer.refreshEntry",
           "group": "navigation@3",
           "when": "r.WorkspaceViewer:show && view == workspaceViewer"
+        },
+        {
+          "command": "r.workspaceViewer.detachSession",
+          "group": "navigation@4",
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer && !r.liveShare:isGuest"
         },
         {
           "command": "r.helpPanel.showQuickPick",

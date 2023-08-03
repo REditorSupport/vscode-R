@@ -642,3 +642,25 @@ export function uniqueEntries<T>(array: T[], isIdentical: (x: T, y: T) => boolea
     }
     return array.filter(uniqueFunction);
 }
+
+export function createWaiterForInvoker() {
+    let resolveHandle: (() => void) | null = null;
+    let wasHandledQuick = false;
+    const invoker = () => {
+        if (resolveHandle === null) {
+            wasHandledQuick = true;
+        } else {
+            resolveHandle();
+        }
+    };
+
+    const waiter = new Promise<void>((resolve) => {
+        if (wasHandledQuick) {
+            resolve();
+        } else {
+            resolveHandle = resolve;
+        }
+    });
+
+    return { invoker, waiter };
+}

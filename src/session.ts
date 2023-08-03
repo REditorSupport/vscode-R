@@ -12,7 +12,7 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
-import { config, readContent, setContext, UriIcon } from './util';
+import { config, createWaiterForInvoker, readContent, setContext, UriIcon } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { IRequest } from './liveShare/shareSession';
@@ -74,12 +74,28 @@ let activeBrowserExternalUri: Uri | undefined;
 export let incomingRequestServerAddressInfo: AddressInfo | undefined = undefined;
 export let attached = false;
 
-class AnotherSocketConnectionError extends Error {
-    finishCleaningCallback: () => void;
+enum InterruptReason {
+    ANOTHER_CONNECTION,
+    USER_REQUEST
+}
 
-    constructor (finishCleaningCallback: () => void) {
+class InterruptSocketConnectionError extends Error {
+    reason: InterruptReason;
+    finishWaiter: Promise<void>;
+    private finishInvoker: () => void;
+
+    constructor (reason: InterruptReason) {
         super();
-        this.finishCleaningCallback = finishCleaningCallback;
+
+        this.reason = reason;
+
+        const pair = createWaiterForInvoker();
+        this.finishWaiter = pair.waiter;
+        this.finishInvoker = pair.invoker;
+    }
+
+    reportFinishHandling() {
+        this.finishInvoker();
     }
 }
 
@@ -337,6 +353,17 @@ function getBrowserHtml(uri: Uri): string {
 </body>
 </html>
 `;
+}
+
+export async function detach() {
+    if (incomingRequestServerCurrentSocket === null) {
+        return;
+    }
+    // otherwise
+    
+    const interrupt = new InterruptSocketConnectionError(InterruptReason.USER_REQUEST);
+    incomingRequestServerCurrentSocket.destroy(interrupt);
+    await interrupt.finishWaiter;
 }
 
 export function refreshBrowser(): void {
@@ -835,22 +862,9 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
         if (incomingRequestServerCurrentSocket !== null) {
             console.info('Closing existing connection to the incoming request server since a new one is pending.');
 
-            let resolveHandle: (() => void) | null = null;
-            let wasHandledQuick = false;
-            const promise = new Promise<void>((resolve) => {
-                resolveHandle = resolve;
-            });
-            const callback = () => {
-                if (resolveHandle === null) {
-                    wasHandledQuick = true;
-                } else {
-                    resolveHandle();
-                }
-            };
-            incomingRequestServerCurrentSocket.destroy(new AnotherSocketConnectionError(callback));
-            if (!wasHandledQuick) {
-                await promise;
-            }
+            const interrupt = new InterruptSocketConnectionError(InterruptReason.ANOTHER_CONNECTION);
+            incomingRequestServerCurrentSocket.destroy(interrupt);
+            await interrupt.finishWaiter;
         }
 
         console.info('A new connection to the incoming request server has been established.');
@@ -893,20 +907,29 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
                 contentToProcess = requests[requests.length - 1];
             }
         } catch (err) {
-            if (err instanceof AnotherSocketConnectionError) {
-                console.error(`Closing this TCP connection since another one is pending.`);
+            if (err instanceof InterruptSocketConnectionError) {
+                switch (err.reason) {
+                    case InterruptReason.ANOTHER_CONNECTION:
+                        console.log(`Closing this TCP connection since another one is pending.`);
+                        break;
+                    case InterruptReason.USER_REQUEST:
+                        console.log(`Closing this TCP connection because of a user request.`);
+                        break;
+                }
             } else {
                 // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
                 console.error(`Error while processing TCP connection: ${err}`);
             }
 
-            void promiseSocket.end();
+            void promiseSocket.end().catch(() => {
+                // For some reason, there is an error when ending this connection, so we're ignoring the error for now
+            });
 
             await cleanupSession();
             incomingRequestServerCurrentSocket = null;
 
-            if (err instanceof AnotherSocketConnectionError) {
-                err.finishCleaningCallback();
+            if (err instanceof InterruptSocketConnectionError) {
+                err.reportFinishHandling();
             }
         }
     });
