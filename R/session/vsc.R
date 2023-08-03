@@ -878,6 +878,7 @@ show_webview <- function(url, title, ..., viewer) {
     request_browser(url = url, title = title, ..., viewer = FALSE)
   } else if (file.exists(url)) {
     file <- normalizePath(url, "/", mustWork = TRUE)
+    # TODO: On TCP connection, need to send file content via TCP and display it
     request("webview", file = file, title = title, viewer = viewer, ...)
   } else {
     stop("File not exists")
