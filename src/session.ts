@@ -855,9 +855,9 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
 
         console.info('A new connection to the incoming request server has been established.');
         incomingRequestServerCurrentSocket = socket;
+        const promiseSocket = new PromiseSocket(socket);
 
         try {
-            const promiseSocket = new PromiseSocket(socket);
             console.info('Waiting for TCP input...');
         
             let contentToProcess = '';
@@ -888,6 +888,7 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
                     //console.debug(`TCP Request received from client: ${requestContent}.`);
                     const request = JSON.parse(requestContent) as ISessionRequest;
                     await processRequest(request, socket, sessionStatusBarItem);
+                    await promiseSocket.write('req_finished\n');
                 }
                 contentToProcess = requests[requests.length - 1];
             }
@@ -898,6 +899,8 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
                 // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
                 console.error(`Error while processing TCP connection: ${err}`);
             }
+
+            void promiseSocket.end();
 
             await cleanupSession();
             incomingRequestServerCurrentSocket = null;

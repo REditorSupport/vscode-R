@@ -231,7 +231,17 @@ request <- function(command, ...) {
     auto_unbox = TRUE, na = "string", null = "null", force = TRUE)
   if (is.na(request_tcp_connection)) {
     cat(get_timestamp(), file = request_lock_file)
+  } else {
+    response <- readLines(request_tcp_connection, n = 1)
+    if (length(response) == 0) {
+      # If the server ends up the connection
+      detach(including_request_detach = FALSE)
+      return(TRUE)
+    } else if (length(response) != 1 && response != "req_finished") {
+      stop(paste("Error in connection: Malform response: \n", paste(response, collapse = "\n"), "\n"))
+    }
   }
+  FALSE
 }
 
 try_catch_timeout <- function(expr, timeout = Inf, ...) {
@@ -463,7 +473,14 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
               tryCatch({
                   plot_file_content <- readr::read_file_raw(plot_file)
                   format <- "image/png"# right now only this format is supported
-                  request("plot", format = format, plot_base64 = jsonlite::base64_enc(plot_file_content))
+                  if (request("plot", format = format, plot_base64 = jsonlite::base64_enc(plot_file_content))) {
+                    cat(stderr(),
+                      paste(
+                        "The connection to VSCode was disconnected, and it was detected only now after plotting.",
+                        "Please run the plot task again."
+                      )
+                    )
+                  }
               }, error = message)
             }
           })
@@ -646,7 +663,7 @@ if (show_view) {
           title = title, data = data, viewer = viewer, uuid = uuid)
       }
     }
-    if (is.data.frame(x) || is.matrix(x)) {
+    should_default_view <- if (is.data.frame(x) || is.matrix(x)) {
       x <- as_truncated_data(x)
       data <- dataview_table(x)
       send_data_request(data, source = "table", type = "json", fileext = ".json")
@@ -664,6 +681,9 @@ if (show_view) {
         code <- deparse(x)
       }
       send_data_request(code, source = "object", type = "R", paste0(make.names(title)), fileext = ".R")
+    }
+    if (should_default_view) {
+      old_view_impl(x, title)
     }
   }
 
@@ -722,12 +742,14 @@ attach <- function(host = "127.0.0.1", port = NA) {
   request_is_attached <<- TRUE
 }
 
-detach <- function() {
+detach <- function(including_request_detach = TRUE) {
+  if (including_request_detach) {
     request("detach")
-    if (!is.na(request_tcp_connection)) {
-      close(request_tcp_connection)
-      request_tcp_connection <<- NA
-    }
+  }
+  if (!is.na(request_tcp_connection)) {
+    close(request_tcp_connection)
+    request_tcp_connection <<- NA
+  }
   if (request_is_attached) {
     # restore previous options
     options_name <- names(options_when_connected_list)
@@ -795,7 +817,7 @@ show_browser <- function(url, title = url, ...,
     request_browser(url = url, title = title, ..., viewer = FALSE)
   } else {
     path <- sub("^file\\://", "", url)
-    if (file.exists(path)) {
+    should_default_browser <- if (file.exists(path)) {
       path <- normalizePath(path, "/", mustWork = TRUE)
       if (grepl("\\.html?$", path, ignore.case = TRUE)) {
         message(
@@ -810,6 +832,10 @@ show_browser <- function(url, title = url, ...,
       }
     } else {
       stop("File not exists")
+    }
+    if (should_default_browser) {
+      browser <- before_attach_options[["browser"]]
+      utils::browseURL(url, browser = browser)
     }
   }
 }
@@ -868,7 +894,16 @@ show_viewer <- function(url, title = NULL, ...,
       title <- deparse(expr, nlines = 1)
     }
   }
-  show_webview(url = url, title = title, ..., viewer = viewer)
+  should_default_viewer <- show_webview(url = url, title = title, ..., viewer = viewer)
+  if (should_default_viewer) {
+    # Reference: https://rstudio.github.io/rstudio-extensions/rstudio_viewer.html
+    viewer <- before_attach_options[["viewer"]]
+    if (!is.null(viewer)) {
+      viewer(url)
+    } else {
+      utils::browseURL(url)
+    }
+  }
 }
 
 show_page_viewer <- function(url, title = NULL, ...,
@@ -881,7 +916,16 @@ show_page_viewer <- function(url, title = NULL, ...,
       title <- deparse(expr, nlines = 1)
     }
   }
-  show_webview(url = url, title = title, ..., viewer = viewer)
+  should_default_page_viewer <- show_webview(url = url, title = title, ..., viewer = viewer)
+  if (should_default_page_viewer) {
+    # Reference: https://rstudio.github.io/rstudio-extensions/rstudio_viewer.html
+    page_viewer <- before_attach_options[["page_viewer"]]
+    if (!is.null(page_viewer)) {
+      page_viewer(url)
+    } else {
+      utils::browseURL(url)
+    }
+  }
 }
 
 options_when_connected(
@@ -969,7 +1013,9 @@ print.help_files_with_topic <- function(h, ...) {
       basename(file),
       ".html"
     )
-    request(command = "help", requestPath = requestPath, viewer = viewer)
+    if (request(command = "help", requestPath = requestPath, viewer = viewer)) {
+      utils:::print.help_files_with_topic(h, ...)
+    }
   } else {
     utils:::print.help_files_with_topic(h, ...)
   }
@@ -1008,7 +1054,9 @@ print.hsearch <- function(x, ...) {
         )
       }
     )
-    request(command = "help", requestPath = requestPath, viewer = viewer)
+    if (request(command = "help", requestPath = requestPath, viewer = viewer)) {
+      utils:::print.hsearch(x, ...)
+    }
   } else {
     utils:::print.hsearch(x, ...)
   }
@@ -1026,8 +1074,6 @@ print.hsearch <- function(x, ...) {
 }
 
 reg.finalizer(.GlobalEnv, function(e) {
-  # TODO: When exiting radian by EOF("CTRL+D") when coonecting to vsc by TCP,
-  #  the TCP connection is getting closed before we're able to call detach...
   tryCatch({
     detach()
   }, error = function(e) NULL)
