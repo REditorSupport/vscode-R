@@ -27,6 +27,7 @@ export type IRequest = {
     type?: string;
     title?: string;
     file?: string;
+    files_content_base64?: Record<string, string>;
     viewer?: string;
     plot?: string;
     format?: string;
@@ -152,7 +153,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
             }
             case 'webview': {
                 if (request.file && request.title && request.viewer !== undefined) {
-                    await showWebView(request.file, request.title, request.viewer);
+                    await showWebView(request.file, request.files_content_base64, request.title, request.viewer);
                 }
                 break;
             }

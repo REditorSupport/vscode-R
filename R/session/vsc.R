@@ -878,8 +878,30 @@ show_webview <- function(url, title, ..., viewer) {
     request_browser(url = url, title = title, ..., viewer = FALSE)
   } else if (file.exists(url)) {
     file <- normalizePath(url, "/", mustWork = TRUE)
-    # TODO: On TCP connection, need to send file content via TCP and display it
-    request("webview", file = file, title = title, viewer = viewer, ...)
+    file_basename <- basename(file)
+    dir <- dirname(file)
+    lib_dir <- file.path(dir, "lib")
+    if (!is.na(request_tcp_connection) && file_basename == "index.html" && file.exists(lib_dir)) {
+      # pass detailed content via TCP, instead of just give a path to HTML
+      lib_dir_absolute <- normalizePath(path.expand(lib_dir), "/", mustWork = TRUE)
+      lib_files_path_relative <- file.path(
+        "lib",
+        list.files(lib_dir_absolute, all.files = TRUE, recursive = TRUE)
+      )
+      files_path_relative <- c(lib_files_path_relative, file_basename)
+
+      files_content_base64 <- setNames(
+        lapply(files_path_relative, function(file_path) {
+          raw_content <- readr::read_file_raw(file.path(dir, file_path))
+          jsonlite::base64_enc(raw_content)
+        }),
+        files_path_relative
+      )
+      request("webview", file = file_basename, files_content_base64 = files_content_base64,
+        title = title, viewer = viewer, ...)
+    } else {
+      request("webview", file = file, title = title, viewer = viewer, ...)
+    }
   } else {
     stop("File not exists")
   }

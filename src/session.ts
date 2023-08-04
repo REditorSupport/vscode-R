@@ -4,7 +4,6 @@ import * as fs from 'fs-extra';
 import * as os from 'os';
 import * as path from 'path';
 import { Agent } from 'http';
-import * as tmp from 'tmp';
 import { AddressInfo, Server, Socket } from 'node:net';
 import { PromiseSocket } from 'promise-socket';
 import fetch from 'node-fetch';
@@ -12,7 +11,7 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
-import { config, createWaiterForInvoker, readContent, setContext, UriIcon } from './util';
+import { config, createTempDir2, createTempFile, createWaiterForInvoker, readContent, setContext, UriIcon } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { IRequest } from './liveShare/shareSession';
@@ -383,12 +382,29 @@ export function openExternalBrowser(): void {
     }
 }
 
-export async function showWebView(file: string, title: string, viewer: string | boolean): Promise<void> {
+export async function showWebView(file: string, files_content_base64: Record<string, string> | undefined,
+    title: string, viewer: string | boolean): Promise<void> {
     console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
     if (viewer === false) {
         void env.openExternal(Uri.file(file));
     } else {
-        const dir = path.dirname(file);
+        let dir: string;
+        if (files_content_base64 !== undefined) {
+            dir = (await createTempDir2()).path;
+            const subdirs = new Set(Object.keys(files_content_base64).map((relativePath) => path.dirname(relativePath)));
+            subdirs.delete('');
+            subdirs.delete('.');
+            await Promise.all(
+                Array.from(subdirs).map((subdir) => fs.mkdir(path.join(dir, subdir), { recursive: true }))
+            );
+            await Promise.all(Object.entries(files_content_base64).map(async ([realtivePath, contentBase64]) => {
+                const arrayData = Buffer.from(contentBase64, 'base64');
+                return fs.writeFile(path.join(dir, realtivePath), arrayData);
+            }));
+            file = path.join(dir, file);
+        } else {
+            dir = path.dirname(file);
+        }
         const webviewDir = extensionContext.asAbsolutePath('html/session/webview/');
         const panel = window.createWebviewPanel('webview', title,
             {
@@ -945,18 +961,6 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
     return server;
 }
 
-const create_tmp_file: (options: tmp.FileOptions) => Promise<{ name: string, fd: number, removeCallback: () => void }> =
-    (options) => new Promise((resolve, reject) => {
-        tmp.file(options, (err, name, fd, removeCallback) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve({ name, fd, removeCallback });
-            }
-        });
-    }
-    );
-
 export async function processRequest(request: ISessionRequest, socket: Socket | null, sessionStatusBarItem: StatusBarItem) {
     switch (request.command) {
         case 'help': {
@@ -1033,7 +1037,7 @@ export async function processRequest(request: ISessionRequest, socket: Socket | 
         }
         case 'webview': {
             if (request.file && request.title && request.viewer !== undefined) {
-                await showWebView(request.file, request.title, request.viewer);
+                await showWebView(request.file, request.files_content_base64, request.title, request.viewer);
             }
             break;
         }
@@ -1051,7 +1055,7 @@ export async function processRequest(request: ISessionRequest, socket: Socket | 
             }
 
             if (request.plot_base64) {
-                const { name: filePath, fd } = await create_tmp_file({ postfix: '.png' });
+                const { name: filePath, fd } = await createTempFile({ postfix: '.png' });
                 const arrayData = Buffer.from(request.plot_base64, 'base64');
                 await fs.writeFile(fd, arrayData);
                 showPlot(filePath);

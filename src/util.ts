@@ -2,6 +2,7 @@
 
 import { existsSync, PathLike, readFile } from 'fs-extra';
 import * as fs from 'fs';
+import * as tmp from 'tmp';
 import winreg = require('winreg');
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -664,3 +665,27 @@ export function createWaiterForInvoker() {
 
     return { invoker, waiter };
 }
+
+export const createTempFile: (options: tmp.FileOptions) => Promise<{ name: string, fd: number, removeCallback: () => void }> =
+    (options) => new Promise((resolve, reject) => {
+        tmp.file(options, (err, name, fd, removeCallback) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve({ name, fd, removeCallback });
+            }
+        });
+    }
+    );
+
+export const createTempDir2: () => Promise<{ path: string, removeCallback: () => void }> =
+    () => new Promise((resolve, reject) => {
+        tmp.dir((err, path, removeCallback) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve({ path, removeCallback });
+            }
+        });
+    }
+    );
