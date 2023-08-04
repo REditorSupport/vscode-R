@@ -1,7 +1,6 @@
 'use strict';
 
 import * as path from 'path';
-import * as os from 'os';
 import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
@@ -11,7 +10,7 @@ import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
 import { cleanupSession, attached, incomingRequestServerAddressInfo } from './session';
-import { config, delay, getRterm } from './util';
+import { config, delay, getRterm, hostnameOfListeningAddress } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
 export let rTerm: vscode.Terminal | undefined = undefined;
@@ -131,7 +130,8 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
             R_PROFILE_USER: newRprofile,
             VSCODE_INIT_R: initR,
             VSCODE_WATCHER_DIR: homeExtDir(),
-            VSCODE_ATTACH_HOST: os.hostname(),
+            VSCODE_ATTACH_HOST: incomingRequestServerAddressInfo === undefined ? undefined :
+                hostnameOfListeningAddress(incomingRequestServerAddressInfo),
             VSCODE_ATTACH_PORT: incomingRequestServerAddressInfo?.port?.toString(),
         };
     }

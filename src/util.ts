@@ -2,6 +2,7 @@
 
 import { existsSync, PathLike, readFile } from 'fs-extra';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as tmp from 'tmp';
 import winreg = require('winreg');
 import * as path from 'path';
@@ -10,6 +11,7 @@ import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
 import { extensionContext } from './extension';
 import { randomBytes } from 'crypto';
+import { AddressInfo } from 'node:net';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -689,3 +691,6 @@ export const createTempDir2: () => Promise<{ path: string, removeCallback: () =>
         });
     }
     );
+
+export const hostnameOfListeningAddress = (addressInfo: AddressInfo) =>
+    (addressInfo.address === '127.0.0.1') ? '127.0.0.1' : os.hostname();

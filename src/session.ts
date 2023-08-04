@@ -11,7 +11,7 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
-import { config, createTempDir2, createTempFile, createWaiterForInvoker, readContent, setContext, UriIcon } from './util';
+import { config, createTempDir2, createTempFile, createWaiterForInvoker, hostnameOfListeningAddress, readContent, setContext, UriIcon } from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { IRequest } from './liveShare/shareSession';
@@ -155,7 +155,9 @@ export function attachActive(): void {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
         if (incomingRequestServerAddressInfo) {
-            void runTextInTerm(`.vsc.attach(host=${JSON.stringify(os.hostname())}, port=${incomingRequestServerAddressInfo.port}L)`);
+            void runTextInTerm(`.vsc.attach(host=${
+                JSON.stringify(hostnameOfListeningAddress(incomingRequestServerAddressInfo))
+            }, port=${incomingRequestServerAddressInfo.port}L)`);
         } else {
             void runTextInTerm('.vsc.attach()');
         }
