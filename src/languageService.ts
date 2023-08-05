@@ -87,7 +87,7 @@ export class LanguageService implements Disposable {
         const commandExp = getInvokeCommand() ?? ''; // TODO: Abort gracefully
         const command = commandExp.replaceAll('${rpath}', rPath).replaceAll('${r.lsp.args}', rLspArgs).replaceAll('${r.lsp.bootstrapFile}', rScriptPath);
 
-        console.log("Language Server Command: " + command)
+        console.log('Language Server Command: ' + command);
 
         const tcpServerOptions = () => new Promise<DisposableProcess | StreamInfo>((resolve, reject) => {
             // Use a TCP socket because of problems with blocking STDIO
