@@ -10,7 +10,7 @@ import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
 import { cleanupSession } from './session';
-import { config, delay, getRterm } from './util';
+import { config, delay, getRterm, getWorkspaceFolder } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
 export let rTerm: vscode.Terminal | undefined = undefined;
@@ -115,12 +115,17 @@ export async function runFromLineToEnd(): Promise<void>  {
 }
 
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
-    const termPath = await getRterm();
+    const workspaceFolderPath = getWorkspaceFolder()?.uri.fsPath;
+    const termPathMaybeRelative = await getRterm();
+    const termPath: string | undefined = (workspaceFolderPath && termPathMaybeRelative) ?
+        path.resolve(workspaceFolderPath, termPathMaybeRelative) :
+        termPathMaybeRelative;
     const shellArgs: string[] = config().get('rterm.option') || [];
     const termOptions: vscode.TerminalOptions = {
         name: 'R Interactive',
         shellPath: termPath,
         shellArgs: shellArgs,
+        cwd: workspaceFolderPath,
     };
     const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'session', 'profile.R'));
     const initR = extensionContext.asAbsolutePath(path.join('R', 'session','init.R'));
