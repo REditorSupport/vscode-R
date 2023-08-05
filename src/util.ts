@@ -118,7 +118,7 @@ export async function getRterm(): Promise<string | undefined> {
 
 export function getInvokeCommand(): string | undefined {
     const configEntry = getOSConfigEntry('lsp.invokeCommand');
-    let invokeCommand = config().get<string>(configEntry);
+    const invokeCommand = config().get<string>(configEntry);
 
     if (invokeCommand !== '') {
         return invokeCommand;
