@@ -10,7 +10,7 @@ import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
 import { cleanupSession } from './session';
-import { config, delay, getRterm, getWorkspaceFolder } from './util';
+import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
 export let rTerm: vscode.Terminal | undefined = undefined;
@@ -115,7 +115,7 @@ export async function runFromLineToEnd(): Promise<void>  {
 }
 
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
-    const workspaceFolderPath = getWorkspaceFolder()?.uri.fsPath;
+    const workspaceFolderPath = getCurrentWorkspaceFolder()?.uri.fsPath;
     const termPathMaybeRelative = await getRterm();
     const termPath: string | undefined = (workspaceFolderPath && termPathMaybeRelative) ?
         path.resolve(workspaceFolderPath, termPathMaybeRelative) :
