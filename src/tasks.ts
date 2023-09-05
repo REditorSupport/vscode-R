@@ -48,6 +48,16 @@ const rtasks: RTaskInfo[] = [
     {
         definition: {
             type: TYPE,
+            code: ['testthat::test_file("${file}")']
+        },
+        name: 'Test (Current File)',
+        group: vscode.TaskGroup.Test,
+        problemMatchers: '$testthat'
+    },
+
+    {
+        definition: {
+            type: TYPE,
             code: ['devtools::build()']
         },
         name: 'Build',
