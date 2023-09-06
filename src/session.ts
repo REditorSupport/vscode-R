@@ -133,19 +133,32 @@ export function deploySessionWatcher(extensionPath: string): void {
 
 export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
     console.info('[startRequestWatcher] Starting');
-    requestFile = path.join(homeExtDir(), 'request.log');
-    requestLockFile = path.join(homeExtDir(), 'request.lock');
-    requestTimeStamp = 0;
-    responseTimeStamp = 0;
-    if (!fs.existsSync(requestLockFile)) {
-        fs.createFileSync(requestLockFile);
+    
+    try {
+        requestFile = path.join(homeExtDir(), 'request.log');
+        requestLockFile = path.join(homeExtDir(), 'request.lock');
+        requestTimeStamp = 0;
+        responseTimeStamp = 0;
+        if (!fs.existsSync(requestLockFile)) {
+            fs.createFileSync(requestLockFile);
+        }
+        fs.watch(requestLockFile, {}, () => {
+            void updateRequest(sessionStatusBarItem);
+        });
+    } catch (e) {
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+        console.error(`Error in request file creating and watching: ${e}`);
+        // TODO: Handle better
     }
-    fs.watch(requestLockFile, {}, () => {
-        void updateRequest(sessionStatusBarItem);
-    });
 
-    if (config().get<boolean>('sessionWatcherTcpServer')) {
-        void startIncomingRequestServer(sessionStatusBarItem);
+    try {
+        if (config().get<boolean>('sessionWatcherTcpServer')) {
+            void startIncomingRequestServer(sessionStatusBarItem);
+        }
+    } catch (e) {
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+        console.error(`Error in incoming request server setup: ${e}`);
+        // TODO: Handle better
     }
 
     console.info('[startRequestWatcher] Done');
@@ -874,6 +887,8 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
 }
 
 function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
+    console.log('Trying to start incoming request server now.');
+
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
     const incomingRequestServer = new Server(async (socket: Socket) => {
         console.info(`Incoming connection to the request server from ${addressToStr(socket.address() as AddressInfo)}`);
@@ -952,8 +967,11 @@ function startIncomingRequestServer(sessionStatusBarItem: StatusBarItem) {
         }
     });
 
-    const server = incomingRequestServer.listen(config().get<number>('sessionWatcherTcpServerPort'),
-        config().get<string>('sessionWatcherTcpServerHostName'), function() {
+    const hostname = config().get<string>('sessionWatcherTcpServerHostName');
+    const port = config().get<number>('sessionWatcherTcpServerPort');
+    console.log(`Trying opening connection on ${hostname ?? '-'}:${port ?? '-'}`);
+    const server = incomingRequestServer.listen(port,
+        hostname, function() {
             incomingRequestServerAddressInfo = server.address() as AddressInfo;
             console.info(`Started listening on ${addressToStr(incomingRequestServerAddressInfo)}`);
 
