@@ -1468,6 +1468,11 @@
           "default": [],
           "markdownDescription": "Additional library paths to launch R background processes (R languageserver, help server, etc.). These paths will be appended to `.libPaths()` on process startup. It could be useful for projects with [renv](https://rstudio.github.io/renv/index.html) enabled."
         },
+        "r.useRenvLibPath" : {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Use renv library paths to launch R background processes (R languageserver, help server, etc.)."
+        },
         "r.lsp.enabled": {
           "type": "boolean",
           "default": true,
