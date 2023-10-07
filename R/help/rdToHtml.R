@@ -1,4 +1,3 @@
-
 #' Converts an .Rd file to HTML (output is printed to stdout)
 #'
 #' Execute this with the following trailing commandline args:
