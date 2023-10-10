@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "R Extension for Visual Studio Code",
-  "version": "2.8.1",
+  "version": "2.8.2",
   "author": "REditorSupport",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "REditorSupport",
@@ -1480,6 +1480,11 @@
           "default": [],
           "markdownDescription": "Additional library paths to launch R background processes (R languageserver, help server, etc.). These paths will be appended to `.libPaths()` on process startup. It could be useful for projects with [renv](https://rstudio.github.io/renv/index.html) enabled."
         },
+        "r.useRenvLibPath" : {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Use renv library paths to launch R background processes (R languageserver, help server, etc.)."
+        },
         "r.lsp.enabled": {
           "type": "boolean",
           "default": true,
@@ -2108,7 +2113,7 @@
         ],
         "pattern": [
           {
-            "regexp": "^(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):?(\\d+)?\\):\\s(.*)",
+            "regexp": "^[-─ ]*(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):?(\\d+)?\\):\\s(.*)",
             "file": 2,
             "line": 3,
             "column": 4,
@@ -2174,7 +2179,7 @@
     "webpack-cli": "^4.7.2"
   },
   "dependencies": {
-    "ag-grid-community": "^30.0.0",
+    "ag-grid-community": "^30.2.0",
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
     "ejs": "^3.1.7",
@@ -2187,7 +2192,7 @@
     "node-fetch": "^2.6.7",
     "promise-socket": "^7.0.0",
     "tmp": "^0.2.1",
-    "vscode-languageclient": "^8.1.0",
+    "vscode-languageclient": "^9.0.1",
     "vsls": "^1.0.4753",
     "winreg": "^1.2.4"
   }

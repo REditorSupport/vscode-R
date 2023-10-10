@@ -7,32 +7,34 @@ dir_init <- getwd()
 # This function is run at the beginning of R's startup sequence
 # Code that is meant to be run at the end of the startup should go in `init_last`
 init_first <- function() {
-  # return early if not a vscode term session
-  if (
-    !interactive()
-    || Sys.getenv("RSTUDIO") != ""
-    || Sys.getenv("TERM_PROGRAM") != "vscode"
-  ) {
-    return()
-  }
+    # return early if not a vscode term session
+    if (
+        !interactive() ||
+            Sys.getenv("RSTUDIO") != "" ||
+            Sys.getenv("TERM_PROGRAM") != "vscode"
+    ) {
+        return()
+    }
 
-  # check requried packages
-  required_packages <- c("jsonlite", "rlang", "readr")
-  missing_packages <- required_packages[
-    !vapply(required_packages, requireNamespace,
-      logical(1L), quietly = TRUE)
-  ]
+    # check requried packages
+    required_packages <- c("jsonlite", "rlang", "readr")
+    missing_packages <- required_packages[
+        !vapply(required_packages, requireNamespace,
+            logical(1L),
+            quietly = TRUE
+        )
+    ]
 
-  if (length(missing_packages)) {
-    message(
-      "VSCode R Session Watcher requires ",
-      toString(missing_packages), ". ",
-      "Please install manually in order to use VSCode-R."
-    )
-  } else {
-    # Initialize vsc utils after loading other default packages
-    assign(".First.sys", init_last, envir = globalenv())
-  }
+    if (length(missing_packages)) {
+        message(
+            "VSCode R Session Watcher requires ",
+            toString(missing_packages), ". ",
+            "Please install manually in order to use VSCode-R."
+        )
+    } else {
+        # Initialize vsc utils after loading other default packages
+        assign(".First.sys", init_last, envir = globalenv())
+    }
 }
 
 old.First.sys <- .First.sys
@@ -42,16 +44,16 @@ old.First.sys <- .First.sys
 # Will be assigned to and called from the global environment,
 # Will be run with wd being the user's working directory (!)
 init_last <- function() {
-  old.First.sys()
+    old.First.sys()
 
-  source(file.path(dir_init, "init_late.R"), chdir = TRUE)
+    source(file.path(dir_init, "init_late.R"), chdir = TRUE)
 
-  # remove this function from globalenv()
-  suppressWarnings(
-    rm(".First.sys", envir = globalenv())
-  )
+    # remove this function from globalenv()
+    suppressWarnings(
+        rm(".First.sys", envir = globalenv())
+    )
 
-  invisible()
+    invisible()
 }
 
 init_first()

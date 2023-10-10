@@ -59,6 +59,7 @@ export class LanguageService implements Disposable {
         let client: LanguageClient;
 
         const debug = config.get<boolean>('lsp.debug');
+        const useRenvLibPath = config.get<boolean>('useRenvLibPath') ?? false;
         const rPath = await getRpath() || ''; // TODO: Abort gracefully
         if (debug) {
             console.log(`R path: ${rPath}`);
@@ -67,6 +68,7 @@ export class LanguageService implements Disposable {
         const env = Object.create(process.env) as NodeJS.ProcessEnv;
         env.VSCR_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
         env.VSCR_LIB_PATHS = getRLibPaths();
+        env.VSCR_USE_RENV_LIB_PATH = useRenvLibPath ? 'TRUE' : 'FALSE';
 
         const lang = config.get<string>('lsp.lang');
         if (lang !== '') {
