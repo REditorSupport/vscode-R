@@ -18,7 +18,7 @@ let info: IRequest['info'];
 // Used to keep track of shared browsers
 export const browserDisposables: { Disposable: vscode.Disposable, url: string, name: string }[] = [];
 
-export type IRequest = {
+export interface IRequest {
     command: string;
     time?: string;
     pid?: string;
@@ -26,6 +26,7 @@ export type IRequest = {
     source?: string;
     type?: string;
     title?: string;
+    data?: string;
     file?: string;
     files_content_base64?: Record<string, string>;
     viewer?: string;
@@ -46,17 +47,7 @@ export type IRequest = {
         command: string,
         start_time: string
     };
-} & (
-    {
-        coomad: 'dataview';
-        type: 'json';
-        data: object;
-    } | {
-        coomad: 'dataview';
-        type: 'txt' | 'R';
-        data: string;
-    }
-)
+}
 
 export function initGuest(context: vscode.ExtensionContext): void {
     // create status bar item that contains info about the *guest* session watcher
