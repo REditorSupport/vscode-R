@@ -4,6 +4,18 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.8.2](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.2)
+
+Enhancements:
+
+* Update built-in function match regex. (#1431, thanks @MichaelChirico)
+* Add `r.useRenvLibPath` setting to opt in adding `renv` package cache to `.libPaths` when R processes (language server, help server, etc.) start up. (#1423, thanks @nateybear)
+* Add a VScode task to run `testthat::test_file()`` on the currently open file. (#1415, thanks @gowerc)
+* `r.rterm.*` settings now accept paths relative to the current workspace folder to support customized commands
+to create R terminals. (#1398, thanks @Tal500)
+* Upgrade ag-grid-community to v30.2.0 (#1434)
+* Upgrade vscode-languageclient to v9.0.1 (#1435)
+
 ## [2.8.1](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.1)
 
 Enhancements:

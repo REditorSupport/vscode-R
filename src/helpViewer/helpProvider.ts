@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
-import { catchAsError, DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
+import { catchAsError, config, DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
 
 export interface RHelpProviderOptions {
     // path of the R executable
@@ -62,7 +62,8 @@ export class HelpProvider {
             env: {
                 ...process.env,
                 VSCR_LIB_PATHS: getRLibPaths(),
-                VSCR_LIM: lim
+                VSCR_LIM: lim,
+                VSCR_USE_RENV_LIB_PATH: config().get<boolean>('useRenvLibPath') ? 'TRUE' : 'FALSE'
             },
         };
 
@@ -251,7 +252,8 @@ export class AliasProvider {
             env: {
                 ...process.env,
                 VSCR_LIB_PATHS: getRLibPaths(),
-                VSCR_LIM: lim
+                VSCR_LIM: lim,
+                VSCR_USE_RENV_LIB_PATH: config().get<boolean>('useRenvLibPath') ? 'TRUE' : 'FALSE'
             }
         };
 

@@ -39,7 +39,8 @@ insertText <- function(location, text, id = NULL) {
         ))
     } else if (missing(location)) {
         ## handling insertText(text = "text")
-        return(invisible(rstudioapi_call("replace_text_in_current_selection",
+        return(invisible(rstudioapi_call(
+            "replace_text_in_current_selection",
             text = text,
             id = id
         )))
