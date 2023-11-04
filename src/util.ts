@@ -1,5 +1,6 @@
 'use strict';
 
+import { homedir } from 'os';
 import { existsSync, PathLike, readFile } from 'fs-extra';
 import * as fs from 'fs';
 import winreg = require('winreg');
@@ -12,6 +13,40 @@ import { randomBytes } from 'crypto';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
+}
+
+function substituteVariables(str: string) {
+    let result = str;
+
+    if (str.includes('${userHome}')) {
+        const userHome = homedir();
+        if (userHome) {
+            result = str.replaceAll('${userHome}', userHome);
+        }
+    }
+
+    if (str.includes('${workspaceFolder}')) {
+        const workspaceFolderPath = getCurrentWorkspaceFolder()?.uri.fsPath;
+        if (workspaceFolderPath) {
+            result = str.replaceAll('${workspaceFolder}', workspaceFolderPath);
+        }
+    }
+
+    if (str.includes('${fileWorkspaceFolder}')) {
+        const workspaceFolderPath = getActiveFileWorkspaceFolder()?.uri.fsPath;
+        if (workspaceFolderPath) {
+            result = str.replaceAll('${fileWorkspaceFolder}', workspaceFolderPath);
+        }
+    }
+
+    if (str.includes('${fileDirname}')) {
+        const activeFilePath = vscode.window.activeTextEditor?.document.uri.fsPath;
+        if (activeFilePath) {
+            result = str.replaceAll('${fileDirname}', path.dirname(activeFilePath));
+        }
+    }
+
+    return result;
 }
 
 function getRfromEnvPath(platform: string) {
@@ -79,6 +114,7 @@ export async function getRpath(quote = false, overwriteConfig?: string): Promise
     // try the os-specific config entry for the rpath:
     const configEntry = getRPathConfigEntry();
     rpath ||= config().get<string>(configEntry);
+    rpath &&= substituteVariables(rpath);
 
     // read from path/registry:
     rpath ||= await getRpathFromSystem();
@@ -106,7 +142,8 @@ export async function getRpath(quote = false, overwriteConfig?: string): Promise
 export async function getRterm(): Promise<string | undefined> {
     const configEntry = getRPathConfigEntry(true);
     let rpath = config().get<string>(configEntry);
-
+    rpath &&= substituteVariables(rpath);
+    console.log(rpath);
     rpath ||= await getRpathFromSystem();
 
     if (rpath !== '') {
@@ -147,15 +184,19 @@ export function checkIfFileExists(filePath: string): boolean {
     return existsSync(filePath);
 }
 
+function getActiveFileWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
+    const currentDocument = vscode.window.activeTextEditor;
+    if (currentDocument !== undefined) {
+        return vscode.workspace.getWorkspaceFolder(currentDocument.document.uri);
+    }
+}
+
 export function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
     if (vscode.workspace.workspaceFolders !== undefined) {
         if (vscode.workspace.workspaceFolders.length === 1) {
             return vscode.workspace.workspaceFolders[0];
         } else if (vscode.workspace.workspaceFolders.length > 1) {
-            const currentDocument = vscode.window.activeTextEditor;
-            if (currentDocument !== undefined) {
-                return vscode.workspace.getWorkspaceFolder(currentDocument.document.uri);
-            }
+            return getActiveFileWorkspaceFolder() || vscode.workspace.workspaceFolders[0];
         }
     }
 
