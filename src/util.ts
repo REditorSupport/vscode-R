@@ -143,7 +143,6 @@ export async function getRterm(): Promise<string | undefined> {
     const configEntry = getRPathConfigEntry(true);
     let rpath = config().get<string>(configEntry);
     rpath &&= substituteVariables(rpath);
-    console.log(rpath);
     rpath ||= await getRpathFromSystem();
 
     if (rpath !== '') {
