@@ -15,36 +15,27 @@ export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
 }
 
+function substituteVariable(str: string, key: string, getValue: () => string | undefined) {
+    if (str.includes(key)) {
+        const value = getValue();
+        if (value) {
+            return str.replaceAll(key, value);
+        }
+    }
+    return str;
+}
+
 function substituteVariables(str: string) {
     let result = str;
-
-    if (str.includes('${userHome}')) {
-        const userHome = homedir();
-        if (userHome) {
-            result = str.replaceAll('${userHome}', userHome);
-        }
-    }
-
-    if (str.includes('${workspaceFolder}')) {
-        const workspaceFolderPath = getCurrentWorkspaceFolder()?.uri.fsPath;
-        if (workspaceFolderPath) {
-            result = str.replaceAll('${workspaceFolder}', workspaceFolderPath);
-        }
-    }
-
-    if (str.includes('${fileWorkspaceFolder}')) {
-        const workspaceFolderPath = getActiveFileWorkspaceFolder()?.uri.fsPath;
-        if (workspaceFolderPath) {
-            result = str.replaceAll('${fileWorkspaceFolder}', workspaceFolderPath);
-        }
-    }
-
-    if (str.includes('${fileDirname}')) {
+    result = substituteVariable(result, '${userHome}', () => homedir());
+    result = substituteVariable(result, '${workspaceFolder}', () => getCurrentWorkspaceFolder()?.uri.fsPath);
+    result = substituteVariable(result, '${fileWorkspaceFolder}', () => getActiveFileWorkspaceFolder()?.uri.fsPath);
+    result = substituteVariable(result, '${fileDirname}', () => {
         const activeFilePath = vscode.window.activeTextEditor?.document.uri.fsPath;
         if (activeFilePath) {
-            result = str.replaceAll('${fileDirname}', path.dirname(activeFilePath));
+            return path.dirname(activeFilePath);
         }
-    }
+    });
 
     return result;
 }
