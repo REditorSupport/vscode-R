@@ -1422,32 +1422,32 @@
         "r.rpath.windows": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable to launch R background processes (Windows). Must be \"vanilla\" R, not radian etc.!"
+          "markdownDescription": "Path to an R executable to launch R background processes (Windows). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rpath.mac": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable to launch R background processes (macOS). Must be \"vanilla\" R, not radian etc.!"
+          "markdownDescription": "Path to an R executable to launch R background processes (macOS). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rpath.linux": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable to launch R background processes (Linux). Must be \"vanilla\" R, not radian etc.!"
+          "markdownDescription": "Path to an R executable to launch R background processes (Linux). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rterm.windows": {
           "type": "string",
           "default": "",
-          "description": "R path for interactive terminals (Windows). Can also be radian etc."
+          "markdownDescription": "R path for interactive terminals (Windows). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rterm.mac": {
           "type": "string",
           "default": "",
-          "description": "R path for interactive terminals (macOS). Can also be radian etc."
+          "markdownDescription": "R path for interactive terminals (macOS). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rterm.linux": {
           "type": "string",
           "default": "",
-          "description": "R path for interactive terminals (Linux). Can also be radian etc."
+          "markdownDescription": "R path for interactive terminals (Linux). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rterm.option": {
           "type": "array",
