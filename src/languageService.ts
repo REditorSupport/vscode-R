@@ -4,7 +4,7 @@ import * as net from 'net';
 import { URL } from 'url';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn } from './util';
+import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables } from './util';
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 
@@ -84,7 +84,7 @@ export class LanguageService implements Disposable {
 
         const rScriptPath = extensionContext.asAbsolutePath('R/languageServer.R');
         const options = { cwd: cwd, env: env };
-        const args = (config.get<string[]>('lsp.args') ?? []).concat(
+        const args = (config.get<string[]>('lsp.args')?.map(substituteVariables) ?? []).concat(
             '--silent',
             '--slave',
             '--no-save',

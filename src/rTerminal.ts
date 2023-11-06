@@ -117,7 +117,7 @@ export async function runFromLineToEnd(): Promise<void>  {
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     const workspaceFolderPath = getCurrentWorkspaceFolder()?.uri.fsPath;
     const termPath = await getRterm();
-    const shellArgs: string[] = config().get('rterm.option') || [];
+    const shellArgs: string[] = config().get<string[]>('rterm.option')?.map(util.substituteVariables) || [];
     const termOptions: vscode.TerminalOptions = {
         name: 'R Interactive',
         shellPath: termPath,

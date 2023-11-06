@@ -25,18 +25,19 @@ function substituteVariable(str: string, key: string, getValue: () => string | u
     return str;
 }
 
-function substituteVariables(str: string) {
+export function substituteVariables(str: string): string {
     let result = str;
-    result = substituteVariable(result, '${userHome}', () => homedir());
-    result = substituteVariable(result, '${workspaceFolder}', () => getCurrentWorkspaceFolder()?.uri.fsPath);
-    result = substituteVariable(result, '${fileWorkspaceFolder}', () => getActiveFileWorkspaceFolder()?.uri.fsPath);
-    result = substituteVariable(result, '${fileDirname}', () => {
-        const activeFilePath = vscode.window.activeTextEditor?.document.uri.fsPath;
-        if (activeFilePath) {
-            return path.dirname(activeFilePath);
-        }
-    });
-
+    if (str.includes('${')) {
+        result = substituteVariable(result, '${userHome}', () => homedir());
+        result = substituteVariable(result, '${workspaceFolder}', () => getCurrentWorkspaceFolder()?.uri.fsPath);
+        result = substituteVariable(result, '${fileWorkspaceFolder}', () => getActiveFileWorkspaceFolder()?.uri.fsPath);
+        result = substituteVariable(result, '${fileDirname}', () => {
+            const activeFilePath = vscode.window.activeTextEditor?.document.uri.fsPath;
+            if (activeFilePath) {
+                return path.dirname(activeFilePath);
+            }
+        });
+    }
     return result;
 }
 
