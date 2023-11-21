@@ -329,7 +329,7 @@ export async function getCranUrl(path: string = '', cwd?: string | URL): Promise
 }
 
 export function getRLibPaths(): string | undefined {
-    return config().get<string[]>('libPaths')?.join('\n');
+    return config().get<string[]>('libPaths')?.map(substituteVariables).join('\n');
 }
 
 // executes an R command returns its output to stdout
