@@ -206,6 +206,7 @@ export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
                 
                 // isChunkEndLine looks for `# %%` in `.R` files, so if found, then need to go back one line to mark end of code chunk. 
                 if (isRDoc && !isRDocAndFinalLine) {
+                    chunkEndLine = chunkEndLine - 1;
                     line = line - 1;
                 }
 
