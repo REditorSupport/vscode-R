@@ -31,12 +31,19 @@ function isChunkEndLine(text: string, isRDoc: boolean) {
     }
 }
 
-function getChunkLanguage(text: string) {
+function getChunkLanguage(text: string, isRDoc: boolean = false) {
+    if (isRDoc) {
+        return 'r';
+    }  
     return text.replace(/^\s*```+\s*\{(\w+)\s*.*\}\s*$/g, '$1').toLowerCase();
 }
 
-function getChunkOptions(text: string) {
-    return text.replace(/^\s*```+\s*\{\w+\s*,?\s*(.*)\s*\}\s*$/g, '$1');
+function getChunkOptions(text: string, isRDoc: boolean = false) {
+    if (isRDoc) {
+        return text.replace(/^#+\s*%%/g, '');
+    } else {
+        return text.replace(/^\s*```+\s*\{\w+\s*,?\s*(.*)\s*\}\s*$/g, '$1');
+    }
 }
 
 function getChunkEval(chunkOptions: string) {
@@ -195,7 +202,7 @@ export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
                 chunkId++;
                 chunkStartLine = line;
                 chunkLanguage = getChunkLanguage(lines[line]);
-                chunkOptions = getChunkOptions(lines[line]);
+                chunkOptions = getChunkOptions(lines[line], isRDoc);
                 chunkEval = getChunkEval(chunkOptions);
             }
         } else {
