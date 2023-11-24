@@ -25,7 +25,8 @@ function isChunkStartLine(text: string, isRDoc: boolean) {
 
 function isChunkEndLine(text: string, isRDoc: boolean) {
     if (isRDoc) {
-        return (isRChunkLine(text));
+        const isSectionHeader = text.match(/^#+\s*.*[-#+=*]{4,}/g);
+        return (isRChunkLine(text) || isSectionHeader);
     } else {
         return (!!text.match(/^\s*```+\s*$/g));
     }
