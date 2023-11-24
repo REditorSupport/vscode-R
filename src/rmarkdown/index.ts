@@ -191,6 +191,7 @@ export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
     let chunkId = 0;  // One-based index
     let chunkStartLine: number | undefined = undefined;
     let chunkEndLine: number | undefined = undefined;
+    let codeEndLine: number | undefined = undefined;
     let chunkLanguage: string | undefined = undefined;
     let chunkOptions: string | undefined = undefined;
     let chunkEval: boolean | undefined = undefined;
@@ -210,20 +211,22 @@ export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
             const isRDocAndFinalLine = (isRDoc && line === lines.length - 1);
             if (isChunkEndLine(lines[line], isRDoc) || isRDocAndFinalLine) {
                 chunkEndLine = line;
+                codeEndLine = line - 1;
                 
                 // isChunkEndLine looks for `# %%` in `.R` files, so if found, then need to go back one line to mark end of code chunk. 
                 if (isRDoc && !isRDocAndFinalLine) {
                     chunkEndLine = chunkEndLine - 1;
+                    codeEndLine = chunkEndLine;
                     line = line - 1;
                 }
-
+                
                 const chunkRange = new vscode.Range(
                     new vscode.Position(chunkStartLine, 0),
                     new vscode.Position(line, lines[line].length)
                 );
                 const codeRange = new vscode.Range(
                     new vscode.Position(chunkStartLine + 1, 0),
-                    new vscode.Position(line - 1, lines[line - 1].length)
+                    new vscode.Position(codeEndLine, lines[codeEndLine].length)
                 );
 
                 chunks.push({
