@@ -47,6 +47,7 @@
     "onCommand:r.runSelectionInActiveTerm",
     "onCommand:r.selectCurrentChunk",
     "onCommand:r.runCurrentChunk",
+    "onCommand:r.runCurrentChunkAndMove",
     "onCommand:r.runPreviousChunk",
     "onCommand:r.runNextChunk",
     "onCommand:r.runAboveChunks",
@@ -567,6 +568,11 @@
         "command": "r.runCurrentChunk"
       },
       {
+        "title": "Run Current Chunk and Move to Next Chunk",
+        "category": "R",
+        "command": "r.runCurrentChunkAndMove"
+      },
+      {
         "title": "Run Previous Chunk",
         "category": "R",
         "command": "r.runPreviousChunk"
@@ -938,13 +944,13 @@
         "command": "r.runCurrentChunk",
         "key": "Ctrl+shift+enter",
         "mac": "cmd+shift+enter",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
+        "when": "editorTextFocus && (editorLangId == 'rmd' || editorLangId == 'r')"
       },
       {
         "command": "r.runAboveChunks",
         "key": "Ctrl+alt+p",
         "mac": "cmd+alt+p",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
+        "when": "editorTextFocus && (editorLangId == 'rmd' || editorLangId == 'r')"
       },
       {
         "command": "r.runSource",
@@ -1523,6 +1529,7 @@
             "enum": [
               "r.selectCurrentChunk",
               "r.runCurrentChunk",
+              "r.runCurrentChunkAndMove",
               "r.runAboveChunks",
               "r.runCurrentAndBelowChunks",
               "r.runBelowChunks",
