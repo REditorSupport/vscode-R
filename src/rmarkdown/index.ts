@@ -1,478 +1,138 @@
 import * as vscode from 'vscode';
-import { runChunksInTerm } from '../rTerminal';
 import { config } from '../util';
+import { 
+    shouldDisplayChunkOptions, getChunks, getCurrentChunk,
+    getCodeLenses, isRDocument,
+    type RMarkdownChunk
+} from './chunks';
 
 // reexports
 export { knitDir, RMarkdownKnitManager } from './knit';
 export { RMarkdownPreviewManager } from './preview';
 export { newDraft } from './draft';
-
-function isRDocument(document: vscode.TextDocument) {
-    return (document.languageId === 'r');
-}
-
-function isRChunkLine(text: string) {
-    return (!!text.match(/^#+\s*%%/g));
-}
-
-function isChunkStartLine(text: string, isRDoc: boolean) {
-    if (isRDoc) {
-        return (isRChunkLine(text));
-    } else {
-        return (!!text.match(/^\s*```+\s*\{\w+\s*.*$/g));
-    }
-}
-
-function isChunkEndLine(text: string, isRDoc: boolean) {
-    if (isRDoc) {
-        return (isRChunkLine(text));
-    } else {
-        return (!!text.match(/^\s*```+\s*$/g));
-    }
-}
-
-function getChunkLanguage(text: string) {
-    return text.replace(/^\s*```+\s*\{(\w+)\s*.*\}\s*$/g, '$1').toLowerCase();
-}
-
-function getChunkOptions(text: string) {
-    return text.replace(/^\s*```+\s*\{\w+\s*,?\s*(.*)\s*\}\s*$/g, '$1');
-}
-
-function getChunkEval(chunkOptions: string) {
-    return (!chunkOptions.match(/eval\s*=\s*(F|FALSE)/g));
-}
+export { getChunks, runCurrentChunk, runCurrentChunkAndMove, runPreviousChunk, runNextChunk, runAboveChunks, runBelowChunks, runCurrentAndBelowChunks, runAllChunks, goToPreviousChunk, goToNextChunk, selectCurrentChunk } from './chunks';
 
 export class RMarkdownCodeLensProvider implements vscode.CodeLensProvider {
-    private codeLenses: vscode.CodeLens[] = [];
     private _onDidChangeCodeLenses: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
     private readonly decoration: vscode.TextEditorDecorationType;
     public readonly onDidChangeCodeLenses: vscode.Event<void> = this._onDidChangeCodeLenses.event;
+    private readonly currentCellTop: vscode.TextEditorDecorationType;
+    private readonly currentCellBottom: vscode.TextEditorDecorationType;
+    private onDidChangeTextEditorSelectionHandler: vscode.Disposable | undefined;
 
     constructor() {
         this.decoration = vscode.window.createTextEditorDecorationType({
             isWholeLine: true,
             backgroundColor: config().get('rmarkdown.chunkBackgroundColor'),
         });
+        // From https://github.com/microsoft/vscode-jupyter/blob/f8c0f925d855a45240fd06875b17216e47eb08f8/src/interactive-window/editor-integration/decorator.ts#L84
+        this.currentCellTop = vscode.window.createTextEditorDecorationType({
+            borderColor: new vscode.ThemeColor('interactive.activeCodeBorder'),
+            borderWidth: '2px 0px 0px 0px',
+            borderStyle: 'solid',
+            isWholeLine: true
+        });
+        this.currentCellBottom = vscode.window.createTextEditorDecorationType({
+            borderColor: new vscode.ThemeColor('interactive.activeCodeBorder'),
+            borderWidth: '0px 0px 1px 0px',
+            borderStyle: 'solid',
+            isWholeLine: true
+        });
+
+        // Register the event listener and store the disposable
+        this.onDidChangeTextEditorSelectionHandler = vscode.window.onDidChangeTextEditorSelection(
+            () => this.onDidChangeTextEditorSelection()
+        );
     }
 
-    public provideCodeLenses(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.CodeLens[] | Thenable<vscode.CodeLens[]> {
-        this.codeLenses = [];
-        const chunks = getChunks(document);
-        const chunkRanges: vscode.Range[] = [];
-        const rmdCodeLensCommands: string[] = config().get('rmarkdown.codeLensCommands', []);
+    // Event handler for text editor selection change
+    private onDidChangeTextEditorSelection() {
+        // Get the active editor
+        const editor = vscode.window.activeTextEditor;
+        
+        if (editor) {
+            const document = editor.document;
+            const chunks = getChunks(document);
 
-        // Iterate through all code chunks for getting chunk information for both CodeLens and chunk background color (set by `editor.setDecorations`)
-        for (let i = 1; i <= chunks.length; i++) {
-            const chunk = chunks.find(e => e.id === i);
-            if (!chunk) {
-                continue;
-            }
-            const chunkRange = chunk.chunkRange;
-            const line = chunk.startLine;
-            chunkRanges.push(chunkRange);
+            // Call highlightCurrentChunk with the updated chunks and document
+            this.highlight(chunks, document);
+        }
+    }
 
-            // Enable/disable only CodeLens, without affecting chunk background color.
-            if (config().get<boolean>('rmarkdown.enableCodeLens', true) && (chunk.language === 'r') || isRDocument(document)) {
-                if (token.isCancellationRequested) {
-                    break;
+    private highlightCurrentChunk(chunks: RMarkdownChunk[], document: vscode.TextDocument) {
+        for (const editor of vscode.window.visibleTextEditors) {  
+            if (editor.document.uri.toString() === document.uri.toString()) {
+                const lines = document.getText().split(/\r?\n/);
+                const currentLine = editor.selection.active.line;
+                const currentChunk = getCurrentChunk(chunks, currentLine);      
+                
+                if (currentChunk) {
+                    // set top border
+                    const currentChunkStart = new vscode.Range(
+                        new vscode.Position(currentChunk.startLine, 0),
+                        new vscode.Position(currentChunk.startLine, lines[currentChunk.startLine].length)
+                    );
+                    editor.setDecorations(this.currentCellTop, [currentChunkStart]);
+
+                    // set bottom border
+                    const currentChunkEnd = new vscode.Range(
+                        new vscode.Position(currentChunk.endLine, 0),
+                        new vscode.Position(currentChunk.endLine, lines[currentChunk.endLine].length)
+                    );
+                    editor.setDecorations(this.currentCellBottom, [currentChunkEnd]);
                 }
-                this.codeLenses.push(
-                    new vscode.CodeLens(chunkRange, {
-                        title: 'Run Chunk',
-                        tooltip: 'Run current chunk',
-                        command: 'r.runCurrentChunk',
-                        arguments: [chunks, line]
-                    }),
-                    new vscode.CodeLens(chunkRange, {
-                        title: 'Run Above',
-                        tooltip: 'Run all chunks above',
-                        command: 'r.runAboveChunks',
-                        arguments: [chunks, line]
-                    }),
-                    new vscode.CodeLens(chunkRange, {
-                        title: 'Run Current & Below',
-                        tooltip: 'Run current and all chunks below',
-                        command: 'r.runCurrentAndBelowChunks',
-                        arguments: [chunks, line]
-                    }),
-                    new vscode.CodeLens(chunkRange, {
-                        title: 'Run Below',
-                        tooltip: 'Run all chunks below',
-                        command: 'r.runBelowChunks',
-                        arguments: [chunks, line]
-                    }),
-                    new vscode.CodeLens(chunkRange, {
-                        title: 'Run Previous',
-                        tooltip: 'Run previous chunk',
-                        command: 'r.runPreviousChunk',
-                        arguments: [chunks, line]
-                    }),
-                    new vscode.CodeLens(chunkRange, {
-                        title: 'Run Next',
-                        tooltip: 'Run next chunk',
-                        command: 'r.runNextChunk',
-                        arguments: [chunks, line]
-                    }),
-                    new vscode.CodeLens(chunkRange, {
-                        title: 'Run All',
-                        tooltip: 'Run all chunks',
-                        command: 'r.runAllChunks',
-                        arguments: [chunks]
-                    }),
-                    new vscode.CodeLens(chunkRange, {
-                        title: 'Go Previous',
-                        tooltip: 'Go to previous chunk',
-                        command: 'r.goToPreviousChunk',
-                        arguments: [chunks, line]
-                    }),
-                    new vscode.CodeLens(chunkRange, {
-                        title: 'Go Next',
-                        tooltip: 'Go to next chunk',
-                        command: 'r.goToNextChunk',
-                        arguments: [chunks, line]
-                    }),
-                    new vscode.CodeLens(chunkRange, {
-                        title: 'Select Chunk',
-                        tooltip: 'Select current chunk',
-                        command: 'r.selectCurrentChunk',
-                        arguments: [chunks, line]
-                    }),
-                );
             }
         }
+    }
 
+    private highlightChunks(chunks: RMarkdownChunk[], document: vscode.TextDocument) {
+        const chunkRanges = chunks.map((chunk) => chunk.chunkRange);
         for (const editor of vscode.window.visibleTextEditors) {
             if (editor.document.uri.toString() === document.uri.toString()) {
                 editor.setDecorations(this.decoration, chunkRanges);
             }
         }
+    }
 
-        // For default options, both options and sort order are based on options specified in package.json.
-        // For user-specified options, both options and sort order are based on options specified in settings UI or settings.json.
-        return this.codeLenses.
-            filter(e => e.command && rmdCodeLensCommands.includes(e.command.command)).
-            sort(function (a, b) {
-                if (!a.command || !b.command) { return 0; }
-                const sorted = rmdCodeLensCommands.indexOf(a.command.command) -
-                    rmdCodeLensCommands.indexOf(b.command.command);
-                return sorted;
-            });
+    private highlight(chunks: RMarkdownChunk[], document: vscode.TextDocument) {
+        if (!chunks) {
+            return;
+        }
+        
+        // Highlight differently for `.R` and `.Rmd` files
+        const isRDoc = isRDocument(document);
+        if (isRDoc) {
+            this.highlightCurrentChunk(chunks, document);
+        } else {
+            this.highlightChunks(chunks, document);
+        }
+    }
+
+    public provideCodeLenses(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.CodeLens[] | Thenable<vscode.CodeLens[]> {
+        
+        const chunks = getChunks(document);
+
+        // Highlight chunks
+        this.highlight(chunks, document);        
+
+        // Loop through chunks and setup
+        const codeLenses = getCodeLenses(
+            chunks, token
+        );
+
+        return codeLenses;
     }
     public resolveCodeLens(codeLens: vscode.CodeLens): vscode.CodeLens {
         return codeLens;
     }
-}
-
-interface RMarkdownChunk {
-    id: number;
-    startLine: number;
-    endLine: number;
-    language: string | undefined;
-    options: string | undefined;
-    eval: boolean | undefined;
-    chunkRange: vscode.Range;
-    codeRange: vscode.Range;
-}
-
-// Scan document and return chunk info (e.g. ID, chunk range) from all chunks
-export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
-    const lines = document.getText().split(/\r?\n/);
-    const chunks: RMarkdownChunk[] = [];
-
-    let line = 0;
-    let chunkId = 0;  // One-based index
-    let chunkStartLine: number | undefined = undefined;
-    let chunkEndLine: number | undefined = undefined;
-    let chunkLanguage: string | undefined = undefined;
-    let chunkOptions: string | undefined = undefined;
-    let chunkEval: boolean | undefined = undefined;
-    const isRDoc = isRDocument(document);
-
-    while (line < lines.length) {
-        if (chunkStartLine === undefined) {
-            if (isChunkStartLine(lines[line], isRDoc)) {
-                chunkId++;
-                chunkStartLine = line;
-                chunkLanguage = getChunkLanguage(lines[line]);
-                chunkOptions = getChunkOptions(lines[line]);
-                chunkEval = getChunkEval(chunkOptions);
-            }
-        } else {
-            if (isChunkEndLine(lines[line], isRDoc)) {
-                chunkEndLine = line;
-
-                const chunkRange = new vscode.Range(
-                    new vscode.Position(chunkStartLine, 0),
-                    new vscode.Position(line, lines[line].length)
-                );
-                const codeRange = new vscode.Range(
-                    new vscode.Position(chunkStartLine + 1, 0),
-                    new vscode.Position(line - 1, lines[line - 1].length)
-                );
-
-                chunks.push({
-                    id: chunkId, // One-based index
-                    startLine: chunkStartLine,
-                    endLine: chunkEndLine,
-                    language: chunkLanguage,
-                    options: chunkOptions,
-                    eval: chunkEval,
-                    chunkRange: chunkRange,
-                    codeRange: codeRange
-                });
-
-                chunkStartLine = undefined;
-            }
-        }
-        line++;
-    }
-    return chunks;
-}
-
-function getCurrentChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk | undefined {
-    const textEditor = vscode.window.activeTextEditor;
-    if (!textEditor) {
-        void vscode.window.showWarningMessage('No text editor active.');
-        return;
-    }
-
-    const lines = textEditor.document.getText().split(/\r?\n/);
-
-    let chunkStartLineAtOrAbove = line;
-    // `- 1` to cover edge case when cursor is at 'chunk end line'
-    let chunkEndLineAbove = line - 1;
-
-    const isRDoc = isRDocument(textEditor.document);
-
-    while (chunkStartLineAtOrAbove >= 0 && !isChunkStartLine(lines[chunkStartLineAtOrAbove], isRDoc)) {
-        chunkStartLineAtOrAbove--;
-    }
-
-    while (chunkEndLineAbove >= 0 && !isChunkEndLine(lines[chunkEndLineAbove], isRDoc)) {
-        chunkEndLineAbove--;
-    }
-
-    // Case: Cursor is within chunk
-    if (chunkEndLineAbove < chunkStartLineAtOrAbove) {
-        line = chunkStartLineAtOrAbove;
-    } else {
-        // Cases: Cursor is above the first chunk, at the first chunk or outside of chunk. Find the 'chunk start line' of the next chunk below the cursor.
-        let chunkStartLineBelow = line + 1;
-        while (!isChunkStartLine(lines[chunkStartLineBelow], isRDoc)) {
-            chunkStartLineBelow++;
-        }
-        line = chunkStartLineBelow;
-    }
-    const currentChunk = chunks.find(i => i.startLine <= line && i.endLine >= line);
-    return currentChunk;
-}
-
-// Alternative `getCurrentChunk` for cases:
-// - commands (e.g. `selectCurrentChunk`) only make sense when cursor is within chunk
-// - when cursor is outside of chunk, no response is triggered for chunk navigation commands (e.g. `goToPreviousChunk`) and chunk running commands (e.g. `runAboveChunks`)
-function getCurrentChunk__CursorWithinChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk | undefined {
-    return chunks.find(i => i.startLine <= line && i.endLine >= line);
-}
-
-function getPreviousChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk | undefined {
-    const currentChunk = getCurrentChunk(chunks, line);
-    if (!currentChunk) {
-        return undefined;
-    }
-    if (currentChunk.id !== 1) {
-        // When cursor is below the last 'chunk end line', the definition of the previous chunk is the last chunk
-        const previousChunkId = currentChunk.endLine < line ? currentChunk.id : currentChunk.id - 1;
-        const previousChunk = chunks.find(i => i.id === previousChunkId);
-        return previousChunk;
-    } else {
-        return (currentChunk);
-    }
-}
-
-function getNextChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk | undefined {
-    const currentChunk = getCurrentChunk(chunks, line);
-    if (!currentChunk) {
-        return undefined;
-    }
-    if (currentChunk.id !== chunks.length) {
-        // When cursor is above the first 'chunk start line', the definition of the next chunk is the first chunk
-        const nextChunkId = line < currentChunk.startLine ? currentChunk.id : currentChunk.id + 1;
-        const nextChunk = chunks.find(i => i.id === nextChunkId);
-        return nextChunk;
-    } else {
-        return currentChunk;
-    }
-
-}
-
-// Helpers
-function _getChunks(): RMarkdownChunk[] {
-    const textEditor = vscode.window.activeTextEditor;
-    if (!textEditor) {
-        return [];
-    }
-    return getChunks(textEditor.document);
-}
-function _getStartLine(): number {
-    const textEditor = vscode.window.activeTextEditor;
-    if (!textEditor) {
-        return 0;
-    }
-    return textEditor.selection.start.line;
-}
-
-export async function runCurrentChunk(chunks: RMarkdownChunk[] = _getChunks(),
-    line: number = _getStartLine()): Promise<void> {
-    const currentChunk = getCurrentChunk(chunks, line);
-    if (currentChunk) {
-        await runChunksInTerm([currentChunk.codeRange]);
-    }
-}
-
-export async function runPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
-    line: number = _getStartLine()): Promise<void> {
-    const currentChunk = getCurrentChunk(chunks, line);
-    const previousChunk = getPreviousChunk(chunks, line);
-
-    if (previousChunk && previousChunk !== currentChunk) {
-        await runChunksInTerm([previousChunk.codeRange]);
-    }
-
-}
-
-export async function runNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
-    line: number = _getStartLine()): Promise<void> {
-    const currentChunk = getCurrentChunk(chunks, line);
-    const nextChunk = getNextChunk(chunks, line);
-
-    if (nextChunk && nextChunk !== currentChunk) {
-        await runChunksInTerm([nextChunk.codeRange]);
-    }
-}
-
-export async function runAboveChunks(chunks: RMarkdownChunk[] = _getChunks(),
-    line: number = _getStartLine()): Promise<void> {
-    const currentChunk = getCurrentChunk(chunks, line);
-    const previousChunk = getPreviousChunk(chunks, line);
-    if (!currentChunk || !previousChunk) {
-        return;
-    }
-    const firstChunkId = 1;
-    const previousChunkId = previousChunk.id;
-
-    const codeRanges: vscode.Range[] = [];
-
-    if (previousChunk !== currentChunk) {
-        for (let i = firstChunkId; i <= previousChunkId; i++) {
-            const chunk = chunks.find(e => e.id === i);
-            if (chunk?.eval) {
-                codeRanges.push(chunk.codeRange);
-            }
-        }
-        await runChunksInTerm(codeRanges);
-    }
-}
-
-export async function runBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
-    line: number = _getStartLine()): Promise<void> {
-
-    const currentChunk = getCurrentChunk(chunks, line);
-    const nextChunk = getNextChunk(chunks, line);
-    if (!currentChunk || !nextChunk) {
-        return;
-    }
-    const nextChunkId = nextChunk.id;
-    const lastChunkId = chunks.length;
-
-    const codeRanges: vscode.Range[] = [];
-    if (nextChunk !== currentChunk) {
-        for (let i = nextChunkId; i <= lastChunkId; i++) {
-            const chunk = chunks.find(e => e.id === i);
-            if (chunk?.eval) {
-                codeRanges.push(chunk.codeRange);
-            }
-        }
-        await runChunksInTerm(codeRanges);
-    }
-}
-
-export async function runCurrentAndBelowChunks(chunks: RMarkdownChunk[] = _getChunks(),
-    line: number = _getStartLine()): Promise<void> {
-    const currentChunk = getCurrentChunk(chunks, line);
-    if (!currentChunk) {
-        return;
-    }
-    const currentChunkId = currentChunk.id;
-    const lastChunkId = chunks.length;
-
-    const codeRanges: vscode.Range[] = [];
-
-    for (let i = currentChunkId; i <= lastChunkId; i++) {
-        const chunk = chunks.find(e => e.id === i);
-        if (chunk) {
-            codeRanges.push(chunk.codeRange);
+    
+    // Clean-up
+    dispose() {
+        // Unregister the event listener when the provider is disposed
+        if (this.onDidChangeTextEditorSelectionHandler) {
+            this.onDidChangeTextEditorSelectionHandler.dispose();
         }
     }
-    await runChunksInTerm(codeRanges);
-}
-
-export async function runAllChunks(chunks: RMarkdownChunk[] = _getChunks()): Promise<void> {
-
-    const firstChunkId = 1;
-    const lastChunkId = chunks.length;
-
-    const codeRanges: vscode.Range[] = [];
-
-    for (let i = firstChunkId; i <= lastChunkId; i++) {
-        const chunk = chunks.find(e => e.id === i);
-        if (chunk?.eval) {
-            codeRanges.push(chunk.codeRange);
-        }
-    }
-    await runChunksInTerm(codeRanges);
-}
-
-async function goToChunk(chunk: RMarkdownChunk) {
-    // Move cursor 1 line below 'chunk start line'
-    const line = chunk.startLine + 1;
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-        return;
-    }
-    editor.selection = new vscode.Selection(line, 0, line, 0);
-    await vscode.commands.executeCommand('revealLine', { lineNumber: line, at: 'center' });
-}
-
-export function goToPreviousChunk(chunks: RMarkdownChunk[] = _getChunks(),
-    line: number = _getStartLine()): void {
-    const previousChunk = getPreviousChunk(chunks, line);
-    if (previousChunk) {
-        void goToChunk(previousChunk);
-    }
-}
-
-export function goToNextChunk(chunks: RMarkdownChunk[] = _getChunks(),
-    line: number = _getStartLine()): void {
-    const nextChunk = getNextChunk(chunks, line);
-    if (nextChunk) {
-        void goToChunk(nextChunk);
-    }
-}
-
-export function selectCurrentChunk(chunks: RMarkdownChunk[] = _getChunks(),
-    line: number = _getStartLine()): void {
-    const editor = vscode.window.activeTextEditor;
-    const currentChunk = getCurrentChunk__CursorWithinChunk(chunks, line);
-    if (!editor || !currentChunk) {
-        return;
-    }
-    const lines = editor.document.getText().split(/\r?\n/);
-
-    editor.selection = new vscode.Selection(
-        currentChunk.startLine, 0,
-        currentChunk.endLine, lines[currentChunk.endLine].length
-    );
 }
 
 export class RMarkdownCompletionItemProvider implements vscode.CompletionItemProvider {
@@ -500,11 +160,25 @@ export class RMarkdownCompletionItemProvider implements vscode.CompletionItemPro
     }
 
     public provideCompletionItems(document: vscode.TextDocument, position: vscode.Position): vscode.CompletionItem[] | undefined {
-        const line = document.lineAt(position).text;
-        if (isChunkStartLine(line, false) && getChunkLanguage(line) === 'r') {
+        if (shouldDisplayChunkOptions(document, position)) {
             return this.chunkOptionCompletionItems;
         }
 
+        return undefined;
+    }
+}
+
+// Fold code chunks
+export class RChunkFoldingProvider implements vscode.FoldingRangeProvider {
+    constructor() { this; }
+
+    provideFoldingRanges(document: vscode.TextDocument): vscode.ProviderResult<vscode.FoldingRange[]> {
+        const chunks = getChunks(document);
+        if (chunks) {
+            return chunks.map((chunk) => {
+                return new vscode.FoldingRange(chunk.startLine, chunk.endLine, vscode.FoldingRangeKind.Region);
+            });
+        }
         return undefined;
     }
 }

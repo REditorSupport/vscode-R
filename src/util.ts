@@ -1,5 +1,6 @@
 'use strict';
 
+import { homedir } from 'os';
 import { existsSync, PathLike, readFile } from 'fs-extra';
 import * as fs from 'fs';
 import winreg = require('winreg');
@@ -12,6 +13,32 @@ import { randomBytes } from 'crypto';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
+}
+
+function substituteVariable(str: string, key: string, getValue: () => string | undefined) {
+    if (str.includes(key)) {
+        const value = getValue();
+        if (value) {
+            return str.replaceAll(key, value);
+        }
+    }
+    return str;
+}
+
+export function substituteVariables(str: string): string {
+    let result = str;
+    if (str.includes('${')) {
+        result = substituteVariable(result, '${userHome}', () => homedir());
+        result = substituteVariable(result, '${workspaceFolder}', () => getCurrentWorkspaceFolder()?.uri.fsPath);
+        result = substituteVariable(result, '${fileWorkspaceFolder}', () => getActiveFileWorkspaceFolder()?.uri.fsPath);
+        result = substituteVariable(result, '${fileDirname}', () => {
+            const activeFilePath = vscode.window.activeTextEditor?.document.uri.fsPath;
+            if (activeFilePath) {
+                return path.dirname(activeFilePath);
+            }
+        });
+    }
+    return result;
 }
 
 function getRfromEnvPath(platform: string) {
@@ -78,6 +105,7 @@ export async function getRpath(quote = false, overwriteConfig?: string): Promise
     // try the os-specific config entry for the rpath:
     const configEntry = getOSConfigEntry('rpath');
     rpath ||= config().get<string>(configEntry);
+    rpath &&= substituteVariables(rpath);
 
     // read from path/registry:
     rpath ||= await getRpathFromSystem();
@@ -105,7 +133,7 @@ export async function getRpath(quote = false, overwriteConfig?: string): Promise
 export async function getRterm(): Promise<string | undefined> {
     const configEntry = getOSConfigEntry('rterm');
     let rpath = config().get<string>(configEntry);
-
+    rpath &&= substituteVariables(rpath);
     rpath ||= await getRpathFromSystem();
 
     if (rpath !== '') {
@@ -158,15 +186,19 @@ export function checkIfFileExists(filePath: string): boolean {
     return existsSync(filePath);
 }
 
+function getActiveFileWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
+    const currentDocument = vscode.window.activeTextEditor;
+    if (currentDocument !== undefined) {
+        return vscode.workspace.getWorkspaceFolder(currentDocument.document.uri);
+    }
+}
+
 export function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
     if (vscode.workspace.workspaceFolders !== undefined) {
         if (vscode.workspace.workspaceFolders.length === 1) {
             return vscode.workspace.workspaceFolders[0];
         } else if (vscode.workspace.workspaceFolders.length > 1) {
-            const currentDocument = vscode.window.activeTextEditor;
-            if (currentDocument !== undefined) {
-                return vscode.workspace.getWorkspaceFolder(currentDocument.document.uri);
-            }
+            return getActiveFileWorkspaceFolder() || vscode.workspace.workspaceFolders[0];
         }
     }
 
@@ -308,7 +340,7 @@ export async function getCranUrl(path: string = '', cwd?: string | URL): Promise
 }
 
 export function getRLibPaths(): string | undefined {
-    return config().get<string[]>('libPaths')?.join('\n');
+    return config().get<string[]>('libPaths')?.map(substituteVariables).join('\n');
 }
 
 // executes an R command returns its output to stdout

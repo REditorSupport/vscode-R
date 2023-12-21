@@ -4,7 +4,7 @@ import * as net from 'net';
 import { URL } from 'url';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { DisposableProcess, getRLibPaths, getRpath, getInvokeCommand, promptToInstallRPackage, spawn } from './util';
+import { DisposableProcess, getRLibPaths, getRpath, getInvokeCommand, promptToInstallRPackage, spawn, substituteVariables } from './util';
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 
@@ -83,7 +83,7 @@ export class LanguageService implements Disposable {
         }
 
         const rScriptPath = config.get<string>('lsp.bootstrapFile') || extensionContext.asAbsolutePath('R/languageServer.R');
-        const rLspArgs = config.get<string>('${lsp.args}') ?? '';
+        const rLspArgs = (config.get<string[]>('lsp.args')?.map(substituteVariables) ?? []).map(JSON.stringify).join(' ');
         const options = { cwd: cwd, env: env, shell: true };
 
         const commandExp = getInvokeCommand() ?? ''; // TODO: Abort gracefully
