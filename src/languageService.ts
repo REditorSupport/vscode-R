@@ -83,7 +83,7 @@ export class LanguageService implements Disposable {
         }
 
         const rScriptPath = config.get<string>('lsp.bootstrapFile') || extensionContext.asAbsolutePath('R/languageServer.R');
-        const rLspArgs = (config.get<string[]>('lsp.args')?.map(substituteVariables) ?? []).map(JSON.stringify).join(' ');
+        const rLspArgs = (config.get<string[]>('lsp.args')?.map(substituteVariables) ?? []).map((str) => JSON.stringify(str)).join(' ');
         const options = { cwd: cwd, env: env, shell: true };
 
         const commandExp = getInvokeCommand() ?? ''; // TODO: Abort gracefully
