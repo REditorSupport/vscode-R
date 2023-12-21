@@ -86,13 +86,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.runCommand': rTerminal.runCommand,
         'r.runSourcewithEcho': () => { void rTerminal.runSource(true); },
 
-        // rmd related
-        'r.knitRmd': () => { void rmdKnitManager?.knitRmd(false, undefined); },
-        'r.knitRmdToPdf': () => { void rmdKnitManager?.knitRmd(false, 'pdf_document'); },
-        'r.knitRmdToHtml': () => { void rmdKnitManager?.knitRmd(false, 'html_document'); },
-        'r.knitRmdToAll': () => { void rmdKnitManager?.knitRmd(false, 'all'); },
+        // chunk related
         'r.selectCurrentChunk': rmarkdown.selectCurrentChunk,
         'r.runCurrentChunk': rmarkdown.runCurrentChunk,
+        'r.runCurrentChunkAndMove': rmarkdown.runCurrentChunkAndMove,
         'r.runPreviousChunk': rmarkdown.runPreviousChunk,
         'r.runNextChunk': rmarkdown.runNextChunk,
         'r.runAboveChunks': rmarkdown.runAboveChunks,
@@ -102,6 +99,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.goToPreviousChunk': rmarkdown.goToPreviousChunk,
         'r.goToNextChunk': rmarkdown.goToNextChunk,
         'r.runChunks': rTerminal.runChunksInTerm,
+
+        // rmd related
+        'r.knitRmd': () => { void rmdKnitManager?.knitRmd(false, undefined); },
+        'r.knitRmdToPdf': () => { void rmdKnitManager?.knitRmd(false, 'pdf_document'); },
+        'r.knitRmdToHtml': () => { void rmdKnitManager?.knitRmd(false, 'html_document'); },
+        'r.knitRmdToAll': () => { void rmdKnitManager?.knitRmd(false, 'all'); },
 
         'r.rmarkdown.newDraft': () => rmarkdown.newDraft(),
         'r.rmarkdown.setKnitDirectory': () => rmdKnitManager?.setKnitDir(),
@@ -208,10 +211,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // initialize the package/help related functions
     globalRHelp = await rHelp.initializeHelp(context, rExtension);
 
-    // register codelens and complmetion providers for r markdown
+    // register codelens and completion providers for r markdown and r files
     vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());
     vscode.languages.registerCompletionItemProvider('rmd', new rmarkdown.RMarkdownCompletionItemProvider(), ' ', ',');
-
+    vscode.languages.registerFoldingRangeProvider('r', new rmarkdown.RChunkFoldingProvider());
 
     // register (session) hover and completion providers
     vscode.languages.registerHoverProvider(['r', 'rmd'], new completions.HoverProvider());

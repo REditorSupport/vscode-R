@@ -47,6 +47,7 @@
     "onCommand:r.runSelectionInActiveTerm",
     "onCommand:r.selectCurrentChunk",
     "onCommand:r.runCurrentChunk",
+    "onCommand:r.runCurrentChunkAndMove",
     "onCommand:r.runPreviousChunk",
     "onCommand:r.runNextChunk",
     "onCommand:r.runAboveChunks",
@@ -574,6 +575,11 @@
         "command": "r.runCurrentChunk"
       },
       {
+        "title": "Run Current Chunk and Move to Next Chunk",
+        "category": "R",
+        "command": "r.runCurrentChunkAndMove"
+      },
+      {
         "title": "Run Previous Chunk",
         "category": "R",
         "command": "r.runPreviousChunk"
@@ -945,13 +951,13 @@
         "command": "r.runCurrentChunk",
         "key": "Ctrl+shift+enter",
         "mac": "cmd+shift+enter",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
+        "when": "editorTextFocus && (editorLangId == 'rmd' || editorLangId == 'r')"
       },
       {
         "command": "r.runAboveChunks",
         "key": "Ctrl+alt+p",
         "mac": "cmd+alt+p",
-        "when": "editorTextFocus && editorLangId == 'rmd'"
+        "when": "editorTextFocus && (editorLangId == 'rmd' || editorLangId == 'r')"
       },
       {
         "command": "r.runSource",
@@ -1434,32 +1440,32 @@
         "r.rpath.windows": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable to launch R background processes (Windows). Must be \"vanilla\" R, not radian etc.!"
+          "markdownDescription": "Path to an R executable to launch R background processes (Windows). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rpath.mac": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable to launch R background processes (macOS). Must be \"vanilla\" R, not radian etc.!"
+          "markdownDescription": "Path to an R executable to launch R background processes (macOS). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rpath.linux": {
           "type": "string",
           "default": "",
-          "description": "Path to an R executable to launch R background processes (Linux). Must be \"vanilla\" R, not radian etc.!"
+          "markdownDescription": "Path to an R executable to launch R background processes (Linux). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rterm.windows": {
           "type": "string",
           "default": "",
-          "description": "R path for interactive terminals (Windows). Can also be radian etc."
+          "markdownDescription": "R path for interactive terminals (Windows). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rterm.mac": {
           "type": "string",
           "default": "",
-          "description": "R path for interactive terminals (macOS). Can also be radian etc."
+          "markdownDescription": "R path for interactive terminals (macOS). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rterm.linux": {
           "type": "string",
           "default": "",
-          "description": "R path for interactive terminals (Linux). Can also be radian etc."
+          "markdownDescription": "R path for interactive terminals (Linux). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
         "r.rterm.option": {
           "type": "array",
@@ -1535,6 +1541,7 @@
             "enum": [
               "r.selectCurrentChunk",
               "r.runCurrentChunk",
+              "r.runCurrentChunkAndMove",
               "r.runAboveChunks",
               "r.runCurrentAndBelowChunks",
               "r.runBelowChunks",
