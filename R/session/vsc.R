@@ -79,9 +79,19 @@ if (use_webserver) {
             },
 
             complete = function(expr, trigger, ...) {
+               
+                # remove trigger + any rhs from expr_string to evaluate
+                expr_string <- expr
+                pattern <- paste0("^(.*\\", trigger, ")")
+                finding <- regexpr(pattern, expr_string)
+                if (finding > 0) {
+                    expr_string <- substr(expr, 1L, attr(finding, "match.length") - 1L)
+                }
+
                 obj <- tryCatch({
-                    expr <- parse(text = expr, keep.source = FALSE)[[1]]
-                    eval(expr, .GlobalEnv)
+                    expr <- parse(text = expr_string, keep.source = FALSE)
+                    last_expr <- tail(expr, 1L) # only autocomplete the last expression
+                    eval(last_expr, .GlobalEnv)
                 }, error = function(e) NULL)
 
                 if (is.null(obj)) {
@@ -105,6 +115,8 @@ if (use_webserver) {
                             str = try_capture_str(item)
                         )
                     })
+
+                    print(result)
                     return(result)
                 }
 
