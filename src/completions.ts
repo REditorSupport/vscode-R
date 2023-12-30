@@ -166,10 +166,21 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             });
         } else if(trigger === '$' || trigger === '@') {
             const symbolPosition = new vscode.Position(position.line, position.character - 1);
+            console.log("New completion \n sP",symbolPosition, position.line, position.character);
             if (session.server) {
+                
                 const re = /([a-zA-Z0-9._$@ ])+(?<![@$])/;
-                const exprRange = document.getWordRangeAtPosition(symbolPosition, re)?.with({ end: symbolPosition });
+                let exprRange = document.getWordRangeAtPosition(symbolPosition, re)?.with({ end: symbolPosition });
+                
+                if (!exprRange) {
+                    console.log("regex failed take all of document until trigger");
+                    const startPosition = new vscode.Position(0, 0);
+                    exprRange = new vscode.Range(startPosition, symbolPosition);
+                }
+
+                console.log("eR",exprRange);  
                 const expr = document.getText(exprRange);
+                console.log("hello world",expr);
                 const response: RObjectElement[] = await session.sessionRequest(session.server, {
                     type: 'complete',
                     expr: expr,
