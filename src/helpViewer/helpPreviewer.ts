@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 import * as rHelp from './index';
 import * as ejs from 'ejs';
-import { isDirSafe, isFileSafe, readFileSyncSafe, config, spawnAsync } from '../util';
+import { isDirSafe, isFileSafe, readFileSyncSafe, config, spawnRAsync } from '../util';
 import { Topic, TopicType } from './packages';
 
 
@@ -247,7 +247,7 @@ export class RLocalHelpPreviewer {
             this.getPackageInfo()?.version || DUMMY_TOPIC_VERSION,
             this.packageDir
         ];
-        const spawnRet = await spawnAsync(this.rPath, args);
+        const spawnRet = await spawnRAsync(this.rPath, args);
         if(spawnRet.status){
             // The user expects this to work, so we show a warning if it doesn't:
             const msg = `Failed to convert .Rd file ${rdFileName} (status: ${spawnRet.status}): ${spawnRet.stderr}`;
@@ -409,7 +409,7 @@ function extractRPaths(rdTxt: string): string[] | undefined {
     if(firstRealLine >= 0){
         lines.splice(firstRealLine);
     }
-    
+
     // Join lines that were split (these start with "%   ")
     const CONTINUED_LINE_START = '%   ';
     const longLines = [];
@@ -420,7 +420,7 @@ function extractRPaths(rdTxt: string): string[] | undefined {
             longLines.push(line);
         }
     }
-    
+
     // Find the line that references R files
     for(const line of longLines){
         const rFileMatch = line.match(/^% Please edit documentation in (.*)$/);

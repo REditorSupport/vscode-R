@@ -2,7 +2,7 @@ import * as util from '../util';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import path = require('path');
-import { DisposableProcess, spawn } from '../util';
+import { DisposableProcess, spawnR } from '../util';
 
 export enum KnitWorkingDirectory {
     documentDirectory = 'document directory',
@@ -95,7 +95,7 @@ export abstract class RMarkdownManager {
                         throw new Error('R path not defined');
                     }
 
-                    childProcess = spawn(this.rPath, cpArgs, processOptions, () => {
+                    childProcess = spawnR(this.rPath, cpArgs, processOptions, () => {
                         rMarkdownOutput.appendLine('[VSC-R] terminating R process');
                         printOutput = false;
                     });

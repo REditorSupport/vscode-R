@@ -8,8 +8,9 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
-import { extensionContext } from './extension';
+import { extensionContext, rExecutableManager } from './extension';
 import { randomBytes } from 'crypto';
+import { isVirtual, RExecutableType, virtualAwareArgs } from './executables';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -41,50 +42,6 @@ export function substituteVariables(str: string): string {
     return result;
 }
 
-function getRfromEnvPath(platform: string) {
-    let splitChar = ':';
-    let fileExtension = '';
-
-    if (platform === 'win32') {
-        splitChar = ';';
-        fileExtension = '.exe';
-    }
-
-    const os_paths: string[] | string = process.env.PATH ? process.env.PATH.split(splitChar) : [];
-    for (const os_path of os_paths) {
-        const os_r_path: string = path.join(os_path, 'R' + fileExtension);
-        if (fs.existsSync(os_r_path)) {
-            return os_r_path;
-        }
-    }
-    return '';
-}
-
-export async function getRpathFromSystem(): Promise<string> {
-
-    let rpath = '';
-    const platform: string = process.platform;
-
-    rpath ||= getRfromEnvPath(platform);
-
-    if ( !rpath && platform === 'win32') {
-        // Find path from registry
-        try {
-            const key = new winreg({
-                hive: winreg.HKLM,
-                key: '\\Software\\R-Core\\R',
-            });
-            const item: winreg.RegistryItem = await new Promise((c, e) =>
-                key.get('InstallPath', (err, result) => err === null ? c(result) : e(err)));
-            rpath = path.join(item.value, 'bin', 'R.exe');
-        } catch (e) {
-            rpath = '';
-        }
-    }
-
-    return rpath;
-}
-
 export function getRPathConfigEntry(term: boolean = false): string {
     const trunc = (term ? 'rterm' : 'rpath');
     const platform = (
@@ -95,28 +52,13 @@ export function getRPathConfigEntry(term: boolean = false): string {
     return `${trunc}.${platform}`;
 }
 
-export async function getRpath(quote = false, overwriteConfig?: string): Promise<string | undefined> {
+export function getRpath(quote = false): string | undefined {
     let rpath: string | undefined = '';
-
-    // try the config entry specified in the function arg:
-    if (overwriteConfig) {
-        rpath = config().get<string>(overwriteConfig);
-    }
-
-    // try the os-specific config entry for the rpath:
-    const configEntry = getRPathConfigEntry();
-    rpath ||= config().get<string>(configEntry);
-    rpath &&= substituteVariables(rpath);
-
-    // read from path/registry:
-    rpath ||= await getRpathFromSystem();
-
-    // represent all invalid paths (undefined, '', null) as undefined:
-    rpath ||= undefined;
+    rpath = rExecutableManager?.activeExecutablePath;
 
     if (!rpath) {
         // inform user about missing R path:
-        void vscode.window.showErrorMessage(`Cannot find R to use for help, package installation etc. Change setting r.${configEntry} to R path.`);
+        void vscode.window.showErrorMessage(`Cannot find R to use for help, package installation etc. Set executable path to R path.`);
     } else if (quote && /^[^'"].* .*[^'"]$/.exec(rpath)) {
         // if requested and rpath contains spaces, add quotes:
         rpath = `"${rpath}"`;
@@ -131,11 +73,13 @@ export async function getRpath(quote = false, overwriteConfig?: string): Promise
     return rpath;
 }
 
-export async function getRterm(): Promise<string | undefined> {
+// TODO
+export function getRterm(): string | undefined {
     const configEntry = getRPathConfigEntry(true);
     let rpath = config().get<string>(configEntry);
     rpath &&= substituteVariables(rpath);
-    rpath ||= await getRpathFromSystem();
+    // rpath ||= await getRpathFromSystem();
+    rpath ||= getRpath();
 
     if (rpath !== '') {
         return rpath;
@@ -340,7 +284,7 @@ export function getRLibPaths(): string | undefined {
 // Single quotes are ok.
 //
 export async function executeRCommand(rCommand: string, cwd?: string | URL, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
-    const rPath = await getRpath();
+    const rPath = getRpath();
     if (!rPath) {
         return undefined;
     }
@@ -531,6 +475,31 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
     });
 }
 
+
+function setupSpawnRArguments(executable: RExecutableType, args?: ReadonlyArray<string>) {
+    if (isVirtual(executable)) {
+        const virtualArgs = virtualAwareArgs(executable, false, args ?? [])
+        return { cmd: virtualArgs.cmd, args: virtualArgs.args };
+    } else {
+        return { cmd: executable.rBin, args: args };
+    }
+}
+
+export function spawnR(rpath: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
+    const executable = rExecutableManager?.getExecutableFromPath(rpath);
+    if (!executable) { throw 'Bad R path'; }
+    const spawnArgs = setupSpawnRArguments(executable, args);
+    return spawn(spawnArgs.cmd, spawnArgs.args, options, onDisposed);
+}
+
+export function spawnRAsync(rpath: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): Promise<cp.SpawnSyncReturns<string>> {
+    const executable = rExecutableManager?.getExecutableFromPath(rpath);
+    if (!executable) { throw 'Bad R path'; }
+    const spawnArgs = setupSpawnRArguments(executable, args);
+    return spawnAsync(spawnArgs.cmd, spawnArgs.args, options, onDisposed);
+}
+
+
 /**
  * Check if an R package is available or not
  *
@@ -550,7 +519,7 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
         .then(async function (select) {
             if (select === 'Yes') {
                 const repo = await getCranUrl('', cwd);
-                const rPath = await getRpath();
+                const rPath = getRpath();
                 if (!rPath) {
                     void vscode.window.showErrorMessage('R path not set', 'OK');
                     return;
@@ -673,4 +642,17 @@ export function uniqueEntries<T>(array: T[], isIdentical: (x: T, y: T) => boolea
         return array.findIndex(v2 => isIdentical(v2, v)) === index;
     }
     return array.filter(uniqueFunction);
+}
+
+export function normaliseRPathString(path: string): string {
+    return path.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+}
+
+export function isMultiRoot(): boolean {
+    const folders = vscode?.workspace?.workspaceFolders;
+    if (folders) {
+        return folders.length > 1;
+    } else {
+        return false;
+    }
 }

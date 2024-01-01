@@ -10,9 +10,9 @@ import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
 import { cleanupSession } from './session';
-import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
+import { config, delay } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
-import * as fs from 'fs';
+import { createTerminalOptions } from './executables/util';
 export let rTerm: vscode.Terminal | undefined = undefined;
 
 export async function runSource(echo: boolean): Promise<void>  {
@@ -114,16 +114,8 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
-export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
-    const workspaceFolderPath = getCurrentWorkspaceFolder()?.uri.fsPath;
-    const termPath = await getRterm();
-    const shellArgs: string[] = config().get<string[]>('rterm.option')?.map(util.substituteVariables) || [];
-    const termOptions: vscode.TerminalOptions = {
-        name: 'R Interactive',
-        shellPath: termPath,
-        shellArgs: shellArgs,
-        cwd: workspaceFolderPath,
-    };
+export function makeTerminalOptions(): vscode.TerminalOptions {
+    const termOptions = createTerminalOptions();
     const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'session', 'profile.R'));
     const initR = extensionContext.asAbsolutePath(path.join('R', 'session','init.R'));
     if (config().get<boolean>('sessionWatcher')) {
@@ -137,26 +129,29 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     return termOptions;
 }
 
-export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
-    const termOptions = await makeTerminalOptions();
+
+// TODO
+export function createRTerm(preserveshow?: boolean): boolean {
+    const termOptions = makeTerminalOptions();
     const termPath = termOptions.shellPath;
     if(!termPath){
         void vscode.window.showErrorMessage('Could not find R path. Please check r.term and r.path setting.');
         return false;
-    } else if(!fs.existsSync(termPath)){
-        void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check r.rterm setting.`);
-        return false;
     }
+    // else if (!fs.existsSync(termPath)) {
+    //     void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check r.rterm setting.`);
+    //     return false;
+    // }
     rTerm = vscode.window.createTerminal(termOptions);
     rTerm.show(preserveshow);
     return true;
 }
 
-export async function restartRTerminal(): Promise<void>{
+export function restartRTerminal(): void {
     if (typeof rTerm !== 'undefined'){
         rTerm.dispose();
         deleteTerminal(rTerm);
-        await createRTerm(true);
+        createRTerm(true);
     }
 }
 
@@ -229,7 +224,7 @@ export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
     }
 
     if (rTerm === undefined) {
-        await createRTerm(true);
+        createRTerm(true);
         await delay(200); // Let RTerm warm up
     }
 

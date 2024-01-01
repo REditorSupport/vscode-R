@@ -1,6 +1,6 @@
 import { QuickPickItem, QuickPickOptions, Uri, window, workspace, env } from 'vscode';
 import { extensionContext } from '../extension';
-import { executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral, spawnAsync, getConfirmation, catchAsError } from '../util';
+import { executeRCommand, getCurrentWorkspaceFolder, getRpath, ToRStringLiteral, spawnRAsync, getConfirmation, catchAsError } from '../util';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -20,7 +20,7 @@ interface TemplateItem extends QuickPickItem {
 
 async function getTemplateItems(cwd: string): Promise<TemplateItem[] | undefined> {
     const lim = '---vsc---';
-    const rPath = await getRpath();
+    const rPath = getRpath();
     if (!rPath) {
         return undefined;
     }
@@ -43,7 +43,7 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[] | undefined
     ];
 
     try {
-        const result = await spawnAsync(rPath, args, options);
+        const result = await spawnRAsync(rPath, args, options);
         if (result.status !== 0) {
             throw result.error || new Error(result.stderr);
         }

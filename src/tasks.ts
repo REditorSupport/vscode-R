@@ -140,7 +140,7 @@ export class RTaskProvider implements vscode.TaskProvider {
         }
 
         const tasks: vscode.Task[] = [];
-        const rPath = await getRpath(false);
+        const rPath = getRpath(false);
         if (!rPath) {
             return [];
         }
@@ -163,8 +163,9 @@ export class RTaskProvider implements vscode.TaskProvider {
             group: task.group,
             name: task.name
         };
-        const rPath = await getRpath(false);
+        const rPath = getRpath(false);
         if (!rPath) {
+            void vscode.window.showErrorMessage('Cannot run task. No valid R executable path set.');
             throw 'R path not set.';
         }
         return asRTask(rPath, vscode.TaskScope.Workspace, taskInfo);
