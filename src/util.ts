@@ -524,6 +524,7 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
                     return;
                 }
                 const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `install.packages('${name}', repos='${repo}')`];
+                //TODO, CONDA AWARE
                 void executeAsTask('Install Package', rPath, args, true);
                 if (postInstallMsg) {
                     void vscode.window.showInformationMessage(postInstallMsg, 'OK');
