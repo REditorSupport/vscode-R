@@ -165,14 +165,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     globalHttpgdManager = httpgdViewer.initializeHttpgd();
 
     if (rExecutableManager.activeExecutable) {
-        await activateServices(context, rExtension);
+        activateServices(context, rExtension);
     }
 
     // TODO, this is a stopgap
     // doesn't really work for for multi-root purposes
-    rExecutableManager?.onDidChangeActiveExecutable(async (exec) => {
+    rExecutableManager?.onDidChangeActiveExecutable((exec) => {
         if (exec) {
-            await activateServices(context, rExtension);
+            activateServices(context, rExtension);
         }
     });
 
@@ -198,7 +198,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // register terminal-provider
     context.subscriptions.push(vscode.window.registerTerminalProfileProvider('r.terminal-profile',
         {
-            async provideTerminalProfile() {
+            provideTerminalProfile() {
                 return {
                     options: rTerminal.makeTerminalOptions()
                 };
@@ -260,7 +260,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 }
 
 
-async function activateServices(context: vscode.ExtensionContext, rExtension: apiImplementation.RExtensionImplementation) {
+function activateServices(context: vscode.ExtensionContext, rExtension: apiImplementation.RExtensionImplementation) {
     // start language service
     if (util.config().get<boolean>('lsp.enabled')) {
         const lsp = vscode.extensions.getExtension('reditorsupport.r-lsp');
@@ -272,5 +272,5 @@ async function activateServices(context: vscode.ExtensionContext, rExtension: ap
         }
     }
     // initialize the package/help related functions
-    globalRHelp = await rHelp.initializeHelp(context, rExtension);
+    globalRHelp = rHelp.initializeHelp(context, rExtension);
 }

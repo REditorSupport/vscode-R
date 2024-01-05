@@ -3,7 +3,6 @@
 import { homedir } from 'os';
 import { existsSync, PathLike, readFile } from 'fs-extra';
 import * as fs from 'fs';
-import winreg = require('winreg');
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
@@ -478,7 +477,7 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
 
 function setupSpawnRArguments(executable: RExecutableType, args?: ReadonlyArray<string>) {
     if (isVirtual(executable)) {
-        const virtualArgs = virtualAwareArgs(executable, false, args ?? [])
+        const virtualArgs = virtualAwareArgs(executable, false, args ?? []);
         return { cmd: virtualArgs.cmd, args: virtualArgs.args };
     } else {
         return { cmd: executable.rBin, args: args };

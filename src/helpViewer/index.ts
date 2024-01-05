@@ -39,10 +39,10 @@ export const codeClickConfigDefault = {
 };
 
 // Initialization function that is called once when activating the extension
-export async function initializeHelp(
+export function initializeHelp(
     context: vscode.ExtensionContext,
     rExtension: api.RExtension,
-): Promise<RHelp | undefined> {
+): RHelp | undefined {
     // set context value to indicate that the help related tree-view should be shown
     void vscode.commands.executeCommand('setContext', 'r.helpViewer.show', true);
 

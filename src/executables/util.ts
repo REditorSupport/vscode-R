@@ -6,7 +6,6 @@ import * as vscode from 'vscode';
 import * as util from '../util';
 import { spawnSync } from 'child_process';
 import { config, getCurrentWorkspaceFolder, getRPathConfigEntry, normaliseRPathString, substituteVariables } from '../util';
-import { IExecutableDetails, VirtualRExecutableType } from './service';
 import { isVirtual, virtualAwareArgs } from './virtual';
 import { rExecutableManager } from '../extension';
 

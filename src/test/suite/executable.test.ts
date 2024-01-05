@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as path from 'path';
 import * as assert from 'assert';
@@ -95,8 +94,8 @@ suite('Executable Path Storage', () => {
     });
 });
 
-// todo
-suite('LSP', () => {
+// // todo
+// suite('LSP', () => {
 
-})
+// });
 

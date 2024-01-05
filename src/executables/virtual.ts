@@ -36,7 +36,7 @@ export function isCondaInstallation(executablePath: string): boolean {
 
 // TODO
 export function isMambaInstallation(executablePath: string): boolean {
-    return false;
+    return executablePath === 'linter appeasement';
 }
 
 export function getRDetailsFromCondaMetaHistory(executablePath: string): IExecutableDetails {
@@ -81,7 +81,7 @@ export function virtualAwareArgs(
     const cmd: 'conda' | 'mamba' =
         isCondaExecutable(executable) ? 'conda' :
             isMambaExecutable(executable) ? 'mamba' :
-                (() => { throw new Error('Unknown virtual executable') })();
+                (() => { throw new Error('Unknown virtual executable'); })();
 
     if (!rpath) {
         throw new Error('Unknown executable');
@@ -94,10 +94,10 @@ export function virtualAwareArgs(
         ...(interactive ? ['--no-capture-output'] : []),
         rpath,
         ...(shellArgs ? shellArgs : [])
-    ]
+    ];
 
     return {
         cmd: cmd,
         args: args
-    }
+    };
 }

@@ -75,7 +75,7 @@ export async function dispatchRStudioAPICall(action: string, args: any, sd: stri
             break;
         }
         case 'restart_r': {
-            await restartRTerminal();
+            restartRTerminal();
             await writeSuccessResponse(sd);
             break;
         }
@@ -254,7 +254,7 @@ export function projectPath(): { path: string | undefined; } {
 }
 
 export async function documentNew(text: string, type: string, position: number[]): Promise<void> {
-    const currentProjectPath = projectPath().path; 
+    const currentProjectPath = projectPath().path;
     if (!currentProjectPath) {
         return; // TODO: Report failure
     }
