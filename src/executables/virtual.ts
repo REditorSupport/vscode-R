@@ -2,13 +2,8 @@ import * as path from 'path';
 import * as fs from 'fs-extra';
 
 import { getRterm } from '../util';
-import { AbstractRExecutable, AbstractVirtualRExecutable, CondaVirtualRExecutable, IExecutableDetails, MambaVirtualRExecutable, RExecutableType, VirtualRExecutableType } from './service';
-
-
-export function runCondaBinary(executable: VirtualRExecutableType, interactive = false) {
-    const replMode = interactive ? '--no-capture-output' : '';
-    return `conda run -n ${executable.name} ${replMode} ${executable.rBin}`;
-}
+import { AbstractRExecutable, AbstractVirtualRExecutable, CondaVirtualRExecutable, IExecutableDetails, MambaVirtualRExecutable, RExecutableType } from './service';
+import { rExecutableManager } from '../extension';
 
 export function condaName(executablePath: string): string {
     return path.basename(condaPrefixPath(executablePath));
@@ -70,10 +65,10 @@ export function isVirtual(executable: AbstractRExecutable): executable is Abstra
 
 interface IRunVirtualBinary {
     cmd: string,
-    args: string[]
+    args?: string[];
 }
 
-export function virtualAwareArgs(
+function virtualAwareArgs(
     executable: CondaVirtualRExecutable | MambaVirtualRExecutable,
     interactive: boolean,
     shellArgs: string[] | ReadonlyArray<string>): IRunVirtualBinary {
@@ -100,4 +95,19 @@ export function virtualAwareArgs(
         cmd: cmd,
         args: args
     };
+}
+
+export function setupVirtualAwareProcessArguments(executable: string, interactive: boolean, args?: ReadonlyArray<string>): IRunVirtualBinary;
+export function setupVirtualAwareProcessArguments(executable: RExecutableType, interactive: boolean, args?: ReadonlyArray<string>): IRunVirtualBinary;
+export function setupVirtualAwareProcessArguments(executable: RExecutableType | string, interactive: boolean, args?: ReadonlyArray<string>): IRunVirtualBinary {
+    const rexecutable = typeof executable === 'string' ? rExecutableManager?.getExecutableFromPath(executable) : executable;
+    if (!rexecutable) {
+        throw 'Bad R path';
+    }
+    if (isVirtual(rexecutable)) {
+        const virtualArgs = virtualAwareArgs(rexecutable, interactive, args ?? []);
+        return { cmd: virtualArgs.cmd, args: virtualArgs.args };
+    } else {
+        return { cmd: rexecutable.rBin, args: args?.concat() ?? [] };
+    }
 }

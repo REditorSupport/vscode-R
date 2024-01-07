@@ -5,14 +5,14 @@ import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
 
-import { extensionContext, homeExtDir } from './extension';
+import { extensionContext, homeExtDir, rExecutableManager } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
 import { cleanupSession } from './session';
-import { config, delay } from './util';
+import { config, delay, getCurrentWorkspaceFolder } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
-import { createTerminalOptions } from './executables/util';
+import { setupVirtualAwareProcessArguments } from './executables';
 export let rTerm: vscode.Terminal | undefined = undefined;
 
 export async function runSource(echo: boolean): Promise<void>  {
@@ -115,7 +115,20 @@ export async function runFromLineToEnd(): Promise<void>  {
 }
 
 export function makeTerminalOptions(): vscode.TerminalOptions {
-    const termOptions = createTerminalOptions();
+    const currentExecutable = rExecutableManager?.activeExecutable;
+    if (!currentExecutable) { return {}; }
+
+    const workspaceFolderPath = getCurrentWorkspaceFolder()?.uri.fsPath;
+    const shellArgs: string[] = config().get<string[]>('rterm.option')?.map(util.substituteVariables) || [];
+
+    const processArgs = setupVirtualAwareProcessArguments(currentExecutable, true, shellArgs);
+    const termOptions: vscode.TerminalOptions = {
+        name: 'R Interactive',
+        shellPath: processArgs.cmd,
+        shellArgs: processArgs.args,
+        cwd: workspaceFolderPath
+    };
+
     const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'session', 'profile.R'));
     const initR = extensionContext.asAbsolutePath(path.join('R', 'session','init.R'));
     if (config().get<boolean>('sessionWatcher')) {

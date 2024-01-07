@@ -2,41 +2,8 @@
 
 import * as path from 'path';
 import * as fs from 'fs-extra';
-import * as vscode from 'vscode';
-import * as util from '../util';
 import { spawnSync } from 'child_process';
-import { config, getCurrentWorkspaceFolder, getRPathConfigEntry, normaliseRPathString, substituteVariables } from '../util';
-import { isVirtual, virtualAwareArgs } from './virtual';
-import { rExecutableManager } from '../extension';
-
-
-export function createTerminalOptions() {
-    const currentExecutable = rExecutableManager?.activeExecutable;
-    if (!currentExecutable) { return {}; }
-
-    const workspaceFolderPath = getCurrentWorkspaceFolder()?.uri.fsPath;
-    let termOptions: vscode.TerminalOptions;
-    const termPath = util.getRterm();
-    const shellArgs: string[] = config().get<string[]>('rterm.option')?.map(util.substituteVariables) || [];
-    if (isVirtual(currentExecutable)) {
-        const virtualArgs = virtualAwareArgs(currentExecutable, true, shellArgs);
-        termOptions = {
-            name: 'R Interactive',
-            // TODO
-            shellPath: virtualArgs.cmd,
-            shellArgs: virtualArgs.args,
-            cwd: workspaceFolderPath,
-        };
-    } else {
-        termOptions = {
-            name: 'R Interactive',
-            shellPath: termPath,
-            shellArgs: shellArgs,
-            cwd: workspaceFolderPath,
-        };
-    }
-    return termOptions;
-}
+import { config, getRPathConfigEntry, normaliseRPathString, substituteVariables } from '../util';
 
 export function getConfigPathWithSubstitution(): string | undefined {
     let rpath = config().get<string>(getRPathConfigEntry());

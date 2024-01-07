@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import * as vscode from 'vscode';
 
 import { RHelp } from '.';
-import { getConfirmation, executeAsTask, doWithProgress, getCranUrl } from '../util';
+import { getConfirmation, doWithProgress, getCranUrl, executeAsRTask } from '../util';
 import { getPackagesFromCran } from './cran';
 
 
@@ -198,8 +198,8 @@ export class PackageManager {
         const confirmation = 'Yes, remove package!';
         const prompt = `Are you sure you want to remove package ${pkgName}?`;
 
-        if(await getConfirmation(prompt, confirmation, cmd)){
-            await executeAsTask('Remove Package', rPath, args, true);
+        if (await getConfirmation(prompt, confirmation, cmd)) {
+            await executeAsRTask('Remove Package', rPath, args, true);
             return true;
         } else{
             return false;
@@ -217,8 +217,8 @@ export class PackageManager {
         const confirmation = `Yes, install package${pluralS}!`;
         const prompt = `Are you sure you want to install package${pluralS}: ${pkgNames.join(', ')}?`;
 
-        if(skipConfirmation || await getConfirmation(prompt, confirmation, cmd)){
-            await executeAsTask('Install Package', rPath, args, true);
+        if (skipConfirmation || await getConfirmation(prompt, confirmation, cmd)) {
+            await executeAsRTask('Install Package', rPath, args, true);
             return true;
         }
         return false;
@@ -233,7 +233,7 @@ export class PackageManager {
         const prompt = 'Are you sure you want to update all installed packages? This might take some time!';
 
         if(skipConfirmation || await getConfirmation(prompt, confirmation, cmd)){
-            await executeAsTask('Update Packages', rPath, args, true);
+            await executeAsRTask('Update Packages', rPath, args, true);
             return true;
         } else{
             return false;

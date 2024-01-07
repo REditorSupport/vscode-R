@@ -9,7 +9,7 @@ import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
 import { extensionContext, rExecutableManager } from './extension';
 import { randomBytes } from 'crypto';
-import { isVirtual, RExecutableType, virtualAwareArgs } from './executables';
+import { isVirtual, RExecutableType, setupVirtualAwareProcessArguments } from './executables';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -235,6 +235,22 @@ export async function executeAsTask(name: string, cmdOrProcess: string, args?: s
 
     return await taskDonePromise;
 }
+
+// todo
+export async function executeAsRTask(name: string, executable: string, args?: string[], asProcess?: true): Promise<void>;
+export async function executeAsRTask(name: string, executable: RExecutableType, args?: string[], asProcess?: true): Promise<void>;
+export async function executeAsRTask(name: string, executable: RExecutableType | string, args?: string[], asProcess?: true): Promise<void> {
+    const rexecutable: RExecutableType | undefined =
+        typeof executable === 'string' ?
+            rExecutableManager?.getExecutableFromPath(executable) : executable;
+    if (!rexecutable) {
+        throw 'Bad R executable supplied';
+    }
+
+    const processArgs = setupVirtualAwareProcessArguments(rexecutable, false, args);
+    return executeAsTask(name, processArgs.cmd, processArgs.args, asProcess);
+}
+
 
 // executes a callback and shows a 'busy' progress bar during the execution
 // synchronous callbacks are converted to async to properly render the progress bar
@@ -474,27 +490,13 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
     });
 }
 
-
-function setupSpawnRArguments(executable: RExecutableType, args?: ReadonlyArray<string>) {
-    if (isVirtual(executable)) {
-        const virtualArgs = virtualAwareArgs(executable, false, args ?? []);
-        return { cmd: virtualArgs.cmd, args: virtualArgs.args };
-    } else {
-        return { cmd: executable.rBin, args: args };
-    }
-}
-
 export function spawnR(rpath: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
-    const executable = rExecutableManager?.getExecutableFromPath(rpath);
-    if (!executable) { throw 'Bad R path'; }
-    const spawnArgs = setupSpawnRArguments(executable, args);
+    const spawnArgs = setupVirtualAwareProcessArguments(rpath, false, args);
     return spawn(spawnArgs.cmd, spawnArgs.args, options, onDisposed);
 }
 
 export function spawnRAsync(rpath: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): Promise<cp.SpawnSyncReturns<string>> {
-    const executable = rExecutableManager?.getExecutableFromPath(rpath);
-    if (!executable) { throw 'Bad R path'; }
-    const spawnArgs = setupSpawnRArguments(executable, args);
+    const spawnArgs = setupVirtualAwareProcessArguments(rpath, false, args);
     return spawnAsync(spawnArgs.cmd, spawnArgs.args, options, onDisposed);
 }
 
@@ -524,8 +526,8 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
                     return;
                 }
                 const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `install.packages('${name}', repos='${repo}')`];
-                //TODO, CONDA AWARE
-                void executeAsTask('Install Package', rPath, args, true);
+                const processArgs = setupVirtualAwareProcessArguments(rPath, true, args);
+                void executeAsTask('Install Package', processArgs.cmd, processArgs.args, true);
                 if (postInstallMsg) {
                     void vscode.window.showInformationMessage(postInstallMsg, 'OK');
                 }

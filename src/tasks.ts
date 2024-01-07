@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { RExecutableType, isVirtual, virtualAwareArgs } from './executables';
+import { RExecutableType, isVirtual, setupVirtualAwareProcessArguments } from './executables';
 import { rExecutableManager } from './extension';
 
 
@@ -109,15 +109,7 @@ const rtasks: RTaskInfo[] = [
 
 function asRTask(executable: RExecutableType, folder: vscode.WorkspaceFolder | vscode.TaskScope, info: RTaskInfo): vscode.Task {
     const args = makeRArgs(info.definition.options ?? defaultOptions, info.definition.code);
-    let opts: {cmd: string, args: string[] };
-    if (isVirtual(executable)) {
-        opts = virtualAwareArgs(executable, false, args);
-    } else {
-        opts = {
-            cmd: executable.rBin,
-            args: args
-        }
-    }
+    const processArgs = setupVirtualAwareProcessArguments(executable, false, args);
 
     const rtask: vscode.Task = new vscode.Task(
         info.definition,
@@ -125,8 +117,8 @@ function asRTask(executable: RExecutableType, folder: vscode.WorkspaceFolder | v
         info.name ?? 'Unnamed',
         info.definition.type,
         new vscode.ProcessExecution(
-            opts.cmd,
-            opts.args,
+            processArgs.cmd,
+            processArgs.args ?? [],
             {
                 cwd: info.definition.cwd,
                 env: info.definition.env
