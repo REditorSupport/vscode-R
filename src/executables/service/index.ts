@@ -9,7 +9,7 @@ import { RExecutablePathStorage } from './pathStorage';
 import { RExecutableRegistry } from './registry';
 import { TAbstractLocatorService, LocatorServiceFactory } from './locator';
 import { RExecutableType, WorkspaceExecutableEvent } from './types';
-import { getRenvVersion } from '../renv';
+import { getRenvVersion } from '../virtual/renv';
 import { homeExtDir } from '../../extension';
 
 export * from './types';

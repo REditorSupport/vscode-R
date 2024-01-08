@@ -21,6 +21,7 @@ export function getConfigPathWithSubstitution(): string | undefined {
 export function getRDetailsFromPath(rPath: string): { version: string, arch: string } {
     try {
         const path = normaliseRPathString(rPath);
+        // TODO
         const child = spawnSync(path, [`--version`]).output.join('\n');
         const versionRegex = /(?<=R\sversion\s)[0-9.]*/g;
         const archRegex = /[0-9]*-bit/g;

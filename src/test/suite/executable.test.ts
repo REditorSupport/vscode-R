@@ -9,8 +9,8 @@ import { ExecutableStatusItem } from '../../executables/ui';
 import { mockExtensionContext } from '../common';
 import { RExecutablePathStorage } from '../../executables/service/pathStorage';
 import { DummyMemento } from '../../util';
-import { IRunVirtualBinary, RExecutableManager, isCondaExecutable, setupVirtualAwareProcessArguments } from '../../executables';
-import { RExecutable, RExecutableService } from '../../executables/service';
+import { IProcessArgs, setupVirtualAwareProcessArguments } from '../../executables';
+import { RExecutable, RExecutableService, CondaVirtualRExecutable } from '../../executables/service';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
@@ -105,7 +105,7 @@ suite('Virtuals', () => {
         sandbox.restore();
     });
     test('virtual aware args', () => {
-        let args: IRunVirtualBinary;
+        let args: IProcessArgs;
         const rArgs = ['--vanilla'];
 
         const realExecutable = new RExecutable('/dummy/path/R');
@@ -117,7 +117,7 @@ suite('Virtuals', () => {
             cmd: '/dummy/path/R'
         });
 
-        const virtualExecutable = new exec.CondaVirtualRExecutable('/dummy/conda/path/R');
+        const virtualExecutable = new CondaVirtualRExecutable('/dummy/conda/path/R');
         args = setupVirtualAwareProcessArguments(virtualExecutable, false, rArgs);
         assert.deepEqual(args, {
             args: [

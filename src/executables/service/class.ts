@@ -1,9 +1,14 @@
 'use strict';
 
-import { getRDetailsFromPath} from '../util';
+// TODO fix imports
+
+import { getRDetailsFromPath } from '../util';
 import { RExecutableRegistry } from './registry';
 import { RExecutableType } from './types';
-import { isCondaInstallation, condaName, getRDetailsFromCondaMetaHistory, isMambaInstallation } from '../virtual';
+import {
+    isCondaInstallation, isMambaInstallation
+} from '../virtual';
+import { condaName, getRDetailsFromCondaMetaHistory } from '../virtual/conda';
 
 /**
  * Creates and caches instances of RExecutableType
@@ -12,7 +17,7 @@ import { isCondaInstallation, condaName, getRDetailsFromCondaMetaHistory, isMamb
 export class RExecutableFactory {
     private readonly registry: RExecutableRegistry;
 
-    constructor(registry: RExecutableRegistry) {
+    constructor (registry: RExecutableRegistry) {
         this.registry = registry;
     }
 
@@ -55,7 +60,7 @@ export abstract class AbstractRExecutable {
 
 
 export class RExecutable extends AbstractRExecutable {
-    constructor(executablePath: string) {
+    constructor (executablePath: string) {
         super();
         const details = getRDetailsFromPath(executablePath);
         this._rBin = executablePath;
@@ -85,7 +90,7 @@ export abstract class AbstractVirtualRExecutable extends AbstractRExecutable {
 }
 
 export class CondaVirtualRExecutable extends AbstractVirtualRExecutable {
-    constructor(executablePath: string) {
+    constructor (executablePath: string) {
         super();
         this._name = condaName(executablePath);
         const details = getRDetailsFromCondaMetaHistory(executablePath);
@@ -96,13 +101,10 @@ export class CondaVirtualRExecutable extends AbstractVirtualRExecutable {
 }
 
 // TODO
+
 export class MambaVirtualRExecutable extends AbstractVirtualRExecutable {
-    constructor(executablePath: string) {
+    constructor (executablePath: string) {
         super();
-        this._name = condaName(executablePath);
-        const details = getRDetailsFromCondaMetaHistory(executablePath);
-        this._rVersion = details?.version ?? '';
-        this._rArch = details?.arch ?? '';
-        this._rBin = executablePath;
     }
 }
+

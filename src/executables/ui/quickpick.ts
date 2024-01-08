@@ -8,7 +8,7 @@ import { RExecutableType } from '../service';
 import { RExecutableService } from '../service';
 import { isVirtual } from '../virtual';
 import { getConfigPathWithSubstitution, validateRExecutablePath } from '../util';
-import { getRenvVersion } from '../renv';
+import { getRenvVersion } from '../virtual/renv';
 import { extensionContext } from '../../extension';
 
 enum ExecutableNotifications {

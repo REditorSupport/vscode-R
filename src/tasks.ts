@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { RExecutableType, isVirtual, setupVirtualAwareProcessArguments } from './executables';
+import { RExecutableType, setupVirtualAwareProcessArguments } from './executables';
 import { rExecutableManager } from './extension';
 
 

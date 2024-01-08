@@ -7,9 +7,8 @@ import { RExecutableService, RExecutableType, WorkspaceExecutableEvent } from '.
 import { extensionContext } from '../extension';
 
 export * from './virtual';
-export * from './renv';
 export * from './util';
-export { RExecutableType, VirtualRExecutableType, CondaVirtualRExecutable, MambaVirtualRExecutable } from './service';
+export { RExecutableType, VirtualRExecutableType } from './service';
 
 // super class that manages relevant sub classes
 export class RExecutableManager {

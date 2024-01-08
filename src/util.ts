@@ -9,7 +9,7 @@ import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
 import { extensionContext, rExecutableManager } from './extension';
 import { randomBytes } from 'crypto';
-import { isVirtual, RExecutableType, setupVirtualAwareProcessArguments } from './executables';
+import { RExecutableType, setupVirtualAwareProcessArguments } from './executables';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
