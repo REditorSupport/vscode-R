@@ -63,7 +63,7 @@ export function isVirtual(executable: AbstractRExecutable): executable is Abstra
     return executable instanceof AbstractVirtualRExecutable;
 }
 
-interface IRunVirtualBinary {
+export interface IRunVirtualBinary {
     cmd: string,
     args?: string[];
 }

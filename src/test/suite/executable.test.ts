@@ -4,11 +4,13 @@ import * as assert from 'assert';
 
 
 import * as ext from '../../extension';
-import * as exec from '../../executables/service';
+import * as exec from '../../executables';
 import { ExecutableStatusItem } from '../../executables/ui';
 import { mockExtensionContext } from '../common';
 import { RExecutablePathStorage } from '../../executables/service/pathStorage';
 import { DummyMemento } from '../../util';
+import { IRunVirtualBinary, RExecutableManager, isCondaExecutable, setupVirtualAwareProcessArguments } from '../../executables';
+import { RExecutable, RExecutableService } from '../../executables/service';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
@@ -28,7 +30,7 @@ suite('Language Status Item', () => {
             get activeExecutable() {
                 return executableValue;
             }
-        } as unknown as exec.RExecutableService);
+        } as unknown as RExecutableService);
         assert.strictEqual(
             statusItem.text,
             '$(warning) Select R executable'
@@ -94,8 +96,38 @@ suite('Executable Path Storage', () => {
     });
 });
 
-// // todo
-// suite('LSP', () => {
+suite('Virtuals', () => {
+    let sandbox: sinon.SinonSandbox;
+    setup(() => {
+        sandbox = sinon.createSandbox();
+    });
+    teardown(() => {
+        sandbox.restore();
+    });
+    test('virtual aware args', () => {
+        let args: IRunVirtualBinary;
+        const rArgs = ['--vanilla'];
 
-// });
+        const realExecutable = new RExecutable('/dummy/path/R');
+        args = setupVirtualAwareProcessArguments(realExecutable, false, rArgs);
+        assert.deepEqual(args, {
+            args: [
+                '--vanilla'
+            ],
+            cmd: '/dummy/path/R'
+        });
 
+        const virtualExecutable = new exec.CondaVirtualRExecutable('/dummy/conda/path/R');
+        args = setupVirtualAwareProcessArguments(virtualExecutable, false, rArgs);
+        assert.deepEqual(args, {
+            args: [
+                'run',
+                '-n',
+                '',
+                '/dummy/conda/path/R',
+                '--vanilla'
+            ],
+            cmd: 'conda'
+        });
+    });
+});
