@@ -36,7 +36,7 @@ function virtualAwareArgs(
         'run',
         '-n',
         executable.name,
-        ...(interactive ? ['--no-capture-output'] : []),
+        '--no-capture-output',
         rpath,
         ...(shellArgs ? shellArgs : [])
     ];
