@@ -1,6 +1,5 @@
 # PR TODO
 
-- tasks need to be virtual-aware
-- package.json settings
+- cleanup todos
 - services when changing rpath
-- todos
+  - very buggy right now

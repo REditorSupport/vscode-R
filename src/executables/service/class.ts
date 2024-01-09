@@ -1,14 +1,9 @@
 'use strict';
 
-// TODO fix imports
-
 import { getRDetailsFromPath } from '../util';
 import { RExecutableRegistry } from './registry';
 import { RExecutableType } from './types';
-import {
-    isCondaInstallation, isMambaInstallation
-} from '../virtual';
-import { condaName, getRDetailsFromCondaMetaHistory } from '../virtual/conda';
+import { isCondaInstallation, isMambaInstallation, condaName, getRDetailsFromCondaMetaHistory } from '../virtual';
 
 /**
  * Creates and caches instances of RExecutableType
