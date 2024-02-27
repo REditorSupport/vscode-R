@@ -137,7 +137,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
         // precedence:
         // knit > site > configuration
         if (yamlParams?.['knit']) {
-            const knitParam = yamlParams['knit'];
+            const knitParam = yamlParams['knit'].trim();
             knitCommand = outputFormat ?
                 `${knitParam}(${docPath}, output_format = '${outputFormat}')` :
                 `${knitParam}(${docPath})`;
