@@ -123,8 +123,8 @@ export abstract class RMarkdownManager {
 
                         }
                         const percentRegex = /[0-9]+(?=%)/g;
+                        const divisionRegex = /([0-9]+)\/([0-9]+)/g;
                         const percentRegOutput = dat.match(percentRegex);
-
                         if (percentRegOutput) {
                             for (const item of percentRegOutput) {
                                 const perc = Number(item);
@@ -136,7 +136,20 @@ export abstract class RMarkdownManager {
                                 );
                                 currentProgress = perc;
                             }
+                        } else {
+                            const divisionRegOutput = divisionRegex.exec(dat);
+                            if (divisionRegOutput) {
+                                const perc = Math.ceil(parseInt(divisionRegOutput[1]) / parseInt(divisionRegOutput[2]) * 100);
+                                progress?.report(
+                                    {
+                                        increment: perc - currentProgress,
+                                        message: `${perc}%`
+                                    }
+                                );
+                                currentProgress = perc;
+                            }
                         }
+
                         if (token?.isCancellationRequested) {
                             if (childProcess) {
                                 resolve(childProcess);
