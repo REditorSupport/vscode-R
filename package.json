@@ -2037,6 +2037,11 @@
         }
       }
     },
+    "configurationDefaults": {
+      "[r]": {
+        "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}\\|;:'\",<>/"
+      }
+    },
     "taskDefinitions": [
       {
         "type": "R",
