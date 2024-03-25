@@ -36,7 +36,7 @@ function platformChoose<A, B, C>(win32: A, darwin: B, other: C): A | B | C {
 
 // See: https://code.visualstudio.com/docs/cpp/c-cpp-properties-schema-reference
 async function generateCppPropertiesProc(workspaceFolder: string) {
-    const rPath = await getRpath();
+    const rPath = getRpath();
     if (!rPath) {
         return;
     }

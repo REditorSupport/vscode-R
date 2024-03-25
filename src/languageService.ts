@@ -4,7 +4,7 @@ import * as net from 'net';
 import { URL } from 'url';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables } from './util';
+import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawnR, substituteVariables } from './util';
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 
@@ -27,7 +27,7 @@ export class LanguageService implements Disposable {
     }
 
     private spawnServer(client: LanguageClient, rPath: string, args: readonly string[], options: CommonOptions & { cwd: string }): DisposableProcess {
-        const childProcess = spawn(rPath, args, options);
+        const childProcess = spawnR(rPath, args, options);
         const pid = childProcess.pid || -1;
         client.outputChannel.appendLine(`R Language Server (${pid}) started`);
         childProcess.stderr.on('data', (chunk: Buffer) => {
@@ -60,7 +60,7 @@ export class LanguageService implements Disposable {
 
         const debug = config.get<boolean>('lsp.debug');
         const useRenvLibPath = config.get<boolean>('useRenvLibPath') ?? false;
-        const rPath = await getRpath() || ''; // TODO: Abort gracefully
+        const rPath = getRpath() || ''; // TODO: Abort gracefully
         if (debug) {
             console.log(`R path: ${rPath}`);
         }

@@ -1,4 +1,3 @@
-
 'use strict';
 
 // interfaces, functions, etc. provided by vscode
@@ -23,6 +22,7 @@ import * as completions from './completions';
 import * as rShare from './liveShare';
 import * as httpgdViewer from './plotViewer';
 import * as languageService from './languageService';
+import * as rExec from './executables';
 import { RTaskProvider } from './tasks';
 
 
@@ -37,6 +37,7 @@ export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefin
 export let rmdPreviewManager: rmarkdown.RMarkdownPreviewManager | undefined = undefined;
 export let rmdKnitManager: rmarkdown.RMarkdownKnitManager | undefined = undefined;
 export let sessionStatusBarItem: vscode.StatusBarItem | undefined = undefined;
+export let rExecutableManager: rExec.RExecutableManager | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
@@ -52,6 +53,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // assign extension context to global variable
     extensionContext = context;
+    rExecutableManager = await rExec.RExecutableManager.initialize();
 
     // assign session watcher setting to global variable
     enableSessionWatcher = util.config().get<boolean>('sessionWatcher') ?? false;
@@ -63,6 +65,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     const commands = {
         // create R terminal
         'r.createRTerm': rTerminal.createRTerm,
+        'r.setExecutable': () => rExecutableManager?.executableQuickPick.showQuickPick(),
 
         // run code from editor in terminal
         'r.nrow': () => rTerminal.runSelectionOrWord(['nrow']),
@@ -158,16 +161,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // keep track of terminals
     context.subscriptions.push(vscode.window.onDidCloseTerminal(rTerminal.deleteTerminal));
 
-    // start language service
-    if (util.config().get<boolean>('lsp.enabled')) {
-        const lsp = vscode.extensions.getExtension('reditorsupport.r-lsp');
-        if (lsp) {
-            void vscode.window.showInformationMessage('The R language server extension has been integrated into vscode-R. You need to disable or uninstall REditorSupport.r-lsp and reload window to use the new version.');
-            void vscode.commands.executeCommand('workbench.extensions.search', '@installed r-lsp');
-        } else {
-            context.subscriptions.push(new languageService.LanguageService());
-        }
+    // TODO
+    globalHttpgdManager = httpgdViewer.initializeHttpgd();
+
+    if (rExecutableManager.activeExecutable) {
+        activateServices(context, rExtension);
     }
+
+    // TODO, this is a stopgap
+    // doesn't really work for for multi-root purposes
+    rExecutableManager?.onDidChangeActiveExecutable((exec) => {
+        if (exec) {
+            activateServices(context, rExtension);
+        }
+    });
 
     // register on-enter rule for roxygen comments
     const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\\|;:'",<>/\s]+)/g;
@@ -191,19 +198,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // register terminal-provider
     context.subscriptions.push(vscode.window.registerTerminalProfileProvider('r.terminal-profile',
         {
-            async provideTerminalProfile() {
+            provideTerminalProfile() {
                 return {
-                    options: await rTerminal.makeTerminalOptions()
+                    options: rTerminal.makeTerminalOptions()
                 };
             }
         }
     ));
-
-    // initialize httpgd viewer
-    globalHttpgdManager = httpgdViewer.initializeHttpgd();
-
-    // initialize the package/help related functions
-    globalRHelp = await rHelp.initializeHelp(context, rExtension);
 
     // register codelens and completion providers for r markdown and r files
     vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());
@@ -256,4 +257,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
 
     return rExtension;
+}
+
+
+function activateServices(context: vscode.ExtensionContext, rExtension: apiImplementation.RExtensionImplementation) {
+    // start language service
+    if (util.config().get<boolean>('lsp.enabled')) {
+        const lsp = vscode.extensions.getExtension('reditorsupport.r-lsp');
+        if (lsp) {
+            void vscode.window.showInformationMessage('The R language server extension has been integrated into vscode-R. You need to disable or uninstall REditorSupport.r-lsp and reload window to use the new version.');
+            void vscode.commands.executeCommand('workbench.extensions.search', '@installed r-lsp');
+        } else {
+            context.subscriptions.push(new languageService.LanguageService());
+        }
+    }
+    // initialize the package/help related functions
+    globalRHelp = rHelp.initializeHelp(context, rExtension);
 }

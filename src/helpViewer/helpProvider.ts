@@ -4,7 +4,7 @@ import * as cp from 'child_process';
 
 import * as rHelp from '.';
 import { extensionContext } from '../extension';
-import { catchAsError, config, DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
+import { catchAsError, config, DisposableProcess, getRLibPaths, spawnR, spawnRAsync } from '../util';
 
 export interface RHelpProviderOptions {
     // path of the R executable
@@ -67,7 +67,7 @@ export class HelpProvider {
             },
         };
 
-        const childProcess: ChildProcessWithPort = spawn(this.rPath, args, cpOptions);
+        const childProcess: ChildProcessWithPort = spawnR(this.rPath, args, cpOptions);
 
         let str = '';
         // promise containing the port number of the process (or 0)
@@ -267,7 +267,7 @@ export class AliasProvider {
         ];
 
         try {
-            const result = await spawnAsync(this.rPath, args, options);
+            const result = await spawnRAsync(this.rPath, args, options);
             if (result.status !== 0) {
                 throw result.error || new Error(result.stderr);
             }
