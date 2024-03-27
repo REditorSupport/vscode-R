@@ -85,8 +85,7 @@ export async function getRpathFromSystem(): Promise<string> {
     return rpath;
 }
 
-export function getRPathConfigEntry(term: boolean = false): string {
-    const trunc = (term ? 'rterm' : 'rpath');
+export function getOSConfigEntry(trunc: 'rpath' | 'rterm' | 'lsp.invokeCommand'): string {
     const platform = (
         process.platform === 'win32' ? 'windows' :
             process.platform === 'darwin' ? 'mac' :
@@ -104,7 +103,7 @@ export async function getRpath(quote = false, overwriteConfig?: string): Promise
     }
 
     // try the os-specific config entry for the rpath:
-    const configEntry = getRPathConfigEntry();
+    const configEntry = getOSConfigEntry('rpath');
     rpath ||= config().get<string>(configEntry);
     rpath &&= substituteVariables(rpath);
 
@@ -132,7 +131,7 @@ export async function getRpath(quote = false, overwriteConfig?: string): Promise
 }
 
 export async function getRterm(): Promise<string | undefined> {
-    const configEntry = getRPathConfigEntry(true);
+    const configEntry = getOSConfigEntry('rterm');
     let rpath = config().get<string>(configEntry);
     rpath &&= substituteVariables(rpath);
     rpath ||= await getRpathFromSystem();
@@ -142,6 +141,18 @@ export async function getRterm(): Promise<string | undefined> {
     }
 
     void vscode.window.showErrorMessage(`Cannot find R for creating R terminal. Change setting r.${configEntry} to R path.`);
+    return undefined;
+}
+
+export function getInvokeCommand(): string | undefined {
+    const configEntry = getOSConfigEntry('lsp.invokeCommand');
+    const invokeCommand = config().get<string>(configEntry);
+
+    if (invokeCommand !== '') {
+        return invokeCommand;
+    }
+
+    void vscode.window.showErrorMessage(`Cannot launch R language server. Change setting r.${configEntry} to R language server command.`);
     return undefined;
 }
 
