@@ -9,8 +9,8 @@ import { extensionContext, homeExtDir } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession } from './session';
-import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
+import { cleanupSession, attached, incomingRequestServerAddressInfo } from './session';
+import { config, delay, getRterm, getCurrentWorkspaceFolder, hostnameOfListeningAddress } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
 export let rTerm: vscode.Terminal | undefined = undefined;
@@ -131,7 +131,10 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
             VSCODE_INIT_R: initR,
-            VSCODE_WATCHER_DIR: homeExtDir()
+            VSCODE_WATCHER_DIR: homeExtDir(),
+            VSCODE_ATTACH_HOST: incomingRequestServerAddressInfo === undefined ? undefined :
+                hostnameOfListeningAddress(incomingRequestServerAddressInfo),
+            VSCODE_ATTACH_PORT: incomingRequestServerAddressInfo?.port?.toString(),
         };
     }
     return termOptions;
@@ -229,8 +232,12 @@ export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
     }
 
     if (rTerm === undefined) {
-        await createRTerm(true);
-        await delay(200); // Let RTerm warm up
+        if (attached && vscode.window.activeTerminal) {
+            return vscode.window.activeTerminal;
+        } else {
+            await createRTerm(true);
+            await delay(200); // Let RTerm warm up
+        }
     }
 
     return rTerm;
