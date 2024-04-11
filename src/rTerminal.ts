@@ -189,51 +189,36 @@ export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
     for (let i = 0; i < vscode.window.terminals.length; i++){
         msg += `Terminal ${i}: ${vscode.window.terminals[i].name} `;
     }
-    if (vscode.window.terminals.length > 0) {
-        const rTermNameOptions = ['R', 'R Interactive'];
-        if (vscode.window.activeTerminal !== undefined) {
-            const activeTerminalName = vscode.window.activeTerminal.name;
-            if (rTermNameOptions.includes(activeTerminalName)) {
-                return vscode.window.activeTerminal;
-            }
-            for (let i = vscode.window.terminals.length - 1; i >= 0; i--){
-                const terminal = vscode.window.terminals[i];
-                const terminalName = terminal.name;
-                if (rTermNameOptions.includes(terminalName)) {
-                    terminal.show(true);
-                    return terminal;
-                }
-            }
-        } else {
-            msg += `B. There are ${vscode.window.terminals.length} terminals: `;
-            for (let i = 0; i < vscode.window.terminals.length; i++){
-                msg += `Terminal ${i}: ${vscode.window.terminals[i].name} `;
-            }
-            // Creating a terminal when there aren't any already does not seem to set activeTerminal
-            if (vscode.window.terminals.length === 1) {
-                const activeTerminalName = vscode.window.terminals[0].name;
-                if (rTermNameOptions.includes(activeTerminalName)) {
-                    return vscode.window.terminals[0];
-                }
-            } else {
-                msg += `C. There are ${vscode.window.terminals.length} terminals: `;
-                for (let i = 0; i < vscode.window.terminals.length; i++){
-                    msg += `Terminal ${i}: ${vscode.window.terminals[i].name} `;
-                }
-                console.info(msg);
-                void vscode.window.showErrorMessage('Error identifying terminal! Please run command "Developer: Toggle Developer Tools", find the message starting with "[chooseTerminal]", and copy the message to https://github.com/REditorSupport/vscode-R/issues');
 
-                return undefined;
-            }
+    const rTermNameOptions = ['R', 'R Interactive'];
+
+    // General identifier for terminals to ignore
+    const ignoreTermIdentifier = 'Deactivate';
+
+    const validRTerminals = vscode.window.terminals.filter(terminal => {
+        // Check if the terminal name matches the R terminal options
+        const isRTerminal = rTermNameOptions.includes(terminal.name);
+        // Check if the terminal should be ignored based on a general identifier
+        const shouldIgnore = terminal.name.toLowerCase().includes(ignoreTermIdentifier);
+        return isRTerminal && !shouldIgnore;
+    });
+
+    if (validRTerminals.length > 0) {
+        // If there is an active terminal that is an R terminal, use it
+        if (vscode.window.activeTerminal && rTermNameOptions.includes(vscode.window.activeTerminal.name)) {
+            return vscode.window.activeTerminal;
         }
-    }
-
-    if (rTerm === undefined) {
+        // Otherwise, find the first valid R terminal
+        const rTerminal = validRTerminals[0];
+        rTerminal.show(true);
+        return rTerminal;
+    } else {
+        // If no valid R terminals are found, create a new one
+        console.info(msg);
         await createRTerm(true);
         await delay(200); // Let RTerm warm up
+        return rTerm;
     }
-
-    return rTerm;
 }
 
 export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): Promise<void> {
