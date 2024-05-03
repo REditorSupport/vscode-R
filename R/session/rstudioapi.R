@@ -237,7 +237,7 @@ versionInfo <- function() {
     list(
         citation = "",
         mode = "vscode",
-        version = numeric_version(0),
+        version = numeric_version("0"),
         release_name = "vscode"
     )
 }
