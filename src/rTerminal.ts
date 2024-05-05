@@ -174,10 +174,18 @@ export function deleteTerminal(term: vscode.Terminal): void {
 }
 
 export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
-    if (config().get('alwaysUseActiveTerminal')) {
-        if (vscode.window.terminals.length < 1) {
-            void vscode.window.showInformationMessage('There are no open terminals.');
+    // VSCode Python's extension creates hidden terminal with string 'Deactivate'
+    // For now ignore terminals with this string
+    const ignoreTermIdentifier = 'Deactivate';
 
+    // Filter out terminals to be ignored
+    const visibleTerminals = vscode.window.terminals.filter(terminal => {
+        return !terminal.name.toLowerCase().includes(ignoreTermIdentifier);
+    });
+
+    if (config().get('alwaysUseActiveTerminal')) {
+        if (visibleTerminals.length < 1) {
+            void vscode.window.showInformationMessage('There are no open terminals.');
             return undefined;
         }
 
@@ -192,15 +200,8 @@ export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
 
     const rTermNameOptions = ['R', 'R Interactive'];
 
-    // General identifier for terminals to ignore
-    const ignoreTermIdentifier = 'Deactivate';
-
-    const validRTerminals = vscode.window.terminals.filter(terminal => {
-        // Check if the terminal name matches the R terminal options
-        const isRTerminal = rTermNameOptions.includes(terminal.name);
-        // Check if the terminal should be ignored based on a general identifier
-        const shouldIgnore = terminal.name.toLowerCase().includes(ignoreTermIdentifier);
-        return isRTerminal && !shouldIgnore;
+    const validRTerminals = visibleTerminals.filter(terminal => {
+        return rTermNameOptions.includes(terminal.name);
     });
 
     if (validRTerminals.length > 0) {
@@ -208,8 +209,8 @@ export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
         if (vscode.window.activeTerminal && rTermNameOptions.includes(vscode.window.activeTerminal.name)) {
             return vscode.window.activeTerminal;
         }
-        // Otherwise, find the first valid R terminal
-        const rTerminal = validRTerminals[0];
+        // Otherwise, use last valid R terminal
+        const rTerminal = validRTerminals[validRTerminals.length - 1];
         rTerminal.show(true);
         return rTerminal;
     } else {
@@ -220,6 +221,7 @@ export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
         return rTerm;
     }
 }
+
 
 export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): Promise<void> {
     const selection = getSelection();
