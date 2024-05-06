@@ -230,7 +230,7 @@ viewer <- function(url, height = NULL) {
 }
 
 getVersion <- function() {
-    numeric_version(0)
+    numeric_version("0")
 }
 
 versionInfo <- function() {
