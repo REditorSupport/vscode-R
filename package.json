@@ -2,7 +2,7 @@
   "name": "r",
   "displayName": "R",
   "description": "R Extension for Visual Studio Code",
-  "version": "2.8.2",
+  "version": "2.8.3",
   "author": "REditorSupport",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "REditorSupport",
@@ -2057,6 +2057,11 @@
         }
       }
     },
+    "configurationDefaults": {
+      "[r]": {
+        "editor.wordSeparators": "`~!@#$%^&*()-=+[{]}\\|;:'\",<>/"
+      }
+    },
     "taskDefinitions": [
       {
         "type": "R",
@@ -2181,7 +2186,7 @@
     "ag-grid-community": "^30.2.0",
     "cheerio": "1.0.0-rc.10",
     "crypto": "^1.0.1",
-    "ejs": "^3.1.7",
+    "ejs": "^3.1.10",
     "fs-extra": "^10.0.0",
     "highlight.js": "^10.7.3",
     "httpgd": "^0.1.6",
