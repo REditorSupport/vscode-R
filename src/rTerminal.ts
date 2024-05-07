@@ -9,7 +9,7 @@ import { extensionContext, homeExtDir } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession, attached, incomingRequestServerAddressInfo } from './session';
+import { cleanupSession, incomingRequestServerAddressInfo } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder, hostnameOfListeningAddress } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
