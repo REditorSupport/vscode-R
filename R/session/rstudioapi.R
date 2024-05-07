@@ -230,14 +230,14 @@ viewer <- function(url, height = NULL) {
 }
 
 getVersion <- function() {
-    numeric_version(0)
+    numeric_version("0")
 }
 
 versionInfo <- function() {
     list(
         citation = "",
         mode = "vscode",
-        version = numeric_version(0),
+        version = numeric_version("0"),
         release_name = "vscode"
     )
 }
