@@ -4,6 +4,21 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.8.3](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.3)
+
+Enhancements:
+
+* Substitute variables in `r.rpath` and `r.rterm` settings. (#1444)
+* Improve code chunk handling in base .R files. (#1454, thanks @kylebutts)
+
+Fixes:
+
+* Fix multiline smart-knit (#1493)
+* Fix RMD Progress Bar (#1491)
+* Remove `.` as an R language `editor.wordSeparators` (#1503, thanks @opasche)
+* `numeric_version()` wants character as of R 4.4 (#1520, #1523, thanks @jennybc and @pawelru)
+* Handle terminals created by vscode-Python (#1511, thanks @tomasnobrega)
+
 ## [2.8.2](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.2)
 
 Enhancements:
