@@ -146,12 +146,15 @@ export class RLocalHelpPreviewer {
             this.cachedPackageInfo = undefined;
             this.callPreviewListener();
         };
-        const manDirListener: fs.WatchListener<string> = (event: fs.WatchEventType, filename: string) => {
+        const manDirListener: fs.WatchListener<string | null> = (event: fs.WatchEventType, filename: string | null) => {
             if(this.isDisposed){
                 return;
             }
             if(!isDirSafe(this.manDir)){
                 this.dispose(true);
+                return;
+            }
+            if (filename === null) {
                 return;
             }
             const fullPath = path.join(this.manDir, filename);

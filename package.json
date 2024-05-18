@@ -26,51 +26,14 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.67.0"
+    "vscode": "^1.75.0"
   },
   "activationEvents": [
-    "onLanguage:r",
-    "onLanguage:rd",
-    "onLanguage:rmd",
-    "onLanguage:debian-control.r",
-    "onLanguage:namespace.r",
-    "onLanguage:buildignore.r",
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
-    "onCommand:r.createRTerm",
-    "onCommand:r.runSource",
-    "onCommand:r.knitRmd",
-    "onCommand:r.knitRmdToPdf",
-    "onCommand:r.knitRmdToHtml",
-    "onCommand:r.knitRmdToAll",
-    "onCommand:r.runSourcewithEcho",
-    "onCommand:r.runSelection",
     "onCommand:r.runSelectionInActiveTerm",
-    "onCommand:r.selectCurrentChunk",
-    "onCommand:r.runCurrentChunk",
-    "onCommand:r.runCurrentChunkAndMove",
-    "onCommand:r.runPreviousChunk",
-    "onCommand:r.runNextChunk",
-    "onCommand:r.runAboveChunks",
-    "onCommand:r.runCurrentAndBelowChunks",
-    "onCommand:r.runBelowChunks",
-    "onCommand:r.runAllChunks",
-    "onCommand:r.goToPreviousChunk",
-    "onCommand:r.goToNextChunk",
-    "onCommand:r.createGitignore",
-    "onCommand:r.createLintrConfig",
-    "onCommand:r.generateCCppProperties",
-    "onCommand:r.runCommandWithSelectionOrWord",
-    "onCommand:r.runCommandWithEditorPath",
-    "onCommand:r.runCommand",
-    "onCommand:r.showHelp",
-    "onCommand:r.helpPanel.back",
-    "onCommand:r.helpPanel.forward",
-    "onCommand:r.helpPanel.openForSelection",
-    "onCommand:r.plot.openUrl",
-    "onWebviewPanel:rhelp",
-    "onTerminalProfile:r.terminal-profile"
+    "onWebviewPanel:rhelp"
   ],
-  "main": "./out/extension",
+  "main": "./dist/extension",
   "contributes": {
     "terminal": {
       "profiles": [
@@ -1474,7 +1437,7 @@
           "default": [],
           "markdownDescription": "Additional library paths to launch R background processes (R languageserver, help server, etc.). These paths will be appended to `.libPaths()` on process startup. It could be useful for projects with [renv](https://rstudio.github.io/renv/index.html) enabled."
         },
-        "r.useRenvLibPath" : {
+        "r.useRenvLibPath": {
           "type": "boolean",
           "default": false,
           "markdownDescription": "Use renv library paths to launch R background processes (R languageserver, help server, etc.)."
@@ -2113,27 +2076,14 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
-    "compile": "tsc -p . && tsc -p ./html/help && tsc -p ./html/httpgd",
-    "watch": "tsc -p . --watch",
+    "vscode:prepublish": "tsc -p ./html/help && tsc -p ./html/httpgd && webpack --mode production",
+    "compile": "tsc -p ./html/help && tsc -p ./html/httpgd && webpack --mode none",
+    "watch": "webpack --mode none --watch",
     "watchHelp": "tsc -p ./html/help --watch",
     "watchHttpgd": "tsc -p ./html/httpgd --watch",
     "pretest": "tsc -p ./",
     "test": "node ./out/test/runTest.js",
     "lint": "eslint src --ext ts"
-  },
-  "withWebpack": {
-    "scripts": {
-      "vscode:prepublish": "tsc -p ./html/help && tsc -p ./html/httpgd && webpack --mode production",
-      "compile": "tsc -p ./html/help && tsc -p ./html/httpgd && webpack --mode none",
-      "watch": "webpack --mode none --watch",
-      "watchHelp": "tsc -p ./html/help --watch",
-      "watchHttpgd": "tsc -p ./html/httpgd --watch",
-      "pretest": "tsc -p ./",
-      "test": "node ./out/test/runTest.js",
-      "lint": "eslint src --ext ts"
-    },
-    "main": "./dist/extension"
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.29",
@@ -2143,14 +2093,15 @@
     "@types/glob": "^8.0.0",
     "@types/js-yaml": "^4.0.2",
     "@types/mocha": "^8.2.2",
-    "@types/node": "^16.11.7",
+    "@types/node": "^18.17.1",
     "@types/node-fetch": "^2.5.10",
     "@types/sinon": "^10.0.13",
-    "@types/vscode": "^1.67.0",
+    "@types/vscode": "^1.75.0",
     "@types/winreg": "^1.2.31",
     "@typescript-eslint/eslint-plugin": "^5.30.0",
     "@typescript-eslint/parser": "^5.30.0",
     "@vscode/test-electron": "^2.2.3",
+    "@types/highlight.js": "^10.1.0",
     "copy-webpack-plugin": "^9.0.0",
     "devreplay": "^1.9.31",
     "eslint": "^7.28.0",
@@ -2163,14 +2114,14 @@
     "webpack-cli": "^4.7.2"
   },
   "dependencies": {
-    "ag-grid-community": "^30.2.0",
-    "cheerio": "1.0.0-rc.10",
+    "ag-grid-community": "^31.3.2",
+    "cheerio": "1.0.0-rc.12",
     "crypto": "^1.0.1",
     "ejs": "^3.1.10",
     "fs-extra": "^10.0.0",
-    "highlight.js": "^10.7.3",
+    "highlight.js": "^11.9.0",
     "httpgd": "^0.1.6",
-    "jquery": "^3.6.0",
+    "jquery": "^3.7.1",
     "jquery.json-viewer": "^1.5.0",
     "js-yaml": "^4.1.0",
     "node-fetch": "^2.6.7",
