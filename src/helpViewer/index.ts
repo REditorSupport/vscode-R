@@ -730,7 +730,7 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
 
             // apply syntax highlighting to each code section:
             codeSections.each((i, section) => {
-                const styledCode = hljs.highlight($(section).text() || '', {
+                const styledCode = hljs.default.highlight($(section).text() || '', {
                     language: 'r',
                 });
                 $(section).html(styledCode.value);
