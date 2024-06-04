@@ -16,6 +16,224 @@ logger <- if (getOption("vsc.debug", FALSE)) {
     function(...) invisible()
 }
 
+# use R parser to deduce, what code is needed to be evaluated
+isolate_lhs_expression <- function(
+    string, # all or some R code until trigger
+    trigger, # the trigger $ or @ for now
+    tag = ".vscode_r_internal_tag", # used to recover necessary parts of parse tree
+    verbose = TRUE) {
+    
+    # 1 add_trigger_vscode_tag to locate later in abstract syntax tree
+    tagged_string <- add_trigger_vscode_tag(string, trigger = trigger, tag = tag)
+
+    # 2 add any missing trailing parenthesis to code, to make a full valid parse
+    finished_string <- finish_expression(tagged_string)
+
+    #3a full parse code
+    expr <- tryCatch(parse(text = finished_string), error = function(err) NULL)
+
+    #3b full parsing may fail if user syntax errors earlier in script.
+    # Fall back to minimal local parsing
+    if (is.null(expr)) {
+        if (verbose) print("fallback to local parsing")
+        expr <- parse_local_valid_exprs(tagged_string, ignore_first = TRUE, verbose = verbose)
+    }
+
+    # only keep lhs of trigger operator in syntax tree, drop the rest.
+    prune_ast_by_vscode_tag(expr, trigger = trigger, tag = tag, verbose = verbose)
+}
+
+
+# assumes string is some R code ending where trigger operator was to be auto-completed
+# add back the trigger-operator and a tag to search for in abstract sytanx tree
+add_trigger_vscode_tag <- function(string, trigger, tag = ".vscode_r_internal_tag") {
+    if (trigger %in% c("$", "@")) {
+        return(paste0(string, trigger, tag))
+    }
+    stop("internal error: This trigger is not yet supported: ", trigger)
+}
+
+# This is a baseR no C++, but fairly fast replacement for
+# https://github.com/rstudio/rstudio/blob/6f7af1eab02568be3de327190a96fc5dba2dc247/src/cpp/session/modules/SessionRCompletions.cpp#L92
+finish_expression <- function(s) {
+    # try parse code
+    # browser()
+    sf <- srcfile("123.txt")
+    has_parse_error <- tryCatch(
+        {
+            parse(text = s, srcfile = sf,  keep.source = FALSE)
+            FALSE
+        },
+        error = function(err) TRUE
+    )
+
+    # no parsing error, code does not need parentheses modification
+    if (!has_parse_error) {
+        return(s)
+    }
+
+    # extract tokens from partial parsing result
+    parse_data_df <- getParseData(sf)
+    token_stream <- parse_data_df$token
+
+    # find parenthesis imbalances, temporary and/or unsettled
+    l <- list(
+        ")" = cumsum((token_stream == "'('") - (token_stream == "')'")),
+        "}" = cumsum((token_stream == "'{'") - (token_stream == "'}'")),
+        "]" = cumsum((token_stream == "'['") - (token_stream == "']'") + (token_stream == "LBB") * 2L)
+    )
+
+    # search backward in token stream for where imbalance started
+    is_imbalanced <- rev(Reduce("|", lapply(l, function(x) cumprod(rev(x) != 0L))))
+
+    # check if missing parenthesis is the issue
+    if (
+        !any(is_imbalanced) || # other syntactic error, cannot be fixed
+            any(sapply(l, function(x) x < 0L))) { # negative parenthesis balance, cannot be fixed
+        return(s)
+    }
+
+    # keep only analysis code part which is imbalanced
+    token_stream <- token_stream[is_imbalanced]
+    l <- lapply(l, function(x) x[is_imbalanced])
+
+    # redefine LBB token_stream as two [ [ for simplifying latter analysis
+    token_stream <- unlist(lapply(token_stream, function(x) if (x == "LBB") c("'['", "'['") else x))
+
+    # make pseudo mutable push-pop vectors, with reasonable performance
+    # TODO could still be a tiny bottleneck consider replace perhaps with some mutable object, env?
+    v_1 <- rep(NA_integer_, max(l$`)`))
+    v_2 <- rep(NA_integer_, max(l$`}`))
+    v_3 <- rep(NA_integer_, max(l$`]`))
+    v_size1 <- 0L
+    v_size2 <- 0L
+    v_size3 <- 0L
+
+
+    # iterate over all token_stream and find indices for unmatch parethesis
+    not_used <- mapply(
+        token_stream,
+        seq_along(token_stream),
+        SIMPLIFY = FALSE,
+        FUN = function(token, i) {
+            switch(token,
+                # styler: off
+                # push opening parenthesis token idx on vector
+                "'('" = {v_size1 <<- v_size1 + 1L; v_1[v_size1] <<- i},
+                "'{'" = {v_size2 <<- v_size2 + 1L; v_2[v_size2] <<- i},
+                "'['" = {v_size3 <<- v_size3 + 1L; v_3[v_size3] <<- i},
+
+                # pop opening parenthesis token idx from vector
+                "')'" = {v_1[v_size1] <<- NA_integer_; v_size1 <<- v_size1 - 1L},
+                "'}'" = {v_2[v_size2] <<- NA_integer_; v_size2 <<- v_size2 - 1L},
+                "']'" = {v_3[v_size3] <<- NA_integer_; v_size3 <<- v_size3 - 1L},
+                # styler: on
+
+                # another token do nothing
+                NULL
+            )
+            # styler: on
+            NULL
+        }
+    )
+
+    # combine correction parentheses in the correct order
+    names(v_1) <- rep(")", length(v_1))
+    names(v_2) <- rep("}", length(v_2))
+    names(v_3) <- rep("]", length(v_3))
+    corrections <- paste(names(sort(c(v_1, v_2, v_3), decreasing = TRUE)), collapse = "")
+
+    # apply correction parentheses at the end of code
+    paste0(s, corrections)
+}
+
+# instead parsing the entire script to determine the context, do a reverse parse until first valid context
+parse_local_valid_exprs <- function(input_string, ignore_first = TRUE, verbose = FALSE) {
+    # find full keywords/variables to iterate over (faster than single chars)
+    var_tokens <- gregexpr("([a-zA-Z0-9._])+", input_string, perl = TRUE)
+
+    # show match data
+    if (verbose) {
+        print(regmatches(input_string, var_tokens))
+    }
+
+    # iterate backwards/right-to-left from smallest possible expression to last valid expr
+    # this is useful to stop at unfinished parenthesis/brackets/braces ...
+    expr <- NULL
+    for (i in rev(var_tokens[[1]])) {
+        # try parse larger and larger code segments
+        candidate_str <- substr(input_string, i, nchar(input_string))
+        candidate_expr <- tryCatch(
+            parse(text = candidate_str, keep.source = FALSE),
+            error = function(e) NULL
+        )
+
+        # invalid parsed syntax, because code segment span out of expression context
+        if (is.null(candidate_expr) && !is.null(expr)) {
+            if (verbose) cat("\n", candidate_str, "  >>>> invalid expr, use any last valid expr")
+            break
+        }
+
+        # parsed multiple expressions, just need the latter one
+        if (length(candidate_expr) > 1L) {
+            if (verbose) cat(candidate_str, "  >>>> two vaild expr found, use the latter valid")
+            candidate_expr <- tail(candidate_expr, 1)
+        }
+
+        if (ignore_first) {
+            if(verbose) cat("\n", candidate_str, "  >>>> ignore first valid expr")
+            ignore_first <- FALSE
+            next
+        }
+        if (verbose) cat("\n", candidate_str, "  >>>> valid expr")
+        expr <- candidate_expr # store latest valid expr
+    }
+    if (verbose) cat("\n\n")
+    expr
+}
+
+# find tagged call-node in the expr ast, keep the lhs and drop the rest
+prune_ast_by_vscode_tag <- function(expr, trigger, tag = ".vscode_r_internal_tag", verbose = FALSE) {
+    trigger <- as.symbol(trigger)
+    tag <- as.symbol(tag)
+    tagged_trigger_found <- NULL
+
+    recursive_search_tag <- function(node) {
+        if (!is.null(tagged_trigger_found)) {
+            if (verbose) cat("stop /n")
+            return()
+        }
+        if (verbose) cat("inspecting: ", as.character(node))
+        if (is.atomic(node) || is.symbol(node)) {
+            # this is a leaf node, nothing to see here
+            if (verbose) cat("/n")
+            return()
+        }
+        if (is.call(node)) {
+            if (
+                length(node) == 3L && # $, @ are binary operators, (caller, lhs, rhs)
+                    identical(node[[1L]], trigger) && # caller symbol is trigger e.g. $
+                    identical(node[[3L]], tag) # rhs is the tag
+            ) {
+                tagged_trigger_found <<- node[[2L]] # store found lhs
+                if (verbose) cat("found it!!!")
+                return()
+            }
+            node <- rev(node) # reverse call to deep-search rhs first, where the trigger is
+        }
+        if (verbose) cat("\n")
+        lapply(node, recursive_search_tag)
+    }
+    recursive_search_tag(expr)
+    tagged_trigger_found
+}
+
+
+
+
+
+
+
 load_settings <- function() {
     if (!file.exists(settings_file)) {
         return(FALSE)
@@ -66,6 +284,7 @@ if (is.null(getOption("help_type"))) {
     options(help_type = "html")
 }
 
+
 use_webserver <- isTRUE(getOption("vsc.use_webserver", FALSE))
 if (use_webserver) {
     if (requireNamespace("httpuv", quietly = TRUE)) {
@@ -79,10 +298,22 @@ if (use_webserver) {
             },
 
             complete = function(expr, trigger, ...) {
-                obj <- tryCatch({
-                    expr <- parse(text = expr, keep.source = FALSE)[[1]]
+                #browser()
+                expr_string <- expr # expr is actually a string
+
+                # parse and isolate from ast lhs of trigger
+                # browser()
+                expr <- isolate_lhs_expression(expr_string, trigger, verbose = FALSE)  
+ 
+                obj <- (function(){tryCatch({                         
                     eval(expr, .GlobalEnv)
-                }, error = function(e) NULL)
+                }, error = function(e) {
+                    if (TRUE) {
+                        # show completion error as msg in terminal for debugging
+                        message(as.character(e)) 
+                    }
+                    NULL
+                })})()
 
                 if (is.null(obj)) {
                     return(NULL)
@@ -105,6 +336,7 @@ if (use_webserver) {
                             str = try_capture_str(item)
                         )
                     })
+
                     return(result)
                 }
 
