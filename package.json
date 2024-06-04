@@ -287,6 +287,13 @@
     ],
     "commands": [
       {
+        "command": "r.workspaceViewer.detachSession",
+        "title": "Detach Session",
+        "icon": "$(debug-disconnect)",
+        "category": "R Workspace Viewer",
+        "enablement": "rSessionActive"
+      },
+      {
         "command": "r.workspaceViewer.refreshEntry",
         "title": "Manual Refresh",
         "icon": "$(refresh)",
@@ -1335,6 +1342,11 @@
           "when": "r.WorkspaceViewer:show && view == workspaceViewer"
         },
         {
+          "command": "r.workspaceViewer.detachSession",
+          "group": "navigation@4",
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer && !r.liveShare:isGuest"
+        },
+        {
           "command": "r.helpPanel.showQuickPick",
           "group": "navigation",
           "when": "view == rHelpPages"
@@ -1704,6 +1716,21 @@
           "type": "boolean",
           "default": true,
           "description": "Enable R session watcher. Required for workspace viewer and most features to work with an R session. Restart required to take effect."
+        },
+        "r.sessionWatcherTcpServer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable TCP server connection for watching over R sessions. Requires `#r.sessionWatcher#` to be set to `true`. Requires reloading for changes to take effect."
+        },
+        "r.sessionWatcherTcpServerHostName": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "The host name to listen for watching over R sessions. E.g. 127.0.0.1 for local connection only, and 0.0.0.0 for global exposure (security note: use the latter only in a secured close local network!). Requires `#r.sessionWatcher#` and `r.sessionWatcher.TCPServer` to be set to `true`. Requires reloading for changes to take effect."
+        },
+        "r.sessionWatcherTcpServerPort": {
+          "type": "integer",
+          "default": 0,
+          "description": "The port to listen to, or 0 for automatic port selection (recommended). Requires `#r.sessionWatcher#` and `r.sessionWatcher.TCPServer` to be set to `true`. Requires reloading for changes to take effect."
         },
         "r.session.useWebServer": {
           "type": "boolean",
@@ -2096,6 +2123,7 @@
     "@types/node": "^18.17.1",
     "@types/node-fetch": "^2.5.10",
     "@types/sinon": "^10.0.13",
+    "@types/tmp": "^0.2.3",
     "@types/vscode": "^1.75.0",
     "@types/winreg": "^1.2.31",
     "@typescript-eslint/eslint-plugin": "^5.30.0",
@@ -2125,6 +2153,8 @@
     "jquery.json-viewer": "^1.5.0",
     "js-yaml": "^4.1.0",
     "node-fetch": "^2.6.7",
+    "promise-socket": "^7.0.0",
+    "tmp": "^0.2.1",
     "vscode-languageclient": "^9.0.1",
     "vsls": "^1.0.4753",
     "winreg": "^1.2.4"
