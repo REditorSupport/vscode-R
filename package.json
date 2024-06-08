@@ -446,9 +446,64 @@
         "command": "r.previewEnvironment"
       },
       {
+        "title": "Create NEWS",
+        "category": "R Package",
+        "command": "r.useNewsMd"
+      },
+      {
+        "title": "Initialise A Git Repository",
+        "category": "R Package",
+        "command": "r.useGit"
+      },
+      {
+        "title": "Connect a Local Repo with GitHub",
+        "category": "R Package",
+        "command": "r.useGitHub"
+      },
+      {
+        "title": "Increment Package Version",
+        "category": "R Package",
+        "command": "r.useVersion"
+      },
+      {
+        "title": "CRAN Submission Comments",
+        "category": "R Package",
+        "command": "r.useCranComments"
+      },
+      {
+        "title": "Build {pkgdown} Web Site",
+        "category": "R Package",
+        "command": "r.pkgdownBuildSite"
+      },
+      {
         "title": "Load All",
         "category": "R Package",
         "command": "r.loadAll"
+      },
+      {
+        "title": "Toggle Development Mode",
+        "category": "R Package",
+        "command": "r.devMode"
+      },
+      {
+        "title": "Spell check",
+        "category": "R Package",
+        "command": "r.spellCheck"
+      },
+      {
+        "title": "CRAN Checks for Package on R-Hub",
+        "category": "R Package",
+        "command": "r.checkRhub"
+      },
+      {
+        "title": "CRAN Checks for Package on Win-Builder",
+        "category": "R Package",
+        "command": "r.checkWinDevel"
+      },
+      {
+        "title": "CRAN Release",
+        "category": "R Package",
+        "command": "r.release"
       },
       {
         "title": "Build",
