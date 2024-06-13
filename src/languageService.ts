@@ -4,7 +4,7 @@ import * as net from 'net';
 import { URL } from 'url';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables } from './util';
+import { DisposableProcess, getRLibPaths, getRpath, getInvokeCommand, promptToInstallRPackage, spawn, substituteVariables } from './util';
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 
@@ -26,8 +26,8 @@ export class LanguageService implements Disposable {
         return this.stopLanguageService();
     }
 
-    private spawnServer(client: LanguageClient, rPath: string, args: readonly string[], options: CommonOptions & { cwd: string }): DisposableProcess {
-        const childProcess = spawn(rPath, args, options);
+    private spawnServer(client: LanguageClient, command: string, options: CommonOptions & { cwd: string }): DisposableProcess {
+        const childProcess = spawn(command, undefined, options);
         const pid = childProcess.pid || -1;
         client.outputChannel.appendLine(`R Language Server (${pid}) started`);
         childProcess.stderr.on('data', (chunk: Buffer) => {
@@ -82,18 +82,14 @@ export class LanguageService implements Disposable {
             console.log(`LANG: ${env.LANG}`);
         }
 
-        const rScriptPath = extensionContext.asAbsolutePath('R/languageServer.R');
-        const options = { cwd: cwd, env: env };
-        const args = (config.get<string[]>('lsp.args')?.map(substituteVariables) ?? []).concat(
-            '--silent',
-            '--slave',
-            '--no-save',
-            '--no-restore',
-            '-e',
-            'base::source(base::commandArgs(TRUE))',
-            '--args',
-            rScriptPath
-        );
+        const rScriptPath = config.get<string>('lsp.bootstrapFile') || extensionContext.asAbsolutePath('R/languageServer.R');
+        const rLspArgs = (config.get<string[]>('lsp.args')?.map(substituteVariables) ?? []).map((str) => JSON.stringify(str)).join(' ');
+        const options = { cwd: cwd, env: env, shell: true };
+
+        const commandExp = getInvokeCommand() ?? ''; // TODO: Abort gracefully
+        const command = commandExp.replaceAll('${rpath}', rPath).replaceAll('${r.lsp.args}', rLspArgs).replaceAll('${r.lsp.bootstrapFile}', rScriptPath);
+
+        console.log('Language Server Command: ' + command);
 
         const tcpServerOptions = () => new Promise<DisposableProcess | StreamInfo>((resolve, reject) => {
             // Use a TCP socket because of problems with blocking STDIO
@@ -114,7 +110,7 @@ export class LanguageService implements Disposable {
             server.listen(0, '127.0.0.1', () => {
                 const port = (server.address() as net.AddressInfo).port;
                 env.VSCR_LSP_PORT = String(port);
-                return this.spawnServer(client, rPath, args, options);
+                return this.spawnServer(client, command, options);
             });
         });
 
@@ -152,7 +148,7 @@ export class LanguageService implements Disposable {
 
         // Create the language client and start the client.
         if (use_stdio && process.platform !== 'win32') {
-            client = new LanguageClient('r', 'R Language Server', { command: rPath, args: args, options: options }, clientOptions);
+            client = new LanguageClient('r', 'R Language Server', { command: command, options: options }, clientOptions);
         } else {
             client = new LanguageClient('r', 'R Language Server', tcpServerOptions, clientOptions);
         }

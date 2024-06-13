@@ -1485,6 +1485,26 @@
           "default": true,
           "markdownDescription": "Use multiple language servers for [multi-root workspaces](https://code.visualstudio.com/docs/editor/multi-root-workspaces). If disabled, only one language server will be used to handle all requests from all workspaces and files."
         },
+        "r.lsp.bootstrapFile": {
+          "type": "string",
+          "default": "",
+          "description": "The bootstrap R script file for the LSP server. If empty, loads the default one that is packaged in this extension."
+        },
+        "r.lsp.invokeCommand.windows": {
+          "type": "string",
+          "default": "'${rpath}' ${r.lsp.args} --silent --slave --no-save --no-restore -e 'base::source(base::commandArgs(TRUE))' --args '${r.lsp.bootstrapFile}'",
+          "description": "The shell command to run LSP (Windows)"
+        },
+        "r.lsp.invokeCommand.mac": {
+          "type": "string",
+          "default": "'${rpath}' ${r.lsp.args} --silent --slave --no-save --no-restore -e 'base::source(base::commandArgs(TRUE))' --args '${r.lsp.bootstrapFile}'",
+          "description": "The shell command to run LSP (Mac)"
+        },
+        "r.lsp.invokeCommand.linux": {
+          "type": "string",
+          "default": "'${rpath}' ${r.lsp.args} --silent --slave --no-save --no-restore -e 'base::source(base::commandArgs(TRUE))' --args '${r.lsp.bootstrapFile}'",
+          "description": "The shell command to run LSP (Linux)"
+        },
         "r.rmarkdown.codeLensCommands": {
           "type": "array",
           "items": {
