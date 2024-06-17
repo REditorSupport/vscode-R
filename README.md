@@ -19,7 +19,9 @@ Go to the [wiki](https://github.com/REditorSupport/vscode-R/wiki) to view the do
 
 3. Install the R extension for VS Code from the [VS Code Extension Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r).
 
-4. Create an R file and start coding.
+4. [Lintr](https://lintr.r-lib.org/) is our default linter for R code and style suggestions. Customize your linter configuration by following the instructions on our [wiki](https://github.com/REditorSupport/vscode-R/wiki/Code-linting).
+
+5. Create an R file and start coding.
 
 The following software or extensions are recommended to enhance the experience of using R in VS Code:
 
