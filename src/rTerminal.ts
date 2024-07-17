@@ -141,7 +141,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     const termOptions = await makeTerminalOptions();
     const termPath = termOptions.shellPath;
     if(!termPath){
-        void vscode.window.showErrorMessage('Could not find R path. Please check r.term and r.path setting.');
+        void vscode.window.showErrorMessage('Could not find R path. Please check r.rterm and r.rpath setting.');
         return false;
     } else if(!fs.existsSync(termPath)){
         void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check r.rterm setting.`);
