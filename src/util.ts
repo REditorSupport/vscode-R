@@ -41,23 +41,35 @@ export function substituteVariables(str: string): string {
     return result;
 }
 
-function getRfromEnvPath(platform: string) {
+function getExecutableFromEnvPath(executable: string, platform: string) {
     let splitChar = ':';
     let fileExtension = '';
 
     if (platform === 'win32') {
         splitChar = ';';
-        fileExtension = '.exe';
+        if (!executable.toLowerCase().endsWith('.exe')) {
+            fileExtension = '.exe';
+        }
     }
 
     const os_paths: string[] | string = process.env.PATH ? process.env.PATH.split(splitChar) : [];
     for (const os_path of os_paths) {
-        const os_r_path: string = path.join(os_path, 'R' + fileExtension);
+        const os_r_path: string = path.join(os_path, executable + fileExtension);
         if (fs.existsSync(os_r_path)) {
             return os_r_path;
         }
     }
+
     return '';
+}
+
+function ensureAbsolutePath(path: string) {
+    if (!path.includes('/') && !path.includes('\\')) {
+        const platform: string = process.platform;
+        path = getExecutableFromEnvPath(path, platform);
+    }
+
+    return path;
 }
 
 export async function getRpathFromSystem(): Promise<string> {
@@ -65,9 +77,9 @@ export async function getRpathFromSystem(): Promise<string> {
     let rpath = '';
     const platform: string = process.platform;
 
-    rpath ||= getRfromEnvPath(platform);
+    rpath ||= getExecutableFromEnvPath('R', platform);
 
-    if ( !rpath && platform === 'win32') {
+    if (!rpath && platform === 'win32') {
         // Find path from registry
         try {
             const key = new winreg({
@@ -135,6 +147,7 @@ export async function getRterm(): Promise<string | undefined> {
     const configEntry = getRPathConfigEntry(true);
     let rpath = config().get<string>(configEntry);
     rpath &&= substituteVariables(rpath);
+    rpath &&= ensureAbsolutePath(rpath);
     rpath ||= await getRpathFromSystem();
 
     if (rpath !== '') {
