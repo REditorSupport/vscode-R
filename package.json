@@ -2082,7 +2082,7 @@
     "watchHelp": "tsc -p ./html/help --watch",
     "watchHttpgd": "tsc -p ./html/httpgd --watch",
     "pretest": "tsc -p ./",
-    "test": "node ./out/test/runTest.js",
+    "test": "node ./dist/test/runTest.js",
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {

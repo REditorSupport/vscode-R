@@ -5,7 +5,6 @@ import * as cheerio from 'cheerio';
 import path = require('path');
 import crypto = require('crypto');
 
-
 import { config, readContent, setContext, escapeHtml, UriIcon, saveDocument, getRpath, DisposableProcess } from '../util';
 import { extensionContext, tmpDir } from '../extension';
 import { knitDir } from './knit';
@@ -425,4 +424,3 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         void preview.refreshContent(this.useCodeTheme);
     }
 }
-
