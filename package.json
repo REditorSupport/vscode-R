@@ -2114,7 +2114,7 @@
     "webpack-cli": "^4.7.2"
   },
   "dependencies": {
-    "ag-grid-community": "^31.3.2",
+    "ag-grid-community": "^31.3.4",
     "cheerio": "1.0.0-rc.12",
     "crypto": "^1.0.1",
     "ejs": "^3.1.10",
