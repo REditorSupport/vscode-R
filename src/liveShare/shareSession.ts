@@ -179,7 +179,7 @@ let panel: vscode.WebviewPanel | undefined = undefined;
 export async function updateGuestPlot(file: string): Promise<void> {
     const plotContent = await readContent(file, 'base64');
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    
+
     const guestPlotView: vscode.ViewColumn = asViewColumn(config().get<string>('session.viewers.viewColumn.plot'), vscode.ViewColumn.Two);
     if (plotContent) {
         if (panel) {

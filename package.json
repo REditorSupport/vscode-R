@@ -2082,7 +2082,7 @@
     "watchHelp": "tsc -p ./html/help --watch",
     "watchHttpgd": "tsc -p ./html/httpgd --watch",
     "pretest": "tsc -p ./",
-    "test": "node ./out/test/runTest.js",
+    "test": "node ./dist/test/runTest.js",
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {
@@ -2091,6 +2091,7 @@
     "@types/express": "^4.17.12",
     "@types/fs-extra": "^9.0.11",
     "@types/glob": "^8.0.0",
+    "@types/highlight.js": "^10.1.0",
     "@types/js-yaml": "^4.0.2",
     "@types/mocha": "^8.2.2",
     "@types/node": "^18.17.1",
@@ -2101,7 +2102,6 @@
     "@typescript-eslint/eslint-plugin": "^5.30.0",
     "@typescript-eslint/parser": "^5.30.0",
     "@vscode/test-electron": "^2.2.3",
-    "@types/highlight.js": "^10.1.0",
     "copy-webpack-plugin": "^9.0.0",
     "devreplay": "^1.9.31",
     "eslint": "^7.28.0",
@@ -2116,7 +2116,6 @@
   "dependencies": {
     "ag-grid-community": "^31.3.2",
     "cheerio": "1.0.0-rc.12",
-    "crypto": "^1.0.1",
     "ejs": "^3.1.10",
     "fs-extra": "^10.0.0",
     "highlight.js": "^11.9.0",
