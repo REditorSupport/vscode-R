@@ -161,14 +161,6 @@
                 {
                     "match": "\\b([[:alnum:]_]+)(?=::)",
                     "name": "entity.namespace.r"
-                },
-                {
-                    "match": "\\b([[:alnum:]._]+)\\b",
-                    "name": "variable.other.r"
-                },
-                {
-                    "match": "(`[^`]+`)",
-                    "name": "variable.other.r"
                 }
             ]
         },
