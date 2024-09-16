@@ -537,18 +537,9 @@ traverse_S4 <- function(obj, max_depth = 5, current_depth = 0, length_threshold 
     }
     return(result)
   } else if (is.list(obj)) {
-    len <- length(obj)
-    if (len > length_threshold) {
-      obj_subset <- obj[1:head_length]
-      obj_subset$info <- paste("Length:", len, "- show", head_length, "of them")
-      result <- lapply(obj_subset, function(x) {
-        traverse_S4(x, max_depth, current_depth + 1, length_threshold, head_length)
-      })
-    } else {
-      result <- lapply(obj, function(x) {
-        traverse_S4(x, max_depth, current_depth + 1, length_threshold, head_length)
-      })
-    }
+    result <- lapply(obj, function(x) {
+      traverse_S4(x, max_depth, current_depth + 1, length_threshold, head_length)
+    })
     return(result)
   } else if (is.vector(obj)) {
     len <- length(obj)
