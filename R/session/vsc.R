@@ -522,6 +522,58 @@ if (show_view) {
             stop("data must be a data.frame or a matrix")
         }
     }
+##############view S4 object################
+traverse_S4 <- function(obj, max_depth = 5, current_depth = 0, length_threshold = 20, head_length = 5) {
+  if (current_depth > max_depth) {
+    return("Max depth reached")
+  }
+  
+  if (isS4(obj)) {
+    slots <- slotNames(obj)
+    result <- list()
+    for (slot in slots) {
+      content <- slot(obj, slot)
+      result[[slot]] <- traverse_S4(content, max_depth, current_depth + 1, length_threshold, head_length)
+    }
+    return(result)
+  } else if (is.list(obj)) {
+    result <- lapply(obj, function(x) {
+      traverse_S4(x, max_depth, current_depth + 1, length_threshold, head_length)
+    })
+    return(result)
+  } else if (is.vector(obj) || is.double(obj) || is.character(obj)) {
+    len <- length(obj)
+    if (len > length_threshold) {
+      obj_subset <- obj[1:head_length]
+      obj_subset <- c(obj_subset, paste("原始长度:", len, "- 显示前", head_length, "个元素"))
+      return(obj_subset)
+    } else {
+      return(obj)
+    }
+  } else if (is.factor(obj)) {
+    levels_len <- length(levels(obj))
+    if (levels_len > length_threshold) {
+      levels_subset <- levels(obj)[1:head_length]
+      levels_subset <- c(levels_subset, paste("原始levels长度:", levels_len, "- 显示前", head_length, "个levels"))
+      return(list(levels = levels_subset))
+    } else {
+      return(list(levels = levels(obj)))
+    }
+  } else if (is.matrix(obj) || is.data.frame(obj)) {
+    nrows <- nrow(obj)
+    if (nrows > length_threshold) {
+      obj_subset <- head(obj, head_length)
+      attr(obj_subset, "info") <- paste("原始行数:", nrows, "- 显示前", head_length, "行")
+      return(obj_subset)
+    } else {
+      return(obj)
+    }
+  } else {
+    return("Unknown type")
+  }
+}
+
+
 
     show_dataview <- function(x, title, uuid = NULL,
                               viewer = getOption("vsc.view", "Two"),
@@ -607,7 +659,7 @@ if (show_view) {
         } else if (is.list(x)) {
             tryCatch({
                 file <- tempfile(tmpdir = tempdir, fileext = ".json")
-                jsonlite::write_json(x, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
+                save_structure_to_json(x, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
                 request("dataview", source = "list", type = "json",
                     title = title, file = file, viewer = viewer, uuid = uuid
                 )
@@ -619,6 +671,24 @@ if (show_view) {
                     title = title, file = file, viewer = viewer, uuid = uuid
                 )
             })
+        } else if (isS4(x)) {
+            tryCatch({
+                file <- tempfile(tmpdir = tempdir(), fileext = ".json")
+                print(file)
+                structure_overview <- traverse_S4(x)
+                jsonlite::write_json(structure_overview, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
+                request("dataview", source = "S4", type = "json",
+                    title = title, file = file, viewer = viewer, uuid = uuid
+                )
+            }, error = function(e) {
+                file <- file.path(tempdir, paste0(make.names(title), ".txt"))
+                text <- utils::capture.output(print(x))
+                writeLines(text, file)
+                request("dataview", source = "object", type = "txt",
+                    title = title, file = file, viewer = viewer, uuid = uuid  
+                )
+            })
+        
         } else {
             file <- file.path(tempdir, paste0(make.names(title), ".R"))
             if (is.primitive(x)) {

@@ -16,6 +16,7 @@ import { IRequest } from './liveShare/shareSession';
 import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext, sessionStatusBarItem } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
 
+
 export interface GlobalEnv {
     [key: string]: {
         class: string[];
@@ -371,6 +372,21 @@ export async function showDataView(source: string, type: string, title: string, 
         const content = await getListHtml(panel.webview, file);
         panel.iconPath = new UriIcon('open-preview');
         panel.webview.html = content;
+    } else if (source === 'S4') {
+        const panel = window.createWebviewPanel('dataview', title,
+            {
+                preserveFocus: true,
+                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
+            },
+            {
+                enableScripts: true,
+                enableFindWidget: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [Uri.file(resDir)],
+            });
+        const content = await getObjectHtml(panel.webview, file);
+        panel.iconPath = new UriIcon('open-preview');
+        panel.webview.html = content;
     } else {
         if (isGuestSession) {
             const fileContent = await rGuestService?.requestFileContent(file, 'utf8');
@@ -632,7 +648,7 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
     var data = ${String(content)};
     $(document).ready(function() {
       var options = {
-        collapsed: false,
+        collapsed: true,
         rootCollapsable: false,
         withQuotes: false,
         withLinks: true
@@ -647,6 +663,82 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 </html>
 `;
 }
+
+
+export async function getObjectHtml(webview: Webview, file: string): Promise<string> {
+    resDir = isGuestSession ? guestResDir : resDir;
+    const content = await readContent(file, 'utf8');
+    
+    return `
+<!doctype HTML>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
+    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.js'))))}"></script>
+    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.css'))))}" rel="stylesheet">
+    <style type="text/css">
+    body {
+        color: var(--vscode-editor-foreground);
+        background-color: var(--vscode-editor-background);
+    }
+
+    .json-document {
+        padding: 0 0;
+    }
+
+    pre#json-renderer {
+        font-family: var(--vscode-editor-font-family);
+        border: 0;
+    }
+
+    ul.json-dict, ol.json-array {
+        color: var(--vscode-symbolIcon-fieldForeground);
+        border-left: 1px dotted var(--vscode-editorLineNumber-foreground);
+    }
+
+    .json-literal {
+        color: var(--vscode-symbolIcon-variableForeground);
+    }
+
+    .json-string {
+        color: var(--vscode-symbolIcon-stringForeground);
+    }
+
+    a.json-toggle:before {
+        color: var(--vscode-button-secondaryBackground);
+    }
+
+    a.json-toggle:hover:before {
+        color: var(--vscode-button-secondaryHoverBackground);
+    }
+
+    a.json-placeholder {
+        color: var(--vscode-input-placeholderForeground);
+    }
+    </style>
+    <script>
+    var data = ${String(content)};
+    $(document).ready(function() {
+      var options = {
+        collapsed: true,
+        rootCollapsable: true,
+        withQuotes: false,
+        withLinks: true
+      };
+      $("#json-renderer").jsonViewer(data, options);
+    });
+    </script>
+</head>
+<body>
+    <pre id="json-renderer"></pre>
+</body>
+</html>
+`;
+}
+
+
 
 export async function getWebviewHtml(webview: Webview, file: string, title: string, dir: string, webviewDir: string): Promise<string> {
     const observerPath = Uri.file(path.join(webviewDir, 'observer.js'));
