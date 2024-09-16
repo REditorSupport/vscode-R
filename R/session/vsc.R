@@ -668,7 +668,7 @@ traverse_S4 <- function(obj, max_depth = 5, current_depth = 0, length_threshold 
         } else if (is.list(x)) {
             tryCatch({
                 file <- tempfile(tmpdir = tempdir, fileext = ".json")
-                save_structure_to_json(x, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
+                jsonlite::write_json(x, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
                 request("dataview", source = "list", type = "json",
                     title = title, file = file, viewer = viewer, uuid = uuid
                 )
