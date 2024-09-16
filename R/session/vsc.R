@@ -537,15 +537,33 @@ traverse_S4 <- function(obj, max_depth = 5, current_depth = 0, length_threshold 
     }
     return(result)
   } else if (is.list(obj)) {
-    result <- lapply(obj, function(x) {
-      traverse_S4(x, max_depth, current_depth + 1, length_threshold, head_length)
-    })
+    len <- length(obj)
+    if (len > length_threshold) {
+      obj_subset <- obj[1:head_length]
+      obj_subset$info <- paste("Length:", len, "- show", head_length, "of them")
+      result <- lapply(obj_subset, function(x) {
+        traverse_S4(x, max_depth, current_depth + 1, length_threshold, head_length)
+      })
+    } else {
+      result <- lapply(obj, function(x) {
+        traverse_S4(x, max_depth, current_depth + 1, length_threshold, head_length)
+      })
+    }
     return(result)
+  } else if (is.vector(obj)) {
+    len <- length(obj)
+    if (len > length_threshold) {
+      obj_subset <- obj[1:head_length]
+      obj_subset <- c(obj_subset, paste("Length:", len, "- show", head_length, "of them"))
+      return(obj_subset)
+    } else {
+      return(obj)
+    }
   } else if (is.vector(obj) || is.double(obj) || is.character(obj)) {
     len <- length(obj)
     if (len > length_threshold) {
       obj_subset <- obj[1:head_length]
-      obj_subset <- c(obj_subset, paste("原始长度:", len, "- 显示前", head_length, "个元素"))
+      obj_subset <- c(obj_subset, paste("Length:", len, "- show", head_length, "of them"))
       return(obj_subset)
     } else {
       return(obj)
@@ -554,7 +572,7 @@ traverse_S4 <- function(obj, max_depth = 5, current_depth = 0, length_threshold 
     levels_len <- length(levels(obj))
     if (levels_len > length_threshold) {
       levels_subset <- levels(obj)[1:head_length]
-      levels_subset <- c(levels_subset, paste("原始levels长度:", levels_len, "- 显示前", head_length, "个levels"))
+      levels_subset <- c(levels_subset, paste("Length of level:", levels_len, "- show", head_length, "of them"))
       return(list(levels = levels_subset))
     } else {
       return(list(levels = levels(obj)))
@@ -563,7 +581,7 @@ traverse_S4 <- function(obj, max_depth = 5, current_depth = 0, length_threshold 
     nrows <- nrow(obj)
     if (nrows > length_threshold) {
       obj_subset <- head(obj, head_length)
-      attr(obj_subset, "info") <- paste("原始行数:", nrows, "- 显示前", head_length, "行")
+      obj_subset$info <- paste("nrows:", nrows, "- show", head_length, "of them")
       return(obj_subset)
     } else {
       return(obj)
