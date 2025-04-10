@@ -35,7 +35,7 @@ async function getTemplateItems(cwd: string): Promise<TemplateItem[] | undefined
     const rScriptFile = extensionContext.asAbsolutePath('R/rmarkdown/templates.R');
     const args = [
         '--silent',
-        '--slave',
+        '--no-echo',
         '--no-save',
         '--no-restore',
         '-f',
