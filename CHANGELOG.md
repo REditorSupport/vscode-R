@@ -4,6 +4,11 @@
 
 You can check all of our changes from [Release Page](https://github.com/REditorSupport/vscode-R/releases)
 
+## [2.8.5](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.5)
+
+* Upgrade Rsyntax
+* Use --no-echo instead of --slave
+
 ## [2.8.4](https://github.com/REditorSupport/vscode-R/releases/tag/v2.8.4)
 
 * Upgrade dependencies
