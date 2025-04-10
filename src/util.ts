@@ -352,7 +352,7 @@ export async function executeRCommand(rCommand: string, cwd?: string | URL, fall
     const lim = '---vsc---';
     const args = [
         '--silent',
-        '--slave',
+        '--no-echo',
         '--no-save',
         '--no-restore',
         '-e', `cat('${lim}')`,
@@ -555,7 +555,7 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
                     void vscode.window.showErrorMessage('R path not set', 'OK');
                     return;
                 }
-                const args = ['--silent', '--slave', '--no-save', '--no-restore', '-e', `install.packages('${name}', repos='${repo}')`];
+                const args = ['--silent', '--no-echo', '--no-save', '--no-restore', '-e', `install.packages('${name}', repos='${repo}')`];
                 void executeAsTask('Install Package', rPath, args, true);
                 if (postInstallMsg) {
                     void vscode.window.showInformationMessage(postInstallMsg, 'OK');
