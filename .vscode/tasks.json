@@ -10,7 +10,6 @@
       "command": "vsce",
       "args": [
         "package",
-        "--yarn",
         "-o",
         "${workspaceFolderBasename}.vsix"
       ]
