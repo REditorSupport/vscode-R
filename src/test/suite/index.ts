@@ -5,7 +5,7 @@
 import * as path from 'path';
 import * as Mocha from 'mocha';
 // @ts-ignore: all
-import * as glob from 'glob';
+import { glob } from 'glob';
 
 export function run(): Promise<void> {
     // Create the mocha test
