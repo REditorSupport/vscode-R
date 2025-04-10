@@ -48,7 +48,8 @@
         {
           "id": "workspaceViewer",
           "title": "R",
-          "icon": "./images/Rlogo.svg"
+          "icon": "./images/Rlogo.svg",
+          "when": "r.isActive"
         }
       ]
     },
