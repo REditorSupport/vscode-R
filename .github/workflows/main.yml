@@ -4,21 +4,21 @@ env:
   SCRIPT_DIR: ./.github/scripts
 
 jobs:
-  # test:
-  #   strategy:
-  #     matrix:
-  #       os: [macos-latest, ubuntu-latest, windows-latest]
-  #   runs-on: ${{ matrix.os }}
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - uses: actions/setup-node@v3
-  #       with:
-  #         node-version: 18
-  #     - run: yarn install
-  #     - name: Run tests
-  #       uses: GabrielBB/xvfb-action@v1.0
-  #       with:
-  #         run: npm run test
+  test:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - run: npm install
+      - name: Run tests
+        uses: GabrielBB/xvfb-action@v1.0
+        with:
+          run: npm run test
   build:
     runs-on: ubuntu-latest
     env:
@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: node $SCRIPT_DIR/enableWebpack.js
-      - run: yarn install
+      - run: npm install
       - uses: lannonbr/vsce-action@4.0.0
         with:
           args: "package -o $VSIX_FILE"
@@ -41,8 +41,8 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 18
-      - run: yarn install
-      - run: yarn run lint
+      - run: npm install
+      - run: npm run lint
   markdownlint-cli:
     runs-on: ubuntu-latest
     steps:
@@ -79,6 +79,6 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 18
-      - run: yarn install
+      - run: npm install
       - name: Run devreplay
         run: ./node_modules/.bin/devreplay ./src devreplay.json
