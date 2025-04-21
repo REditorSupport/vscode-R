@@ -72,7 +72,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.names': () => rTerminal.runSelectionOrWord(['names']),
         'r.view': () => rTerminal.runSelectionOrWord(['View']),
         'r.runSource': () => { void rTerminal.runSource(false); },
-        'r.runSelection':  (code?: string) => { code ? void rTerminal.runTextInTerm(code) : void rTerminal.runSelection(); },
+        'r.runSelection': (code?: string) => { code ? void rTerminal.runTextInTerm(code) : void rTerminal.runSelection(); },
         'r.runFromLineToEnd': rTerminal.runFromLineToEnd,
         'r.runFromBeginningToLine': rTerminal.runFromBeginningToLine,
         'r.runSelectionRetainCursor': rTerminal.runSelectionRetainCursor,
@@ -114,13 +114,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // file creation (under file submenu)
         'r.rmarkdown.newFileDraft': () => rmarkdown.newDraft(),
-        'r.newFileDocument': () => vscode.workspace.openTextDocument({language: 'r'}).then((v) => vscode.window.showTextDocument(v)),
+        'r.newFileDocument': () => vscode.workspace.openTextDocument({ language: 'r' }).then((v) => vscode.window.showTextDocument(v)),
 
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
         'r.createLintrConfig': lintrConfig.createLintrConfig,
         'r.generateCCppProperties': cppProperties.generateCppProperties,
         'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
+        'r.devMode': () => rTerminal.runTextInTerm('devtools::dev_mode()'),
+        'r.spellCheck': () => rTerminal.runTextInTerm('devtools::spell_check()'),
+        'r.checkRhub': () => rTerminal.runTextInTerm('devtools::check_rhub()'),
+        'r.checkWinDevel': () => rTerminal.runTextInTerm('devtools::check_win_devel()'),
+        'r.release': () => rTerminal.runTextInTerm('devtools::release()'),
+        'r.useVersion': () => rTerminal.runTextInTerm('usethis::use_version()'),
+        'r.useCranComments': () => rTerminal.runTextInTerm('usethis::use_cran_comments()'),
+        'r.useNewsMd': () => rTerminal.runTextInTerm('usethis::use_news_md()'),
+        'r.useGit': () => rTerminal.runTextInTerm('usethis::use_git()'),
+        'r.useGitHub': () => rTerminal.runTextInTerm('usethis::use_github()'),
+        'r.pkgdownBuildSite': () => rTerminal.runTextInTerm('pkgdown::build_site()'),
 
         // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758
         'r.build': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build'),
