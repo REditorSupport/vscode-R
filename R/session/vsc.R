@@ -456,6 +456,9 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
 
 show_view <- !identical(getOption("vsc.view", "Two"), FALSE)
 if (show_view) {
+    # Create registry to track dataview UUIDs by title
+    dataview_registry <- new.env(parent = emptyenv())
+
     get_column_def <- function(name, field, value) {
         filter <- TRUE
         tooltip <- sprintf(
@@ -535,10 +538,24 @@ if (show_view) {
             return(.data)
         }
 
+        # Generate a dataview_uuid (separate from the LiveShare uuid)
+        dataview_uuid <- NULL
         if (missing(title)) {
             sub <- substitute(x)
             title <- deparse(sub, nlines = 1)
         }
+
+        # Generate a unique ID for this dataview based on the title
+        title_key <- title
+        if (exists(title_key, envir = dataview_registry, inherits = FALSE)) {
+            dataview_uuid <- get(title_key, envir = dataview_registry, inherits = FALSE)
+            logger("Reusing existing dataview UUID for title:", title, "UUID:", dataview_uuid)
+        } else {
+            dataview_uuid <- paste0("dataview-", format(Sys.time(), "%Y%m%d%H%M%S"), "-", sample(1000:9999, 1))
+            assign(title_key, dataview_uuid, envir = dataview_registry)
+            logger("Created new dataview UUID for title:", title, "UUID:", dataview_uuid)
+        }
+
         if (inherits(x, "ArrowTabular")) {
             x <- as_truncated_data(x)
             x <- as.data.frame(x)
@@ -602,21 +619,21 @@ if (show_view) {
             file <- tempfile(tmpdir = tempdir, fileext = ".json")
             jsonlite::write_json(data, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
             request("dataview", source = "table", type = "json",
-                title = title, file = file, viewer = viewer, uuid = uuid
+                title = title, file = file, viewer = viewer, uuid = uuid, dataview_uuid = dataview_uuid
             )
         } else if (is.list(x)) {
             tryCatch({
                 file <- tempfile(tmpdir = tempdir, fileext = ".json")
                 jsonlite::write_json(x, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
                 request("dataview", source = "list", type = "json",
-                    title = title, file = file, viewer = viewer, uuid = uuid
+                    title = title, file = file, viewer = viewer, uuid = uuid, dataview_uuid = dataview_uuid
                 )
             }, error = function(e) {
                 file <- file.path(tempdir, paste0(make.names(title), ".txt"))
                 text <- utils::capture.output(print(x))
                 writeLines(text, file)
                 request("dataview", source = "object", type = "txt",
-                    title = title, file = file, viewer = viewer, uuid = uuid
+                    title = title, file = file, viewer = viewer, uuid = uuid, dataview_uuid = dataview_uuid
                 )
             })
         } else {
@@ -628,7 +645,7 @@ if (show_view) {
             }
             writeLines(code, file)
             request("dataview", source = "object", type = "R",
-                title = title, file = file, viewer = viewer, uuid = uuid
+                title = title, file = file, viewer = viewer, uuid = uuid, dataview_uuid = dataview_uuid
             )
         }
     }

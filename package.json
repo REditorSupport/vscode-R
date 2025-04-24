@@ -31,7 +31,8 @@
   "activationEvents": [
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
     "onCommand:r.runSelectionInActiveTerm",
-    "onWebviewPanel:rhelp"
+    "onWebviewPanel:rhelp",
+    "onWebviewPanel:rdataviewer"
   ],
   "main": "./dist/extension",
   "contributes": {
@@ -1871,6 +1872,11 @@
             }
           },
           "additionalProperties": false
+        },
+        "r.dataViewer.reuseWindow": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Reuse the existing data viewer window when `View()` is called multiple times. When enabled, only one data viewer window will be shown and refreshed with new data."
         },
         "r.rtermSendDelay": {
           "type": "integer",
