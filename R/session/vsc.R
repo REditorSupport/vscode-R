@@ -67,6 +67,130 @@ if (is.null(getOption("help_type"))) {
 }
 
 use_webserver <- isTRUE(getOption("vsc.use_webserver", FALSE))
+
+get_column_def <- function(name, field, value) {
+    filter <- TRUE
+    tooltip <- sprintf(
+        "%s, class: [%s], type: %s",
+        name,
+        toString(class(value)),
+        typeof(value)
+    )
+    if (is.numeric(value)) {
+        type <- "numericColumn"
+        if (is.null(attr(value, "class"))) {
+            filter <- "agNumberColumnFilter"
+        }
+    } else if (inherits(value, "Date")) {
+        type <- "dateColumn"
+        filter <- "agDateColumnFilter"
+    } else {
+        type <- "textColumn"
+        filter <- "agTextColumnFilter"
+    }
+    list(
+        headerName = name,
+        headerTooltip = tooltip,
+        field = field,
+        type = type,
+        filter = filter
+    )
+}
+
+dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL) {
+
+    if (is.matrix(data)) {
+        data <- as.data.frame.matrix(data)
+    }
+    if (!is.data.frame(data)) {
+        stop("data must be a data.frame or a matrix")
+    }
+
+    data.table::setDT(data)
+
+    # number of rows & original column names
+    .nrow <- nrow(data)
+    .colnames <- colnames(data)
+    if (is.null(.colnames)) {
+        .colnames <- sprintf("V%d", seq_len(ncol(data)))
+    } else {
+        .colnames <- trimws(.colnames)
+    }
+
+    # capture or generate rownames
+    if (.row_names_info(data) > 0L) {
+        rownames_ <- rownames(data)
+        rownames(data) <- NULL
+    } else {
+        rownames_ <- seq_len(.nrow)
+    }
+
+    .colnames <- c("(row)", .colnames)
+    fields <- sprintf("x%d", seq_along(.colnames))
+
+    # map x1→"(row)", x2→first real col, …
+    field_map <- setNames(.colnames, fields)
+
+    # ── SORT data before slicing ──
+    if (!is.null(sortModel) && length(sortModel) > 0) {
+
+        sort <- sortModel[[1]]
+        col_f <- sort$colId
+        dir <- sort$sort
+        real <- field_map[[col_f]]
+
+        # only sort if it's one of your real data columns
+        if (!is.null(real) && real %in% .colnames[-1]) {
+
+            # attach rownames_ as a helper column
+            data[, "__rownames__" := rownames_]
+
+            # sort in place: order=1L for asc, -1L for desc
+            data.table::setorderv(
+                data,
+                cols  = real,
+                order = if (dir == "asc") 1L else -1L
+            )
+
+            # pull the helper back out as rownames_
+            rownames_ <- data[["__rownames__"]]
+            data[, "__rownames__" := NULL]
+        }
+    }
+
+    if (is.null(end)) end <- .nrow
+    s <- as.integer(start) + 1
+    e <- min(.nrow, as.integer(end))
+
+    if (s > .nrow || e < 1 || s > e) {
+        rows <- data[0, , drop = FALSE]
+        rownums <- integer(0)
+    } else {
+        rows <- data[s:e, , drop = FALSE]
+        rownums <- rownames_[s:e]
+    }
+
+    rows <- c(list(" " = rownums), .subset(rows))
+    names(rows) <- fields
+    class(rows) <- "data.frame"
+    attr(rows, "row.names") <- .set_row_names(length(rownums))
+
+    rows <- jsonlite::fromJSON(
+        jsonlite::toJSON(rows, dataframe = "rows", na = "null", auto_unbox = TRUE)
+    )
+    columns <- .mapply(
+        get_column_def,
+        list(.colnames, fields, rows),
+        NULL
+    )
+
+    list(
+        columns   = columns,
+        rows      = rows,
+        totalRows = .nrow
+    )
+}
+
 if (use_webserver) {
     if (requireNamespace("httpuv", quietly = TRUE)) {
         request_handlers <- list(
@@ -120,6 +244,12 @@ if (use_webserver) {
                     })
                     return(result)
                 }
+            },
+            dataview_fetch_rows = function(varname, start, end, sortModel, ...) {
+                obj <- get(varname, envir = .GlobalEnv)
+                out <- dataview_table(obj, start, end, sortModel)
+                out$columns <- NULL
+                return(out)
             }
         )
 
@@ -456,75 +586,7 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
 
 show_view <- !identical(getOption("vsc.view", "Two"), FALSE)
 if (show_view) {
-    # Create registry to track dataview UUIDs by title
     dataview_registry <- new.env(parent = emptyenv())
-
-    get_column_def <- function(name, field, value) {
-        filter <- TRUE
-        tooltip <- sprintf(
-            "%s, class: [%s], type: %s",
-            name,
-            toString(class(value)),
-            typeof(value)
-        )
-        if (is.numeric(value)) {
-            type <- "numericColumn"
-            if (is.null(attr(value, "class"))) {
-                filter <- "agNumberColumnFilter"
-            }
-        } else if (inherits(value, "Date")) {
-            type <- "dateColumn"
-            filter <- "agDateColumnFilter"
-        } else {
-            type <- "textColumn"
-            filter <- "agTextColumnFilter"
-        }
-        list(
-            headerName = name,
-            headerTooltip = tooltip,
-            field = field,
-            type = type,
-            filter = filter
-        )
-    }
-
-    dataview_table <- function(data) {
-        if (is.matrix(data)) {
-            data <- as.data.frame.matrix(data)
-        }
-
-        if (is.data.frame(data)) {
-            .nrow <- nrow(data)
-            .colnames <- colnames(data)
-            if (is.null(.colnames)) {
-                .colnames <- sprintf("V%d", seq_len(ncol(data)))
-            } else {
-                .colnames <- trimws(.colnames)
-            }
-            if (.row_names_info(data) > 0L) {
-                rownames <- rownames(data)
-                rownames(data) <- NULL
-            } else {
-                rownames <- seq_len(.nrow)
-            }
-            .colnames <- c("(row)", .colnames)
-            fields <- sprintf("x%d", seq_along(.colnames))
-            data <- c(list(" " = rownames), .subset(data))
-            names(data) <- fields
-            class(data) <- "data.frame"
-            attr(data, "row.names") <- .set_row_names(.nrow)
-            columns <- .mapply(get_column_def,
-                list(.colnames, fields, data),
-                NULL
-            )
-            list(
-                columns = columns,
-                data = data
-            )
-        } else {
-            stop("data must be a data.frame or a matrix")
-        }
-    }
 
     show_dataview <- function(x, title, uuid = NULL,
                               viewer = getOption("vsc.view", "Two"),
@@ -615,9 +677,11 @@ if (show_view) {
         }
         if (is.data.frame(x) || is.matrix(x)) {
             x <- as_truncated_data(x)
-            data <- dataview_table(x)
+            # Get initial chunk of data (first 100 rows)
+            meta <- dataview_table(x, start = 0, end = 1)
+            meta$rows <- list()
             file <- tempfile(tmpdir = tempdir, fileext = ".json")
-            jsonlite::write_json(data, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
+            jsonlite::write_json(meta, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
             request("dataview", source = "table", type = "json",
                 title = title, file = file, viewer = viewer, uuid = uuid, dataview_uuid = dataview_uuid
             )
@@ -690,8 +754,6 @@ path_to_uri <- function(path) {
 }
 
 request_browser <- function(url, title, ..., viewer) {
-    # Printing URL with specific port triggers
-    # auto port-forwarding under remote development
     message("Browsing ", url)
     request("browser", url = url, title = title, ..., viewer = viewer)
 }
@@ -820,7 +882,6 @@ options(
     page_viewer = show_page_viewer
 )
 
-# rstudioapi
 rstudioapi_enabled <- function() {
     isTRUE(getOption("vsc.rstudioapi", TRUE))
 }
@@ -832,12 +893,11 @@ if (rstudioapi_enabled()) {
     file.create(response_lock_file, showWarnings = FALSE)
     file.create(response_file, showWarnings = FALSE)
     addin_registry <- file.path(dir_session, "addins.json")
-    # This is created in attach()
 
     get_response_timestamp <- function() {
         readLines(response_lock_file)
     }
-    # initialise the reponse timestamp to empty string
+
     response_time_stamp <- ""
 
     get_response_lock <- function() {
@@ -876,10 +936,6 @@ if (rstudioapi_enabled()) {
         }
     )
     if ("rstudioapi" %in% loadedNamespaces()) {
-        # if the rstudioapi is already loaded, for example via a call to
-        # library(tidyverse) in the user's profile, we need to shim it now.
-        # There's no harm in having also registered the hook in this case. It can
-        # work in the event that the namespace is unloaded and reloaded.
         rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
     }
 
@@ -945,7 +1001,6 @@ print.hsearch <- function(x, ...) {
     invisible(x)
 }
 
-# a copy of .S3method(), since this function is new in R 4.0
 .S3method <- function(generic, class, method) {
     if (missing(method)) {
         method <- paste(generic, class, sep = ".")

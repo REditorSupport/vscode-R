@@ -9,12 +9,13 @@ import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, e
 
 import { runTextInTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
-import { config, readContent, setContext, UriIcon } from './util';
+import { config, readContent, setContext, UriIcon} from './util';
 import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
 
 import { IRequest } from './liveShare/shareSession';
 import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext, sessionStatusBarItem } from './extension';
 import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
+
 
 export interface GlobalEnv {
     [key: string]: {
@@ -41,6 +42,11 @@ export interface SessionServer {
     token: string;
 }
 
+interface WebviewMessage {
+    command: string;
+    start?: number;
+    end?: number;
+}
 export let workspaceData: WorkspaceData;
 let resDir: string;
 export let requestFile: string;
@@ -338,124 +344,141 @@ export async function showWebView(file: string, title: string, viewer: string | 
 }
 
 export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, dataview_uuid?: string): Promise<void> {
-    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, dataview_uuid: ${dataview_uuid}`);
+    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, dataview_uuid: ${String(dataview_uuid)}`);
 
     if (isGuestSession) {
         resDir = guestResDir;
     }
 
- // Check if we have an existing panel with this UUID
+    // Check if we have an existing panel with this UUID
     let panel: WebviewPanel | undefined;
     if (dataview_uuid && dataviewPanels.has(dataview_uuid)) {
         panel = dataviewPanels.get(dataview_uuid);
         // Panel might have been closed, check if it's still valid
         if (panel) {
             try {
-                panel.title = title; // Update title
+                panel.title = title;
                 panel.reveal(ViewColumn[viewer as keyof typeof ViewColumn]);
-
-                if (source === 'table') {
-                    // Update existing panel content
-                    const content = await getTableHtml(panel.webview, file);
-                    panel.webview.html = content;
-                } else if (source === 'list') {
-                    const content = await getListHtml(panel.webview, file);
-                    panel.webview.html = content;
-                } else {
-                    // For other types, we'll still reopen, but use the existing panel
-                    if (isGuestSession) {
-                        const fileContent = await rGuestService?.requestFileContent(file, 'utf8');
-                        if (fileContent) {
-                            await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer as keyof typeof ViewColumn]);
-                        }
-                    } else {
-                        await commands.executeCommand('vscode.open', Uri.file(file), {
-                            preserveFocus: true,
-                            preview: true,
-                            viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
-                        });
-                    }
-                }
-                console.info('[showDataView] Updated existing panel');
-                return;
             } catch (e) {
-                console.log(`Panel was disposed, creating new one: ${e}`);
-                // Panel was disposed, remove from registry
+                console.log(`Panel was disposed, creating new one: ${String(e)}`);
                 dataviewPanels.delete(dataview_uuid);
                 panel = undefined;
             }
         }
     }
 
-    // Create a new panel if needed
-    if (source === 'table') {
-      panel = window.createWebviewPanel('dataview', title,
-            {
-                preserveFocus: true,
-                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
-            },
-            {
-                enableScripts: true,
-                enableFindWidget: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [Uri.file(resDir)],
-            });
-        const content = await getTableHtml(panel.webview, file);
-        panel.iconPath = new UriIcon('open-preview');
-        panel.webview.html = content;
-        
-        // Register panel if we have a UUID
-        if (dataview_uuid) {
-            dataviewPanels.set(dataview_uuid, panel);
-            panel.onDidDispose(() => {
-                dataviewPanels.delete(dataview_uuid!);
-            });
-        }
-    } else if (source === 'list') {
-      panel = window.createWebviewPanel('dataview', title,
-            {
-                preserveFocus: true,
-                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
-            },
-            {
-                enableScripts: true,
-                enableFindWidget: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [Uri.file(resDir)],
-            });
-        const content = await getListHtml(panel.webview, file);
-        panel.iconPath = new UriIcon('open-preview');
-        panel.webview.html = content;
-        
-        // Register panel if we have a UUID
-        if (dataview_uuid) {
-            dataviewPanels.set(dataview_uuid, panel);
-            panel.onDidDispose(() => {
-                dataviewPanels.delete(dataview_uuid!);
-            });
-        }
-    } else {
-        if (isGuestSession) {
-            const fileContent = await rGuestService?.requestFileContent(file, 'utf8');
-            if (fileContent) {
-                await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer as keyof typeof ViewColumn]);
+    if (!panel) {
+        if (source === 'table' || source === 'list') {
+            panel = window.createWebviewPanel('dataview', title,
+                {
+                    preserveFocus: true,
+                    viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
+                },
+                {
+                    enableScripts: true,
+                    enableFindWidget: true,
+                    retainContextWhenHidden: true,
+                    localResourceRoots: [Uri.file(resDir)],
+                });
+
+            panel.iconPath = new UriIcon('open-preview');
+
+            if (dataview_uuid) {
+                dataviewPanels.set(dataview_uuid, panel);
+                panel.onDidDispose(() => {
+                    dataviewPanels.delete(dataview_uuid);
+                });
             }
         } else {
-            await commands.executeCommand('vscode.open', Uri.file(file), {
-                preserveFocus: true,
-                preview: true,
-                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
-            });
+            if (isGuestSession) {
+                const fileContent = await rGuestService?.requestFileContent(file, 'utf8');
+                if (fileContent) {
+                    await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer as keyof typeof ViewColumn]);
+                }
+            } else {
+                await commands.executeCommand('vscode.open', Uri.file(file), {
+                    preserveFocus: true,
+                    preview: true,
+                    viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
+                });
+            }
         }
     }
+
+    // Register the message handler after panel is created or retrieved, but only once per panel
+    if (panel) {
+        panel.webview.onDidReceiveMessage(async (message: WebviewMessage & {
+          requestId?: string;
+          sortModel?: Array<{ colId: string; sort: 'asc' | 'desc' }>;
+        }) => {
+            if (message.command === 'fetchRows') {
+                try {
+                    const { start, end, sortModel, requestId } = message;
+                    if (!server) {
+                        throw new Error('R server not available');
+                    }
+                    const response: unknown = await sessionRequest(server, {
+                        type: 'dataview_fetch_rows',
+                        varname: title,
+                        start,
+                        end,
+                        sortModel
+                    });
+                    if (typeof response !== 'object' || response === null || !('rows' in response) || !('totalRows' in response)) {
+                        throw new Error('Invalid response from R server');
+                    }
+                    const rows: unknown = (response as {rows: object[]}).rows;
+                    const totalRows: unknown = (response as {totalRows: number}).totalRows;
+                    if (!Array.isArray(rows) || typeof totalRows !== 'number') {
+                        throw new Error('Fetched rows or totalRows invalid');
+                    }
+                    await panel?.webview.postMessage({
+                        command: 'fetchedRows',
+                        start,
+                        end,
+                        rows: rows as object[],
+                        totalRows: totalRows,
+                        requestId
+                    });
+                } catch (error) {
+                    console.error('[fetchRows] Error:', error);
+                    await panel?.webview.postMessage({
+                        command: 'fetchError',
+                        error: String(error),
+                        requestId: message.requestId
+                    });
+                }
+            }
+        });
+    }
+
+    if (panel) {
+        if (source === 'table') {
+            // Persistent ag-Grid request map for matching responses
+            await panel.webview.postMessage({ command: 'initAgGridRequestMap' });
+
+            const content = await getTableHtml(panel.webview, file);
+            panel.webview.html = content;
+        } else if (source === 'list') {
+            const content = await getListHtml(panel.webview, file);
+            panel.webview.html = content;
+        }
+    }
+
     console.info('[showDataView] Done');
 }
 
 export async function getTableHtml(webview: Webview, file: string): Promise<string> {
-    resDir = isGuestSession ? guestResDir : resDir;
-    const pageSize = config().get<number>('session.data.pageSize', 500);
-    const content = await readContent(file, 'utf8');
-    return `
+    try {
+        resDir = isGuestSession ? guestResDir : resDir;
+        const pageSize = config().get<number>('session.data.pageSize', 500);
+        const content = await readContent(file, 'utf8');
+        if (!content) {
+            console.error('[getTableHtml] Empty content');
+            throw new Error('Empty content in getTableHtml');
+        }
+        const data = JSON.parse(content);
+        return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -557,6 +580,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
     <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham.min.css'))))}" rel="stylesheet">
     <script>
+    const vscode = acquireVsCodeApi();
     const dateFilterParams = {
         browserDatePicker: true,
         comparator: function (filterLocalDateAtMidnight, cellValue) {
@@ -584,21 +608,52 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             width: 100,
             minWidth: 50,
             filterParams: {
-                buttons: ['reset', 'apply']
+                buttons: ['reset', 'apply'],
+                closeOnApply: true
             }
         },
         columnDefs: data.columns,
-        rowData: data.data,
         rowSelection: 'multiple',
         pagination: ${pageSize > 0 ? 'true' : 'false'},
         paginationPageSize: ${pageSize},
         enableCellTextSelection: true,
         ensureDomOrder: true,
         tooltipShowDelay: 100,
-        onFirstDataRendered: onFirstDataRendered
-    };
+        onFirstDataRendered: onFirstDataRendered,
+        rowModelType: 'infinite',
+        getRowNodeId:  rowData => rowData.x1,
+        cacheBlockSize: 100,
+        maxBlocksInCache: 0,
+        datasource: {
+            getRows: function(params) {
+                const msg = {
+                    command:   'fetchRows',
+                    start:     params.startRow,
+                    end:       params.endRow,
+                    sortModel: params.sortModel,
+                    requestId: Math.random().toString(36).substr(2, 9) // Generate unique requestId
+                };
+
+                const handler = event => {
+                    const m = event.data;
+                    if (
+                      m.command   === 'fetchedRows' &&
+                      m.requestId === msg.requestId
+                    ) {
+                      console.log('Fetched rows:', m.rows);
+                      params.successCallback(m.rows, m.totalRows);
+                      window.removeEventListener('message', handler);
+                    }
+                  };
+                  window.addEventListener('message', handler);
+                  vscode.postMessage(msg);
+
+                }
+              }
+            };
+    
     function onFirstDataRendered(params) {
-        gridOptions.columnApi.autoSizeAllColumns(false);
+        params.api.autoSizeAllColumns(false);
     }
     function updateTheme() {
         const gridDiv = document.querySelector('#myGrid');
@@ -615,7 +670,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             }
         });
         const gridDiv = document.querySelector('#myGrid');
-        new agGrid.Grid(gridDiv, gridOptions);
+        new agGrid.createGrid(gridDiv, gridOptions);
     });
     function onload() {
         updateTheme();
@@ -636,6 +691,10 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
 </body>
 </html>
 `;
+    } catch (error) {
+        console.error('[getTableHtml] Error:', error);
+        throw error;
+    }
 }
 
 export async function getListHtml(webview: Webview, file: string): Promise<string> {
@@ -882,7 +941,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                     }
                     case 'dataview': {
                         if (request.source && request.type && request.file && request.title && request.viewer !== undefined) {
-                          // Use dataview_uuid for panel tracking, preserve uuid for LiveShare
+                            // Use dataview_uuid for panel tracking, preserve uuid for LiveShare
                             await showDataView(request.source,
                                 request.type, request.title, request.file, request.viewer, request.dataview_uuid);
                         }
