@@ -437,7 +437,7 @@ export async function showDataView(source: string, type: string, title: string, 
                         start,
                         end,
                         rows: rows as object[],
-                        totalRows: totalRows,
+                        lastRow: (totalRows <= (end ?? totalRows) ? totalRows : -1),
                         requestId
                     });
                 } catch (error) {
@@ -600,6 +600,40 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         }
     };
     const data = ${String(content)};
+    const displayDataSource = {
+        rowCount: undefined,
+        getRows(params) {
+          const msg = {
+              command:   'fetchRows',
+              start:     params.startRow,
+              end:       params.endRow,
+              sortModel: params.sortModel,
+              requestId: Math.random().toString(36).substr(2, 9) // Generate unique requestId
+          };
+
+          const handler = event => {
+              const m = event.data;
+              if (m.command   === 'fetchedRows' && m.requestId === msg.requestId) {
+                console.log('Fetched rows:', m.rows);
+                params.successCallback(m.rows, m.lastRow);
+                window.removeEventListener('message', handler);
+              }
+            };
+          window.addEventListener('message', handler);
+          vscode.postMessage(msg);
+        }
+      };
+    const colDefs = data.columns.map(col => {
+      if (col.field === 'x1') {
+        return {
+          ...col,
+          sortable: false,    
+          filter:   false,    
+          suppressMenu: true, 
+        };
+      }
+      return col;
+    });
     const gridOptions = {
         defaultColDef: {
             sortable: true,
@@ -612,8 +646,10 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
                 closeOnApply: true
             }
         },
-        columnDefs: data.columns,
-        rowSelection: 'multiple',
+        datasource: displayDataSource,
+        getRowId: params => params.data.x1,
+        columnDefs: colDefs,
+        rowSelection: { mode: "multiRow", headerCheckbox: false },
         pagination: ${pageSize > 0 ? 'true' : 'false'},
         paginationPageSize: ${pageSize},
         enableCellTextSelection: true,
@@ -621,36 +657,12 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         tooltipShowDelay: 100,
         onFirstDataRendered: onFirstDataRendered,
         rowModelType: 'infinite',
-        getRowNodeId:  rowData => rowData.x1,
         cacheBlockSize: 100,
-        maxBlocksInCache: 0,
-        datasource: {
-            getRows: function(params) {
-                const msg = {
-                    command:   'fetchRows',
-                    start:     params.startRow,
-                    end:       params.endRow,
-                    sortModel: params.sortModel,
-                    requestId: Math.random().toString(36).substr(2, 9) // Generate unique requestId
-                };
-
-                const handler = event => {
-                    const m = event.data;
-                    if (
-                      m.command   === 'fetchedRows' &&
-                      m.requestId === msg.requestId
-                    ) {
-                      console.log('Fetched rows:', m.rows);
-                      params.successCallback(m.rows, m.totalRows);
-                      window.removeEventListener('message', handler);
-                    }
-                  };
-                  window.addEventListener('message', handler);
-                  vscode.postMessage(msg);
-
-                }
-              }
-            };
+        maxBlocksInCache: 10,
+        cacheOverflowSize: 2,
+        maxConcurrentDatasourceRequests: 2,
+        infiniteInitialRowCount: 1
+      };
     
     function onFirstDataRendered(params) {
         params.api.autoSizeAllColumns(false);

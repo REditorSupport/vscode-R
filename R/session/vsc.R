@@ -134,28 +134,14 @@ dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL) {
     # ── SORT data before slicing ──
     if (!is.null(sortModel) && length(sortModel) > 0) {
 
-        sort <- sortModel[[1]]
-        col_f <- sort$colId
-        dir <- sort$sort
-        real <- field_map[[col_f]]
+        cols <- vapply(sortModel, function(s) field_map[[s$colId]], FUN.VALUE = "")
+        ords <- vapply(sortModel, function(s) if (s$sort == "asc") 1L else -1L, FUN.VALUE = integer(1))
+        data[, "__rn__" := rownames_]
 
-        # only sort if it's one of your real data columns
-        if (!is.null(real) && real %in% .colnames[-1]) {
+        data.table::setorderv(data, cols, order = ords)
 
-            # attach rownames_ as a helper column
-            data[, "__rownames__" := rownames_]
-
-            # sort in place: order=1L for asc, -1L for desc
-            data.table::setorderv(
-                data,
-                cols  = real,
-                order = if (dir == "asc") 1L else -1L
-            )
-
-            # pull the helper back out as rownames_
-            rownames_ <- data[["__rownames__"]]
-            data[, "__rownames__" := NULL]
-        }
+        rownames_ <- data[["__rn__"]]
+        data[, "__rn__" := NULL]
     }
 
     if (is.null(end)) end <- .nrow
