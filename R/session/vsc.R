@@ -106,7 +106,11 @@ dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL) {
         stop("data must be a data.frame or a matrix")
     }
 
+    data <- data.table::copy(data)
     data.table::setDT(data)
+
+    data[, "(row)" := .I]
+    setcolorder(data, neworder = "(row)", before = 1)
 
     # number of rows & original column names
     .nrow <- nrow(data)
@@ -125,7 +129,6 @@ dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL) {
         rownames_ <- seq_len(.nrow)
     }
 
-    .colnames <- c("(row)", .colnames)
     fields <- sprintf("x%d", seq_along(.colnames))
 
     # map x1→"(row)", x2→first real col, …
@@ -136,12 +139,8 @@ dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL) {
 
         cols <- vapply(sortModel, function(s) field_map[[s$colId]], FUN.VALUE = "")
         ords <- vapply(sortModel, function(s) if (s$sort == "asc") 1L else -1L, FUN.VALUE = integer(1))
-        data[, "__rn__" := rownames_]
 
         data.table::setorderv(data, cols, order = ords)
-
-        rownames_ <- data[["__rn__"]]
-        data[, "__rn__" := NULL]
     }
 
     if (is.null(end)) end <- .nrow
@@ -156,7 +155,6 @@ dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL) {
         rownums <- rownames_[s:e]
     }
 
-    rows <- c(list(" " = rownums), .subset(rows))
     names(rows) <- fields
     class(rows) <- "data.frame"
     attr(rows, "row.names") <- .set_row_names(length(rownums))

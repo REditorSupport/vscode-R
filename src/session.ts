@@ -417,27 +417,39 @@ export async function showDataView(source: string, type: string, title: string, 
                     if (!server) {
                         throw new Error('R server not available');
                     }
-                    const response: unknown = await sessionRequest(server, {
+
+                    // Set a timeout for the entire operation
+                    const timeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('Operation timed out')), 60000); // 60 second timeout
+                    });
+                    
+                    const requestPromise: unknown = await sessionRequest(server, {
                         type: 'dataview_fetch_rows',
                         varname: title,
                         start,
                         end,
                         sortModel
                     });
+                    
+                   const response: unknown = await Promise.race([requestPromise, timeoutPromise]);
+                    
                     if (typeof response !== 'object' || response === null || !('rows' in response) || !('totalRows' in response)) {
                         throw new Error('Invalid response from R server');
                     }
+                    
                     const rows: unknown = (response as {rows: object[]}).rows;
                     const totalRows: unknown = (response as {totalRows: number}).totalRows;
+                    
                     if (!Array.isArray(rows) || typeof totalRows !== 'number') {
                         throw new Error('Fetched rows or totalRows invalid');
                     }
+                    
                     await panel?.webview.postMessage({
                         command: 'fetchedRows',
                         start,
                         end,
                         rows: rows as object[],
-                        lastRow: (totalRows <= (end ?? totalRows) ? totalRows : -1),
+                        totalRows,
                         requestId
                     });
                 } catch (error) {
@@ -603,70 +615,101 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     const displayDataSource = {
         rowCount: undefined,
         getRows(params) {
+          console.log("Getting rows:", params.startRow, "to", params.endRow, 
+                    "Sort:", JSON.stringify(params.sortModel));
+          
+
           const msg = {
               command:   'fetchRows',
               start:     params.startRow,
               end:       params.endRow,
               sortModel: params.sortModel,
-              requestId: Math.random().toString(36).substr(2, 9) // Generate unique requestId
+              requestId: Math.random().toString(36).substr(2, 9)
           };
 
           const handler = event => {
               const m = event.data;
               if (m.command   === 'fetchedRows' && m.requestId === msg.requestId) {
-                console.log('Fetched rows:', m.rows);
-                params.successCallback(m.rows, m.lastRow);
+                console.log('Received rows:', m.rows.length, 'First few row IDs:', m.rows.slice(0, 3).map(r => r.x1));
+                
+                const totalRows = m.totalRows;
+                let lastRow = -1;
+                if (totalRows <= params.endRow) {
+                  lastRow = totalRows;
+                }
+                console.log('Success callback with lastRow:', lastRow, 'totalRows:', totalRows);
+                params.successCallback(m.rows, lastRow);
                 window.removeEventListener('message', handler);
-              }
+              } 
             };
           window.addEventListener('message', handler);
           vscode.postMessage(msg);
         }
       };
-    const colDefs = data.columns.map(col => {
-      if (col.field === 'x1') {
-        return {
-          ...col,
-          sortable: false,    
-          filter:   false,    
-          suppressMenu: true, 
-        };
-      }
-      return col;
-    });
+
     const gridOptions = {
         defaultColDef: {
             sortable: true,
             resizable: true,
             filter: true,
             width: 100,
-            minWidth: 50,
+            minWidth: 80,
             filterParams: {
                 buttons: ['reset', 'apply'],
                 closeOnApply: true
             }
         },
-        datasource: displayDataSource,
-        getRowId: params => params.data.x1,
-        columnDefs: colDefs,
-        rowSelection: { mode: "multiRow", headerCheckbox: false },
-        pagination: ${pageSize > 0 ? 'true' : 'false'},
-        paginationPageSize: ${pageSize},
-        enableCellTextSelection: true,
+        
+        columnDefs: data.columns,
+
+        suppressColumnVirtualisation: true,
+        alwaysShowVerticalScroll: true,
+        debounceVerticalScrollbar: true,
+        
+        suppressRowTransform: false,
         ensureDomOrder: true,
-        tooltipShowDelay: 100,
-        onFirstDataRendered: onFirstDataRendered,
+      
+        rowHeight: 25,
+        
         rowModelType: 'infinite',
         cacheBlockSize: 100,
-        maxBlocksInCache: 10,
-        cacheOverflowSize: 2,
-        maxConcurrentDatasourceRequests: 2,
-        infiniteInitialRowCount: 1
+        maxBlocksInCache: 5,
+        infiniteInitialRowCount: 100,
+        
+        getRowId: function(params) {
+            return params.data.x1;
+        },
+      
+        rowSelection: 'multiple',
+        enableCellTextSelection: true,
+        
+        onFirstDataRendered: onFirstDataRendered,
+        
+        onViewportChanged: function(params) {
+            // Store viewport state but don't trigger immediate redraw
+            if (!gridOptions._viewportUpdateScheduled && params.api) {
+                gridOptions._viewportUpdateScheduled = true;
+                setTimeout(() => {
+                    // Only refresh if grid still exists
+                    if (params.api) {
+                        // Use a simpler refresh approach
+                        params.api.redrawRows();
+                        gridOptions._viewportUpdateScheduled = false;
+                    }
+                }, 100);
+            }
+        },
+        
+        // Clear cache when sorting changes
+        onSortChanged: function(params) {
+            params.api.purgeInfiniteCache();
+        }
       };
     
     function onFirstDataRendered(params) {
         params.api.autoSizeAllColumns(false);
     }
+    
     function updateTheme() {
         const gridDiv = document.querySelector('#myGrid');
         if (document.body.classList.contains('vscode-light')) {
@@ -675,15 +718,22 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             gridDiv.className = 'ag-theme-balham-dark';
         }
     }
+    
     document.addEventListener('DOMContentLoaded', () => {
         gridOptions.columnDefs.forEach(function(column) {
             if (column.type === 'dateColumn') {
                 column.filterParams = dateFilterParams;
             }
         });
+        
         const gridDiv = document.querySelector('#myGrid');
-        new agGrid.createGrid(gridDiv, gridOptions);
+        
+        const gridApi = agGrid.createGrid(gridDiv, gridOptions);
+        
+        gridApi.setGridOption('datasource', displayDataSource);
+        
     });
+    
     function onload() {
         updateTheme();
         const observer = new MutationObserver(function (event) {
@@ -1030,7 +1080,7 @@ export async function sessionRequest(server: SessionServer, data: any): Promise<
             },
             body: JSON.stringify(data),
             follow: 0,
-            timeout: 500,
+            timeout: 30000,
         });
 
         if (!response.ok) {
