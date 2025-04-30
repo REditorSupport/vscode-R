@@ -97,7 +97,7 @@ get_column_def <- function(name, field, value) {
     )
 }
 
-dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL) {
+dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL, filterModel = NULL) {
 
     if (is.matrix(data)) {
         data <- as.data.frame.matrix(data)
@@ -109,8 +109,8 @@ dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL) {
     data <- data.table::copy(data)
     data.table::setDT(data)
 
-    data[, "(row)" := .I]
-    setcolorder(data, neworder = "(row)", before = 1)
+    data[, `:=`("(row)" = numeric(), rowId = .I)]
+    data.table::setcolorder(data, neworder = c("(row)", "rowId"), before = 1)
 
     # number of rows & original column names
     .nrow <- nrow(data)
@@ -121,20 +121,69 @@ dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL) {
         .colnames <- trimws(.colnames)
     }
 
-    # capture or generate rownames
-    if (.row_names_info(data) > 0L) {
-        rownames_ <- rownames(data)
-        rownames(data) <- NULL
-    } else {
-        rownames_ <- seq_len(.nrow)
-    }
-
     fields <- sprintf("x%d", seq_along(.colnames))
-
-    # map x1→"(row)", x2→first real col, …
     field_map <- setNames(.colnames, fields)
 
-    # ── SORT data before slicing ──
+    if (!is.null(filterModel) && length(filterModel) > 0) {
+
+        filter_strings <- lapply(names(filterModel), function(fld) {
+            fd       <- filterModel[[fld]]
+            col_name <- field_map[[fld]]
+
+            if (!is.null(fd$type) && !is.null(fd$filter)) {
+                op  <- fd$type
+                raw <- fd$filter
+
+                # quote or coerce the filter literal
+                lit <- if (inherits(data[[col_name]], "Date")) {
+                    sprintf('as.Date("%s")', raw)
+                } else if (is.numeric(data[[col_name]])) {
+                    as.numeric(raw)
+                } else {
+                    sprintf('"%s"', gsub('"', '\\\\"', raw))
+                }
+
+                # build the right comparison or string test
+                expr <- switch(op,
+                    equals               = sprintf('get("%s") == %s',          col_name, lit),
+                    notEqual             = sprintf('get("%s") != %s',          col_name, lit),
+                    greaterThan          = sprintf('get("%s") >  %s',          col_name, lit),
+                    greaterThanOrEqual   = sprintf('get("%s") >= %s',          col_name, lit),
+                    lessThan             = sprintf('get("%s") <  %s',          col_name, lit),
+                    lessThanOrEqual      = sprintf('get("%s") <= %s',          col_name, lit),
+                    contains             = sprintf('grepl(%s, get("%s"), fixed=TRUE)', lit, col_name),
+                    notContains          = sprintf('!grepl(%s, get("%s"), fixed=TRUE)', lit, col_name),
+                    startsWith           = sprintf('startsWith(get("%s"), %s)', col_name, lit),
+                    endsWith             = sprintf('endsWith(get("%s"), %s)',   col_name, lit),
+                    regexp               = sprintf('grepl(%s, get("%s"))',     lit, col_name),
+                    blank                = sprintf('is.na(get("%s")) | get("%s") == ""', col_name, col_name),
+                    notBlank             = sprintf('!is.na(get("%s")) & get("%s") != ""', col_name, col_name),
+                    inRange              = {
+                        hi <- if (inherits(data[[col_name]], "Date")) {
+                            sprintf('as.Date("%s")', fd$filterTo)
+                        } else {
+                            as.numeric(fd$filterTo)
+                        }
+                        sprintf('get("%s") >= %s & get("%s") <= %s',
+                                col_name, lit, col_name, hi)
+                    },
+                    NULL
+                )
+                return(expr)
+            }
+            NULL
+        })
+
+        filter_strings <- Filter(Negate(is.null), filter_strings)
+        # combine with &&
+        if (length(filter_strings) > 0) {
+            combined <- paste(filter_strings, collapse = " & ")
+            data     <- data[eval(parse(text = combined))]
+        }
+    }
+
+    nFiltered <- nrow(data)
+
     if (!is.null(sortModel) && length(sortModel) > 0) {
 
         cols <- vapply(sortModel, function(s) field_map[[s$colId]], FUN.VALUE = "")
@@ -143,21 +192,19 @@ dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL) {
         data.table::setorderv(data, cols, order = ords)
     }
 
-    if (is.null(end)) end <- .nrow
+    if (is.null(end)) end <- nFiltered
     s <- as.integer(start) + 1
-    e <- min(.nrow, as.integer(end))
+    e <- min(nFiltered, as.integer(end))
 
-    if (s > .nrow || e < 1 || s > e) {
-        rows <- data[0, , drop = FALSE]
-        rownums <- integer(0)
+    if (s > nFiltered || e < 1 || s > e) {
+        rows <- data[0]
     } else {
-        rows <- data[s:e, , drop = FALSE]
-        rownums <- rownames_[s:e]
+        rows <- data[s:e][, "(row)" := s:e]
     }
 
     names(rows) <- fields
     class(rows) <- "data.frame"
-    attr(rows, "row.names") <- .set_row_names(length(rownums))
+    attr(rows, "row.names") <- .set_row_names(nrow(rows))
 
     rows <- jsonlite::fromJSON(
         jsonlite::toJSON(rows, dataframe = "rows", na = "null", auto_unbox = TRUE)
@@ -171,7 +218,8 @@ dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL) {
     list(
         columns   = columns,
         rows      = rows,
-        totalRows = .nrow
+        totalRows = nFiltered,
+        totalUnfiltered = .nrow
     )
 }
 
@@ -229,9 +277,9 @@ if (use_webserver) {
                     return(result)
                 }
             },
-            dataview_fetch_rows = function(varname, start, end, sortModel, ...) {
+            dataview_fetch_rows = function(varname, start, end, sortModel, filterModel, ...) {
                 obj <- get(varname, envir = .GlobalEnv)
-                out <- dataview_table(obj, start, end, sortModel)
+                out <- dataview_table(obj, start, end, sortModel, filterModel)
                 out$columns <- NULL
                 return(out)
             }

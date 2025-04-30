@@ -410,10 +410,12 @@ export async function showDataView(source: string, type: string, title: string, 
         panel.webview.onDidReceiveMessage(async (message: WebviewMessage & {
           requestId?: string;
           sortModel?: Array<{ colId: string; sort: 'asc' | 'desc' }>;
+          filterModel?: {[colId: string]: any};
         }) => {
             if (message.command === 'fetchRows') {
                 try {
-                    const { start, end, sortModel, requestId } = message;
+                    const { start, end, sortModel, filterModel, requestId } = message;
+                    
                     if (!server) {
                         throw new Error('R server not available');
                     }
@@ -423,22 +425,28 @@ export async function showDataView(source: string, type: string, title: string, 
                         setTimeout(() => reject(new Error('Operation timed out')), 60000); // 60 second timeout
                     });
                     
-                    const requestPromise: unknown = await sessionRequest(server, {
+                    const requestPromise = sessionRequest(server, {
                         type: 'dataview_fetch_rows',
                         varname: title,
                         start,
                         end,
-                        sortModel
+                        sortModel, 
+                        filterModel
                     });
                     
                    const response: unknown = await Promise.race([requestPromise, timeoutPromise]);
                     
-                    if (typeof response !== 'object' || response === null || !('rows' in response) || !('totalRows' in response)) {
+                    if (typeof response !== 'object' || 
+                        response === null || 
+                        !('rows' in response) || 
+                        !('totalRows' in response) ||
+                        !('totalUnfiltered' in response)) {
                         throw new Error('Invalid response from R server');
                     }
                     
                     const rows: unknown = (response as {rows: object[]}).rows;
                     const totalRows: unknown = (response as {totalRows: number}).totalRows;
+                    const totalUnfiltered: unknown = (response as {totalUnfiltered: number}).totalUnfiltered;
                     
                     if (!Array.isArray(rows) || typeof totalRows !== 'number') {
                         throw new Error('Fetched rows or totalRows invalid');
@@ -450,6 +458,7 @@ export async function showDataView(source: string, type: string, title: string, 
                         end,
                         rows: rows as object[],
                         totalRows,
+                        totalUnfiltered,
                         requestId
                     });
                 } catch (error) {
@@ -592,6 +601,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
     <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham.min.css'))))}" rel="stylesheet">
     <script>
+    
     const vscode = acquireVsCodeApi();
     const dateFilterParams = {
         browserDatePicker: true,
@@ -615,38 +625,69 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     const displayDataSource = {
         rowCount: undefined,
         getRows(params) {
-          console.log("Getting rows:", params.startRow, "to", params.endRow, 
+        console.log("Getting rows:", params.startRow, "to", params.endRow, 
                     "Sort:", JSON.stringify(params.sortModel));
+
+        const msg = {
+            command:     'fetchRows',
+            start:       params.startRow,
+            end:         params.endRow,
+            sortModel:   params.sortModel,
+            filterModel: params.filterModel,
+            requestId: Math.random().toString(36).substr(2, 9)
+        };
           
+        console.log('Sending request to R with filterModel:', JSON.stringify(msg.filterModel, null, 2));
 
-          const msg = {
-              command:   'fetchRows',
-              start:     params.startRow,
-              end:       params.endRow,
-              sortModel: params.sortModel,
-              requestId: Math.random().toString(36).substr(2, 9)
+        const handler = event => {
+            const m = event.data;
+            if (m.command   === 'fetchedRows' && m.requestId === msg.requestId) {
+              console.log('Received rows:', m.rows.length, 'First few row IDs:', m.rows.slice(0, 3).map(r => r.x1));
+              
+              displayDataSource._TotalRows = m.totalRows;
+              displayDataSource._TotalUnfiltered = m.totalUnfiltered;
+              
+              displayDataSource.api.refreshHeader();
+              
+              const totalRows = m.totalRows;
+              let lastRow = -1;
+              if (totalRows <= params.endRow) {
+                lastRow = totalRows;
+              }
+              console.log('Success callback with lastRow:', lastRow, 'totalRows:', totalRows);
+              params.successCallback(m.rows, lastRow);
+              window.removeEventListener('message', handler);
+            } 
+        };
+        window.addEventListener('message', handler);
+        vscode.postMessage(msg);
+      }
+    };
+
+    const columnDefs = data.columns.map(col => {
+        if (col.field === "x2") {
+          return {
+            ...col,
+            hide: true
           };
-
-          const handler = event => {
-              const m = event.data;
-              if (m.command   === 'fetchedRows' && m.requestId === msg.requestId) {
-                console.log('Received rows:', m.rows.length, 'First few row IDs:', m.rows.slice(0, 3).map(r => r.x1));
-                
-                const totalRows = m.totalRows;
-                let lastRow = -1;
-                if (totalRows <= params.endRow) {
-                  lastRow = totalRows;
-                }
-                console.log('Success callback with lastRow:', lastRow, 'totalRows:', totalRows);
-                params.successCallback(m.rows, lastRow);
-                window.removeEventListener('message', handler);
-              } 
-            };
-          window.addEventListener('message', handler);
-          vscode.postMessage(msg);
         }
-      };
-
+        else if (col.field === "x1") {
+          return {
+            ...col,
+            sortable:     false,
+            filter:       false,
+            suppressHeaderMenuButton: true,
+            width:        60,
+            headerValueGetter: () => {
+              const a = displayDataSource._TotalRows || 0;
+              const b = displayDataSource._TotalUnfiltered || 0;
+              return '(' + a + '/' + b + ')';
+            }
+          };
+        }
+        return col;
+      });
+    
     const gridOptions = {
         defaultColDef: {
             sortable: true,
@@ -654,60 +695,65 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             filter: true,
             width: 100,
             minWidth: 80,
+            floatingFilter: true, 
             filterParams: {
-                buttons: ['reset', 'apply'],
-                closeOnApply: true
+                buttons: ['apply', 'reset'],
+                closeOnApply: true,
+                maxNumConditions: 1
             }
         },
         
-        columnDefs: data.columns,
+        columnDefs: columnDefs,
+        getRowId: function(params) {
+            return params.data.x2;
+        },
 
         suppressColumnVirtualisation: true,
         alwaysShowVerticalScroll: true,
         debounceVerticalScrollbar: true,
         
-        suppressRowTransform: false,
         ensureDomOrder: true,
-      
         rowHeight: 25,
-        
         rowModelType: 'infinite',
         cacheBlockSize: 100,
         maxBlocksInCache: 5,
         infiniteInitialRowCount: 100,
-        
-        getRowId: function(params) {
-            return params.data.x1;
-        },
+        rowBuffer: 5,
       
         rowSelection: 'multiple',
         enableCellTextSelection: true,
+        suppressRowTransform: true,
+        animateRows: false,
         
         onFirstDataRendered: onFirstDataRendered,
         
         onViewportChanged: function(params) {
-            // Store viewport state but don't trigger immediate redraw
             if (!gridOptions._viewportUpdateScheduled && params.api) {
                 gridOptions._viewportUpdateScheduled = true;
                 setTimeout(() => {
                     // Only refresh if grid still exists
                     if (params.api) {
-                        // Use a simpler refresh approach
-                        params.api.redrawRows();
+                        params.api.refreshCells({
+                          force: true
+                        });
                         gridOptions._viewportUpdateScheduled = false;
                     }
                 }, 100);
             }
         },
         
-        // Clear cache when sorting changes
         onSortChanged: function(params) {
             params.api.purgeInfiniteCache();
+        }, 
+        onFilterChanged: function(params) {
+        console.log("onFilterChanged - new filterModel:", params.api.getFilterModel());
+          params.api.purgeInfiniteCache();
         }
       };
     
     function onFirstDataRendered(params) {
         params.api.autoSizeAllColumns(false);
+
     }
     
     function updateTheme() {
@@ -721,14 +767,36 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     
     document.addEventListener('DOMContentLoaded', () => {
         gridOptions.columnDefs.forEach(function(column) {
-            if (column.type === 'dateColumn') {
+            if (column.filter === 'agDateColumnFilter') {
                 column.filterParams = dateFilterParams;
-            }
+            } 
+            else if (column.filter === 'agNumberColumnFilter') {
+                column.filterParams = {
+                    filterOptions: [
+                      'equals', 'notEqual', 
+                      'lessThan', 'lessThanOrEqual', 
+                      'greaterThan', 'greaterThanOrEqual',
+                      'inRange', 'blank', 'notBlank'
+                    ],
+                    defaultOption: 'equals'
+                };
+              } 
+              else if (column.filter === 'agTextColumnFilter') {
+                column.filterParams = {
+                    filterOptions: [
+                      'equals', 'notEqual', 'contains', 'notContains',
+                      'startsWith', 'endsWith', 'blank', 'notBlank', 'regexp'
+                    ],
+                    defaultOption: 'contains'
+                }; 
+              } 
         });
         
         const gridDiv = document.querySelector('#myGrid');
         
         const gridApi = agGrid.createGrid(gridDiv, gridOptions);
+        
+        displayDataSource.api = gridApi;
         
         gridApi.setGridOption('datasource', displayDataSource);
         
