@@ -621,6 +621,11 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             }
         }
     };
+    const booleanFilterParams = {
+        filterOptions: ['equals'],
+        defaultOption: 'equals',
+        filterPlaceholder: '1=TRUE, 0=FALSE...'
+    };
     const data = ${String(content)};
     const displayDataSource = {
         rowCount: undefined,
@@ -665,6 +670,23 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     };
 
     const columnDefs = data.columns.map(col => {
+        if (col.type === "booleanColumn") {
+          return {
+            ...col,
+            valueFormatter: params =>
+              params.value === true 
+              ? 'TRUE'
+              : params.value === false
+                  ? 'FALSE'
+                  : ''
+          };
+        } else if (col.type === "dateColumn") {
+          return {
+            ...col, 
+            width: 200
+          };
+        }
+      
         if (col.field === "x2") {
           return {
             ...col,
@@ -676,8 +698,9 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             ...col,
             sortable:     false,
             filter:       false,
+            lockPosition: 'left',
             suppressHeaderMenuButton: true,
-            width:        60,
+            width:        150,
             headerValueGetter: () => {
               const a = displayDataSource._TotalRows || 0;
               const b = displayDataSource._TotalUnfiltered || 0;
@@ -685,6 +708,8 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             }
           };
         }
+
+        
         return col;
       });
     
@@ -693,9 +718,11 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             sortable: true,
             resizable: true,
             filter: true,
-            width: 100,
-            minWidth: 80,
+            width: 150,
+            minWidth: 100,
             floatingFilter: true, 
+            suppressHeaderMenuButton: true,
+            lockPinned: true,
             filterParams: {
                 buttons: ['apply', 'reset'],
                 closeOnApply: true,
@@ -767,37 +794,18 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     
     document.addEventListener('DOMContentLoaded', () => {
         gridOptions.columnDefs.forEach(function(column) {
-            if (column.filter === 'agDateColumnFilter') {
+            if (column.type === 'dateColumn') {
                 column.filterParams = dateFilterParams;
-            } 
-            else if (column.filter === 'agNumberColumnFilter') {
-                column.filterParams = {
-                    filterOptions: [
-                      'equals', 'notEqual', 
-                      'lessThan', 'lessThanOrEqual', 
-                      'greaterThan', 'greaterThanOrEqual',
-                      'inRange', 'blank', 'notBlank'
-                    ],
-                    defaultOption: 'equals'
-                };
-              } 
-              else if (column.filter === 'agTextColumnFilter') {
-                column.filterParams = {
-                    filterOptions: [
-                      'equals', 'notEqual', 'contains', 'notContains',
-                      'startsWith', 'endsWith', 'blank', 'notBlank', 'regexp'
-                    ],
-                    defaultOption: 'contains'
-                }; 
-              } 
+            }
+            else if (column.type == 'booleanColumn') {
+                column.filterParams = booleanFilterParams;
+            }
         });
         
         const gridDiv = document.querySelector('#myGrid');
-        
         const gridApi = agGrid.createGrid(gridDiv, gridOptions);
-        
-        displayDataSource.api = gridApi;
-        
+
+        displayDataSource.api = gridApi;        
         gridApi.setGridOption('datasource', displayDataSource);
         
     });

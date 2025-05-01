@@ -78,12 +78,16 @@ get_column_def <- function(name, field, value) {
     )
     if (is.numeric(value)) {
         type <- "numericColumn"
+        filter <- "agNumberColumnFilter"
         if (is.null(attr(value, "class"))) {
             filter <- "agNumberColumnFilter"
         }
     } else if (inherits(value, "Date")) {
         type <- "dateColumn"
         filter <- "agDateColumnFilter"
+    } else if (is.logical(value)) {
+        type <- "booleanColumn"
+        filter <- "agNumberColumnFilter"
     } else {
         type <- "textColumn"
         filter <- "agTextColumnFilter"
@@ -130,15 +134,18 @@ dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL, filter
             fd       <- filterModel[[fld]]
             col_name <- field_map[[fld]]
 
-            if (!is.null(fd$type) && !is.null(fd$filter)) {
+            if ((!is.null(fd$type) && !is.null(fd$filter))) {
+
                 op  <- fd$type
-                raw <- fd$filter
+                raw <- if (fd$filterType == "date") fd$dateFrom else fd$filter
 
                 # quote or coerce the filter literal
                 lit <- if (inherits(data[[col_name]], "Date")) {
                     sprintf('as.Date("%s")', raw)
                 } else if (is.numeric(data[[col_name]])) {
                     as.numeric(raw)
+                } else if (is.logical(data[[col_name]])) {
+                    as.logical(raw)
                 } else {
                     sprintf('"%s"', gsub('"', '\\\\"', raw))
                 }
@@ -159,8 +166,8 @@ dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL, filter
                     blank                = sprintf('is.na(get("%s")) | get("%s") == ""', col_name, col_name),
                     notBlank             = sprintf('!is.na(get("%s")) & get("%s") != ""', col_name, col_name),
                     inRange              = {
-                        hi <- if (inherits(data[[col_name]], "Date")) {
-                            sprintf('as.Date("%s")', fd$filterTo)
+                        hi <- if (inherits(data[[col_name]], "Date") && !is.null(fd$dateTo)) {
+                            sprintf('as.Date("%s")', fd$dateTo)
                         } else {
                             as.numeric(fd$filterTo)
                         }
@@ -206,9 +213,6 @@ dataview_table <- function(data, start = 0, end = NULL, sortModel = NULL, filter
     class(rows) <- "data.frame"
     attr(rows, "row.names") <- .set_row_names(nrow(rows))
 
-    rows <- jsonlite::fromJSON(
-        jsonlite::toJSON(rows, dataframe = "rows", na = "null", auto_unbox = TRUE)
-    )
     columns <- .mapply(
         get_column_def,
         list(.colnames, fields, rows),
