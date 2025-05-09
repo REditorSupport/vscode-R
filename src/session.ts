@@ -343,8 +343,9 @@ export async function showWebView(file: string, title: string, viewer: string | 
     console.info('[showWebView] Done');
 }
 
-export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, dataview_uuid?: string): Promise<void> {
-    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, dataview_uuid: ${String(dataview_uuid)}`);
+export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, dataview_uuid?: string, expr?: string): Promise<void> {
+    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, expr: ${expr}, file: ${file}, 
+                 viewer: ${viewer}, dataview_uuid: ${String(dataview_uuid)}`);
 
     if (isGuestSession) {
         resDir = guestResDir;
@@ -359,6 +360,9 @@ export async function showDataView(source: string, type: string, title: string, 
             try {
                 panel.title = title;
                 panel.reveal(ViewColumn[viewer as keyof typeof ViewColumn]);
+                
+                panel.webview.postMessage({ command: 'refreshDataview' });
+                
             } catch (e) {
                 console.log(`Panel was disposed, creating new one: ${String(e)}`);
                 dataviewPanels.delete(dataview_uuid);
@@ -416,6 +420,8 @@ export async function showDataView(source: string, type: string, title: string, 
                 try {
                     const { start, end, sortModel, filterModel, requestId } = message;
                     
+                    console.log("[fetchRows] Sending to R:", {varname: title, start, end, sortModel, filterModel});
+                    
                     if (!server) {
                         throw new Error('R server not available');
                     }
@@ -427,7 +433,7 @@ export async function showDataView(source: string, type: string, title: string, 
                     
                     const requestPromise = sessionRequest(server, {
                         type: 'dataview_fetch_rows',
-                        varname: title,
+                        varname: expr ?? title,
                         start,
                         end,
                         sortModel, 
@@ -475,11 +481,9 @@ export async function showDataView(source: string, type: string, title: string, 
 
     if (panel) {
         if (source === 'table') {
-            // Persistent ag-Grid request map for matching responses
-            await panel.webview.postMessage({ command: 'initAgGridRequestMap' });
-
             const content = await getTableHtml(panel.webview, file);
             panel.webview.html = content;
+            panel.webview.postMessage({ command: 'initAgGridRequestMap' });
         } else if (source === 'list') {
             const content = await getListHtml(panel.webview, file);
             panel.webview.html = content;
@@ -641,9 +645,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             filterModel: params.filterModel,
             requestId: Math.random().toString(36).substr(2, 9)
         };
-          
-        console.log('Sending request to R with filterModel:', JSON.stringify(msg.filterModel, null, 2));
-
+        
         const handler = event => {
             const m = event.data;
             if (m.command   === 'fetchedRows' && m.requestId === msg.requestId) {
@@ -735,7 +737,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             return params.data.x2;
         },
 
-        suppressColumnVirtualisation: true,
+        suppressColumnVirtualisation: false,
         alwaysShowVerticalScroll: true,
         debounceVerticalScrollbar: true,
         
@@ -743,9 +745,10 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         rowHeight: 25,
         rowModelType: 'infinite',
         cacheBlockSize: 100,
-        maxBlocksInCache: 5,
-        infiniteInitialRowCount: 100,
+        maxBlocksInCache: 20,
+        infiniteInitialRowCount: 0,
         rowBuffer: 5,
+        blockLoadDebounceMillis: 300,
       
         rowSelection: 'multiple',
         enableCellTextSelection: true,
@@ -753,21 +756,6 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         animateRows: false,
         
         onFirstDataRendered: onFirstDataRendered,
-        
-        onViewportChanged: function(params) {
-            if (!gridOptions._viewportUpdateScheduled && params.api) {
-                gridOptions._viewportUpdateScheduled = true;
-                setTimeout(() => {
-                    // Only refresh if grid still exists
-                    if (params.api) {
-                        params.api.refreshCells({
-                          force: true
-                        });
-                        gridOptions._viewportUpdateScheduled = false;
-                    }
-                }, 100);
-            }
-        },
         
         onSortChanged: function(params) {
             params.api.purgeInfiniteCache();
@@ -808,7 +796,21 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         displayDataSource.api = gridApi;        
         gridApi.setGridOption('datasource', displayDataSource);
         
+        window.addEventListener('message', event => {
+            const msg = event.data;
+            if (msg.command === 'refreshDataview') {
+
+              gridApi.setFilterModel(null);
+              gridApi.onFilterChanged();            
+
+              gridApi.resetColumnState();      
+
+              gridApi.purgeInfiniteCache();           
+              gridApi.ensureIndexVisible(0, 'top');   
+            }
+          });
     });
+    
     
     function onload() {
         updateTheme();
@@ -999,6 +1001,7 @@ export async function writeSuccessResponse(responseSessionDir: string): Promise<
 type ISessionRequest = {
     plot_url?: string,
     server?: SessionServer,
+    expr?: string,
     dataview_uuid?: string  // Add this property to match the R code
 } & IRequest;
 
@@ -1081,7 +1084,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         if (request.source && request.type && request.file && request.title && request.viewer !== undefined) {
                             // Use dataview_uuid for panel tracking, preserve uuid for LiveShare
                             await showDataView(request.source,
-                                request.type, request.title, request.file, request.viewer, request.dataview_uuid);
+                                request.type, request.title, request.file, request.viewer, request.dataview_uuid, request.expr);
                         }
                         break;
                     }
