@@ -410,7 +410,7 @@ export async function showDataView(source: string, type: string, title: string, 
     }
 
     // Register the message handler after panel is created or retrieved, but only once per panel
-    if (panel) {
+    if (panel && !(panel as any)._hasFetchHandler) {
         panel.webview.onDidReceiveMessage(async (message: WebviewMessage & {
           requestId?: string;
           sortModel?: Array<{ colId: string; sort: 'asc' | 'desc' }>;
@@ -477,6 +477,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 }
             }
         });
+        (panel as any)._hasFetchHandler = true;
     }
 
     if (panel) {
@@ -746,7 +747,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         rowModelType: 'infinite',
         cacheBlockSize: 100,
         maxBlocksInCache: 20,
-        infiniteInitialRowCount: 0,
+        infiniteInitialRowCount: 100,
         rowBuffer: 5,
         blockLoadDebounceMillis: 300,
       
