@@ -784,7 +784,7 @@ if (show_view) {
             x <- as_truncated_data(x)
             if (exists(".dataview_first_map", envir = .GlobalEnv, inherits = FALSE)) {
                 fm_env        <- get(".dataview_first_map", envir = .GlobalEnv)
-                fm_env[[title]] <- NULL
+                fm_env[[expr_text]] <- NULL
             }
             meta <- dataview_table(x, start = 0, end = 0, metadata_only = TRUE, force = TRUE)
             file <- tempfile(tmpdir = tempdir, fileext = ".json")

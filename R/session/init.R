@@ -48,6 +48,7 @@ init_last <- function() {
     # cleanup previous version
     removeTaskCallback("vscode-R")
     options(vscodeR = NULL)
+    options(datatable.quiet = TRUE)
     .vsc.name <- "tools:vscode"
     if (.vsc.name %in% search()) {
         detach(.vsc.name, character.only = TRUE)

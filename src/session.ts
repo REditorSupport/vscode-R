@@ -804,6 +804,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
               gridApi.onFilterChanged();            
 
               gridApi.resetColumnState();      
+              gridApi.autoSizeAllColumns(false);
 
               gridApi.purgeInfiniteCache();           
               gridApi.ensureIndexVisible(0, 'top');   
