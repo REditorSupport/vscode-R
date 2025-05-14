@@ -32,7 +32,7 @@
     },
     {
       "type": "npm",
-      "script": "compile",
+      "script": "build",
       "problemMatcher": "$tsc"
     },
 		{
