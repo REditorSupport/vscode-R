@@ -15,7 +15,6 @@
       "outFiles": [
         "${workspaceFolder}/out/src/**/*.js"
       ],
-      "preLaunchTask": "watchAll"
     },
     {
       "name": "Launch Extension (--disable-extensions)",
@@ -29,7 +28,6 @@
       "outFiles": [
         "${workspaceFolder}/out/src/**/*.js"
       ],
-      "preLaunchTask": "watchAll"
     },
     {
       "name": "Extension Tests",
