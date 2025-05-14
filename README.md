@@ -2,8 +2,9 @@
 
 [![Badge](https://aka.ms/vsls-badge)](https://aka.ms/vsls)
 
-This [VS Code](https://code.visualstudio.com/) extension provides support for the [R programming language](https://www.r-project.org), including features such as
-extended syntax highlighting, R language service based on code analysis, interacting with R terminals, viewing data, plots, workspace variables, help pages, managing packages, and working with [R Markdown](https://rmarkdown.rstudio.com/) documents.
+This [VS Code](https://code.visualstudio.com/) extension provides support for the [R programming language](https://www.r-project.org), including features such as R language service based on code analysis, interacting with R terminals, viewing data, plots, workspace variables, help pages, managing packages, and working with [R Markdown](https://rmarkdown.rstudio.com/) documents.
+
+The R and R Markdown syntaxes are located in a slibing package [vscode-R-syntax](https://github.com/REditorSupport/vscode-R-syntax).
 
 Go to the [wiki](https://github.com/REditorSupport/vscode-R/wiki) to view the documentation of the extension.
 
@@ -32,8 +33,6 @@ The following software or extensions are recommended to enhance the experience o
 Go to the installation wiki pages ([Windows](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Windows) | [macOS](https://github.com/REditorSupport/vscode-R/wiki/Installation:-macOS) | [Linux](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Linux)) for more detailed instructions.
 
 ## Features
-
-* Extended syntax highlighting for R, R Markdown, and R Documentation.
 
 * Snippets for R and R Markdown.
 
