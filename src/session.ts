@@ -428,7 +428,7 @@ export async function showDataView(source: string, type: string, title: string, 
 
                     // Set a timeout for the entire operation
                     const timeoutPromise = new Promise((_, reject) => {
-                        setTimeout(() => reject(new Error('Operation timed out')), 60000); // 60 second timeout
+                        setTimeout(() => reject(new Error('Operation timed out')), 120000);
                     });
                     
                     const requestPromise = sessionRequest(server, {
@@ -635,8 +635,6 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     const displayDataSource = {
         rowCount: undefined,
         getRows(params) {
-        console.log("Getting rows:", params.startRow, "to", params.endRow, 
-                    "Sort:", JSON.stringify(params.sortModel));
 
         const msg = {
             command:     'fetchRows',
@@ -650,7 +648,6 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
         const handler = event => {
             const m = event.data;
             if (m.command   === 'fetchedRows' && m.requestId === msg.requestId) {
-              console.log('Received rows:', m.rows.length, 'First few row IDs:', m.rows.slice(0, 3).map(r => r.x1));
               
               displayDataSource._TotalRows = m.totalRows;
               displayDataSource._TotalUnfiltered = m.totalUnfiltered;
@@ -662,7 +659,6 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
               if (totalRows <= params.endRow) {
                 lastRow = totalRows;
               }
-              console.log('Success callback with lastRow:', lastRow, 'totalRows:', totalRows);
               params.successCallback(m.rows, lastRow);
               window.removeEventListener('message', handler);
             } 

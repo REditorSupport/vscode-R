@@ -82,7 +82,9 @@ get_column_def <- function(name, field, value) {
         if (is.null(attr(value, "class"))) {
             filter <- "agNumberColumnFilter"
         }
-    } else if (inherits(value, "Date")) {
+    } else if (inherits(value, "Date")
+               || inherits(value, "POSIXct")
+               || inherits(value, "POSIXlt")) {
         type <- "dateColumn"
         filter <- "agDateColumnFilter"
     } else if (is.logical(value)) {
@@ -156,11 +158,10 @@ dataview_table <- local({
 
         if (is.null(cache_raw_dt[[key]]) || force) {
 
-            dt0 <- data.table::as.data.table(data)
-            dt0[, `:=`("(row)" = numeric(), rowId = .I)]
-            data.table::setcolorder(dt0, neworder = c("(row)", "rowId"), before = 1)
+            cache_raw_dt[[key]]       <<- data.table::as.data.table(data)
+            cache_raw_dt[[key]][, `:=`("(row)" = numeric(), rowId = .I)]
+            data.table::setcolorder(cache_raw_dt[[key]], neworder = c("(row)", "rowId"), before = 1)
 
-            cache_raw_dt[[key]]       <<- dt0
             cache_filtered_dt[[key]]  <<- NULL
             cache_dt[[key]]           <<- NULL
             cache_nrow[[key]]         <<- .nrow
@@ -178,10 +179,20 @@ dataview_table <- local({
                 filter_strings <- lapply(names(filterModel), function(fld) {
                     fd  <- filterModel[[fld]]
                     col_name <- field_map[[fld]]
+
+                    is_date <- inherits(dt1[[col_name]], "Date") ||
+                        inherits(dt1[[col_name]], "POSIXct") ||
+                        inherits(dt1[[col_name]], "POSIXlt")
+
+                    col <- if (is_date) {
+                        sprintf("as.Date(%s)", col_name)
+                    } else {
+                        col_name
+                    }
                     if (!is.null(fd$type) && !is.null(fd$filter)) {
                         op  <- fd$type
                         raw <- if (fd$filterType == "date") fd$dateFrom else fd$filter
-                        lit <- if (inherits(dt1[[col_name]], "Date")) {
+                        lit <- if (is_date) {
                             sprintf('as.Date("%s")', raw)
                         } else if (is.numeric(dt1[[col_name]])) {
                             as.numeric(raw)
@@ -191,26 +202,34 @@ dataview_table <- local({
                             sprintf('"%s"', gsub('"', '\\\"', raw))
                         }
                         expr <- switch(op,
-                            equals               = sprintf("%s == %s", col_name, lit),
-                            notEqual             = sprintf("%s != %s", col_name, lit),
-                            greaterThan          = sprintf("%s > %s", col_name, lit),
-                            greaterThanOrEqual   = sprintf("%s >= %s", col_name, lit),
-                            lessThan             = sprintf("%s < %s", col_name, lit),
-                            lessThanOrEqual      = sprintf("%s <= %s", col_name, lit),
-                            contains             = sprintf("grepl(%s, %s, fixed=TRUE)", lit, col_name),
-                            notContains          = sprintf("!grepl(%s, %s, fixed=TRUE)", lit, col_name),
-                            startsWith           = sprintf("startsWith(%s, %s)", col_name, lit),
-                            endsWith             = sprintf("endsWith(%s, %s)", col_name, lit),
-                            regexp               = sprintf("grepl(%s, %s)", lit, col_name),
-                            blank                = sprintf('is.na(%s) | %s == ""', col_name, col_name),
-                            notBlank             = sprintf('!is.na(%s) & %s != ""', col_name, col_name),
+                            equals               = sprintf("%s == %s", col, lit),
+                            notEqual             = sprintf("%s != %s", col, lit),
+                            greaterThan          = sprintf("%s > %s", col, lit),
+                            greaterThanOrEqual   = sprintf("%s >= %s", col, lit),
+                            lessThan             = sprintf("%s < %s", col, lit),
+                            lessThanOrEqual      = sprintf("%s <= %s", col, lit),
+                            contains             = sprintf("grepl(%s, %s, fixed=TRUE)", lit, col),
+                            notContains          = sprintf("!grepl(%s, %s, fixed=TRUE)", lit, col),
+                            startsWith           = sprintf("startsWith(%s, %s)", col, lit),
+                            endsWith             = sprintf("endsWith(%s, %s)", col, lit),
+                            regexp               = sprintf("grepl(%s, %s)", lit, col),
+                            blank  = if (is_date) {
+                                sprintf("is.na(%s)", col)
+                            } else {
+                                sprintf('is.na(%s) | %s == ""', col, col)
+                            },
+                            notBlank = if (is_date) {
+                                sprintf("!is.na(%s)", col)
+                            } else {
+                                sprintf('!is.na(%s) & %s != ""', col, col)
+                            },
                             inRange = {
-                                hi <- if (inherits(dt1[[col_name]], "Date") && !is.null(fd$dateTo)) {
+                                hi <- if (is_date && !is.null(fd$dateTo)) {
                                     sprintf('as.Date("%s")', fd$dateTo)
                                 } else {
                                     as.numeric(fd$filterTo)
                                 }
-                                sprintf("%s >= %s & %s <= %s", col_name, lit, col_name, hi)
+                                sprintf("%s >= %s & %s <= %s", col, lit, col, hi)
                             },
                             NULL
                         )
