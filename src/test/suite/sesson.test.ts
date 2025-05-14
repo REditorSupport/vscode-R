@@ -9,7 +9,7 @@ import * as session from '../../session';
 import * as workspace from '../../workspaceViewer';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
-const workspaceFile = path.join(extension_root, 'test', 'rFiles', 'session', 'workspace.json');
+const workspaceFile = path.join(extension_root, 'src', 'test', 'testdata', 'session', 'workspace.json');
 
 function mockWorkspaceData(sandbox: sinon.SinonSandbox) {
     const content = fs.readFileSync(workspaceFile, 'utf8');
