@@ -343,8 +343,8 @@ export async function showWebView(file: string, title: string, viewer: string | 
     console.info('[showWebView] Done');
 }
 
-export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, dataview_uuid?: string, expr?: string): Promise<void> {
-    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, expr: ${expr}, file: ${file}, 
+export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, dataview_uuid?: string): Promise<void> {
+    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, 
                  viewer: ${viewer}, dataview_uuid: ${String(dataview_uuid)}`);
 
     if (isGuestSession) {
@@ -426,21 +426,14 @@ export async function showDataView(source: string, type: string, title: string, 
                         throw new Error('R server not available');
                     }
 
-                    // Set a timeout for the entire operation
-                    const timeoutPromise = new Promise((_, reject) => {
-                        setTimeout(() => reject(new Error('Operation timed out')), 120000);
-                    });
-                    
-                    const requestPromise = sessionRequest(server, {
+                    const response = await sessionRequest(server, {
                         type: 'dataview_fetch_rows',
-                        varname: expr ?? title,
+                        varname: title,
                         start,
                         end,
                         sortModel, 
                         filterModel
                     });
-                    
-                   const response: unknown = await Promise.race([requestPromise, timeoutPromise]);
                     
                     if (typeof response !== 'object' || 
                         response === null || 
@@ -734,7 +727,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
             return params.data.x2;
         },
 
-        suppressColumnVirtualisation: false,
+        suppressColumnVirtualisation: true,
         alwaysShowVerticalScroll: true,
         debounceVerticalScrollbar: true,
         
@@ -999,7 +992,6 @@ export async function writeSuccessResponse(responseSessionDir: string): Promise<
 type ISessionRequest = {
     plot_url?: string,
     server?: SessionServer,
-    expr?: string,
     dataview_uuid?: string  // Add this property to match the R code
 } & IRequest;
 
@@ -1082,7 +1074,7 @@ async function updateRequest(sessionStatusBarItem: StatusBarItem) {
                         if (request.source && request.type && request.file && request.title && request.viewer !== undefined) {
                             // Use dataview_uuid for panel tracking, preserve uuid for LiveShare
                             await showDataView(request.source,
-                                request.type, request.title, request.file, request.viewer, request.dataview_uuid, request.expr);
+                                request.type, request.title, request.file, request.viewer, request.dataview_uuid);
                         }
                         break;
                     }
@@ -1157,7 +1149,7 @@ export async function sessionRequest(server: SessionServer, data: any): Promise<
             },
             body: JSON.stringify(data),
             follow: 0,
-            timeout: 30000,
+            timeout: 120000,
         });
 
         if (!response.ok) {

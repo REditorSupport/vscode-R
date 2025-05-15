@@ -117,15 +117,12 @@ dataview_table <- local({
              sortModel = NULL, filterModel = NULL,
              metadata_only = FALSE, force = FALSE) {
 
+        if (!is.data.frame(data) && !is.matrix(data) && !inherits(data, "ArrowTabular")) {
+            stop("data must be a data frame, a matrix or an arrow table object.")
+        }
+
         key <- attr(data, "_dvkey", exact = TRUE)
         if (is.null(key)) key <- "<default>"
-
-        if (is.matrix(data)) {
-            data <- as.data.frame.matrix(data)
-        }
-        if (!is.data.frame(data)) {
-            stop("data must be a data.frame/data.table or a matrix")
-        }
 
         # Metadata capture
         .nrow     <- nrow(data)
@@ -150,15 +147,12 @@ dataview_table <- local({
             )
             return(list(
                 columns = columns,
-                rows = list(),
-                totalRows = .nrow,
-                totalUnfiltered = .nrow
+                rows = list()
             ))
         }
 
         if (is.null(cache_raw_dt[[key]]) || force) {
-
-            cache_raw_dt[[key]]       <<- data.table::as.data.table(data)
+            cache_raw_dt[[key]] <<- data.table::as.data.table(data)
             cache_raw_dt[[key]][, `:=`("(row)" = numeric(), rowId = .I)]
             data.table::setcolorder(cache_raw_dt[[key]], neworder = c("(row)", "rowId"), before = 1)
 
@@ -723,11 +717,9 @@ if (show_view) {
             return(.data)
         }
 
-        # Generate a dataview_uuid (separate from the LiveShare uuid)
-        dataview_uuid <- NULL
         if (missing(title)) {
             sub <- substitute(x)
-            title <- deparse(sub, nlines = 1)
+            title <- deparse1(sub, nlines = 1)
         }
 
         # Generate a unique ID for this dataview based on the title
@@ -742,9 +734,9 @@ if (show_view) {
         }
 
         if (inherits(x, "ArrowTabular")) {
-            x <- as_truncated_data(x)
-            x <- as.data.frame(x)
+            x <- x[1, ]$to_data_frame()
         }
+
         if (is.environment(x)) {
             all_names <- ls(x)
             is_active <- vapply(all_names, bindingIsActive, logical(1), USE.NAMES = TRUE, x)
@@ -799,18 +791,16 @@ if (show_view) {
             }
         }
         if (is.data.frame(x) || is.matrix(x)) {
-            expr_text <- deparse1(substitute(x))
-            x <- as_truncated_data(x)
+            x <- data.table::as.data.table(x[0, ])
             if (exists(".dataview_first_map", envir = .GlobalEnv, inherits = FALSE)) {
                 fm_env        <- get(".dataview_first_map", envir = .GlobalEnv)
-                fm_env[[expr_text]] <- NULL
+                fm_env[[title]] <- NULL
             }
             meta <- dataview_table(x, start = 0, end = 0, metadata_only = TRUE, force = TRUE)
             file <- tempfile(tmpdir = tempdir, fileext = ".json")
             jsonlite::write_json(meta, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
             request("dataview", source = "table", type = "json",
-                title = title, file = file, viewer = viewer,
-                uuid = uuid, dataview_uuid = dataview_uuid, expr = expr_text
+                title = title, file = file, viewer = viewer, uuid = uuid, dataview_uuid = dataview_uuid
             )
         } else if (is.list(x)) {
             tryCatch({

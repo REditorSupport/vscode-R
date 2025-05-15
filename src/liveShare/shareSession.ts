@@ -27,7 +27,6 @@ export interface IRequest {
     source?: string;
     type?: string;
     title?: string;
-    expr?: string;
     file?: string;
     viewer?: string;
     plot?: string;
@@ -151,8 +150,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                 if (request.source && request.type && request.title && request.file
                     && request.viewer !== undefined) {
                     await showDataView(request.source,
-                        request.type, request.title, request.file, request.viewer, request.dataview_uuid,
-                        request.expr);
+                        request.type, request.title, request.file, request.viewer, request.dataview_uuid);
                 }
                 break;
             }
