@@ -544,6 +544,10 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     [class*="vscode"] div.ag-header-cell[aria-sort="ascending"], div.ag-header-cell[aria-sort="descending"] {
         color: var(--vscode-textLink-activeForeground);
     }
+    
+    [class*="vscode"] div.ag-header-cell.ag-header-cell-filtered, div.ag-header-cell[aria-filtered="true"] {
+      color: var(--vscode-textLink-activeForeground);
+    }
 
     /* Styling for rows and cells */
 
