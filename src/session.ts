@@ -47,6 +47,11 @@ interface WebviewMessage {
     start?: number;
     end?: number;
 }
+
+interface PanelWithFetchFlag {
+  _hasFetchHandler?: boolean;
+}
+
 export let workspaceData: WorkspaceData;
 let resDir: string;
 export let requestFile: string;
@@ -361,7 +366,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 panel.title = title;
                 panel.reveal(ViewColumn[viewer as keyof typeof ViewColumn]);
                 
-                panel.webview.postMessage({ command: 'refreshDataview' });
+                await panel?.webview.postMessage({ command: 'refreshDataview' });
                 
             } catch (e) {
                 console.log(`Panel was disposed, creating new one: ${String(e)}`);
@@ -410,7 +415,8 @@ export async function showDataView(source: string, type: string, title: string, 
     }
 
     // Register the message handler after panel is created or retrieved, but only once per panel
-    if (panel && !(panel as any)._hasFetchHandler) {
+    const p = panel as PanelWithFetchFlag;
+    if (panel && !p._hasFetchHandler) {
         panel.webview.onDidReceiveMessage(async (message: WebviewMessage & {
           requestId?: string;
           sortModel?: Array<{ colId: string; sort: 'asc' | 'desc' }>;
@@ -420,13 +426,13 @@ export async function showDataView(source: string, type: string, title: string, 
                 try {
                     const { start, end, sortModel, filterModel, requestId } = message;
                     
-                    console.log("[fetchRows] Sending to R:", {varname: title, start, end, sortModel, filterModel});
+                    console.log('[fetchRows] Sending to R:', {varname: title, start, end, sortModel, filterModel});
                     
                     if (!server) {
                         throw new Error('R server not available');
                     }
 
-                    const response = await sessionRequest(server, {
+                    const response: unknown = await sessionRequest(server, {
                         type: 'dataview_fetch_rows',
                         varname: title,
                         start,
@@ -470,14 +476,14 @@ export async function showDataView(source: string, type: string, title: string, 
                 }
             }
         });
-        (panel as any)._hasFetchHandler = true;
+        p._hasFetchHandler = true;
     }
 
     if (panel) {
         if (source === 'table') {
             const content = await getTableHtml(panel.webview, file);
             panel.webview.html = content;
-            panel.webview.postMessage({ command: 'initAgGridRequestMap' });
+            await panel?.webview.postMessage({ command: 'initAgGridRequestMap' });
         } else if (source === 'list') {
             const content = await getListHtml(panel.webview, file);
             panel.webview.html = content;
@@ -490,13 +496,13 @@ export async function showDataView(source: string, type: string, title: string, 
 export async function getTableHtml(webview: Webview, file: string): Promise<string> {
     try {
         resDir = isGuestSession ? guestResDir : resDir;
-        const pageSize = config().get<number>('session.data.pageSize', 500);
+        //const pageSize = config().get<number>('session.data.pageSize', 500);
         const content = await readContent(file, 'utf8');
         if (!content) {
             console.error('[getTableHtml] Empty content');
             throw new Error('Empty content in getTableHtml');
         }
-        const data = JSON.parse(content);
+        //const data = JSON.parse(content);
         return `
 <!DOCTYPE html>
 <html lang="en">
