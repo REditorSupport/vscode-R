@@ -39,7 +39,6 @@ load_settings <- function() {
         vsc.browser = setting(session$viewers$viewColumn$browser, Disable = FALSE),
         vsc.viewer = setting(session$viewers$viewColumn$viewer, Disable = FALSE),
         vsc.page_viewer = setting(session$viewers$viewColumn$pageViewer, Disable = FALSE),
-        vsc.row_limit = session$data$rowLimit,
         vsc.view = setting(session$viewers$viewColumn$view, Disable = FALSE),
         vsc.helpPanel = setting(session$viewers$viewColumn$helpPanel, Disable = FALSE)
     ))
@@ -706,16 +705,7 @@ if (show_view) {
     dataview_registry <- new.env(parent = emptyenv())
 
     show_dataview <- function(x, title, uuid = NULL,
-                              viewer = getOption("vsc.view", "Two"),
-                              row_limit = abs(getOption("vsc.row_limit", 0))) {
-        as_truncated_data <- function(.data) {
-            .nrow <- nrow(.data)
-            if (row_limit != 0 && row_limit < .nrow) {
-                title <<- sprintf("%s (limited to %d/%d)", title, row_limit, .nrow)
-                .data <- utils::head(.data, n = row_limit)
-            }
-            return(.data)
-        }
+                              viewer = getOption("vsc.view", "Two")) {
 
         if (missing(title)) {
             sub <- substitute(x)
