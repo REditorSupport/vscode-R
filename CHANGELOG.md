@@ -12,7 +12,7 @@
 
 * refactor: restructure files ([#1613](https://github.com/REditorSupport/vscode-R/issues/1613))
 
-**Full Changelog**: https://github.com/REditorSupport/vscode-R/compare/v2.8.5...v2.8.6
+**Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v2.8.5...v2.8.6>
 
 See [CHANGELOG.old.md](https://github.com/REditorSupport/vscode-R/blob/master/CHANGELOG.old.md) for changes before v2.8.5.
 

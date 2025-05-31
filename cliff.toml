@@ -41,7 +41,7 @@ body = """
 {% endfor %}\
 {% if version %}
     {% if previous.version %}
-      **Full Changelog**: https://github.com/REditorSupport/vscode-R/compare/{{ previous.version }}...{{ version }}
+      **Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/{{ previous.version }}...{{ version }}>
     {% endif %}
 {% else -%}
   {% raw %}\n{% endraw %}
