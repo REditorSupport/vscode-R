@@ -31,7 +31,8 @@
   "activationEvents": [
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
     "onCommand:r.runSelectionInActiveTerm",
-    "onWebviewPanel:rhelp"
+    "onWebviewPanel:rhelp",
+    "onWebviewPanel:rdataviewer"
   ],
   "main": "./dist/extension",
   "contributes": {
@@ -1651,16 +1652,6 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Changes the option `vsc.rstudioapi` in R. Requires `#r.sessionWatcher#` to be set to `true`."
-        },
-        "r.session.data.rowLimit": {
-          "type": "integer",
-          "default": 0,
-          "markdownDescription": "The maximum number of rows to be displayed in the data viewer. `0` means no limit. Changes the option `vsc.row_limit` in R. Requires `#r.sessionWatcher#` to be set to `true`."
-        },
-        "r.session.data.pageSize": {
-          "type": "integer",
-          "default": 500,
-          "markdownDescription": "The maximum number of rows per page in the data viewer. `0` means to disable pagination."
         },
         "r.session.viewers.viewColumn": {
           "type": "object",

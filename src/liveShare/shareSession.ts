@@ -36,6 +36,7 @@ export interface IRequest {
     url?: string;
     requestPath?: string;
     uuid?: number;
+    dataview_uuid?: string;  // Add this property
     tempdir?: string;
     version?: string;
     info?: {
@@ -149,7 +150,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                 if (request.source && request.type && request.title && request.file
                     && request.viewer !== undefined) {
                     await showDataView(request.source,
-                        request.type, request.title, request.file, request.viewer);
+                        request.type, request.title, request.file, request.viewer, request.dataview_uuid);
                 }
                 break;
             }

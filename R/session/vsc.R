@@ -39,7 +39,6 @@ load_settings <- function() {
         vsc.browser = setting(session$viewers$viewColumn$browser, Disable = FALSE),
         vsc.viewer = setting(session$viewers$viewColumn$viewer, Disable = FALSE),
         vsc.page_viewer = setting(session$viewers$viewColumn$pageViewer, Disable = FALSE),
-        vsc.row_limit = session$data$rowLimit,
         vsc.view = setting(session$viewers$viewColumn$view, Disable = FALSE),
         vsc.helpPanel = setting(session$viewers$viewColumn$helpPanel, Disable = FALSE)
     ))
@@ -67,6 +66,231 @@ if (is.null(getOption("help_type"))) {
 }
 
 use_webserver <- isTRUE(getOption("vsc.use_webserver", FALSE))
+
+get_column_def <- function(name, field, value) {
+    filter <- TRUE
+    tooltip <- sprintf(
+        "%s, class: [%s], type: %s",
+        name,
+        toString(class(value)),
+        typeof(value)
+    )
+    if (is.numeric(value)) {
+        type <- "numericColumn"
+        filter <- "agNumberColumnFilter"
+        if (is.null(attr(value, "class"))) {
+            filter <- "agNumberColumnFilter"
+        }
+    } else if (inherits(value, "Date")
+               || inherits(value, "POSIXct")
+               || inherits(value, "POSIXlt")) {
+        type <- "dateColumn"
+        filter <- "agDateColumnFilter"
+    } else if (is.logical(value)) {
+        type <- "booleanColumn"
+        filter <- "agNumberColumnFilter"
+    } else {
+        type <- "textColumn"
+        filter <- "agTextColumnFilter"
+    }
+    list(
+        headerName = name,
+        headerTooltip = tooltip,
+        field = field,
+        type = type,
+        filter = filter
+    )
+}
+
+dataview_table <- local({
+    cache_raw_dt       <- NULL
+    cache_filtered_dt  <- NULL
+    cache_dt           <- NULL
+    cache_nrow         <- NULL
+    cache_colnames     <- NULL
+    cache_fields       <- NULL
+    last_fm            <- NULL
+    last_sm            <- NULL
+
+    function(data, start = 0, end = NULL,
+             sortModel = NULL, filterModel = NULL,
+             metadata_only = FALSE, force = FALSE) {
+
+        if (!is.data.frame(data) && !is.matrix(data) && !inherits(data, "ArrowTabular")) {
+            stop("data must be a data frame, a matrix or an arrow table object.")
+        }
+
+        key <- attr(data, "_dvkey", exact = TRUE)
+        if (is.null(key)) key <- "<default>"
+
+        # Metadata capture
+        .nrow     <- nrow(data)
+        .colnames <- colnames(data)
+        if (is.null(.colnames)) {
+            .colnames <- sprintf("V%d", seq_len(ncol(data)))
+        } else {
+            .colnames <- trimws(.colnames)
+        }
+        fields    <- sprintf("x%d", seq_len(length(.colnames) + 2))
+        full_cols <- c("(row)", "rowId", .colnames)
+        field_map <- setNames(full_cols, fields)
+
+        if (metadata_only) {
+            meta_data <- data.table::as.data.table(data[0, ])
+            meta_data[, `:=`("(row)" = numeric(), rowId = integer())]
+            data.table::setcolorder(meta_data, neworder = c("(row)", "rowId"), before = 1)
+            columns <- .mapply(
+                get_column_def,
+                list(full_cols, fields, meta_data),
+                NULL
+            )
+            return(list(
+                columns = columns,
+                rows = list()
+            ))
+        }
+
+        if (is.null(cache_raw_dt[[key]]) || force) {
+            cache_raw_dt[[key]] <<- data.table::as.data.table(data)
+            cache_raw_dt[[key]][, `:=`("(row)" = numeric(), rowId = .I)]
+            data.table::setcolorder(cache_raw_dt[[key]], neworder = c("(row)", "rowId"), before = 1)
+
+            cache_filtered_dt[[key]]  <<- NULL
+            cache_dt[[key]]           <<- NULL
+            cache_nrow[[key]]         <<- .nrow
+            cache_colnames[[key]]     <<- full_cols
+            cache_fields[[key]]       <<- fields
+            last_fm[[key]]            <<- NULL
+            last_sm[[key]]            <<- NULL
+        }
+
+        if (is.null(cache_filtered_dt[[key]]) || !identical(filterModel, last_fm[[key]])) {
+
+            dt1 <- cache_raw_dt[[key]]
+
+            if (!is.null(filterModel) && length(filterModel) > 0) {
+                filter_strings <- lapply(names(filterModel), function(fld) {
+                    fd  <- filterModel[[fld]]
+                    col_name <- field_map[[fld]]
+
+                    is_date <- inherits(dt1[[col_name]], "Date") ||
+                        inherits(dt1[[col_name]], "POSIXct") ||
+                        inherits(dt1[[col_name]], "POSIXlt")
+
+                    col <- if (is_date) {
+                        sprintf("as.Date(%s)", col_name)
+                    } else {
+                        col_name
+                    }
+                    if (!is.null(fd$type) && !is.null(fd$filter)) {
+                        op  <- fd$type
+                        raw <- if (fd$filterType == "date") fd$dateFrom else fd$filter
+                        lit <- if (is_date) {
+                            sprintf('as.Date("%s")', raw)
+                        } else if (is.numeric(dt1[[col_name]])) {
+                            as.numeric(raw)
+                        } else if (is.logical(dt1[[col_name]])) {
+                            as.logical(raw)
+                        } else {
+                            sprintf('"%s"', gsub('"', '\\\"', raw))
+                        }
+                        expr <- switch(op,
+                            equals               = sprintf("%s == %s", col, lit),
+                            notEqual             = sprintf("%s != %s", col, lit),
+                            greaterThan          = sprintf("%s > %s", col, lit),
+                            greaterThanOrEqual   = sprintf("%s >= %s", col, lit),
+                            lessThan             = sprintf("%s < %s", col, lit),
+                            lessThanOrEqual      = sprintf("%s <= %s", col, lit),
+                            contains             = sprintf("grepl(%s, %s, fixed=TRUE)", lit, col),
+                            notContains          = sprintf("!grepl(%s, %s, fixed=TRUE)", lit, col),
+                            startsWith           = sprintf("startsWith(%s, %s)", col, lit),
+                            endsWith             = sprintf("endsWith(%s, %s)", col, lit),
+                            regexp               = sprintf("grepl(%s, %s)", lit, col),
+                            blank  = if (is_date) {
+                                sprintf("is.na(%s)", col)
+                            } else {
+                                sprintf('is.na(%s) | %s == ""', col, col)
+                            },
+                            notBlank = if (is_date) {
+                                sprintf("!is.na(%s)", col)
+                            } else {
+                                sprintf('!is.na(%s) & %s != ""', col, col)
+                            },
+                            inRange = {
+                                hi <- if (is_date && !is.null(fd$dateTo)) {
+                                    sprintf('as.Date("%s")', fd$dateTo)
+                                } else {
+                                    as.numeric(fd$filterTo)
+                                }
+                                sprintf("%s >= %s & %s <= %s", col, lit, col, hi)
+                            },
+                            NULL
+                        )
+                        return(expr)
+                    }
+                    NULL
+                })
+                filter_strings <- Filter(Negate(is.null), filter_strings)
+                if (length(filter_strings) > 0) {
+                    combined <- paste(filter_strings, collapse = " & ")
+                    dt1 <- dt1[eval(parse(text = combined))]
+                }
+            }
+            cache_filtered_dt[[key]] <<- dt1
+        }
+
+        if (is.null(cache_dt[[key]])
+            || !identical(sortModel, last_sm[[key]])
+            || !identical(filterModel, last_fm[[key]])) {
+
+            dt2 <- cache_filtered_dt[[key]]
+            if (!is.null(sortModel) && length(sortModel) > 0) {
+                cols <- vapply(sortModel, function(s) field_map[[s$colId]], FUN.VALUE = "")
+                ords <- vapply(sortModel, function(s) if (s$sort == "asc") 1L else -1L, FUN.VALUE = integer(1))
+                sorted <- data.table::copy(dt2)
+                data.table::setorderv(sorted, cols, order = ords)
+            } else {
+                sorted <- dt2
+            }
+
+            cache_dt[[key]]           <<- sorted
+            last_sm[[key]]            <<- sortModel
+            last_fm[[key]]            <<- filterModel
+        }
+
+        # Fetch rows
+        out_dt           <- cache_dt[[key]]
+        totalUnfiltered  <- cache_nrow[[key]]
+        totalRows        <- nrow(out_dt)
+
+        if (is.null(end)) end <- totalRows
+        s <- max(1L, as.integer(start) + 1)
+        e <- min(totalRows, as.integer(end))
+
+        if (s > totalRows || e < 1 || s > e) {
+            rows <- out_dt[0]
+        } else {
+            rows <- out_dt[s:e]
+            rows[, "(row)" := seq.int(s, e)]
+        }
+
+        names(rows) <- cache_fields[[key]]
+
+        columns <- .mapply(
+            get_column_def,
+            list(cache_colnames[[key]], cache_fields[[key]], rows),
+            NULL
+        )
+
+        list(
+            columns         = columns,
+            rows            = rows,
+            totalRows       = totalRows,
+            totalUnfiltered = totalUnfiltered
+        )
+    }
+})
+
 if (use_webserver) {
     if (requireNamespace("httpuv", quietly = TRUE)) {
         request_handlers <- list(
@@ -120,6 +344,28 @@ if (use_webserver) {
                     })
                     return(result)
                 }
+            },
+            dataview_fetch_rows = function(varname, start, end, sortModel, filterModel, ...) {
+
+                if (!exists(".dataview_first_map", envir = .GlobalEnv, inherits = FALSE)) {
+                    assign(".dataview_first_map", new.env(parent = emptyenv()), envir = .GlobalEnv)
+                }
+                fm_env <- get(".dataview_first_map", envir = .GlobalEnv)
+
+                obj <- if (exists(varname, envir = .GlobalEnv)) {
+                    get(varname, envir = .GlobalEnv)
+                } else {
+                    eval(parse(text = varname), envir = .GlobalEnv)
+                }
+
+                attr(obj, "_dvkey") <- varname
+
+                is_first <- is.null(fm_env[[varname]])
+                fm_env[[varname]] <- TRUE
+
+                out <- dataview_table(obj, start, end, sortModel, filterModel, force = is_first)
+                out$columns <- NULL
+                return(out)
             }
         )
 
@@ -456,93 +702,31 @@ if (use_httpgd && "httpgd" %in% .packages(all.available = TRUE)) {
 
 show_view <- !identical(getOption("vsc.view", "Two"), FALSE)
 if (show_view) {
-    get_column_def <- function(name, field, value) {
-        filter <- TRUE
-        tooltip <- sprintf(
-            "%s, class: [%s], type: %s",
-            name,
-            toString(class(value)),
-            typeof(value)
-        )
-        if (is.numeric(value)) {
-            type <- "numericColumn"
-            if (is.null(attr(value, "class"))) {
-                filter <- "agNumberColumnFilter"
-            }
-        } else if (inherits(value, "Date")) {
-            type <- "dateColumn"
-            filter <- "agDateColumnFilter"
-        } else {
-            type <- "textColumn"
-            filter <- "agTextColumnFilter"
-        }
-        list(
-            headerName = name,
-            headerTooltip = tooltip,
-            field = field,
-            type = type,
-            filter = filter
-        )
-    }
-
-    dataview_table <- function(data) {
-        if (is.matrix(data)) {
-            data <- as.data.frame.matrix(data)
-        }
-
-        if (is.data.frame(data)) {
-            .nrow <- nrow(data)
-            .colnames <- colnames(data)
-            if (is.null(.colnames)) {
-                .colnames <- sprintf("V%d", seq_len(ncol(data)))
-            } else {
-                .colnames <- trimws(.colnames)
-            }
-            if (.row_names_info(data) > 0L) {
-                rownames <- rownames(data)
-                rownames(data) <- NULL
-            } else {
-                rownames <- seq_len(.nrow)
-            }
-            .colnames <- c("(row)", .colnames)
-            fields <- sprintf("x%d", seq_along(.colnames))
-            data <- c(list(" " = rownames), .subset(data))
-            names(data) <- fields
-            class(data) <- "data.frame"
-            attr(data, "row.names") <- .set_row_names(.nrow)
-            columns <- .mapply(get_column_def,
-                list(.colnames, fields, data),
-                NULL
-            )
-            list(
-                columns = columns,
-                data = data
-            )
-        } else {
-            stop("data must be a data.frame or a matrix")
-        }
-    }
+    dataview_registry <- new.env(parent = emptyenv())
 
     show_dataview <- function(x, title, uuid = NULL,
-                              viewer = getOption("vsc.view", "Two"),
-                              row_limit = abs(getOption("vsc.row_limit", 0))) {
-        as_truncated_data <- function(.data) {
-            .nrow <- nrow(.data)
-            if (row_limit != 0 && row_limit < .nrow) {
-                title <<- sprintf("%s (limited to %d/%d)", title, row_limit, .nrow)
-                .data <- utils::head(.data, n = row_limit)
-            }
-            return(.data)
-        }
+                              viewer = getOption("vsc.view", "Two")) {
 
         if (missing(title)) {
             sub <- substitute(x)
-            title <- deparse(sub, nlines = 1)
+            title <- deparse1(sub, nlines = 1)
         }
+
+        # Generate a unique ID for this dataview based on the title
+        title_key <- title
+        if (exists(title_key, envir = dataview_registry, inherits = FALSE)) {
+            dataview_uuid <- get(title_key, envir = dataview_registry, inherits = FALSE)
+            logger("Reusing existing dataview UUID for title:", title, "UUID:", dataview_uuid)
+        } else {
+            dataview_uuid <- paste0("dataview-", format(Sys.time(), "%Y%m%d%H%M%S"), "-", sample(1000:9999, 1))
+            assign(title_key, dataview_uuid, envir = dataview_registry)
+            logger("Created new dataview UUID for title:", title, "UUID:", dataview_uuid)
+        }
+
         if (inherits(x, "ArrowTabular")) {
-            x <- as_truncated_data(x)
-            x <- as.data.frame(x)
+            x <- x[1, ]$to_data_frame()
         }
+
         if (is.environment(x)) {
             all_names <- ls(x)
             is_active <- vapply(all_names, bindingIsActive, logical(1), USE.NAMES = TRUE, x)
@@ -597,26 +781,30 @@ if (show_view) {
             }
         }
         if (is.data.frame(x) || is.matrix(x)) {
-            x <- as_truncated_data(x)
-            data <- dataview_table(x)
+            x <- data.table::as.data.table(x[0, ])
+            if (exists(".dataview_first_map", envir = .GlobalEnv, inherits = FALSE)) {
+                fm_env        <- get(".dataview_first_map", envir = .GlobalEnv)
+                fm_env[[title]] <- NULL
+            }
+            meta <- dataview_table(x, start = 0, end = 0, metadata_only = TRUE, force = TRUE)
             file <- tempfile(tmpdir = tempdir, fileext = ".json")
-            jsonlite::write_json(data, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
+            jsonlite::write_json(meta, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
             request("dataview", source = "table", type = "json",
-                title = title, file = file, viewer = viewer, uuid = uuid
+                title = title, file = file, viewer = viewer, uuid = uuid, dataview_uuid = dataview_uuid
             )
         } else if (is.list(x)) {
             tryCatch({
                 file <- tempfile(tmpdir = tempdir, fileext = ".json")
                 jsonlite::write_json(x, file, na = "string", null = "null", auto_unbox = TRUE, force = TRUE)
                 request("dataview", source = "list", type = "json",
-                    title = title, file = file, viewer = viewer, uuid = uuid
+                    title = title, file = file, viewer = viewer, uuid = uuid, dataview_uuid = dataview_uuid
                 )
             }, error = function(e) {
                 file <- file.path(tempdir, paste0(make.names(title), ".txt"))
                 text <- utils::capture.output(print(x))
                 writeLines(text, file)
                 request("dataview", source = "object", type = "txt",
-                    title = title, file = file, viewer = viewer, uuid = uuid
+                    title = title, file = file, viewer = viewer, uuid = uuid, dataview_uuid = dataview_uuid
                 )
             })
         } else {
@@ -628,7 +816,7 @@ if (show_view) {
             }
             writeLines(code, file)
             request("dataview", source = "object", type = "R",
-                title = title, file = file, viewer = viewer, uuid = uuid
+                title = title, file = file, viewer = viewer, uuid = uuid, dataview_uuid = dataview_uuid
             )
         }
     }
@@ -673,8 +861,6 @@ path_to_uri <- function(path) {
 }
 
 request_browser <- function(url, title, ..., viewer) {
-    # Printing URL with specific port triggers
-    # auto port-forwarding under remote development
     message("Browsing ", url)
     request("browser", url = url, title = title, ..., viewer = viewer)
 }
@@ -803,7 +989,6 @@ options(
     page_viewer = show_page_viewer
 )
 
-# rstudioapi
 rstudioapi_enabled <- function() {
     isTRUE(getOption("vsc.rstudioapi", TRUE))
 }
@@ -815,12 +1000,11 @@ if (rstudioapi_enabled()) {
     file.create(response_lock_file, showWarnings = FALSE)
     file.create(response_file, showWarnings = FALSE)
     addin_registry <- file.path(dir_session, "addins.json")
-    # This is created in attach()
 
     get_response_timestamp <- function() {
         readLines(response_lock_file)
     }
-    # initialise the reponse timestamp to empty string
+
     response_time_stamp <- ""
 
     get_response_lock <- function() {
@@ -859,10 +1043,6 @@ if (rstudioapi_enabled()) {
         }
     )
     if ("rstudioapi" %in% loadedNamespaces()) {
-        # if the rstudioapi is already loaded, for example via a call to
-        # library(tidyverse) in the user's profile, we need to shim it now.
-        # There's no harm in having also registered the hook in this case. It can
-        # work in the event that the namespace is unloaded and reloaded.
         rstudioapi_util_env$rstudioapi_patch_hook(rstudioapi_env)
     }
 
@@ -928,7 +1108,6 @@ print.hsearch <- function(x, ...) {
     invisible(x)
 }
 
-# a copy of .S3method(), since this function is new in R 4.0
 .S3method <- function(generic, class, method) {
     if (missing(method)) {
         method <- paste(generic, class, sep = ".")
