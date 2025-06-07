@@ -1471,6 +1471,35 @@
           "additionalItems": false,
           "additionalProperties": false
         },
+        "r.chunks.enable": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Enable code chunks in plain R files. When enabled, R files will show code chunk functionality (e.g., 'Run Chunk' buttons) for sections marked with `# %%`. When disabled, plain R files will not display code chunk features, though R Markdown (.Rmd) files are unaffected.\n\n- This setting only affects `.R` files, not `.Rmd` files\n- Disable this if you prefer to use R files without chunk-based workflow\n- CodeLens commands are customizable via `#r.rmarkdown.codeLensCommands#`"
+        },
+        "r.chunks.codeLensCommands": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "r.selectCurrentChunk",
+              "r.runCurrentChunk",
+              "r.runCurrentChunkAndMove",
+              "r.runAboveChunks",
+              "r.runCurrentAndBelowChunks",
+              "r.runBelowChunks",
+              "r.runAllChunks",
+              "r.runPreviousChunk",
+              "r.runNextChunk",
+              "r.goToPreviousChunk",
+              "r.goToNextChunk"
+            ]
+          },
+          "default": [
+            "r.runCurrentChunk",
+            "r.runAboveChunks"
+          ],
+          "description": "Customize R file CodeLens, which are inline commands/buttons e.g. 'Run Chunk' shown on the first line of each code chunk. \nCustomize both the commands AND its orders (that is, CodeLens respect user-specified orders):"
+        },
         "r.helpPanel.enableSyntaxHighlighting": {
           "type": "boolean",
           "default": true,
