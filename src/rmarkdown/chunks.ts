@@ -396,10 +396,11 @@ export function selectCurrentChunk(chunks: RMarkdownChunk[] = _getChunks(),
     );
 }
 
-export function getCodeLenses(chunks: RMarkdownChunk[], token: vscode.CancellationToken): vscode.CodeLens[] {
+export function getCodeLenses(chunks: RMarkdownChunk[], token: vscode.CancellationToken, isRFile?: boolean): vscode.CodeLens[] {
 
     const enabledCodeLens = config().get<boolean>('rmarkdown.enableCodeLens');
-    if (enabledCodeLens === false) {
+    const enabledInRFiles = config().get<boolean>('chunks.enable');
+    if ((isRFile && enabledInRFiles === false) || (!isRFile && enabledCodeLens === false)) {
         return [];
     }
     
@@ -485,13 +486,19 @@ export function getCodeLenses(chunks: RMarkdownChunk[], token: vscode.Cancellati
 
     // For default options, both options and sort order are based on options specified in package.json.
     // For user-specified options, both options and sort order are based on options specified in settings UI or settings.json.
-    const rmdCodeLensCommands: string[] = config().get('rmarkdown.codeLensCommands', []);
+    let codeLensCommands: string[];
+    if (isRFile) {
+        codeLensCommands = config().get('chunks.codeLensCommands', []);
+    } else {
+        codeLensCommands = config().get('rmarkdown.codeLensCommands', []);
+    }
+
     codeLenses = codeLenses.
-        filter(e => e.command && rmdCodeLensCommands.includes(e.command.command)).
+        filter(e => e.command && codeLensCommands.includes(e.command.command)).
         sort(function (a, b) {
             if (!a.command || !b.command) { return 0; }
-            const sorted = rmdCodeLensCommands.indexOf(a.command.command) -
-                rmdCodeLensCommands.indexOf(b.command.command);
+            const sorted = codeLensCommands.indexOf(a.command.command) -
+                codeLensCommands.indexOf(b.command.command);
             return sorted;
         });
 
