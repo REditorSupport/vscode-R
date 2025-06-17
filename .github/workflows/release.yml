@@ -16,14 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: node $SCRIPT_DIR/enableWebpack.js
-      - run: yarn install
-      - uses: lannonbr/vsce-action@master
+      - run: npm install
+      - uses: lannonbr/vsce-action@4.0.0
         with:
           args: "package"
       - name: Identify output file # can be retrieved as steps.filenames.outputs.file_out
         id: filenames
         run: echo "::set-output name=file_out::$(ls | grep "^.*\.vsix$" | head -1)"
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.filenames.outputs.file_out }}
           path: ${{ steps.filenames.outputs.file_out }}
@@ -35,7 +35,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           path: "artifacts/"
       - name: Get version from tag
@@ -57,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: node $SCRIPT_DIR/enableWebpack.js
-      - run: yarn install
+      - run: npm install
       - name: Publish to Open VSX Registry
         uses: HaaLeo/publish-vscode-extension@v1
         id: publishToOpenVSX

@@ -10,7 +10,6 @@
       "command": "vsce",
       "args": [
         "package",
-        "--yarn",
         "-o",
         "${workspaceFolderBasename}.vsix"
       ]
@@ -33,19 +32,17 @@
     },
     {
       "type": "npm",
-      "script": "compile",
+      "script": "build",
       "problemMatcher": "$tsc"
     },
-    {
+		{
       "type": "npm",
       "script": "watch",
-      "problemMatcher": "$tsc-watch",
-      "isBackground": true,
-      "presentation": {
-        "reveal": "never"
-      },
-      "group": "build"
-    },
+      "group": "build",
+      // install https://marketplace.visualstudio.com/items?itemName=eamodio.tsl-problem-matcher
+      "problemMatcher": ["$ts-webpack-watch"],
+      "isBackground": true
+		},
     {
       "type": "npm",
       "script": "watchHelp",

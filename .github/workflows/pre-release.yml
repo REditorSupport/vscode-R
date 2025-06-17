@@ -16,11 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: node $SCRIPT_DIR/enableWebpack.js
-      - run: yarn install
-      - uses: lannonbr/vsce-action@master
+      - run: npm install
+      - uses: lannonbr/vsce-action@4.0.0
         with:
           args: "package -o $FILE_OUT"
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: "${{ env.FILE_OUT }}"
           path: "${{ env.FILE_OUT }}"
@@ -38,7 +38,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Download artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4.1.7
         with:
           path: "artifacts/"
       - name: Upload artifacts

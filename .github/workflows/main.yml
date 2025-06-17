@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 18
-      - run: yarn install
+      - run: npm install
       - name: Run tests
         uses: GabrielBB/xvfb-action@v1.0
         with:
@@ -26,11 +26,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: node $SCRIPT_DIR/enableWebpack.js
-      - run: yarn install
-      - uses: lannonbr/vsce-action@master
+      - run: npm install
+      - uses: lannonbr/vsce-action@4.0.0
         with:
           args: "package -o $VSIX_FILE"
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.VSIX_FILE }}
           path: ${{ env.VSIX_FILE }}
@@ -41,8 +41,8 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 18
-      - run: yarn install
-      - run: yarn run lint
+      - run: npm install
+      - run: npm run lint
   markdownlint-cli:
     runs-on: ubuntu-latest
     steps:
@@ -52,31 +52,23 @@ jobs:
           files: .
           config_file: ".markdownlint.json"
           ignore_files: "node_modules/*"
-  lintr:
+  lint:
     runs-on: ubuntu-latest
-    container:
-      image: rocker/tidyverse:latest
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v3
-      - name: Install apt-get dependencies
-        run: |
-          apt-get update
-          apt-get install git ssh curl bzip2 -y
-      - name: Install lintr
-        run: |
-          Rscript -e "install.packages('lintr', repos = 'https://cloud.r-project.org')"
-        shell: bash
-      - name: Running lintr
-        run: |
-          Rscript -e "stopifnot(length(print(lintr::lint_dir('./R'))) == 0)"
-        shell: bash
-  devreplay:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
         with:
-          node-version: 18
-      - run: yarn install
-      - name: Run devreplay
-        run: ./node_modules/.bin/devreplay ./src devreplay.json
+          use-public-rspm: true
+
+      - name: Install lintr
+        run: install.packages("lintr")
+        shell: Rscript {0}
+
+      - name: Lint root directory
+        run: lintr::lint_dir("./R")
+        shell: Rscript {0}
+        env:
+          LINTR_ERROR_ON_LINT: true
