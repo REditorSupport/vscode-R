@@ -1045,11 +1045,6 @@ copy-webpack-plugin@^9.0.0:
     schema-utils "^3.1.1"
     serialize-javascript "^6.0.0"
 
-core-js@^3.6.5:
-  version "3.43.0"
-  resolved "https://registry.npmjs.org/core-js/-/core-js-3.43.0.tgz"
-  integrity sha512-N6wEbTTZSYOY2rYAn85CuvWWkCK6QweMn7/4Nr3w+gDBeBhk/x4EJeY6FPo4QzDoJZxVTv8U7CMvgWk6pOHHqA==
-
 core-util-is@~1.0.0:
   version "1.0.3"
   resolved "https://registry.npmjs.org/core-util-is/-/core-util-is-1.0.3.tgz"
@@ -2555,34 +2550,30 @@ progress@^2.0.0:
   resolved "https://registry.npmjs.org/progress/-/progress-2.0.3.tgz"
   integrity sha512-7PiHtLll5LdnKIMw100I+8xJXR5gW2QwWYkT6iJva0bXitZKa/XMrSbdmg3r2Xnaidz9Qumd0VPaMrZlF9V9sA==
 
-promise-duplex@^6.0.0:
-  version "6.0.0"
-  resolved "https://registry.npmjs.org/promise-duplex/-/promise-duplex-6.0.0.tgz"
-  integrity sha512-ZL7rquzjTFzInDBeWYcsT+qddolNvzigahk6MI6qLSbQvlyRRCJkU3JztgaVunzvkH28smRa2Qu/cY9RXtSkgA==
+promise-duplex@^8.0.0:
+  version "8.0.0"
+  resolved "https://registry.yarnpkg.com/promise-duplex/-/promise-duplex-8.0.0.tgz#139c846fcff71f27c980c42375c5fd3539982c20"
+  integrity sha512-JlrnT6KZMRD+t4cxP7gh/dlGP2pl01/jTPg3pTLvFLBTdHTbTTdc+g25q0qswC3ziO9RAr3L1b2n/++4y23GQg==
   dependencies:
-    core-js "^3.6.5"
-    promise-readable "^6.0.0"
-    promise-writable "^6.0.0"
+    promise-readable "^8.0.1"
+    promise-writable "^8.0.0"
 
-promise-readable@^6.0.0:
-  version "6.0.0"
-  resolved "https://registry.npmjs.org/promise-readable/-/promise-readable-6.0.0.tgz"
-  integrity sha512-5NxtmUswijvX5cAM0zPSy6yiCXH/eKBpiiBq6JfAUrmngMquMbzcBhF2qA+ocs4rYYKdvAfv3cOvZxADLtL1CA==
+promise-readable@^8.0.1:
+  version "8.0.1"
+  resolved "https://registry.yarnpkg.com/promise-readable/-/promise-readable-8.0.1.tgz#f5e9d59b1c4c655cc4d90578283fa626f563b13d"
+  integrity sha512-peVAz+49xRooF1Om2wYSOluKpOApnpiJVOKgQ6IR/ZAWo15tBa4ZtcKKSTAytRiNJVlkvil9NoFhqihY4Sl1Fw==
+
+promise-socket@^8.0.0:
+  version "8.0.0"
+  resolved "https://registry.yarnpkg.com/promise-socket/-/promise-socket-8.0.0.tgz#82c795018773915f91f362bdc1d34c6f7249410d"
+  integrity sha512-5Qb5719QcOm3/zrt0DLiAsJXutv2vb4HRxCiOVro1eyAOMak6vF2gTIoB6f0M1mnKMCsXW1SC/O+4G3P6p7kbw==
   dependencies:
-    core-js "^3.6.5"
+    promise-duplex "^8.0.0"
 
-promise-socket@^7.0.0:
-  version "7.0.0"
-  resolved "https://registry.npmjs.org/promise-socket/-/promise-socket-7.0.0.tgz"
-  integrity sha512-Oic9BrxmcHOPEnzKp2Js+ehFyvsbd0WxsE5khweCTHuRvdzbXjHUZmSDT6F9TW8SIkAJ0lCzoHjMYnb0WQJPiw==
-  dependencies:
-    promise-duplex "^6.0.0"
-    tslib "^2.0.1"
-
-promise-writable@^6.0.0:
-  version "6.0.0"
-  resolved "https://registry.npmjs.org/promise-writable/-/promise-writable-6.0.0.tgz"
-  integrity sha512-b81zre/itgJFS7dwWzIdKNVVqvLiUxYRS/wolUB0H1YY/tAaS146XGKa4Q/5wCbsnXLyn0MCeV6f8HHe4iUHLg==
+promise-writable@^8.0.0:
+  version "8.0.0"
+  resolved "https://registry.yarnpkg.com/promise-writable/-/promise-writable-8.0.0.tgz#1a62b38403f4085dc42899c6deea8d9e0a3525e8"
+  integrity sha512-Qn7/5tE42fjLUWevPm/SFmVz26tRdhmxmPXgOJSeIwLnkI2V4u0/t+CrRXb8ic1Jy9qqvOHVYm+sAIgel++eVA==
 
 punycode@^2.1.0:
   version "2.3.1"
@@ -3017,11 +3008,6 @@ tslib@^1.8.1:
   version "1.14.1"
   resolved "https://registry.npmjs.org/tslib/-/tslib-1.14.1.tgz"
   integrity sha512-Xni35NKzjgMrwevysHTCArtLDpPvye8zV/0E4EyYn43P7/7qvQwPh9BGkHewbMulVntbigmcT7rdX3BNo9wRJg==
-
-tslib@^2.0.1:
-  version "2.8.1"
-  resolved "https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz"
-  integrity sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==
 
 tsutils@^3.21.0:
   version "3.21.0"
