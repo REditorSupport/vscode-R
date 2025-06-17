@@ -2,7 +2,6 @@
 export * from './shareCommands';
 export * from './shareSession';
 export * from './shareTree';
-export * from './virtualDocs';
 
 import * as vscode from 'vscode';
 import * as vsls from 'vsls';

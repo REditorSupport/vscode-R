@@ -3,6 +3,8 @@
 import { homedir } from 'os';
 import { existsSync, PathLike, readFile } from 'fs-extra';
 import * as fs from 'fs';
+import * as os from 'os';
+import * as tmp from 'tmp';
 import winreg = require('winreg');
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -10,6 +12,7 @@ import * as cp from 'child_process';
 import { rGuestService, isGuestSession } from './liveShare';
 import { extensionContext } from './extension';
 import { randomBytes } from 'crypto';
+import { AddressInfo } from 'node:net';
 
 export function config(): vscode.WorkspaceConfiguration {
     return vscode.workspace.getConfiguration('r');
@@ -674,3 +677,52 @@ export function uniqueEntries<T>(array: T[], isIdentical: (x: T, y: T) => boolea
     }
     return array.filter(uniqueFunction);
 }
+
+export function createWaiterForInvoker() {
+    let resolveHandle: (() => void) | null = null;
+    let wasHandledQuick = false;
+    const invoker = () => {
+        if (resolveHandle === null) {
+            wasHandledQuick = true;
+        } else {
+            resolveHandle();
+        }
+    };
+
+    const waiter = new Promise<void>((resolve) => {
+        if (wasHandledQuick) {
+            resolve();
+        } else {
+            resolveHandle = resolve;
+        }
+    });
+
+    return { invoker, waiter };
+}
+
+export const createTempFile: (options: tmp.FileOptions) => Promise<{ name: string, fd: number, removeCallback: () => void }> =
+    (options) => new Promise((resolve, reject) => {
+        tmp.file(options, (err, name, fd, removeCallback) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve({ name, fd, removeCallback });
+            }
+        });
+    }
+    );
+
+export const createTempDir2: () => Promise<{ path: string, removeCallback: () => void }> =
+    () => new Promise((resolve, reject) => {
+        tmp.dir((err, path, removeCallback) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve({ path, removeCallback });
+            }
+        });
+    }
+    );
+
+export const hostnameOfListeningAddress = (addressInfo: AddressInfo) =>
+    (addressInfo.address === '127.0.0.1') ? '127.0.0.1' : os.hostname();

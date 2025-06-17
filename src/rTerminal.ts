@@ -9,10 +9,11 @@ import { extensionContext, homeExtDir } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession } from './session';
-import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
+import { cleanupSession, incomingRequestServerAddressInfo } from './session';
+import { config, delay, getRterm, getCurrentWorkspaceFolder, hostnameOfListeningAddress } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
+import { isAbsolute } from 'path';
 export let rTerm: vscode.Terminal | undefined = undefined;
 
 export async function runSource(echo: boolean): Promise<void>  {
@@ -131,7 +132,10 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
             VSCODE_INIT_R: initR,
-            VSCODE_WATCHER_DIR: homeExtDir()
+            VSCODE_WATCHER_DIR: homeExtDir(),
+            VSCODE_ATTACH_HOST: incomingRequestServerAddressInfo === undefined ? undefined :
+                hostnameOfListeningAddress(incomingRequestServerAddressInfo),
+            VSCODE_ATTACH_PORT: incomingRequestServerAddressInfo?.port?.toString(),
         };
     }
     return termOptions;
@@ -143,7 +147,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     if(!termPath){
         void vscode.window.showErrorMessage('Could not find R path. Please check r.term and r.path setting.');
         return false;
-    } else if(!fs.existsSync(termPath)){
+    } else if(isAbsolute(termPath) && !fs.existsSync(termPath)){
         void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check r.rterm setting.`);
         return false;
     }

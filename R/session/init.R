@@ -9,18 +9,19 @@ dir_init <- getwd()
 init_first <- function() {
     # return early if not a vscode term session
     if (
-        !interactive()
-        || Sys.getenv("RSTUDIO") != ""
-        || Sys.getenv("TERM_PROGRAM") != "vscode"
+        !interactive() ||
+            Sys.getenv("RSTUDIO") != "" ||
+            Sys.getenv("TERM_PROGRAM") != "vscode"
     ) {
         return()
     }
 
     # check required packages
-    required_packages <- c("jsonlite", "rlang")
+    required_packages <- c("jsonlite", "rlang", "readr")
     missing_packages <- required_packages[
         !vapply(required_packages, requireNamespace,
-            logical(1L), quietly = TRUE
+            logical(1L),
+            quietly = TRUE
         )
     ]
 
@@ -45,58 +46,12 @@ old.First.sys <- .First.sys
 init_last <- function() {
     old.First.sys()
 
-    # cleanup previous version
-    removeTaskCallback("vscode-R")
-    options(vscodeR = NULL)
-    .vsc.name <- "tools:vscode"
-    if (.vsc.name %in% search()) {
-        detach(.vsc.name, character.only = TRUE)
-    }
-
-    # Source vsc utils in new environmeent
-    .vsc <- new.env()
-    source(file.path(dir_init, "vsc.R"), local = .vsc)
-
-    # attach functions that are meant to be called by the user/vscode
-    exports <- local({
-        .vsc <- .vsc
-        .vsc.attach <- .vsc$attach
-        .vsc.view <- .vsc$show_dataview
-        .vsc.browser <- .vsc$show_browser
-        .vsc.viewer <- .vsc$show_viewer
-        .vsc.page_viewer <- .vsc$show_page_viewer
-        View <- .vsc.view
-        environment()
-    })
-    attach(exports, name = .vsc.name, warn.conflicts = FALSE)
-
-    # overwrite S3 bindings from other packages
-    suppressWarnings({
-        if (!identical(getOption("vsc.helpPanel", "Two"), FALSE)) {
-            # Overwrite print function for results of `?`
-            .vsc$.S3method(
-                "print",
-                "help_files_with_topic",
-                .vsc$print.help_files_with_topic
-            )
-            # Overwrite print function for results of `??`
-            .vsc$.S3method(
-                "print",
-                "hsearch",
-                .vsc$print.hsearch
-            )
-        }
-        # Further S3 overwrites can go here
-        # ...
-    })
+    source(file.path(dir_init, "init_late.R"), chdir = TRUE)
 
     # remove this function from globalenv()
     suppressWarnings(
         rm(".First.sys", envir = globalenv())
     )
-
-    # Attach to vscode
-    exports$.vsc.attach()
 
     invisible()
 }

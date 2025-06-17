@@ -24,6 +24,7 @@ import * as rShare from './liveShare';
 import * as httpgdViewer from './plotViewer';
 import * as languageService from './languageService';
 import { RTaskProvider } from './tasks';
+import { docProvider, docScheme } from './virtualDocs';
 
 
 // global objects used in other files
@@ -44,6 +45,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         void vscode.window.showInformationMessage('The R Tools (Mikhail-Arkhipov.r) extension is enabled and will have conflicts with vscode-R. To use vscode-R, please disable or uninstall the extension.');
         void vscode.commands.executeCommand('workbench.extensions.search', '@installed R Tools');
     }
+
+    context.subscriptions.push(
+        vscode.workspace.registerTextDocumentContentProvider(docScheme, docProvider)
+    );
 
     // create a new instance of RExtensionImplementation
     // is used to export an interface to the help panel
@@ -137,6 +142,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.launchAddinPicker': rstudioapi.launchAddinPicker,
 
         // workspace viewer
+        'r.workspaceViewer.detachSession': session.detach,
         'r.workspaceViewer.refreshEntry': () => rWorkspace?.refresh(),
         'r.workspaceViewer.view': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.viewItem(node.label),
         'r.workspaceViewer.remove': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.removeItem(node.label),
