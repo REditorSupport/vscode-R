@@ -49,7 +49,7 @@ export class HelpProvider {
         const scriptPath = extensionContext.asAbsolutePath('R/help/helpServer.R');
         const args = [
             '--silent',
-            '--slave',
+            '--no-echo',
             '--no-save',
             '--no-restore',
             '-e',
@@ -259,7 +259,7 @@ export class AliasProvider {
 
         const args = [
             '--silent',
-            '--slave',
+            '--no-echo',
             '--no-save',
             '--no-restore',
             '-f',

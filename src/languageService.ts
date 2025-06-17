@@ -86,7 +86,7 @@ export class LanguageService implements Disposable {
         const options = { cwd: cwd, env: env };
         const args = (config.get<string[]>('lsp.args')?.map(substituteVariables) ?? []).concat(
             '--silent',
-            '--slave',
+            '--no-echo',
             '--no-save',
             '--no-restore',
             '-e',

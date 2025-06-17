@@ -239,7 +239,7 @@ export class RLocalHelpPreviewer {
         // Convert .Rd to HTML
         const args = [
             '--silent',
-            '--slave',
+            '--no-echo',
             '--no-save',
             '--no-restore',
             '-f',

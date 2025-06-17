@@ -12,7 +12,7 @@
         "strict": true,
         "noImplicitAny": true,
         "noImplicitThis": true,
-        "noFallthroughCasesInSwitch": true
+        "noFallthroughCasesInSwitch": true,
     },
     "exclude": [
         "html",

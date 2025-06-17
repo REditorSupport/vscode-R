@@ -7,7 +7,6 @@
 .xls
 .xlsx
 **/*.map
-devreplay.json
 html/**/*.ts
 out/test/**
 src/
