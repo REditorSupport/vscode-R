@@ -194,6 +194,57 @@ export function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined 
     return undefined;
 }
 
+/**
+ * Resolves the working directory for R processes based on the r.workingDirectory setting.
+ * Falls back to workspace root if the setting is not configured.
+ * 
+ * @param scopeUri - Optional URI to determine the configuration scope (for multi-root workspaces)
+ * @returns Resolved absolute path to use as working directory for R processes
+ */
+export function resolveRWorkingDirectory(scopeUri?: vscode.Uri): string {
+    const config = vscode.workspace.getConfiguration('r', scopeUri);
+    const workingDirectorySetting = config.get<string>('workingDirectory');
+    
+    // If no custom working directory is configured, fall back to current behavior
+    if (!workingDirectorySetting || workingDirectorySetting.trim() === '') {
+        const workspaceFolder = scopeUri 
+            ? vscode.workspace.getWorkspaceFolder(scopeUri)
+            : getCurrentWorkspaceFolder();
+        return workspaceFolder ? workspaceFolder.uri.fsPath : homedir();
+    }
+    
+    // Apply variable substitution to the configured working directory
+    const resolvedPath = substituteVariables(workingDirectorySetting);
+    
+    // Validate that the resolved path exists and is within workspace boundaries
+    if (fs.existsSync(resolvedPath)) {
+        // Get the workspace folder for security validation
+        const workspaceFolder = scopeUri 
+            ? vscode.workspace.getWorkspaceFolder(scopeUri)
+            : getCurrentWorkspaceFolder();
+            
+        if (workspaceFolder) {
+            const workspaceRoot = workspaceFolder.uri.fsPath;
+            const relativePath = path.relative(workspaceRoot, resolvedPath);
+            
+            // Ensure the resolved path is within the workspace boundaries
+            if (!relativePath.startsWith('..') && !path.isAbsolute(relativePath)) {
+                return path.resolve(resolvedPath);
+            } else {
+                console.warn(`R working directory "${resolvedPath}" is outside workspace bounds. Falling back to workspace root.`);
+            }
+        }
+    } else {
+        console.warn(`R working directory "${resolvedPath}" does not exist. Falling back to workspace root.`);
+    }
+    
+    // Fall back to workspace root if validation fails
+    const workspaceFolder = scopeUri 
+        ? vscode.workspace.getWorkspaceFolder(scopeUri)
+        : getCurrentWorkspaceFolder();
+    return workspaceFolder ? workspaceFolder.uri.fsPath : homedir();
+}
+
 // Drop-in replacement for fs-extra.readFile (),
 // passes to guest service if the caller is a guest
 // This can be used wherever fs.readFile() is used,

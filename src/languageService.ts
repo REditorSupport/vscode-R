@@ -4,7 +4,7 @@ import * as net from 'net';
 import { URL } from 'url';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables } from './util';
+import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables, resolveRWorkingDirectory } from './util';
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 
@@ -203,8 +203,10 @@ export class LanguageService implements Disposable {
                     const documentSelector: DocumentFilter[] = [
                         { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}` },
                     ];
+                    const notebookDir = dirname(document.uri.fsPath);
+                    const cwd = resolveRWorkingDirectory(Uri.file(notebookDir));
                     const client = await self.createClient(self.config, documentSelector,
-                        dirname(document.uri.fsPath), folder, self.outputChannel);
+                        cwd, folder, self.outputChannel);
                     self.clients.set(key, client);
                     self.initSet.delete(key);
                 }
@@ -222,7 +224,8 @@ export class LanguageService implements Disposable {
                         { scheme: 'file', language: 'r', pattern: pattern },
                         { scheme: 'file', language: 'rmd', pattern: pattern },
                     ];
-                    const client = await self.createClient(self.config, documentSelector, folder.uri.fsPath, folder, self.outputChannel);
+                    const cwd = resolveRWorkingDirectory(folder.uri);
+                    const client = await self.createClient(self.config, documentSelector, cwd, folder, self.outputChannel);
                     self.clients.set(key, client);
                     self.initSet.delete(key);
                 }
@@ -238,7 +241,8 @@ export class LanguageService implements Disposable {
                             { scheme: 'untitled', language: 'r' },
                             { scheme: 'untitled', language: 'rmd' },
                         ];
-                        const client = await self.createClient(self.config, documentSelector, os.homedir(), undefined, self.outputChannel);
+                        const cwd = resolveRWorkingDirectory(); // No scope for untitled documents
+                        const client = await self.createClient(self.config, documentSelector, cwd, undefined, self.outputChannel);
                         self.clients.set(key, client);
                         self.initSet.delete(key);
                     }
@@ -253,8 +257,10 @@ export class LanguageService implements Disposable {
                         const documentSelector: DocumentFilter[] = [
                             { scheme: 'file', pattern: document.uri.fsPath },
                         ];
+                        const fileDir = dirname(document.uri.fsPath);
+                        const cwd = resolveRWorkingDirectory(Uri.file(fileDir));
                         const client = await self.createClient(self.config, documentSelector,
-                            dirname(document.uri.fsPath), undefined, self.outputChannel);
+                            cwd, undefined, self.outputChannel);
                         self.clients.set(key, client);
                         self.initSet.delete(key);
                     }
@@ -317,7 +323,7 @@ export class LanguageService implements Disposable {
             ];
 
             const workspaceFolder = workspace.workspaceFolders?.[0];
-            const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : os.homedir();
+            const cwd = resolveRWorkingDirectory(workspaceFolder?.uri);
             self.client = await self.createClient(self.config, documentSelector, cwd, workspaceFolder, self.outputChannel);
         }
     }

@@ -1349,6 +1349,12 @@
           "default": false,
           "markdownDescription": "Use renv library paths to launch R background processes (R languageserver, help server, etc.)."
         },
+        "r.workingDirectory": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "Specifies the working directory for R processes (Language Server and terminals). If not set, defaults to the workspace root. Supports variables like `${workspaceFolder}`. Examples:\n- `${workspaceFolder}/src/r-project` for subdirectory R projects\n- `${workspaceFolder}/analysis/env` for renv environments in subdirectories\n- `${fileDirname}` to use the directory of the current file"
+        },
         "r.lsp.enabled": {
           "type": "boolean",
           "default": true,
@@ -2017,7 +2023,7 @@
     "mocha": "^11.1.0",
     "sinon": "^15.0.1",
     "ts-loader": "^9.3.1",
-    "typescript": "^4.7.2",
+    "typescript": "^4.9.5",
     "webpack": "^5.99.6",
     "webpack-cli": "^4.10.0"
   },
