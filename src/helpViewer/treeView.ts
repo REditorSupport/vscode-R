@@ -135,11 +135,11 @@ export class HelpViewProvider implements vscode.TreeDataProvider<Node> {
 // rather than modifying this class!
 abstract class Node extends vscode.TreeItem{
     // TreeItem (defaults for this usecase)
-    public description?: string;
+    declare public description?: string;
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None;
     public contextValue: string = '';
-    public label?: string;
-    public tooltip?: string;
+    declare public label?: string;
+    declare public tooltip?: string;
 
     // set to null/undefined in derived class to expand/collapse on click
     public command = {
@@ -362,7 +362,7 @@ class PkgRootNode extends NonRootNode {
     public contextValue = Node.makeContextValue('QUICKPICK', 'clearCache', 'filterPackages', 'showOnlyFavorites', 'unsummarizeTopics');
 
     // Node
-    public children?: PackageNode[];
+    declare public children?: PackageNode[];
 
     // quickpick
     public qpPrompt = 'Please select a package.';

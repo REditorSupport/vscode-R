@@ -2,17 +2,15 @@
 {
     "compilerOptions": {
         "module": "commonjs",
-        "target": "ES2021",
+        "target": "ES2022",
         "outDir": "out",
         "lib": [
-            "ES2021"
+            "ES2022"
         ],
         "sourceMap": true,
         "rootDir": "src",
         "strict": true,
-        "noImplicitAny": true,
-        "noImplicitThis": true,
-        "noFallthroughCasesInSwitch": true,
+        "noFallthroughCasesInSwitch": true
     },
     "exclude": [
         "html",

@@ -175,7 +175,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
 
 class PackageItem extends TreeItem {
     public static command: string = 'r.workspaceViewer.package.showQuickPick';
-    public label?: string;
+    declare public label?: string;
     public name: string;
     public pkgNode?: PackageNode;
     public constructor(label: string, name: string, pkgNode?: PackageNode) {
@@ -201,7 +201,7 @@ enum TreeLevel {
 }
 
 export class GlobalEnvItem extends TreeItem {
-    public label?: string;
+    declare public label?: string;
     public desc?: string;
     public str: string;
     public type: string;

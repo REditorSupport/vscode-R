@@ -15,7 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - run: node $SCRIPT_DIR/enableWebpack.js
       - run: npm install
       - uses: lannonbr/vsce-action@4.0.0
         with:
@@ -56,7 +55,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - run: node $SCRIPT_DIR/enableWebpack.js
       - run: npm install
       - name: Publish to Open VSX Registry
         uses: HaaLeo/publish-vscode-extension@v1

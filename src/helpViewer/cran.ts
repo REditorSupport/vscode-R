@@ -84,7 +84,7 @@ function parseCranTable(html: string, baseUrl: string): Package[] {
     tables.each((tableIndex, table) => {
         const rows = $('tr', table);
         rows.each((rowIndex, row) => {
-            if (rowIndex === 0) return; // Skip the header row
+            if (rowIndex === 0) {return;} // Skip the header row
             const date = $(row).find('td:nth-child(1)').text().trim();
             const href = $(row).find('td:nth-child(2) a').attr('href');
             const url = href ? new URL(href, baseUrl).toString() : undefined;
