@@ -14,10 +14,8 @@ src/**
 test/**
 **/tsconfig.json
 vsc-extension-quickstart.md
-webpack.config.js
+esbuild.js
 .markdownlint.json
 .eslintignore
-
- node_modules 
- out/ 
-
+node_modules 
+out/ 

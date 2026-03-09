@@ -64,12 +64,12 @@ export class LiveShareTreeProvider implements vscode.TreeDataProvider<Node> {
 
 // Base class for adding to
 abstract class Node extends vscode.TreeItem {
-    public label?: string;
-    public tooltip?: string;
-    public contextValue?: string;
-    public description?: string;
-    public iconPath?: vscode.ThemeIcon;
-    public collapsibleState?: vscode.TreeItemCollapsibleState;
+    declare public label?: string;
+    declare public tooltip?: string;
+    declare public contextValue?: string;
+    declare public description?: string;
+    declare public iconPath?: vscode.ThemeIcon;
+    declare public collapsibleState?: vscode.TreeItemCollapsibleState;
 
     constructor() {
         super('');
@@ -82,12 +82,12 @@ abstract class Node extends vscode.TreeItem {
 // If a toggle is not required, extend a different Node type.
 export abstract class ToggleNode extends Node {
     public toggle(treeProvider: LiveShareTreeProvider): void { treeProvider.refresh(); }
-    public label?: string;
-    public tooltip?: string;
-    public contextValue?: string;
-    public description?: string;
-    public iconPath?: vscode.ThemeIcon;
-    public collapsibleState?: vscode.TreeItemCollapsibleState;
+    declare public label?: string;
+    declare public tooltip?: string;
+    declare public contextValue?: string;
+    declare public description?: string;
+    declare public iconPath?: vscode.ThemeIcon;
+    declare public collapsibleState?: vscode.TreeItemCollapsibleState;
 
     constructor(bool: boolean) {
         super();
@@ -112,7 +112,7 @@ class ShareNode extends ToggleNode {
     public label: string = 'Share R Workspace';
     public tooltip: string = 'Whether guests can access the current R session and its workspace';
     public contextValue: string = 'shareNode';
-    public description?: string;
+    declare public description?: string;
     public iconPath: vscode.ThemeIcon = new vscode.ThemeIcon('broadcast');
     public collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None;
 

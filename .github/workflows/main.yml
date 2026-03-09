@@ -25,7 +25,6 @@ jobs:
       VSIX_FILE: vscode-R.vsix
     steps:
       - uses: actions/checkout@v3
-      - run: node $SCRIPT_DIR/enableWebpack.js
       - run: npm install
       - uses: lannonbr/vsce-action@4.0.0
         with:
