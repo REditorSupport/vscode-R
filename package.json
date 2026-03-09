@@ -1388,9 +1388,10 @@
           "description": "Use STDIO connection instead of TCP. (Unix/macOS users only)"
         },
         "r.lsp.multiServer": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Use multiple language servers for [multi-root workspaces](https://code.visualstudio.com/docs/editor/multi-root-workspaces). If disabled, only one language server will be used to handle all requests from all workspaces and files."
+          "type": ["string", "boolean"],
+          "enum": ["auto", true, false],
+          "default": "auto",
+          "markdownDescription": "Use multiple language servers for [multi-root workspaces](https://code.visualstudio.com/docs/editor/multi-root-workspaces). When set to `auto`, it will use a single server if the R `languageserver` package version is > 0.3.17, and multiple servers otherwise. Disabling this (or using `auto` with a recent version) is recommended for better performance."
         },
         "r.rmarkdown.codeLensCommands": {
           "type": "array",

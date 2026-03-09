@@ -4,12 +4,11 @@ import * as net from 'net';
 import { URL } from 'url';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables } from './util';
+import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables, getRPackageVersion, compareVersions } from './util';
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 
 export class LanguageService implements Disposable {
-    private client: LanguageClient | undefined;
     private readonly clients: Map<string, LanguageClient> = new Map();
     private readonly initSet: Set<string> = new Set();
     private readonly config: WorkspaceConfiguration;
@@ -17,9 +16,8 @@ export class LanguageService implements Disposable {
 
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server');
-        this.client = undefined;
         this.config = workspace.getConfiguration('r');
-        void this.startLanguageService(this);
+        void this.startLanguageService();
     }
 
     dispose(): Thenable<void> {
@@ -53,24 +51,24 @@ export class LanguageService implements Disposable {
         return childProcess;
     }
 
-    private async createClient(config: WorkspaceConfiguration, selector: DocumentFilter[],
+    private async createClient(selector: DocumentFilter[],
         cwd: string, workspaceFolder: WorkspaceFolder | undefined, outputChannel: OutputChannel): Promise<LanguageClient> {
 
         let client: LanguageClient;
 
-        const debug = config.get<boolean>('lsp.debug');
-        const useRenvLibPath = config.get<boolean>('useRenvLibPath') ?? false;
+        const debug = this.config.get<boolean>('lsp.debug');
+        const useRenvLibPath = this.config.get<boolean>('useRenvLibPath') ?? false;
         const rPath = await getRpath() || ''; // TODO: Abort gracefully
         if (debug) {
             console.log(`R path: ${rPath}`);
         }
-        const use_stdio = config.get<boolean>('lsp.use_stdio');
+        const use_stdio = this.config.get<boolean>('lsp.use_stdio');
         const env = Object.create(process.env) as NodeJS.ProcessEnv;
         env.VSCR_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
         env.VSCR_LIB_PATHS = getRLibPaths();
         env.VSCR_USE_RENV_LIB_PATH = useRenvLibPath ? 'TRUE' : 'FALSE';
 
-        const lang = config.get<string>('lsp.lang');
+        const lang = this.config.get<string>('lsp.lang');
         if (lang !== '') {
             env.LANG = lang;
         } else if (env.LANG === undefined) {
@@ -84,7 +82,7 @@ export class LanguageService implements Disposable {
 
         const rScriptPath = extensionContext.asAbsolutePath('R/languageServer.R');
         const options = { cwd: cwd, env: env };
-        const args = (config.get<string[]>('lsp.args')?.map(substituteVariables) ?? []).concat(
+        const args = (this.config.get<string[]>('lsp.args')?.map(substituteVariables) ?? []).concat(
             '--silent',
             '--no-echo',
             '--no-save',
@@ -167,9 +165,12 @@ export class LanguageService implements Disposable {
         if (this.initSet.has(name)) {
             return true;
         }
-        this.initSet.add(name);
         const client = this.clients.get(name);
-        return (!!client) && client.needsStop();
+        if (client && client.needsStop()) {
+            return true;
+        }
+        this.initSet.add(name);
+        return false;
     }
 
     private getKey(uri: Uri): string {
@@ -183,8 +184,8 @@ export class LanguageService implements Disposable {
         }
     }
 
-    private startMultiLanguageService(self: LanguageService): void {
-        async function didOpenTextDocument(document: TextDocument) {
+    private startMultiLanguageService(): void {
+        const didOpenTextDocument = async (document: TextDocument) => {
             if (document.uri.scheme !== 'file' && document.uri.scheme !== 'untitled' && document.uri.scheme !== 'vscode-notebook-cell') {
                 return;
             }
@@ -197,16 +198,16 @@ export class LanguageService implements Disposable {
 
             // Each notebook uses a server started from parent folder
             if (document.uri.scheme === 'vscode-notebook-cell') {
-                const key = self.getKey(document.uri);
-                if (!self.checkClient(key)) {
+                const key = this.getKey(document.uri);
+                if (!this.checkClient(key)) {
                     console.log(`Start language server for ${document.uri.toString(true)}`);
                     const documentSelector: DocumentFilter[] = [
                         { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}` },
                     ];
-                    const client = await self.createClient(self.config, documentSelector,
-                        dirname(document.uri.fsPath), folder, self.outputChannel);
-                    self.clients.set(key, client);
-                    self.initSet.delete(key);
+                    const client = await this.createClient(documentSelector,
+                        dirname(document.uri.fsPath), folder, this.outputChannel);
+                    this.clients.set(key, client);
+                    this.initSet.delete(key);
                 }
                 return;
             }
@@ -214,56 +215,56 @@ export class LanguageService implements Disposable {
             if (folder) {
 
                 // Each workspace uses a server started from the workspace folder
-                const key = self.getKey(folder.uri);
-                if (!self.checkClient(key)) {
+                const key = this.getKey(folder.uri);
+                if (!this.checkClient(key)) {
                     console.log(`Start language server for ${document.uri.toString(true)}`);
                     const pattern = `${folder.uri.fsPath}/**/*`;
                     const documentSelector: DocumentFilter[] = [
                         { scheme: 'file', language: 'r', pattern: pattern },
                         { scheme: 'file', language: 'rmd', pattern: pattern },
                     ];
-                    const client = await self.createClient(self.config, documentSelector, folder.uri.fsPath, folder, self.outputChannel);
-                    self.clients.set(key, client);
-                    self.initSet.delete(key);
+                    const client = await this.createClient(documentSelector, folder.uri.fsPath, folder, this.outputChannel);
+                    this.clients.set(key, client);
+                    this.initSet.delete(key);
                 }
 
             } else {
 
                 // All untitled documents share a server started from home folder
                 if (document.uri.scheme === 'untitled') {
-                    const key = self.getKey(document.uri);
-                    if (!self.checkClient(key)) {
+                    const key = this.getKey(document.uri);
+                    if (!this.checkClient(key)) {
                         console.log(`Start language server for ${document.uri.toString(true)}`);
                         const documentSelector: DocumentFilter[] = [
                             { scheme: 'untitled', language: 'r' },
                             { scheme: 'untitled', language: 'rmd' },
                         ];
-                        const client = await self.createClient(self.config, documentSelector, os.homedir(), undefined, self.outputChannel);
-                        self.clients.set(key, client);
-                        self.initSet.delete(key);
+                        const client = await this.createClient(documentSelector, os.homedir(), undefined, this.outputChannel);
+                        this.clients.set(key, client);
+                        this.initSet.delete(key);
                     }
                     return;
                 }
 
                 // Each file outside workspace uses a server started from parent folder
                 if (document.uri.scheme === 'file') {
-                    const key = self.getKey(document.uri);
-                    if (!self.checkClient(key)) {
+                    const key = this.getKey(document.uri);
+                    if (!this.checkClient(key)) {
                         console.log(`Start language server for ${document.uri.toString(true)}`);
                         const documentSelector: DocumentFilter[] = [
                             { scheme: 'file', pattern: document.uri.fsPath },
                         ];
-                        const client = await self.createClient(self.config, documentSelector,
-                            dirname(document.uri.fsPath), undefined, self.outputChannel);
-                        self.clients.set(key, client);
-                        self.initSet.delete(key);
+                        const client = await this.createClient(documentSelector,
+                            dirname(document.uri.fsPath), undefined, this.outputChannel);
+                        this.clients.set(key, client);
+                        this.initSet.delete(key);
                     }
                     return;
                 }
             }
-        }
+        };
 
-        function didCloseTextDocument(document: TextDocument): void {
+        const didCloseTextDocument = (document: TextDocument): void => {
             if (document.uri.scheme === 'untitled') {
                 const result = workspace.textDocuments.find((doc) => doc.uri.scheme === 'untitled');
                 if (result) {
@@ -282,34 +283,50 @@ export class LanguageService implements Disposable {
             }
 
             // Stop the language server when single file outside workspace is closed, or the above cases.
-            const key = self.getKey(document.uri);
-            const client = self.clients.get(key);
+            const key = this.getKey(document.uri);
+            const client = this.clients.get(key);
             if (client) {
-                self.clients.delete(key);
-                self.initSet.delete(key);
+                this.clients.delete(key);
+                this.initSet.delete(key);
                 void client.stop();
             }
-        }
+        };
 
         workspace.onDidOpenTextDocument(didOpenTextDocument);
         workspace.onDidCloseTextDocument(didCloseTextDocument);
         workspace.textDocuments.forEach((doc) => void didOpenTextDocument(doc));
         workspace.onDidChangeWorkspaceFolders((event) => {
             for (const folder of event.removed) {
-                const key = self.getKey(folder.uri);
-                const client = self.clients.get(key);
+                const key = this.getKey(folder.uri);
+                const client = this.clients.get(key);
                 if (client) {
-                    self.clients.delete(key);
-                    self.initSet.delete(key);
+                    this.clients.delete(key);
+                    this.initSet.delete(key);
                     void client.stop();
                 }
             }
         });
     }
 
-    private async startLanguageService(self: LanguageService): Promise<void> {
-        if (self.config.get<boolean>('r.lsp.multiServer')) {
-            return this.startMultiLanguageService(self);
+    private async startLanguageService(): Promise<void> {
+        let useMultiServer = false;
+        const multiServerConfig = this.config.get<string | boolean>('lsp.multiServer');
+
+        if (multiServerConfig === 'auto') {
+            const version = await getRPackageVersion('languageserver');
+            if (version && compareVersions(version, '0.3.17') <= 0) {
+                console.log(`languageserver version is ${version}, using multi-server.`);
+                useMultiServer = true;
+            } else {
+                console.log(`languageserver version is ${version || 'unknown'}, using single-server.`);
+                useMultiServer = false;
+            }
+        } else if (multiServerConfig === true || multiServerConfig === 'true') {
+            useMultiServer = true;
+        }
+
+        if (useMultiServer) {
+            this.startMultiLanguageService();
         } else {
             const documentSelector: DocumentFilter[] = [
                 { language: 'r' },
@@ -318,15 +335,13 @@ export class LanguageService implements Disposable {
 
             const workspaceFolder = workspace.workspaceFolders?.[0];
             const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : os.homedir();
-            self.client = await self.createClient(self.config, documentSelector, cwd, workspaceFolder, self.outputChannel);
+            const client = await this.createClient(documentSelector, cwd, undefined, this.outputChannel);
+            this.clients.set('global', client);
         }
     }
 
     private stopLanguageService(): Thenable<void> {
         const promises: Thenable<void>[] = [];
-        if (this.client) {
-            promises.push(this.client.stop());
-        }
         for (const client of this.clients.values()) {
             promises.push(client.stop());
         }
