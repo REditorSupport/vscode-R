@@ -328,6 +328,28 @@ export async function getCranUrl(path: string = '', cwd?: string | URL): Promise
     return url;
 }
 
+export async function getRVersion(cwd?: string | URL): Promise<string | undefined> {
+    return await executeRCommand('cat(as.character(getRversion()))', cwd);
+}
+
+export async function getRPackageVersion(name: string, cwd?: string | URL): Promise<string | undefined> {
+    const result = await executeRCommand(`cat(if (requireNamespace('${name}', quietly = TRUE)) as.character(utils::packageVersion('${name}')) else '')`, cwd);
+    return result || undefined;
+}
+
+export function compareVersions(v1: string, v2: string): number {
+    const parts1 = v1.split('.').map(Number);
+    const parts2 = v2.split('.').map(Number);
+    const len = Math.max(parts1.length, parts2.length);
+    for (let i = 0; i < len; i++) {
+        const num1 = parts1[i] || 0;
+        const num2 = parts2[i] || 0;
+        if (num1 > num2) return 1;
+        if (num1 < num2) return -1;
+    }
+    return 0;
+}
+
 export function getRLibPaths(): string | undefined {
     return config().get<string[]>('libPaths')?.map(substituteVariables).join('\n');
 }
