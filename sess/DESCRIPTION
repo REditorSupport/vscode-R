@@ -12,5 +12,6 @@ Imports:
     httpuv,
     jsonlite,
     utils,
-    methods
+    methods,
+    rstudioapi
 RoxygenNote: 7.2.3

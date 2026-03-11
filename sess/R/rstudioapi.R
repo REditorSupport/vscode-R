@@ -6,10 +6,11 @@ getActiveDocumentContext <- function() {
 getSourceEditorContext <- getActiveDocumentContext
 
 verifyAvailable <- function(version_needed = NULL) {
-    if (is.null(version_needed)) TRUE else FALSE
+    if (is.null(version_needed)) return(TRUE)
+    getVersion() >= numeric_version(version_needed)
 }
 
-isAvailable <- function(version_needed = NULL, child_ok) {
+isAvailable <- function(version_needed = NULL, child_ok = FALSE) {
     verifyAvailable(version_needed)
 }
 
@@ -28,7 +29,7 @@ insertText <- function(location, text, id = NULL) {
     query <- mapply(function(location, text) {
         list(
             operation = if (rstudioapi::is.document_range(location)) "modifyRange" else "insertText",
-            location = location,
+            location = serialize_location(location),
             text = text
         )
     }, normalised_location, normalised_text, SIMPLIFY = FALSE)
@@ -44,13 +45,19 @@ readRStudioPreference <- readPreference
 .sess_rstudioapi_env <- environment()
 
 hasFun <- function(name, version_needed = NULL, ...) {
-    if (!is.null(version_needed)) return(FALSE)
+    if (!is.null(version_needed)) {
+        if (!verifyAvailable(version_needed)) return(FALSE)
+    }
     obj <- .sess_rstudioapi_env[[name]]
     is.function(obj) && !identical(obj, .sess_not_yet_implemented)
 }
 
 findFun <- function(name, version_needed = NULL, ...) {
-    if (!is.null(version_needed)) stop("the generic IPC client does not support used of 'version_needed'.")
+    if (!is.null(version_needed)) {
+        if (!verifyAvailable(version_needed)) {
+             stop("the generic IPC client does not support used of 'version_needed' > 0.")
+        }
+    }
     if (hasFun(name, version_needed = version_needed, ...)) {
         .sess_rstudioapi_env[[name]]
     } else {
@@ -63,8 +70,12 @@ showDialog <- function(title, message, url = "") {
     invisible(request_rstudioapi("show_dialog", args = list(message = message)))
 }
 
-navigateToFile <- function(file, line = -1L, column = -1L) {
-    invisible(request_rstudioapi("navigate_to_file", args = list(file = normalizePath(file), line = line, column = column)))
+navigateToFile <- function(file, line = 1L, column = 1L) {
+    invisible(request_rstudioapi("navigate_to_file", args = list(
+        file = normalizePath(file), 
+        line = line - 1L, 
+        column = column - 1L
+    )))
 }
 
 setSelectionRanges <- function(ranges, id = NULL) {
@@ -72,7 +83,8 @@ setSelectionRanges <- function(ranges, id = NULL) {
     ranges <- lapply(ranges_or_positions, function(location) {
         if (rstudioapi::is.document_position(location)) rstudioapi::document_range(location, location) else location
     })
-    invisible(request_rstudioapi("set_selection_ranges", args = list(ranges = ranges, id = id)))
+    sess_ranges <- lapply(ranges, serialize_range)
+    invisible(request_rstudioapi("set_selection_ranges", args = list(ranges = sess_ranges, id = id)))
 }
 
 setCursorPosition <- setSelectionRanges
@@ -81,8 +93,7 @@ documentSave <- function(id = NULL) invisible(request_rstudioapi("document_save"
 
 getActiveProject <- function() {
     path_object <- request_rstudioapi("get_project_path", args = list())
-    if (is.null(path_object$path)) stop("No folder for active document.")
-    path_object$path
+    path_object$path # Should be NULL if no project is open
 }
 
 .sess_document_context <- function(id = NULL) request_rstudioapi("document_context", args = list(id = id))
@@ -92,15 +103,15 @@ documentPath <- function(id = NULL) .sess_document_context(id)$id$path
 
 documentSaveAll <- function() invisible(request_rstudioapi("document_save_all", args = list()))
 
-documentNew <- function(text, type = c("r", "rmarkdown", "sql"), position = rstudioapi::document_position(0, 0), execute = FALSE) {
+documentNew <- function(text = "", type = c("r", "rmarkdown", "sql"), position = rstudioapi::document_position(1, 1), execute = FALSE) {
     if (!rstudioapi::is.document_position((position))) stop("DocumentNew requires a document_position object")
     if (length(text) != 1 || !is.character(text)) stop("text for DocumentNew must be a length one character vector.")
-    invisible(request_rstudioapi("document_new", args = list(text = text, type = type, position = position)))
+    invisible(request_rstudioapi("document_new", args = list(text = text, type = match.arg(type), position = serialize_pos(position))))
 }
 
 setDocumentContents <- function(text, id = NULL) {
     whole_document_range <- rstudioapi::document_range(
-        rstudioapi::document_position(0, 0),
+        rstudioapi::document_position(1, 1),
         rstudioapi::document_position(Inf, Inf)
     )
     insertText(whole_document_range, text, id)
@@ -109,7 +120,11 @@ setDocumentContents <- function(text, id = NULL) {
 restartSession <- function() invisible(request_rstudioapi("restart_r", args = list()))
 
 viewer <- function(url, height = NULL) {
-    notify_client("browser", list(url = url, title = "Viewer"))
+    notify_client("webview", list(file = url, title = "Viewer"))
+}
+
+page_viewer <- function(url, title = NULL) {
+    notify_client("browser", list(url = url, title = if (is.null(title)) "Page Viewer" else title))
 }
 
 getVersion <- function() numeric_version("0")
@@ -117,9 +132,13 @@ getVersion <- function() numeric_version("0")
 versionInfo <- function() list(citation = "", mode = "generic-ipc", version = numeric_version("0"), release_name = "generic-ipc")
 
 sendToConsole <- function(code, execute = TRUE, echo = TRUE, focus = FALSE) {
-    if (!echo) stop("rstudioapi::sendToConsole only supports echo = TRUE in the generic IPC client.")
+    if (!echo) warning("rstudioapi::sendToConsole echo = FALSE is not supported in the generic IPC client.")
     code_to_run <- paste0(code, collapse = "\n")
     invisible(request_rstudioapi("send_to_console", args = list(code = code_to_run, execute = execute, focus = focus)))
+}
+
+documentClose <- function(id = NULL, save = TRUE) {
+    invisible(request_rstudioapi("document_close", args = list(id = id, save = save)))
 }
 
 .sess_not_yet_implemented <- function(...) stop("This {rstudioapi} function is not currently implemented for generic IPC.")
@@ -136,6 +155,7 @@ extract_document_ranges <- function(sess_selections) lapply(sess_selections, mak
 
 to_content_lines <- function(contents, ranges) {
     content_lines <- strsplit(contents, "\n|\r\n|\r$")[[1]]
+    if (length(ranges) == 0) return(content_lines)
     range_end_row <- unlist(lapply(ranges, function(range) range$end["row"]))
     last_row <- max(range_end_row)
     if (last_row == length(content_lines) + 1) content_lines <- c(content_lines, "")
@@ -144,17 +164,29 @@ to_content_lines <- function(contents, ranges) {
 
 extract_range_text <- function(range, content_lines) {
     if (!range_has_text(range)) return("")
-    content_rows <- content_lines[(range$start["row"]):(range$end["row"])]
-    content_rows[length(content_rows)] <- substring(content_rows[length(content_rows)], 1, range$end["column"] - 1)
+    start_row <- range$start["row"]
+    end_row <- range$end["row"]
+    if (start_row > length(content_lines)) return("")
+    
+    content_rows <- content_lines[start_row:min(end_row, length(content_lines))]
+    
+    # Adjust end
+    if (end_row <= length(content_lines)) {
+        content_rows[length(content_rows)] <- substring(content_rows[length(content_rows)], 1, range$end["column"] - 1)
+    }
+    
+    # Adjust start
     content_rows[1] <- substring(content_rows[1], range$start["column"])
+    
     paste0(content_rows, collapse = "\n")
 }
 
 range_has_text <- function(range) (range$end["row"] - range$start["row"]) + (range$end["column"] - range$start["column"]) > 0
 
 make_rs_document_selection <- function(ranges, range_texts) {
-    selection_data <- mapply(function(range, text) list(range = range, text = text), ranges, range_texts, SIMPLIFY = FALSE)
-    structure(selection_data, class = "document_selection")
+    mapply(function(range, text) {
+        structure(list(range = range, text = text), class = "document_selection")
+    }, ranges, range_texts, SIMPLIFY = FALSE)
 }
 
 make_rs_document_context <- function(sess_editor_context) {
@@ -162,7 +194,12 @@ make_rs_document_context <- function(sess_editor_context) {
     content_lines <- to_content_lines(sess_editor_context$contents, document_ranges)
     document_range_texts <- lapply(document_ranges, extract_range_text, content_lines)
     document_selection <- make_rs_document_selection(document_ranges, document_range_texts)
-    structure(list(id = sess_editor_context$id$external, path = sess_editor_context$path, contents = content_lines, selections = document_selection), class = "document_context")
+    structure(list(
+        id = sess_editor_context$id$external, 
+        path = sess_editor_context$path, 
+        contents = content_lines, 
+        selection = document_selection
+    ), class = "document_context")
 }
 
 is_positionable <- function(p) is.numeric(p) && length(p) == 2
@@ -193,6 +230,24 @@ normalise_text_arg <- function(text, location_length) {
     else stop("text vector needs to be of length 1 or the same length as location list")
 }
 
+serialize_pos <- function(pos) {
+    list(line = pos[["row"]] - 1, character = pos[["column"]] - 1)
+}
+
+serialize_range <- function(range) {
+    list(start = serialize_pos(range$start), end = serialize_pos(range$end))
+}
+
+serialize_location <- function(location) {
+    if (rstudioapi::is.document_position(location)) {
+        serialize_pos(location)
+    } else if (rstudioapi::is.document_range(location)) {
+        serialize_range(location)
+    } else {
+        location
+    }
+}
+
 namespace_has <- function(obj, namespace) {
     attempt <- try(getFromNamespace(obj, namespace), silent = TRUE)
     !inherits(attempt, "try-error")
@@ -217,9 +272,11 @@ patch_rstudioapi <- function() {
         setDocumentContents = setDocumentContents,
         restartSession = restartSession,
         viewer = viewer,
+        page_viewer = page_viewer,
         getVersion = getVersion,
         versionInfo = versionInfo,
         sendToConsole = sendToConsole,
+        documentClose = documentClose,
         hasFun = hasFun,
         findFun = findFun,
         isAvailable = isAvailable,
@@ -229,7 +286,6 @@ patch_rstudioapi <- function() {
         
         getConsoleEditorContext = .sess_not_yet_implemented,
         sourceMarkers = .sess_not_yet_implemented,
-        documentClose = .sess_not_yet_implemented,
         showPrompt = .sess_not_yet_implemented,
         showQuestion = .sess_not_yet_implemented,
         updateDialog = .sess_not_yet_implemented,

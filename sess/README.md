@@ -96,14 +96,16 @@ Returns the most recent static plot captured by the R session.
 
 ---
 
-## 3. Synchronous RStudio API Emulation
+3. Synchronous RStudio API Emulation
 
 The `request_rstudioapi()` function allows R to call client-side functions synchronously by sending a **JSON-RPC Request** (with an `id`) over the WebSocket:
 
 1. R sends a request with `method: "rstudioapi"`.
 2. R enters a `while` loop that calls `httpuv::service()`.
-3. The client processes the action and sends back a **JSON-RPC Response** (with the same `id`) via the WebSocket.
+3. The client processes the action and sends back a **JSON-RPC Response** (with the same id) via the WebSocket.
 4. R retrieves the `result` (or `error`) and returns it.
+
+**Coordinate Handling**: The emulation layer automatically converts between R (1-indexed) and IPC (0-indexed) coordinates. Locations and ranges sent to the client are 0-indexed, while data received from the client (e.g., in `document_context`) is converted back to 1-indexed R objects.
 
 ## 4. Hook Registration
 
