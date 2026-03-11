@@ -1,5 +1,5 @@
 getActiveDocumentContext <- function() {
-    editor_context <- request_rstudioapi("active_editor_context", args = list())
+    editor_context <- request_client("active_editor_context", args = list())
     make_rs_document_context(editor_context)
 }
 
@@ -16,9 +16,9 @@ isAvailable <- function(version_needed = NULL, child_ok = FALSE) {
 
 insertText <- function(location, text, id = NULL) {
     if (missing(text) && is.character(location) && length(location) == 1) {
-        return(invisible(request_rstudioapi("replace_text_in_current_selection", args = list(text = location, id = id))))
+        return(invisible(request_client("replace_text_in_current_selection", args = list(text = location, id = id))))
     } else if (missing(location)) {
-        return(invisible(request_rstudioapi("replace_text_in_current_selection", args = list(text = text, id = id))))
+        return(invisible(request_client("replace_text_in_current_selection", args = list(text = text, id = id))))
     } else if (is.null(location) && missing(text)) {
         return(invisible(NULL))
     }
@@ -34,7 +34,7 @@ insertText <- function(location, text, id = NULL) {
         )
     }, normalised_location, normalised_text, SIMPLIFY = FALSE)
 
-    invisible(request_rstudioapi("insert_or_modify_text", args = list(query = query, id = id)))
+    invisible(request_client("insert_or_modify_text", args = list(query = query, id = id)))
 }
 
 modifyRange <- insertText
@@ -67,11 +67,11 @@ findFun <- function(name, version_needed = NULL, ...) {
 
 showDialog <- function(title, message, url = "") {
     message <- sprintf("%s: %s \n%s", title, message, url)
-    invisible(request_rstudioapi("show_dialog", args = list(message = message)))
+    invisible(request_client("show_dialog", args = list(message = message)))
 }
 
 navigateToFile <- function(file, line = 1L, column = 1L) {
-    invisible(request_rstudioapi("navigate_to_file", args = list(
+    invisible(request_client("navigate_to_file", args = list(
         file = normalizePath(file), 
         line = line - 1L, 
         column = column - 1L
@@ -84,29 +84,29 @@ setSelectionRanges <- function(ranges, id = NULL) {
         if (rstudioapi::is.document_position(location)) rstudioapi::document_range(location, location) else location
     })
     sess_ranges <- lapply(ranges, serialize_range)
-    invisible(request_rstudioapi("set_selection_ranges", args = list(ranges = sess_ranges, id = id)))
+    invisible(request_client("set_selection_ranges", args = list(ranges = sess_ranges, id = id)))
 }
 
 setCursorPosition <- setSelectionRanges
 
-documentSave <- function(id = NULL) invisible(request_rstudioapi("document_save", args = list(id = id)))
+documentSave <- function(id = NULL) invisible(request_client("document_save", args = list(id = id)))
 
 getActiveProject <- function() {
-    path_object <- request_rstudioapi("get_project_path", args = list())
+    path_object <- request_client("get_project_path", args = list())
     path_object$path # Should be NULL if no project is open
 }
 
-.sess_document_context <- function(id = NULL) request_rstudioapi("document_context", args = list(id = id))
+.sess_document_context <- function(id = NULL) request_client("document_context", args = list(id = id))
 
 documentId <- function(allowConsole = TRUE) .sess_document_context()$id$external
 documentPath <- function(id = NULL) .sess_document_context(id)$id$path
 
-documentSaveAll <- function() invisible(request_rstudioapi("document_save_all", args = list()))
+documentSaveAll <- function() invisible(request_client("document_save_all", args = list()))
 
 documentNew <- function(text = "", type = c("r", "rmarkdown", "sql"), position = rstudioapi::document_position(1, 1), execute = FALSE) {
     if (!rstudioapi::is.document_position((position))) stop("DocumentNew requires a document_position object")
     if (length(text) != 1 || !is.character(text)) stop("text for DocumentNew must be a length one character vector.")
-    invisible(request_rstudioapi("document_new", args = list(text = text, type = match.arg(type), position = serialize_pos(position))))
+    invisible(request_client("document_new", args = list(text = text, type = match.arg(type), position = serialize_pos(position))))
 }
 
 setDocumentContents <- function(text, id = NULL) {
@@ -117,7 +117,7 @@ setDocumentContents <- function(text, id = NULL) {
     insertText(whole_document_range, text, id)
 }
 
-restartSession <- function() invisible(request_rstudioapi("restart_r", args = list()))
+restartSession <- function() invisible(request_client("restart_r", args = list()))
 
 viewer <- function(url, height = NULL) {
     notify_client("webview", list(file = url, title = "Viewer"))
@@ -134,11 +134,11 @@ versionInfo <- function() list(citation = "", mode = "generic-ipc", version = nu
 sendToConsole <- function(code, execute = TRUE, echo = TRUE, focus = FALSE) {
     if (!echo) warning("rstudioapi::sendToConsole echo = FALSE is not supported in the generic IPC client.")
     code_to_run <- paste0(code, collapse = "\n")
-    invisible(request_rstudioapi("send_to_console", args = list(code = code_to_run, execute = execute, focus = focus)))
+    invisible(request_client("send_to_console", args = list(code = code_to_run, execute = execute, focus = focus)))
 }
 
 documentClose <- function(id = NULL, save = TRUE) {
-    invisible(request_rstudioapi("document_close", args = list(id = id, save = save)))
+    invisible(request_client("document_close", args = list(id = id, save = save)))
 }
 
 .sess_not_yet_implemented <- function(...) stop("This {rstudioapi} function is not currently implemented for generic IPC.")

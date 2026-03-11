@@ -67,11 +67,11 @@ notify_client <- function(method, params = list()) {
   ipc_send(method, params, request = FALSE)
 }
 
-#' Emulate rstudioapi synchronously but without blocking the R Event Loop
+#' Emulate rstudioapi (or any client action) synchronously but without blocking the R Event Loop
 #'
-#' @param action String of the rstudioapi action
+#' @param action String of the action name
 #' @param args List of arguments
 #' @export
-request_rstudioapi <- function(action, args = list()) {
+request_client <- function(action, args = list()) {
   ipc_send(action, args, request = TRUE)
 }

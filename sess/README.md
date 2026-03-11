@@ -98,7 +98,7 @@ Returns the most recent static plot captured by the R session.
 
 3. Synchronous RStudio API Emulation
 
-The `request_rstudioapi()` function allows R to call client-side functions synchronously by sending a **JSON-RPC Request** (with an `id`) over the WebSocket:
+The `request_client()` function allows R to call client-side functions synchronously by sending a **JSON-RPC Request** (with an `id`) over the WebSocket:
 
 1. R sends a request with `method` set to the action name (e.g., `"active_editor_context"`).
 2. R enters a `while` loop that calls `httpuv::service()`.

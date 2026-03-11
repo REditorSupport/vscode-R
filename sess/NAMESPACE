@@ -2,7 +2,7 @@
 
 export(notify_client)
 export(register_hooks)
-export(request_rstudioapi)
+export(request_client)
 export(sess_app)
 import(httpuv)
 import(jsonlite)
