@@ -73,5 +73,5 @@ notify_client <- function(method, params = list()) {
 #' @param args List of arguments
 #' @export
 request_rstudioapi <- function(action, args = list()) {
-  ipc_send("rstudioapi", list(action = action, args = args), request = TRUE)
+  ipc_send(action, args, request = TRUE)
 }

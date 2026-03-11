@@ -100,7 +100,7 @@ Returns the most recent static plot captured by the R session.
 
 The `request_rstudioapi()` function allows R to call client-side functions synchronously by sending a **JSON-RPC Request** (with an `id`) over the WebSocket:
 
-1. R sends a request with `method: "rstudioapi"`.
+1. R sends a request with `method` set to the action name (e.g., `"active_editor_context"`).
 2. R enters a `while` loop that calls `httpuv::service()`.
 3. The client processes the action and sends back a **JSON-RPC Response** (with the same id) via the WebSocket.
 4. R retrieves the `result` (or `error`) and returns it.
