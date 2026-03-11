@@ -1,0 +1,16 @@
+Package: vscr
+Type: Package
+Title: Modern VS Code R IPC Server
+Version: 0.1.0
+Author: Gemini
+Maintainer: Gemini <gemini@example.com>
+Description: Implements a high-performance HTTP and WebSocket server for R to VS Code Inter-Process Communication, replacing legacy file-system watchers.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+Imports: 
+    httpuv,
+    jsonlite,
+    utils,
+    methods
+RoxygenNote: 7.2.3
