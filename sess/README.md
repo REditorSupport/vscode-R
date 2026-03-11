@@ -128,6 +128,24 @@ The `sess` package replaces the legacy file-based IPC mechanism with a modern, i
 | **Transport Reliability**| OS-level File System Watchers | **WebSocket & HTTP streams** |
 | **Protocol Standard** | Ad-hoc JSON formats | **JSON-RPC 2.0** |
 
+### Detailed Mapping: Legacy to Modern
+
+**1. Command Dispatch (e.g., `View()`, `browser()`, `help()`)**
+- **Old Approach:** R intercepted commands and appended custom JSON structures to a `request.log` file, then updated the timestamp on a `request.lock` file. The client OS file watcher detected the `.lock` file change, read the `.log` file, and processed the pending commands.
+- **New Approach (`sess`):** R directly pushes an instantaneous **JSON-RPC Notification** (e.g., `method: "dataview"`, `method: "help"`) over the persistent WebSocket connection. The client receives and processes the payload instantly, bypassing disk I/O and file system watchers entirely.
+
+**2. Workspace State (Global Environment)**
+- **Old Approach:** An R task callback ran after every top-level console execution, eagerly evaluating and serializing the entire Global Environment to a `workspace.json` file, followed by touching a `workspace.lock` file. The client watched for the lock file change to read the JSON file. This caused constant overhead and disk writes, even when the client's workspace pane was hidden.
+- **New Approach (`sess`):** Adopts a "Pull" architecture. The workspace is *only* evaluated and serialized when the client explicitly sends an **HTTP POST Request** to `/rpc` with `method: "workspace"`. This happens on-demand (e.g., when the UI pane is visible), saving significant R processing time and disk I/O.
+
+**3. Static Plots**
+- **Old Approach:** Plotting commands (via custom devices or hooks) generated a `plot.png` file on disk and updated a `plot.lock` file. The client watcher noticed the lock change, read the new PNG file from disk, and displayed it.
+- **New Approach (`sess`):** When a new plot is generated to a temporary file, R sends a lightweight **JSON-RPC Notification** (`method: "plot_updated"`) via the WebSocket. The client then pulls the actual image data by sending an **HTTP POST Request** to `/rpc` (`method: "plot_latest"`), which returns the base64-encoded image over the network stream.
+
+**4. Client Queries (Hover, Completion)**
+- **Old Approach:** The legacy architecture sometimes ran a rudimentary local HTTP server inside R that accepted custom HTTP GET/POST queries with ad-hoc URL paths (`/hover`, `/completion`) and custom JSON body structures.
+- **New Approach (`sess`):** Unified under the **JSON-RPC 2.0** standard. The client sends structured requests with strict `id` and `params` formatting to the single `/rpc` HTTP endpoint, receiving standardized JSON-RPC responses.
+
 ### Architectural Shifts
 
 1. **Elimination of File Watchers**: The legacy system relied heavily on OS-level file system watchers (`fs.watch`) monitoring lock files to trigger client updates. This approach could be unreliable or slow across different platforms, network drives, and remote container environments. `sess` replaces this entirely with persistent WebSocket connections for instantaneous, reliable event pushing.
