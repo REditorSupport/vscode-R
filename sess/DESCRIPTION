@@ -1,4 +1,4 @@
-Package: vscr
+Package: sess
 Type: Package
 Title: Modern VS Code R IPC Server
 Version: 0.1.0

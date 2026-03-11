@@ -6,7 +6,7 @@
 #' @param payload A list containing the arguments for the command
 #' @export
 notify_vscode <- function(command, payload = list()) {
-  if (is.null(.vscr_env$ws)) {
+  if (is.null(.sess_env$ws)) {
     return(FALSE) # No active client connected
   }
   
@@ -18,7 +18,7 @@ notify_vscode <- function(command, payload = list()) {
   
   # Push instantly over the websocket
   tryCatch({
-    .vscr_env$ws$send(jsonlite::toJSON(msg, auto_unbox = TRUE, null = "null", force = TRUE))
+    .sess_env$ws$send(jsonlite::toJSON(msg, auto_unbox = TRUE, null = "null", force = TRUE))
     return(TRUE)
   }, error = function(e) {
     return(FALSE)
