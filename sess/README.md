@@ -29,14 +29,16 @@ The WebSocket is used for instantaneous events pushed from R to the client as **
 }
 ```
 
-#### Common Methods
+#### Client Notifications (`notify_client` Methods)
+The following methods are sent as notifications from R to the client:
 - **`attach`**: Sent immediately upon connection. Includes PID, R version, and session metadata.
-- **`detach`**: Sent when the R session is shutting down.
+- **`detach`**: Sent when the R session is shutting down (params: `pid`).
 - **`dataview`**: Triggered by `View()`. Params include a temporary JSON file path containing the data.
-- **`plot_updated`**: Notifies that a new static plot is available. The client should request the `plot_latest` method.
-- **`httpgd`**: Provides a URL for an `httpgd` live plot server.
-- **`help`**: Requests the client to display an R help page.
-- **`browser` / `webview`**: Requests the client to open a URL or local HTML file.
+- **`plot_updated`**: Notifies that a new static plot is available. The client should request the `plot_latest` method via HTTP.
+- **`httpgd`**: Provides a URL for an `httpgd` live plot server (params: `url`).
+- **`help`**: Requests the client to display an R help page (params: `requestPath`).
+- **`browser`**: Requests the client to open a URL (params: `url`, `title`).
+- **`webview`**: Requests the client to open a local HTML file or URL in a webview (params: `file`, `title`).
 
 ---
 
@@ -96,7 +98,7 @@ Returns the most recent static plot captured by the R session.
 
 ---
 
-3. Synchronous RStudio API Emulation
+## 3. Synchronous RStudio API Emulation
 
 The `request_client()` function allows R to call client-side functions synchronously by sending a **JSON-RPC Request** (with an `id`) over the WebSocket:
 
@@ -106,6 +108,24 @@ The `request_client()` function allows R to call client-side functions synchrono
 4. R retrieves the `result` (or `error`) and returns it.
 
 **Coordinate Handling**: The emulation layer automatically converts between R (1-indexed) and IPC (0-indexed) coordinates. Locations and ranges sent to the client are 0-indexed, while data received from the client (e.g., in `document_context`) is converted back to 1-indexed R objects.
+
+### Client Request Methods (`request_client`)
+Below are all the JSON-RPC methods sent from R to the client to emulate RStudio API functionality:
+
+- **`active_editor_context`**: Requests the current context of the active editor.
+- **`replace_text_in_current_selection`**: Replaces text in the current selection (params: `text`, `id`).
+- **`insert_or_modify_text`**: Inserts or modifies text at specific locations (params: `query`, `id`).
+- **`show_dialog`**: Displays a message dialog to the user (params: `message`).
+- **`navigate_to_file`**: Opens and navigates to a specific file, line, and column (params: `file`, `line`, `column`).
+- **`set_selection_ranges`**: Sets the cursor or selection ranges in the editor (params: `ranges`, `id`).
+- **`document_save`**: Saves the specified document (params: `id`).
+- **`get_project_path`**: Retrieves the current project path.
+- **`document_context`**: Retrieves the context of a specific document (params: `id`).
+- **`document_save_all`**: Saves all open documents.
+- **`document_new`**: Creates a new document with specified text and type (params: `text`, `type`, `position`).
+- **`restart_r`**: Requests the client to restart the R session.
+- **`send_to_console`**: Sends code to the console for execution (params: `code`, `execute`, `focus`).
+- **`document_close`**: Closes the specified document (params: `id`, `save`).
 
 ## 4. Hook Registration
 
