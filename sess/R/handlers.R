@@ -1,4 +1,4 @@
-# Handlers for VS Code Pull Requests (HTTP GET/POST)
+# Handlers for the client Pull Requests (HTTP GET/POST)
 
 get_workspace_data <- function() {
   env <- .GlobalEnv
@@ -44,7 +44,7 @@ handle_complete <- function(expr_str, trigger) {
 
   if (trigger == "$") {
     nms <- if (is.object(obj)) {
-      .DollarNames(obj, pattern = "")
+      utils::.DollarNames(obj, pattern = "")
     } else if (is.recursive(obj)) {
       names(obj)
     } else {

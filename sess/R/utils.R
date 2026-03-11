@@ -1,9 +1,30 @@
-# Helper to format HTTP JSON responses
-json_response <- function(data) {
+# Helper to format JSON-RPC 2.0 Responses
+json_rpc_response <- function(id, result) {
   list(
     status = 200L,
     headers = list("Content-Type" = "application/json"),
-    body = jsonlite::toJSON(data, auto_unbox = TRUE, null = "null", force = TRUE)
+    body = jsonlite::toJSON(list(
+      jsonrpc = "2.0",
+      id = id,
+      result = result
+    ), auto_unbox = TRUE, null = "null", force = TRUE)
+  )
+}
+
+# Helper to format JSON-RPC 2.0 Errors
+json_rpc_error <- function(id, code, message, data = NULL) {
+  list(
+    status = 200L, # JSON-RPC typically returns 200 even for errors
+    headers = list("Content-Type" = "application/json"),
+    body = jsonlite::toJSON(list(
+      jsonrpc = "2.0",
+      id = id,
+      error = list(
+        code = code,
+        message = message,
+        data = data
+      )
+    ), auto_unbox = TRUE, null = "null", force = TRUE)
   )
 }
 

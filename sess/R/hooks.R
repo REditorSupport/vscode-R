@@ -1,4 +1,4 @@
-#' Register hooks for VS Code IPC
+#' Register hooks for the client IPC
 #'
 #' @export
 register_hooks <- function() {
@@ -9,7 +9,7 @@ register_hooks <- function() {
     file_path <- tempfile(fileext = ".json")
     jsonlite::write_json(as.data.frame(x), file_path, auto_unbox = TRUE, null = "null", na = "string")
     
-    notify_vscode("dataview", list(
+    notify_client("dataview", list(
       title = title,
       file = file_path,
       source = "table",
@@ -19,7 +19,7 @@ register_hooks <- function() {
   
   # 2. Browser & Webview Options
   show_browser <- function(url, title = url, ...) {
-    notify_vscode("browser", list(url = url, title = title))
+    notify_client("browser", list(url = url, title = title))
   }
   
   show_webview <- function(url, title = "WebView", ...) {
@@ -27,7 +27,7 @@ register_hooks <- function() {
     if (file.exists(url)) {
       url <- normalizePath(url, "/", mustWork = TRUE)
     }
-    notify_vscode("webview", list(file = url, title = title))
+    notify_client("webview", list(file = url, title = title))
   }
   
   options(
@@ -43,7 +43,7 @@ register_hooks <- function() {
         file <- x[1]
         pkgname <- basename(dirname(dirname(file)))
         requestPath <- paste0("/library/", pkgname, "/html/", basename(file), ".html")
-        notify_vscode("help", list(requestPath = requestPath))
+        notify_client("help", list(requestPath = requestPath))
     }
     invisible(x)
   }, ns = "utils")
@@ -51,7 +51,7 @@ register_hooks <- function() {
   rebind("print.hsearch", function(x, ...) {
     if (length(x) >= 1) {
         requestPath <- paste0("/doc/html/Search?pattern=", tools:::escapeAmpersand(x$pattern))
-        notify_vscode("help", list(requestPath = requestPath))
+        notify_client("help", list(requestPath = requestPath))
     }
     invisible(x)
   }, ns = "utils")
@@ -61,16 +61,20 @@ register_hooks <- function() {
   if (use_httpgd && requireNamespace("httpgd", quietly = TRUE)) {
     options(device = function(...) {
         httpgd::hgd(silent = TRUE)
-        notify_vscode("httpgd", list(url = httpgd::hgd_url()))
+        notify_client("httpgd", list(url = httpgd::hgd_url()))
     })
   } else {
     # Default to static plot capturing
+    options(device = function(...) {
+      png(.sess_env$latest_plot_path, width = 800, height = 600, res = 72)
+    })
+
     setHook("plot.new", function(...) {
-      notify_vscode("plot_updated", list(url = "/plot/latest.png"))
+      notify_client("plot_updated")
     }, "replace")
     
     setHook("grid.newpage", function(...) {
-      notify_vscode("plot_updated", list(url = "/plot/latest.png"))
+      notify_client("plot_updated")
     }, "replace")
   }
 }
@@ -83,12 +87,24 @@ register_hooks <- function() {
 request_rstudioapi <- function(action, args = list()) {
   req_id <- basename(tempfile("req_"))
   
-  # Send request via websocket
-  notify_vscode("rstudioapi", list(
-    req_id = req_id,
-    action = action,
-    args = args
-  ))
+  # Send JSON-RPC 2.0 Request via websocket
+  msg <- list(
+    jsonrpc = "2.0",
+    id = req_id,
+    method = "rstudioapi",
+    params = list(
+        action = action,
+        args = args
+    )
+  )
+
+  if (!is.null(.sess_env$ws)) {
+    tryCatch({
+        .sess_env$ws$send(jsonlite::toJSON(msg, auto_unbox = TRUE, null = "null", force = TRUE))
+    }, error = function(e) return(NULL))
+  } else {
+    return(NULL)
+  }
   
   # NON-BLOCKING WAIT:
   # Process HTTP/WS events in the background while blocking the R console execution
@@ -101,6 +117,11 @@ request_rstudioapi <- function(action, args = list()) {
   # Retrieve and clean up response
   response <- .sess_env$pending_responses[[req_id]]
   .sess_env$pending_responses[[req_id]] <- NULL
+  
+  # Handle JSON-RPC Errors if any
+  if (inherits(response, "json_rpc_error")) {
+    stop(sprintf("JSON-RPC Error [%d]: %s", response$code, response$message))
+  }
   
   return(response)
 }

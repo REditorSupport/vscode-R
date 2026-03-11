@@ -1,19 +1,19 @@
-#' Notify VS Code via WebSocket
+#' Notify the client via WebSocket (JSON-RPC 2.0 Notification)
 #' 
-#' Pushes an event instantly to the VS Code extension via the active WebSocket connection.
+#' Pushes an event instantly to the client extension via the active WebSocket connection.
 #'
-#' @param command A string representing the action (e.g., "dataview", "plot_updated")
-#' @param payload A list containing the arguments for the command
+#' @param method A string representing the action (e.g., "dataview", "plot_updated")
+#' @param params A list containing the arguments for the command
 #' @export
-notify_vscode <- function(command, payload = list()) {
+notify_client <- function(method, params = list()) {
   if (is.null(.sess_env$ws)) {
     return(FALSE) # No active client connected
   }
   
   msg <- list(
-    command = command,
-    payload = payload,
-    time = format(Sys.time(), "%Y-%m-%d %H:%M:%OS6")
+    jsonrpc = "2.0",
+    method = method,
+    params = params
   )
   
   # Push instantly over the websocket

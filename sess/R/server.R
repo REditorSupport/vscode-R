@@ -1,11 +1,11 @@
-#' Start the VS Code R IPC Server
+#' Start the client R IPC Server
 #' 
 #' @export
 sess_app <- function() {
   
   on.exit({
     if (!is.null(.sess_env$server)) {
-      notify_vscode("detach", list(pid = Sys.getpid()))
+      notify_client("detach", list(pid = Sys.getpid()))
       .sess_env$server$stop()
     }
   })
@@ -31,30 +31,36 @@ sess_app <- function() {
       path <- req$PATH_INFO
       
       # 2. Routing
-      if (path == "/workspace" && req$REQUEST_METHOD == "GET") {
-        # Lazy workspace evaluation - only done when VS Code asks!
-        return(json_response(get_workspace_data()))
-      } 
-      else if (path == "/plot/latest.png" && req$REQUEST_METHOD == "GET") {
-        # Serve plot from memory/temp, not disk syncing
-        if (file.exists(.sess_env$latest_plot_path)) {
-          return(list(
-            status = 200L,
-            headers = list("Content-Type" = "image/png"),
-            body = readBin(.sess_env$latest_plot_path, "raw", file.info(.sess_env$latest_plot_path)$size)
-          ))
-        } else {
-          return(list(status = 404L, headers = list("Content-Type" = "text/plain"), body = "Plot not found"))
+      if (path == "/rpc" && req$REQUEST_METHOD == "POST") {
+        # JSON-RPC 2.0 Implementation
+        body <- tryCatch(jsonlite::fromJSON(req$rook.input$read_lines()), error = function(e) NULL)
+        
+        if (is.null(body) || is.null(body$method)) {
+          return(json_rpc_error(NULL, -32600, "Invalid Request"))
         }
+
+        # Dispatch method
+        res <- switch(body$method,
+          "workspace" = get_workspace_data(),
+          "hover" = handle_hover(body$params$expr),
+          "completion" = handle_complete(body$params$expr, body$params$trigger),
+          "plot_latest" = {
+            if (file.exists(.sess_env$latest_plot_path)) {
+              raw_img <- readBin(.sess_env$latest_plot_path, "raw", file.info(.sess_env$latest_plot_path)$size)
+              list(data = as.character(jsonlite::base64_enc(raw_img)))
+            } else {
+              list(data = NULL)
+            }
+          },
+          NULL
+        )
+
+        if (is.null(res)) {
+          return(json_rpc_error(body$id, -32601, "Method not found"))
+        }
+
+        return(json_rpc_response(body$id, res))
       } 
-      else if (path == "/rpc/hover" && req$REQUEST_METHOD == "POST") {
-        body <- jsonlite::fromJSON(req$rook.input$read_lines())
-        return(json_response(handle_hover(body$expr)))
-      }
-      else if (path == "/rpc/complete" && req$REQUEST_METHOD == "POST") {
-        body <- jsonlite::fromJSON(req$rook.input$read_lines())
-        return(json_response(handle_complete(body$expr, body$trigger)))
-      }
 
       list(status = 404L, headers = list("Content-Type" = "text/plain"), body = "Not Found")
     },
@@ -64,8 +70,8 @@ sess_app <- function() {
       # Bind the active websocket to our environment
       .sess_env$ws <- ws
       
-      # Send the attach handshake immediately upon connection
-      notify_vscode("attach", list(
+      # Send the attach handshake immediately upon connection (JSON-RPC Notification)
+      notify_client("attach", list(
         version = sprintf("%s.%s", R.version$major, R.version$minor),
         pid = Sys.getpid(),
         tempdir = tempdir(),
@@ -78,12 +84,16 @@ sess_app <- function() {
       ))
       
       ws$onMessage(function(binary, message) {
-        # Handle messages COMING FROM VS Code (e.g., rstudioapi responses)
+        # Handle JSON-RPC 2.0 messages COMING FROM the client
         payload <- tryCatch(jsonlite::fromJSON(message), error = function(e) NULL)
         
-        if (!is.null(payload) && !is.null(payload$type) && payload$type == "rstudioapi_response") {
-           # Store response to unblock the wait loop
-           .sess_env$pending_responses[[payload$req_id]] <- payload$data
+        if (!is.null(payload) && !is.null(payload$id)) {
+           # It's a Response (to our RStudio API request)
+           if (!is.null(payload$result)) {
+             .sess_env$pending_responses[[as.character(payload$id)]] <- payload$result
+           } else if (!is.null(payload$error)) {
+             .sess_env$pending_responses[[as.character(payload$id)]] <- structure(payload$error, class = "json_rpc_error")
+           }
         }
       })
       
@@ -98,7 +108,7 @@ sess_app <- function() {
   .sess_env$server <- httpuv::startServer("127.0.0.1", port, app = app_handlers)
   
   # Print the connection string to the console.
-  cat(sprintf("\n[sess] VSCODE_IPC_SERVER=ws://127.0.0.1:%d?token=%s\n", port, .sess_env$token))
+  cat(sprintf("\n[sess] SESS_IPC_SERVER=ws://127.0.0.1:%d?token=%s\n", port, .sess_env$token))
   
   # Register runtime hooks
   register_hooks()
