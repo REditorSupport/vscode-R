@@ -1,7 +1,9 @@
 #' Start the client R IPC Server
 #' 
+#' @param use_rstudioapi Logical. Should the rstudioapi emulation layer be enabled? Defaults to TRUE.
+#' @param use_httpgd Logical. Should httpgd be used for plotting if available? Defaults to FALSE.
 #' @export
-sess_app <- function() {
+sess_app <- function(use_rstudioapi = TRUE, use_httpgd = FALSE) {
   
   on.exit({
     if (!is.null(.sess_env$server)) {
@@ -111,5 +113,5 @@ sess_app <- function() {
   cat(sprintf("\n[sess] SESS_IPC_SERVER=ws://127.0.0.1:%d?token=%s\n", port, .sess_env$token))
   
   # Register runtime hooks
-  register_hooks()
+  register_hooks(use_rstudioapi = use_rstudioapi, use_httpgd = use_httpgd)
 }

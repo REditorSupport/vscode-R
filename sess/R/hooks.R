@@ -1,7 +1,9 @@
 #' Register hooks for the client IPC
 #'
+#' @param use_rstudioapi Logical. Enable rstudioapi emulation.
+#' @param use_httpgd Logical. Enable httpgd plot device if available.
 #' @export
-register_hooks <- function() {
+register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = FALSE) {
   
   # 1. Override View() to push data directly via WebSocket
   rebind("View", function(x, title = deparse(substitute(x))) {
@@ -57,7 +59,6 @@ register_hooks <- function() {
   }, ns = "utils")
 
   # 4. httpgd or Static Plot Hook
-  use_httpgd <- isTRUE(getOption("vsc.use_httpgd", FALSE))
   if (use_httpgd && requireNamespace("httpgd", quietly = TRUE)) {
     options(device = function(...) {
         httpgd::hgd(silent = TRUE)
@@ -76,6 +77,17 @@ register_hooks <- function() {
     setHook("grid.newpage", function(...) {
       notify_client("plot_updated")
     }, "replace")
+  }
+
+  # 5. rstudioapi hooks
+  if (use_rstudioapi) {
+    setHook(packageEvent("rstudioapi", "onLoad"), function(...) {
+      patch_rstudioapi()
+    }, action = "append")
+    
+    if ("rstudioapi" %in% loadedNamespaces()) {
+        patch_rstudioapi()
+    }
   }
 }
 
