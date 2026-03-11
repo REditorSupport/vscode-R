@@ -117,7 +117,7 @@ setDocumentContents <- function(text, id = NULL) {
     insertText(whole_document_range, text, id)
 }
 
-restartSession <- function() invisible(request_client("restart_r", args = list()))
+restartSession <- function(command = "", clean = FALSE) invisible(notify_client("restart_r", params = list(command = command, clean = clean)))
 
 viewer <- function(url, height = NULL) {
     notify_client("webview", list(file = url, title = "Viewer"))
@@ -131,10 +131,10 @@ getVersion <- function() numeric_version("0")
 
 versionInfo <- function() list(citation = "", mode = "generic-ipc", version = numeric_version("0"), release_name = "generic-ipc")
 
-sendToConsole <- function(code, execute = TRUE, echo = TRUE, focus = FALSE) {
+sendToConsole <- function(code, execute = TRUE, echo = TRUE, focus = FALSE, animate = FALSE) {
     if (!echo) warning("rstudioapi::sendToConsole echo = FALSE is not supported in the generic IPC client.")
     code_to_run <- paste0(code, collapse = "\n")
-    invisible(request_client("send_to_console", args = list(code = code_to_run, execute = execute, focus = focus)))
+    invisible(notify_client("send_to_console", params = list(code = code_to_run, execute = execute, focus = focus, animate = animate)))
 }
 
 documentClose <- function(id = NULL, save = TRUE) {
