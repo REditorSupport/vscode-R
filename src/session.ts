@@ -63,9 +63,7 @@ let plotLockFile: string;
 let plotTimeStamp: number;
 let workspaceWatcher: FSWatcher;
 let plotWatcher: FSWatcher;
-let activeBrowserPanel: WebviewPanel | undefined;
 let activeBrowserUri: Uri | undefined;
-let activeBrowserExternalUri: Uri | undefined;
 
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
@@ -227,78 +225,25 @@ export async function showBrowser(url: string, title: string, viewer: string | b
     if (viewer === false) {
         void env.openExternal(uri);
     } else {
-        const externalUri = await env.asExternalUri(uri);
-        const panel = window.createWebviewPanel(
-            'browser',
-            title,
-            {
-                preserveFocus: true,
-                viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
-            },
-            {
-                enableFindWidget: true,
-                enableScripts: true,
-                retainContextWhenHidden: true,
-            });
+        const viewColumn = ViewColumn[String(viewer) as keyof typeof ViewColumn];
+        await commands.executeCommand('simpleBrowser.show', url, {
+            preserveFocus: true,
+            viewColumn: viewColumn,
+        });
         if (isHost()) {
             await shareBrowser(url, title);
         }
-        panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
-            if (e.webviewPanel.active) {
-                activeBrowserPanel = panel;
-                activeBrowserUri = uri;
-                activeBrowserExternalUri = externalUri;
-            } else {
-                activeBrowserPanel = undefined;
-                activeBrowserUri = undefined;
-                activeBrowserExternalUri = undefined;
-            }
-            void commands.executeCommand('setContext', 'r.browser.active', e.webviewPanel.active);
-        });
-        panel.onDidDispose(() => {
-            activeBrowserPanel = undefined;
-            activeBrowserUri = undefined;
-            activeBrowserExternalUri = undefined;
-            if (isHost()) {
-                closeBrowser(url);
-            }
-            void commands.executeCommand('setContext', 'r.browser.active', false);
-        });
-        panel.iconPath = new UriIcon('globe');
-        panel.webview.html = getBrowserHtml(externalUri);
+        activeBrowserUri = uri;
     }
     console.info('[showBrowser] Done');
 }
 
-function getBrowserHtml(uri: Uri): string {
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-    html, body {
-        height: 100%;
-        padding: 0;
-        overflow: hidden;
-    }
-    </style>
-</head>
-<body>
-    <iframe src="${uri.toString(true)}" width="100%" height="100%" frameborder="0" />
-</body>
-</html>
-`;
-}
-
 export function refreshBrowser(): void {
     console.log('[refreshBrowser]');
-    if (activeBrowserPanel) {
-        activeBrowserPanel.webview.html = '';
-        if (activeBrowserExternalUri) {
-            activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserExternalUri);
-        }
+    if (activeBrowserUri) {
+        void commands.executeCommand('simpleBrowser.show', activeBrowserUri.toString(true), {
+            preserveFocus: true,
+        });
     }
 }
 
