@@ -9,7 +9,7 @@
 import {
     window, TextEditor, TextDocument, Uri,
     workspace, WorkspaceEdit, Position, Range, Selection,
-    QuickPickItem, QuickPickOptions, ViewColumn, commands
+    QuickPickItem, QuickPickOptions, ViewColumn
 } from 'vscode';
 import { readJSON } from 'fs-extra';
 import * as path from 'path';
@@ -155,17 +155,13 @@ export async function documentSaveAll(): Promise<void> {
 
 export async function documentClose(id: string | null, save: boolean): Promise<void> {
     const target = findTargetUri(id);
-    const targetDocument = await workspace.openTextDocument(target);
     if (save) {
+        const targetDocument = await workspace.openTextDocument(target);
         await targetDocument.save();
     }
-    // VS Code doesn't have a direct "close document" API that takes a Document.
-    // We have to show it and then execute the close editor command, 
-    // or use more complex workbench commands.
-    const editor = await window.showTextDocument(targetDocument, { preserveFocus: true, preview: true });
-    if (editor) {
-        await commands.executeCommand('workbench.action.closeActiveEditor');
-    }
+    const tabs = window.tabGroups.all.flatMap(g => g.tabs);
+    const targetTabs = tabs.filter(t => (t.input as any)?.uri?.toString() === target.toString());
+    await window.tabGroups.close(targetTabs);
 }
 
 // TODO: very similar to ./utils.getCurrentWorkspaceFolder()

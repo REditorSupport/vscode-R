@@ -133,7 +133,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // interaction with R sessions
         'r.previewDataframe': preview.previewDataframe,
         'r.previewEnvironment': preview.previewEnvironment,
-        'r.attachActive': session.attachActive,
+        'r.activateRSession': session.activateRSession,
         'r.launchAddinPicker': rstudioapi.launchAddinPicker,
 
         // workspace viewer
@@ -233,9 +233,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
             // create status bar item that contains info about the session watcher
             console.info('Create sessionStatusBarItem');
             sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
-            sessionStatusBarItem.command = 'r.attachActive';
+            sessionStatusBarItem.command = 'r.activateRSession';
             sessionStatusBarItem.text = 'R: (not attached)';
-            sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
+            sessionStatusBarItem.tooltip = 'Click to activate or focus R session.';
             sessionStatusBarItem.show();
             context.subscriptions.push(sessionStatusBarItem);
         }

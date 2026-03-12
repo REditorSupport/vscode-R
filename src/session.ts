@@ -8,14 +8,14 @@ import fetch from 'node-fetch';
 import * as vscode from 'vscode';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
 
-import { runTextInTerm, restartRTerminal } from './rTerminal';
+import { restartRTerminal, createRTerm } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
 import { config, readContent, setContext, UriIcon } from './util';
 import { purgeAddinPickerItems } from './rstudioapi';
 
 import { IRequest } from './liveShare/shareSession';
 import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext, sessionStatusBarItem } from './extension';
-import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
+import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc } from './liveShare';
 
 export interface GlobalEnv {
     [key: string]: {
@@ -205,13 +205,54 @@ export function discoverSessions(): void {
     })();
 }
 
-export function attachActive(): void {
+export async function activateRSession(): Promise<void> {
     if (config().get<boolean>('sessionWatcher')) {
-        console.info('[attachActive]');
-        void runTextInTerm('if (requireNamespace("sess", quietly = TRUE)) sess::sess_app()');
-        if (isLiveShare() && shareWorkspace) {
-            rHostService?.notifyRequest(requestFile, true);
+        console.info('[activateRSession]');
+        const terminal = window.activeTerminal;
+        if (terminal) {
+            const pidArg = await terminal.processId;
+            if (pidArg) {
+                // 1. Check if we already have a session for this PID
+                const session = sessions.get(String(pidArg));
+                if (session) {
+                    await activateSession(session);
+                    terminal.show();
+                    return;
+                }
+
+                // 2. Check if we have an active connection that hasn't "attached" yet
+                for (const ws of activeConnections.values()) {
+                    if ((ws as any)._terminalPid === pidArg) {
+                        terminal.show();
+                        return; // Already connecting/connected
+                    }
+                }
+
+                // 3. Check if we have persisted state for this PID
+                const persistedSessions = extensionContext.workspaceState.get<Record<string, { port: number, token: string }>>('r.sessions', {});
+                if (persistedSessions[String(pidArg)]) {
+                    const sessionData = persistedSessions[String(pidArg)];
+                    startSessionWatcher(sessionData.port, sessionData.token, pidArg);
+                    terminal.show();
+                    return;
+                }
+            }
         }
+
+        // If we reached here, either there's no active terminal or it's not managed.
+        // We focus the terminal of the active session if it exists.
+        if (activeSession) {
+            for (const term of window.terminals) {
+                const termPid = await term.processId;
+                if (termPid && sessions.get(String(termPid)) === activeSession) {
+                    term.show();
+                    return;
+                }
+            }
+        }
+
+        // Otherwise, create a new R terminal
+        await createRTerm();
     } else {
         void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }
@@ -743,14 +784,6 @@ function isFromWorkspace(dir: string) {
     return false;
 }
 
-export async function writeResponse(responseData: Record<string, unknown>, responseSessionDir: string): Promise<void> {
-    // Deprecated
-}
-
-export async function writeSuccessResponse(responseSessionDir: string): Promise<void> {
-    // Deprecated
-}
-
 import * as rstudioapi from './rstudioapi';
 
 export async function activateSession(session: Session): Promise<void> {
@@ -965,6 +998,7 @@ export async function cleanupSession(pidArg: string): Promise<void> {
             sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
         }
         server = undefined;
+        activeSession = undefined;
         workspaceData.globalenv = {};
         workspaceData.loaded_namespaces = [];
         workspaceData.search = [];
