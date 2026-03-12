@@ -157,6 +157,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // keep track of terminals
     context.subscriptions.push(vscode.window.onDidCloseTerminal(rTerminal.deleteTerminal));
+    context.subscriptions.push(vscode.window.onDidChangeActiveTerminal(session.switchSessionByTerminal));
 
     // start language service
     if (util.config().get<boolean>('lsp.enabled')) {
@@ -227,6 +228,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         if (!rShare.isGuestSession) {
             console.info('Initialize session watcher');
             void session.deploySessionWatcher(context.extensionPath);
+            void session.discoverSessions();
 
             // create status bar item that contains info about the session watcher
             console.info('Create sessionStatusBarItem');

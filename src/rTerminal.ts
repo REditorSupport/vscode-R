@@ -9,7 +9,7 @@ import { extensionContext, homeExtDir } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession } from './session';
+import { cleanupSession, saveSessionState, clearSessionState, updateSessionTerminalId } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
@@ -167,7 +167,15 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     rTerm.show(preserveshow);
     
     if (termOptions.env?.SESS_PORT && termOptions.env?.SESS_TOKEN) {
-        startSessionWatcher(Number(termOptions.env.SESS_PORT), termOptions.env.SESS_TOKEN);
+        const port = Number(termOptions.env.SESS_PORT);
+        const token = termOptions.env.SESS_TOKEN;
+        startSessionWatcher(port, token);
+        void rTerm.processId.then((pid) => {
+            if (pid) {
+                saveSessionState(pid, port, token);
+                updateSessionTerminalId(port, pid);
+            }
+        });
     }
     
     return true;
@@ -187,6 +195,7 @@ export function deleteTerminal(term: vscode.Terminal): void {
         if (config().get<boolean>('sessionWatcher')) {
             void term.processId.then((v) => {
                 if (v) {
+                    clearSessionState(v);
                     void cleanupSession(v.toString());
                 }
             });

@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Agent } from 'http';
 import fetch from 'node-fetch';
+import * as vscode from 'vscode';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
 
 import { runTextInTerm, restartRTerminal } from './rTerminal';
@@ -41,6 +42,22 @@ export interface SessionServer {
     token: string;
 }
 
+export class Session {
+    public server: SessionServer;
+    public ws: WebSocket;
+    public pid: string;
+    public rVer: string;
+    public info: any;
+    public sessionDir: string;
+    public workingDir: string;
+    public workspaceData: WorkspaceData;
+
+    constructor(server: SessionServer, ws: WebSocket) {
+        this.server = server;
+        this.ws = ws;
+    }
+}
+
 export let workspaceData: WorkspaceData;
 let resDir: string;
 export let requestFile: string;
@@ -56,6 +73,9 @@ let info: any;
 const httpAgent = new Agent({ keepAlive: true });
 export let server: SessionServer | undefined;
 export let workspaceFile: string;
+
+const sessions = new Map<string, Session>();
+export let activeSession: Session | undefined;
 let workspaceLockFile: string;
 let workspaceTimeStamp: number;
 let plotFile: string;
@@ -81,31 +101,53 @@ export function deploySessionWatcher(extensionPath: string): void {
     });
 }
 
-import * as WebSocket from 'ws';
+import WebSocket from "ws";
 
-let wsClient: WebSocket.WebSocket | undefined;
+let wsClient: WebSocket | undefined;
+const activeConnections = new Map<number, WebSocket>();
 
-export function startSessionWatcher(port: number, token: string): void {
+export function startSessionWatcher(port: number, token: string, terminalPid?: number): void {
+    if (activeConnections.has(port)) {
+        console.info(`[startSessionWatcher] Already connected to port ${port}`);
+        const ws = activeConnections.get(port);
+        if (ws?.readyState === WebSocket.OPEN) {
+            wsClient = ws;
+            if (terminalPid) {
+                (ws as any)._terminalPid = terminalPid;
+            }
+            server = { host: '127.0.0.1', port, token };
+            return;
+        } else {
+            activeConnections.delete(port);
+        }
+    }
+    
     console.info(`[startSessionWatcher] Connecting to ws://127.0.0.1:${port}?token=${token}`);
     
     let retries = 0;
     const connect = () => {
         const url = `ws://127.0.0.1:${port}?token=${token}`;
-        const ws = new WebSocket.WebSocket(url);
+        const ws = new WebSocket(url);
         
         ws.on('open', () => {
             console.info('[startSessionWatcher] Connected');
             wsClient = ws;
+            (ws as any)._port = port;
+            (ws as any)._token = token;
+            if (terminalPid) {
+                (ws as any)._terminalPid = terminalPid;
+            }
+            activeConnections.set(port, ws);
             server = { host: '127.0.0.1', port, token };
             retries = 0;
         });
         
-        ws.on('message', (data: WebSocket.Data) => {
+        ws.on('message', (data: any) => {
             void (async () => {
                 try {
                     const message = JSON.parse(data.toString()) as Record<string, unknown>;
                     if (!message.id) {
-                        await handleNotification(message);
+                        await handleNotification(message, ws);
                     } else {
                         await handleRequest(message, ws);
                     }                } catch (e) {
@@ -116,11 +158,16 @@ export function startSessionWatcher(port: number, token: string): void {
         
         ws.on('close', () => {
             console.info('[startSessionWatcher] Disconnected');
-            wsClient = undefined;
+            if (activeConnections.get(port) === ws) {
+                activeConnections.delete(port);
+                if (wsClient === ws) {
+                    wsClient = undefined;
+                }
+            }
         });
         
         ws.on('error', (err: Error) => {
-            if (retries < 10 && !wsClient) {
+            if (retries < 10 && !activeConnections.has(port)) {
                 retries++;
                 setTimeout(connect, 500);
             }
@@ -128,6 +175,34 @@ export function startSessionWatcher(port: number, token: string): void {
     };
     
     connect();
+}
+
+export function saveSessionState(pid: number, port: number, token: string): void {
+    const sessionsMap = extensionContext.workspaceState.get<Record<string, { port: number, token: string }>>('r.sessions', {});
+    sessionsMap[String(pid)] = { port, token };
+    void extensionContext.workspaceState.update('r.sessions', sessionsMap);
+}
+
+export function clearSessionState(pid: number): void {
+    const sessionsMap = extensionContext.workspaceState.get<Record<string, { port: number, token: string }>>('r.sessions', {});
+    delete sessionsMap[String(pid)];
+    void extensionContext.workspaceState.update('r.sessions', sessionsMap);
+}
+
+export function discoverSessions(): void {
+    const persistedSessions = extensionContext.workspaceState.get<Record<string, { port: number, token: string }>>('r.sessions', {});
+    
+    void (async () => {
+        // Scan existing terminals
+        for (const terminal of window.terminals) {
+            const pidArg = await terminal.processId;
+            if (pidArg && persistedSessions[String(pidArg)]) {
+                const sessionData = persistedSessions[String(pidArg)];
+                console.info(`[discoverSessions] Found R session for PID ${pidArg} in workspaceState: ws://127.0.0.1:${sessionData.port}?token=${sessionData.token}`);
+                startSessionWatcher(sessionData.port, sessionData.token);
+            }
+        }
+    })();
 }
 
 export function attachActive(): void {
@@ -678,35 +753,86 @@ export async function writeSuccessResponse(responseSessionDir: string): Promise<
 
 import * as rstudioapi from './rstudioapi';
 
-async function handleNotification(message: Record<string, unknown>) {
+export async function activateSession(session: Session): Promise<void> {
+    activeSession = session;
+    wsClient = session.ws;
+    server = session.server;
+    pid = session.pid;
+    rVer = session.rVer;
+    info = session.info;
+    sessionDir = session.sessionDir;
+    workingDir = session.workingDir;
+    
+    if (sessionStatusBarItem) {
+        sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/restrict-template-expressions
+        sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
+        sessionStatusBarItem.show();
+    }
+    await setContext('rSessionActive', true);
+    rWorkspace?.refresh();
+}
+
+export async function switchSessionByTerminal(terminal: vscode.Terminal | undefined): Promise<void> {
+    if (!terminal) {
+        return;
+    }
+    const terminalPid = await terminal.processId;
+    if (terminalPid) {
+        // Try to find a session that matches this terminal PID
+        const session = sessions.get(String(terminalPid));
+        if (session) {
+            await activateSession(session);
+        }
+    }
+}
+
+export function updateSessionTerminalId(port: number, terminalPid: number): void {
+    const ws = activeConnections.get(port);
+    if (ws) {
+        (ws as any)._terminalPid = terminalPid;
+    }
+}
+
+async function handleNotification(message: Record<string, unknown>, ws: WebSocket) {
     const method = String(message.method);
     const params = (message.params as Record<string, unknown>) || {};
-    
+
     console.info(`[handleNotification] method: ${method}, params: ${JSON.stringify(params)}`);
 
     switch (method) {
         case 'attach': {
             if (!params.tempdir || !params.wd) {return;}
-            rVer = String(params.version);
-            pid = String(params.pid);
-            info = params.info;
-            sessionDir = path.join(String(params.tempdir), 'vscode-R');
-            workingDir = String(params.wd);
-            console.info(`[startSessionWatcher] attach PID: ${pid}`);
-            if (sessionStatusBarItem) {
-                sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
-                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/restrict-template-expressions
-                sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
-                sessionStatusBarItem.show();
+            const rPid = String(params.pid);
+            const terminalPid = (ws as any)._terminalPid ? String((ws as any)._terminalPid) : rPid;
+            
+            let session = sessions.get(terminalPid);
+            if (!session) {
+                session = new Session({ host: '127.0.0.1', port: (ws as any)._port, token: (ws as any)._token }, ws);
+                sessions.set(terminalPid, session);
+                // Also map R PID if it's different
+                if (rPid !== terminalPid) {
+                    sessions.set(rPid, session);
+                }
             }
+            session.rVer = String(params.version);
+            session.pid = rPid;
+            session.info = params.info;
+            session.sessionDir = path.join(String(params.tempdir), 'vscode-R');
+            session.workingDir = String(params.wd);
+
+            // Switch active session
+            await activateSession(session);
+
+            console.info(`[startSessionWatcher] attach R PID: ${rPid}, terminal PID: ${terminalPid}`);
             purgeAddinPickerItems();
-            await setContext('rSessionActive', true);
             if (params.plot_url) {
                 await globalHttpgdManager?.showViewer(String(params.plot_url));
             }
-            void watchProcess(pid).then((v: string) => { void cleanupSession(v); });
+            void watchProcess(rPid).then((v: string) => { void cleanupSession(v); });
             break;
         }
+
         // case 'detach': {
         //     if (params.pid) {
         //         await cleanupSession(String(params.pid));
@@ -760,7 +886,7 @@ async function handleNotification(message: Record<string, unknown>) {
     }
 }
 
-async function handleRequest(message: Record<string, unknown>, ws: WebSocket.WebSocket) {
+async function handleRequest(message: Record<string, unknown>, ws: WebSocket) {
     if (message.method) {
         const method = String(message.method);
         const params = (message.params as Record<string, unknown>) || {};
