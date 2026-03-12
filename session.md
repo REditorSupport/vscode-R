@@ -233,9 +233,9 @@ export async function showDataView(source: string, type: string, title: string, 
             { preserveFocus: true, viewColumn: ViewColumn[viewer as keyof typeof ViewColumn] },
             { enableScripts: true, enableFindWidget: true, retainContextWhenHidden: true, localResourceRoots: [Uri.file(resDir)] });
         panel.iconPath = new UriIcon('open-preview');
-        panel.webview.html = await getTableHtml(panel.webview, file);
+        panel.webview.html = await getTableHtml(panel.webview, file, title);
     } else if (source === 'list') {
-        // similar to table, but calls getListHtml
+        // similar to table, but calls getListHtml(panel.webview, file, title)
     } else {
         // Fallback for raw text 'object'
         await commands.executeCommand('vscode.open', Uri.file(file), {

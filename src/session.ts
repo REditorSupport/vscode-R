@@ -352,7 +352,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
             });
-        const content = await getTableHtml(panel.webview, file);
+        const content = await getTableHtml(panel.webview, file, title);
         panel.iconPath = new UriIcon('open-preview');
         panel.webview.html = content;
     } else if (source === 'list') {
@@ -367,7 +367,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
             });
-        const content = await getListHtml(panel.webview, file);
+        const content = await getListHtml(panel.webview, file, title);
         panel.iconPath = new UriIcon('open-preview');
         panel.webview.html = content;
     } else {
@@ -387,7 +387,7 @@ export async function showDataView(source: string, type: string, title: string, 
     console.info('[showDataView] Done');
 }
 
-export async function getTableHtml(webview: Webview, file: string): Promise<string> {
+export async function getTableHtml(webview: Webview, file: string, title: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
     const pageSize = config().get<number>('session.data.pageSize', 500);
     const content = await readContent(file, 'utf8');
@@ -397,6 +397,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${title}</title>
     <style media="only screen">
     html, body {
         height: 100%;
@@ -488,6 +489,14 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     [class*="vscode"] input[class^=ag-] {
         border-color: var(--vscode-notificationCenter-border) !important;
     }
+
+    [class*="vscode"] .text-left {
+        text-align: left;
+    }
+
+    [class*="vscode"] .text-right {
+        text-align: right;
+    }
     </style>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
     <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
@@ -574,7 +583,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
 `;
 }
 
-export async function getListHtml(webview: Webview, file: string): Promise<string> {
+export async function getListHtml(webview: Webview, file: string, title: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
     const content = await readContent(file, 'utf8');
 
@@ -584,6 +593,7 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${title}</title>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.js'))))}"></script>
     <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.css'))))}" rel="stylesheet">
@@ -727,6 +737,8 @@ async function handleNotification(message: Record<string, unknown>) {
     const method = String(message.method);
     const params = (message.params as Record<string, unknown>) || {};
     
+    console.info(`[handleNotification] method: ${method}, params: ${JSON.stringify(params)}`);
+
     switch (method) {
         case 'attach': {
             if (!params.tempdir || !params.wd) {return;}
@@ -750,12 +762,12 @@ async function handleNotification(message: Record<string, unknown>) {
             void watchProcess(pid).then((v: string) => { void cleanupSession(v); });
             break;
         }
-        case 'detach': {
-            if (params.pid) {
-                await cleanupSession(String(params.pid));
-            }
-            break;
-        }
+        // case 'detach': {
+        //     if (params.pid) {
+        //         await cleanupSession(String(params.pid));
+        //     }
+        //     break;
+        // }
         case 'help': {
             if (globalRHelp && params.requestPath) {
                 await globalRHelp.showHelpForPath(String(params.requestPath), params.viewer);
