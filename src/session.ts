@@ -55,6 +55,11 @@ export class Session {
     constructor(server: SessionServer, ws: WebSocket) {
         this.server = server;
         this.ws = ws;
+        this.pid = '';
+        this.rVer = '';
+        this.sessionDir = '';
+        this.workingDir = '';
+        this.workspaceData = { search: [], loaded_namespaces: [], globalenv: {} };
     }
 }
 
