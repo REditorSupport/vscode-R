@@ -52,8 +52,8 @@ export class HoverProvider implements vscode.HoverProvider {
             hoverRange = document.getWordRangeAtPosition(position, exprRegex)?.with({ end: hoverRange?.end });
             const expr = document.getText(hoverRange);
             const response = await session.sessionRequest(session.server, {
-                type: 'hover',
-                expr: expr
+                method: 'hover',
+                params: { expr: expr }
             });
 
             if (response) {
@@ -171,9 +171,8 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
                 const exprRange = document.getWordRangeAtPosition(symbolPosition, re)?.with({ end: symbolPosition });
                 const expr = document.getText(exprRange);
                 const response: RObjectElement[] = await session.sessionRequest(session.server, {
-                    type: 'complete',
-                    expr: expr,
-                    trigger: completionContext.triggerCharacter
+                    method: 'completion',
+                    params: { expr: expr, trigger: completionContext.triggerCharacter }
                 });
 
                 if (response) {

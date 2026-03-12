@@ -19,76 +19,7 @@ import { config } from './util';
 
 let lastActiveTextEditor: TextEditor;
 
-export async function dispatchRStudioAPICall(action: string, args: any, sd: string): Promise<void> {
-
-    switch (action) {
-        case 'active_editor_context': {
-            await writeResponse(activeEditorContext(), sd);
-            break;
-        }
-        case 'insert_or_modify_text': {
-            await insertOrModifyText(args.query, args.id);
-            await writeSuccessResponse(sd);
-            break;
-        }
-        case 'replace_text_in_current_selection': {
-            await replaceTextInCurrentSelection(args.text, args.id);
-            await writeSuccessResponse(sd);
-            break;
-        }
-        case 'show_dialog': {
-            showDialog(args.message);
-            await writeSuccessResponse(sd);
-            break;
-        }
-        case 'navigate_to_file': {
-            await navigateToFile(args.file, args.line, args.column);
-            await writeSuccessResponse(sd);
-            break;
-        }
-        case 'set_selection_ranges': {
-            await setSelections(args.ranges, args.id);
-            await writeSuccessResponse(sd);
-            break;
-        }
-        case 'document_save': {
-            await documentSave(args.id);
-            await writeSuccessResponse(sd);
-            break;
-        }
-        case 'document_save_all': {
-            await documentSaveAll();
-            await writeSuccessResponse(sd);
-            break;
-        }
-        case 'get_project_path': {
-            await writeResponse(projectPath(), sd);
-            break;
-        }
-        case 'document_context': {
-            await writeResponse(await documentContext(args.id), sd);
-            break;
-        }
-        case 'document_new': {
-            await documentNew(args.text, args.type, args.position);
-            await writeSuccessResponse(sd);
-            break;
-        }
-        case 'restart_r': {
-            await restartRTerminal();
-            await writeSuccessResponse(sd);
-            break;
-        }
-        case 'send_to_console': {
-            await sendCodeToRTerminal(args.code, args.execute, args.focus);
-            await writeSuccessResponse(sd);
-            break;
-        }
-        default:
-            console.error(`[dispatchRStudioAPICall] Unsupported action: ${action}`);
-    }
-
-}
+// dispatchRStudioAPICall removed
 
 //rstudioapi
 export function activeEditorContext() {

@@ -46,7 +46,9 @@ export class LanguageService implements Disposable {
                     client.outputChannel.show();
                 }
             }
-            void client.stop();
+            if (client.needsStop()) {
+                void client.stop();
+            }
         });
         return childProcess;
     }

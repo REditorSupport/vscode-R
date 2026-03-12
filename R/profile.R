@@ -24,10 +24,6 @@ local({
     invisible()
 })
 
-# Run vscode initializer
-local({
-    init_file <- Sys.getenv("VSCODE_INIT_R")
-    if (nzchar(init_file)) {
-        source(init_file, chdir = TRUE, local = TRUE)
-    }
-})
+if (requireNamespace("sess", quietly = TRUE)) {
+    sess::sess_app()
+}

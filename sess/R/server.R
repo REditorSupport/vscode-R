@@ -1,21 +1,16 @@
 #' Start the client R IPC Server
 #' 
 #' @param use_rstudioapi Logical. Should the rstudioapi emulation layer be enabled? Defaults to TRUE.
-#' @param use_httpgd Logical. Should httpgd be used for plotting if available? Defaults to FALSE.
+#' @param use_httpgd Logical. Should httpgd be used for plotting if available? Defaults to TRUE
 #' @export
-sess_app <- function(use_rstudioapi = TRUE, use_httpgd = FALSE) {
+sess_app <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
   
-  on.exit({
-    if (!is.null(.sess_env$server)) {
-      notify_client("detach", list(pid = Sys.getpid()))
-      .sess_env$server$stop()
-    }
-  })
-
   # Initialize state
   .sess_env$server <- NULL
   .sess_env$ws <- NULL
-  .sess_env$token <- paste0(sample(c(letters, 0:9), 32, replace = TRUE), collapse = "")
+  
+  env_token <- Sys.getenv("SESS_TOKEN")
+  .sess_env$token <- if (nzchar(env_token)) env_token else paste0(sample(c(letters, 0:9), 32, replace = TRUE), collapse = "")
   .sess_env$pending_responses <- list()
   
   # Temporary file for static plot serving
@@ -84,7 +79,7 @@ sess_app <- function(use_rstudioapi = TRUE, use_httpgd = FALSE) {
             start_time = format(Sys.time())
         )
       ))
-      
+
       ws$onMessage(function(binary, message) {
         # Handle JSON-RPC 2.0 messages COMING FROM the client
         payload <- tryCatch(jsonlite::fromJSON(message), error = function(e) NULL)
@@ -105,8 +100,9 @@ sess_app <- function(use_rstudioapi = TRUE, use_httpgd = FALSE) {
     }
   )
 
-  # Start the httpuv server on a random port
-  port <- httpuv::randomPort()
+  # Start the httpuv server on a specific or random port
+  env_port <- Sys.getenv("SESS_PORT")
+  port <- if (nzchar(env_port)) as.integer(env_port) else httpuv::randomPort()
   .sess_env$server <- httpuv::startServer("127.0.0.1", port, app = app_handlers)
   
   # Print the connection string to the console.

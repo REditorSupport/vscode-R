@@ -3,7 +3,7 @@
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation.
 #' @param use_httpgd Logical. Enable httpgd plot device if available.
 #' @export
-register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = FALSE) {
+register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
   
   # 1. Override View() to push data directly via WebSocket
   rebind("View", function(x, title = deparse(substitute(x))) {

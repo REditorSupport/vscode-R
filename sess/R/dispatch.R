@@ -25,8 +25,9 @@ ipc_send <- function(method, params = list(), request = FALSE) {
   }
 
   # Push over the websocket
+  payload <- jsonlite::toJSON(msg, auto_unbox = TRUE, null = "null", force = TRUE)
   tryCatch({
-    .sess_env$ws$send(jsonlite::toJSON(msg, auto_unbox = TRUE, null = "null", force = TRUE))
+    .sess_env$ws$send(payload)
   }, error = function(e) {
     warning("Failed to send IPC message: ", e$message)
     return(invisible(FALSE))

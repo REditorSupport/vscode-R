@@ -236,7 +236,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
             sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
             sessionStatusBarItem.show();
             context.subscriptions.push(sessionStatusBarItem);
-            void session.startRequestWatcher(sessionStatusBarItem);
         }
 
         // track active text editor

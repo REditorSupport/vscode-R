@@ -15,6 +15,7 @@
       "outFiles": [
         "${workspaceFolder}/out/src/**/*.js"
       ],
+      "sourceMaps": true,
     },
     {
       "name": "Launch Extension (--disable-extensions)",
@@ -28,6 +29,7 @@
       "outFiles": [
         "${workspaceFolder}/out/src/**/*.js"
       ],
+      "sourceMaps": true,
     },
     {
       "name": "Extension Tests",

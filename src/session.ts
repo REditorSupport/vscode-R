@@ -7,10 +7,10 @@ import { Agent } from 'http';
 import fetch from 'node-fetch';
 import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
 
-import { runTextInTerm } from './rTerminal';
+import { runTextInTerm, restartRTerminal } from './rTerminal';
 import { FSWatcher } from 'fs-extra';
 import { config, readContent, setContext, UriIcon } from './util';
-import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
+import { purgeAddinPickerItems } from './rstudioapi';
 
 import { IRequest } from './liveShare/shareSession';
 import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext, sessionStatusBarItem } from './extension';
@@ -83,25 +83,59 @@ export function deploySessionWatcher(extensionPath: string): void {
     });
 }
 
-export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
-    console.info('[startRequestWatcher] Starting');
-    requestFile = path.join(homeExtDir(), 'request.log');
-    requestLockFile = path.join(homeExtDir(), 'request.lock');
-    requestTimeStamp = 0;
-    responseTimeStamp = 0;
-    if (!fs.existsSync(requestLockFile)) {
-        fs.createFileSync(requestLockFile);
-    }
-    fs.watch(requestLockFile, {}, () => {
-        void updateRequest(sessionStatusBarItem);
-    });
-    console.info('[startRequestWatcher] Done');
+import * as WebSocket from 'ws';
+
+let wsClient: WebSocket.WebSocket | undefined;
+
+export function startSessionWatcher(port: number, token: string): void {
+    console.info(`[startSessionWatcher] Connecting to ws://127.0.0.1:${port}?token=${token}`);
+    
+    let retries = 0;
+    const connect = () => {
+        const url = `ws://127.0.0.1:${port}?token=${token}`;
+        const ws = new WebSocket.WebSocket(url);
+        
+        ws.on('open', () => {
+            console.info('[startSessionWatcher] Connected');
+            wsClient = ws;
+            server = { host: '127.0.0.1', port, token };
+            retries = 0;
+        });
+        
+        ws.on('message', (data: WebSocket.Data) => {
+            void (async () => {
+                try {
+                    const message = JSON.parse(data.toString()) as Record<string, unknown>;
+                    if (!message.id) {
+                        await handleNotification(message);
+                    } else {
+                        await handleRequest(message, ws);
+                    }                } catch (e) {
+                    console.error('[startSessionWatcher] Error handling message', e);
+                }
+            })();
+        });
+        
+        ws.on('close', () => {
+            console.info('[startSessionWatcher] Disconnected');
+            wsClient = undefined;
+        });
+        
+        ws.on('error', (err: Error) => {
+            if (retries < 10 && !wsClient) {
+                retries++;
+                setTimeout(connect, 500);
+            }
+        });
+    };
+    
+    connect();
 }
 
 export function attachActive(): void {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[attachActive]');
-        void runTextInTerm('.vsc.attach()');
+        void runTextInTerm('if (requireNamespace("sess", quietly = TRUE)) sess::sess_app()');
         if (isLiveShare() && shareWorkspace) {
             rHostService?.notifyRequest(requestFile, true);
         }
@@ -145,47 +179,16 @@ function writeSettings() {
 
 function updateSessionWatcher() {
     console.info(`[updateSessionWatcher] PID: ${pid}`);
-    console.info('[updateSessionWatcher] Create workspaceWatcher');
-    workspaceFile = path.join(sessionDir, 'workspace.json');
-    workspaceLockFile = path.join(sessionDir, 'workspace.lock');
-    workspaceTimeStamp = 0;
-    if (workspaceWatcher !== undefined) {
-        workspaceWatcher.close();
-    }
-    if (fs.existsSync(workspaceLockFile)) {
-        workspaceWatcher = fs.watch(workspaceLockFile, {}, () => {
-            void updateWorkspace();
-        });
-        void updateWorkspace();
-    } else {
-        console.info('[updateSessionWatcher] workspaceLockFile not found');
-    }
-
-    console.info('[updateSessionWatcher] Create plotWatcher');
-    plotFile = path.join(sessionDir, 'plot.png');
-    plotLockFile = path.join(sessionDir, 'plot.lock');
-    plotTimeStamp = 0;
-    if (plotWatcher !== undefined) {
-        plotWatcher.close();
-    }
-    if (fs.existsSync(plotLockFile)) {
-        plotWatcher = fs.watch(plotLockFile, {}, () => {
-            void updatePlot();
-        });
-        void updatePlot();
-    } else {
-        console.info('[updateSessionWatcher] plotLockFile not found');
-    }
     console.info('[updateSessionWatcher] Done');
 }
 
 async function updatePlot() {
-    console.info(`[updatePlot] ${plotFile}`);
-    const lockContent = await fs.readFile(plotLockFile, 'utf8');
-    const newTimeStamp = Number.parseFloat(lockContent);
-    if (newTimeStamp !== plotTimeStamp) {
-        plotTimeStamp = newTimeStamp;
-        if (fs.existsSync(plotFile) && fs.statSync(plotFile).size > 0) {
+    if (!server) {return;}
+    try {
+        const response = await sessionRequest(server, { jsonrpc: '2.0', id: 1, method: 'plot_latest' });
+        if (response && (response as Record<string, unknown>).data) {
+            const plotFile = path.join(sessionDir, 'plot.png');
+            fs.writeFileSync(plotFile, Buffer.from((response as Record<string, unknown>).data as string, 'base64'));
             void commands.executeCommand('vscode.open', Uri.file(plotFile), {
                 preserveFocus: true,
                 preview: true,
@@ -195,30 +198,26 @@ async function updatePlot() {
             if (isLiveShare()) {
                 void rHostService?.notifyPlot(plotFile);
             }
-        } else {
-            console.info('[updatePlot] File not found');
         }
+    } catch (e) {
+        console.error(e);
     }
 }
 
-async function updateWorkspace() {
-    console.info(`[updateWorkspace] ${workspaceFile}`);
-
-    const lockContent = await fs.readFile(workspaceLockFile, 'utf8');
-    const newTimeStamp = Number.parseFloat(lockContent);
-    if (newTimeStamp !== workspaceTimeStamp) {
-        workspaceTimeStamp = newTimeStamp;
-        if (fs.existsSync(workspaceFile)) {
-            const content = await fs.readFile(workspaceFile, 'utf8');
-            workspaceData = JSON.parse(content) as WorkspaceData;
+export async function updateWorkspace() {
+    if (!server) {return;}
+    try {
+        const response = await sessionRequest(server, { jsonrpc: '2.0', id: 1, method: 'workspace' });
+        if (response) {
+            workspaceData = response as WorkspaceData;
             void rWorkspace?.refresh();
             console.info('[updateWorkspace] Done');
             if (isLiveShare()) {
                 rHostService?.notifyWorkspace(workspaceData);
             }
-        } else {
-            console.info('[updateWorkspace] File not found');
         }
+    } catch (e) {
+        console.error(e);
     }
 }
 
@@ -715,129 +714,159 @@ function isFromWorkspace(dir: string) {
 }
 
 export async function writeResponse(responseData: Record<string, unknown>, responseSessionDir: string): Promise<void> {
-
-    const responseFile = path.join(responseSessionDir, 'response.log');
-    const responseLockFile = path.join(responseSessionDir, 'response.lock');
-    if (!fs.existsSync(responseFile) || !fs.existsSync(responseLockFile)) {
-        throw ('Received a request from R for response' +
-            'to a session directiory that does not contain response.log or response.lock: ' +
-            responseSessionDir);
-    }
-    const responseString = JSON.stringify(responseData);
-    console.info('[writeResponse] Started');
-    console.info(`[writeResponse] responseData ${responseString}`);
-    console.info(`[writeRespnse] responseFile: ${responseFile}`);
-    await fs.writeFile(responseFile, responseString);
-    responseTimeStamp = Date.now();
-    await fs.writeFile(responseLockFile, `${responseTimeStamp}\n`);
+    // Deprecated
 }
 
 export async function writeSuccessResponse(responseSessionDir: string): Promise<void> {
-    await writeResponse({ result: true }, responseSessionDir);
+    // Deprecated
 }
 
-type ISessionRequest = {
-    plot_url?: string,
-    server?: SessionServer
-} & IRequest;
+import * as rstudioapi from './rstudioapi';
 
-async function updateRequest(sessionStatusBarItem: StatusBarItem) {
-    console.info('[updateRequest] Started');
-    console.info(`[updateRequest] requestFile: ${requestFile}`);
-
-    const lockContent = await fs.readFile(requestLockFile, 'utf8');
-    const newTimeStamp = Number.parseFloat(lockContent);
-    if (newTimeStamp !== requestTimeStamp) {
-        requestTimeStamp = newTimeStamp;
-        const requestContent = await fs.readFile(requestFile, 'utf8');
-        console.info(`[updateRequest] request: ${requestContent}`);
-        const request = JSON.parse(requestContent) as ISessionRequest;
-        if (request.wd && isFromWorkspace(request.wd)) {
-            if (request.uuid === null || request.uuid === undefined || request.uuid === UUID) {
-                switch (request.command) {
-                    case 'help': {
-                        if (globalRHelp && request.requestPath) {
-                            console.log(request.requestPath);
-                            await globalRHelp.showHelpForPath(request.requestPath, request.viewer);
-                        }
-                        break;
-                    }
-                    case 'httpgd': {
-                        if (request.url) {
-                            await globalHttpgdManager?.showViewer(request.url);
-                        }
-                        break;
-                    }
-                    case 'attach': {
-                        if (!request.tempdir || !request.wd) {
-                            return;
-                        }
-                        rVer = String(request.version);
-                        pid = String(request.pid);
-                        info = request.info;
-                        sessionDir = path.join(request.tempdir, 'vscode-R');
-                        workingDir = request.wd;
-                        console.info(`[updateRequest] attach PID: ${pid}`);
-                        sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
-                        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-unsafe-member-access
-                        sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
-                        sessionStatusBarItem.show();
-                        updateSessionWatcher();
-
-                        if (request.server) {
-                            server = request.server;
-                        }
-
-                        purgeAddinPickerItems();
-                        await setContext('rSessionActive', true);
-                        if (request.plot_url) {
-                            await globalHttpgdManager?.showViewer(request.plot_url);
-                        }
-                        void watchProcess(pid).then((v: string) => {
-                            void cleanupSession(v);
-                        });
-                        break;
-                    }
-                    case 'detach': {
-                        if (request.pid) {
-                            await cleanupSession(request.pid);
-                        }
-                        break;
-                    }
-                    case 'browser': {
-                        if (request.url && request.title && request.viewer !== undefined) {
-                            await showBrowser(request.url, request.title, request.viewer);
-                        }
-                        break;
-                    }
-                    case 'webview': {
-                        if (request.file && request.title && request.viewer !== undefined) {
-                            await showWebView(request.file, request.title, request.viewer);
-                        }
-                        break;
-                    }
-                    case 'dataview': {
-                        if (request.source && request.type && request.file && request.title && request.viewer !== undefined) {
-                            await showDataView(request.source,
-                                request.type, request.title, request.file, request.viewer);
-                        }
-                        break;
-                    }
-                    case 'rstudioapi': {
-                        if (request.action && request.args && request.sd) {
-                            await dispatchRStudioAPICall(request.action, request.args, request.sd);
-                        }
-                        break;
-                    }
-                    default:
-                        console.error(`[updateRequest] Unsupported command: ${request.command}`);
-                }
+async function handleNotification(message: Record<string, unknown>) {
+    const method = String(message.method);
+    const params = (message.params as Record<string, unknown>) || {};
+    
+    switch (method) {
+        case 'attach': {
+            if (!params.tempdir || !params.wd) {return;}
+            rVer = String(params.version);
+            pid = String(params.pid);
+            info = params.info;
+            sessionDir = path.join(String(params.tempdir), 'vscode-R');
+            workingDir = String(params.wd);
+            console.info(`[startSessionWatcher] attach PID: ${pid}`);
+            if (sessionStatusBarItem) {
+                sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/restrict-template-expressions
+                sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
+                sessionStatusBarItem.show();
             }
-        } else {
-            console.info(`[updateRequest] Ignored request outside workspace`);
+            purgeAddinPickerItems();
+            await setContext('rSessionActive', true);
+            if (params.plot_url) {
+                await globalHttpgdManager?.showViewer(String(params.plot_url));
+            }
+            void watchProcess(pid).then((v: string) => { void cleanupSession(v); });
+            break;
         }
-        if (isLiveShare()) {
-            void rHostService?.notifyRequest(requestFile);
+        case 'detach': {
+            if (params.pid) {
+                await cleanupSession(String(params.pid));
+            }
+            break;
+        }
+        case 'help': {
+            if (globalRHelp && params.requestPath) {
+                await globalRHelp.showHelpForPath(String(params.requestPath), params.viewer);
+            }
+            break;
+        }
+        case 'httpgd': {
+            if (params.url) {
+                await globalHttpgdManager?.showViewer(String(params.url));
+            }
+            break;
+        }
+        case 'browser': {
+            if (params.url && params.title && params.viewer !== undefined) {
+                await showBrowser(String(params.url), String(params.title), params.viewer as string | boolean);
+            }
+            break;
+        }
+        case 'webview': {
+            if (params.file && params.title && params.viewer !== undefined) {
+                await showWebView(String(params.file), String(params.title), params.viewer as string | boolean);
+            }
+            break;
+        }
+        case 'dataview': {
+            if (params.source && params.type && params.file && params.title && params.viewer !== undefined) {
+                await showDataView(String(params.source), String(params.type), String(params.title), String(params.file), String(params.viewer));
+            }
+            break;
+        }
+        case 'plot_updated': {
+            void updatePlot();
+            break;
+        }
+        case 'restart_r': {
+            await restartRTerminal();
+            break;
+        }
+        case 'send_to_console': {
+            await rstudioapi.sendCodeToRTerminal(String(params.code), Boolean(params.execute), Boolean(params.focus));
+            break;
+        }
+        default:
+            console.error(`[startSessionWatcher] Unsupported notification method: ${method}`);
+    }
+}
+
+async function handleRequest(message: Record<string, unknown>, ws: WebSocket.WebSocket) {
+    if (message.method) {
+        const method = String(message.method);
+        const params = (message.params as Record<string, unknown>) || {};
+        let result: unknown = null;
+        let error: unknown = null;
+        
+        try {
+            switch (method) {
+                case 'active_editor_context':
+                    result = rstudioapi.activeEditorContext();
+                    break;
+                case 'insert_or_modify_text':
+                    await rstudioapi.insertOrModifyText(params.query as any[], String(params.id));
+                    result = true;
+                    break;
+                case 'replace_text_in_current_selection':
+                    await rstudioapi.replaceTextInCurrentSelection(String(params.text), String(params.id));
+                    result = true;
+                    break;
+                case 'show_dialog':
+                    rstudioapi.showDialog(String(params.message));
+                    result = true;
+                    break;
+                case 'navigate_to_file':
+                    await rstudioapi.navigateToFile(String(params.file), Number(params.line), Number(params.column));
+                    result = true;
+                    break;
+                case 'set_selection_ranges':
+                    await rstudioapi.setSelections(params.ranges as number[][], String(params.id));
+                    result = true;
+                    break;
+                case 'document_save':
+                    await rstudioapi.documentSave(String(params.id));
+                    result = true;
+                    break;
+                case 'document_save_all':
+                    await rstudioapi.documentSaveAll();
+                    result = true;
+                    break;
+                case 'get_project_path':
+                    result = rstudioapi.projectPath();
+                    break;
+                case 'document_context':
+                    result = await rstudioapi.documentContext(String(params.id));
+                    break;
+                case 'document_new':
+                    await rstudioapi.documentNew(String(params.text), String(params.type), params.position as number[]);
+                    result = true;
+                    break;
+                default:
+                    throw new Error(`Unsupported method: ${method}`);
+            }
+        } catch (e) {
+            error = { code: -32603, message: String(e) };
+        }
+        
+        if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({
+                jsonrpc: '2.0',
+                id: message.id,
+                result: result,
+                error: error
+            }));
         }
     }
 }
@@ -881,10 +910,14 @@ async function watchProcess(pid: string): Promise<string> {
     return pid;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function sessionRequest(server: SessionServer, data: any): Promise<any> {
+export async function sessionRequest(server: SessionServer, data: Record<string, unknown>): Promise<unknown> {
     try {
-        const response = await fetch(`http://${server.host}:${server.port}`, {
+        const payload = data.jsonrpc ? data : {
+            jsonrpc: '2.0',
+            id: Math.floor(Math.random() * 1000000),
+            ...data
+        };
+        const response = await fetch(`http://${server.host}:${server.port}/rpc`, {
             agent: httpAgent,
             method: 'POST',
             headers: {
@@ -892,7 +925,7 @@ export async function sessionRequest(server: SessionServer, data: any): Promise<
                 Accept: 'application/json',
                 Authorization: server.token
             },
-            body: JSON.stringify(data),
+            body: JSON.stringify(payload),
             follow: 0,
             timeout: 500,
         });
@@ -901,7 +934,8 @@ export async function sessionRequest(server: SessionServer, data: any): Promise<
             throw new Error(`Error! status: ${response.status}`);
         }
 
-        return response.json();
+        const res = await response.json() as Record<string, unknown>;
+        return res.result !== undefined ? res.result : res;
     } catch (error) {
         if (error instanceof Error) {
             console.log('error message: ', error.message);
