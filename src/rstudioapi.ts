@@ -153,6 +153,21 @@ export async function documentSaveAll(): Promise<void> {
     await workspace.saveAll();
 }
 
+export async function documentClose(id: string, save: boolean): Promise<void> {
+    const target = findTargetUri(id);
+    const targetDocument = await workspace.openTextDocument(target);
+    if (save) {
+        await targetDocument.save();
+    }
+    // VS Code doesn't have a direct "close document" API that takes a Document.
+    // We have to show it and then execute the close editor command, 
+    // or use more complex workbench commands.
+    const editor = await window.showTextDocument(targetDocument, { preserveFocus: true, preview: true });
+    if (editor) {
+        await commands.executeCommand('workbench.action.closeActiveEditor');
+    }
+}
+
 // TODO: very similar to ./utils.getCurrentWorkspaceFolder()
 export function projectPath(): { path: string | undefined; } {
 

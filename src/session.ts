@@ -936,6 +936,10 @@ async function handleRequest(message: Record<string, unknown>, ws: WebSocket) {
                     await rstudioapi.documentNew(String(params.text), String(params.type), params.position as number[]);
                     result = true;
                     break;
+                case 'document_close':
+                    await rstudioapi.documentClose(String(params.id), Boolean(params.save));
+                    result = true;
+                    break;
                 default:
                     throw new Error(`Unsupported method: ${method}`);
             }
