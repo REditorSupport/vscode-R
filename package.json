@@ -1998,7 +1998,7 @@
     "watchHelp": "tsc -p ./html/help --watch",
     "watchHttpgd": "tsc -p ./html/httpgd --watch",
     "pretest": "tsc -p ./",
-    "test": "node ./out/test/runTest.js",
+    "test": "vscode-test",
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {
@@ -2015,8 +2015,10 @@
     "@types/sinon": "^10.0.13",
     "@types/vscode": "^1.75.0",
     "@types/winreg": "^1.2.31",
+    "@types/ws": "^8.5.5",
     "@typescript-eslint/eslint-plugin": "^5.30.0",
     "@typescript-eslint/parser": "^5.30.0",
+    "@vscode/test-cli": "^0.0.9",
     "@vscode/test-electron": "^2.2.3",
     "esbuild": "^0.27.3",
     "eslint": "^7.28.0",
@@ -2024,8 +2026,7 @@
     "git-cliff": "^2.8.0",
     "mocha": "^11.1.0",
     "sinon": "^15.0.1",
-    "typescript": "^4.7.2",
-    "@types/ws": "^8.5.5"
+    "typescript": "^4.7.2"
   },
   "dependencies": {
     "ag-grid-community": "^31.3.2",
