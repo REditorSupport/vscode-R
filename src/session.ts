@@ -899,11 +899,11 @@ async function handleRequest(message: Record<string, unknown>, ws: WebSocket) {
                     result = rstudioapi.activeEditorContext();
                     break;
                 case 'insert_or_modify_text':
-                    await rstudioapi.insertOrModifyText(params.query as any[], String(params.id));
+                    await rstudioapi.insertOrModifyText(params.query as any[], params.id as string | null);
                     result = true;
                     break;
                 case 'replace_text_in_current_selection':
-                    await rstudioapi.replaceTextInCurrentSelection(String(params.text), String(params.id));
+                    await rstudioapi.replaceTextInCurrentSelection(String(params.text), params.id as string | null);
                     result = true;
                     break;
                 case 'show_dialog':
@@ -915,11 +915,11 @@ async function handleRequest(message: Record<string, unknown>, ws: WebSocket) {
                     result = true;
                     break;
                 case 'set_selection_ranges':
-                    await rstudioapi.setSelections(params.ranges as number[][], String(params.id));
+                    await rstudioapi.setSelections(params.ranges as number[][], params.id as string | null);
                     result = true;
                     break;
                 case 'document_save':
-                    await rstudioapi.documentSave(String(params.id));
+                    await rstudioapi.documentSave(params.id as string | null);
                     result = true;
                     break;
                 case 'document_save_all':
@@ -930,14 +930,14 @@ async function handleRequest(message: Record<string, unknown>, ws: WebSocket) {
                     result = rstudioapi.projectPath();
                     break;
                 case 'document_context':
-                    result = await rstudioapi.documentContext(String(params.id));
+                    result = await rstudioapi.documentContext(params.id as string | null);
                     break;
                 case 'document_new':
                     await rstudioapi.documentNew(String(params.text), String(params.type), params.position as number[]);
                     result = true;
                     break;
                 case 'document_close':
-                    await rstudioapi.documentClose(String(params.id), Boolean(params.save));
+                    await rstudioapi.documentClose(params.id as string | null, Boolean(params.save));
                     result = true;
                     break;
                 default:

@@ -9,11 +9,11 @@
 import {
     window, TextEditor, TextDocument, Uri,
     workspace, WorkspaceEdit, Position, Range, Selection,
-    QuickPickItem, QuickPickOptions, ViewColumn
+    QuickPickItem, QuickPickOptions, ViewColumn, commands
 } from 'vscode';
 import { readJSON } from 'fs-extra';
 import * as path from 'path';
-import { sessionDir, sessionDirectoryExists, writeResponse, writeSuccessResponse } from './session';
+import { sessionDir, sessionDirectoryExists } from './session';
 import { runTextInTerm, restartRTerminal, chooseTerminal } from './rTerminal';
 import { config } from './util';
 
@@ -42,12 +42,12 @@ export function activeEditorContext() {
     };
 }
 
-export async function documentContext(id: string) {
+export async function documentContext(id: string | null) {
     const target = findTargetUri(id);
     const targetDocument = await workspace.openTextDocument(target);
     console.info(`[documentContext] getting context for: ${target.path}`);
     return {
-        id: targetDocument.uri
+        id: { external: targetDocument.uri.toString() }
     };
 }
 
@@ -81,7 +81,7 @@ export async function insertOrModifyText(query: any[], id: string | null = null)
     void workspace.applyEdit(edit);
 }
 
-export async function replaceTextInCurrentSelection(text: string, id: string): Promise<void> {
+export async function replaceTextInCurrentSelection(text: string, id: string | null): Promise<void> {
     const target = findTargetUri(id);
     console.info(`[replaceTextInCurrentSelection] inserting: ${text} into ${target.path}`);
     const edit = new WorkspaceEdit();
@@ -108,7 +108,7 @@ export async function navigateToFile(file: string, line: number, column: number)
     editor.revealRange(new Range(targetPosition, targetPosition));
 }
 
-export async function setSelections(ranges: number[][], id: string): Promise<void> {
+export async function setSelections(ranges: number[][], id: string | null): Promise<void> {
     // Setting selections can only be done on TextEditors not TextDocuments, but
     // it is the latter which are the things actually referred to by `id`. In
     // VSCode it's not possible to get a list of the open text editors. it is not
@@ -143,7 +143,7 @@ export async function setSelections(ranges: number[][], id: string): Promise<voi
     editor.selections = selectionObjects;
 }
 
-export async function documentSave(id: string): Promise<void> {
+export async function documentSave(id: string | null): Promise<void> {
     const target = findTargetUri(id);
     const targetDocument = await workspace.openTextDocument(target);
     await targetDocument.save();
@@ -153,7 +153,7 @@ export async function documentSaveAll(): Promise<void> {
     await workspace.saveAll();
 }
 
-export async function documentClose(id: string, save: boolean): Promise<void> {
+export async function documentClose(id: string | null, save: boolean): Promise<void> {
     const target = findTargetUri(id);
     const targetDocument = await workspace.openTextDocument(target);
     if (save) {
