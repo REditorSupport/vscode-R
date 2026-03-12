@@ -6,7 +6,9 @@ getActiveDocumentContext <- function() {
 getSourceEditorContext <- getActiveDocumentContext
 
 verifyAvailable <- function(version_needed = NULL) {
-    if (is.null(version_needed)) return(TRUE)
+    if (is.null(version_needed)) {
+        return(TRUE)
+    }
     getVersion() >= numeric_version(version_needed)
 }
 
@@ -25,7 +27,7 @@ insertText <- function(location, text, id = NULL) {
 
     normalised_location <- normalise_pos_or_range_arg(location)
     normalised_text <- normalise_text_arg(text, length(normalised_location))
-    
+
     query <- mapply(function(location, text) {
         list(
             operation = if (rstudioapi::is.document_range(location)) "modifyRange" else "insertText",
@@ -46,7 +48,9 @@ readRStudioPreference <- readPreference
 
 hasFun <- function(name, version_needed = NULL, ...) {
     if (!is.null(version_needed)) {
-        if (!verifyAvailable(version_needed)) return(FALSE)
+        if (!verifyAvailable(version_needed)) {
+            return(FALSE)
+        }
     }
     obj <- .sess_rstudioapi_env[[name]]
     is.function(obj) && !identical(obj, .sess_not_yet_implemented)
@@ -55,7 +59,7 @@ hasFun <- function(name, version_needed = NULL, ...) {
 findFun <- function(name, version_needed = NULL, ...) {
     if (!is.null(version_needed)) {
         if (!verifyAvailable(version_needed)) {
-             stop("the generic IPC client does not support used of 'version_needed' > 0.")
+            stop("the generic IPC client does not support used of 'version_needed' > 0.")
         }
     }
     if (hasFun(name, version_needed = version_needed, ...)) {
@@ -72,9 +76,9 @@ showDialog <- function(title, message, url = "") {
 
 navigateToFile <- function(file, line = 1L, column = 1L) {
     invisible(request_client("navigate_to_file", args = list(
-        file = normalizePath(file), 
-        line = line - 1L, 
-        column = column - 1L
+        file = normalizePath(file),
+        line = line,
+        column = column
     )))
 }
 
@@ -96,10 +100,10 @@ getActiveProject <- function() {
     path_object$path # Should be NULL if no project is open
 }
 
-.sess_document_context <- function(id = NULL) request_client("document_context", args = list(id = id))
+document_context <- function(id = NULL) request_client("document_context", args = list(id = id))
 
-documentId <- function(allowConsole = TRUE) .sess_document_context()$id$external
-documentPath <- function(id = NULL) .sess_document_context(id)$id$path
+documentId <- function(allowConsole = TRUE) document_context()$id$external
+documentPath <- function(id = NULL) document_context(id)$id$path
 
 documentSaveAll <- function() invisible(request_client("document_save_all", args = list()))
 
@@ -145,59 +149,95 @@ documentClose <- function(id = NULL, save = TRUE) {
 
 # Add missing helpers from rstudioapi_util
 make_rs_range <- function(sess_selection) {
+    if (is.null(sess_selection$start$line) && !is.null(sess_selection[["start.line"]])) {
+        start_line <- sess_selection[["start.line"]]
+        start_character <- sess_selection[["start.character"]]
+        end_line <- sess_selection[["end.line"]]
+        end_character <- sess_selection[["end.character"]]
+    } else {
+        start_line <- sess_selection$start$line
+        start_character <- sess_selection$start$character
+        end_line <- sess_selection$end$line
+        end_character <- sess_selection$end$character
+    }
     rstudioapi::document_range(
-        start = rstudioapi::document_position(row = sess_selection$start$line + 1, column = sess_selection$start$character + 1),
-        end = rstudioapi::document_position(row = sess_selection$end$line + 1, column = sess_selection$end$character + 1)
+        start = rstudioapi::document_position(row = start_line, column = start_character),
+        end = rstudioapi::document_position(row = end_line, column = end_character)
     )
 }
 
-extract_document_ranges <- function(sess_selections) lapply(sess_selections, make_rs_range)
+extract_document_ranges <- function(sess_selections) {
+    if (is.data.frame(sess_selections)) {
+        lapply(seq_len(nrow(sess_selections)), function(i) {
+            make_rs_range(as.list(sess_selections[i, , drop = FALSE]))
+        })
+    } else {
+        lapply(sess_selections, make_rs_range)
+    }
+}
 
 to_content_lines <- function(contents, ranges) {
     content_lines <- strsplit(contents, "\n|\r\n|\r$")[[1]]
-    if (length(ranges) == 0) return(content_lines)
+
+    if (length(ranges) == 0) {
+        return(content_lines)
+    }
+
     range_end_row <- unlist(lapply(ranges, function(range) range$end["row"]))
-    last_row <- max(range_end_row)
-    if (last_row == length(content_lines) + 1) content_lines <- c(content_lines, "")
+    last_row <- max(range_end_row, na.rm = TRUE)
+    if (is.finite(last_row) && last_row == length(content_lines) + 1) {
+        content_lines <- c(content_lines, "")
+    }
+
     content_lines
 }
 
 extract_range_text <- function(range, content_lines) {
-    if (!range_has_text(range)) return("")
+    if (!range_has_text(range)) {
+        return("")
+    }
     start_row <- range$start["row"]
     end_row <- range$end["row"]
-    if (start_row > length(content_lines)) return("")
-    
+    if (start_row > length(content_lines)) {
+        return("")
+    }
+
     content_rows <- content_lines[start_row:min(end_row, length(content_lines))]
-    
+
     # Adjust end
     if (end_row <= length(content_lines)) {
         content_rows[length(content_rows)] <- substring(content_rows[length(content_rows)], 1, range$end["column"] - 1)
     }
-    
+
     # Adjust start
     content_rows[1] <- substring(content_rows[1], range$start["column"])
-    
+
     paste0(content_rows, collapse = "\n")
 }
 
 range_has_text <- function(range) (range$end["row"] - range$start["row"]) + (range$end["column"] - range$start["column"]) > 0
 
 make_rs_document_selection <- function(ranges, range_texts) {
-    mapply(function(range, text) {
-        structure(list(range = range, text = text), class = "document_selection")
-    }, ranges, range_texts, SIMPLIFY = FALSE)
+    structure(
+        mapply(
+            function(range, text) {
+                list(range = range, text = text)
+            }, ranges, range_texts,
+            SIMPLIFY = FALSE
+        ),
+        class = "document_selection"
+    )
 }
 
-make_rs_document_context <- function(sess_editor_context) {
-    document_ranges <- extract_document_ranges(sess_editor_context$selection)
-    content_lines <- to_content_lines(sess_editor_context$contents, document_ranges)
+make_rs_document_context <- function(editor_context) {
+    document_ranges <- extract_document_ranges(editor_context$selection)
+    content_lines <- to_content_lines(editor_context$contents, document_ranges)
     document_range_texts <- lapply(document_ranges, extract_range_text, content_lines)
     document_selection <- make_rs_document_selection(document_ranges, document_range_texts)
     structure(list(
-        id = sess_editor_context$id$external, 
-        path = sess_editor_context$path, 
-        contents = content_lines, 
+        id = editor_context$id$external,
+        path = editor_context$path,
+        contents = content_lines,
         selection = document_selection
     ), class = "document_context")
 }
@@ -216,22 +256,33 @@ normalise_pos_or_range_arg <- function(location) {
         list(rstudioapi::as.document_range(location))
     } else if (is.list(location)) {
         lapply(location, function(a_location) {
-            if (rstudioapi::is.document_position(a_location) || rstudioapi::is.document_range(a_location)) a_location
-            else if (is_positionable(a_location)) rstudioapi::as.document_position(a_location)
-            else if (is_rangable((a_location))) rstudioapi::as.document_range(a_location)
-            else stop("object in location list was not a document_position or document_range")
+            if (rstudioapi::is.document_position(a_location) || rstudioapi::is.document_range(a_location)) {
+                a_location
+            } else if (is_positionable(a_location)) {
+                rstudioapi::as.document_position(a_location)
+            } else if (is_rangable((a_location))) {
+                rstudioapi::as.document_range(a_location)
+            } else {
+                stop("object in location list was not a document_position or document_range")
+            }
         })
-    } else stop("location object was not a document_position or document_range")
+    } else {
+        stop("location object was not a document_position or document_range")
+    }
 }
 
 normalise_text_arg <- function(text, location_length) {
-    if (length(text) == location_length) text
-    else if (length(text) == 1 && location_length > 1) rep(text, location_length)
-    else stop("text vector needs to be of length 1 or the same length as location list")
+    if (length(text) == location_length) {
+        text
+    } else if (length(text) == 1 && location_length > 1) {
+        rep(text, location_length)
+    } else {
+        stop("text vector needs to be of length 1 or the same length as location list")
+    }
 }
 
 serialize_pos <- function(pos) {
-    list(line = pos[["row"]] - 1, character = pos[["column"]] - 1)
+    as.numeric(c(pos[["row"]], pos[["column"]]))
 }
 
 serialize_range <- function(range) {
@@ -283,7 +334,6 @@ patch_rstudioapi <- function() {
         verifyAvailable = verifyAvailable,
         readPreference = readPreference,
         readRStudioPreference = readRStudioPreference,
-        
         getConsoleEditorContext = .sess_not_yet_implemented,
         sourceMarkers = .sess_not_yet_implemented,
         showPrompt = .sess_not_yet_implemented,

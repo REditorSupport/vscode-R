@@ -24,22 +24,37 @@ rstudioapi_patch_hook <- function(api_env) {
 }
 
 make_rs_range <- function(vsc_selection) {
-    # vscode positions are zero indexed
-    # rstudioapi is one indexed
+    if (is.null(vsc_selection$start$line) && !is.null(vsc_selection[["start.line"]])) {
+        start_line <- vsc_selection[["start.line"]]
+        start_character <- vsc_selection[["start.character"]]
+        end_line <- vsc_selection[["end.line"]]
+        end_character <- vsc_selection[["end.character"]]
+    } else {
+        start_line <- vsc_selection$start$line
+        start_character <- vsc_selection$start$character
+        end_line <- vsc_selection$end$line
+        end_character <- vsc_selection$end$character
+    }
     rstudioapi::document_range(
         start = rstudioapi::document_position(
-            row = vsc_selection$start$line + 1,
-            column = vsc_selection$start$character + 1
+            row = start_line,
+            column = start_character
         ),
         end = rstudioapi::document_position(
-            row = vsc_selection$end$line + 1,
-            column = vsc_selection$end$character + 1
+            row = end_line,
+            column = end_character
         )
     )
 }
 
 extract_document_ranges <- function(vsc_selections) {
-    lapply(vsc_selections, make_rs_range)
+    if (is.data.frame(vsc_selections)) {
+        lapply(seq_len(nrow(vsc_selections)), function(i) {
+            make_rs_range(as.list(vsc_selections[i, , drop = FALSE]))
+        })
+    } else {
+        lapply(vsc_selections, make_rs_range)
+    }
 }
 
 to_content_lines <- function(contents, ranges) {

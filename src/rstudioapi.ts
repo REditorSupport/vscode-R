@@ -29,12 +29,16 @@ export function activeEditorContext() {
     // path
     // contents
     // selection - a list of selections
-    const currentDocument = getLastActiveTextEditor().document;
+    const currentEditor = getLastActiveTextEditor();
+    const currentDocument = currentEditor.document;
     return {
-        id: currentDocument.uri,
+        id: { external: currentDocument.uri.toString() },
         contents: currentDocument.getText(),
         path: currentDocument.fileName,
-        selection: getLastActiveTextEditor().selections
+        selection: currentEditor.selections.map(s => ({
+            start: { line: s.start.line + 1, character: s.start.character + 1 },
+            end: { line: s.end.line + 1, character: s.end.character + 1 }
+        }))
     };
 }
 
