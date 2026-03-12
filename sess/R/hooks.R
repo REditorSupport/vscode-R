@@ -145,7 +145,8 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
   }
   rebind("View", show_dataview, ns = "utils")
 
-  # 2. Browser & Webview Options
+  # 2. Browser & Webview Options 
+  # TODO: unify the viewers and let client to choose how to show
   show_browser <- function(url, title = url, ...) {
     notify_client("browser", list(url = url, title = title, viewer = getOption("sess.browser", "Active")))
   }
