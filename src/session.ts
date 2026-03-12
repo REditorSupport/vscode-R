@@ -124,6 +124,9 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
     
     console.info(`[startSessionWatcher] Connecting to ws://127.0.0.1:${port}?token=${token}`);
     
+    // Initialize server object immediately so HTTP requests can proceed
+    server = { host: '127.0.0.1', port, token };
+
     let retries = 0;
     const connect = () => {
         const url = `ws://127.0.0.1:${port}?token=${token}`;
@@ -138,7 +141,6 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
                 (ws as any)._terminalPid = terminalPid;
             }
             activeConnections.set(port, ws);
-            server = { host: '127.0.0.1', port, token };
             retries = 0;
         });
         
@@ -862,6 +864,7 @@ async function handleNotification(message: Record<string, unknown>, ws: WebSocke
             if (params.plot_url) {
                 await globalHttpgdManager?.showViewer(String(params.plot_url));
             }
+            void updateWorkspace(); // Initial workspace fetch
             void watchProcess(rPid).then((v: string) => { void cleanupSession(v); });
             break;
         }
@@ -872,6 +875,10 @@ async function handleNotification(message: Record<string, unknown>, ws: WebSocke
         //     }
         //     break;
         // }
+        case 'workspace_updated': {
+            void updateWorkspace();
+            break;
+        }
         case 'help': {
             if (globalRHelp && params.requestPath) {
                 await globalRHelp.showHelpForPath(String(params.requestPath), params.viewer);

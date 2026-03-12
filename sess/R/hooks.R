@@ -228,4 +228,13 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
       patch_rstudioapi()
     }
   }
+
+  # 6. Workspace Update Callback
+  # This notifies the client whenever a top-level command is completed,
+  # suggesting that the Global Environment might have changed.
+  removeTaskCallback("sess.workspace")
+  addTaskCallback(function(...) {
+    notify_client("workspace_updated")
+    TRUE
+  }, name = "sess.workspace")
 }
