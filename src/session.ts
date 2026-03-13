@@ -866,7 +866,7 @@ async function handleNotification(message: Record<string, unknown>, ws: WebSocke
             session.rVer = String(params.version);
             session.pid = rPid;
             session.info = params.info;
-            session.sessionDir = path.join(String(params.tempdir), 'vscode-R');
+            session.sessionDir = String(params.tempdir);
             session.workingDir = String(params.wd);
 
             // Switch active session
