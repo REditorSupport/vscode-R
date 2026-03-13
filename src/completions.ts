@@ -168,7 +168,7 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
                 const expr = document.getText(exprRange);
                 const response = await session.sessionRequest(session.server, {
                     method: 'completion',
-                    params: { expr: expr, trigger: completionContext.triggerCharacter }
+                    params: { expr: expr, trigger: trigger }
                 }) as RObjectElement[];
 
                 if (response) {

@@ -2,8 +2,6 @@
 
 import * as fs from 'fs-extra';
 import * as path from 'path';
-import { Agent } from 'http';
-import fetch from 'node-fetch';
 import * as vscode from 'vscode';
 import { commands, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
@@ -84,7 +82,6 @@ export let workingDir: string;
 let rVer: string;
 let pid: string;
 let info: SessionInfo;
-const httpAgent = new Agent({ keepAlive: true });
 export let server: SessionServer | undefined;
 export let workspaceFile: string;
 
@@ -111,6 +108,8 @@ export function deploySessionWatcher(extensionPath: string): void {
 let wsClient: ExtWebSocket | undefined;
 const activeConnections = new Map<number, ExtWebSocket>();
 
+const pendingRequests = new Map<number, { resolve: (value: unknown) => void, reject: (reason?: unknown) => void }>();
+
 export function startSessionWatcher(port: number, token: string, terminalPid?: number): void {
     if (activeConnections.has(port)) {
         console.info(`[startSessionWatcher] Already connected to port ${port}`);
@@ -129,7 +128,7 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
     
     console.info(`[startSessionWatcher] Connecting to ws://127.0.0.1:${port}?token=${token}`);
     
-    // Initialize server object immediately so HTTP requests can proceed
+    // Initialize server object immediately so requests can proceed
     server = { host: '127.0.0.1', port, token };
 
     let retries = 0;
@@ -153,9 +152,23 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
             void (async () => {
                 try {
                     const message = JSON.parse(data.toString()) as Record<string, unknown>;
-                    if (!message.id) {
+                    if (message.id !== undefined && !message.method) {
+                        // Response to a client request
+                        const id = Number(message.id);
+                        const pending = pendingRequests.get(id);
+                        if (pending) {
+                            pendingRequests.delete(id);
+                            if (message.error) {
+                                pending.reject(message.error);
+                            } else {
+                                pending.resolve(message.result);
+                            }
+                        }
+                    } else if (!message.id) {
+                        // Notification from server
                         await handleNotification(message, ws);
                     } else {
+                        // Request from server
                         await handleRequest(message, ws);
                     }                } catch (e) {
                     console.error('[startSessionWatcher] Error handling message', e);
@@ -331,6 +344,9 @@ export async function updateWorkspace() {
         const response = await sessionRequest(server, { jsonrpc: '2.0', id: 1, method: 'workspace' });
         if (response) {
             workspaceData = response as WorkspaceData;
+            if (activeSession) {
+                activeSession.workspaceData = workspaceData;
+            }
             void rWorkspace?.refresh();
             console.info('[updateWorkspace] Done');
             if (isLiveShare()) {
@@ -814,8 +830,6 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
     const method = String(message.method);
     const params = (message.params as Record<string, unknown>) || {};
 
-    console.info(`[handleNotification] method: ${method}, params: ${JSON.stringify(params)}`);
-
     switch (method) {
         case 'attach': {
             if (!params.tempdir || !params.wd) {return;}
@@ -898,7 +912,7 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
             await restartRTerminal();
             break;
         }
-        case 'send_to_console': {
+        case 'rstudioapi/send_to_console': {
             await rstudioapi.sendCodeToRTerminal(String(params.code), Boolean(params.execute), Boolean(params.focus));
             break;
         }
@@ -916,48 +930,48 @@ async function handleRequest(message: Record<string, unknown>, ws: ExtWebSocket)
         
         try {
             switch (method) {
-                case 'active_editor_context':
+                case 'rstudioapi/active_editor_context':
                     result = rstudioapi.activeEditorContext();
                     break;
-                case 'insert_or_modify_text':
+                case 'rstudioapi/insert_or_modify_text':
                     await rstudioapi.insertOrModifyText(params.query as Record<string, unknown>[], params.id as string | null);
                     result = true;
                     break;
-                case 'replace_text_in_current_selection':
+                case 'rstudioapi/replace_text_in_current_selection':
                     await rstudioapi.replaceTextInCurrentSelection(String(params.text), params.id as string | null);
                     result = true;
                     break;
-                case 'show_dialog':
+                case 'rstudioapi/show_dialog':
                     rstudioapi.showDialog(String(params.message));
                     result = true;
                     break;
-                case 'navigate_to_file':
+                case 'rstudioapi/navigate_to_file':
                     await rstudioapi.navigateToFile(String(params.file), Number(params.line), Number(params.column));
                     result = true;
                     break;
-                case 'set_selection_ranges':
+                case 'rstudioapi/set_selection_ranges':
                     await rstudioapi.setSelections(params.ranges as number[][], params.id as string | null);
                     result = true;
                     break;
-                case 'document_save':
+                case 'rstudioapi/document_save':
                     await rstudioapi.documentSave(params.id as string | null);
                     result = true;
                     break;
-                case 'document_save_all':
+                case 'rstudioapi/document_save_all':
                     await rstudioapi.documentSaveAll();
                     result = true;
                     break;
-                case 'get_project_path':
+                case 'rstudioapi/get_project_path':
                     result = rstudioapi.projectPath();
                     break;
-                case 'document_context':
+                case 'rstudioapi/document_context':
                     result = await rstudioapi.documentContext(params.id as string | null);
                     break;
-                case 'document_new':
+                case 'rstudioapi/document_new':
                     await rstudioapi.documentNew(String(params.text), String(params.type), params.position as number[]);
                     result = true;
                     break;
-                case 'document_close':
+                case 'rstudioapi/document_close':
                     await rstudioapi.documentClose(params.id as string | null, Boolean(params.save));
                     result = true;
                     break;
@@ -1032,30 +1046,35 @@ async function watchProcess(pid: string): Promise<string> {
 
 export async function sessionRequest(server: SessionServer, data: Record<string, unknown>): Promise<unknown> {
     try {
-        const payload = data.jsonrpc ? data : {
-            jsonrpc: '2.0',
-            id: Math.floor(Math.random() * 1000000),
-            ...data
-        };
-        const response = await fetch(`http://${server.host}:${server.port}/rpc`, {
-            agent: httpAgent,
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-                Authorization: server.token
-            },
-            body: JSON.stringify(payload),
-            follow: 0,
-            timeout: 500,
-        });
-
-        if (!response.ok) {
-            throw new Error(`Error! status: ${response.status}`);
+        if (!wsClient || wsClient.readyState !== WebSocket.OPEN) {
+            throw new Error('WebSocket is not connected');
         }
-
-        const res = await response.json() as Record<string, unknown>;
-        return res.result !== undefined ? res.result : res;
+        
+        return await new Promise((resolve, reject) => {
+            const id = data.id !== undefined ? Number(data.id) : Math.floor(Math.random() * 1000000);
+            const payload = data.jsonrpc ? data : {
+                jsonrpc: '2.0',
+                id,
+                ...data
+            };
+            
+            pendingRequests.set(id, { resolve, reject });
+            
+            try {
+                wsClient!.send(JSON.stringify(payload));
+            } catch (e) {
+                pendingRequests.delete(id);
+                reject(e);
+            }
+            
+            // Timeout after 5 seconds
+            setTimeout(() => {
+                if (pendingRequests.has(id)) {
+                    pendingRequests.delete(id);
+                    reject(new Error('Request timed out'));
+                }
+            }, 5000);
+        });
     } catch (error) {
         if (error instanceof Error) {
             console.log('error message: ', error.message);

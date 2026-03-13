@@ -20,56 +20,39 @@ sess_app <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
   .sess_env$latest_plot_path <- file.path(.sess_env$tempdir, "sess_plot.png")
 
   app_handlers <- list(
-    # --- HTTP HANDLER (The "Pull" API) ---
-    call = function(req) {
-      # 1. Authentication Check
-      auth_header <- req$HTTP_AUTHORIZATION
-      if (is.null(auth_header) || auth_header != .sess_env$token) {
-        return(list(status = 401L, headers = list("Content-Type" = "text/plain"), body = "Unauthorized"))
-      }
-
-      path <- req$PATH_INFO
-
-      # 2. Routing
-      if (path == "/rpc" && req$REQUEST_METHOD == "POST") {
-        # JSON-RPC 2.0 Implementation
-        body <- tryCatch(jsonlite::fromJSON(req$rook.input$read_lines()), error = function(e) NULL)
-
-        if (is.null(body) || is.null(body$method)) {
-          return(json_rpc_error(NULL, -32600, "Invalid Request"))
-        }
-
-        # Dispatch method
-        res <- switch(body$method,
-          "workspace" = get_workspace_data(),
-          "hover" = handle_hover(body$params$expr),
-          "completion" = handle_complete(body$params$expr, body$params$trigger),
-          "plot_latest" = {
-            if (file.exists(.sess_env$latest_plot_path)) {
-              raw_img <- readBin(.sess_env$latest_plot_path, "raw", file.info(.sess_env$latest_plot_path)$size)
-              list(data = as.character(jsonlite::base64_enc(raw_img)))
-            } else {
-              list(data = NULL)
-            }
-          },
-          NULL
-        )
-
-        if (is.null(res)) {
-          return(json_rpc_error(body$id, -32601, "Method not found"))
-        }
-
-        return(json_rpc_response(body$id, res))
-      }
-
-      list(status = 404L, headers = list("Content-Type" = "text/plain"), body = "Not Found")
-    },
-
-    # --- WEBSOCKET HANDLER (The "Push" API) ---
+    # --- WEBSOCKET HANDLER ---
     onWSOpen = function(ws) {
+      # 1. Authentication Check
+      # Extract token from QUERY_STRING (e.g., "?token=xyz")
+      query_string <- ws$request$QUERY_STRING
+      parsed_query <- tryCatch(
+        {
+          # Simple parsing for ?token=value
+          parts <- strsplit(query_string, "&")[[1]]
+          token_part <- parts[grep("token=", parts)]
+          if (length(token_part) > 0) {
+            sub("^\\??token=", "", token_part[1])
+          } else {
+            ""
+          }
+        },
+        error = function(e) ""
+      )
+
+      print_async_msg <- function(msg) {
+        prompt <- if (interactive()) getOption("prompt") else ""
+        cat(sprintf("\r%s\n\n%s", msg, prompt))
+      }
+
+      if (parsed_query != .sess_env$token) {
+        print_async_msg("[sess] Unauthorized WebSocket connection attempt")
+        ws$close()
+        return()
+      }
+
       # Bind the active websocket to our environment
       .sess_env$ws <- ws
-      cat("[sess] Client connected\n")
+      print_async_msg("[sess] Client connected")
 
       # Send the attach handshake immediately upon connection (JSON-RPC Notification)
       notify_client("attach", list(
@@ -89,18 +72,54 @@ sess_app <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
         payload <- tryCatch(jsonlite::fromJSON(message), error = function(e) NULL)
 
         if (!is.null(payload) && !is.null(payload$id)) {
-          # It's a Response (to our RStudio API request)
-          if (!is.null(payload$result)) {
-            .sess_env$pending_responses[[as.character(payload$id)]] <- payload$result
-          } else if (!is.null(payload$error)) {
-            .sess_env$pending_responses[[as.character(payload$id)]] <- structure(payload$error, class = "json_rpc_error")
+          if (!is.null(payload$method)) {
+            # It's a Request from the Client (e.g., 'workspace', 'plot_latest')
+            handlers <- list(
+              "workspace" = function(p) get_workspace_data(),
+              "hover" = function(p) handle_hover(p$expr),
+              "completion" = function(p) handle_complete(p$expr, p$trigger),
+              "plot_latest" = function(p) handle_plot_latest()
+            )
+
+            if (payload$method %in% names(handlers)) {
+              res <- tryCatch({
+                handlers[[payload$method]](payload$params)
+              }, error = function(e) {
+                # Handle unexpected R errors in handlers
+                warning(sprintf("[sess] Error in handler for '%s': %s", payload$method, e$message))
+                NULL
+              })
+              
+              # Send successful response
+              succ_resp <- list(
+                jsonrpc = "2.0",
+                id = payload$id,
+                result = res
+              )
+              ws$send(jsonlite::toJSON(succ_resp, auto_unbox = TRUE, null = "null", force = TRUE))
+            } else {
+              # Method not found
+              err_resp <- list(
+                jsonrpc = "2.0",
+                id = payload$id,
+                error = list(code = -32601, message = "Method not found")
+              )
+              ws$send(jsonlite::toJSON(err_resp, auto_unbox = TRUE, null = "null", force = TRUE))
+            }
+          } else {
+            # It's a Response (to our RStudio API request)
+            if (!is.null(payload$result)) {
+              .sess_env$pending_responses[[as.character(payload$id)]] <- payload$result
+            } else if (!is.null(payload$error)) {
+              .sess_env$pending_responses[[as.character(payload$id)]] <- structure(payload$error, class = "json_rpc_error")
+            }
           }
         }
       })
 
       ws$onClose(function() {
         .sess_env$ws <- NULL
-        cat("[sess] Client disconnected\n")
+        print_async_msg("[sess] Client disconnected")
       })
     }
   )

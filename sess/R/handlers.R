@@ -32,13 +32,13 @@ handle_hover <- function(expr_str) {
   }, error = function(e) NULL)
 }
 
-handle_complete <- function(expr_str, trigger) {
+handle_complete <- function(expr_str, trigger = NULL) {
   obj <- tryCatch({
     expr <- parse(text = expr_str, keep.source = FALSE)[[1]]
     eval(expr, .GlobalEnv)
   }, error = function(e) NULL)
 
-  if (is.null(obj)) {
+  if (is.null(obj) || is.null(trigger)) {
     return(NULL)
   }
 
@@ -76,4 +76,13 @@ handle_complete <- function(expr_str, trigger) {
   }
   
   NULL
+}
+
+handle_plot_latest <- function() {
+  if (file.exists(.sess_env$latest_plot_path)) {
+    raw_img <- readBin(.sess_env$latest_plot_path, "raw", file.info(.sess_env$latest_plot_path)$size)
+    list(data = as.character(jsonlite::base64_enc(raw_img)))
+  } else {
+    list(data = NULL)
+  }
 }

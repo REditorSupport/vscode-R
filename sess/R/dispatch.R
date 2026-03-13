@@ -26,12 +26,15 @@ ipc_send <- function(method, params = list(), request = FALSE) {
 
   # Push over the websocket
   payload <- jsonlite::toJSON(msg, auto_unbox = TRUE, null = "null", force = TRUE)
-  tryCatch({
-    .sess_env$ws$send(payload)
-  }, error = function(e) {
-    warning("Failed to send IPC message: ", e$message)
-    return(invisible(FALSE))
-  })
+  tryCatch(
+    {
+      .sess_env$ws$send(payload)
+    },
+    error = function(e) {
+      warning("Failed to send IPC message: ", e$message)
+      return(invisible(FALSE))
+    }
+  )
 
   if (!request) {
     return(invisible(TRUE))
@@ -41,7 +44,7 @@ ipc_send <- function(method, params = list(), request = FALSE) {
   # Process HTTP/WS events in the background while blocking the R console execution
   # This prevents the R event loop from locking up.
   while (is.null(.sess_env$pending_responses[[req_id]])) {
-    httpuv::service() 
+    httpuv::service()
     Sys.sleep(0.01)
   }
 
