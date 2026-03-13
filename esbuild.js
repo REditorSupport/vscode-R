@@ -11,7 +11,8 @@ function copyResources() {
 
     const resources = [
         './node_modules/jquery/dist/jquery.min.js',
-        './node_modules/jquery.json-viewer/json-viewer',
+        './node_modules/jquery.json-viewer/json-viewer/jquery.json-viewer.js',
+        './node_modules/jquery.json-viewer/json-viewer/jquery.json-viewer.css',
         './node_modules/ag-grid-community/dist/ag-grid-community.min.noStyle.js',
         './node_modules/ag-grid-community/styles/ag-grid.min.css',
         './node_modules/ag-grid-community/styles/ag-theme-balham.min.css'
@@ -22,7 +23,7 @@ function copyResources() {
         const destName = path.basename(srcPath);
         const destPath = path.resolve(destDir, destName);
         if (fs.existsSync(srcPath)) {
-            fs.cpSync(srcPath, destPath, { recursive: true });
+            fs.copyFileSync(srcPath, destPath);
         } else {
             console.warn(`Warning: Resource not found: ${srcPath}`);
         }
