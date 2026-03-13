@@ -1,21 +1,32 @@
 'use strict';
 
 import * as fs from 'fs-extra';
-import * as os from 'os';
 import * as path from 'path';
 import { Agent } from 'http';
 import fetch from 'node-fetch';
 import * as vscode from 'vscode';
-import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
+import { commands, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
 import { restartRTerminal, createRTerm } from './rTerminal';
-import { FSWatcher } from 'fs-extra';
 import { config, readContent, setContext, UriIcon } from './util';
 import { purgeAddinPickerItems } from './rstudioapi';
 
-import { IRequest } from './liveShare/shareSession';
 import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext, sessionStatusBarItem } from './extension';
-import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc } from './liveShare';
+import { rHostService, rGuestService, isLiveShare, isHost, isGuestSession, guestResDir, shareBrowser, openVirtualDoc } from './liveShare';
+
+import WebSocket from 'ws';
+
+export interface SessionInfo {
+    version: string;
+    command: string;
+    start_time: string;
+}
+
+interface ExtWebSocket extends WebSocket {
+    _terminalPid?: number;
+    _port?: number;
+    _token?: string;
+}
 
 export interface GlobalEnv {
     [key: string]: {
@@ -47,7 +58,7 @@ export class Session {
     public ws: WebSocket;
     public pid: string;
     public rVer: string;
-    public info: any;
+    public info: SessionInfo;
     public sessionDir: string;
     public workingDir: string;
     public workspaceData: WorkspaceData;
@@ -57,6 +68,7 @@ export class Session {
         this.ws = ws;
         this.pid = '';
         this.rVer = '';
+        this.info = { version: '', command: '', start_time: '' };
         this.sessionDir = '';
         this.workingDir = '';
         this.workspaceData = { search: [], loaded_namespaces: [], globalenv: {} };
@@ -67,27 +79,17 @@ export let workspaceData: WorkspaceData;
 let resDir: string;
 export let requestFile: string;
 export let requestLockFile: string;
-let requestTimeStamp: number;
-let responseTimeStamp: number;
 export let sessionDir: string;
 export let workingDir: string;
 let rVer: string;
 let pid: string;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let info: any;
+let info: SessionInfo;
 const httpAgent = new Agent({ keepAlive: true });
 export let server: SessionServer | undefined;
 export let workspaceFile: string;
 
 const sessions = new Map<string, Session>();
 export let activeSession: Session | undefined;
-let workspaceLockFile: string;
-let workspaceTimeStamp: number;
-let plotFile: string;
-let plotLockFile: string;
-let plotTimeStamp: number;
-let workspaceWatcher: FSWatcher;
-let plotWatcher: FSWatcher;
 let activeBrowserUri: Uri | undefined;
 
 export function deploySessionWatcher(extensionPath: string): void {
@@ -106,10 +108,8 @@ export function deploySessionWatcher(extensionPath: string): void {
     });
 }
 
-import WebSocket from "ws";
-
-let wsClient: WebSocket | undefined;
-const activeConnections = new Map<number, WebSocket>();
+let wsClient: ExtWebSocket | undefined;
+const activeConnections = new Map<number, ExtWebSocket>();
 
 export function startSessionWatcher(port: number, token: string, terminalPid?: number): void {
     if (activeConnections.has(port)) {
@@ -118,7 +118,7 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
         if (ws?.readyState === WebSocket.OPEN) {
             wsClient = ws;
             if (terminalPid) {
-                (ws as any)._terminalPid = terminalPid;
+                ws._terminalPid = terminalPid;
             }
             server = { host: '127.0.0.1', port, token };
             return;
@@ -135,21 +135,21 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
     let retries = 0;
     const connect = () => {
         const url = `ws://127.0.0.1:${port}?token=${token}`;
-        const ws = new WebSocket(url);
+        const ws: ExtWebSocket = new WebSocket(url);
         
         ws.on('open', () => {
             console.info('[startSessionWatcher] Connected');
             wsClient = ws;
-            (ws as any)._port = port;
-            (ws as any)._token = token;
+            ws._port = port;
+            ws._token = token;
             if (terminalPid) {
-                (ws as any)._terminalPid = terminalPid;
+                ws._terminalPid = terminalPid;
             }
             activeConnections.set(port, ws);
             retries = 0;
         });
         
-        ws.on('message', (data: any) => {
+        ws.on('message', (data: WebSocket.Data) => {
             void (async () => {
                 try {
                     const message = JSON.parse(data.toString()) as Record<string, unknown>;
@@ -173,7 +173,7 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
             }
         });
         
-        ws.on('error', (err: Error) => {
+        ws.on('error', () => {
             if (retries < 10 && !activeConnections.has(port)) {
                 retries++;
                 setTimeout(connect, 500);
@@ -230,7 +230,7 @@ export async function activateRSession(): Promise<void> {
 
                 // 2. Check if we have an active connection that hasn't "attached" yet
                 for (const ws of activeConnections.values()) {
-                    if ((ws as any)._terminalPid === pidArg) {
+                    if (ws._terminalPid === pidArg) {
                         console.info(`[activateRSession] Already connecting/connected for PID: ${pidArg}`);
                         terminal.show();
                         return; // Already connecting/connected
@@ -301,11 +301,6 @@ export function removeSessionFiles(): void {
 function writeSettings() {
     const settingPath = path.join(homeExtDir(), 'settings.json');
     fs.writeFileSync(settingPath, JSON.stringify(config()));
-}
-
-function updateSessionWatcher() {
-    console.info(`[updateSessionWatcher] PID: ${pid}`);
-    console.info('[updateSessionWatcher] Done');
 }
 
 async function updatePlot() {
@@ -770,37 +765,11 @@ export async function getWebviewHtml(webview: Webview, file: string, title: stri
         </html>`;
 }
 
-function isFromWorkspace(dir: string) {
-    if (workspace.workspaceFolders === undefined) {
-        let rel = path.relative(os.homedir(), dir);
-        if (rel === '') {
-            return true;
-        }
-        rel = path.relative(fs.realpathSync(os.homedir()), dir);
-        if (rel === '') {
-            return true;
-        }
-    } else {
-        for (const folder of workspace.workspaceFolders) {
-            let rel = path.relative(folder.uri.fsPath, dir);
-            if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-                return true;
-            }
-            rel = path.relative(fs.realpathSync(folder.uri.fsPath), dir);
-            if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
 import * as rstudioapi from './rstudioapi';
 
 export async function activateSession(session: Session): Promise<void> {
     activeSession = session;
-    wsClient = session.ws;
+    wsClient = session.ws as ExtWebSocket;
     server = session.server;
     pid = session.pid;
     rVer = session.rVer;
@@ -810,8 +779,7 @@ export async function activateSession(session: Session): Promise<void> {
     
     if (sessionStatusBarItem) {
         sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/restrict-template-expressions
-        sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
+        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
         sessionStatusBarItem.show();
     }
     await setContext('rSessionActive', true);
@@ -838,11 +806,11 @@ export async function switchSessionByTerminal(terminal: vscode.Terminal | undefi
 export function updateSessionTerminalId(port: number, terminalPid: number): void {
     const ws = activeConnections.get(port);
     if (ws) {
-        (ws as any)._terminalPid = terminalPid;
+        ws._terminalPid = terminalPid;
     }
 }
 
-async function handleNotification(message: Record<string, unknown>, ws: WebSocket) {
+async function handleNotification(message: Record<string, unknown>, ws: ExtWebSocket) {
     const method = String(message.method);
     const params = (message.params as Record<string, unknown>) || {};
 
@@ -852,11 +820,11 @@ async function handleNotification(message: Record<string, unknown>, ws: WebSocke
         case 'attach': {
             if (!params.tempdir || !params.wd) {return;}
             const rPid = String(params.pid);
-            const terminalPid = (ws as any)._terminalPid ? String((ws as any)._terminalPid) : rPid;
+            const terminalPid = ws._terminalPid ? String(ws._terminalPid) : rPid;
             
             let session = sessions.get(terminalPid);
             if (!session) {
-                session = new Session({ host: '127.0.0.1', port: (ws as any)._port, token: (ws as any)._token }, ws);
+                session = new Session({ host: '127.0.0.1', port: ws._port || 0, token: ws._token || '' }, ws);
                 sessions.set(terminalPid, session);
                 // Also map R PID if it's different
                 if (rPid !== terminalPid) {
@@ -865,7 +833,7 @@ async function handleNotification(message: Record<string, unknown>, ws: WebSocke
             }
             session.rVer = String(params.version);
             session.pid = rPid;
-            session.info = params.info;
+            session.info = params.info as SessionInfo;
             session.sessionDir = String(params.tempdir);
             session.workingDir = String(params.wd);
 
@@ -939,7 +907,7 @@ async function handleNotification(message: Record<string, unknown>, ws: WebSocke
     }
 }
 
-async function handleRequest(message: Record<string, unknown>, ws: WebSocket) {
+async function handleRequest(message: Record<string, unknown>, ws: ExtWebSocket) {
     if (message.method) {
         const method = String(message.method);
         const params = (message.params as Record<string, unknown>) || {};
@@ -952,7 +920,7 @@ async function handleRequest(message: Record<string, unknown>, ws: WebSocket) {
                     result = rstudioapi.activeEditorContext();
                     break;
                 case 'insert_or_modify_text':
-                    await rstudioapi.insertOrModifyText(params.query as any[], params.id as string | null);
+                    await rstudioapi.insertOrModifyText(params.query as Record<string, unknown>[], params.id as string | null);
                     result = true;
                     break;
                 case 'replace_text_in_current_selection':
