@@ -155,6 +155,7 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
 
 export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     const termOptions = await makeTerminalOptions();
+    void util.promptToInstallSessPackage(termOptions.cwd);
     const termPath = termOptions.shellPath;
     if(!termPath){
         void vscode.window.showErrorMessage('Could not find R path. Please check r.rterm and r.rpath setting.');
