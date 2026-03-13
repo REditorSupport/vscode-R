@@ -1079,3 +1079,34 @@ export async function sessionRequest(server: SessionServer, data: Record<string,
         return undefined;
     }
 }
+
+interface SessionTerminalLink extends vscode.TerminalLink {
+    port: number;
+    token: string;
+}
+
+export function setupTerminalLinkProvider(): vscode.Disposable {
+    // One-click Link Provider (Stable API)
+    return vscode.window.registerTerminalLinkProvider({
+        provideTerminalLinks: (context: vscode.TerminalLinkContext) => {
+            const regex = /SESS_IPC_SERVER=ws:\/\/127.0.0.1:(\d+)\?token=([a-f0-9]+)/g;
+            const links: SessionTerminalLink[] = [];
+            let match;
+            while ((match = regex.exec(context.line)) !== null) {
+                links.push({
+                    startIndex: match.index,
+                    length: match[0].length,
+                    tooltip: 'Attach to R Session',
+                    port: Number(match[1]),
+                    token: match[2]
+                });
+            }
+            return links;
+        },
+        handleTerminalLink: async (link: SessionTerminalLink) => {
+            const terminal = vscode.window.activeTerminal;
+            const pidArg = await terminal?.processId;
+            startSessionWatcher(link.port, link.token, pidArg);
+        }
+    });
+}

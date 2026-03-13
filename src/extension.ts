@@ -229,6 +229,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
             console.info('Initialize session watcher');
             void session.deploySessionWatcher(context.extensionPath);
             void session.discoverSessions();
+            context.subscriptions.push(session.setupTerminalLinkProvider());
 
             // create status bar item that contains info about the session watcher
             console.info('Create sessionStatusBarItem');

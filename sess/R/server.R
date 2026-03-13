@@ -105,6 +105,9 @@ sess_app <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
   .sess_env$server <- httpuv::startServer("127.0.0.1", port, app = app_handlers)
 
   # Print the connection string to the console.
+  # We use OSC 633;P;SessConnection=... to announce the connection to the terminal
+  # This is hidden in modern terminals but can be parsed by the extension.
+  cat(sprintf("\x1b]633;P;SessConnection=ws://127.0.0.1:%d?token=%s\x07", port, .sess_env$token))
   cat(sprintf("\n[sess] SESS_IPC_SERVER=ws://127.0.0.1:%d?token=%s\n", port, .sess_env$token))
 
   # Register runtime hooks
