@@ -237,4 +237,6 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
     notify_client("workspace_updated")
     TRUE
   }, name = "sess.workspace")
+
+  invisible(NULL)
 }

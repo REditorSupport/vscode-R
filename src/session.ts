@@ -222,6 +222,7 @@ export async function activateRSession(): Promise<void> {
                 // 1. Check if we already have a session for this PID
                 const session = sessions.get(String(pidArg));
                 if (session) {
+                    console.info(`[activateRSession] Found existing session for PID: ${pidArg}`);
                     await activateSession(session);
                     terminal.show();
                     return;
@@ -230,6 +231,7 @@ export async function activateRSession(): Promise<void> {
                 // 2. Check if we have an active connection that hasn't "attached" yet
                 for (const ws of activeConnections.values()) {
                     if ((ws as any)._terminalPid === pidArg) {
+                        console.info(`[activateRSession] Already connecting/connected for PID: ${pidArg}`);
                         terminal.show();
                         return; // Already connecting/connected
                     }
@@ -238,6 +240,7 @@ export async function activateRSession(): Promise<void> {
                 // 3. Check if we have persisted state for this PID
                 const persistedSessions = extensionContext.workspaceState.get<Record<string, { port: number, token: string }>>('r.sessions', {});
                 if (persistedSessions[String(pidArg)]) {
+                    console.info(`[activateRSession] Found persisted session for PID: ${pidArg}`);
                     const sessionData = persistedSessions[String(pidArg)];
                     startSessionWatcher(sessionData.port, sessionData.token, pidArg);
                     terminal.show();
@@ -249,6 +252,7 @@ export async function activateRSession(): Promise<void> {
         // If we reached here, either there's no active terminal or it's not managed.
         // We focus the terminal of the active session if it exists.
         if (activeSession) {
+            console.info('[activateRSession] Focusing terminal of the active session');
             for (const term of window.terminals) {
                 const termPid = await term.processId;
                 if (termPid && sessions.get(String(termPid)) === activeSession) {
@@ -259,6 +263,7 @@ export async function activateRSession(): Promise<void> {
         }
 
         // Otherwise, create a new R terminal
+        console.info('[activateRSession] Creating new R terminal');
         await createRTerm();
     } else {
         void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
@@ -813,17 +818,20 @@ export async function activateSession(session: Session): Promise<void> {
     rWorkspace?.refresh();
 }
 
-export async function switchSessionByTerminal(terminal: vscode.Terminal | undefined): Promise<void> {
-    if (!terminal) {
-        return;
+export function resetStatusBar(): void {
+    if (sessionStatusBarItem) {
+        sessionStatusBarItem.text = 'R: (not attached)';
+        sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
     }
-    const terminalPid = await terminal.processId;
-    if (terminalPid) {
-        // Try to find a session that matches this terminal PID
-        const session = sessions.get(String(terminalPid));
-        if (session) {
-            await activateSession(session);
-        }
+}
+
+export async function switchSessionByTerminal(terminal: vscode.Terminal | undefined): Promise<void> {
+    const terminalPid = await terminal?.processId;
+    const session = terminalPid ? sessions.get(String(terminalPid)) : undefined;
+    if (session) {
+        await activateSession(session);
+    } else {
+        resetStatusBar();
     }
 }
 
@@ -1004,11 +1012,22 @@ async function handleRequest(message: Record<string, unknown>, ws: WebSocket) {
 }
 
 export async function cleanupSession(pidArg: string): Promise<void> {
-    if (pid === pidArg) {
-        if (sessionStatusBarItem) {
-            sessionStatusBarItem.text = 'R: (not attached)';
-            sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
+    clearSessionState(Number(pidArg));
+    const session = sessions.get(pidArg);
+    if (session) {
+        // Find all keys in sessions that point to this session and remove them
+        const keysToRemove: string[] = [];
+        for (const [k, v] of sessions.entries()) {
+            if (v === session) {
+                keysToRemove.push(k);
+            }
         }
+        keysToRemove.forEach(k => sessions.delete(k));
+        // Terminate the WebSocket
+        session.ws.terminate();
+    }
+    if (activeSession === session || pid === pidArg) {
+        resetStatusBar();
         server = undefined;
         activeSession = undefined;
         workspaceData.globalenv = {};
@@ -1089,17 +1108,20 @@ export function setupTerminalLinkProvider(): vscode.Disposable {
     // One-click Link Provider (Stable API)
     return vscode.window.registerTerminalLinkProvider({
         provideTerminalLinks: (context: vscode.TerminalLinkContext) => {
-            const regex = /SESS_IPC_SERVER=ws:\/\/127.0.0.1:(\d+)\?token=([a-f0-9]+)/g;
+            const regex = /sess: ws:\/\/127\.0\.0\.1:(\d+)\?token=([a-z0-9]{32})/g;
             const links: SessionTerminalLink[] = [];
             let match;
             while ((match = regex.exec(context.line)) !== null) {
-                links.push({
-                    startIndex: match.index,
-                    length: match[0].length,
-                    tooltip: 'Attach to R Session',
-                    port: Number(match[1]),
-                    token: match[2]
-                });
+                const port = Number(match[1]);
+                if (!activeConnections.has(port)) {
+                    links.push({
+                        startIndex: match.index,
+                        length: match[0].length,
+                        tooltip: 'Click to attach R session',
+                        port: port,
+                        token: match[2]
+                    });
+                }
             }
             return links;
         },

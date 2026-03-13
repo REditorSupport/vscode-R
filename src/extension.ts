@@ -235,8 +235,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
             console.info('Create sessionStatusBarItem');
             sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
             sessionStatusBarItem.command = 'r.activateRSession';
-            sessionStatusBarItem.text = 'R: (not attached)';
-            sessionStatusBarItem.tooltip = 'Click to activate or focus R session.';
+            session.resetStatusBar();
             sessionStatusBarItem.show();
             context.subscriptions.push(sessionStatusBarItem);
         }

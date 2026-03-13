@@ -195,7 +195,6 @@ export function deleteTerminal(term: vscode.Terminal): void {
         if (config().get<boolean>('sessionWatcher')) {
             void term.processId.then((v) => {
                 if (v) {
-                    clearSessionState(v);
                     void cleanupSession(v.toString());
                 }
             });
