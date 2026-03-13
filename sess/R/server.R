@@ -69,6 +69,7 @@ sess_app <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
     onWSOpen = function(ws) {
       # Bind the active websocket to our environment
       .sess_env$ws <- ws
+      cat("[sess] Client connected\n")
 
       # Send the attach handshake immediately upon connection (JSON-RPC Notification)
       notify_client("attach", list(
@@ -99,6 +100,7 @@ sess_app <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
 
       ws$onClose(function() {
         .sess_env$ws <- NULL
+        cat("[sess] Client disconnected\n")
       })
     }
   )
