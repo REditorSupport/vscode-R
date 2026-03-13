@@ -1108,27 +1108,50 @@ export function setupTerminalLinkProvider(): vscode.Disposable {
     // One-click Link Provider (Stable API)
     return vscode.window.registerTerminalLinkProvider({
         provideTerminalLinks: (context: vscode.TerminalLinkContext) => {
-            const regex = /sess: ws:\/\/127\.0\.0\.1:(\d+)\?token=([a-z0-9]{32})/g;
+            const regex = /\[sess\] Server address: (ws:\/\/127\.0\.0\.1:(\d+)\?token=([a-z0-9]{32}))/g;
             const links: SessionTerminalLink[] = [];
             let match;
             while ((match = regex.exec(context.line)) !== null) {
-                const port = Number(match[1]);
+                const url = match[1];
+                const port = Number(match[2]);
+                const token = match[3];
                 if (!activeConnections.has(port)) {
                     links.push({
-                        startIndex: match.index,
-                        length: match[0].length,
+                        startIndex: match.index + match[0].indexOf(url),
+                        length: url.length,
                         tooltip: 'Click to attach R session',
                         port: port,
-                        token: match[2]
+                        token: token
                     });
                 }
             }
             return links;
         },
         handleTerminalLink: async (link: SessionTerminalLink) => {
-            const terminal = vscode.window.activeTerminal;
-            const pidArg = await terminal?.processId;
-            startSessionWatcher(link.port, link.token, pidArg);
+            const url = `ws://127.0.0.1:${link.port}?token=${link.token}`;
+            await connectToSession(url);
         }
     });
+}
+
+export async function connectToSession(urlValue?: string): Promise<void> {
+    const url = await vscode.window.showInputBox({
+        value: urlValue,
+        prompt: 'Enter the R session WebSocket URL',
+        placeHolder: 'ws://127.0.0.1:PORT?token=TOKEN',
+        ignoreFocusOut: true
+    });
+    if (url) {
+        const regex = /ws:\/\/127\.0\.0\.1:(\d+)\?token=([a-z0-9]{32})/;
+        const match = regex.exec(url);
+        if (match) {
+            const port = Number(match[1]);
+            const token = match[2];
+            const terminal = vscode.window.activeTerminal;
+            const pidArg = await terminal?.processId;
+            startSessionWatcher(port, token, pidArg);
+        } else {
+            void vscode.window.showErrorMessage('Invalid R session URL format.');
+        }
+    }
 }

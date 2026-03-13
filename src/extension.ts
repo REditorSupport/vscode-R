@@ -134,6 +134,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.previewDataframe': preview.previewDataframe,
         'r.previewEnvironment': preview.previewEnvironment,
         'r.activateRSession': session.activateRSession,
+        'r.connectToSession': session.connectToSession,
         'r.launchAddinPicker': rstudioapi.launchAddinPicker,
 
         // workspace viewer

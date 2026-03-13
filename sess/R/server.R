@@ -111,7 +111,7 @@ sess_app <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
   .sess_env$server <- httpuv::startServer("127.0.0.1", port, app = app_handlers)
 
   # Print the connection string to the console.
-  cat(sprintf("\nsess: ws://127.0.0.1:%d?token=%s\n\n", port, .sess_env$token))
+  cat(sprintf("\n[sess] Server address: ws://127.0.0.1:%d?token=%s\n\n", port, .sess_env$token))
 
   # Register runtime hooks
   register_hooks(use_rstudioapi = use_rstudioapi, use_httpgd = use_httpgd)

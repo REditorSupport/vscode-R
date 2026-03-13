@@ -398,6 +398,11 @@
         "command": "r.activateRSession"
       },
       {
+        "title": "Connect to R Session",
+        "category": "R",
+        "command": "r.connectToSession"
+      },
+      {
         "title": "Run Command With Selection or Word in Terminal",
         "category": "R",
         "command": "r.runCommandWithSelectionOrWord"
