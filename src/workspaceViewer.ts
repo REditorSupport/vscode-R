@@ -1,3 +1,5 @@
+'use strict';
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window, ThemeIcon } from 'vscode';

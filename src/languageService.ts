@@ -1,3 +1,5 @@
+'use strict';
+
 import * as os from 'os';
 import { dirname } from 'path';
 import * as net from 'net';

@@ -1,10 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-
-
+'use strict';
 import * as vscode from 'vscode';
 
 import * as session from './session';
@@ -101,7 +95,7 @@ export class HelpLinkHoverProvider implements vscode.HoverProvider {
             const encodedArgs = encodeURIComponent(JSON.stringify(args));
             const cmd = 'command:r.helpPanel.openForPath';
             const cmdUri = vscode.Uri.parse(`${cmd}?${encodedArgs}`);
-            return `[\`${cmdText}\`](${cmdUri})`;
+            return `[\`${cmdText}\`](${cmdUri.toString()})`;
         });
         const md = new vscode.MarkdownString(mds.join('  \n'));
         md.isTrusted = true;

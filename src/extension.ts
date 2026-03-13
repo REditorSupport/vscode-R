@@ -1,4 +1,3 @@
-
 'use strict';
 
 // interfaces, functions, etc. provided by vscode
