@@ -20,7 +20,7 @@ ipc_send <- function(method, params = list(), request = FALSE) {
 
   req_id <- NULL
   if (request) {
-    req_id <- basename(tempfile("req_"))
+    req_id <- basename(tempfile("req_", tmpdir = .sess_env$tempdir))
     msg$id <- req_id
   }
 

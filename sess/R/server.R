@@ -12,8 +12,12 @@ sess_app <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
   .sess_env$token <- if (nzchar(env_token)) env_token else paste0(sample(c(letters, 0:9), 32, replace = TRUE), collapse = "")
   .sess_env$pending_responses <- list()
 
+  # Specific tempdir for vscode-R
+  .sess_env$tempdir <- file.path(tempdir(), "sess")
+  dir.create(.sess_env$tempdir, showWarnings = FALSE, recursive = TRUE)
+
   # Temporary file for static plot serving
-  .sess_env$latest_plot_path <- file.path(tempdir(), "sess_plot.png")
+  .sess_env$latest_plot_path <- file.path(.sess_env$tempdir, "sess_plot.png")
 
   app_handlers <- list(
     # --- HTTP HANDLER (The "Pull" API) ---
@@ -70,7 +74,7 @@ sess_app <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
       notify_client("attach", list(
         version = sprintf("%s.%s", R.version$major, R.version$minor),
         pid = Sys.getpid(),
-        tempdir = tempdir(),
+        tempdir = .sess_env$tempdir,
         wd = getwd(),
         info = list(
           command = commandArgs()[[1L]],

@@ -88,7 +88,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
     # make sure title is computed.
     force(title)
     # Dump to a temporary file locally so the payload size over WS isn't massive
-    file_path <- tempfile(fileext = ".json")
+    file_path <- tempfile(tmpdir = .sess_env$tempdir, fileext = ".json")
 
     row_limit <- abs(getOption("sess.row_limit", 100))
 
@@ -132,7 +132,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
       ))
     } else {
       code <- if (is.primitive(x)) utils::capture.output(print(x)) else deparse(x)
-      file_path <- tempfile(fileext = ".R")
+      file_path <- tempfile(tmpdir = .sess_env$tempdir, fileext = ".R")
       writeLines(code, file_path)
       notify_client("dataview", list(
         title = title,
