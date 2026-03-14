@@ -42,7 +42,7 @@ suite('R Terminal', () => {
             }
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(util, 'getRterm').resolves('R');
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves();
 
         const options = await rTerminal.makeTerminalOptions();
@@ -54,7 +54,7 @@ suite('R Terminal', () => {
         assert.strictEqual(options.env['SESS_RSTUDIOAPI'], 'TRUE');
         assert.strictEqual(options.env['SESS_USE_HTTPGD'], 'TRUE');
         assert.ok(options.env['R_PROFILE_USER']);
-        assert.ok(options.env['R_PROFILE_USER'].endsWith('R/profile.R'));
+        assert.ok(options.env['R_PROFILE_USER'].endsWith(path.join('R', 'profile.R')));
     });
 
     test('makeTerminalOptions does not set session watcher env if disabled', async () => {
@@ -67,7 +67,7 @@ suite('R Terminal', () => {
             }
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(util, 'getRterm').resolves('R');
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves();
 
         const options = await rTerminal.makeTerminalOptions();
@@ -85,7 +85,7 @@ suite('R Terminal', () => {
             }
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(util, 'getRterm').resolves('R');
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves();
 
         // Spy on startSessionWatcher
@@ -126,7 +126,7 @@ suite('R Terminal', () => {
             }
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(util, 'getRterm').resolves('R');
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves();
 
         // We need to mock the terminal and its processId
