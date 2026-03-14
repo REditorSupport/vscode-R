@@ -98,7 +98,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
         title <<- sprintf("%s (limited to %d/%d)", title, row_limit, .nrow)
         .data <- utils::head(.data, n = row_limit)
       }
-      return(.data)
+      .data
     }
 
     if (inherits(x, "ArrowTabular")) {
@@ -182,18 +182,27 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
       file <- x[1]
       pkgname <- basename(dirname(dirname(file)))
       requestPath <- paste0("/library/", pkgname, "/html/", basename(file), ".html")
-      notify_client("help", list(requestPath = requestPath, viewer = getOption("sess.helpPanel", "Two")))
+      notify_client("help", list(
+        requestPath = requestPath,
+        viewer = getOption("sess.helpPanel", "Two")
+      ))
     } else {
       utils:::print.help_files_with_topic(x, ...)
     }
     invisible(x)
   }
-  registerS3method("print", "help_files_with_topic", sess_print.help_files_with_topic, envir = asNamespace("utils"))
+  registerS3method(
+    "print", "help_files_with_topic", sess_print.help_files_with_topic,
+    envir = asNamespace("utils")
+  )
 
   sess_print.hsearch <- function(x, ...) {
     if (length(x) >= 1) {
       requestPath <- paste0("/doc/html/Search?pattern=", tools:::escapeAmpersand(x$pattern))
-      notify_client("help", list(requestPath = requestPath, viewer = getOption("sess.helpPanel", "Two")))
+      notify_client("help", list(
+        requestPath = requestPath,
+        viewer = getOption("sess.helpPanel", "Two")
+      ))
     } else {
       utils:::print.hsearch(x, ...)
     }
@@ -224,8 +233,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
       size_match <- abs(cur_size[1] - null_dev_size[1]) < 1e-5 &&
         abs(cur_size[2] - null_dev_size[2]) < 1e-5
 
-      res <- is_null_dev_name && size_match
-      return(res)
+      is_null_dev_name && size_match
     }
 
     new_plot <- function() {

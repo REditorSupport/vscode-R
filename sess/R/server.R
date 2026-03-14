@@ -1,8 +1,11 @@
 #' Start the client R IPC Server
 #'
-#' @param port Integer. The port to use for the server. If NULL, it will use SESS_PORT env var or a random port.
-#' @param token String. The token to use for authentication. If NULL, it will use SESS_TOKEN env var or a random token.
-#' @param use_rstudioapi Logical. Should the rstudioapi emulation layer be enabled? Defaults to TRUE.
+#' @param port Integer. The port to use for the server. If NULL, it will use
+#'   SESS_PORT env var or a random port.
+#' @param token String. The token to use for authentication. If NULL, it will
+#'   use SESS_TOKEN env var or a random token.
+#' @param use_rstudioapi Logical. Should the rstudioapi emulation layer be
+#'   enabled? Defaults to TRUE.
 #' @param use_httpgd Logical. Should httpgd be used for plotting if available? Defaults to TRUE
 #' @export
 sess_app <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE) {
@@ -13,7 +16,11 @@ sess_app <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpg
   # Use token if provided, otherwise fallback to SESS_TOKEN env var, or random token
   if (is.null(token) || is.na(token) || !nzchar(token)) {
     env_token <- Sys.getenv("SESS_TOKEN")
-    .sess_env$token <- if (nzchar(env_token)) env_token else paste0(sample(c(letters, 0:9), 32, replace = TRUE), collapse = "")
+    .sess_env$token <- if (nzchar(env_token)) {
+      env_token
+    } else {
+      paste0(sample(c(letters, 0:9), 32, replace = TRUE), collapse = "")
+    }
   } else {
     .sess_env$token <- token
   }
@@ -89,14 +96,20 @@ sess_app <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpg
             )
 
             if (payload$method %in% names(handlers)) {
-              res <- tryCatch({
-                handlers[[payload$method]](payload$params)
-              }, error = function(e) {
-                # Handle unexpected R errors in handlers
-                warning(sprintf("[sess] Error in handler for '%s': %s", payload$method, e$message))
-                NULL
-              })
-              
+              res <- tryCatch(
+                {
+                  handlers[[payload$method]](payload$params)
+                },
+                error = function(e) {
+                  # Handle unexpected R errors in handlers
+                  warning(sprintf(
+                    "[sess] Error in handler for '%s': %s",
+                    payload$method, e$message
+                  ))
+                  NULL
+                }
+              )
+
               # Send successful response
               succ_resp <- list(
                 jsonrpc = "2.0",
@@ -116,9 +129,11 @@ sess_app <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpg
           } else {
             # It's a Response (to our RStudio API request)
             if (!is.null(payload$result)) {
-              .sess_env$pending_responses[[as.character(payload$id)]] <- payload$result
+              .sess_env$pending_responses[[as.character(payload$id)]] <-
+                payload$result
             } else if (!is.null(payload$error)) {
-              .sess_env$pending_responses[[as.character(payload$id)]] <- structure(payload$error, class = "json_rpc_error")
+              .sess_env$pending_responses[[as.character(payload$id)]] <-
+                structure(payload$error, class = "json_rpc_error")
             }
           }
         }

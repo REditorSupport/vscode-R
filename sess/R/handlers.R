@@ -3,7 +3,7 @@
 get_workspace_data <- function() {
   env <- .GlobalEnv
   all_names <- ls(env)
-  
+
   objs <- lapply(all_names, function(name) {
     obj <- env[[name]]
     list(
@@ -11,11 +11,14 @@ get_workspace_data <- function() {
       type = typeof(obj),
       length = length(obj),
       # Create a concise string representation
-      str = paste0(utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE)), collapse = "\n")
+      str = paste0(
+        utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE)),
+        collapse = "\n"
+      )
     )
   })
   names(objs) <- all_names
-  
+
   list(
     globalenv = objs,
     search = search()[-1],
@@ -24,19 +27,28 @@ get_workspace_data <- function() {
 }
 
 handle_hover <- function(expr_str) {
-  tryCatch({
-    expr <- parse(text = expr_str, keep.source = FALSE)[[1]]
-    obj <- eval(expr, .GlobalEnv)
-    str_preview <- paste0(utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE)), collapse = "\n")
-    list(str = str_preview)
-  }, error = function(e) NULL)
+  tryCatch(
+    {
+      expr <- parse(text = expr_str, keep.source = FALSE)[[1]]
+      obj <- eval(expr, .GlobalEnv)
+      str_preview <- paste0(
+        utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE)),
+        collapse = "\n"
+      )
+      list(str = str_preview)
+    },
+    error = function(e) NULL
+  )
 }
 
 handle_complete <- function(expr_str, trigger = NULL) {
-  obj <- tryCatch({
-    expr <- parse(text = expr_str, keep.source = FALSE)[[1]]
-    eval(expr, .GlobalEnv)
-  }, error = function(e) NULL)
+  obj <- tryCatch(
+    {
+      expr <- parse(text = expr_str, keep.source = FALSE)[[1]]
+      eval(expr, .GlobalEnv)
+    },
+    error = function(e) NULL
+  )
 
   if (is.null(obj) || is.null(trigger)) {
     return(NULL)
@@ -50,14 +62,16 @@ handle_complete <- function(expr_str, trigger = NULL) {
     } else {
       NULL
     }
-    
-    if (is.null(nms)) return(NULL)
-    
+
+    if (is.null(nms)) {
+      return(NULL)
+    }
+
     return(lapply(nms, function(n) {
       item <- obj[[n]]
       list(
-        name = n, 
-        type = typeof(item), 
+        name = n,
+        type = typeof(item),
         str = paste0(class(item), collapse = ", ")
       )
     }))
@@ -68,13 +82,13 @@ handle_complete <- function(expr_str, trigger = NULL) {
     return(lapply(nms, function(n) {
       item <- methods::slot(obj, n)
       list(
-        name = n, 
-        type = typeof(item), 
+        name = n,
+        type = typeof(item),
         str = paste0(class(item), collapse = ", ")
       )
     }))
   }
-  
+
   NULL
 }
 
@@ -103,13 +117,19 @@ handle_plot_latest <- function(params) {
 
   if (format == "svglite") {
     if (requireNamespace("svglite", quietly = TRUE)) {
-      do.call(svglite::svglite, c(list(filename = plot_file, width = width / 72, height = height / 72), dev_args))
+      do.call(svglite::svglite, c(list(
+        filename = plot_file, width = width / 72, height = height / 72
+      ), dev_args))
     } else {
       # Fallback to png
-      do.call(png, c(list(filename = plot_file, width = width, height = height, res = 72), dev_args))
+      do.call(png, c(list(
+        filename = plot_file, width = width, height = height, res = 72
+      ), dev_args))
     }
   } else {
-    do.call(png, c(list(filename = plot_file, width = width, height = height, res = 72), dev_args))
+    do.call(png, c(list(
+      filename = plot_file, width = width, height = height, res = 72
+    ), dev_args))
   }
 
   on.exit({
@@ -124,7 +144,11 @@ handle_plot_latest <- function(params) {
     raw_img <- readBin(plot_file, "raw", file.info(plot_file)$size)
     list(
       data = as.character(jsonlite::base64_enc(raw_img)),
-      format = if (format == "svglite" && !requireNamespace("svglite", quietly = TRUE)) "png" else format
+      format = if (format == "svglite" && !requireNamespace("svglite", quietly = TRUE)) {
+        "png"
+      } else {
+        format
+      }
     )
   } else {
     list(data = NULL)

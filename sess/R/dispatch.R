@@ -32,7 +32,7 @@ rpc_send <- function(method, params = list(), request = FALSE) {
     },
     error = function(e) {
       warning("Failed to send IPC message: ", e$message)
-      return(invisible(FALSE))
+      invisible(FALSE)
     }
   )
 
@@ -57,7 +57,7 @@ rpc_send <- function(method, params = list(), request = FALSE) {
     stop(sprintf("JSON-RPC Error [%d]: %s", response$code, response$message))
   }
 
-  return(response)
+  response
 }
 
 #' Notify the client via WebSocket (JSON-RPC 2.0 Notification)

@@ -2011,7 +2011,7 @@
     "watch": "node esbuild.js --watch",
     "pretest": "tsc -p ./",
     "test": "vscode-test",
-    "lint": "eslint src --ext ts"
+    "lint": "eslint src --ext ts && Rscript -e 'lintr::lint_package(\"sess\")'"
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.35",
