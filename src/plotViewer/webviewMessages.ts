@@ -1,15 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// Make sure these files contain the same interfaces as ./html/XXX/webviewMessages.d.ts!
-
-
-interface VsCode {
+export interface VsCode {
     postMessage: (msg: OutMessage) => void;
     setState: (state: string) => void;
 }
-declare function acquireVsCodeApi(): VsCode;
-
-
+/**
+ * Function declared by VS Code in Webview
+ */
+export const acquireVsCodeApi: any = (globalThis as any).acquireVsCodeApi;
 
 export interface IMessage {
     message: string;
@@ -27,8 +25,6 @@ export interface LogMessage extends IMessage {
 }
 
 export type OutMessage = ResizeMessage | LogMessage;
-
-
 
 export interface UpdatePlotMessage extends IMessage {
     message: 'updatePlot',
@@ -50,7 +46,6 @@ export interface ToggleFullWindowMessage extends IMessage {
     message: 'toggleFullWindow',
     useFullWindow: boolean
 }
-
 
 export type PreviewPlotLayout = 'multirow' | 'scroll' | 'hidden';
 export interface PreviewPlotLayoutMessage extends IMessage {

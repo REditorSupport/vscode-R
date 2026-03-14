@@ -2005,12 +2005,10 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "tsc -p ./html/help && tsc -p ./html/httpgd && node esbuild.js --production",
+    "vscode:prepublish": "node esbuild.js --production",
     "changelog": "npx git-cliff v2.8.5.. -o",
-    "build": "tsc -p ./html/help && tsc -p ./html/httpgd && node esbuild.js && Rscript -e 'devtools::install(\"sess\")'",
+    "build": "node esbuild.js && Rscript -e 'devtools::install(\"sess\")'",
     "watch": "node esbuild.js --watch",
-    "watchHelp": "tsc -p ./html/help --watch",
-    "watchHttpgd": "tsc -p ./html/httpgd --watch",
     "pretest": "tsc -p ./",
     "test": "vscode-test",
     "lint": "eslint src --ext ts"

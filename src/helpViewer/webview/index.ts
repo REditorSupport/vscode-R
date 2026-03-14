@@ -1,4 +1,4 @@
-declare function acquireVsCodeApi(): VsCode;
+import { acquireVsCodeApi } from '../webviewMessages';
 
 const vscode = acquireVsCodeApi();
 

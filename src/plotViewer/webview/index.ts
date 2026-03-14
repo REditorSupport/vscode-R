@@ -16,8 +16,7 @@ interface Plot {
     width?: number;
 }
 
-// get vscode api
-declare function acquireVsCodeApi(): VsCode;
+import { acquireVsCodeApi } from '../webviewMessages';
 const vscode = acquireVsCodeApi();
 
 // globals

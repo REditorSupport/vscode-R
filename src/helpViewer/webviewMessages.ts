@@ -1,15 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// Make sure these files contain the same interfaces as ./html/XXX/webviewMessages.d.ts!
-
-
-interface VsCode {
+export interface VsCode {
     postMessage: (msg: OutMessage) => void;
     setState: (state: string) => void;
 }
-declare function acquireVsCodeApi(): VsCode;
-
-
+/**
+ * Function declared by VS Code in Webview
+ */
+export const acquireVsCodeApi: any = (globalThis as any).acquireVsCodeApi;
 
 export interface IMessage {
     message: string;
@@ -45,5 +43,3 @@ export interface GetScrollYMessage extends IMessage {
 }
 
 export type OutMessage = LogMessage | MouseClickMessage | LinkClickedMessage | CodeClickedMessage | GetScrollYMessage;
-
-

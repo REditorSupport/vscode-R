@@ -61,7 +61,7 @@ export class HttpgdManager {
     recentlyActiveViewers: HttpgdViewer[] = [];
 
     constructor() {
-        const htmlRoot = extensionContext.asAbsolutePath('html/httpgd');
+        const htmlRoot = extensionContext.asAbsolutePath('dist/webviews/httpgd');
         this.viewerOptions = {
             parent: this,
             htmlRoot: htmlRoot,
