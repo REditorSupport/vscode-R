@@ -1,19 +1,26 @@
 name: main
 on: [push, pull_request]
-env:
-  SCRIPT_DIR: ./.github/scripts
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
         with:
-          node-version: 18
+          use-public-rspm: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
       - run: npm install
       - name: Run tests
         uses: GabrielBB/xvfb-action@v1.0
@@ -24,11 +31,14 @@ jobs:
     env:
       VSIX_FILE: vscode-R.vsix
     steps:
-      - uses: actions/checkout@v3
-      - run: npm install
-      - uses: lannonbr/vsce-action@4.0.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          args: "package -o $VSIX_FILE"
+          node-version: 20
+          cache: 'npm'
+      - run: npm install
+      - name: Package extension
+        run: npx @vscode/vsce package -o $VSIX_FILE
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.VSIX_FILE }}
@@ -36,12 +46,22 @@ jobs:
   eslint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
+          cache: 'npm'
       - run: npm install
       - run: npm run lint
+  markdownlint-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nosborn/github-action-markdown-cli@v1.1.1
+        with:
+          files: .
+          config_file: ".markdownlint.json"
+          ignore_files: "node_modules/*"
   lint:
     runs-on: ubuntu-latest
     env:
