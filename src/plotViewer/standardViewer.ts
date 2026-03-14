@@ -75,12 +75,14 @@ export class StandardPlotViewer implements PlotViewer {
         }
 
         const format = config().get<string>('plot.format', 'svglite');
+        const devArgs = config().get<Record<string, unknown>>('plot.devArgs');
         const response = await sessionRequest(server, {
             method: 'plot_latest',
             params: {
                 width: this.viewWidth,
                 height: this.viewHeight,
-                format: format
+                format: format,
+                devArgs: devArgs
             }
         });
 

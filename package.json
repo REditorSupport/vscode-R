@@ -1628,26 +1628,26 @@
         "r.session.useWebServer": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Enable experimental use of web server in the R session to handle session requests from the extension. Changes the option `vsc.use_webserver` in R. Requires `#r.sessionWatcher#` to be set to `true`. Requires the `httpuv` R package."
+          "markdownDescription": "Enable experimental use of web server in the R session to handle session requests from the extension. Requires `#r.sessionWatcher#` to be set to `true`. Requires the `httpuv` R package."
         },
         "r.session.watchGlobalEnvironment": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Watch the global environment to provide hover, autocompletions, and workspace viewer information. Changes the option `vsc.globalenv` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+          "markdownDescription": "Watch the global environment to provide hover, autocompletions, and workspace viewer information. Requires `#r.sessionWatcher#` to be set to `true`."
         },
         "r.session.objectLengthLimit": {
           "type": "integer",
           "default": 2000,
-          "markdownDescription": "The upper limit of object length to show object details in workspace viewer and provide session symbol completion. Decrease this value if you experience significant delay after executing R commands caused by large global objects with many elements. Changes the option `vsc.object_length_limit` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+          "markdownDescription": "The upper limit of object length to show object details in workspace viewer and provide session symbol completion. Decrease this value if you experience significant delay after executing R commands caused by large global objects with many elements. Requires `#r.sessionWatcher#` to be set to `true`."
         },
         "r.session.objectTimeout": {
           "type": "integer",
           "default": 50,
-          "markdownDescription": "The maximum number of milliseconds to get information of a single object in the global environment. Decrease this value if you experience significant delay after executing R commands caused by large global objects with many elements. Changes the option `vsc.object_timeout` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+          "markdownDescription": "The maximum number of milliseconds to get information of a single object in the global environment. Decrease this value if you experience significant delay after executing R commands caused by large global objects with many elements. Requires `#r.sessionWatcher#` to be set to `true`."
         },
         "r.session.levelOfObjectDetail": {
           "type": "string",
-          "markdownDescription": "How much of the object to show on hover, autocompletion, and in the workspace viewer? Changes the option `vsc.str.max.level` in R. Requires `#r.sessionWatcher#` to be set to `true`.",
+          "markdownDescription": "How much of the object to show on hover, autocompletion, and in the workspace viewer? Requires `#r.sessionWatcher#` to be set to `true`.",
           "default": "Minimal",
           "enum": [
             "Minimal",
@@ -1663,12 +1663,12 @@
         "r.session.emulateRStudioAPI": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Changes the option `vsc.rstudioapi` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+          "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Requires `#r.sessionWatcher#` to be set to `true`."
         },
         "r.session.data.rowLimit": {
           "type": "integer",
           "default": 0,
-          "markdownDescription": "The maximum number of rows to be displayed in the data viewer. `0` means no limit. Changes the option `vsc.row_limit` in R. Requires `#r.sessionWatcher#` to be set to `true`."
+          "markdownDescription": "The maximum number of rows to be displayed in the data viewer. `0` means no limit. Changes the option `sess.row_limit` in R. Requires `#r.sessionWatcher#` to be set to `true`."
         },
         "r.session.data.pageSize": {
           "type": "integer",
@@ -1689,7 +1689,7 @@
           "properties": {
             "plot": {
               "type": "string",
-              "description": "Which view column to show the plot file on graphics update? \n\nChanges the option 'vsc.plot' in R.",
+              "description": "Which view column to show the plot viewer on graphics update?",
               "enum": [
                 "Two",
                 "Active",
@@ -1706,7 +1706,7 @@
             },
             "browser": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by browser (e.g. shiny apps)? \n\nChanges the option 'vsc.browser' in R.",
+              "description": "Which view column to show the WebView triggered by browser (e.g. shiny apps)?",
               "enum": [
                 "Two",
                 "Active",
@@ -1723,7 +1723,7 @@
             },
             "viewer": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by viewer (e.g. htmlwidgets)? \n\nChanges the option 'vsc.viewer' in R.",
+              "description": "Which view column to show the WebView triggered by viewer (e.g. htmlwidgets)?",
               "enum": [
                 "Two",
                 "Active",
@@ -1740,7 +1740,7 @@
             },
             "pageViewer": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by the page viewer (e.g. profvis)? \n\nChanges the option 'vsc.page_viewer' in R.",
+              "description": "Which view column to show the WebView triggered by the page viewer (e.g. profvis)?",
               "enum": [
                 "Two",
                 "Active",
@@ -1757,7 +1757,7 @@
             },
             "view": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by View()? \n\nChanges the option 'vsc.view' in R.",
+              "description": "Which view column to show the WebView triggered by View()? \n\nChanges the option 'sess.dataview' in R.",
               "enum": [
                 "Two",
                 "Active",
@@ -1774,7 +1774,7 @@
             },
             "helpPanel": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by the help panel? \n\nChanges the option 'vsc.help_panel' in R.",
+              "description": "Which view column to show the WebView triggered by the help panel? \n\nChanges the option 'sess.helpPanel' in R.",
               "enum": [
                 "Two",
                 "Active",
@@ -1800,7 +1800,7 @@
         "r.workspaceViewer.showObjectSize": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Show object size when hovering over a workspace viewer item. Changes the option `vsc.show_object_size` in R."
+          "markdownDescription": "Show object size when hovering over a workspace viewer item."
         },
         "r.workspaceViewer.removeHiddenItems": {
           "type": "boolean",
@@ -1834,7 +1834,7 @@
         },
         "r.plot.devArgs": {
           "type": "object",
-          "markdownDescription": "The arguments for the png device to replay user graphics to show in VSCode. Requires `#r.plot.useHttpgd#` to be set to `false`. \n\nChanges the option `vsc.dev.args` in R.",
+          "markdownDescription": "The supplementary arguments for the rendering device (e.g., `png()` or `svglite()`) used by the standard plot viewer. Note that width and height are now handled dynamically by the responsive viewer and will be overridden. Requires `#r.plot.useHttpgd#` to be set to `false`. \n\nChanges the option `sess.devArgs` in R.",
           "default": {
             "width": 800,
             "height": 1200
@@ -1842,12 +1842,12 @@
           "properties": {
             "width": {
               "type": "number",
-              "description": "Width of the graphic device.",
+              "description": "Width of the graphic device (Note: This is now handled dynamically by the responsive viewer).",
               "default": 480
             },
             "height": {
               "type": "number",
-              "description": "Height of the graphic device.",
+              "description": "Height of the graphic device (Note: This is now handled dynamically by the responsive viewer).",
               "default": 480
             },
             "units": {
@@ -1868,7 +1868,7 @@
         "r.plot.useHttpgd": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer. Changes the option `vsc.use_httpgd` in R.\n\nRequires the `httpgd` R package version 1.2.0 or later."
+          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer.\n\nRequires the `httpgd` R package version 1.2.0 or later."
         },
         "r.plot.format": {
           "type": "string",
@@ -1877,7 +1877,7 @@
             "png",
             "svglite"
           ],
-          "description": "The format to use for the standard plot viewer. Requires `#r.plot.useHttpgd#` to be set to `false`."
+          "description": "The graphics format to use for the standard plot viewer. Requires `#r.plot.useHttpgd#` to be set to `false`."
         },
         "r.plot.defaults.colorTheme": {
           "type": "string",

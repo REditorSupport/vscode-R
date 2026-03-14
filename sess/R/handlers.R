@@ -90,15 +90,26 @@ handle_plot_latest <- function(params) {
 
   plot_file <- tempfile(tmpdir = .sess_env$tempdir, fileext = paste0(".", format))
 
+  dev_args <- params$devArgs
+  if (is.null(dev_args)) {
+    dev_args <- list()
+  }
+  # Remove arguments that we handle ourselves
+  dev_args$filename <- NULL
+  dev_args$file <- NULL
+  dev_args$width <- NULL
+  dev_args$height <- NULL
+  dev_args$res <- NULL
+
   if (format == "svglite") {
     if (requireNamespace("svglite", quietly = TRUE)) {
-      svglite::svglite(plot_file, width = width / 72, height = height / 72)
+      do.call(svglite::svglite, c(list(filename = plot_file, width = width / 72, height = height / 72), dev_args))
     } else {
       # Fallback to png
-      png(plot_file, width = width, height = height, res = 72)
+      do.call(png, c(list(filename = plot_file, width = width, height = height, res = 72), dev_args))
     }
   } else {
-    png(plot_file, width = width, height = height, res = 72)
+    do.call(png, c(list(filename = plot_file, width = width, height = height, res = 72), dev_args))
   }
 
   on.exit({

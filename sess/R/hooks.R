@@ -207,7 +207,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
       notify_client("httpgd", list(url = httpgd::hgd_url()))
     })
   } else {
-    # Default to static plot capturing (Re-implementation based on vsc.R)
+    # Default to static plot capturing (Re-implementation based on legacy plot handler)
     plot_file <- .sess_env$latest_plot_path
     file.create(plot_file, showWarnings = FALSE)
 
