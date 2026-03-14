@@ -1,13 +1,5 @@
 'use strict';
 
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/restrict-plus-operands */
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
     window, TextEditor, TextDocument, Uri,
     workspace, WorkspaceEdit, Position, Range, Selection,
@@ -21,10 +13,41 @@ import { config } from './util';
 
 let lastActiveTextEditor: TextEditor;
 
+// Types for rstudioapi
+export type RSCoord = number | 'Inf' | '-Inf';
+
+export interface RSPosition {
+    [index: number]: RSCoord;
+    length: number;
+}
+
+export interface RSRange {
+    start: RSPosition;
+    end: RSPosition;
+}
+
+export interface RSEditOperation {
+    operation: 'insertText' | 'modifyRange';
+    text: string;
+    location: RSPosition | RSRange;
+}
+
+interface RSSelection {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+}
+
+interface RSDocumentContext {
+    id: { external: string };
+    contents: string;
+    path: string;
+    selection: RSSelection[];
+}
+
 // dispatchRStudioAPICall removed
 
 //rstudioapi
-export function activeEditorContext() {
+export function activeEditorContext(): RSDocumentContext {
     // info returned from RStudio:
     // list with:
     // id
@@ -44,7 +67,7 @@ export function activeEditorContext() {
     };
 }
 
-export async function documentContext(id: string | null) {
+export async function documentContext(id: string | null): Promise<{ id: { external: string } }> {
     const target = findTargetUri(id);
     const targetDocument = await workspace.openTextDocument(target);
     console.info(`[documentContext] getting context for: ${target.path}`);
@@ -53,7 +76,7 @@ export async function documentContext(id: string | null) {
     };
 }
 
-export async function insertOrModifyText(query: any[], id: string | null = null) {
+export async function insertOrModifyText(query: RSEditOperation[], id: string | null = null): Promise<void> {
 
 
     const target = findTargetUri(id);
@@ -64,16 +87,16 @@ export async function insertOrModifyText(query: any[], id: string | null = null)
     query.forEach((op) => {
         assertSupportedEditOperation(op.operation);
 
-        let editLocation: any;
+        let editLocation: Position | Range;
         const editText = normaliseEditText(op.text, op.location, op.operation, targetDocument);
 
         if (op.operation === 'insertText') {
-            editLocation = parsePosition(op.location, targetDocument);
+            editLocation = parsePosition(op.location as RSPosition, targetDocument);
             console.info(`[insertTextAtPosition] inserting at: ${JSON.stringify(editLocation)}`);
             console.info(`[insertTextAtPosition] inserting text: ${editText}`);
             edit.insert(target, editLocation, editText);
         } else {
-            editLocation = parseRange(op.location, targetDocument);
+            editLocation = parseRange(op.location as RSRange, targetDocument);
             console.info(`[insertTextAtPosition] replacing at: ${JSON.stringify(editLocation)}`);
             console.info(`[insertTextAtPosition] replacing with text: ${editText}`);
             edit.replace(target, editLocation, editText);
@@ -110,7 +133,7 @@ export async function navigateToFile(file: string, line: number, column: number)
     editor.revealRange(new Range(targetPosition, targetPosition));
 }
 
-export async function setSelections(ranges: number[][], id: string | null): Promise<void> {
+export async function setSelections(ranges: RSRange[], id: string | null): Promise<void> {
     // Setting selections can only be done on TextEditors not TextDocuments, but
     // it is the latter which are the things actually referred to by `id`. In
     // VSCode it's not possible to get a list of the open text editors. it is not
@@ -235,12 +258,19 @@ interface AddinItem extends QuickPickItem {
 
 let addinQuickPicks: AddinItem[] | undefined = undefined;
 
+interface RawAddin {
+    package: string;
+    name: string;
+    description: string;
+    binding: string;
+}
+
 export async function getAddinPickerItems(): Promise<AddinItem[]> {
 
     if (typeof addinQuickPicks === 'undefined') {
-        const addins: any[] = await readJSON(path.join(sessionDir, 'addins.json')).
+        const addins: RawAddin[] = await readJSON(path.join(sessionDir, 'addins.json')).
             then(
-                (result) => result,
+                (result: RawAddin[]) => result,
                 () => {
                     throw ('Could not find list of installed addins.' +
                         ' options(vsc.rstudioapi = TRUE) must be set in your .Rprofile to use ' +
@@ -312,7 +342,7 @@ export async function sendCodeToRTerminal(code: string, execute: boolean, focus:
 }
 
 //utils
-function toVSCCoord(coord: any) {
+function toVSCCoord(coord: RSCoord) {
     // this is necessary because RStudio will accept negative or infinite values,
     // replacing them with the min or max or the document.
     // These must be clamped non-negative integers accepted by VSCode.
@@ -323,7 +353,7 @@ function toVSCCoord(coord: any) {
         coord_value = 10000000;
     } else if (coord === '-Inf') {
         coord_value = 0;
-    } else if (coord <= 0) {
+    } else if (typeof coord === 'number' && coord <= 0) {
         coord_value = 0;
     }
     else { // coord > 0
@@ -334,7 +364,7 @@ function toVSCCoord(coord: any) {
 
 }
 
-function parsePosition(rs_position: any[], targetDocument: TextDocument) {
+function parsePosition(rs_position: RSPosition, targetDocument: TextDocument) {
     if (rs_position.length !== 2) {
         throw ('an rstudioapi position must be an array of 2 numbers');
     }
@@ -344,7 +374,7 @@ function parsePosition(rs_position: any[], targetDocument: TextDocument) {
         ));
 }
 
-function parseRange(rs_range: any, targetDocument: TextDocument) {
+function parseRange(rs_range: RSRange, targetDocument: TextDocument) {
     if (rs_range.start.length !== 2 || rs_range.end.length !== 2) {
         throw ('an rstudioapi range must be an object containing two numeric arrays');
     }
@@ -363,16 +393,16 @@ function assertSupportedEditOperation(operation: string) {
     }
 }
 
-function normaliseEditText(text: string, editLocation: any,
+function normaliseEditText(text: string, editLocation: RSPosition | RSRange,
     operation: string, targetDocument: TextDocument) {
     // in a document with lines, does the line position extend past the existing
     // lines in the document? rstudioapi adds a newline in this case, so must we.
     // n_lines is a count, line is 0 indexed position hence + 1
     const editStartLine = operation === 'insertText' ?
-        editLocation[0] :
-        editLocation.start[0];
+        (editLocation as RSPosition)[0] :
+        (editLocation as RSRange).start[0];
     if (editStartLine === 'Inf' ||
-        (editStartLine + 1 > targetDocument.lineCount && targetDocument.lineCount > 0)) {
+        (typeof editStartLine === 'number' && editStartLine + 1 > targetDocument.lineCount && targetDocument.lineCount > 0)) {
         return (text + '\n');
     } else {
         return text;

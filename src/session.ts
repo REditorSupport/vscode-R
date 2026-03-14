@@ -7,7 +7,7 @@ import { commands, Uri, ViewColumn, Webview, window, workspace, env } from 'vsco
 
 import { restartRTerminal, createRTerm } from './rTerminal';
 import { config, readContent, setContext, UriIcon } from './util';
-import { purgeAddinPickerItems } from './rstudioapi';
+import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { homeExtDir, rWorkspace, globalRHelp, globalPlotManager, extensionContext, sessionStatusBarItem } from './extension';
 import { rHostService, rGuestService, isLiveShare, isHost, isGuestSession, guestResDir, shareBrowser, openVirtualDoc } from './liveShare';
@@ -932,7 +932,7 @@ async function handleRequest(message: Record<string, unknown>, ws: ExtWebSocket)
                     result = rstudioapi.activeEditorContext();
                     break;
                 case 'rstudioapi/insert_or_modify_text':
-                    await rstudioapi.insertOrModifyText(params.query as Record<string, unknown>[], params.id as string | null);
+                    await rstudioapi.insertOrModifyText(params.query as RSEditOperation[], params.id as string | null);
                     result = true;
                     break;
                 case 'rstudioapi/replace_text_in_current_selection':
@@ -948,7 +948,7 @@ async function handleRequest(message: Record<string, unknown>, ws: ExtWebSocket)
                     result = true;
                     break;
                 case 'rstudioapi/set_selection_ranges':
-                    await rstudioapi.setSelections(params.ranges as number[][], params.id as string | null);
+                    await rstudioapi.setSelections(params.ranges as RSRange[], params.id as string | null);
                     result = true;
                     break;
                 case 'rstudioapi/document_save':
