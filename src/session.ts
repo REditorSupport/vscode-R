@@ -9,13 +9,10 @@ import { restartRTerminal, createRTerm } from './rTerminal';
 import { config, readContent, setContext, UriIcon } from './util';
 import { purgeAddinPickerItems } from './rstudioapi';
 
-import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext, sessionStatusBarItem } from './extension';
+import { homeExtDir, rWorkspace, globalRHelp, globalPlotManager, extensionContext, sessionStatusBarItem } from './extension';
 import { rHostService, rGuestService, isLiveShare, isHost, isGuestSession, guestResDir, shareBrowser, openVirtualDoc } from './liveShare';
 
 import WebSocket from 'ws';
-import { StandardPlotViewer } from './plotViewer/standardViewer';
-
-const standardPlotViewer = new StandardPlotViewer();
 
 export interface SessionInfo {
     version: string;
@@ -322,7 +319,7 @@ function writeSettings() {
 
 async function updatePlot() {
     if (!server) {return;}
-    await standardPlotViewer.update();
+    await globalPlotManager?.showStandardPlot();
 }
 
 export async function updateWorkspace() {
@@ -844,7 +841,7 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
             console.info(`[startSessionWatcher] attach R PID: ${rPid}, terminal PID: ${terminalPid}`);
             purgeAddinPickerItems();
             if (params.plot_url) {
-                await globalHttpgdManager?.showViewer(String(params.plot_url));
+                await globalPlotManager?.showHttpgdPlot(String(params.plot_url));
             }
             void updateWorkspace(); // Initial workspace fetch
             void watchProcess(rPid).then((v: string) => { void cleanupSession(v); });
@@ -869,7 +866,7 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
         }
         case 'httpgd': {
             if (params.url) {
-                await globalHttpgdManager?.showViewer(String(params.url));
+                await globalPlotManager?.showHttpgdPlot(String(params.url));
             }
             break;
         }

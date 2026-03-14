@@ -1,7 +1,7 @@
 import path = require('path');
 import * as vscode from 'vscode';
 
-import { extensionContext, globalHttpgdManager, globalRHelp, rWorkspace } from '../extension';
+import { extensionContext, globalPlotManager, globalRHelp, rWorkspace } from '../extension';
 import { asViewColumn, config, readContent } from '../util';
 import { showBrowser, showDataView, showWebView, WorkspaceData } from '../session';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from '.';
@@ -118,7 +118,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
             }
             case 'httpgd': {
                 if (request.url) {
-                    await globalHttpgdManager?.showViewer(request.url);
+                    await globalPlotManager?.showHttpgdPlot(request.url);
                 }
                 break;
             }

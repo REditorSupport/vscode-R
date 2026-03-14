@@ -2,8 +2,10 @@
 import * as vscode from 'vscode';
 import { asViewColumn, config, UriIcon } from '../util';
 import { sessionRequest, server } from '../session';
+import { PlotViewer } from './types';
 
-export class StandardPlotViewer {
+export class StandardPlotViewer implements PlotViewer {
+    readonly id: string = 'standard';
     private panel: vscode.WebviewPanel | undefined;
     private viewWidth: number = 800;
     private viewHeight: number = 600;
@@ -18,6 +20,23 @@ export class StandardPlotViewer {
             this.panel.reveal(viewColumn, true);
             await this.requestPlot();
         }
+    }
+
+    public show(preserveFocus?: boolean): void {
+        if (this.panel) {
+            this.panel.reveal(undefined, preserveFocus);
+        }
+    }
+
+    public handleCommand(command: string): void {
+        if (command === 'showViewers') {
+            this.show();
+        }
+        // Other commands are not supported by the standard viewer
+    }
+
+    public dispose(): void {
+        this.panel?.dispose();
     }
 
     private createPanel(viewColumn: vscode.ViewColumn) {
@@ -55,7 +74,7 @@ export class StandardPlotViewer {
             return;
         }
 
-        const format = config().get<string>('plot.format', 'png');
+        const format = config().get<string>('plot.format', 'svglite');
         const response = await sessionRequest(server, {
             method: 'plot_latest',
             params: {

@@ -254,17 +254,17 @@ export async function showDataView(source: string, type: string, title: string, 
 ```typescript
 case 'httpgd': {
     if (request.url) {
-        await globalHttpgdManager?.showViewer(request.url);
+        await globalPlotManager?.showHttpgdPlot(request.url);
     }
     break;
 }
 ```
 
-**Detail (`httpgd` [-> src/plotViewer/index.ts#L72](src/plotViewer/index.ts#L72)):**
+**Detail (`httpgd` [-> src/plotViewer/index.ts](src/plotViewer/index.ts)):**
 Triggered when an R script opens an `httpgd` graphics device (a modern SVG/HTML-based plotting device for R).
 
 1. **Intercepting the URL**: R tells VS Code the exact local URL/port where the `httpgd` server is streaming the plots.
-2. **Delegation to Manager**: The session handler passes this URL to the `globalHttpgdManager` (an instance of `HttpgdManager` defined in `src/plotViewer/index.ts`).
+2. **Delegation to Manager**: The session handler passes this URL to the `globalPlotManager` (an instance of `CommonPlotManager` defined in `src/plotViewer/index.ts`).
 3. **Viewer Instantiation**: The manager parses the URL, extracting the host and security token. It searches to see if a viewer for that host already exists. If not, it instantiates a new `HttpgdViewer`.
 4. **Webview Rendering**: The `HttpgdViewer` spins up a dedicated `WebviewPanel`. Instead of just embedding the plot as a static image, it loads a full React-based frontend application (bundled in the extension's resources) into the webview. This frontend connects directly to the R `httpgd` server via WebSockets to provide a live, interactive, resizable plot viewer with history tracking and export capabilities.
 
