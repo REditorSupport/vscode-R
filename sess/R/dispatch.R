@@ -7,7 +7,7 @@
 #' @param request Logical. If TRUE, sends a Request and waits for a Response.
 #' @return The result of the request if request=TRUE, otherwise TRUE if sent.
 #' @keywords internal
-ipc_send <- function(method, params = list(), request = FALSE) {
+rpc_send <- function(method, params = list(), request = FALSE) {
   if (is.null(.sess_env$ws)) {
     return(invisible(FALSE))
   }
@@ -68,7 +68,7 @@ ipc_send <- function(method, params = list(), request = FALSE) {
 #' @param params A list containing the arguments for the command
 #' @export
 notify_client <- function(method, params = list()) {
-  ipc_send(method, params, request = FALSE)
+  rpc_send(method, params, request = FALSE)
 }
 
 #' Emulate rstudioapi (or any client action) synchronously but without blocking the R Event Loop
@@ -77,5 +77,5 @@ notify_client <- function(method, params = list()) {
 #' @param args List of arguments
 #' @export
 request_client <- function(action, args = list()) {
-  ipc_send(action, args, request = TRUE)
+  rpc_send(action, args, request = TRUE)
 }

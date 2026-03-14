@@ -146,30 +146,33 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
   rebind("View", show_dataview, ns = "utils")
 
   # 2. Browser & Webview Options 
-  # TODO: unify the viewers and let client to choose how to show
-  show_browser <- function(url, title = url, ...) {
-    notify_client("browser", list(url = url, title = title, viewer = getOption("sess.browser", "Active")))
-  }
+  viewer <- function(url, ...) {
+    if (!is.character(url)) {
+      real_url <- NULL
+      temp_viewer <- function(url, ...) {
+        real_url <<- url
+      }
+      op <- options(viewer = temp_viewer, page_viewer = temp_viewer)
+      on.exit(options(op))
+      print(url)
+      if (is.character(real_url)) {
+        url <- real_url
+      } else {
+        stop("Invalid object")
+      }
+    }
 
-  show_webview <- function(url, title = "WebView", ...) {
-    # If the URL is a local file, normalize its path for the webview
+    url <- sub("^file\\://", "", url)
     if (file.exists(url)) {
       url <- normalizePath(url, "/", mustWork = TRUE)
     }
-    notify_client("webview", list(file = url, title = title, viewer = getOption("sess.webview", "Two")))
-  }
-
-  show_page_viewer <- function(url, title = "Page Viewer", ...) {
-    if (file.exists(url)) {
-      url <- normalizePath(url, "/", mustWork = TRUE)
-    }
-    notify_client("webview", list(file = url, title = title, viewer = getOption("sess.page_viewer", "Active")))
+    notify_client("webview", list(url = url))
   }
 
   options(
-    browser = show_browser,
-    viewer = show_webview,
-    page_viewer = show_page_viewer,
+    browser = viewer,
+    viewer = viewer,
+    page_viewer = viewer,
     help_type = "html"
   )
 

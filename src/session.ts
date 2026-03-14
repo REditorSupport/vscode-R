@@ -886,15 +886,29 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
             }
             break;
         }
-        case 'browser': {
-            if (params.url && params.title && params.viewer !== undefined) {
-                await showBrowser(String(params.url), String(params.title), params.viewer as string | boolean);
-            }
-            break;
-        }
         case 'webview': {
-            if (params.file && params.title && params.viewer !== undefined) {
-                await showWebView(String(params.file), String(params.title), params.viewer as string | boolean);
+            if (params.url) {
+                const url = String(params.url);
+
+                const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
+                const viewerChoice = viewColumnConfig['viewer'] ?? 'Active';
+                const viewColumn = viewerChoice === 'Disable' ? false : viewerChoice;
+
+                if (url.startsWith('http://') || url.startsWith('https://')) {
+                    const isLocalHost = url.match(/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i);
+                    if (isLocalHost) {
+                        const externalUri = await env.asExternalUri(Uri.parse(url));
+                        await showBrowser(externalUri.toString(true), url, viewColumn);
+                    } else {
+                        await showBrowser(url, url, viewColumn);
+                    }
+                } else {
+                    if (url.toLowerCase().endsWith('.html') || url.toLowerCase().endsWith('.htm')) {
+                        await showWebView(url, 'Viewer', viewColumn);
+                    } else {
+                        await showDataView('object', 'txt', 'Data Viewer', url, String(viewColumn));
+                    }
+                }
             }
             break;
         }
