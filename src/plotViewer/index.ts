@@ -1,7 +1,8 @@
 
 import * as vscode from 'vscode';
 import { PlotViewer, PlotManager } from './types';
-import { HttpgdManager } from './httpgdViewer';
+import { HttpgdManager, HttpgdViewer } from './httpgdViewer';
+export { HttpgdManager };
 import { StandardPlotViewer } from './standardViewer';
 import { extensionContext } from '../extension';
 
@@ -79,9 +80,9 @@ export class CommonPlotManager implements PlotManager {
         // Identify the correct viewer
         let viewer: PlotViewer | undefined;
         if (typeof hostOrWebviewUri === 'string') {
-            viewer = this.httpgdManager.viewers.find((v) => v.host === hostOrWebviewUri);
+            viewer = this.httpgdManager.viewers.find((v: HttpgdViewer) => v.host === hostOrWebviewUri);
         } else if (hostOrWebviewUri instanceof vscode.Uri) {
-            viewer = this.httpgdManager.viewers.find((v) => v.getPanelPath() === hostOrWebviewUri.path);
+            viewer = this.httpgdManager.viewers.find((v: HttpgdViewer) => v.getPanelPath() === hostOrWebviewUri.path);
         }
 
         // Fallback to active viewer

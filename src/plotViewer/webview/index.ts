@@ -16,8 +16,8 @@ interface Plot {
     width?: number;
 }
 
-import { acquireVsCodeApi } from '../webviewMessages';
-const vscode = acquireVsCodeApi();
+import { acquireVsCodeApi, ResizeMessage, InMessage, PreviewPlotLayout } from '../webviewMessages';
+const vscode = acquireVsCodeApi() as { postMessage: (msg: any) => void };
 
 // globals
 let oldHeight = -1;
