@@ -1,7 +1,7 @@
 import path = require('path');
 import * as vscode from 'vscode';
 
-import { extensionContext, globalHttpgdManager, globalRHelp, rWorkspace } from '../extension';
+import { extensionContext, globalPlotManager, globalRHelp, rWorkspace } from '../extension';
 import { asViewColumn, config, readContent } from '../util';
 import { showBrowser, showDataView, showWebView, WorkspaceData } from '../session';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from '.';
@@ -49,9 +49,9 @@ export function initGuest(context: vscode.ExtensionContext): void {
     // create status bar item that contains info about the *guest* session watcher
     console.info('Create guestSessionStatusBarItem');
     const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
-    sessionStatusBarItem.command = 'r.attachActiveGuest';
+    sessionStatusBarItem.command = 'r.activateRSessionGuest';
     sessionStatusBarItem.text = 'Guest R: (not attached)';
-    sessionStatusBarItem.tooltip = 'Click to attach to host terminal';
+    sessionStatusBarItem.tooltip = 'Click to activate host R session';
     sessionStatusBarItem.show();
     context.subscriptions.push(
         sessionStatusBarItem,
@@ -64,14 +64,14 @@ export function initGuest(context: vscode.ExtensionContext): void {
 export function detachGuest(): void {
     console.info('[Guest Service] detach guest from workspace');
     sessionStatusBarItem.text = 'Guest R: (not attached)';
-    sessionStatusBarItem.tooltip = 'Click to attach to host terminal';
+    sessionStatusBarItem.tooltip = 'Click to activate host R session';
     guestWorkspace = undefined;
     rWorkspace?.refresh();
 }
 
-export function attachActiveGuest(): void {
+export function activateRSessionGuest(): void {
     if (config().get<boolean>('sessionWatcher', true)) {
-        console.info('[attachActiveGuest]');
+        console.info('[activateRSessionGuest]');
         void rGuestService?.requestAttach();
     } else {
         void vscode.window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
@@ -101,7 +101,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
         guestPid = String(request.pid);
         console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
         sessionStatusBarItem.text = `Guest R: ${guestPid}`;
-        sessionStatusBarItem.tooltip = 'Click to attach to host terminal.';
+        sessionStatusBarItem.tooltip = 'Click to activate host R session';
         sessionStatusBarItem.show();
     }
 
@@ -118,7 +118,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
             }
             case 'httpgd': {
                 if (request.url) {
-                    await globalHttpgdManager?.showViewer(request.url);
+                    await globalPlotManager?.showHttpgdPlot(request.url);
                 }
                 break;
             }
@@ -129,7 +129,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                 console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
                 sessionStatusBarItem.text = `Guest R ${rVer}: ${guestPid}`;
                 // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-                sessionStatusBarItem.tooltip = `${info?.version || 'unknown version'}\nProcess ID: ${guestPid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to host terminal.`;
+                sessionStatusBarItem.tooltip = `${info?.version || 'unknown version'}\nProcess ID: ${guestPid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to activate host R session`;
                 sessionStatusBarItem.show();
                 break;
             }
