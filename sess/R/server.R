@@ -85,7 +85,7 @@ sess_app <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpg
               "workspace" = function(p) get_workspace_data(),
               "hover" = function(p) handle_hover(p$expr),
               "completion" = function(p) handle_complete(p$expr, p$trigger),
-              "plot_latest" = function(p) handle_plot_latest()
+              "plot_latest" = function(p) handle_plot_latest(p)
             )
 
             if (payload$method %in% names(handlers)) {

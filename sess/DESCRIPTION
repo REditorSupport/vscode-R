@@ -13,5 +13,6 @@ Imports:
     jsonlite,
     utils,
     methods,
-    rstudioapi
+    rstudioapi,
+    svglite
 RoxygenNote: 7.2.3

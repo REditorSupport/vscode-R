@@ -252,15 +252,8 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
             plot_updated <<- FALSE
             record <- recordPlot()
             if (length(record[[1L]])) {
-              dev_args <- getOption("vsc.dev.args", list(width = 800, height = 600))
-              if (is.null(dev_args$res)) dev_args$res <- 72
-
-              do.call(png, c(list(filename = plot_file), dev_args))
-              on.exit({
-                dev.off()
-                notify_client("plot_updated")
-              })
-              replayPlot(record)
+              .sess_env$latest_plot_record <- record
+              notify_client("plot_updated")
             }
           }
         },

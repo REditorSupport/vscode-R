@@ -13,6 +13,9 @@ import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionCont
 import { rHostService, rGuestService, isLiveShare, isHost, isGuestSession, guestResDir, shareBrowser, openVirtualDoc } from './liveShare';
 
 import WebSocket from 'ws';
+import { StandardPlotViewer } from './plotViewer/standardViewer';
+
+const standardPlotViewer = new StandardPlotViewer();
 
 export interface SessionInfo {
     version: string;
@@ -319,24 +322,7 @@ function writeSettings() {
 
 async function updatePlot() {
     if (!server) {return;}
-    try {
-        const response = await sessionRequest(server, { method: 'plot_latest' });
-        if (response && (response as Record<string, unknown>).data) {
-            const plotFile = path.join(sessionDir, 'plot.png');
-            fs.writeFileSync(plotFile, Buffer.from((response as Record<string, unknown>).data as string, 'base64'));
-            void commands.executeCommand('vscode.open', Uri.file(plotFile), {
-                preserveFocus: true,
-                preview: true,
-                viewColumn: ViewColumn[(config().get<string>('session.viewers.viewColumn.plot') || 'Two') as keyof typeof ViewColumn],
-            });
-            console.info('[updatePlot] Done');
-            if (isLiveShare()) {
-                void rHostService?.notifyPlot(plotFile);
-            }
-        }
-    } catch (e) {
-        console.error(e);
-    }
+    await standardPlotViewer.update();
 }
 
 export async function updateWorkspace() {

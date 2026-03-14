@@ -78,10 +78,43 @@ handle_complete <- function(expr_str, trigger = NULL) {
   NULL
 }
 
-handle_plot_latest <- function() {
-  if (file.exists(.sess_env$latest_plot_path)) {
-    raw_img <- readBin(.sess_env$latest_plot_path, "raw", file.info(.sess_env$latest_plot_path)$size)
-    list(data = as.character(jsonlite::base64_enc(raw_img)))
+handle_plot_latest <- function(params) {
+  record <- .sess_env$latest_plot_record
+  if (is.null(record)) {
+    return(list(data = NULL))
+  }
+
+  width <- if (is.null(params$width)) 800 else as.numeric(params$width)
+  height <- if (is.null(params$height)) 600 else as.numeric(params$height)
+  format <- if (is.null(params$format)) "svglite" else as.character(params$format)
+
+  plot_file <- tempfile(tmpdir = .sess_env$tempdir, fileext = paste0(".", format))
+
+  if (format == "svglite") {
+    if (requireNamespace("svglite", quietly = TRUE)) {
+      svglite::svglite(plot_file, width = width / 72, height = height / 72)
+    } else {
+      # Fallback to png
+      png(plot_file, width = width, height = height, res = 72)
+    }
+  } else {
+    png(plot_file, width = width, height = height, res = 72)
+  }
+
+  on.exit({
+    if (dev.cur() > 1) dev.off()
+    if (file.exists(plot_file)) unlink(plot_file)
+  })
+
+  replayPlot(record)
+  dev.off()
+
+  if (file.exists(plot_file)) {
+    raw_img <- readBin(plot_file, "raw", file.info(plot_file)$size)
+    list(
+      data = as.character(jsonlite::base64_enc(raw_img)),
+      format = if (format == "svglite" && !requireNamespace("svglite", quietly = TRUE)) "png" else format
+    )
   } else {
     list(data = NULL)
   }

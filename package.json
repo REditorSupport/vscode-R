@@ -1870,6 +1870,15 @@
           "default": false,
           "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer. Changes the option `vsc.use_httpgd` in R.\n\nRequires the `httpgd` R package version 1.2.0 or later."
         },
+        "r.plot.format": {
+          "type": "string",
+          "default": "svglite",
+          "enum": [
+            "png",
+            "svglite"
+          ],
+          "description": "The format to use for the standard plot viewer. Requires `#r.plot.useHttpgd#` to be set to `false`."
+        },
         "r.plot.defaults.colorTheme": {
           "type": "string",
           "default": "original",
