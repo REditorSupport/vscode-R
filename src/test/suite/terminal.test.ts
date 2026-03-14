@@ -142,7 +142,7 @@ suite('R Terminal', () => {
         const fakeSession = {
             pid: '1234',
             rVer: '4.0.0',
-            info: {},
+            info: { version: '4.0.0', command: 'R', start_time: '2021-01-01T00:00:00Z' },
             sessionDir: '',
             workingDir: '',
             workspaceData: { search: [], loaded_namespaces: [], globalenv: {} },
@@ -150,7 +150,7 @@ suite('R Terminal', () => {
             ws: {} as unknown as session.Session['ws']
         };
 
-        await session.activateSession(fakeSession as session.Session);
+        await session.activateSession(fakeSession as unknown as session.Session);
 
         assert.ok(session.activeSession, 'Active session should be defined');
         assert.ok(rTerminal.rTerm, 'rTerminal.rTerm should be defined');

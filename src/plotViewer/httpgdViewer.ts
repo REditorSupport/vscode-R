@@ -611,7 +611,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
                 outFile = outUri.fsPath;
             } else {return;}
         }
-        const plt = await this.api.getPlot({ id: this.activePlot, renderer: rendererId }) as { body: NodeJS.ReadableStream };
+        const plt = await this.api.getPlot({ id: this.activePlot, renderer: rendererId }) as unknown as { body: NodeJS.ReadableStream };
         const dest = fs.createWriteStream(outFile);
         dest.on('error', (err) => void vscode.window.showErrorMessage(`Export failed: ${err.message}`));
         dest.on('close', () => void vscode.window.showInformationMessage(`Export done: ${outFile || ''}`));
