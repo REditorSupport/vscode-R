@@ -145,7 +145,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
   }
   rebind("View", show_dataview, ns = "utils")
 
-  # 2. Browser & Webview Options 
+  # 2. Browser & Webview Options
   viewer <- function(url, ...) {
     if (!is.character(url)) {
       real_url <- NULL
@@ -207,18 +207,83 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
       notify_client("httpgd", list(url = httpgd::hgd_url()))
     })
   } else {
-    # Default to static plot capturing
+    # Default to static plot capturing (Re-implementation based on vsc.R)
+    plot_file <- .sess_env$latest_plot_path
+    file.create(plot_file, showWarnings = FALSE)
+
+    plot_updated <- FALSE
+    null_dev_size <- c(7 + pi, 7 + pi)
+
+    check_null_dev <- function() {
+      cur_dev <- dev.cur()
+      cur_name <- names(cur_dev)
+      cur_size <- tryCatch(dev.size(), error = function(e) c(0, 0))
+
+      # On macOS, png() often opens "quartz_off_screen"
+      is_null_dev_name <- cur_name %in% c("png", "quartz_off_screen", "pdf")
+      size_match <- abs(cur_size[1] - null_dev_size[1]) < 1e-5 &&
+        abs(cur_size[2] - null_dev_size[2]) < 1e-5
+
+      res <- is_null_dev_name && size_match
+      return(res)
+    }
+
+    new_plot <- function() {
+      if (check_null_dev()) {
+        plot_updated <<- TRUE
+      }
+    }
+
     options(device = function(...) {
-      png(.sess_env$latest_plot_path, width = 800, height = 600, res = 72)
+      png(tempfile(tmpdir = .sess_env$tempdir, fileext = ".png"),
+        width = null_dev_size[[1L]],
+        height = null_dev_size[[2L]],
+        units = "in",
+        res = 72,
+        bg = "white"
+      )
+      dev.control(displaylist = "enable")
     })
 
-    setHook("plot.new", function(...) {
-      notify_client("plot_updated")
-    }, "replace")
+    update_plot <- function(...) {
+      tryCatch(
+        {
+          if (plot_updated && check_null_dev()) {
+            plot_updated <<- FALSE
+            record <- recordPlot()
+            if (length(record[[1L]])) {
+              dev_args <- getOption("vsc.dev.args", list(width = 800, height = 600))
+              if (is.null(dev_args$res)) dev_args$res <- 72
 
-    setHook("grid.newpage", function(...) {
-      notify_client("plot_updated")
-    }, "replace")
+              do.call(png, c(list(filename = plot_file), dev_args))
+              on.exit({
+                dev.off()
+                notify_client("plot_updated")
+              })
+              replayPlot(record)
+            }
+          }
+        },
+        error = function(e) {
+          warning("Error in sess update_plot: ", e$message)
+        }
+      )
+      TRUE
+    }
+
+    setHook("plot.new", new_plot, "replace")
+    setHook("grid.newpage", new_plot, "replace")
+
+    rebind(".External.graphics", function(...) {
+      out <- .Primitive(".External.graphics")(...)
+      if (check_null_dev()) {
+        plot_updated <<- TRUE
+      }
+      out
+    }, "base")
+
+    update_plot()
+    addTaskCallback(update_plot, name = "sess.plot")
   }
 
   # 5. rstudioapi hooks

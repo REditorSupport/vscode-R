@@ -25,5 +25,10 @@ local({
 })
 
 if (requireNamespace("sess", quietly = TRUE)) {
-    sess::sess_app()
+    sess::sess_app(
+        port = as.integer(Sys.getenv("SESS_PORT")),
+        token = Sys.getenv("SESS_TOKEN"),
+        use_rstudioapi = as.logical(Sys.getenv("SESS_RSTUDIOAPI", "TRUE")),
+        use_httpgd = as.logical(Sys.getenv("SESS_USE_HTTPGD", "TRUE"))
+    )
 }

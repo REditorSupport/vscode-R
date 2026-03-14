@@ -170,7 +170,8 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
                     } else {
                         // Request from server
                         await handleRequest(message, ws);
-                    }                } catch (e) {
+                    }
+                } catch (e) {
                     console.error('[startSessionWatcher] Error handling message', e);
                 }
             })();
@@ -319,7 +320,7 @@ function writeSettings() {
 async function updatePlot() {
     if (!server) {return;}
     try {
-        const response = await sessionRequest(server, { jsonrpc: '2.0', id: 1, method: 'plot_latest' });
+        const response = await sessionRequest(server, { method: 'plot_latest' });
         if (response && (response as Record<string, unknown>).data) {
             const plotFile = path.join(sessionDir, 'plot.png');
             fs.writeFileSync(plotFile, Buffer.from((response as Record<string, unknown>).data as string, 'base64'));
@@ -341,7 +342,7 @@ async function updatePlot() {
 export async function updateWorkspace() {
     if (!server) {return;}
     try {
-        const response = await sessionRequest(server, { jsonrpc: '2.0', id: 1, method: 'workspace' });
+        const response = await sessionRequest(server, { method: 'workspace' });
         if (response) {
             workspaceData = response as WorkspaceData;
             if (activeSession) {

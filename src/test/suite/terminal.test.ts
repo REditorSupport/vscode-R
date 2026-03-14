@@ -29,6 +29,12 @@ suite('R Terminal', () => {
                 if (key === 'sessionWatcher') {
                     return true;
                 }
+                if (key === 'session.emulateRStudioAPI') {
+                    return true;
+                }
+                if (key === 'plot.useHttpgd') {
+                    return true;
+                }
                 if (key === 'rterm.option') {
                     return ['--no-save'];
                 }
@@ -44,6 +50,8 @@ suite('R Terminal', () => {
         assert.ok(options.env);
         assert.ok(options.env['SESS_PORT']);
         assert.ok(options.env['SESS_TOKEN']);
+        assert.strictEqual(options.env['SESS_RSTUDIOAPI'], 'TRUE');
+        assert.strictEqual(options.env['SESS_USE_HTTPGD'], 'TRUE');
         assert.ok(options.env['R_PROFILE_USER']);
         assert.ok(options.env['R_PROFILE_USER'].endsWith('R/profile.R'));
     });

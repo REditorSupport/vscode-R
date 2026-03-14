@@ -147,7 +147,9 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
             SESS_PORT: port.toString(),
-            SESS_TOKEN: token
+            SESS_TOKEN: token,
+            SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
+            SESS_USE_HTTPGD: config().get<boolean>('plot.useHttpgd') ? 'TRUE' : 'FALSE'
         };
     }
     return termOptions;

@@ -4,18 +4,24 @@ The `sess` package provides a high-performance, token-authenticated IPC (Inter-P
 
 ## 1. Connection Handshake
 
-When `sess::sess_app()` is started, it prints a connection string to the R console:
+### Starting the Server
 
-```text
-[sess] SESS_IPC_SERVER=ws://127.0.0.1:PORT?token=TOKEN
+The server can be started by calling `sess::sess_app()`:
+
+```r
+sess::sess_app(
+  port = NULL,           # Integer: Server port (random if NULL)
+  token = NULL,          # String: Authentication token (random if NULL)
+  use_rstudioapi = TRUE, # Logical: Enable RStudio API emulation
+  use_httpgd = TRUE      # Logical: Use httpgd for plotting if available
+)
 ```
 
-A client can intercept this string or be configured with the port and token to establish a connection.
+It prints a connection string to the R console:
 
-- **Port**: Randomly assigned by `httpuv::randomPort()`.
-- **Token**: A random 32-character alphanumeric string generated per session.
-
-Authentication is performed immediately upon WebSocket connection by verifying the `token` in the query string.
+```text
+[sess] Server address: ws://127.0.0.1:PORT?token=TOKEN
+```
 
 ## 2. Communication Channels
 
