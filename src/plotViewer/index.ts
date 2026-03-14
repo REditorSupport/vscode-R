@@ -49,7 +49,7 @@ export class CommonPlotManager implements PlotManager {
         for (const cmd of commands) {
             const fullCommand = `r.plot.${cmd}`;
             extensionContext.subscriptions.push(
-                vscode.commands.registerCommand(fullCommand, (hostOrWebviewUri?: string | vscode.Uri, ...args: any[]) => {
+                vscode.commands.registerCommand(fullCommand, (hostOrWebviewUri?: string | vscode.Uri, ...args: unknown[]) => {
                     void this.handleCommand(cmd, hostOrWebviewUri, ...args);
                 })
             );
@@ -64,7 +64,7 @@ export class CommonPlotManager implements PlotManager {
         await this.httpgdManager.showViewer(url);
     }
 
-    private async handleCommand(command: string, hostOrWebviewUri?: string | vscode.Uri, ...args: any[]): Promise<void> {
+    private async handleCommand(command: string, hostOrWebviewUri?: string | vscode.Uri, ...args: unknown[]): Promise<void> {
         if (command === 'showViewers') {
             for (const viewer of this.viewers) {
                 viewer.show(true);

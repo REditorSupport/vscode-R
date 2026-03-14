@@ -14,7 +14,7 @@ import {
 import { readJSON } from 'fs-extra';
 import * as path from 'path';
 import { sessionDir, sessionDirectoryExists } from './session';
-import { runTextInTerm, restartRTerminal, chooseTerminal } from './rTerminal';
+import { runTextInTerm, chooseTerminal } from './rTerminal';
 import { config } from './util';
 
 let lastActiveTextEditor: TextEditor;
@@ -160,7 +160,7 @@ export async function documentClose(id: string | null, save: boolean): Promise<v
         await targetDocument.save();
     }
     const tabs = window.tabGroups.all.flatMap(g => g.tabs);
-    const targetTabs = tabs.filter(t => (t.input as any)?.uri?.toString() === target.toString());
+    const targetTabs = tabs.filter(t => (t.input as { uri?: Uri })?.uri?.toString() === target.toString());
     await window.tabGroups.close(targetTabs);
 }
 

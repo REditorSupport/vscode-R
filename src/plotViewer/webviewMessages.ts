@@ -7,7 +7,7 @@ export interface VsCode {
 /**
  * Function declared by VS Code in Webview
  */
-export const acquireVsCodeApi: any = (globalThis as any).acquireVsCodeApi;
+export const acquireVsCodeApi: () => VsCode = (globalThis as { acquireVsCodeApi?: () => VsCode }).acquireVsCodeApi || (() => ({} as VsCode));
 
 export interface IMessage {
     message: string;

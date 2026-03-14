@@ -4,6 +4,11 @@ import { asViewColumn, config, UriIcon } from '../util';
 import { sessionRequest, server } from '../session';
 import { PlotViewer } from './types';
 
+interface PlotResponse {
+    data: string;
+    format: string;
+}
+
 export class StandardPlotViewer implements PlotViewer {
     readonly id: string = 'standard';
     private panel: vscode.WebviewPanel | undefined;
@@ -84,11 +89,11 @@ export class StandardPlotViewer implements PlotViewer {
                 format: format,
                 devArgs: devArgs
             }
-        });
+        }) as PlotResponse | undefined;
 
-        if (response && (response as any).data) {
-            this.plotData = (response as any).data;
-            this.plotFormat = (response as any).format || format;
+        if (response?.data) {
+            this.plotData = response.data;
+            this.plotFormat = response.format || format;
             void this.panel.webview.postMessage({
                 type: 'update',
                 data: this.plotData,

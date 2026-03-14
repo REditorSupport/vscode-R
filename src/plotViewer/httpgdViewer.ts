@@ -5,7 +5,6 @@ import { HttpgdPlot, IHttpgdViewer, HttpgdViewerOptions } from './httpgdTypes';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as ejs from 'ejs';
-import { Response } from 'node-fetch';
 
 import { asViewColumn, config, setContext, UriIcon, makeWebviewCommandUriString } from '../util';
 import { extensionContext } from '../extension';
@@ -96,7 +95,7 @@ interface EjsData {
     host: string;
     asLocalPath: (relPath: string) => string;
     asWebViewPath: (localPath: string) => string;
-    makeCommandUri: (command: string, ...args: any[]) => string;
+    makeCommandUri: (command: string, ...args: unknown[]) => string;
     overwriteCssPath: string;
     plot?: HttpgdPlot<string>;
 }
@@ -194,7 +193,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         void this.api.connect();
     }
 
-    public handleCommand(command: string, ...args: any[]): void | Promise<void> {
+    public handleCommand(command: string, ...args: unknown[]): void | Promise<void> {
         const stringArg = findItemOfType(args, 'string');
         const boolArg = findItemOfType(args, 'boolean');
 
@@ -603,20 +602,20 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
                 options.defaultUri = vscode.Uri.file(noExtPath + (ext ? `.${ext}` : ''));
             } else {
                 const defaultFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                if(defaultFolder) options.defaultUri = vscode.Uri.file(path.join(defaultFolder, 'plot' + (ext ? `.${ext}` : '')));
+                if(defaultFolder) {options.defaultUri = vscode.Uri.file(path.join(defaultFolder, 'plot' + (ext ? `.${ext}` : '')));}
             }
-            if(ext && renderer?.name) options.filters = { [renderer.name]: [ext], ['All']: ['*'] };
+            if(ext && renderer?.name) {options.filters = { [renderer.name]: [ext], ['All']: ['*'] };}
             const outUri = await vscode.window.showSaveDialog(options);
             if(outUri){
                 this.lastExportUri = outUri;
                 outFile = outUri.fsPath;
-            } else return;
+            } else {return;}
         }
-        const plt = await this.api.getPlot({ id: this.activePlot, renderer: rendererId }) as any;
+        const plt = await this.api.getPlot({ id: this.activePlot, renderer: rendererId }) as { body: NodeJS.ReadableStream };
         const dest = fs.createWriteStream(outFile);
         dest.on('error', (err) => void vscode.window.showErrorMessage(`Export failed: ${err.message}`));
         dest.on('close', () => void vscode.window.showInformationMessage(`Export done: ${outFile || ''}`));
-        void plt.body.pipe(dest);
+        plt.body.pipe(dest);
     }
 
     public dispose(): void {
@@ -624,10 +623,10 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
     }
 }
 
-function findItemOfType(arr: any[], type: 'string'): string | undefined;
-function findItemOfType(arr: any[], type: 'boolean'): boolean | undefined;
-function findItemOfType(arr: any[], type: 'number'): number | undefined;
-function findItemOfType<T = unknown>(arr: any[], type: string): T {
+function findItemOfType(arr: unknown[], type: 'string'): string | undefined;
+function findItemOfType(arr: unknown[], type: 'boolean'): boolean | undefined;
+function findItemOfType(arr: unknown[], type: 'number'): number | undefined;
+function findItemOfType<T = unknown>(arr: unknown[], type: string): T {
     const item = arr.find((elm) => typeof elm === type) as T;
     return item;
 }

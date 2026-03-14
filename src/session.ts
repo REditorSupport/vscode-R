@@ -1059,7 +1059,7 @@ export async function sessionRequest(server: SessionServer, data: Record<string,
             pendingRequests.set(id, { resolve, reject });
             
             try {
-                wsClient!.send(JSON.stringify(payload));
+                wsClient?.send(JSON.stringify(payload));
             } catch (e) {
                 pendingRequests.delete(id);
                 reject(e);

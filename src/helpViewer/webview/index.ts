@@ -1,6 +1,6 @@
-import { acquireVsCodeApi } from '../webviewMessages';
+import { acquireVsCodeApi, VsCode } from '../webviewMessages';
 
-const vscode = acquireVsCodeApi();
+const vscode: VsCode = acquireVsCodeApi();
 
 // notify vscode when mouse buttons are clicked
 // used to implement back/forward on mouse buttons 3/4

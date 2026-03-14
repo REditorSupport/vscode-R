@@ -41,7 +41,7 @@ suite('R Terminal', () => {
                 return undefined;
             }
         };
-        sandbox.stub(util, 'config').returns(configStub as any);
+        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves('/usr/local/bin/R');
 
         const options = await rTerminal.makeTerminalOptions();
@@ -65,7 +65,7 @@ suite('R Terminal', () => {
                 return undefined;
             }
         };
-        sandbox.stub(util, 'config').returns(configStub as any);
+        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves('/usr/local/bin/R');
 
         const options = await rTerminal.makeTerminalOptions();
@@ -82,7 +82,7 @@ suite('R Terminal', () => {
                 return undefined;
             }
         };
-        sandbox.stub(util, 'config').returns(configStub as any);
+        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves('/usr/local/bin/R');
 
         // Spy on startSessionWatcher
@@ -122,24 +122,24 @@ suite('R Terminal', () => {
                 return undefined;
             }
         };
-        sandbox.stub(util, 'config').returns(configStub as any);
+        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves('/usr/local/bin/R');
 
         // We need to mock the terminal and its processId
         const fakeTerminal = {
             name: 'R Interactive',
             processId: Promise.resolve(1234),
-            show: () => { },
-            dispose: () => { },
-            sendText: () => { }
+            show: () => { /* empty */ },
+            dispose: () => { /* empty */ },
+            sendText: () => { /* empty */ }
         };
-        const createTerminalStub = sandbox.stub(vscode.window, 'createTerminal').returns(fakeTerminal as any);
+        const createTerminalStub = sandbox.stub(vscode.window, 'createTerminal').returns(fakeTerminal as unknown as vscode.Terminal);
 
         const result = await rTerminal.createRTerm(true);
         assert.ok(result);
 
         // Manually trigger session activation as if the R process connected back
-        const fakeSession: any = {
+        const fakeSession = {
             pid: '1234',
             rVer: '4.0.0',
             info: {},
@@ -147,10 +147,10 @@ suite('R Terminal', () => {
             workingDir: '',
             workspaceData: { search: [], loaded_namespaces: [], globalenv: {} },
             server: { host: '127.0.0.1', port: 1234, token: 'abc' },
-            ws: {} as any
+            ws: {} as unknown as session.Session['ws']
         };
 
-        await session.activateSession(fakeSession);
+        await session.activateSession(fakeSession as session.Session);
 
         assert.ok(session.activeSession, 'Active session should be defined');
         assert.ok(rTerminal.rTerm, 'rTerminal.rTerm should be defined');

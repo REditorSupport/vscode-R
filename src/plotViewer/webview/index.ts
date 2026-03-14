@@ -64,14 +64,6 @@ function postResizeMessage(userTriggered: boolean = false){
     }
 }
 
-function postLogMessage(content: any){
-    console.log(content);
-    vscode.postMessage({
-        message: 'log',
-        body: content
-    });
-}
-
 window.addEventListener('message', (ev: MessageEvent<InMessage>) => {
     const msg = ev.data;
     if(msg.message === 'updatePlot'){

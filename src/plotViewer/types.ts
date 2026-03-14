@@ -1,11 +1,9 @@
 
-import * as vscode from 'vscode';
-
 export interface PlotViewer {
     readonly id: string;
     show(preserveFocus?: boolean): void;
     dispose(): void;
-    handleCommand(command: string, ...args: any[]): void | Promise<void>;
+    handleCommand(command: string, ...args: unknown[]): void | Promise<void>;
 }
 
 export interface PlotManager {

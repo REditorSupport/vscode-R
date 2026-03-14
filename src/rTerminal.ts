@@ -5,11 +5,11 @@ import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
 
-import { extensionContext, homeExtDir } from './extension';
+import { extensionContext } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession, saveSessionState, clearSessionState, updateSessionTerminalId } from './session';
+import { cleanupSession, saveSessionState, updateSessionTerminalId } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
