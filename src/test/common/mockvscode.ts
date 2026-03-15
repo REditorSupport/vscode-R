@@ -14,8 +14,8 @@ export function mockExtensionContext(extension_root: string, sandbox: sinon.Sino
         environmentVariableCollection: sandbox.stub(),
         extension: sandbox.stub(),
         extensionMode: sandbox.stub(),
-        extensionPath: sandbox.stub(),
-        extensionUri: sandbox.stub(),
+        extensionPath: extension_root,
+        extensionUri: vscode.Uri.file(extension_root),
         globalState: {
             get: sinon.stub(),
             set: sinon.stub()
