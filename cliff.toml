@@ -19,7 +19,7 @@ body = """
     {% for commit in commits %}
         {% set_global issues = [] %}\
         {% if commit.remote.pr_number %}\
-            {% set_global issues = issues | concat(with=commit.remote.pr_number) %}\
+            {% set_global issues = issues | concat(with=commit.remote.pr_number | as_str) %}\
         {%- endif %}\
         {% for link in commit.links %}\
             {% set_global issues = issues | concat(with=link.text | split(pat="#") | last) %}\

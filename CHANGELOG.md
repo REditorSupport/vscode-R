@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.8.7 - 2026-03-15
+
+### Bug Fixes
+
+* fix: correct r.term and r.path setting names in error message
+
+### Features
+
+* feat: support multi-root workspaces in single-server mode
+
+### Other
+
+* Allow bracketedPaste on win32 platform ([#1631](https://github.com/REditorSupport/vscode-R/issues/1631))
+* feat: default to single language server for multi-root workspaces ([#1682](https://github.com/REditorSupport/vscode-R/issues/1682))
+
+**Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v2.8.6...v2.8.7>
+
 ## 2.8.6 - 2025-05-31
 
 ### Other
