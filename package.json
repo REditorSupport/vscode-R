@@ -2007,11 +2007,11 @@
   "scripts": {
     "vscode:prepublish": "node esbuild.js --production",
     "changelog": "npx git-cliff v2.8.5.. -o",
-    "build": "node esbuild.js && Rscript -e 'devtools::install(\"sess\")'",
+    "build": "node esbuild.js && Rscript -e \"remotes::install_local('sess', force=TRUE)\"",
     "watch": "node esbuild.js --watch",
     "pretest": "tsc -p ./",
     "test": "vscode-test",
-    "lint": "eslint src --ext ts && Rscript -e 'lintr::lint_package(\"sess\")'"
+    "lint": "eslint src --ext ts && Rscript -e \"lintr::lint_package('sess')\""
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.35",

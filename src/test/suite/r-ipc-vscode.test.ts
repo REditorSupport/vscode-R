@@ -2,14 +2,11 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as assert from 'assert';
 import * as path from 'path';
-import * as fs from 'fs-extra';
 
 import { mockExtensionContext } from '../common/mockvscode';
 import * as rTerminal from '../../rTerminal';
 import * as util from '../../util';
 import * as session from '../../session';
-
-import * as webViewer from '../../webViewer';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
@@ -34,11 +31,22 @@ suite('sess_app Communication', () => {
         session.deploySessionWatcher(extension_root);
     });
 
-    teardown(() => {
-        sandbox.restore();
+    teardown(async () => {
         if (rTerminal.rTerm) {
+            const pid = await rTerminal.rTerm.processId;
             rTerminal.rTerm.dispose();
+            
+            // Explicitly invoke the extension's terminal cleanup logic
+            // since the mocked VS Code environment won't fire onDidCloseTerminal
+            rTerminal.deleteTerminal(rTerminal.rTerm);
+            
+            if (pid) {
+                // Ensure the underlying websocket connections and activeSession 
+                // are wiped clean so the next test waits properly.
+                await session.cleanupSession(pid.toString());
+            }
         }
+        sandbox.restore();
     });
 
     test('communication: hello <- 1 updates workspace and provides completion', async () => {
@@ -124,9 +132,6 @@ suite('sess_app Communication', () => {
         sandbox.stub(util, 'getRterm').resolves(rPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves();
 
-        const executeCommandSpy = sandbox.spy(vscode.commands, 'executeCommand');
-        const openExternalSpy = sandbox.spy(vscode.env, 'openExternal');
-
         const result = await rTerminal.createRTerm(true);
         assert.ok(result);
         await waitFor(() => session.activeSession, 15000, 200);
@@ -136,23 +141,23 @@ suite('sess_app Communication', () => {
         await new Promise(resolve => setTimeout(resolve, 2000));
         
         // 1. Test svglite
-        term!.sendText('plot(0, main="svglite")\n');
+        term.sendText('plot(0, main="svglite")\n');
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         assert.ok(session.activeSession, 'activeSession should be defined');
-        const svgliteResp = await session.sessionRequest(session.activeSession!.server, {
+        const svgliteResp = await session.sessionRequest(session.activeSession.server, {
             method: 'plot_latest',
             params: { width: 800, height: 600, format: 'svglite' }
-        }) as { data?: string, format?: string };
+        }) as { data?: string, format?: string, error?: unknown };
         
         assert.ok(svgliteResp.data, 'svglite data should be returned');
         assert.strictEqual(svgliteResp.format, 'svglite', 'format should be svglite');
 
         // 2. Test png
-        term!.sendText('plot(1, main="png")\n');
+        term.sendText('plot(1, main="png")\n');
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        const pngResp = await session.sessionRequest(session.activeSession!.server, {
+        const pngResp = await session.sessionRequest(session.activeSession.server, {
             method: 'plot_latest',
             params: { width: 800, height: 600, format: 'png' }
         }) as { data?: string, format?: string };
@@ -166,13 +171,13 @@ suite('sess_app Communication', () => {
         const createWebviewPanelSpy = sandbox.spy(vscode.window, 'createWebviewPanel');
 
         // 3. Test View() -> dataview
-        term!.sendText('View(mtcars)\n');
+        term.sendText('View(mtcars)\n');
         await waitFor(() => createWebviewPanelSpy.calledWith('dataview'), 10000, 200);
         
         assert.ok(createWebviewPanelSpy.calledWith('dataview'), 'dataview should be triggered');
 
         // 4. Test webview
-        term!.sendText('tf <- tempfile(fileext=".html"); writeLines("test", tf); getOption("viewer")(tf)\n');
+        term.sendText('tf <- tempfile(fileext=".html"); writeLines("test", tf); getOption("viewer")(tf)\n');
         await waitFor(() => createWebviewPanelSpy.calledWith('webview'), 10000, 200);
 
         assert.ok(createWebviewPanelSpy.calledWith('webview'), 'webview should be triggered for html file');

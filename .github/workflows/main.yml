@@ -1,5 +1,11 @@
 name: main
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,6 +28,10 @@ jobs:
           node-version: 20
           cache: 'npm'
       - run: npm install
+      - name: Install remotes
+        run: install.packages("remotes")
+        shell: Rscript {0}
+      - run: npm run build
       - name: Run tests
         uses: GabrielBB/xvfb-action@v1.0
         with:

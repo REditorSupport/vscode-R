@@ -230,8 +230,8 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
 
       # On macOS, png() often opens "quartz_off_screen"
       is_null_dev_name <- cur_name %in% c("png", "quartz_off_screen", "pdf")
-      size_match <- abs(cur_size[1] - null_dev_size[1]) < 1e-5 &&
-        abs(cur_size[2] - null_dev_size[2]) < 1e-5
+      size_match <- abs(cur_size[1] - null_dev_size[1]) < 0.1 &&
+        abs(cur_size[2] - null_dev_size[2]) < 0.1
 
       is_null_dev_name && size_match
     }

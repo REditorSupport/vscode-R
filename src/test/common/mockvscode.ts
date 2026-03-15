@@ -17,7 +17,7 @@ export function mockExtensionContext(extension_root: string, sandbox: sinon.Sino
         extensionPath: extension_root,
         extensionUri: vscode.Uri.file(extension_root),
         globalState: {
-            get: sinon.stub(),
+            get: sinon.stub().callsFake((key: string, defaultValue?: unknown) => defaultValue),
             set: sinon.stub()
         },
         globalStorageUri: sandbox.stub(),
@@ -26,7 +26,7 @@ export function mockExtensionContext(extension_root: string, sandbox: sinon.Sino
         storageUri: sandbox.stub(),
         subscriptions: [],
         workspaceState: {
-            get: sinon.stub(),
+            get: sinon.stub().callsFake((key: string, defaultValue?: unknown) => defaultValue),
             update: sinon.stub()
         },
         asAbsolutePath: (relativePath: string) => {
