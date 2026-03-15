@@ -8,47 +8,50 @@ on:
 
 env:
   FILE_OUT: r-latest.vsix
-  SCRIPT_DIR: ./.github/scripts
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      VSIX_FILE: vscode-R.vsix    
     steps:
-      - uses: actions/checkout@v3
-      - run: npm install
-      - uses: lannonbr/vsce-action@4.0.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          args: "package -o $FILE_OUT"
+          node-version: 20
+          cache: 'npm'
+      - run: npm install
+      - name: Package extension
+        run: npx @vscode/vsce package -o $VSIX_FILE
       - uses: actions/upload-artifact@v4
         with:
-          name: "${{ env.FILE_OUT }}"
-          path: "${{ env.FILE_OUT }}"
+          name: "${{ env.VSIX_FILE }}"
+          path: "${{ env.VSIX_FILE }}"
 
   pre-release:
     name: Pre-Release
     needs: build
     runs-on: ubuntu-latest
-
+    env:
+      VSIX_FILE: vscode-R.vsix    
+    permissions:
+      contents: write
     steps:
-      - name: Update tag
-        uses: richardsimko/update-tag@v1
-        with:
-          tag_name: latest
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
       - name: Download artifacts
-        uses: actions/download-artifact@v4.1.7
+        uses: actions/download-artifact@v4
         with:
+          pattern: "${{ env.VSIX_FILE }}"
           path: "artifacts/"
-      - name: Upload artifacts
-        uses: meeDamian/github-release@2.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: latest
-          commitish: master
-          name: Development Build
-          body: Contains the vsix-file from the latest push to master.
-          prerelease: true
-          files: "artifacts/*/*"
-          gzip: false
-          allow_override: true
+      - name: Create or update pre-release
+        run: |
+          gh release delete latest --yes || true
+          git tag -d latest || true
+          git tag latest
+          git push origin latest --force
+          gh release create latest artifacts/${{ env.VSIX_FILE }}/${{ env.VSIX_FILE }} \
+            --title "Development Build" \
+            --notes "Contains the vsix-file from the latest push to master." \
+            --prerelease

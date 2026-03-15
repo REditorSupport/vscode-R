@@ -10,11 +10,13 @@
       "request": "launch",
       "runtimeExecutable": "${execPath}",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}"
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--disable-extension", "google.geminicodeassist"
       ],
       "outFiles": [
         "${workspaceFolder}/out/src/**/*.js"
       ],
+      "sourceMaps": true,
     },
     {
       "name": "Launch Extension (--disable-extensions)",
@@ -28,6 +30,7 @@
       "outFiles": [
         "${workspaceFolder}/out/src/**/*.js"
       ],
+      "sourceMaps": true,
     },
     {
       "name": "Extension Tests",

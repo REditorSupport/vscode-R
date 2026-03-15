@@ -16,9 +16,8 @@ interface Plot {
     width?: number;
 }
 
-// get vscode api
-declare function acquireVsCodeApi(): VsCode;
-const vscode = acquireVsCodeApi();
+import { acquireVsCodeApi, ResizeMessage, InMessage, PreviewPlotLayout } from '../webviewMessages';
+const vscode = acquireVsCodeApi() as { postMessage: (msg: any) => void };
 
 // globals
 let oldHeight = -1;
@@ -63,14 +62,6 @@ function postResizeMessage(userTriggered: boolean = false){
         oldHeight = newHeight;
         oldWidth = newWidth;
     }
-}
-
-function postLogMessage(content: any){
-    console.log(content);
-    vscode.postMessage({
-        message: 'log',
-        body: content
-    });
 }
 
 window.addEventListener('message', (ev: MessageEvent<InMessage>) => {
