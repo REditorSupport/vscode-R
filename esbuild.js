@@ -34,7 +34,8 @@ function copyResources() {
 function copyWebviewAssets() {
     const views = [
         { name: 'help', src: 'src/helpViewer/webview' },
-        { name: 'httpgd', src: 'src/plotViewer/webview' }
+        { name: 'httpgd', src: 'src/plotViewer/webview' },
+        { name: 'webview', src: 'src/webViewer/webview' }
     ];
 
     for (const view of views) {
@@ -74,7 +75,8 @@ async function main() {
     const webviewCtx = await esbuild.context({
         entryPoints: {
             'help/index': './src/helpViewer/webview/index.ts',
-            'httpgd/index': './src/plotViewer/webview/index.ts'
+            'httpgd/index': './src/plotViewer/webview/index.ts',
+            'webview/index': './src/webViewer/webview/index.ts'
         },
         bundle: true,
         minify: production,

@@ -3,7 +3,8 @@ import * as vscode from 'vscode';
 
 import { extensionContext, globalPlotManager, globalRHelp, rWorkspace } from '../extension';
 import { asViewColumn, config, readContent } from '../util';
-import { showBrowser, showDataView, showWebView, WorkspaceData } from '../session';
+import { showBrowser, showDataView, WorkspaceData } from '../session';
+import { showWebView } from '../webViewer';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from '.';
 import { autoShareBrowser } from './shareTree';
 import { docProvider, docScheme } from './virtualDocs';

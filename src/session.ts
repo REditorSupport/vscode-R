@@ -12,6 +12,8 @@ import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 import { homeExtDir, rWorkspace, globalRHelp, globalPlotManager, extensionContext, sessionStatusBarItem } from './extension';
 import { rHostService, rGuestService, isLiveShare, isHost, isGuestSession, guestResDir, shareBrowser, openVirtualDoc } from './liveShare';
 
+import { showWebView } from './webViewer';
+
 import WebSocket from 'ws';
 
 export interface SessionInfo {
@@ -377,30 +379,6 @@ export function openExternalBrowser(): void {
     }
 }
 
-export async function showWebView(file: string, title: string, viewer: string | boolean): Promise<void> {
-    console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
-    if (viewer === false) {
-        void env.openExternal(Uri.file(file));
-    } else {
-        const dir = path.dirname(file);
-        const webviewDir = extensionContext.asAbsolutePath('html/session/webview/');
-        const panel = window.createWebviewPanel('webview', title,
-            {
-                preserveFocus: true,
-                viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
-            },
-            {
-                enableScripts: true,
-                enableFindWidget: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [Uri.file(dir), Uri.file(webviewDir)],
-            });
-        panel.iconPath = new UriIcon('globe');
-        panel.webview.html = await getWebviewHtml(panel.webview, file, title, dir, webviewDir);
-    }
-    console.info('[showWebView] Done');
-}
-
 export async function showDataView(source: string, type: string, title: string, file: string, viewer: string): Promise<void> {
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}`);
 
@@ -723,46 +701,6 @@ export async function getListHtml(webview: Webview, file: string, title: string)
 </body>
 </html>
 `;
-}
-
-export async function getWebviewHtml(webview: Webview, file: string, title: string, dir: string, webviewDir: string): Promise<string> {
-    const observerPath = Uri.file(path.join(webviewDir, 'observer.js'));
-    const body = (await readContent(file, 'utf8') || '').toString()
-        .replace(/<(\w+)(.*)\s+(href|src)="(?!\w+:)/g,
-            `<$1 $2 $3="${String(webview.asWebviewUri(Uri.file(dir)))}/`);
-
-    // define the content security policy for the webview
-    // * whilst it is recommended to be strict as possible,
-    // * there are several packages that require unsafe requests
-    const CSP = `
-        upgrade-insecure-requests;
-        default-src https: data: filesystem:;
-        style-src https: data: filesystem: 'unsafe-inline';
-        script-src https: data: filesystem: 'unsafe-inline' 'unsafe-eval';
-        worker-src https: data: filesystem: blob:;
-    `;
-
-    return `
-    <!DOCTYPE html>
-        <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <meta http-equiv="Content-Security-Policy" content="${CSP}">
-                <title>${title}</title>
-                <style>
-                    body {
-                        color: black;
-                    }
-                </style>
-            </head>
-            <body>
-                <span id="webview-content">
-                    ${body}
-                </span>
-            </body>
-            <script src="${String(webview.asWebviewUri(observerPath))}"></script>
-        </html>`;
 }
 
 import * as rstudioapi from './rstudioapi';
