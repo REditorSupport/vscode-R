@@ -6,7 +6,6 @@ import { asViewColumn, config, readContent } from '../util';
 import { showBrowser, showDataView, showWebView, WorkspaceData } from '../session';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from '.';
 import { autoShareBrowser } from './shareTree';
-import { docProvider, docScheme } from './virtualDocs';
 
 // Workspace Vars
 let guestPid: string;
@@ -27,9 +26,14 @@ export interface IRequest {
     source?: string;
     type?: string;
     title?: string;
+    data?: string;
     file?: string;
+    files_content_base64?: Record<string, string>;
     viewer?: string;
     plot?: string;
+    format?: string;
+    plot_base64?: string;
+    workspaceData?: WorkspaceData;
     action?: string;
     args?: unknown;
     sd?: string;
@@ -54,8 +58,7 @@ export function initGuest(context: vscode.ExtensionContext): void {
     sessionStatusBarItem.tooltip = 'Click to attach to host terminal';
     sessionStatusBarItem.show();
     context.subscriptions.push(
-        sessionStatusBarItem,
-        vscode.workspace.registerTextDocumentContentProvider(docScheme, docProvider)
+        sessionStatusBarItem
     );
     rGuestService?.setStatusBarItem(sessionStatusBarItem);
     guestResDir = path.join(context.extensionPath, 'dist', 'resources');
@@ -141,7 +144,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
             }
             case 'webview': {
                 if (request.file && request.title && request.viewer !== undefined) {
-                    await showWebView(request.file, request.title, request.viewer);
+                    await showWebView(request.file, request.files_content_base64, request.title, request.viewer);
                 }
                 break;
             }
@@ -149,7 +152,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                 if (request.source && request.type && request.title && request.file
                     && request.viewer !== undefined) {
                     await showDataView(request.source,
-                        request.type, request.title, request.file, request.viewer);
+                        request.type, request.title, request.file, request.data, request.viewer);
                 }
                 break;
             }
