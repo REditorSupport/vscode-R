@@ -2,6 +2,7 @@ import * as os from 'os';
 import { dirname } from 'path';
 import * as net from 'net';
 import { URL } from 'url';
+import { existsSync } from 'fs';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
 import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables, getRPackageVersion, compareVersions } from './util';
@@ -146,6 +147,26 @@ export class LanguageService implements Disposable {
                     };
                 },
             },
+            middleware: {
+                handleDiagnostics: (uri, diagnostics, next) => {
+                    if (!uri.fsPath) {
+                        next(uri, []);
+                        return;
+                    }
+
+                    if (uri.scheme !== 'file' && uri.scheme !== 'untitled' && uri.scheme !== 'vscode-notebook-cell') {
+                        next(uri, []);
+                        return;
+                    }
+
+                    if (uri.scheme === 'file' && !existsSync(uri.fsPath)) {
+                        next(uri, []);
+                        return;
+                    }
+
+                    next(uri, diagnostics);
+                },
+            }
         };
 
         // Create the language client and start the client.
@@ -187,6 +208,10 @@ export class LanguageService implements Disposable {
     private startMultiLanguageService(): void {
         const didOpenTextDocument = async (document: TextDocument) => {
             if (document.uri.scheme !== 'file' && document.uri.scheme !== 'untitled' && document.uri.scheme !== 'vscode-notebook-cell') {
+                return;
+            }
+
+            if (document.uri.scheme === 'file' && (!document.uri.fsPath || !existsSync(document.uri.fsPath))) {
                 return;
             }
 
@@ -329,8 +354,11 @@ export class LanguageService implements Disposable {
             this.startMultiLanguageService();
         } else {
             const documentSelector: DocumentFilter[] = [
-                { language: 'r' },
-                { language: 'rmd' },
+                { scheme: 'file', language: 'r' },
+                { scheme: 'file', language: 'rmd' },
+                { scheme: 'untitled', language: 'r' },
+                { scheme: 'untitled', language: 'rmd' },
+                { scheme: 'vscode-notebook-cell', language: 'r' },
             ];
 
             const workspaceFolder = workspace.workspaceFolders?.[0];
