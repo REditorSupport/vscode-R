@@ -221,19 +221,12 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
     file.create(plot_file, showWarnings = FALSE)
 
     plot_updated <- FALSE
-    null_dev_size <- c(7 + pi, 7 + pi)
+    last_plot_record_length <- 0
 
     check_null_dev <- function() {
-      cur_dev <- dev.cur()
-      cur_name <- names(cur_dev)
-      cur_size <- tryCatch(dev.size(), error = function(e) c(0, 0))
-
-      # On macOS, png() often opens "quartz_off_screen"
-      is_null_dev_name <- cur_name %in% c("png", "quartz_off_screen", "pdf")
-      size_match <- abs(cur_size[1] - null_dev_size[1]) < 0.1 &&
-        abs(cur_size[2] - null_dev_size[2]) < 0.1
-
-      is_null_dev_name && size_match
+      cur <- grDevices::dev.cur()
+      id <- getOption("sess.null_dev")
+      !is.null(id) && cur == id
     }
 
     new_plot <- function() {
@@ -243,25 +236,26 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
     }
 
     options(device = function(...) {
-      png(tempfile(tmpdir = .sess_env$tempdir, fileext = ".png"),
-        width = null_dev_size[[1L]],
-        height = null_dev_size[[2L]],
-        units = "in",
-        res = 72,
-        bg = "white"
-      )
-      dev.control(displaylist = "enable")
+      grDevices::pdf(NULL, width = 7, height = 7, bg = "white")
+      options(sess.null_dev = grDevices::dev.cur())
+      grDevices::dev.control(displaylist = "enable")
     })
 
     update_plot <- function(...) {
       tryCatch(
         {
-          if (plot_updated && check_null_dev()) {
-            plot_updated <<- FALSE
-            record <- recordPlot()
+          if (check_null_dev()) {
+            # Only record if we are reasonably sure there is something to record
+            # and we are on the null device.
+            record <- grDevices::recordPlot()
             if (length(record[[1L]])) {
-              .sess_env$latest_plot_record <- record
-              notify_client("plot_updated")
+              curr_length <- length(record[[1L]])
+              if (plot_updated || curr_length != last_plot_record_length) {
+                plot_updated <<- FALSE
+                last_plot_record_length <<- curr_length
+                .sess_env$latest_plot_record <- record
+                notify_client("plot_updated")
+              }
             }
           }
         },
@@ -274,14 +268,6 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
 
     setHook("plot.new", new_plot, "replace")
     setHook("grid.newpage", new_plot, "replace")
-
-    rebind(".External.graphics", function(...) {
-      out <- .Primitive(".External.graphics")(...)
-      if (check_null_dev()) {
-        plot_updated <<- TRUE
-      }
-      out
-    }, "base")
 
     update_plot()
     addTaskCallback(update_plot, name = "sess.plot")

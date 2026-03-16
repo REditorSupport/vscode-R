@@ -122,23 +122,22 @@ handle_plot_latest <- function(params) {
       ), dev_args))
     } else {
       # Fallback to png
-      do.call(png, c(list(
+      do.call(grDevices::png, c(list(
         filename = plot_file, width = width, height = height, res = 72
       ), dev_args))
     }
   } else {
-    do.call(png, c(list(
+    do.call(grDevices::png, c(list(
       filename = plot_file, width = width, height = height, res = 72
     ), dev_args))
   }
 
   on.exit({
-    if (dev.cur() > 1) dev.off()
     if (file.exists(plot_file)) unlink(plot_file)
   })
 
-  replayPlot(record)
-  dev.off()
+  grDevices::replayPlot(record)
+  grDevices::dev.off()
 
   if (file.exists(plot_file)) {
     raw_img <- readBin(plot_file, "raw", file.info(plot_file)$size)
