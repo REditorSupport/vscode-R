@@ -134,11 +134,14 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
     server = { host: '127.0.0.1', port, token };
 
     let retries = 0;
+    let hasConnected = false;
+
     const connect = () => {
         const url = `ws://127.0.0.1:${port}?token=${token}`;
         const ws: ExtWebSocket = new WebSocket(url);
         
         ws.on('open', () => {
+            hasConnected = true;
             console.info('[startSessionWatcher] Connected');
             wsClient = ws;
             ws._port = port;
@@ -180,7 +183,9 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
         });
         
         ws.on('close', () => {
-            console.info('[startSessionWatcher] Disconnected');
+            if (hasConnected) {
+                console.info('[startSessionWatcher] Disconnected');
+            }
             if (activeConnections.get(port) === ws) {
                 activeConnections.delete(port);
                 if (wsClient === ws) {
@@ -190,9 +195,11 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
         });
         
         ws.on('error', () => {
-            if (retries < 10 && !activeConnections.has(port)) {
+            if (retries < 20 && !activeConnections.has(port)) {
                 retries++;
                 setTimeout(connect, 500);
+            } else if (retries >= 20 && !hasConnected) {
+                console.error(`[startSessionWatcher] Failed to connect to port ${port} after 10 seconds.`);
             }
         });
     };
