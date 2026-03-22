@@ -2,6 +2,9 @@
 
 import * as path from 'path';
 import { isDeepStrictEqual } from 'util';
+import * as os from 'os';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
 
 import * as vscode from 'vscode';
 
@@ -9,10 +12,10 @@ import { extensionContext } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession, saveSessionState, updateSessionTerminalId } from './session';
+import { cleanupSession, saveSessionState, startSessionWatcher } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
-import * as fs from 'fs';
+
 export let rTerm: vscode.Terminal | undefined = undefined;
 
 export async function runSource(echo: boolean): Promise<void>  {
@@ -114,21 +117,6 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
-import * as net from 'net';
-import * as crypto from 'crypto';
-import { startSessionWatcher } from './session';
-
-export async function getFreePort(): Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-        const srv = net.createServer();
-        srv.listen(0, '127.0.0.1', () => {
-            const port = (srv.address() as net.AddressInfo).port;
-            srv.close(() => resolve(port));
-        });
-        srv.on('error', reject);
-    });
-}
-
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     const workspaceFolderPath = getCurrentWorkspaceFolder()?.uri.fsPath;
     const termPath = await getRterm();
@@ -141,12 +129,20 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     };
     const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'profile.R'));
     if (config().get<boolean>('sessionWatcher')) {
-        const port = await getFreePort();
         const token = crypto.randomBytes(16).toString('hex');
+        const sessionId = crypto.randomBytes(8).toString('hex');
+        let ipcPath: string;
+        if (process.platform === 'win32') {
+            ipcPath = `\\\\.\\pipe\\vscode-r-sess-${sessionId}`;
+        } else {
+            const tmpDir = os.tmpdir();
+            ipcPath = path.join(tmpDir, `vscode-r-sess-${sessionId}.sock`);
+        }
+
         termOptions.env = {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
-            SESS_PORT: port.toString(),
+            SESS_IPC_PATH: ipcPath,
             SESS_TOKEN: token,
             SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
             SESS_USE_HTTPGD: config().get<boolean>('plot.useHttpgd') ? 'TRUE' : 'FALSE'
@@ -169,14 +165,13 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     rTerm = vscode.window.createTerminal(termOptions);
     rTerm.show(preserveshow);
     
-    if (termOptions.env?.SESS_PORT && termOptions.env?.SESS_TOKEN) {
-        const port = Number(termOptions.env.SESS_PORT);
+    if (termOptions.env?.SESS_IPC_PATH && termOptions.env?.SESS_TOKEN) {
+        const ipcPath = termOptions.env.SESS_IPC_PATH;
         const token = termOptions.env.SESS_TOKEN;
-        startSessionWatcher(port, token);
         void rTerm.processId.then((pid) => {
             if (pid) {
-                saveSessionState(pid, port, token);
-                updateSessionTerminalId(port, pid);
+                saveSessionState(pid, 0, token);
+                startSessionWatcher(ipcPath, token, pid);
             }
         });
     }

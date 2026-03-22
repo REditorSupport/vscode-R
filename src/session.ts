@@ -14,7 +14,7 @@ import { rHostService, rGuestService, isLiveShare, isHost, isGuestSession, guest
 
 import { showWebView } from './webViewer';
 
-import WebSocket from 'ws';
+import * as net from 'net';
 
 export interface SessionInfo {
     version: string;
@@ -22,10 +22,81 @@ export interface SessionInfo {
     start_time: string;
 }
 
-interface ExtWebSocket extends WebSocket {
-    _terminalPid?: number;
-    _port?: number;
-    _token?: string;
+class StreamSocket extends net.Socket {
+    public static readonly CONNECTING = 0;
+    public static readonly OPEN = 1;
+    public static readonly CLOSING = 2;
+    public static readonly CLOSED = 3;
+
+    public sessionReadyState: number = StreamSocket.CLOSED;
+    private buffer: Buffer = Buffer.alloc(0);
+    private expectedLength: number = -1;
+
+    public _terminalPid?: number;
+    public _port?: number;
+    public _path?: string;
+    public _token?: string;
+
+    constructor(pathOrPort: string | number) {
+        super();
+        this.sessionReadyState = StreamSocket.CONNECTING;
+        if (typeof pathOrPort === 'string') {
+            this.connect(pathOrPort);
+        } else {
+            this.connect(pathOrPort, '127.0.0.1');
+        }
+
+        this.on('connect', () => {
+            this.sessionReadyState = StreamSocket.OPEN;
+            this.emit('open');
+        });
+
+        this.on('data', (data) => {
+            this.buffer = Buffer.concat([this.buffer, data]);
+            this.processBuffer();
+        });
+
+        this.on('close', () => {
+            this.sessionReadyState = StreamSocket.CLOSED;
+        });
+
+        this.on('error', (_err) => {
+            this.sessionReadyState = StreamSocket.CLOSED;
+        });
+    }
+
+    private processBuffer() {
+        while (this.buffer.length >= 4 || (this.expectedLength !== -1 && this.buffer.length >= this.expectedLength)) {
+            if (this.expectedLength === -1) {
+                if (this.buffer.length >= 4) {
+                    this.expectedLength = this.buffer.readInt32BE(0);
+                    this.buffer = this.buffer.subarray(4);
+                } else {
+                    break;
+                }
+            }
+
+            if (this.expectedLength !== -1 && this.buffer.length >= this.expectedLength) {
+                const payload = this.buffer.subarray(0, this.expectedLength);
+                this.buffer = this.buffer.subarray(this.expectedLength);
+                this.expectedLength = -1;
+                this.emit('message', payload.toString());
+            } else {
+                break;
+            }
+        }
+    }
+
+    public send(msg: string) {
+        const payload = Buffer.from(msg);
+        const header = Buffer.alloc(4);
+        header.writeInt32BE(payload.length, 0);
+        this.write(Buffer.concat([header, payload]));
+    }
+    
+    public terminate() {
+        this.destroy();
+    }
 }
 
 export interface GlobalEnv {
@@ -49,13 +120,14 @@ export interface WorkspaceData {
 
 export interface SessionServer {
     host: string;
-    port: number;
+    port?: number;
+    path?: string;
     token: string;
 }
 
 export class Session {
     public server: SessionServer;
-    public ws: WebSocket;
+    public ws: StreamSocket;
     public pid: string;
     public rVer: string;
     public info: SessionInfo;
@@ -63,7 +135,7 @@ export class Session {
     public workingDir: string;
     public workspaceData: WorkspaceData;
 
-    constructor(server: SessionServer, ws: WebSocket) {
+    constructor(server: SessionServer, ws: StreamSocket) {
         this.server = server;
         this.ws = ws;
         this.pid = '';
@@ -107,56 +179,60 @@ export function deploySessionWatcher(extensionPath: string): void {
     });
 }
 
-let wsClient: ExtWebSocket | undefined;
-const activeConnections = new Map<number, ExtWebSocket>();
+let wsClient: StreamSocket | undefined;
+const activeConnections = new Map<string, StreamSocket>();
 
 const pendingRequests = new Map<number, { resolve: (value: unknown) => void, reject: (reason?: unknown) => void }>();
 
-export function startSessionWatcher(port: number, token: string, terminalPid?: number): void {
-    if (activeConnections.has(port)) {
-        console.info(`[startSessionWatcher] Already connected to port ${port}`);
-        const ws = activeConnections.get(port);
-        if (ws?.readyState === WebSocket.OPEN) {
+export function startSessionWatcher(portOrPath: number | string, token: string, terminalPid?: number): void {
+    const key = String(portOrPath);
+    if (activeConnections.has(key)) {
+        console.info(`[startSessionWatcher] Already connected to ${key}`);
+        const ws = activeConnections.get(key);
+        if (ws?.sessionReadyState === StreamSocket.OPEN) {
             wsClient = ws;
             if (terminalPid) {
                 ws._terminalPid = terminalPid;
             }
-            server = { host: '127.0.0.1', port, token };
+            server = typeof portOrPath === 'number' ? { host: '127.0.0.1', port: portOrPath, token } : { host: 'localhost', path: portOrPath, token };
             return;
         } else {
-            activeConnections.delete(port);
+            activeConnections.delete(key);
         }
     }
     
-    console.info(`[startSessionWatcher] Connecting to ws://127.0.0.1:${port}?token=${token}`);
+    console.info(`[startSessionWatcher] Connecting to ${key}`);
     
     // Initialize server object immediately so requests can proceed
-    server = { host: '127.0.0.1', port, token };
+    server = typeof portOrPath === 'number' ? { host: '127.0.0.1', port: portOrPath, token } : { host: 'localhost', path: portOrPath, token };
 
     let retries = 0;
     let hasConnected = false;
 
     const connect = () => {
-        const url = `ws://127.0.0.1:${port}?token=${token}`;
-        const ws: ExtWebSocket = new WebSocket(url);
+        const ws = new StreamSocket(portOrPath);
         
         ws.on('open', () => {
             hasConnected = true;
             console.info('[startSessionWatcher] Connected');
             wsClient = ws;
-            ws._port = port;
+            if (typeof portOrPath === 'number') {
+                ws._port = portOrPath;
+            } else {
+                ws._path = portOrPath;
+            }
             ws._token = token;
             if (terminalPid) {
                 ws._terminalPid = terminalPid;
             }
-            activeConnections.set(port, ws);
+            activeConnections.set(key, ws);
             retries = 0;
         });
         
-        ws.on('message', (data: WebSocket.Data) => {
+        ws.on('message', (data: string) => {
             void (async () => {
                 try {
-                    const message = JSON.parse(data.toString()) as Record<string, unknown>;
+                    const message = JSON.parse(data) as Record<string, unknown>;
                     if (message.id !== undefined && !message.method) {
                         // Response to a client request
                         const id = Number(message.id);
@@ -186,8 +262,8 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
             if (hasConnected) {
                 console.info('[startSessionWatcher] Disconnected');
             }
-            if (activeConnections.get(port) === ws) {
-                activeConnections.delete(port);
+            if (activeConnections.get(key) === ws) {
+                activeConnections.delete(key);
                 if (wsClient === ws) {
                     wsClient = undefined;
                 }
@@ -195,11 +271,11 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
         });
         
         ws.on('error', () => {
-            if (retries < 20 && !activeConnections.has(port)) {
+            if (retries < 20 && !activeConnections.has(key)) {
                 retries++;
                 setTimeout(connect, 500);
             } else if (retries >= 20 && !hasConnected) {
-                console.error(`[startSessionWatcher] Failed to connect to port ${port} after 10 seconds.`);
+                console.error(`[startSessionWatcher] Failed to connect to ${key} after 10 seconds.`);
             }
         });
     };
@@ -714,7 +790,7 @@ import * as rstudioapi from './rstudioapi';
 
 export async function activateSession(session: Session): Promise<void> {
     activeSession = session;
-    wsClient = session.ws as ExtWebSocket;
+    wsClient = session.ws;
     server = session.server;
     pid = session.pid;
     rVer = session.rVer;
@@ -748,14 +824,15 @@ export async function switchSessionByTerminal(terminal: vscode.Terminal | undefi
     }
 }
 
-export function updateSessionTerminalId(port: number, terminalPid: number): void {
-    const ws = activeConnections.get(port);
+export function updateSessionTerminalId(portOrPath: number | string, terminalPid: number): void {
+    const key = String(portOrPath);
+    const ws = activeConnections.get(key);
     if (ws) {
         ws._terminalPid = terminalPid;
     }
 }
 
-async function handleNotification(message: Record<string, unknown>, ws: ExtWebSocket) {
+async function handleNotification(message: Record<string, unknown>, ws: StreamSocket) {
     const method = String(message.method);
     const params = (message.params as Record<string, unknown>) || {};
 
@@ -767,7 +844,8 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
             
             let session = sessions.get(terminalPid);
             if (!session) {
-                session = new Session({ host: '127.0.0.1', port: ws._port || 0, token: ws._token || '' }, ws);
+                const serverInfo: SessionServer = ws._port ? { host: '127.0.0.1', port: ws._port, token: ws._token || '' } : { host: 'localhost', path: ws._path, token: ws._token || '' };
+                session = new Session(serverInfo, ws);
                 sessions.set(terminalPid, session);
                 // Also map R PID if it's different
                 if (rPid !== terminalPid) {
@@ -864,7 +942,7 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
     }
 }
 
-async function handleRequest(message: Record<string, unknown>, ws: ExtWebSocket) {
+async function handleRequest(message: Record<string, unknown>, ws: StreamSocket) {
     if (message.method) {
         const method = String(message.method);
         const params = (message.params as Record<string, unknown>) || {};
@@ -925,7 +1003,7 @@ async function handleRequest(message: Record<string, unknown>, ws: ExtWebSocket)
             error = { code: -32603, message: String(e) };
         }
         
-        if (ws.readyState === ws.OPEN) {
+        if (ws.sessionReadyState === StreamSocket.OPEN) {
             ws.send(JSON.stringify({
                 jsonrpc: '2.0',
                 id: message.id,
@@ -989,8 +1067,8 @@ async function watchProcess(pid: string): Promise<string> {
 
 export async function sessionRequest(server: SessionServer, data: Record<string, unknown>): Promise<unknown> {
     try {
-        if (!wsClient || wsClient.readyState !== WebSocket.OPEN) {
-            throw new Error('WebSocket is not connected');
+        if (!wsClient || wsClient.sessionReadyState !== StreamSocket.OPEN) {
+            throw new Error('IPC stream is not connected');
         }
         
         return await new Promise((resolve, reject) => {
@@ -1030,7 +1108,8 @@ export async function sessionRequest(server: SessionServer, data: Record<string,
 }
 
 interface SessionTerminalLink extends vscode.TerminalLink {
-    port: number;
+    port?: number;
+    path?: string;
     token: string;
 }
 
@@ -1038,28 +1117,33 @@ export function setupTerminalLinkProvider(): vscode.Disposable {
     // One-click Link Provider (Stable API)
     return vscode.window.registerTerminalLinkProvider({
         provideTerminalLinks: (context: vscode.TerminalLinkContext) => {
-            const regex = /\[sess\] Server address: (ws:\/\/127\.0\.0\.1:(\d+)\?token=([a-z0-9]{32}))/g;
+            const regex = /\[sess\] Listening on: (ipc:\/\/(.*)|tcp:\/\/127\.0\.0\.1:(\d+))/g;
             const links: SessionTerminalLink[] = [];
             let match;
             while ((match = regex.exec(context.line)) !== null) {
                 const url = match[1];
-                const port = Number(match[2]);
-                const token = match[3];
-                if (!activeConnections.has(port)) {
+                const ipcPath = match[2];
+                const port = match[3] ? Number(match[3]) : undefined;
+                const key = ipcPath || String(port);
+                if (!activeConnections.has(key)) {
                     links.push({
                         startIndex: match.index + match[0].indexOf(url),
                         length: url.length,
                         tooltip: 'Click to attach R session',
                         port: port,
-                        token: token
+                        path: ipcPath,
+                        token: '' // Tokens are no longer used for IPC
                     });
                 }
             }
             return links;
         },
         handleTerminalLink: async (link: SessionTerminalLink) => {
-            const url = `ws://127.0.0.1:${link.port}?token=${link.token}`;
-            await connectToSession(url);
+            if (link.path) {
+                startSessionWatcher(link.path, link.token);
+            } else if (link.port) {
+                startSessionWatcher(link.port, link.token);
+            }
         }
     });
 }

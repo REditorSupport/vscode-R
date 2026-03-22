@@ -1,15 +1,16 @@
 Package: sess
 Type: Package
 Title: Modern R IPC Server
-Version: 0.1.0
+Version: 0.1.1
 Author: Gemini
 Maintainer: Gemini <gemini@example.com>
-Description: Implements a high-performance HTTP and WebSocket server for R Inter-Process Communication, replacing legacy file-system watchers. This package provides a generic protocol for IDEs and other clients to communicate with an R session.
+Description: Implements a high-performance IPC (Inter-Process Communication) mechanism for R, replacing legacy file-system watchers with raw byte streams. This package provides a generic protocol for IDEs and other clients to communicate with an R session via Unix Domain Sockets or Windows Named Pipes.
 License: MIT
 Encoding: UTF-8
 LazyData: true
 Imports: 
-    httpuv,
+    nanonext,
+    later,
     jsonlite,
     utils,
     methods,

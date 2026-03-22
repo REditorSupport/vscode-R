@@ -598,13 +598,13 @@ export async function promptToInstallSessPackage(cwd?: string | vscode.Uri): Pro
         return;
     }
     const sessVersion = await getRPackageVersion('sess', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
-    if (sessVersion) {
+    if (sessVersion && compareVersions(sessVersion, '0.1.1') >= 0) {
         return;
     }
 
     const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
     const installSessScript = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
-    const installMsg = 'R package "sess" (shipped with vscode-R) is required for the session watcher to work. Do you want to install it?';
+    const installMsg = sessVersion ? `R package "sess" is outdated (version ${sessVersion} installed, 0.1.1 required). Do you want to update it?` : 'R package "sess" (shipped with vscode-R) is required for the session watcher to work. Do you want to install it?';
     await vscode.window.showErrorMessage(installMsg, 'Yes', 'No')
         .then(async function (select) {
             if (select === 'Yes') {

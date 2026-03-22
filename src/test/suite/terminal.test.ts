@@ -49,7 +49,7 @@ suite('R Terminal', () => {
 
         assert.strictEqual(options.name, 'R Interactive');
         assert.ok(options.env);
-        assert.ok(options.env['SESS_PORT']);
+        assert.ok(options.env['SESS_IPC_PATH']);
         assert.ok(options.env['SESS_TOKEN']);
         assert.strictEqual(options.env['SESS_RSTUDIOAPI'], 'TRUE');
         assert.strictEqual(options.env['SESS_USE_HTTPGD'], 'TRUE');
@@ -72,7 +72,7 @@ suite('R Terminal', () => {
 
         const options = await rTerminal.makeTerminalOptions();
 
-        assert.ok(options.env === undefined || options.env['SESS_PORT'] === undefined);
+        assert.ok(options.env === undefined || options.env['SESS_IPC_PATH'] === undefined);
     });
 
     test('createRTerm and restartRTerminal integration test', async () => {
@@ -100,9 +100,9 @@ suite('R Terminal', () => {
         // Verify startSessionWatcher was called
         const creationOptions = firstTerm.creationOptions as vscode.TerminalOptions;
         assert.ok(startSessionWatcherSpy.calledOnce, 'startSessionWatcher should be called');
-        const firstPort = Number(creationOptions.env?.['SESS_PORT']);
-        const firstToken = creationOptions.env?.['SESS_TOKEN'] ?? undefined;
-        assert.ok(startSessionWatcherSpy.calledWith(firstPort, firstToken), 'startSessionWatcher should be called with correct port and token');
+        const firstPath = creationOptions.env?.['SESS_IPC_PATH'] ?? '';
+        const firstToken = creationOptions.env?.['SESS_TOKEN'] ?? '';
+        assert.ok(startSessionWatcherSpy.calledWith(firstPath, firstToken), 'startSessionWatcher should be called with correct path and token');
 
         // Test restart
         await rTerminal.restartRTerminal();
@@ -150,7 +150,7 @@ suite('R Terminal', () => {
             sessionDir: '',
             workingDir: '',
             workspaceData: { search: [], loaded_namespaces: [], globalenv: {} },
-            server: { host: '127.0.0.1', port: 1234, token: 'abc' },
+            server: { host: 'localhost', path: '/tmp/test.sock', token: 'abc' },
             ws: {} as unknown as session.Session['ws']
         };
 

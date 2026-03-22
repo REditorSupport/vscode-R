@@ -26,6 +26,7 @@ local({
 
 if (requireNamespace("sess", quietly = TRUE)) {
     sess::sess_app(
+        ipc_path = Sys.getenv("SESS_IPC_PATH"),
         port = as.integer(Sys.getenv("SESS_PORT")),
         token = Sys.getenv("SESS_TOKEN"),
         use_rstudioapi = as.logical(Sys.getenv("SESS_RSTUDIOAPI", "TRUE")),

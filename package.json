@@ -2027,7 +2027,6 @@
     "@types/sinon": "^10.0.20",
     "@types/vscode": "^1.75.0",
     "@types/winreg": "^1.2.36",
-    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vscode/test-cli": "^0.0.12",
@@ -2054,8 +2053,7 @@
     "node-fetch": "^2.7.0",
     "vscode-languageclient": "^9.0.1",
     "vsls": "^1.0.4753",
-    "winreg": "^1.2.5",
-    "ws": "^8.19.0"
+    "winreg": "^1.2.5"
   },
   "extensionDependencies": [
     "REditorSupport.r-syntax"
