@@ -1,4 +1,3 @@
-
 'use strict';
 
 // interfaces, functions, etc. provided by vscode
@@ -21,7 +20,8 @@ import * as apiImplementation from './apiImplementation';
 import * as rHelp from './helpViewer';
 import * as completions from './completions';
 import * as rShare from './liveShare';
-import * as httpgdViewer from './plotViewer';
+import * as plotViewer from './plotViewer';
+import { PlotManager } from './plotViewer/types';
 import * as languageService from './languageService';
 import { RTaskProvider } from './tasks';
 
@@ -33,7 +33,7 @@ export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undef
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
 export let extensionContext: vscode.ExtensionContext;
 export let enableSessionWatcher: boolean | undefined = undefined;
-export let globalHttpgdManager: httpgdViewer.HttpgdManager | undefined = undefined;
+export let globalPlotManager: PlotManager | undefined = undefined;
 export let rmdPreviewManager: rmarkdown.RMarkdownPreviewManager | undefined = undefined;
 export let rmdKnitManager: rmarkdown.RMarkdownKnitManager | undefined = undefined;
 export let sessionStatusBarItem: vscode.StatusBarItem | undefined = undefined;
@@ -133,7 +133,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // interaction with R sessions
         'r.previewDataframe': preview.previewDataframe,
         'r.previewEnvironment': preview.previewEnvironment,
-        'r.attachActive': session.attachActive,
+        'r.activateRSession': session.activateRSession,
+        'r.connectToSession': session.connectToSession,
         'r.launchAddinPicker': rstudioapi.launchAddinPicker,
 
         // workspace viewer
@@ -157,6 +158,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // keep track of terminals
     context.subscriptions.push(vscode.window.onDidCloseTerminal(rTerminal.deleteTerminal));
+    context.subscriptions.push(vscode.window.onDidChangeActiveTerminal(session.switchSessionByTerminal));
 
     // start language service
     if (util.config().get<boolean>('lsp.enabled')) {
@@ -199,8 +201,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         }
     ));
 
-    // initialize httpgd viewer
-    globalHttpgdManager = httpgdViewer.initializeHttpgd();
+    // initialize plot manager
+    globalPlotManager = plotViewer.initializePlotManager();
 
     // initialize the package/help related functions
     globalRHelp = await rHelp.initializeHelp(context, rExtension);
@@ -227,16 +229,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         if (!rShare.isGuestSession) {
             console.info('Initialize session watcher');
             void session.deploySessionWatcher(context.extensionPath);
+            void session.discoverSessions();
+            context.subscriptions.push(session.setupTerminalLinkProvider());
 
             // create status bar item that contains info about the session watcher
             console.info('Create sessionStatusBarItem');
             sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
-            sessionStatusBarItem.command = 'r.attachActive';
-            sessionStatusBarItem.text = 'R: (not attached)';
-            sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
+            sessionStatusBarItem.command = 'r.activateRSession';
+            session.resetStatusBar();
             sessionStatusBarItem.show();
             context.subscriptions.push(sessionStatusBarItem);
-            void session.startRequestWatcher(sessionStatusBarItem);
         }
 
         // track active text editor

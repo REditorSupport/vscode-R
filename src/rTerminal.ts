@@ -5,11 +5,11 @@ import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
 
-import { extensionContext, homeExtDir } from './extension';
+import { extensionContext } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession } from './session';
+import { cleanupSession, saveSessionState, updateSessionTerminalId } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
@@ -114,6 +114,19 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
+import * as os from 'os';
+import * as crypto from 'crypto';
+import { startSessionWatcher } from './session';
+
+export function getSessionPath(): string {
+    const uuid = crypto.randomUUID();
+    if (process.platform === 'win32') {
+        return `\\\\.\\pipe\\vscode-r-${uuid}`;
+    } else {
+        return path.join(os.tmpdir(), `vscode-r-${uuid}.sock`);
+    }
+}
+
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     const workspaceFolderPath = getCurrentWorkspaceFolder()?.uri.fsPath;
     const termPath = await getRterm();
@@ -124,14 +137,15 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
         shellArgs: shellArgs,
         cwd: workspaceFolderPath,
     };
-    const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'session', 'profile.R'));
-    const initR = extensionContext.asAbsolutePath(path.join('R', 'session','init.R'));
+    const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'profile.R'));
     if (config().get<boolean>('sessionWatcher')) {
+        const sessionPath = getSessionPath();
         termOptions.env = {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
-            VSCODE_INIT_R: initR,
-            VSCODE_WATCHER_DIR: homeExtDir()
+            SESS_SOCKET_PATH: sessionPath,
+            SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
+            SESS_USE_HTTPGD: config().get<boolean>('plot.useHttpgd') ? 'TRUE' : 'FALSE'
         };
     }
     return termOptions;
@@ -139,6 +153,7 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
 
 export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     const termOptions = await makeTerminalOptions();
+    void util.promptToInstallSessPackage(termOptions.cwd);
     const termPath = termOptions.shellPath;
     if(!termPath){
         void vscode.window.showErrorMessage('Could not find R path. Please check r.rterm and r.rpath setting.');
@@ -149,6 +164,18 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     }
     rTerm = vscode.window.createTerminal(termOptions);
     rTerm.show(preserveshow);
+    
+    if (termOptions.env?.SESS_SOCKET_PATH) {
+        const sessionPath = termOptions.env.SESS_SOCKET_PATH;
+        startSessionWatcher(sessionPath);
+        void rTerm.processId.then((pid) => {
+            if (pid) {
+                saveSessionState(pid, sessionPath);
+                updateSessionTerminalId(sessionPath, pid);
+            }
+        });
+    }
+    
     return true;
 }
 

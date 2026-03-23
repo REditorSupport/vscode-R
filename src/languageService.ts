@@ -1,3 +1,5 @@
+'use strict';
+
 import * as os from 'os';
 import { dirname } from 'path';
 import * as net from 'net';
@@ -46,7 +48,9 @@ export class LanguageService implements Disposable {
                     client.outputChannel.show();
                 }
             }
-            void client.stop();
+            if (client.needsStop()) {
+                void client.stop();
+            }
         });
         return childProcess;
     }
