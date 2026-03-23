@@ -15,6 +15,7 @@ import { rHostService, rGuestService, isLiveShare, isHost, isGuestSession, guest
 import { showWebView } from './webViewer';
 
 import WebSocket from 'ws';
+import * as net from 'net';
 
 export interface SessionInfo {
     version: string;
@@ -134,8 +135,9 @@ export function startSessionWatcher(sessionPath: string, terminalPid?: number): 
     let hasConnected = false;
 
     const connect = () => {
+        // ws supports Windows named pipes if backslashes are replaced with forward slashes
         const url = `ws+unix://${sessionPath.replace(/\\/g, '/')}`;
-        const ws: ExtWebSocket = process.platform === 'win32' ? new WebSocket('ws://localhost/', { socketPath: sessionPath }) : new WebSocket(url);
+        const ws: ExtWebSocket = new WebSocket(url);
         
         ws.on('open', () => {
             hasConnected = true;

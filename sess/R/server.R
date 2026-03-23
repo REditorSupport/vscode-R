@@ -111,11 +111,27 @@ sess_app <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE)
   )
 
   # Start the httpuv pipe server
-  if (is.null(pipe_path) || is.na(pipe_path)) {
+  if (is.null(pipe_path) || is.na(pipe_path) || !nzchar(pipe_path)) {
     env_pipe_path <- Sys.getenv("SESS_SOCKET_PATH")
-    pipe_path <- if (nzchar(env_pipe_path)) env_pipe_path else tempfile("sess-pipe-")
+    if (nzchar(env_pipe_path)) {
+      pipe_path <- env_pipe_path
+    } else {
+      # Fallback if no environment variable is provided
+      if (.Platform$OS.type == "windows") {
+        pipe_path <- sprintf("\\\\.\\pipe\\sess-pipe-%s", paste0(sample(c(letters, 0:9), 16, replace = TRUE), collapse = ""))
+      } else {
+        pipe_path <- tempfile("sess-pipe-")
+      }
+    }
   }
-  .sess_env$server <- httpuv::startPipeServer(pipe_path, mask = strtoi("077", 8), app = app_handlers)
+  
+  # Only apply mask on Unix-like systems.
+  pipe_mask <- if (.Platform$OS.type == "windows") NULL else strtoi("077", 8)
+  .sess_env$server <- httpuv::startPipeServer(
+    name = pipe_path,
+    mask = pipe_mask,
+    app = app_handlers
+  )
 
   # Print the connection string to the console.
   cat(sprintf("\n[sess] Server pipe: %s\n\n", pipe_path))
