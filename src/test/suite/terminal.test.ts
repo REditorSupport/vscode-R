@@ -49,8 +49,7 @@ suite('R Terminal', () => {
 
         assert.strictEqual(options.name, 'R Interactive');
         assert.ok(options.env);
-        assert.ok(options.env['SESS_PORT']);
-        assert.ok(options.env['SESS_TOKEN']);
+        assert.ok(options.env['SESS_SOCKET_PATH']);
         assert.strictEqual(options.env['SESS_RSTUDIOAPI'], 'TRUE');
         assert.strictEqual(options.env['SESS_USE_HTTPGD'], 'TRUE');
         assert.ok(options.env['R_PROFILE_USER']);
@@ -72,7 +71,7 @@ suite('R Terminal', () => {
 
         const options = await rTerminal.makeTerminalOptions();
 
-        assert.ok(options.env === undefined || options.env['SESS_PORT'] === undefined);
+        assert.ok(options.env === undefined || options.env['SESS_SOCKET_PATH'] === undefined);
     });
 
     test('createRTerm and restartRTerminal integration test', async () => {
@@ -100,9 +99,8 @@ suite('R Terminal', () => {
         // Verify startSessionWatcher was called
         const creationOptions = firstTerm.creationOptions as vscode.TerminalOptions;
         assert.ok(startSessionWatcherSpy.calledOnce, 'startSessionWatcher should be called');
-        const firstPort = Number(creationOptions.env?.['SESS_PORT']);
-        const firstToken = creationOptions.env?.['SESS_TOKEN'] ?? undefined;
-        assert.ok(startSessionWatcherSpy.calledWith(firstPort, firstToken), 'startSessionWatcher should be called with correct port and token');
+        const firstSessionPath = creationOptions.env?.['SESS_SOCKET_PATH'] ?? undefined;
+        assert.ok(startSessionWatcherSpy.calledWith(firstSessionPath), 'startSessionWatcher should be called with correct sessionPath');
 
         // Test restart
         await rTerminal.restartRTerminal();
@@ -150,7 +148,7 @@ suite('R Terminal', () => {
             sessionDir: '',
             workingDir: '',
             workspaceData: { search: [], loaded_namespaces: [], globalenv: {} },
-            server: { host: '127.0.0.1', port: 1234, token: 'abc' },
+            server: { sessionPath: '/tmp/vscode-r-mock.sock' },
             ws: {} as unknown as session.Session['ws']
         };
 

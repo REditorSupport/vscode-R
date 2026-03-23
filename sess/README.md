@@ -1,6 +1,6 @@
 # `sess`: Modern R IPC Server Protocol
 
-The `sess` package provides a high-performance, token-authenticated IPC (Inter-Process Communication) mechanism between R and a client (such as an IDE or editor extension). It uses a pure **WebSocket** architecture to replace legacy file-based watchers.
+The `sess` package provides a high-performance IPC (Inter-Process Communication) mechanism between R and a client (such as an IDE or editor extension). It uses a pure **WebSocket over Unix Domain Sockets / Named Pipes** architecture to replace legacy file-based watchers. By leveraging OS-level sockets, it inherently provides secure access control without the need for token authentication.
 
 ## 1. Connection Handshake
 
@@ -10,8 +10,7 @@ The server can be started by calling `sess::sess_app()`:
 
 ```r
 sess::sess_app(
-  port = NULL,           # Integer: Server port (random if NULL)
-  token = NULL,          # String: Authentication token (random if NULL)
+  pipe_path = NULL,      # String: Path to the pipe/socket (temp file if NULL)
   use_rstudioapi = TRUE, # Logical: Enable RStudio API emulation
   use_httpgd = TRUE      # Logical: Use httpgd for plotting if available
 )
@@ -20,7 +19,7 @@ sess::sess_app(
 It prints a connection string to the R console:
 
 ```text
-[sess] Server address: ws://127.0.0.1:PORT?token=TOKEN
+[sess] Server pipe: /tmp/sess-pipe-xyz
 ```
 
 ## 2. Communication Channels

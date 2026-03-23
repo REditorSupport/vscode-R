@@ -24,8 +24,7 @@ export interface SessionInfo {
 
 interface ExtWebSocket extends WebSocket {
     _terminalPid?: number;
-    _port?: number;
-    _token?: string;
+    _sessionPath?: string;
 }
 
 export interface GlobalEnv {
@@ -48,9 +47,7 @@ export interface WorkspaceData {
 }
 
 export interface SessionServer {
-    host: string;
-    port: number;
-    token: string;
+    sessionPath: string;
 }
 
 export class Session {
@@ -108,48 +105,47 @@ export function deploySessionWatcher(extensionPath: string): void {
 }
 
 let wsClient: ExtWebSocket | undefined;
-const activeConnections = new Map<number, ExtWebSocket>();
+const activeConnections = new Map<string, ExtWebSocket>();
 
 const pendingRequests = new Map<number, { resolve: (value: unknown) => void, reject: (reason?: unknown) => void }>();
 
-export function startSessionWatcher(port: number, token: string, terminalPid?: number): void {
-    if (activeConnections.has(port)) {
-        console.info(`[startSessionWatcher] Already connected to port ${port}`);
-        const ws = activeConnections.get(port);
+export function startSessionWatcher(sessionPath: string, terminalPid?: number): void {
+    if (activeConnections.has(sessionPath)) {
+        console.info(`[startSessionWatcher] Already connected to ${sessionPath}`);
+        const ws = activeConnections.get(sessionPath);
         if (ws?.readyState === WebSocket.OPEN) {
             wsClient = ws;
             if (terminalPid) {
                 ws._terminalPid = terminalPid;
             }
-            server = { host: '127.0.0.1', port, token };
+            server = { sessionPath };
             return;
         } else {
-            activeConnections.delete(port);
+            activeConnections.delete(sessionPath);
         }
     }
     
-    console.info(`[startSessionWatcher] Connecting to ws://127.0.0.1:${port}?token=${token}`);
+    console.info(`[startSessionWatcher] Connecting to ${sessionPath}`);
     
     // Initialize server object immediately so requests can proceed
-    server = { host: '127.0.0.1', port, token };
+    server = { sessionPath };
 
     let retries = 0;
     let hasConnected = false;
 
     const connect = () => {
-        const url = `ws://127.0.0.1:${port}?token=${token}`;
-        const ws: ExtWebSocket = new WebSocket(url);
+        const url = `ws+unix://${sessionPath.replace(/\\/g, '/')}`;
+        const ws: ExtWebSocket = process.platform === 'win32' ? new WebSocket('ws://localhost/', { socketPath: sessionPath }) : new WebSocket(url);
         
         ws.on('open', () => {
             hasConnected = true;
             console.info('[startSessionWatcher] Connected');
             wsClient = ws;
-            ws._port = port;
-            ws._token = token;
+            ws._sessionPath = sessionPath;
             if (terminalPid) {
                 ws._terminalPid = terminalPid;
             }
-            activeConnections.set(port, ws);
+            activeConnections.set(sessionPath, ws);
             retries = 0;
         });
         
@@ -186,8 +182,8 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
             if (hasConnected) {
                 console.info('[startSessionWatcher] Disconnected');
             }
-            if (activeConnections.get(port) === ws) {
-                activeConnections.delete(port);
+            if (activeConnections.get(sessionPath) === ws) {
+                activeConnections.delete(sessionPath);
                 if (wsClient === ws) {
                     wsClient = undefined;
                 }
@@ -195,11 +191,11 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
         });
         
         ws.on('error', () => {
-            if (retries < 20 && !activeConnections.has(port)) {
+            if (retries < 20 && !activeConnections.has(sessionPath)) {
                 retries++;
                 setTimeout(connect, 500);
             } else if (retries >= 20 && !hasConnected) {
-                console.error(`[startSessionWatcher] Failed to connect to port ${port} after 10 seconds.`);
+                console.error(`[startSessionWatcher] Failed to connect to ${sessionPath} after 10 seconds.`);
             }
         });
     };
@@ -207,20 +203,20 @@ export function startSessionWatcher(port: number, token: string, terminalPid?: n
     connect();
 }
 
-export function saveSessionState(pid: number, port: number, token: string): void {
-    const sessionsMap = extensionContext.workspaceState.get<Record<string, { port: number, token: string }>>('r.sessions', {});
-    sessionsMap[String(pid)] = { port, token };
+export function saveSessionState(pid: number, sessionPath: string): void {
+    const sessionsMap = extensionContext.workspaceState.get<Record<string, { sessionPath: string }>>('r.sessions', {});
+    sessionsMap[String(pid)] = { sessionPath };
     void extensionContext.workspaceState.update('r.sessions', sessionsMap);
 }
 
 export function clearSessionState(pid: number): void {
-    const sessionsMap = extensionContext.workspaceState.get<Record<string, { port: number, token: string }>>('r.sessions', {});
+    const sessionsMap = extensionContext.workspaceState.get<Record<string, { sessionPath: string }>>('r.sessions', {});
     delete sessionsMap[String(pid)];
     void extensionContext.workspaceState.update('r.sessions', sessionsMap);
 }
 
 export function discoverSessions(): void {
-    const persistedSessions = extensionContext.workspaceState.get<Record<string, { port: number, token: string }>>('r.sessions', {});
+    const persistedSessions = extensionContext.workspaceState.get<Record<string, { sessionPath: string }>>('r.sessions', {});
     
     void (async () => {
         // Scan existing terminals
@@ -228,8 +224,8 @@ export function discoverSessions(): void {
             const pidArg = await terminal.processId;
             if (pidArg && persistedSessions[String(pidArg)]) {
                 const sessionData = persistedSessions[String(pidArg)];
-                console.info(`[discoverSessions] Found R session for PID ${pidArg} in workspaceState: ws://127.0.0.1:${sessionData.port}?token=${sessionData.token}`);
-                startSessionWatcher(sessionData.port, sessionData.token);
+                console.info(`[discoverSessions] Found R session for PID ${pidArg} in workspaceState: ${sessionData.sessionPath}`);
+                startSessionWatcher(sessionData.sessionPath);
             }
         }
     })();
@@ -261,11 +257,11 @@ export async function activateRSession(): Promise<void> {
                 }
 
                 // 3. Check if we have persisted state for this PID
-                const persistedSessions = extensionContext.workspaceState.get<Record<string, { port: number, token: string }>>('r.sessions', {});
+                const persistedSessions = extensionContext.workspaceState.get<Record<string, { sessionPath: string }>>('r.sessions', {});
                 if (persistedSessions[String(pidArg)]) {
                     console.info(`[activateRSession] Found persisted session for PID: ${pidArg}`);
                     const sessionData = persistedSessions[String(pidArg)];
-                    startSessionWatcher(sessionData.port, sessionData.token, pidArg);
+                    startSessionWatcher(sessionData.sessionPath, pidArg);
                     terminal.show();
                     return;
                 }
@@ -748,8 +744,8 @@ export async function switchSessionByTerminal(terminal: vscode.Terminal | undefi
     }
 }
 
-export function updateSessionTerminalId(port: number, terminalPid: number): void {
-    const ws = activeConnections.get(port);
+export function updateSessionTerminalId(sessionPath: string, terminalPid: number): void {
+    const ws = activeConnections.get(sessionPath);
     if (ws) {
         ws._terminalPid = terminalPid;
     }
@@ -767,7 +763,7 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
             
             let session = sessions.get(terminalPid);
             if (!session) {
-                session = new Session({ host: '127.0.0.1', port: ws._port || 0, token: ws._token || '' }, ws);
+                session = new Session({ sessionPath: ws._sessionPath || '' }, ws);
                 sessions.set(terminalPid, session);
                 // Also map R PID if it's different
                 if (rPid !== terminalPid) {
@@ -1030,58 +1026,45 @@ export async function sessionRequest(server: SessionServer, data: Record<string,
 }
 
 interface SessionTerminalLink extends vscode.TerminalLink {
-    port: number;
-    token: string;
+    sessionPath: string;
 }
 
 export function setupTerminalLinkProvider(): vscode.Disposable {
     // One-click Link Provider (Stable API)
     return vscode.window.registerTerminalLinkProvider({
         provideTerminalLinks: (context: vscode.TerminalLinkContext) => {
-            const regex = /\[sess\] Server address: (ws:\/\/127\.0\.0\.1:(\d+)\?token=([a-z0-9]{32}))/g;
+            const regex = /\[sess\] Server pipe: (.*)/g;
             const links: SessionTerminalLink[] = [];
             let match;
             while ((match = regex.exec(context.line)) !== null) {
-                const url = match[1];
-                const port = Number(match[2]);
-                const token = match[3];
-                if (!activeConnections.has(port)) {
+                const sessionPath = match[1].trim();
+                if (!activeConnections.has(sessionPath)) {
                     links.push({
-                        startIndex: match.index + match[0].indexOf(url),
-                        length: url.length,
+                        startIndex: match.index + match[0].indexOf(sessionPath),
+                        length: sessionPath.length,
                         tooltip: 'Click to attach R session',
-                        port: port,
-                        token: token
+                        sessionPath: sessionPath
                     });
                 }
             }
             return links;
         },
         handleTerminalLink: async (link: SessionTerminalLink) => {
-            const url = `ws://127.0.0.1:${link.port}?token=${link.token}`;
-            await connectToSession(url);
+            await connectToSession(link.sessionPath);
         }
     });
 }
 
-export async function connectToSession(urlValue?: string): Promise<void> {
-    const url = await vscode.window.showInputBox({
-        value: urlValue,
-        prompt: 'Enter the R session WebSocket URL',
-        placeHolder: 'ws://127.0.0.1:PORT?token=TOKEN',
+export async function connectToSession(pathValue?: string): Promise<void> {
+    const sessionPath = await vscode.window.showInputBox({
+        value: pathValue,
+        prompt: 'Enter the R session pipe/socket path',
+        placeHolder: '/tmp/vscode-r-uuid.sock or \\\\.\\pipe\\vscode-r-uuid',
         ignoreFocusOut: true
     });
-    if (url) {
-        const regex = /ws:\/\/127\.0\.0\.1:(\d+)\?token=([a-z0-9]{32})/;
-        const match = regex.exec(url);
-        if (match) {
-            const port = Number(match[1]);
-            const token = match[2];
-            const terminal = vscode.window.activeTerminal;
-            const pidArg = await terminal?.processId;
-            startSessionWatcher(port, token, pidArg);
-        } else {
-            void vscode.window.showErrorMessage('Invalid R session URL format.');
-        }
+    if (sessionPath) {
+        const terminal = vscode.window.activeTerminal;
+        const pidArg = await terminal?.processId;
+        startSessionWatcher(sessionPath, pidArg);
     }
 }

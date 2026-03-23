@@ -114,19 +114,17 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
-import * as net from 'net';
+import * as os from 'os';
 import * as crypto from 'crypto';
 import { startSessionWatcher } from './session';
 
-export async function getFreePort(): Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-        const srv = net.createServer();
-        srv.listen(0, '127.0.0.1', () => {
-            const port = (srv.address() as net.AddressInfo).port;
-            srv.close(() => resolve(port));
-        });
-        srv.on('error', reject);
-    });
+export function getSessionPath(): string {
+    const uuid = crypto.randomUUID();
+    if (process.platform === 'win32') {
+        return `\\\\.\\pipe\\vscode-r-${uuid}`;
+    } else {
+        return path.join(os.tmpdir(), `vscode-r-${uuid}.sock`);
+    }
 }
 
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
@@ -141,13 +139,11 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     };
     const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'profile.R'));
     if (config().get<boolean>('sessionWatcher')) {
-        const port = await getFreePort();
-        const token = crypto.randomBytes(16).toString('hex');
+        const sessionPath = getSessionPath();
         termOptions.env = {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
-            SESS_PORT: port.toString(),
-            SESS_TOKEN: token,
+            SESS_SOCKET_PATH: sessionPath,
             SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
             SESS_USE_HTTPGD: config().get<boolean>('plot.useHttpgd') ? 'TRUE' : 'FALSE'
         };
@@ -169,14 +165,13 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     rTerm = vscode.window.createTerminal(termOptions);
     rTerm.show(preserveshow);
     
-    if (termOptions.env?.SESS_PORT && termOptions.env?.SESS_TOKEN) {
-        const port = Number(termOptions.env.SESS_PORT);
-        const token = termOptions.env.SESS_TOKEN;
-        startSessionWatcher(port, token);
+    if (termOptions.env?.SESS_SOCKET_PATH) {
+        const sessionPath = termOptions.env.SESS_SOCKET_PATH;
+        startSessionWatcher(sessionPath);
         void rTerm.processId.then((pid) => {
             if (pid) {
-                saveSessionState(pid, port, token);
-                updateSessionTerminalId(port, pid);
+                saveSessionState(pid, sessionPath);
+                updateSessionTerminalId(sessionPath, pid);
             }
         });
     }
