@@ -24,7 +24,7 @@ Go to the [wiki](https://github.com/REditorSupport/vscode-R/wiki) to view the do
 
 The following software or extensions are recommended to enhance the experience of using R in VS Code:
 
-* [radian](https://github.com/randy3k/radian): A modern R console that corrects many limitations of the official R terminal and supports many features such as syntax highlighting and auto-completion.
+* [radian](https://github.com/randy3k/radian): A modern R console that corrects many limitations of the official R terminal and supports many features such as syntax highlighting and auto-completion. By default, the extension will use vanilla R. To prefer radian, set `r.rterm.preferRadian` to `true`.
 
 * [VSCode-R-Debugger](https://github.com/ManuelHentschel/VSCode-R-Debugger): A VS Code extension to support R debugging capabilities.
 

@@ -41,7 +41,7 @@ export function substituteVariables(str: string): string {
     return result;
 }
 
-function getRfromEnvPath(platform: string) {
+function getRfromEnvPath(platform: string, executableName: string = 'R') {
     let splitChar = ':';
     let fileExtension = '';
 
@@ -52,7 +52,7 @@ function getRfromEnvPath(platform: string) {
 
     const os_paths: string[] | string = process.env.PATH ? process.env.PATH.split(splitChar) : [];
     for (const os_path of os_paths) {
-        const os_r_path: string = path.join(os_path, 'R' + fileExtension);
+        const os_r_path: string = path.join(os_path, executableName + fileExtension);
         if (fs.existsSync(os_r_path)) {
             return os_r_path;
         }
@@ -67,7 +67,7 @@ export async function getRpathFromSystem(): Promise<string> {
 
     rpath ||= getRfromEnvPath(platform);
 
-    if ( !rpath && platform === 'win32') {
+    if (!rpath && platform === 'win32') {
         // Find path from registry
         try {
             const key = new winreg({
@@ -135,6 +135,21 @@ export async function getRterm(): Promise<string | undefined> {
     const configEntry = getRPathConfigEntry(true);
     let rpath = config().get<string>(configEntry);
     rpath &&= substituteVariables(rpath);
+
+    if (!rpath) {
+        const platform: string = process.platform;
+        const preferRadian = config().get<boolean>('rterm.preferRadian', false);
+
+        if (preferRadian) {
+            // Try radian first, then fall back to R
+            rpath = getRfromEnvPath(platform, 'radian') || getRfromEnvPath(platform, 'R');
+        } else {
+            // Try R
+            rpath = getRfromEnvPath(platform, 'R');
+        }
+    }
+
+    // Fall back to system R path if still not found
     rpath ||= await getRpathFromSystem();
 
     if (rpath !== '') {

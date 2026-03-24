@@ -1325,6 +1325,11 @@
           "default": "",
           "markdownDescription": "R path for interactive terminals (Linux). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
         },
+        "r.rterm.preferRadian": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "Prefer radian over vanilla R when radian is available on PATH. When `false` (default), vanilla R will be used."
+        },
         "r.rterm.option": {
           "type": "array",
           "default": [
@@ -2038,3 +2043,4 @@
     "REditorSupport.r-syntax"
   ]
 }
+
