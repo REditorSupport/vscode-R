@@ -56,20 +56,7 @@ function parseCranPackagesFile(html: string): Package[] {
     return packages;
 }
 
-function parseCranJson(jsonString: string): Package[] {
-    const lines = jsonString.split('\n').filter(v => v);
-    const pkgs = lines.map(line => {
-        const j = JSON.parse(line) as {[key: string]: string};
-        const pkg: Package = {
-            name: j['Package'],
-            description: j['Title'],
-            date: j['modified'],
-            isCran: true
-        };
-        return pkg;
-    });
-    return pkgs;
-}
+
 
 function parseCranTable(html: string, baseUrl: string): Package[] {
     if(!html){
