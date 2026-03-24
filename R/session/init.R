@@ -17,7 +17,7 @@ init_first <- function() {
     }
 
     # check required packages
-    required_packages <- c("jsonlite", "rlang")
+    required_packages <- c("jsonlite", "rlang", "data.table")
     missing_packages <- required_packages[
         !vapply(required_packages, requireNamespace,
             logical(1L), quietly = TRUE
@@ -48,6 +48,7 @@ init_last <- function() {
     # cleanup previous version
     removeTaskCallback("vscode-R")
     options(vscodeR = NULL)
+    options(datatable.quiet = TRUE)
     .vsc.name <- "tools:vscode"
     if (.vsc.name %in% search()) {
         detach(.vsc.name, character.only = TRUE)
