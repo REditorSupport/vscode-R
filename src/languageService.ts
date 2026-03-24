@@ -4,7 +4,7 @@ import * as net from 'net';
 import { URL } from 'url';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables, getRPackageVersion, compareVersions } from './util';
+import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables } from './util';
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 
@@ -310,18 +310,9 @@ export class LanguageService implements Disposable {
 
     private async startLanguageService(): Promise<void> {
         let useMultiServer = false;
-        const multiServerConfig = this.config.get<string | boolean>('lsp.multiServer');
+        const multiServerConfig = this.config.get<boolean>('lsp.multiServer');
 
-        if (multiServerConfig === 'auto') {
-            const version = await getRPackageVersion('languageserver');
-            if (version && compareVersions(version, '0.3.17') <= 0) {
-                console.log(`languageserver version is ${version}, using multi-server.`);
-                useMultiServer = true;
-            } else {
-                console.log(`languageserver version is ${version || 'unknown'}, using single-server.`);
-                useMultiServer = false;
-            }
-        } else if (multiServerConfig === true || multiServerConfig === 'true') {
+        if (multiServerConfig === true) {
             useMultiServer = true;
         }
 
