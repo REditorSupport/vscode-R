@@ -1,0 +1,15 @@
+<a
+    href="<%- makeCommandUri('r.plot.showIndex', plot.host, plot.id) %> "
+    title="Plot <%- plot.id %>"
+    class="focusPlot <%- plot.id === activePlot ? 'active' : '' %> "
+    plotId="<%- plot.id %>"
+>
+    <%- plot.data %>
+</a>
+<a
+    href="<%- makeCommandUri('r.plot.hidePlot', plot.host, plot.id) %>"
+    title="Hide Plot"
+    class="hidePlot"
+>
+    &#x2716;
+</a>

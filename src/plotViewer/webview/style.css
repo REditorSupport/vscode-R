@@ -1,0 +1,136 @@
+
+/* Use box-sizing: border-box everywhere: */
+html {
+    box-sizing: border-box;
+}
+*, *::before, *::after {
+    box-sizing: inherit;
+}
+
+/* General styling: */
+body {
+    padding-left: 1px;
+    padding-right: 1px;
+} 
+body.fullWindow {
+    overflow-x: hidden;
+    overflow-y: hidden;
+}
+
+svg {
+    user-select: none;
+}
+
+/* Stretch large plot during resizing, */
+/* Keep small plots the same size: */
+.httpgd {
+    width: 100%;
+    height: 100%;
+}
+
+/* Main plot area: */
+#largePlot {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 10px;
+    width: 100%;
+    height: 100%;
+}
+body.fullWindow #largePlot {
+    overflow-x: hidden;
+    width: 100vw !important;
+    height: 100vh !important;
+}
+
+/* Dragbar to resize main plot: */
+#handler {
+    background-color: var(--vscode-textSeparator-foreground);
+    height: 4px;
+    cursor: ns-resize;
+}
+#handler:hover, #handler.dragging {
+    background-color: var(--vscode-focusBorder);
+    transition: background-color .1s ease-out;
+    transition-delay: .2s;
+}
+body.fullWindow #handler {
+    display: none;
+}
+
+#placeholder {
+    height: 95vh;
+}
+body.fullWindow #placeHolder {
+    display: none;
+}
+
+/* Plot history: */
+
+#smallPlots {
+    display: flex;
+    /* flex-direction: row; */
+    position: relative;
+    overflow-x: auto;
+    flex-direction: row;
+    overflow-y: hidden;
+    padding: 10px;
+}
+body.fullWindow #smallPlots {
+    display: none;
+}
+
+#smallPlots.multirow {
+    overflow-x: hidden;
+    flex-wrap: wrap;
+}
+
+#smallPlots.hidden {
+    display: none;
+}
+
+/* Each small plot: */
+
+#smallPlots .wrapper {
+    position: relative;
+    height: 15vw;
+    width: 19vw;
+    flex: none;
+    padding: 3px;
+    padding-bottom: 12px;
+}
+
+a.focusPlot {
+    height: 100%;
+    width: 100%;
+}
+
+a.hidePlot {
+    display: none;
+    position: absolute;
+    top: 0;
+    right: 5px;
+    text-decoration: none;
+    font-size: 2em;
+    user-select: none;
+    color: var(--vscode-foreground);
+}
+
+.plotContent {
+    height: 100%;
+    width: 100%;
+}
+
+.smallPlot:not(.active):hover {
+    background-color: var(--vscode-list-hoverBackground);
+    background-clip: content-box;
+}
+
+/* Hide plot button: */
+#smallPlots .wrapper:hover a.hidePlot {
+    display: block;
+}
+
+#smallPlots .wrapper a.hidePlot:hover {
+    color: var(--vscode-errorForeground);
+}
+
