@@ -1,0 +1,120 @@
+
+/* General styling */
+body {
+  font-size: var(--vscode-editor-font-size);
+}
+
+body table:nth-child(1)[width="100%"] td:nth-child(2){
+  display: none;
+}
+
+body table:nth-child(1)[width="100%"] td:nth-child(1){
+  text-align: right;
+}
+
+h1, h2 {
+  text-align: center;
+  margin-block-end: 0;
+}
+
+img {
+  display: none;
+}
+
+a ~ div.header {
+  display: none;
+}
+
+/* Styling for preview info box */
+.previewInfo {
+  position: relative;
+  left: -20px;
+  width: calc(100% + 40px);
+  background-color: var(--vscode-list-inactiveSelectionBackground);
+  box-sizing: border-box;
+  text-align: center;
+
+  padding-top: 0.5em;
+  padding-bottom: 0.5em;
+  padding-left: calc(0.5em + 20px);
+  padding-right: calc(0.5em + 20px);
+  /* margin-top: 1.5em; */
+  margin-bottom: 1em;
+
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
+/* Styling for clickable code sections */
+pre, code {
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
+.preClickable pre {
+  margin: 0px;
+  padding-top: 0.5em;
+  padding-bottom: 0.5em;
+}
+
+.preHoverPointer .preDiv:hover {
+  cursor: pointer;
+}
+.preClickable .preCodeExample:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+/* Syntax highlighting in code sections */
+.hljs-link {
+  color: var(--vscode-textLink-foreground)
+}
+
+.vscode-light {
+  --rhelp-number: #cb4b16;
+  --rhelp-string: #647400;
+  --rhelp-symbol: #cb4b16;
+  --rhelp-keyword: #2074b1;
+  --rhelp-comment: #727e7e;
+  --rhelp-function: #2074b1;
+}
+
+.vscode-dark, 
+.vscode-high-contrast {
+  --rhelp-number: #b5cea8;
+  --rhelp-string: #CE9178;
+  --rhelp-symbol: #4EC9B0;
+  --rhelp-keyword: #569cd6;
+  --rhelp-comment: #6A9955;
+  --rhelp-function: #DCDCAA;
+}
+
+.hljs-number {
+  color: var(--rhelp-number)
+}
+
+.hljs-regexp,
+.hljs-bullet,
+.hljs-string {
+  color: var(--rhelp-string)
+}
+
+.hljs-symbol,
+.hljs-class {
+  color: var(--rhelp-symbol)
+}
+
+.hljs-literal,
+.hljs-keyword {
+  color: var(--rhelp-keyword)
+}
+
+.hljs-built_in,
+.hljs-function {
+  color: var(--rhelp-function)
+}
+
+.hljs-quote,
+.hljs-comment {
+  color: var(--rhelp-comment)
+}
+

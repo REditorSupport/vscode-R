@@ -6,6 +6,7 @@
 .vscode/**
 .xls
 .xlsx
+cliff.toml
 **/*.map
 html/**/*.ts
 out/test/**
@@ -13,7 +14,6 @@ src/
 src/**
 test/**
 **/tsconfig.json
-vsc-extension-quickstart.md
 esbuild.js
 .markdownlint.json
 .eslintignore
