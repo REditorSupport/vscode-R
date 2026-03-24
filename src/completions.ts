@@ -1,10 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-
-
+'use strict';
 import * as vscode from 'vscode';
 
 import * as session from './session';
@@ -52,9 +46,9 @@ export class HoverProvider implements vscode.HoverProvider {
             hoverRange = document.getWordRangeAtPosition(position, exprRegex)?.with({ end: hoverRange?.end });
             const expr = document.getText(hoverRange);
             const response = await session.sessionRequest(session.server, {
-                type: 'hover',
-                expr: expr
-            });
+                method: 'hover',
+                params: { expr: expr }
+            }) as { str: string };
 
             if (response) {
                 hoverText = response.str;
@@ -62,7 +56,7 @@ export class HoverProvider implements vscode.HoverProvider {
 
         } else {
             const symbol = document.getText(hoverRange);
-            const str = session.workspaceData.globalenv[symbol]?.str;
+            const str = session.activeSession?.workspaceData.globalenv[symbol]?.str;
 
             if (str) {
                 hoverText = str;
@@ -101,7 +95,7 @@ export class HelpLinkHoverProvider implements vscode.HoverProvider {
             const encodedArgs = encodeURIComponent(JSON.stringify(args));
             const cmd = 'command:r.helpPanel.openForPath';
             const cmdUri = vscode.Uri.parse(`${cmd}?${encodedArgs}`);
-            return `[\`${cmdText}\`](${cmdUri})`;
+            return `[\`${cmdText}\`](${cmdUri.toString()})`;
         });
         const md = new vscode.MarkdownString(mds.join('  \n'));
         md.isTrusted = true;
@@ -137,7 +131,8 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
         completionContext: vscode.CompletionContext
     ): Promise<vscode.CompletionItem[]> {
         const items: vscode.CompletionItem[] = [];
-        if (token.isCancellationRequested || !session.workspaceData?.globalenv) {
+        const activeSession = session.activeSession;
+        if (token.isCancellationRequested || !activeSession?.workspaceData?.globalenv) {
             return items;
         }
 
@@ -152,8 +147,9 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
         const trigger = completionContext.triggerCharacter;
 
         if (trigger === undefined) {
-            Object.keys(session.workspaceData.globalenv).forEach((key) => {
-                const obj = session.workspaceData.globalenv[key];
+            const globalenv: session.GlobalEnv = activeSession.workspaceData.globalenv;
+            Object.keys(globalenv).forEach((key) => {
+                const obj = globalenv[key];
                 const item = new vscode.CompletionItem(
                     key,
                     obj.type === 'closure' || obj.type === 'builtin'
@@ -170,11 +166,10 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
                 const re = /([a-zA-Z0-9._$@ ])+(?<![@$])/;
                 const exprRange = document.getWordRangeAtPosition(symbolPosition, re)?.with({ end: symbolPosition });
                 const expr = document.getText(exprRange);
-                const response: RObjectElement[] = await session.sessionRequest(session.server, {
-                    type: 'complete',
-                    expr: expr,
-                    trigger: completionContext.triggerCharacter
-                });
+                const response = await session.sessionRequest(session.server, {
+                    method: 'completion',
+                    params: { expr: expr, trigger: trigger }
+                }) as RObjectElement[];
 
                 if (response) {
                     items.push(...getCompletionItemsFromElements(response, '[session]'));
@@ -183,7 +178,7 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
                 const symbolRange = document.getWordRangeAtPosition(symbolPosition);
                 const symbol = document.getText(symbolRange);
                 const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
-                const obj = session.workspaceData.globalenv[symbol];
+                const obj = activeSession.workspaceData.globalenv[symbol];
                 let names: string[] | undefined;
                 if (obj !== undefined) {
                     if (completionContext.triggerCharacter === '$') {
@@ -201,11 +196,11 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
         }
 
         if (trigger === undefined || trigger === '[' || trigger === ',' || trigger === '"' || trigger === '\'') {
-            items.push(...getBracketCompletionItems(document, position, token));
+            items.push(...getBracketCompletionItems(document, position, token, activeSession));
         }
 
         if (trigger === undefined || trigger === '(' || trigger === ',') {
-            items.push(...getPipelineCompletionItems(document, position, token));
+            items.push(...getPipelineCompletionItems(document, position, token, activeSession));
         }
 
         return items;
@@ -244,7 +239,7 @@ function getCompletionItems(names: string[], kind: vscode.CompletionItemKind, de
     });
 }
 
-function getBracketCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): vscode.CompletionItem[] {
+function getBracketCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, activeSession: session.Session): vscode.CompletionItem[] {
     const items: vscode.CompletionItem[] = [];
     let range: vscode.Range | undefined = new vscode.Range(new vscode.Position(position.line, 0), position);
     let expectOpenBrackets = 0;
@@ -277,7 +272,7 @@ function getBracketCompletionItems(document: vscode.TextDocument, position: vsco
     }
 
     if (!token.isCancellationRequested && symbol !== undefined) {
-        const obj = session.workspaceData.globalenv[symbol];
+        const obj = activeSession.workspaceData.globalenv[symbol];
         if (obj !== undefined && obj.names !== undefined) {
             const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
             items.push(...getCompletionItems(obj.names, vscode.CompletionItemKind.Variable, '[session]', doc));
@@ -286,7 +281,7 @@ function getBracketCompletionItems(document: vscode.TextDocument, position: vsco
     return items;
 }
 
-function getPipelineCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): vscode.CompletionItem[] {
+function getPipelineCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, activeSession: session.Session): vscode.CompletionItem[] {
     const items: vscode.CompletionItem[] = [];
     const range = extendSelection(position.line, (x) => document.lineAt(x).text, document.lineCount);
     let symbol: string | undefined = undefined;
@@ -322,7 +317,7 @@ function getPipelineCompletionItems(document: vscode.TextDocument, position: vsc
     }
 
     if (!token.isCancellationRequested && symbol !== undefined) {
-        const obj = session.workspaceData.globalenv[symbol];
+        const obj = activeSession.workspaceData.globalenv[symbol];
         if (obj !== undefined && obj.names !== undefined) {
             const doc = new vscode.MarkdownString('Element of `' + symbol + '`');
             items.push(...getCompletionItems(obj.names, vscode.CompletionItemKind.Variable, '[session]', doc));

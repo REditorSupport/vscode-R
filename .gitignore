@@ -7,9 +7,6 @@ node_modules
 *.vsix
 dist
 .vscode-test
-
-html/**/*.js
-
 *.temp
 *.tmp
 tmp.*

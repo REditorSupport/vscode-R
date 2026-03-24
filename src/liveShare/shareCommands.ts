@@ -9,7 +9,7 @@ import { forwardCommands, shareWorkspace } from './shareTree';
 import { runTextInTerm } from '../rTerminal';
 import { requestFile, WorkspaceData } from '../session';
 import { HelpFile } from '../helpViewer';
-import { globalHttpgdManager, globalRHelp } from '../extension';
+import { globalPlotManager, globalRHelp } from '../extension';
 
 // used in sending messages to the guest service,
 // distinguishes the type of vscode message to show
@@ -99,7 +99,7 @@ export const Commands: ICommands = {
             void updateGuestPlot(args[0]);
         },
         [Callback.NotifyGuestPlotManager]: (args: [url: string]): void => {
-            void globalHttpgdManager?.showViewer(args[0]);
+            void globalPlotManager?.showHttpgdPlot(args[0]);
         },
         [Callback.OrderDetach]: (): void => {
             void detachGuest();

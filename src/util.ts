@@ -589,6 +589,45 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
 }
 
 /**
+ * Prompt to install the bundled "sess" package
+ */
+export async function promptToInstallSessPackage(cwd?: string | vscode.Uri): Promise<void> {
+    const _config = config();
+    const sessionWatcher = _config.get<boolean>('sessionWatcher');
+    if (!sessionWatcher) {
+        return;
+    }
+    const sessVersion = await getRPackageVersion('sess', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
+    if (sessVersion) {
+        return;
+    }
+
+    const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
+    const installSessScript = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
+    const installMsg = 'R package "sess" (shipped with vscode-R) is required for the session watcher to work. Do you want to install it?';
+    await vscode.window.showErrorMessage(installMsg, 'Yes', 'No')
+        .then(async function (select) {
+            if (select === 'Yes') {
+                const rPath = await getRpath();
+                if (!rPath) {
+                    void vscode.window.showErrorMessage('R path not set', 'OK');
+                    return;
+                }
+                const repo = await getCranUrl('', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
+                const args = [
+                    '--silent',
+                    '--no-echo',
+                    '--no-save',
+                    '--no-restore',
+                    '-f', installSessScript,
+                    '--args', sessPath, repo
+                ];
+                void executeAsTask('Install "sess" package', rPath, args, true);
+            }
+        });
+}
+
+/**
  * Create temporary directory. Will avoid name clashes. Caller must delete directory after use.
  *
  * @param root Parent folder.
