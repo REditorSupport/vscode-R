@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.8.7 - 2026-03-15
+## 2.8.8 - 2026-03-24
 
 ### Bug Fixes
 
@@ -9,27 +9,14 @@
 ### Features
 
 * feat: support multi-root workspaces in single-server mode
+* feat: change default of r.lsp.multiServer to false
 
 ### Other
 
 * Allow bracketedPaste on win32 platform ([#1631](https://github.com/REditorSupport/vscode-R/issues/1631))
 * feat: default to single language server for multi-root workspaces ([#1682](https://github.com/REditorSupport/vscode-R/issues/1682))
 
-**Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v2.8.6...v2.8.7>
-
-## 2.8.6 - 2025-05-31
-
-### Other
-
-* Syntax update and bump to 2.8.6 ([#1605](https://github.com/REditorSupport/vscode-R/issues/1605))
-* Show sidebar icon only when extension is active ([#1579](https://github.com/REditorSupport/vscode-R/issues/1579))
-* Move R and R markdown syntaxes to vscode-R-syntax ([#1606](https://github.com/REditorSupport/vscode-R/issues/1606))
-
-### Refactor
-
-* refactor: restructure files ([#1613](https://github.com/REditorSupport/vscode-R/issues/1613))
-
-**Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v2.8.5...v2.8.6>
+**Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v2.8.7...2.8.8>
 
 See [CHANGELOG.old.md](https://github.com/REditorSupport/vscode-R/blob/master/CHANGELOG.old.md) for changes before v2.8.5.
 
