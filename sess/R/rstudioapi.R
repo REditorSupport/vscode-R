@@ -116,11 +116,12 @@ getActiveProject <- function() {
 }
 
 document_context <- function(id = NULL) {
-  request_client("rstudioapi/document_context", args = list(id = id))
+  editor_context <- request_client("rstudioapi/document_context", args = list(id = id))
+  make_rs_document_context(editor_context)
 }
 
-documentId <- function(allowConsole = TRUE) document_context()$id$external
-documentPath <- function(id = NULL) document_context(id)$id$path
+documentId <- function(allowConsole = TRUE) document_context()$id
+documentPath <- function(id = NULL) document_context(id)$path
 
 documentSaveAll <- function() {
   invisible(request_client("rstudioapi/document_save_all", args = list()))
@@ -155,11 +156,14 @@ restartSession <- function(command = "", clean = FALSE) {
 }
 
 viewer <- function(url, height = NULL) {
-  notify_client("webview", list(file = url, title = "Viewer"))
+  notify_client("webview", list(url = url, title = "Viewer"))
 }
 
 page_viewer <- function(url, title = NULL) {
-  notify_client("browser", list(url = url, title = if (is.null(title)) "Page Viewer" else title))
+  notify_client(
+    "page_viewer",
+    list(url = url, title = if (is.null(title)) "Page Viewer" else title)
+  )
 }
 
 getVersion <- function() numeric_version("0")
@@ -372,7 +376,6 @@ patch_rstudioapi <- function() {
     setDocumentContents = setDocumentContents,
     restartSession = restartSession,
     viewer = viewer,
-    page_viewer = page_viewer,
     getVersion = getVersion,
     versionInfo = versionInfo,
     sendToConsole = sendToConsole,

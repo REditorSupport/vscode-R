@@ -750,35 +750,43 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
             }
             break;
         }
+        case 'browser':
+        case 'page_viewer':
         case 'webview': {
             if (params.url) {
                 const url = String(params.url);
+                const title = String(params.title ?? (method === 'browser' ? 'Browser' : method === 'page_viewer' ? 'Page Viewer' : 'Viewer'));
 
                 const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
-                const viewerChoice = viewColumnConfig['viewer'] ?? 'Active';
+                const configKey = method === 'page_viewer' ? 'pageViewer' : (method === 'browser' ? 'browser' : 'viewer');
+                const viewerChoice = viewColumnConfig[configKey] ?? 'Active';
                 const viewColumn = viewerChoice === 'Disable' ? false : viewerChoice;
 
                 if (url.startsWith('http://') || url.startsWith('https://')) {
                     const isLocalHost = url.match(/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i);
                     if (isLocalHost) {
                         const externalUri = await env.asExternalUri(Uri.parse(url));
-                        await showBrowser(externalUri.toString(true), url, viewColumn);
+                        await showBrowser(externalUri.toString(true), title, viewColumn);
                     } else {
-                        await showBrowser(url, url, viewColumn);
+                        await showBrowser(url, title, viewColumn);
                     }
                 } else {
                     if (url.toLowerCase().endsWith('.html') || url.toLowerCase().endsWith('.htm')) {
-                        await showWebView(url, 'Viewer', viewColumn);
+                        await showWebView(url, title, viewColumn);
                     } else {
-                        await showDataView('object', 'txt', 'Data Viewer', url, String(viewColumn));
+                        await showDataView('object', 'txt', title, url, String(viewColumn));
                     }
                 }
             }
             break;
         }
         case 'dataview': {
-            if (params.source && params.type && params.file && params.title && params.viewer !== undefined) {
-                await showDataView(String(params.source), String(params.type), String(params.title), String(params.file), String(params.viewer));
+            if (params.source && params.type && params.file && params.title) {
+                const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
+                const viewer = viewColumnConfig['view'] ?? 'Two';
+                if (viewer !== 'Disable') {
+                    await showDataView(String(params.source), String(params.type), String(params.title), String(params.file), viewer);
+                }
             }
             break;
         }

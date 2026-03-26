@@ -134,23 +134,43 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                 sessionStatusBarItem.show();
                 break;
             }
-            case 'browser': {
-                if (request.url && request.title && request.viewer !== undefined) {
-                    await showBrowser(request.url, request.title, request.viewer);
-                }
-                break;
-            }
+            case 'browser':
+            case 'page_viewer':
             case 'webview': {
-                if (request.file && request.title && request.viewer !== undefined) {
-                    await showWebView(request.file, request.title, request.viewer);
+                if (request.url) {
+                    const url = String(request.url);
+                    const title = String(request.title ?? (request.command === 'browser' ? 'Browser' : request.command === 'page_viewer' ? 'Page Viewer' : 'Viewer'));
+
+                    const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
+                    const configKey = request.command === 'page_viewer' ? 'pageViewer' : (request.command === 'browser' ? 'browser' : 'viewer');
+                    const viewerChoice = viewColumnConfig[configKey] ?? 'Active';
+                    const viewColumn = viewerChoice === 'Disable' ? false : viewerChoice;
+
+                    if (url.startsWith('http://') || url.startsWith('https://')) {
+                        const isLocalHost = url.match(/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i);
+                        if (isLocalHost) {
+                            const externalUri = await vscode.env.asExternalUri(vscode.Uri.parse(url));
+                            await showBrowser(externalUri.toString(true), title, viewColumn);
+                        } else {
+                            await showBrowser(url, title, viewColumn);
+                        }
+                    } else {
+                        if (url.toLowerCase().endsWith('.html') || url.toLowerCase().endsWith('.htm')) {
+                            await showWebView(url, title, viewColumn);
+                        } else {
+                            await showDataView('object', 'txt', title, url, String(viewColumn));
+                        }
+                    }
                 }
                 break;
             }
             case 'dataview': {
-                if (request.source && request.type && request.title && request.file
-                    && request.viewer !== undefined) {
-                    await showDataView(request.source,
-                        request.type, request.title, request.file, request.viewer);
+                if (request.source && request.type && request.title && request.file) {
+                    const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
+                    const viewer = viewColumnConfig['view'] ?? 'Two';
+                    if (viewer !== 'Disable') {
+                        await showDataView(String(request.source), String(request.type), String(request.title), String(request.file), viewer);
+                    }
                 }
                 break;
             }
