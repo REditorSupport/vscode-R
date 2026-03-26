@@ -11,7 +11,8 @@ function copyResources() {
 
     const resources = [
         './node_modules/jquery/dist/jquery.min.js',
-        './node_modules/jquery.json-viewer/json-viewer',
+        './node_modules/jquery.json-viewer/json-viewer/jquery.json-viewer.js',
+        './node_modules/jquery.json-viewer/json-viewer/jquery.json-viewer.css',
         './node_modules/ag-grid-community/dist/ag-grid-community.min.noStyle.js',
         './node_modules/ag-grid-community/styles/ag-grid.min.css',
         './node_modules/ag-grid-community/styles/ag-theme-balham.min.css'
@@ -22,7 +23,7 @@ function copyResources() {
         const destName = path.basename(srcPath);
         const destPath = path.resolve(destDir, destName);
         if (fs.existsSync(srcPath)) {
-            fs.cpSync(srcPath, destPath, { recursive: true });
+            fs.copyFileSync(srcPath, destPath);
         } else {
             console.warn(`Warning: Resource not found: ${srcPath}`);
         }
@@ -30,10 +31,34 @@ function copyResources() {
     console.log('Resources copied.');
 }
 
+function copyWebviewAssets() {
+    const views = [
+        { name: 'help', src: 'src/helpViewer/webview' },
+        { name: 'httpgd', src: 'src/plotViewer/webview' },
+        { name: 'webview', src: 'src/webViewer/webview' }
+    ];
+
+    for (const view of views) {
+        const srcDir = path.join(__dirname, view.src);
+        const destDir = path.join(__dirname, 'dist', 'webviews', view.name);
+        fs.mkdirSync(destDir, { recursive: true });
+
+        const files = fs.readdirSync(srcDir);
+        for (const file of files) {
+            if (!file.endsWith('.ts')) {
+                fs.copyFileSync(path.join(srcDir, file), path.join(destDir, file));
+            }
+        }
+    }
+    console.log('Webview assets copied.');
+}
+
 async function main() {
     copyResources();
+    copyWebviewAssets();
 
-    const ctx = await esbuild.context({
+    // Extension context (Node)
+    const extensionCtx = await esbuild.context({
         entryPoints: ['./src/extension.ts'],
         bundle: true,
         format: 'cjs',
@@ -46,12 +71,33 @@ async function main() {
         logLevel: 'info',
     });
 
+    // Webview context (Browser)
+    const webviewCtx = await esbuild.context({
+        entryPoints: {
+            'help/index': './src/helpViewer/webview/index.ts',
+            'httpgd/index': './src/plotViewer/webview/index.ts',
+            'webview/index': './src/webViewer/webview/index.ts'
+        },
+        bundle: true,
+        minify: production,
+        sourcemap: !production,
+        format: 'iife',
+        platform: 'browser',
+        outdir: 'dist/webviews',
+        logLevel: 'info',
+    });
+
     if (watch) {
-        await ctx.watch();
+        await Promise.all([
+            extensionCtx.watch(),
+            webviewCtx.watch()
+        ]);
         console.log('Watching for changes...');
     } else {
-        await ctx.rebuild();
-        await ctx.dispose();
+        await extensionCtx.rebuild();
+        await webviewCtx.rebuild();
+        await extensionCtx.dispose();
+        await webviewCtx.dispose();
     }
 }
 

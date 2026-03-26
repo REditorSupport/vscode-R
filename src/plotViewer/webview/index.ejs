@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link href="<%= asWebViewPath('style.css') %> " rel="stylesheet">
+    <link href="<%= overwriteCssPath %> " rel="stylesheet" class="overwrites" <%- overwriteStyles ? '' : 'disabled' %>>
+</head>
+
+<body>
+    <div id="largePlot" plotId=<%- largePlot?.id || '' %>>
+        <%- largePlot?.data %>
+    </div>
+    <div id="handler"> </div>
+    <div id="smallPlots" class="<%- previewPlotLayout%>">
+        <% plots.forEach((plot)=> { %>
+            <div class="wrapper">
+            <%- include(asLocalPath('./smallPlot.ejs'), {plot: plot}) %>
+            </div>
+        <% }) %>
+    </div>
+    <div id="placeholder"> </div>
+</body>
+<script src="<%= asWebViewPath('index.js') %>"></script>
+
+</html>

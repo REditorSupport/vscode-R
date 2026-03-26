@@ -1,0 +1,13 @@
+body {
+    padding: 0;
+    margin: 0;
+    background-color: transparent;
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-editor-font-family);
+    font-size: var(--vscode-editor-font-size);
+}
+
+#webview-content {
+    display: block;
+    padding: 10px;
+}

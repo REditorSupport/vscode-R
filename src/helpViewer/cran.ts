@@ -57,7 +57,6 @@ function parseCranPackagesFile(html: string): Package[] {
 }
 
 
-
 function parseCranTable(html: string, baseUrl: string): Package[] {
     if(!html){
         return [];

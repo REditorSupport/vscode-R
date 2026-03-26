@@ -70,10 +70,10 @@ export async function initializeHelp(
 
     // Gather options used in r help related files
     const rHelpOptions: HelpOptions = {
-        webviewScriptPath: context.asAbsolutePath('./html/help/script.js'),
-        webviewStylePath: context.asAbsolutePath('./html/help/theme.css'),
+        webviewScriptPath: context.asAbsolutePath('./dist/webviews/help/index.js'),
+        webviewStylePath: context.asAbsolutePath('./dist/webviews/help/theme.css'),
         rScriptFile: context.asAbsolutePath('./R/help/getAliases.R'),
-        indexTemplatePath: context.asAbsolutePath('./html/help/00Index.ejs'),
+        indexTemplatePath: context.asAbsolutePath('./dist/webviews/help/00Index.ejs'),
         rdToHtmlScriptFile: context.asAbsolutePath('./R/help/rdToHtml.R'),
         rPath: rPath,
         cwd: cwd,

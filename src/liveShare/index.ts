@@ -9,7 +9,7 @@ import * as vsls from 'vsls';
 import * as fs from 'fs-extra';
 
 import { enableSessionWatcher, extensionContext } from '../extension';
-import { attachActiveGuest, browserDisposables, initGuest } from './shareSession';
+import { activateRSessionGuest, browserDisposables, initGuest } from './shareSession';
 import { initTreeView, rLiveShareProvider, shareWorkspace, ToggleNode } from './shareTree';
 import { Commands, Callback, liveShareOnRequest, liveShareRequest } from './shareCommands';
 
@@ -93,7 +93,7 @@ export async function initLiveShare(context: vscode.ExtensionContext): Promise<v
             );
         } else {
             context.subscriptions.push(
-                vscode.commands.registerCommand('r.attachActiveGuest', () => attachActiveGuest())
+                vscode.commands.registerCommand('r.activateRSessionGuest', () => activateRSessionGuest())
             );
         }
     }

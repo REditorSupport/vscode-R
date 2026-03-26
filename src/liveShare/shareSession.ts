@@ -1,9 +1,10 @@
 import path = require('path');
 import * as vscode from 'vscode';
 
-import { extensionContext, globalHttpgdManager, globalRHelp, rWorkspace } from '../extension';
+import { extensionContext, globalPlotManager, globalRHelp, rWorkspace } from '../extension';
 import { asViewColumn, config, readContent } from '../util';
-import { showBrowser, showDataView, showWebView, WorkspaceData } from '../session';
+import { showBrowser, showDataView, WorkspaceData } from '../session';
+import { showWebView } from '../webViewer';
 import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from '.';
 import { autoShareBrowser } from './shareTree';
 import { docProvider, docScheme } from './virtualDocs';
@@ -49,9 +50,9 @@ export function initGuest(context: vscode.ExtensionContext): void {
     // create status bar item that contains info about the *guest* session watcher
     console.info('Create guestSessionStatusBarItem');
     const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
-    sessionStatusBarItem.command = 'r.attachActiveGuest';
+    sessionStatusBarItem.command = 'r.activateRSessionGuest';
     sessionStatusBarItem.text = 'Guest R: (not attached)';
-    sessionStatusBarItem.tooltip = 'Click to attach to host terminal';
+    sessionStatusBarItem.tooltip = 'Click to activate host R session';
     sessionStatusBarItem.show();
     context.subscriptions.push(
         sessionStatusBarItem,
@@ -64,14 +65,14 @@ export function initGuest(context: vscode.ExtensionContext): void {
 export function detachGuest(): void {
     console.info('[Guest Service] detach guest from workspace');
     sessionStatusBarItem.text = 'Guest R: (not attached)';
-    sessionStatusBarItem.tooltip = 'Click to attach to host terminal';
+    sessionStatusBarItem.tooltip = 'Click to activate host R session';
     guestWorkspace = undefined;
     rWorkspace?.refresh();
 }
 
-export function attachActiveGuest(): void {
+export function activateRSessionGuest(): void {
     if (config().get<boolean>('sessionWatcher', true)) {
-        console.info('[attachActiveGuest]');
+        console.info('[activateRSessionGuest]');
         void rGuestService?.requestAttach();
     } else {
         void vscode.window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
@@ -101,7 +102,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
         guestPid = String(request.pid);
         console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
         sessionStatusBarItem.text = `Guest R: ${guestPid}`;
-        sessionStatusBarItem.tooltip = 'Click to attach to host terminal.';
+        sessionStatusBarItem.tooltip = 'Click to activate host R session';
         sessionStatusBarItem.show();
     }
 
@@ -118,7 +119,7 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
             }
             case 'httpgd': {
                 if (request.url) {
-                    await globalHttpgdManager?.showViewer(request.url);
+                    await globalPlotManager?.showHttpgdPlot(request.url);
                 }
                 break;
             }
@@ -129,27 +130,47 @@ export async function updateGuestRequest(file: string, force: boolean = false): 
                 console.info(`[updateGuestRequest] attach PID: ${guestPid}`);
                 sessionStatusBarItem.text = `Guest R ${rVer}: ${guestPid}`;
                 // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-                sessionStatusBarItem.tooltip = `${info?.version || 'unknown version'}\nProcess ID: ${guestPid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to host terminal.`;
+                sessionStatusBarItem.tooltip = `${info?.version || 'unknown version'}\nProcess ID: ${guestPid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to activate host R session`;
                 sessionStatusBarItem.show();
                 break;
             }
-            case 'browser': {
-                if (request.url && request.title && request.viewer !== undefined) {
-                    await showBrowser(request.url, request.title, request.viewer);
-                }
-                break;
-            }
+            case 'browser':
+            case 'page_viewer':
             case 'webview': {
-                if (request.file && request.title && request.viewer !== undefined) {
-                    await showWebView(request.file, request.title, request.viewer);
+                if (request.url) {
+                    const url = String(request.url);
+                    const title = String(request.title ?? (request.command === 'browser' ? 'Browser' : request.command === 'page_viewer' ? 'Page Viewer' : 'Viewer'));
+
+                    const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
+                    const configKey = request.command === 'page_viewer' ? 'pageViewer' : (request.command === 'browser' ? 'browser' : 'viewer');
+                    const viewerChoice = viewColumnConfig[configKey] ?? 'Active';
+                    const viewColumn = viewerChoice === 'Disable' ? false : viewerChoice;
+
+                    if (url.startsWith('http://') || url.startsWith('https://')) {
+                        const isLocalHost = url.match(/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i);
+                        if (isLocalHost) {
+                            const externalUri = await vscode.env.asExternalUri(vscode.Uri.parse(url));
+                            await showBrowser(externalUri.toString(true), title, viewColumn);
+                        } else {
+                            await showBrowser(url, title, viewColumn);
+                        }
+                    } else {
+                        if (url.toLowerCase().endsWith('.html') || url.toLowerCase().endsWith('.htm')) {
+                            await showWebView(url, title, viewColumn);
+                        } else {
+                            await showDataView('object', 'txt', title, url, String(viewColumn));
+                        }
+                    }
                 }
                 break;
             }
             case 'dataview': {
-                if (request.source && request.type && request.title && request.file
-                    && request.viewer !== undefined) {
-                    await showDataView(request.source,
-                        request.type, request.title, request.file, request.viewer);
+                if (request.source && request.type && request.title && request.file) {
+                    const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
+                    const viewer = viewColumnConfig['view'] ?? 'Two';
+                    if (viewer !== 'Disable') {
+                        await showDataView(String(request.source), String(request.type), String(request.title), String(request.file), viewer);
+                    }
                 }
                 break;
             }

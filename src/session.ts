@@ -1,20 +1,33 @@
 'use strict';
 
 import * as fs from 'fs-extra';
-import * as os from 'os';
 import * as path from 'path';
-import { Agent } from 'http';
-import fetch from 'node-fetch';
-import { commands, StatusBarItem, Uri, ViewColumn, Webview, window, workspace, env, WebviewPanelOnDidChangeViewStateEvent, WebviewPanel } from 'vscode';
+import * as vscode from 'vscode';
+import { commands, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
-import { runTextInTerm } from './rTerminal';
-import { FSWatcher } from 'fs-extra';
+import { restartRTerminal } from './rTerminal';
 import { config, readContent, setContext, UriIcon } from './util';
-import { purgeAddinPickerItems, dispatchRStudioAPICall } from './rstudioapi';
+import * as rTerminal from './rTerminal';
+import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
-import { IRequest } from './liveShare/shareSession';
-import { homeExtDir, rWorkspace, globalRHelp, globalHttpgdManager, extensionContext, sessionStatusBarItem } from './extension';
-import { UUID, rHostService, rGuestService, isLiveShare, isHost, isGuestSession, closeBrowser, guestResDir, shareBrowser, openVirtualDoc, shareWorkspace } from './liveShare';
+import { homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem } from './extension';
+import { rHostService, rGuestService, isLiveShare, isHost, isGuestSession, guestResDir, shareBrowser, openVirtualDoc } from './liveShare';
+
+import { showWebView } from './webViewer';
+
+import WebSocket from 'ws';
+
+export interface SessionInfo {
+    version: string;
+    command: string;
+    start_time: string;
+}
+
+interface ExtWebSocket extends WebSocket {
+    _terminalPid?: number;
+    _port?: number;
+    _token?: string;
+}
 
 export interface GlobalEnv {
     [key: string]: {
@@ -41,39 +54,52 @@ export interface SessionServer {
     token: string;
 }
 
+export class Session {
+    public server: SessionServer;
+    public ws: WebSocket;
+    public pid: string;
+    public rVer: string;
+    public info: SessionInfo;
+    public sessionDir: string;
+    public workingDir: string;
+    public workspaceData: WorkspaceData;
+
+    constructor(server: SessionServer, ws: WebSocket) {
+        this.server = server;
+        this.ws = ws;
+        this.pid = '';
+        this.rVer = '';
+        this.info = { version: '', command: '', start_time: '' };
+        this.sessionDir = '';
+        this.workingDir = '';
+        this.workspaceData = { search: [], loaded_namespaces: [], globalenv: {} };
+    }
+}
+
 export let workspaceData: WorkspaceData;
 let resDir: string;
 export let requestFile: string;
 export let requestLockFile: string;
-let requestTimeStamp: number;
-let responseTimeStamp: number;
 export let sessionDir: string;
 export let workingDir: string;
 let rVer: string;
 let pid: string;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let info: any;
-const httpAgent = new Agent({ keepAlive: true });
+let info: SessionInfo;
 export let server: SessionServer | undefined;
 export let workspaceFile: string;
-let workspaceLockFile: string;
-let workspaceTimeStamp: number;
-let plotFile: string;
-let plotLockFile: string;
-let plotTimeStamp: number;
-let workspaceWatcher: FSWatcher;
-let plotWatcher: FSWatcher;
-let activeBrowserPanel: WebviewPanel | undefined;
+
+const sessions = new Map<string, Session>();
+export let activeSession: Session | undefined;
 let activeBrowserUri: Uri | undefined;
-let activeBrowserExternalUri: Uri | undefined;
 
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
 
-    const initPath = path.join(extensionPath, 'R', 'session', 'init.R');
-    const linkPath = path.join(homeExtDir(), 'init.R');
-    fs.writeFileSync(linkPath, `local(source("${initPath.replace(/\\/g, '\\\\')}", chdir = TRUE, local = TRUE))\n`);
+    // Initialize the WebSocket server when the extension activates
+    void getGlobalSessionServer().catch(err => {
+        console.error('Failed to initialize global session server', err);
+    });
 
     writeSettings();
     workspace.onDidChangeConfiguration(event => {
@@ -83,28 +109,127 @@ export function deploySessionWatcher(extensionPath: string): void {
     });
 }
 
-export function startRequestWatcher(sessionStatusBarItem: StatusBarItem): void {
-    console.info('[startRequestWatcher] Starting');
-    requestFile = path.join(homeExtDir(), 'request.log');
-    requestLockFile = path.join(homeExtDir(), 'request.lock');
-    requestTimeStamp = 0;
-    responseTimeStamp = 0;
-    if (!fs.existsSync(requestLockFile)) {
-        fs.createFileSync(requestLockFile);
+import * as crypto from 'crypto';
+
+let wsClient: ExtWebSocket | undefined;
+export const activeConnections = new Set<ExtWebSocket>();
+
+const pendingRequests = new Map<number, { resolve: (value: unknown) => void, reject: (reason?: unknown) => void }>();
+
+let globalSessionServer: { port: number, token: string } | undefined;
+
+export async function getGlobalSessionServer(): Promise<{ port: number, token: string }> {
+    if (globalSessionServer) {
+        return globalSessionServer;
     }
-    fs.watch(requestLockFile, {}, () => {
-        void updateRequest(sessionStatusBarItem);
+
+    return new Promise((resolve, reject) => {
+        const token = crypto.randomBytes(16).toString('hex');
+        const wss = new WebSocket.Server({ port: 0, host: '127.0.0.1' });
+
+        wss.on('listening', () => {
+            const address = wss.address();
+            if (typeof address === 'object' && address !== null) {
+                globalSessionServer = { port: address.port, token };
+                console.info(`[SessionServer] Listening on ws://127.0.0.1:${address.port}?token=${token}`);
+                
+                // Initialize the old global server object for compatibility
+                server = { host: '127.0.0.1', port: address.port, token };
+                resolve(globalSessionServer);
+            } else {
+                reject(new Error('Failed to get WebSocket server address'));
+            }
+        });
+
+        wss.on('connection', (ws: ExtWebSocket, req) => {
+            const url = new URL(req.url || '', `http://${req.headers.host || '127.0.0.1'}`);
+            const clientToken = url.searchParams.get('token');
+
+            if (clientToken !== token) {
+                console.warn('[SessionServer] Connection rejected: invalid token');
+                ws.close();
+                return;
+            }
+
+            console.info('[SessionServer] Client connected');
+            activeConnections.add(ws);
+            wsClient = ws;
+
+            ws.on('message', (data: WebSocket.Data) => {
+                void (async () => {
+                    try {
+                        const message = JSON.parse(data.toString()) as Record<string, unknown>;
+                        if (message.id !== undefined && !message.method) {
+                            // Response to a client request
+                            const id = Number(message.id);
+                            const pending = pendingRequests.get(id);
+                            if (pending) {
+                                pendingRequests.delete(id);
+                                if (message.error) {
+                                    pending.reject(message.error);
+                                } else {
+                                    pending.resolve(message.result);
+                                }
+                            }
+                        } else if (!message.id) {
+                            // Notification from server
+                            await handleNotification(message, ws);
+                        } else {
+                            // Request from server
+                            await handleRequest(message, ws);
+                        }
+                    } catch (e) {
+                        console.error('[SessionServer] Error handling message', e);
+                    }
+                })();
+            });
+
+            ws.on('close', () => {
+                console.info('[SessionServer] Client disconnected');
+                activeConnections.delete(ws);
+                if (wsClient === ws) {
+                    wsClient = undefined;
+                }
+            });
+        });
+
+        wss.on('error', (err) => {
+            console.error('[SessionServer] Server error', err);
+            reject(err);
+        });
     });
-    console.info('[startRequestWatcher] Done');
 }
 
-export function attachActive(): void {
+export async function activateRSession(): Promise<void> {
     if (config().get<boolean>('sessionWatcher')) {
-        console.info('[attachActive]');
-        void runTextInTerm('.vsc.attach()');
-        if (isLiveShare() && shareWorkspace) {
-            rHostService?.notifyRequest(requestFile, true);
+        console.info('[activateRSession]');
+        const terminal = window.activeTerminal;
+        if (terminal) {
+            const pidArg = await terminal.processId;
+            if (pidArg) {
+                const session = sessions.get(String(pidArg));
+                if (session) {
+                    console.info(`[activateRSession] Found existing session for PID: ${pidArg}`);
+                    await activateSession(session);
+                    terminal.show();
+                    return;
+                }
+            }
         }
+
+        if (activeSession) {
+            console.info('[activateRSession] Focusing terminal of the active session');
+            for (const term of window.terminals) {
+                const termPid = await term.processId;
+                if (termPid && sessions.get(String(termPid)) === activeSession) {
+                    term.show();
+                    return;
+                }
+            }
+        }
+
+        console.info('[activateRSession] Creating new R terminal');
+        await rTerminal.createRTerm();
     } else {
         void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }
@@ -143,82 +268,28 @@ function writeSettings() {
     fs.writeFileSync(settingPath, JSON.stringify(config()));
 }
 
-function updateSessionWatcher() {
-    console.info(`[updateSessionWatcher] PID: ${pid}`);
-    console.info('[updateSessionWatcher] Create workspaceWatcher');
-    workspaceFile = path.join(sessionDir, 'workspace.json');
-    workspaceLockFile = path.join(sessionDir, 'workspace.lock');
-    workspaceTimeStamp = 0;
-    if (workspaceWatcher !== undefined) {
-        workspaceWatcher.close();
-    }
-    if (fs.existsSync(workspaceLockFile)) {
-        workspaceWatcher = fs.watch(workspaceLockFile, {}, () => {
-            void updateWorkspace();
-        });
-        void updateWorkspace();
-    } else {
-        console.info('[updateSessionWatcher] workspaceLockFile not found');
-    }
-
-    console.info('[updateSessionWatcher] Create plotWatcher');
-    plotFile = path.join(sessionDir, 'plot.png');
-    plotLockFile = path.join(sessionDir, 'plot.lock');
-    plotTimeStamp = 0;
-    if (plotWatcher !== undefined) {
-        plotWatcher.close();
-    }
-    if (fs.existsSync(plotLockFile)) {
-        plotWatcher = fs.watch(plotLockFile, {}, () => {
-            void updatePlot();
-        });
-        void updatePlot();
-    } else {
-        console.info('[updateSessionWatcher] plotLockFile not found');
-    }
-    console.info('[updateSessionWatcher] Done');
-}
-
 async function updatePlot() {
-    console.info(`[updatePlot] ${plotFile}`);
-    const lockContent = await fs.readFile(plotLockFile, 'utf8');
-    const newTimeStamp = Number.parseFloat(lockContent);
-    if (newTimeStamp !== plotTimeStamp) {
-        plotTimeStamp = newTimeStamp;
-        if (fs.existsSync(plotFile) && fs.statSync(plotFile).size > 0) {
-            void commands.executeCommand('vscode.open', Uri.file(plotFile), {
-                preserveFocus: true,
-                preview: true,
-                viewColumn: ViewColumn[(config().get<string>('session.viewers.viewColumn.plot') || 'Two') as keyof typeof ViewColumn],
-            });
-            console.info('[updatePlot] Done');
-            if (isLiveShare()) {
-                void rHostService?.notifyPlot(plotFile);
-            }
-        } else {
-            console.info('[updatePlot] File not found');
-        }
-    }
+    if (!server) {return;}
+    await globalPlotManager?.showStandardPlot();
 }
 
-async function updateWorkspace() {
-    console.info(`[updateWorkspace] ${workspaceFile}`);
-
-    const lockContent = await fs.readFile(workspaceLockFile, 'utf8');
-    const newTimeStamp = Number.parseFloat(lockContent);
-    if (newTimeStamp !== workspaceTimeStamp) {
-        workspaceTimeStamp = newTimeStamp;
-        if (fs.existsSync(workspaceFile)) {
-            const content = await fs.readFile(workspaceFile, 'utf8');
-            workspaceData = JSON.parse(content) as WorkspaceData;
+export async function updateWorkspace() {
+    if (!server) {return;}
+    try {
+        const response = await sessionRequest(server, { method: 'workspace' });
+        if (response) {
+            workspaceData = response as WorkspaceData;
+            if (activeSession) {
+                activeSession.workspaceData = workspaceData;
+            }
             void rWorkspace?.refresh();
             console.info('[updateWorkspace] Done');
             if (isLiveShare()) {
                 rHostService?.notifyWorkspace(workspaceData);
             }
-        } else {
-            console.info('[updateWorkspace] File not found');
         }
+    } catch (e) {
+        console.error(e);
     }
 }
 
@@ -228,78 +299,25 @@ export async function showBrowser(url: string, title: string, viewer: string | b
     if (viewer === false) {
         void env.openExternal(uri);
     } else {
-        const externalUri = await env.asExternalUri(uri);
-        const panel = window.createWebviewPanel(
-            'browser',
-            title,
-            {
-                preserveFocus: true,
-                viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
-            },
-            {
-                enableFindWidget: true,
-                enableScripts: true,
-                retainContextWhenHidden: true,
-            });
+        const viewColumn = ViewColumn[String(viewer) as keyof typeof ViewColumn];
+        await commands.executeCommand('simpleBrowser.show', url, {
+            preserveFocus: true,
+            viewColumn: viewColumn,
+        });
         if (isHost()) {
             await shareBrowser(url, title);
         }
-        panel.onDidChangeViewState((e: WebviewPanelOnDidChangeViewStateEvent) => {
-            if (e.webviewPanel.active) {
-                activeBrowserPanel = panel;
-                activeBrowserUri = uri;
-                activeBrowserExternalUri = externalUri;
-            } else {
-                activeBrowserPanel = undefined;
-                activeBrowserUri = undefined;
-                activeBrowserExternalUri = undefined;
-            }
-            void commands.executeCommand('setContext', 'r.browser.active', e.webviewPanel.active);
-        });
-        panel.onDidDispose(() => {
-            activeBrowserPanel = undefined;
-            activeBrowserUri = undefined;
-            activeBrowserExternalUri = undefined;
-            if (isHost()) {
-                closeBrowser(url);
-            }
-            void commands.executeCommand('setContext', 'r.browser.active', false);
-        });
-        panel.iconPath = new UriIcon('globe');
-        panel.webview.html = getBrowserHtml(externalUri);
+        activeBrowserUri = uri;
     }
     console.info('[showBrowser] Done');
 }
 
-function getBrowserHtml(uri: Uri): string {
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-    html, body {
-        height: 100%;
-        padding: 0;
-        overflow: hidden;
-    }
-    </style>
-</head>
-<body>
-    <iframe src="${uri.toString(true)}" width="100%" height="100%" frameborder="0" />
-</body>
-</html>
-`;
-}
-
 export function refreshBrowser(): void {
     console.log('[refreshBrowser]');
-    if (activeBrowserPanel) {
-        activeBrowserPanel.webview.html = '';
-        if (activeBrowserExternalUri) {
-            activeBrowserPanel.webview.html = getBrowserHtml(activeBrowserExternalUri);
-        }
+    if (activeBrowserUri) {
+        void commands.executeCommand('simpleBrowser.show', activeBrowserUri.toString(true), {
+            preserveFocus: true,
+        });
     }
 }
 
@@ -308,30 +326,6 @@ export function openExternalBrowser(): void {
     if (activeBrowserUri) {
         void env.openExternal(activeBrowserUri);
     }
-}
-
-export async function showWebView(file: string, title: string, viewer: string | boolean): Promise<void> {
-    console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
-    if (viewer === false) {
-        void env.openExternal(Uri.file(file));
-    } else {
-        const dir = path.dirname(file);
-        const webviewDir = extensionContext.asAbsolutePath('html/session/webview/');
-        const panel = window.createWebviewPanel('webview', title,
-            {
-                preserveFocus: true,
-                viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
-            },
-            {
-                enableScripts: true,
-                enableFindWidget: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [Uri.file(dir), Uri.file(webviewDir)],
-            });
-        panel.iconPath = new UriIcon('globe');
-        panel.webview.html = await getWebviewHtml(panel.webview, file, title, dir, webviewDir);
-    }
-    console.info('[showWebView] Done');
 }
 
 export async function showDataView(source: string, type: string, title: string, file: string, viewer: string): Promise<void> {
@@ -353,7 +347,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
             });
-        const content = await getTableHtml(panel.webview, file);
+        const content = await getTableHtml(panel.webview, file, title);
         panel.iconPath = new UriIcon('open-preview');
         panel.webview.html = content;
     } else if (source === 'list') {
@@ -368,7 +362,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
             });
-        const content = await getListHtml(panel.webview, file);
+        const content = await getListHtml(panel.webview, file, title);
         panel.iconPath = new UriIcon('open-preview');
         panel.webview.html = content;
     } else {
@@ -388,7 +382,7 @@ export async function showDataView(source: string, type: string, title: string, 
     console.info('[showDataView] Done');
 }
 
-export async function getTableHtml(webview: Webview, file: string): Promise<string> {
+export async function getTableHtml(webview: Webview, file: string, title: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
     const pageSize = config().get<number>('session.data.pageSize', 500);
     const content = await readContent(file, 'utf8');
@@ -398,6 +392,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${title}</title>
     <style media="only screen">
     html, body {
         height: 100%;
@@ -489,6 +484,14 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
     [class*="vscode"] input[class^=ag-] {
         border-color: var(--vscode-notificationCenter-border) !important;
     }
+
+    [class*="vscode"] .text-left {
+        text-align: left;
+    }
+
+    [class*="vscode"] .text-right {
+        text-align: right;
+    }
     </style>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
     <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
@@ -575,7 +578,7 @@ export async function getTableHtml(webview: Webview, file: string): Promise<stri
 `;
 }
 
-export async function getListHtml(webview: Webview, file: string): Promise<string> {
+export async function getListHtml(webview: Webview, file: string, title: string): Promise<string> {
     resDir = isGuestSession ? guestResDir : resDir;
     const content = await readContent(file, 'utf8');
 
@@ -585,6 +588,7 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${title}</title>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.js'))))}"></script>
     <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.css'))))}" rel="stylesheet">
@@ -648,207 +652,251 @@ export async function getListHtml(webview: Webview, file: string): Promise<strin
 `;
 }
 
-export async function getWebviewHtml(webview: Webview, file: string, title: string, dir: string, webviewDir: string): Promise<string> {
-    const observerPath = Uri.file(path.join(webviewDir, 'observer.js'));
-    const body = (await readContent(file, 'utf8') || '').toString()
-        .replace(/<(\w+)(.*)\s+(href|src)="(?!\w+:)/g,
-            `<$1 $2 $3="${String(webview.asWebviewUri(Uri.file(dir)))}/`);
+import * as rstudioapi from './rstudioapi';
 
-    // define the content security policy for the webview
-    // * whilst it is recommended to be strict as possible,
-    // * there are several packages that require unsafe requests
-    const CSP = `
-        upgrade-insecure-requests;
-        default-src https: data: filesystem:;
-        style-src https: data: filesystem: 'unsafe-inline';
-        script-src https: data: filesystem: 'unsafe-inline' 'unsafe-eval';
-        worker-src https: data: filesystem: blob:;
-    `;
-
-    return `
-    <!DOCTYPE html>
-        <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <meta http-equiv="Content-Security-Policy" content="${CSP}">
-                <title>${title}</title>
-                <style>
-                    body {
-                        color: black;
-                    }
-                </style>
-            </head>
-            <body>
-                <span id="webview-content">
-                    ${body}
-                </span>
-            </body>
-            <script src="${String(webview.asWebviewUri(observerPath))}"></script>
-        </html>`;
+export async function activateSession(session: Session): Promise<void> {
+    activeSession = session;
+    wsClient = session.ws as ExtWebSocket;
+    server = session.server;
+    pid = session.pid;
+    rVer = session.rVer;
+    info = session.info;
+    sessionDir = session.sessionDir;
+    workingDir = session.workingDir;
+    
+    if (sessionStatusBarItem) {
+        sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
+        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
+        sessionStatusBarItem.show();
+    }
+    await setContext('rSessionActive', true);
+    rWorkspace?.refresh();
 }
 
-function isFromWorkspace(dir: string) {
-    if (workspace.workspaceFolders === undefined) {
-        let rel = path.relative(os.homedir(), dir);
-        if (rel === '') {
-            return true;
-        }
-        rel = path.relative(fs.realpathSync(os.homedir()), dir);
-        if (rel === '') {
-            return true;
-        }
+export function resetStatusBar(): void {
+    if (sessionStatusBarItem) {
+        sessionStatusBarItem.text = 'R: (not attached)';
+        sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
+    }
+}
+
+export async function switchSessionByTerminal(terminal: vscode.Terminal | undefined): Promise<void> {
+    const terminalPid = await terminal?.processId;
+    const session = terminalPid ? sessions.get(String(terminalPid)) : undefined;
+    if (session) {
+        await activateSession(session);
     } else {
-        for (const folder of workspace.workspaceFolders) {
-            let rel = path.relative(folder.uri.fsPath, dir);
-            if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-                return true;
-            }
-            rel = path.relative(fs.realpathSync(folder.uri.fsPath), dir);
-            if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-                return true;
-            }
-        }
+        resetStatusBar();
     }
-
-    return false;
 }
 
-export async function writeResponse(responseData: Record<string, unknown>, responseSessionDir: string): Promise<void> {
+async function handleNotification(message: Record<string, unknown>, ws: ExtWebSocket) {
+    const method = String(message.method);
+    const params = (message.params as Record<string, unknown>) || {};
 
-    const responseFile = path.join(responseSessionDir, 'response.log');
-    const responseLockFile = path.join(responseSessionDir, 'response.lock');
-    if (!fs.existsSync(responseFile) || !fs.existsSync(responseLockFile)) {
-        throw ('Received a request from R for response' +
-            'to a session directiory that does not contain response.log or response.lock: ' +
-            responseSessionDir);
-    }
-    const responseString = JSON.stringify(responseData);
-    console.info('[writeResponse] Started');
-    console.info(`[writeResponse] responseData ${responseString}`);
-    console.info(`[writeRespnse] responseFile: ${responseFile}`);
-    await fs.writeFile(responseFile, responseString);
-    responseTimeStamp = Date.now();
-    await fs.writeFile(responseLockFile, `${responseTimeStamp}\n`);
-}
-
-export async function writeSuccessResponse(responseSessionDir: string): Promise<void> {
-    await writeResponse({ result: true }, responseSessionDir);
-}
-
-type ISessionRequest = {
-    plot_url?: string,
-    server?: SessionServer
-} & IRequest;
-
-async function updateRequest(sessionStatusBarItem: StatusBarItem) {
-    console.info('[updateRequest] Started');
-    console.info(`[updateRequest] requestFile: ${requestFile}`);
-
-    const lockContent = await fs.readFile(requestLockFile, 'utf8');
-    const newTimeStamp = Number.parseFloat(lockContent);
-    if (newTimeStamp !== requestTimeStamp) {
-        requestTimeStamp = newTimeStamp;
-        const requestContent = await fs.readFile(requestFile, 'utf8');
-        console.info(`[updateRequest] request: ${requestContent}`);
-        const request = JSON.parse(requestContent) as ISessionRequest;
-        if (request.wd && isFromWorkspace(request.wd)) {
-            if (request.uuid === null || request.uuid === undefined || request.uuid === UUID) {
-                switch (request.command) {
-                    case 'help': {
-                        if (globalRHelp && request.requestPath) {
-                            console.log(request.requestPath);
-                            await globalRHelp.showHelpForPath(request.requestPath, request.viewer);
-                        }
-                        break;
-                    }
-                    case 'httpgd': {
-                        if (request.url) {
-                            await globalHttpgdManager?.showViewer(request.url);
-                        }
-                        break;
-                    }
-                    case 'attach': {
-                        if (!request.tempdir || !request.wd) {
-                            return;
-                        }
-                        rVer = String(request.version);
-                        pid = String(request.pid);
-                        info = request.info;
-                        sessionDir = path.join(request.tempdir, 'vscode-R');
-                        workingDir = request.wd;
-                        console.info(`[updateRequest] attach PID: ${pid}`);
-                        sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
-                        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions, @typescript-eslint/no-unsafe-member-access
-                        sessionStatusBarItem.tooltip = `${info?.version}\nProcess ID: ${pid}\nCommand: ${info?.command}\nStart time: ${info?.start_time}\nClick to attach to active terminal.`;
-                        sessionStatusBarItem.show();
-                        updateSessionWatcher();
-
-                        if (request.server) {
-                            server = request.server;
-                        }
-
-                        purgeAddinPickerItems();
-                        await setContext('rSessionActive', true);
-                        if (request.plot_url) {
-                            await globalHttpgdManager?.showViewer(request.plot_url);
-                        }
-                        void watchProcess(pid).then((v: string) => {
-                            void cleanupSession(v);
-                        });
-                        break;
-                    }
-                    case 'detach': {
-                        if (request.pid) {
-                            await cleanupSession(request.pid);
-                        }
-                        break;
-                    }
-                    case 'browser': {
-                        if (request.url && request.title && request.viewer !== undefined) {
-                            await showBrowser(request.url, request.title, request.viewer);
-                        }
-                        break;
-                    }
-                    case 'webview': {
-                        if (request.file && request.title && request.viewer !== undefined) {
-                            await showWebView(request.file, request.title, request.viewer);
-                        }
-                        break;
-                    }
-                    case 'dataview': {
-                        if (request.source && request.type && request.file && request.title && request.viewer !== undefined) {
-                            await showDataView(request.source,
-                                request.type, request.title, request.file, request.viewer);
-                        }
-                        break;
-                    }
-                    case 'rstudioapi': {
-                        if (request.action && request.args && request.sd) {
-                            await dispatchRStudioAPICall(request.action, request.args, request.sd);
-                        }
-                        break;
-                    }
-                    default:
-                        console.error(`[updateRequest] Unsupported command: ${request.command}`);
+    switch (method) {
+        case 'attach': {
+            if (!params.tempdir || !params.wd) {return;}
+            const rPid = String(params.pid);
+            const terminalPid = ws._terminalPid ? String(ws._terminalPid) : rPid;
+            
+            let session = sessions.get(terminalPid);
+            if (!session) {
+                session = new Session({ host: '127.0.0.1', port: ws._port || 0, token: ws._token || '' }, ws);
+                sessions.set(terminalPid, session);
+                // Also map R PID if it's different
+                if (rPid !== terminalPid) {
+                    sessions.set(rPid, session);
                 }
             }
-        } else {
-            console.info(`[updateRequest] Ignored request outside workspace`);
+            session.rVer = String(params.version);
+            session.pid = rPid;
+            session.info = params.info as SessionInfo;
+            session.sessionDir = String(params.tempdir);
+            session.workingDir = String(params.wd);
+
+            // Switch active session
+            await activateSession(session);
+
+            console.info(`[startSessionWatcher] attach R PID: ${rPid}, terminal PID: ${terminalPid}`);
+            purgeAddinPickerItems();
+            if (params.plot_url) {
+                await globalPlotManager?.showHttpgdPlot(String(params.plot_url));
+            }
+            void updateWorkspace(); // Initial workspace fetch
+            void watchProcess(rPid).then((v: string) => { void cleanupSession(v); });
+            break;
         }
-        if (isLiveShare()) {
-            void rHostService?.notifyRequest(requestFile);
+
+        // case 'detach': {
+        //     if (params.pid) {
+        //         await cleanupSession(String(params.pid));
+        //     }
+        //     break;
+        // }
+        case 'workspace_updated': {
+            void updateWorkspace();
+            break;
+        }
+        case 'help': {
+            if (globalRHelp && params.requestPath) {
+                await globalRHelp.showHelpForPath(String(params.requestPath), params.viewer);
+            }
+            break;
+        }
+        case 'httpgd': {
+            if (params.url) {
+                await globalPlotManager?.showHttpgdPlot(String(params.url));
+            }
+            break;
+        }
+        case 'browser':
+        case 'page_viewer':
+        case 'webview': {
+            if (params.url) {
+                const url = String(params.url);
+                const title = String(params.title ?? (method === 'browser' ? 'Browser' : method === 'page_viewer' ? 'Page Viewer' : 'Viewer'));
+
+                const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
+                const configKey = method === 'page_viewer' ? 'pageViewer' : (method === 'browser' ? 'browser' : 'viewer');
+                const viewerChoice = viewColumnConfig[configKey] ?? 'Active';
+                const viewColumn = viewerChoice === 'Disable' ? false : viewerChoice;
+
+                if (url.startsWith('http://') || url.startsWith('https://')) {
+                    const isLocalHost = url.match(/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i);
+                    if (isLocalHost) {
+                        const externalUri = await env.asExternalUri(Uri.parse(url));
+                        await showBrowser(externalUri.toString(true), title, viewColumn);
+                    } else {
+                        await showBrowser(url, title, viewColumn);
+                    }
+                } else {
+                    if (url.toLowerCase().endsWith('.html') || url.toLowerCase().endsWith('.htm')) {
+                        await showWebView(url, title, viewColumn);
+                    } else {
+                        await showDataView('object', 'txt', title, url, String(viewColumn));
+                    }
+                }
+            }
+            break;
+        }
+        case 'dataview': {
+            if (params.source && params.type && params.file && params.title) {
+                const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
+                const viewer = viewColumnConfig['view'] ?? 'Two';
+                if (viewer !== 'Disable') {
+                    await showDataView(String(params.source), String(params.type), String(params.title), String(params.file), viewer);
+                }
+            }
+            break;
+        }
+        case 'plot_updated': {
+            void updatePlot();
+            break;
+        }
+        case 'restart_r': {
+            await restartRTerminal();
+            break;
+        }
+        case 'rstudioapi/send_to_console': {
+            await rstudioapi.sendCodeToRTerminal(String(params.code), Boolean(params.execute), Boolean(params.focus));
+            break;
+        }
+        default:
+            console.error(`[startSessionWatcher] Unsupported notification method: ${method}`);
+    }
+}
+
+async function handleRequest(message: Record<string, unknown>, ws: ExtWebSocket) {
+    if (message.method) {
+        const method = String(message.method);
+        const params = (message.params as Record<string, unknown>) || {};
+        let result: unknown = null;
+        let error: unknown = null;
+        
+        try {
+            switch (method) {
+                case 'rstudioapi/active_editor_context':
+                    result = rstudioapi.activeEditorContext();
+                    break;
+                case 'rstudioapi/insert_or_modify_text':
+                    await rstudioapi.insertOrModifyText(params.query as RSEditOperation[], params.id as string | null);
+                    result = true;
+                    break;
+                case 'rstudioapi/replace_text_in_current_selection':
+                    await rstudioapi.replaceTextInCurrentSelection(String(params.text), params.id as string | null);
+                    result = true;
+                    break;
+                case 'rstudioapi/show_dialog':
+                    rstudioapi.showDialog(String(params.message));
+                    result = true;
+                    break;
+                case 'rstudioapi/navigate_to_file':
+                    await rstudioapi.navigateToFile(String(params.file), Number(params.line), Number(params.column));
+                    result = true;
+                    break;
+                case 'rstudioapi/set_selection_ranges':
+                    await rstudioapi.setSelections(params.ranges as RSRange[], params.id as string | null);
+                    result = true;
+                    break;
+                case 'rstudioapi/document_save':
+                    await rstudioapi.documentSave(params.id as string | null);
+                    result = true;
+                    break;
+                case 'rstudioapi/document_save_all':
+                    await rstudioapi.documentSaveAll();
+                    result = true;
+                    break;
+                case 'rstudioapi/get_project_path':
+                    result = rstudioapi.projectPath();
+                    break;
+                case 'rstudioapi/document_context':
+                    result = await rstudioapi.documentContext(params.id as string | null);
+                    break;
+                case 'rstudioapi/document_new':
+                    await rstudioapi.documentNew(String(params.text), String(params.type), params.position as number[]);
+                    result = true;
+                    break;
+                case 'rstudioapi/document_close':
+                    await rstudioapi.documentClose(params.id as string | null, Boolean(params.save));
+                    result = true;
+                    break;
+                default:
+                    throw new Error(`Unsupported method: ${method}`);
+            }
+        } catch (e) {
+            error = { code: -32603, message: String(e) };
+        }
+        
+        if (ws.readyState === ws.OPEN) {
+            ws.send(JSON.stringify({
+                jsonrpc: '2.0',
+                id: message.id,
+                result: result,
+                error: error
+            }));
         }
     }
 }
 
 export async function cleanupSession(pidArg: string): Promise<void> {
-    if (pid === pidArg) {
-        if (sessionStatusBarItem) {
-            sessionStatusBarItem.text = 'R: (not attached)';
-            sessionStatusBarItem.tooltip = 'Click to attach active terminal.';
+    const session = sessions.get(pidArg);
+    if (session) {
+        // Find all keys in sessions that point to this session and remove them
+        const keysToRemove: string[] = [];
+        for (const [k, v] of sessions.entries()) {
+            if (v === session) {
+                keysToRemove.push(k);
+            }
         }
+        keysToRemove.forEach(k => sessions.delete(k));
+        // Terminate the WebSocket
+        session.ws.terminate();
+    }
+    if (activeSession === session || pid === pidArg) {
+        resetStatusBar();
         server = undefined;
+        activeSession = undefined;
         workspaceData.globalenv = {};
         workspaceData.loaded_namespaces = [];
         workspaceData.search = [];
@@ -881,27 +929,37 @@ async function watchProcess(pid: string): Promise<string> {
     return pid;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function sessionRequest(server: SessionServer, data: any): Promise<any> {
+export async function sessionRequest(server: SessionServer, data: Record<string, unknown>): Promise<unknown> {
     try {
-        const response = await fetch(`http://${server.host}:${server.port}`, {
-            agent: httpAgent,
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json',
-                Authorization: server.token
-            },
-            body: JSON.stringify(data),
-            follow: 0,
-            timeout: 500,
-        });
-
-        if (!response.ok) {
-            throw new Error(`Error! status: ${response.status}`);
+        if (!wsClient || wsClient.readyState !== WebSocket.OPEN) {
+            throw new Error('WebSocket is not connected');
         }
-
-        return response.json();
+        
+        return await new Promise((resolve, reject) => {
+            const id = data.id !== undefined ? Number(data.id) : Math.floor(Math.random() * 1000000);
+            const payload = data.jsonrpc ? data : {
+                jsonrpc: '2.0',
+                id,
+                ...data
+            };
+            
+            pendingRequests.set(id, { resolve, reject });
+            
+            try {
+                wsClient?.send(JSON.stringify(payload));
+            } catch (e) {
+                pendingRequests.delete(id);
+                reject(e);
+            }
+            
+            // Timeout after 5 seconds
+            setTimeout(() => {
+                if (pendingRequests.has(id)) {
+                    pendingRequests.delete(id);
+                    reject(new Error('Request timed out'));
+                }
+            }, 5000);
+        });
     } catch (error) {
         if (error instanceof Error) {
             console.log('error message: ', error.message);
@@ -911,4 +969,11 @@ export async function sessionRequest(server: SessionServer, data: any): Promise<
 
         return undefined;
     }
+}
+
+export async function connectToSession(): Promise<void> {
+    const { port, token } = await getGlobalSessionServer();
+    const url = `ws://127.0.0.1:${port}?token=${token}`;
+    void vscode.env.clipboard.writeText(url);
+    void vscode.window.showInformationMessage(`R Session URL copied to clipboard: ${url}\n\nIn your R console, run: sess::sess_app(port=${port}, token="${token}")`);
 }
