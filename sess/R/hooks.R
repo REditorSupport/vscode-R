@@ -118,8 +118,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
         title = title,
         file = file_path,
         source = "table",
-        type = "json",
-        viewer = getOption("sess.dataview", "Two")
+        type = "json"
       ))
     } else if (is.list(x)) {
       jsonlite::write_json(x, file_path, auto_unbox = TRUE, null = "null", na = "string")
@@ -127,8 +126,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
         title = title,
         file = file_path,
         source = "list",
-        type = "json",
-        viewer = getOption("sess.dataview", "Two")
+        type = "json"
       ))
     } else {
       code <- if (is.primitive(x)) utils::capture.output(print(x)) else deparse(x)
@@ -138,41 +136,42 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
         title = title,
         file = file_path,
         source = "object",
-        type = "R",
-        viewer = getOption("sess.dataview", "Two")
+        type = "R"
       ))
     }
   }
   rebind("View", show_dataview, ns = "utils")
 
   # 2. Browser & Webview Options
-  viewer <- function(url, ...) {
-    if (!is.character(url)) {
-      real_url <- NULL
-      temp_viewer <- function(url, ...) {
-        real_url <<- url
+  make_viewer <- function(method) {
+    function(url, ...) {
+      if (!is.character(url)) {
+        real_url <- NULL
+        temp_viewer <- function(url, ...) {
+          real_url <<- url
+        }
+        op <- options(viewer = temp_viewer, page_viewer = temp_viewer, browser = temp_viewer)
+        on.exit(options(op))
+        print(url)
+        if (is.character(real_url)) {
+          url <- real_url
+        } else {
+          stop("Invalid object")
+        }
       }
-      op <- options(viewer = temp_viewer, page_viewer = temp_viewer)
-      on.exit(options(op))
-      print(url)
-      if (is.character(real_url)) {
-        url <- real_url
-      } else {
-        stop("Invalid object")
-      }
-    }
 
-    url <- sub("^file\\://", "", url)
-    if (file.exists(url)) {
-      url <- normalizePath(url, "/", mustWork = TRUE)
+      url <- sub("^file\\://", "", url)
+      if (file.exists(url)) {
+        url <- normalizePath(url, "/", mustWork = TRUE)
+      }
+      notify_client(method, list(url = url))
     }
-    notify_client("webview", list(url = url))
   }
 
   options(
-    browser = viewer,
-    viewer = viewer,
-    page_viewer = viewer,
+    browser = make_viewer("browser"),
+    viewer = make_viewer("webview"),
+    page_viewer = make_viewer("page_viewer"),
     help_type = "html"
   )
 

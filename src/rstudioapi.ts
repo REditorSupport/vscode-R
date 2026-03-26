@@ -67,12 +67,32 @@ export function activeEditorContext(): RSDocumentContext {
     };
 }
 
-export async function documentContext(id: string | null): Promise<{ id: { external: string } }> {
+export async function documentContext(id: string | null): Promise<RSDocumentContext> {
     const target = findTargetUri(id);
     const targetDocument = await workspace.openTextDocument(target);
     console.info(`[documentContext] getting context for: ${target.path}`);
+
+    let selections: RSSelection[] = [];
+    const knownEditors = [getLastActiveTextEditor(), ...window.visibleTextEditors];
+    const editor = knownEditors.find(e => e?.document?.uri.toString() === targetDocument.uri.toString());
+    
+    if (editor) {
+        selections = editor.selections.map(s => ({
+            start: { line: s.start.line + 1, character: s.start.character + 1 },
+            end: { line: s.end.line + 1, character: s.end.character + 1 }
+        }));
+    } else {
+        selections = [{
+            start: { line: 1, character: 1 },
+            end: { line: 1, character: 1 }
+        }];
+    }
+
     return {
-        id: { external: targetDocument.uri.toString() }
+        id: { external: targetDocument.uri.toString() },
+        contents: targetDocument.getText(),
+        path: targetDocument.fileName,
+        selection: selections
     };
 }
 
