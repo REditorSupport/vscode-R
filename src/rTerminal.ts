@@ -13,7 +13,47 @@ import { cleanupSession } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
 import { rGuestService, isGuestSession } from './liveShare';
 import * as fs from 'fs';
+import * as yaml from 'js-yaml';
 export let rTerm: vscode.Terminal | undefined = undefined;
+let lastParamsRmdPath: string | undefined;
+
+const rExprType = new yaml.Type('!r', {
+    kind: 'scalar',
+    construct: (data: string) => ({ __rExpr: data }),
+});
+const RMARKDOWN_SCHEMA = yaml.DEFAULT_SCHEMA.extend([rExprType]);
+
+function valueToR(val: unknown): string {
+    if (val === null || val === undefined) return 'NULL';
+    if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
+    if (typeof val === 'number') return String(val);
+    if (typeof val === 'string') return `"${val.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    if (typeof val === 'object' && '__rExpr' in (val as object)) return (val as { __rExpr: string }).__rExpr;
+    if (Array.isArray(val)) return `c(${val.map(valueToR).join(', ')})`;
+    const obj = val as Record<string, unknown>;
+    if ('value' in obj) return valueToR(obj['value']);
+    const entries = Object.entries(obj).map(([k, v]) => `${k} = ${valueToR(v)}`);
+    return `list(${entries.join(', ')})`;
+}
+
+function getRmdParamsCommand(document: vscode.TextDocument): string | undefined {
+    if (document.languageId !== 'rmd') return undefined;
+    const text = document.getText();
+    const match = text.match(/^---\s*\n([\s\S]*?)\n---/);
+    if (!match || !/^\s*params\s*:/m.test(match[1])) return undefined;
+    const filePath = document.uri.fsPath;
+    if (filePath === lastParamsRmdPath) return undefined;
+    lastParamsRmdPath = filePath;
+    try {
+        const frontmatter = yaml.load(match[1], { schema: RMARKDOWN_SCHEMA }) as Record<string, unknown>;
+        const params = frontmatter?.['params'] as Record<string, unknown> | undefined;
+        if (!params || typeof params !== 'object') return undefined;
+        const entries = Object.entries(params).map(([k, v]) => `${k} = ${valueToR(v)}`);
+        return `params <- list(${entries.join(', ')})`;
+    } catch {
+        return undefined;
+    }
+}
 
 export async function runSource(echo: boolean): Promise<void>  {
     const wad = vscode.window.activeTextEditor?.document;
@@ -228,8 +268,8 @@ export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): P
     if (!selection) {
         return;
     }
+    const textEditor = vscode.window.activeTextEditor;
     if (moveCursor && selection.linesDownToMoveCursor > 0) {
-        const textEditor = vscode.window.activeTextEditor;
         if (!textEditor) {
             return;
         }
@@ -244,7 +284,8 @@ export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): P
     if(useRepl && vscode.debug.activeDebugSession?.type === 'R-Debugger'){
         await sendRangeToRepl(selection.range);
     } else{
-        await runTextInTerm(selection.selectedText);
+        const paramsCmd = textEditor ? getRmdParamsCommand(textEditor.document) : undefined;
+        await runTextInTerm(paramsCmd ? `${paramsCmd}\n${selection.selectedText}` : selection.selectedText);
     }
 }
 
@@ -253,12 +294,13 @@ export async function runChunksInTerm(chunks: vscode.Range[]): Promise<void> {
     if (!textEditor) {
         return;
     }
+    const paramsCmd = getRmdParamsCommand(textEditor.document);
     const text = chunks
         .map((chunk) => textEditor.document.getText(chunk).trim())
         .filter((chunk) => chunk.length > 0)
         .join('\n');
     if (text.length > 0) {
-        return runTextInTerm(text);
+        return runTextInTerm(paramsCmd ? `${paramsCmd}\n${text}` : text);
     }
 }
 
