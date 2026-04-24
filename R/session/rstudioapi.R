@@ -264,7 +264,16 @@ sendToConsole <- function(code, execute = TRUE, echo = TRUE, focus = FALSE) {
 getConsoleEditorContext <- .vsc_not_yet_implemented
 sourceMarkers <- .vsc_not_yet_implemented
 documentClose <- .vsc_not_yet_implemented
-showPrompt <- .vsc_not_yet_implemented
+showPrompt <- function(title, message, default = NULL) {
+    response <- rstudioapi_call("show_prompt", title = title, message = message, default = default)
+    response$response
+}
+
+askForPassword <- function(prompt = "Please enter your password") {
+    response <- rstudioapi_call("ask_for_password", prompt = prompt)
+    response$response
+}
+
 showQuestion <- .vsc_not_yet_implemented
 updateDialog <- .vsc_not_yet_implemented
 openProject <- .vsc_not_yet_implemented

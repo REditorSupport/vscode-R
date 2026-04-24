@@ -41,6 +41,16 @@ export async function dispatchRStudioAPICall(action: string, args: any, sd: stri
             await writeSuccessResponse(sd);
             break;
         }
+        case 'show_prompt': {
+            const result = await showPrompt(args.title, args.message, args.default);
+            await writeResponse(result, sd);
+            break;
+        }
+        case 'ask_for_password': {
+            const result = await askForPassword(args.prompt);
+            await writeResponse(result, sd);
+            break;
+        }
         case 'navigate_to_file': {
             await navigateToFile(args.file, args.line, args.column);
             await writeSuccessResponse(sd);
@@ -162,6 +172,27 @@ export function showDialog(message: string): void {
 
     void window.showInformationMessage(message);
 
+}
+
+export async function showPrompt(
+    title: string, message: string, defaultValue?: string
+): Promise<{ response: string | null }> {
+    const result = await window.showInputBox({
+        title: title,
+        prompt: message,
+        value: defaultValue ?? '',
+    });
+    return { response: result ?? null };
+}
+
+export async function askForPassword(
+    prompt: string
+): Promise<{ response: string | null }> {
+    const result = await window.showInputBox({
+        prompt: prompt,
+        password: true,
+    });
+    return { response: result ?? null };
 }
 
 export async function navigateToFile(file: string, line: number, column: number): Promise<void>{
