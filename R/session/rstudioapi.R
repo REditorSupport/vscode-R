@@ -265,12 +265,12 @@ getConsoleEditorContext <- .vsc_not_yet_implemented
 sourceMarkers <- .vsc_not_yet_implemented
 documentClose <- .vsc_not_yet_implemented
 showPrompt <- function(title, message, default = NULL) {
-    response <- rstudioapi_call("show_prompt", title = title, message = message, default = default)
+    response <- rstudioapi_call("show_prompt", title = title, message = message, default = default, timeout = 120)
     response$response
 }
 
 askForPassword <- function(prompt = "Please enter your password") {
-    response <- rstudioapi_call("ask_for_password", prompt = prompt)
+    response <- rstudioapi_call("ask_for_password", prompt = prompt, timeout = 120)
     response$response
 }
 

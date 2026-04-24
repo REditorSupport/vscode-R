@@ -1,5 +1,9 @@
-rstudioapi_call <- function(action, ...) {
-    request_response("rstudioapi", action = action, args = list(...))
+rstudioapi_call <- function(action, ..., timeout = NULL) {
+    args <- list("rstudioapi", action = action, args = list(...))
+    if (!is.null(timeout)) {
+        args$timeout <- timeout
+    }
+    do.call(request_response, args)
 }
 
 rstudioapi_patch_hook <- function(api_env) {
