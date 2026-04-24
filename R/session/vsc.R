@@ -833,14 +833,14 @@ if (rstudioapi_enabled()) {
         }
     }
 
-    request_response <- function(command, ...) {
+    request_response <- function(command, ..., timeout = response_timeout) {
         request(command, ..., sd = dir_session)
         wait_start <- Sys.time()
         while (!get_response_lock()) {
-            if ((Sys.time() - wait_start) > response_timeout) {
+            if ((Sys.time() - wait_start) > timeout) {
                 stop(
                     "Did not receive a response from VSCode-R API within ",
-                    response_timeout, " seconds."
+                    timeout, " seconds."
                 )
             }
             Sys.sleep(0.1)
