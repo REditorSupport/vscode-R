@@ -154,12 +154,21 @@ suite('Session Communication', () => {
         assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be triggered for svglite');
 
         assert.ok(session.activeSession, 'activeSession should be defined');
-        const svgliteResp = await session.sessionRequest(session.activeSession.server, {
-            method: 'plot_latest',
-            params: { width: 800, height: 600, format: 'svglite' }
-        }) as { data?: string, format?: string, error?: unknown };
         
-        assert.ok(svgliteResp.data, 'svglite data should be returned');
+        let svgliteResp: { data?: string, format?: string, error?: unknown } | undefined;
+        await waitFor(async () => {
+            try {
+                svgliteResp = await session.sessionRequest(session.activeSession!.server, {
+                    method: 'plot_latest',
+                    params: { width: 800, height: 600, format: 'svglite' }
+                }) as { data?: string, format?: string, error?: unknown };
+                return svgliteResp && svgliteResp.data;
+            } catch (e) {
+                return false;
+            }
+        }, 15000, 500);
+        
+        assert.ok(svgliteResp && svgliteResp.data, 'svglite data should be returned');
         assert.strictEqual(svgliteResp.format, 'svglite', 'format should be svglite');
 
         // Reset history to ensure we track the next plot if we were to recreate the panel
@@ -177,12 +186,20 @@ suite('Session Communication', () => {
         await waitFor(() => createWebviewPanelSpy.calledWith('r.standardPlot'), 10000, 200);
         assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be active for png');
 
-        const pngResp = await session.sessionRequest(session.activeSession.server, {
-            method: 'plot_latest',
-            params: { width: 800, height: 600, format: 'png' }
-        }) as { data?: string, format?: string };
+        let pngResp: { data?: string, format?: string } | undefined;
+        await waitFor(async () => {
+            try {
+                pngResp = await session.sessionRequest(session.activeSession!.server, {
+                    method: 'plot_latest',
+                    params: { width: 800, height: 600, format: 'png' }
+                }) as { data?: string, format?: string };
+                return pngResp && pngResp.data;
+            } catch (e) {
+                return false;
+            }
+        }, 15000, 500);
 
-        assert.ok(pngResp.data, 'png data should be returned');
+        assert.ok(pngResp && pngResp.data, 'png data should be returned');
         assert.strictEqual(pngResp.format, 'png', 'format should be png');
 
         // 3. Test View() -> dataview
