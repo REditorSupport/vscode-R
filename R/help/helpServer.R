@@ -30,15 +30,20 @@ cat(
     sep = ""
 )
 
-currentPackages <- NULL
+lib_dirs <- .libPaths()
+last_mtimes <- file.info(lib_dirs)$mtime
+currentPackages <- installed.packages(fields = "Packaged")[, c("Version", "Packaged")]
 
 while (TRUE) {
-    newPackages <- installed.packages(fields = "Packaged")[, c("Version", "Packaged")]
-    if (!identical(currentPackages, newPackages)) {
-        if (!is.null(currentPackages)) {
+    Sys.sleep(5)
+    current_mtimes <- file.info(lib_dirs)$mtime
+    if (!identical(last_mtimes, current_mtimes)) {
+        newPackages <- installed.packages(fields = "Packaged")[, c("Version", "Packaged")]
+        if (!identical(currentPackages, newPackages)) {
             cat(NEW_PACKAGE_STRING, "\n")
+            currentPackages <- newPackages
         }
-        currentPackages <- newPackages
+        last_mtimes <- current_mtimes
+        gc()
     }
-    Sys.sleep(1)
 }
