@@ -6,6 +6,19 @@ The R and R Markdown syntaxes are located in a slibing package [vscode-R-syntax]
 
 Go to the [wiki](https://github.com/REditorSupport/vscode-R/wiki) to view the documentation of the extension.
 
+## What's new in 3.0.0-rc
+
+Version 3.0.0 introduces a major architectural shift for session watching:
+
+* **`sess` R Package**: Replaces the legacy file-based IPC with a modern,
+    in-memory WebSocket architecture using JSON-RPC 2.0.
+* **Better Performance and Reliability**: No more OS-level file watchers.
+    Communication is faster and more robust.
+* **Automatic Installation**: The extension will prompt you to install the
+    `sess` package when you start an R session if it is not available.
+
+See the [sess package README](./sess/README.md) for more details on the protocol.
+
 ## Getting started
 
 1. [Install R](https://cloud.r-project.org/) (>= 3.4.0) on your system. For Windows users, Writing R Path to the registry is recommended in the installation.

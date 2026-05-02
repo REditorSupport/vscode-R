@@ -175,3 +175,14 @@ The `sess` package replaces the legacy file-based IPC mechanism with a modern, i
 1. **Elimination of File Watchers**: Replaces unreliable OS-level file system watchers with persistent WebSocket connections for instantaneous event pushing.
 2. **On-Demand Evaluation**: Evaluations of the Global Environment are now performed only when requested by the client, reducing R's background workload.
 3. **Unified Standard**: Unifies all structured communication under the **JSON-RPC 2.0** standard across a single WebSocket connection.
+
+### Connection Discovery & Reconnection
+
+While `sess` primarily uses WebSockets for low-latency communication, it uses a file-based
+discovery mechanism to handle VS Code window reloads and support manual connections:
+
+1. **Initial Connection**: VS Code passes `SESS_PORT` and `SESS_TOKEN` environment variables when launching R. R connects directly.
+2. **Discovery File**: VS Code writes the current connection info to `~/.vscode-R/sessions/{PID}.json`.
+3. **Reconnection**: If disconnected (e.g., after a window reload), R retries connecting by
+   reading the file to find the new port and token. Automatic reconnection is skipped
+   for manual connections (where port/token were passed as arguments).
