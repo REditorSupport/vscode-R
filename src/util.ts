@@ -7,7 +7,6 @@ import winreg = require('winreg');
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
-import { rGuestService, isGuestSession } from './liveShare';
 import { extensionContext } from './extension';
 import { randomBytes } from 'crypto';
 
@@ -204,11 +203,7 @@ export function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined 
 export function readContent(file: PathLike | number): Promise<Buffer> | undefined;
 export function readContent(file: PathLike | number, encoding: string): Promise<string> | undefined;
 export function readContent(file: PathLike | number, encoding?: string): Promise<string | Buffer> | undefined {
-    if (isGuestSession) {
-        return encoding === undefined ? rGuestService?.requestFileContent(file) : rGuestService?.requestFileContent(file, encoding);
-    } else {
-        return encoding === undefined ? readFile(file) : readFile(file, encoding);
-    }
+    return encoding === undefined ? readFile(file) : readFile(file, encoding);
 }
 
 

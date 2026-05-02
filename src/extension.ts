@@ -19,7 +19,6 @@ import * as workspaceViewer from './workspaceViewer';
 import * as apiImplementation from './apiImplementation';
 import * as rHelp from './helpViewer';
 import * as completions from './completions';
-import * as rShare from './liveShare';
 import * as plotViewer from './plotViewer';
 import { PlotManager } from './plotViewer/types';
 import * as languageService from './languageService';
@@ -217,26 +216,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     vscode.languages.registerHoverProvider(['r', 'rmd'], new completions.HelpLinkHoverProvider());
     vscode.languages.registerCompletionItemProvider(['r', 'rmd'], new completions.StaticCompletionItemProvider(), '@');
 
-    // deploy liveshare listener
-    await rShare.initLiveShare(context);
-
     // register task provider
     const taskProvider = new RTaskProvider();
     vscode.tasks.registerTaskProvider(taskProvider.type, taskProvider);
 
     // deploy session watcher (if configured by user)
     if (enableSessionWatcher) {
-        if (!rShare.isGuestSession) {
-            console.info('Initialize session watcher');
-            void session.deploySessionWatcher(context.extensionPath);
-            // create status bar item that contains info about the session watcher
-            console.info('Create sessionStatusBarItem');
-            sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
-            sessionStatusBarItem.command = 'r.activateRSession';
-            session.resetStatusBar();
-            sessionStatusBarItem.show();
-            context.subscriptions.push(sessionStatusBarItem);
-        }
+        console.info('Initialize session watcher');
+        void session.deploySessionWatcher(context.extensionPath);
+        // create status bar item that contains info about the session watcher
+        console.info('Create sessionStatusBarItem');
+        sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+        sessionStatusBarItem.command = 'r.activateRSession';
+        session.resetStatusBar();
+        sessionStatusBarItem.show();
+        context.subscriptions.push(sessionStatusBarItem);
 
         // track active text editor
         rstudioapi.trackLastActiveTextEditor(vscode.window.activeTextEditor);

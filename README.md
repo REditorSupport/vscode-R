@@ -1,7 +1,5 @@
 # R Extension for Visual Studio Code
 
-[![Badge](https://aka.ms/vsls-badge)](https://aka.ms/vsls)
-
 This [VS Code](https://code.visualstudio.com/) extension provides support for the [R programming language](https://www.r-project.org), including features such as R language service based on code analysis, interacting with R terminals, viewing data, plots, workspace variables, help pages, managing packages, and working with [R Markdown](https://rmarkdown.rstudio.com/) documents.
 
 The R and R Markdown syntaxes are located in a slibing package [vscode-R-syntax](https://github.com/REditorSupport/vscode-R-syntax).
@@ -65,8 +63,6 @@ Go to the installation wiki pages ([Windows](https://github.com/REditorSupport/v
 * [RStudio add-in support](https://github.com/REditorSupport/vscode-R/wiki/RStudio-addin-support): Run supported RStudio add-ins in VS Code with a live R session.
 
 * Full support of [Remote Development](https://code.visualstudio.com/docs/remote/remote-overview) via [SSH](https://code.visualstudio.com/docs/remote/ssh), [Containers](https://code.visualstudio.com/docs/remote/containers) and [WSL](https://code.visualstudio.com/docs/remote/wsl).
-
-* [Live share collaboration](https://github.com/REditorSupport/vscode-R/wiki/Live-share-collaboration): Shared workspace, terminal, and viewer in R pair programming.
 
 ## Questions, issues, feature requests, and contributions
 

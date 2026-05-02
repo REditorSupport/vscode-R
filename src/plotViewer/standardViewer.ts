@@ -3,7 +3,6 @@ import * as vscode from 'vscode';
 import { asViewColumn, config, UriIcon } from '../util';
 import { sessionRequest, server } from '../session';
 import { PlotViewer } from './types';
-import { rHostService } from '../liveShare';
 
 interface PlotResponse {
     data: string;
@@ -100,7 +99,6 @@ export class StandardPlotViewer implements PlotViewer {
                 data: this.plotData,
                 format: this.plotFormat
             });
-            rHostService?.notifyPlot(this.plotData, this.plotFormat);
         }
     }
 

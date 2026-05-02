@@ -67,14 +67,6 @@
           "icon": "./images/Rlogo.svg",
           "contextualTitle": "R",
           "when": "r.helpViewer.show"
-        },
-        {
-          "id": "rLiveShare",
-          "name": "Live Share Controls",
-          "icon": "./images/Rlogo.svg",
-          "contextualTitle": "R",
-          "when": "r.WorkspaceViewer:show && !r.liveShare:isGuest",
-          "visibility": "collapsed"
         }
       ]
     },
@@ -87,16 +79,6 @@
       {
         "view": "rHelpPages",
         "contents": "R Help Pages"
-      },
-      {
-        "view": "rLiveShare",
-        "contents": "R Live Share not active.",
-        "when": "!r.liveShare:aborted"
-      },
-      {
-        "view": "rLiveShare",
-        "contents": "Could not connect to Live Share service.",
-        "when": "r.liveShare:aborted"
       }
     ],
     "languages": [
@@ -683,17 +665,6 @@
         "title": "Open help for path",
         "category": "R Help Panel",
         "command": "r.helpPanel.openForPath"
-      },
-      {
-        "command": "r.liveShare.toggle",
-        "category": "R Live Share",
-        "title": "Toggle"
-      },
-      {
-        "command": "r.liveShare.retry",
-        "title": "Retry connection to Live Share service",
-        "category": "R Live Share",
-        "icon": "$(refresh)"
       },
       {
         "title": "Toggle Style",
@@ -2045,7 +2016,6 @@
     "js-yaml": "^4.1.1",
     "node-fetch": "^2.7.0",
     "vscode-languageclient": "^9.0.1",
-    "vsls": "^1.0.4753",
     "winreg": "^1.2.5",
     "ws": "^8.19.0"
   },

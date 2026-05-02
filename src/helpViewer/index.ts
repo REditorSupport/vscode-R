@@ -22,7 +22,6 @@ import {HelpPanel} from './panel';
 import {HelpProvider, AliasProvider} from './helpProvider';
 import {HelpTreeWrapper} from './treeView';
 import {PackageManager} from './packages';
-import {isGuestSession, rGuestService} from '../liveShare';
 import { makePreviewerList, RHelpPreviewerOptions, RLocalHelpPreviewer } from './helpPreviewer';
 
 export type CodeClickAction = 'Ignore' | 'Copy' | 'Run';
@@ -616,9 +615,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
 
         // get helpFile from helpProvider if not cached
         if (skipCache || !this.cachedHelpFiles.has(requestPath)) {
-            const helpFile = !isGuestSession
-                ? await this.helpProvider.getHelpFileFromRequestPath(requestPath)
-                : await rGuestService?.requestHelpContent(requestPath);
+            const helpFile = await this.helpProvider.getHelpFileFromRequestPath(requestPath);
             this.cachedHelpFiles.set(requestPath, helpFile);
         }
 

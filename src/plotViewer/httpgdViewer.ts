@@ -10,7 +10,6 @@ import { asViewColumn, config, setContext, UriIcon, makeWebviewCommandUriString 
 import { extensionContext } from '../extension';
 import { FocusPlotMessage, InMessage, OutMessage, ToggleStyleMessage, UpdatePlotMessage, HidePlotMessage, AddPlotMessage, PreviewPlotLayout, PreviewPlotLayoutMessage, ToggleFullWindowMessage } from './webviewMessages';
 import { HttpgdIdResponse, HttpgdPlotId, HttpgdRendererId } from 'httpgd/lib/types';
-import { autoShareBrowser, isHost, shareServer } from '../liveShare';
 import { PlotViewer } from './types';
 
 export class HttpgdManager {
@@ -28,6 +27,7 @@ export class HttpgdManager {
     }
 
     public async showViewer(urlString: string): Promise<void> {
+        await Promise.resolve();
         const url = new URL(urlString);
         const host = url.host;
         const token = url.searchParams.get('token') || undefined;
@@ -48,10 +48,6 @@ export class HttpgdManager {
             this.viewerOptions.fullWindow = conf.get('plot.defaults.fullWindowMode', false);
             this.viewerOptions.token = token;
             const viewer = new HttpgdViewer(host, this.viewerOptions);
-            if (isHost()) {
-                const disposable = await shareServer(url, 'httpgd');
-                viewer.webviewPanel?.onDidDispose(() => void disposable.dispose());
-            }
             this.viewers.unshift(viewer);
         }
     }

@@ -11,7 +11,6 @@ import * as rTerminal from './rTerminal';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem } from './extension';
-import { rHostService, rGuestService, isLiveShare, isHost, isGuestSession, guestResDir, shareBrowser, openVirtualDoc } from './liveShare';
 
 import { showWebView } from './webViewer';
 
@@ -284,9 +283,6 @@ export async function updateWorkspace() {
             }
             void rWorkspace?.refresh();
             console.info('[updateWorkspace] Done');
-            if (isLiveShare()) {
-                rHostService?.notifyWorkspace(workspaceData);
-            }
         }
     } catch (e) {
         console.error(e);
@@ -304,9 +300,6 @@ export async function showBrowser(url: string, title: string, viewer: string | b
             preserveFocus: true,
             viewColumn: viewColumn,
         });
-        if (isHost()) {
-            await shareBrowser(url, title);
-        }
         activeBrowserUri = uri;
     }
     console.info('[showBrowser] Done');
@@ -330,10 +323,6 @@ export function openExternalBrowser(): void {
 
 export async function showDataView(source: string, type: string, title: string, file: string, viewer: string): Promise<void> {
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}`);
-
-    if (isGuestSession) {
-        resDir = guestResDir;
-    }
 
     if (source === 'table') {
         const panel = window.createWebviewPanel('dataview', title,
@@ -366,24 +355,16 @@ export async function showDataView(source: string, type: string, title: string, 
         panel.iconPath = new UriIcon('open-preview');
         panel.webview.html = content;
     } else {
-        if (isGuestSession) {
-            const fileContent = await rGuestService?.requestFileContent(file, 'utf8');
-            if (fileContent) {
-                await openVirtualDoc(file, fileContent, true, true, ViewColumn[viewer as keyof typeof ViewColumn]);
-            }
-        } else {
-            await commands.executeCommand('vscode.open', Uri.file(file), {
-                preserveFocus: true,
-                preview: true,
-                viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
-            });
-        }
+        await commands.executeCommand('vscode.open', Uri.file(file), {
+            preserveFocus: true,
+            preview: true,
+            viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
+        });
     }
     console.info('[showDataView] Done');
 }
 
 export async function getTableHtml(webview: Webview, file: string, title: string): Promise<string> {
-    resDir = isGuestSession ? guestResDir : resDir;
     const pageSize = config().get<number>('session.data.pageSize', 500);
     const content = await readContent(file, 'utf8');
     return `
@@ -579,7 +560,6 @@ export async function getTableHtml(webview: Webview, file: string, title: string
 }
 
 export async function getListHtml(webview: Webview, file: string, title: string): Promise<string> {
-    resDir = isGuestSession ? guestResDir : resDir;
     const content = await readContent(file, 'utf8');
 
     return `
@@ -747,9 +727,6 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
         case 'httpgd': {
             if (params.url) {
                 await globalPlotManager?.showHttpgdPlot(String(params.url));
-                if (isLiveShare() && isHost()) {
-                    rHostService?.notifyGuestPlotManager(String(params.url));
-                }
             }
             break;
         }
@@ -789,9 +766,6 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
                 const viewer = viewColumnConfig['view'] ?? 'Two';
                 if (viewer !== 'Disable') {
                     await showDataView(String(params.source), String(params.type), String(params.title), String(params.file), viewer);
-                }
-                if (isLiveShare() && isHost()) {
-                    rHostService?.notifyRequest(String(params.file), false);
                 }
             }
             break;

@@ -6,7 +6,6 @@ import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Eve
 import { runTextInTerm } from './rTerminal';
 import { workspaceData, workingDir, WorkspaceData, GlobalEnv } from './session';
 import { config } from './util';
-import { isGuestSession, isLiveShare, UUID, guestWorkspace } from './liveShare';
 import { extensionContext, globalRHelp } from './extension';
 import { PackageNode } from './helpViewer/treeView';
 
@@ -41,7 +40,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     public data: WorkspaceData | undefined;
 
     public refresh(): void {
-        this.data = isGuestSession ? guestWorkspace : workspaceData;
+        this.data = workspaceData;
         this._onDidChangeTreeData.fire();
     }
 
@@ -307,7 +306,7 @@ export function clearWorkspace(): void {
     const removeHiddenItems: boolean | undefined = config().get('workspaceViewer.removeHiddenItems');
     const promptUser: boolean | undefined = config().get('workspaceViewer.clearPrompt');
 
-    if ((isGuestSession ? guestWorkspace : workspaceData) !== undefined) {
+    if (workspaceData !== undefined) {
         if (promptUser) {
             void window.showInformationMessage(
                 'Are you sure you want to clear the workspace? This cannot be reversed.',
@@ -372,11 +371,7 @@ export function loadWorkspace(): void {
 }
 
 export function viewItem(node: string): void {
-    if (isLiveShare()) {
-        void runTextInTerm(`View(${node}, uuid = ${UUID})`);
-    } else {
-        void runTextInTerm(`View(${node})`);
-    }
+    void runTextInTerm(`View(${node})`);
 }
 
 export function removeItem(node: string): void {
