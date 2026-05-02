@@ -139,6 +139,10 @@ suite('Session Communication', () => {
         const result = await rTerminal.createRTerm(true);
         assert.ok(result);
         await waitFor(() => session.activeSession, 15000, 200);
+        const activeSession = session.activeSession;
+        if (!activeSession) {
+            throw new Error('activeSession is undefined');
+        }
         
         const term = rTerminal.rTerm;
         assert.ok(term, 'rTerminal.rTerm should be defined');
@@ -158,7 +162,7 @@ suite('Session Communication', () => {
         let svgliteResp: { data?: string, format?: string, error?: unknown } | undefined;
         await waitFor(async () => {
             try {
-                svgliteResp = await session.sessionRequest(session.activeSession!.server, {
+                svgliteResp = await session.sessionRequest(activeSession.server, {
                     method: 'plot_latest',
                     params: { width: 800, height: 600, format: 'svglite' }
                 }) as { data?: string, format?: string, error?: unknown };
@@ -189,7 +193,7 @@ suite('Session Communication', () => {
         let pngResp: { data?: string, format?: string } | undefined;
         await waitFor(async () => {
             try {
-                pngResp = await session.sessionRequest(session.activeSession!.server, {
+                pngResp = await session.sessionRequest(activeSession.server, {
                     method: 'plot_latest',
                     params: { width: 800, height: 600, format: 'png' }
                 }) as { data?: string, format?: string };

@@ -78,4 +78,22 @@ suite('Sess Install Test Suite', () => {
         
         assert.strictEqual(showMessageStub.called, false);
     });
+
+    test('sess package version matches extension version', () => {
+        const packageJsonPath = path.join(extension_root, 'package.json');
+        const descriptionPath = path.join(extension_root, 'sess', 'DESCRIPTION');
+        
+        const packageJsonContent = util.readFileSyncSafe(packageJsonPath);
+        const descriptionContent = util.readFileSyncSafe(descriptionPath);
+        
+        assert.ok(packageJsonContent, 'package.json should be readable');
+        assert.ok(descriptionContent, 'sess/DESCRIPTION should be readable');
+        
+        const packageJson = JSON.parse(packageJsonContent) as { version: string };
+        const match = descriptionContent.match(/^Version:\s*(.+)$/m);
+        const sessVersion = match ? match[1] : undefined;
+        
+        const baseVersion = packageJson.version.split('-')[0];
+        assert.strictEqual(sessVersion, baseVersion, 'sess package version should match base extension version in package.json');
+    });
 });

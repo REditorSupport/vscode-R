@@ -176,6 +176,16 @@
     ],
     "commands": [
       {
+        "command": "r.liveShare.toggle",
+        "title": "Toggle Live Share",
+        "category": "R"
+      },
+      {
+        "command": "r.liveShare.retry",
+        "title": "Retry Live Share",
+        "category": "R"
+      },
+      {
         "command": "r.workspaceViewer.refreshEntry",
         "title": "Manual Refresh",
         "icon": "$(refresh)",
