@@ -831,6 +831,12 @@ async function handleRequest(message: Record<string, unknown>, ws: ExtWebSocket)
                     rstudioapi.showDialog(String(params.message));
                     result = true;
                     break;
+                case 'rstudioapi/show_prompt':
+                    result = await rstudioapi.showPrompt(String(params.title), String(params.message), params.default as string | undefined);
+                    break;
+                case 'rstudioapi/ask_for_password':
+                    result = await rstudioapi.askForPassword(String(params.prompt));
+                    break;
                 case 'rstudioapi/navigate_to_file':
                     await rstudioapi.navigateToFile(String(params.file), Number(params.line), Number(params.column));
                     result = true;

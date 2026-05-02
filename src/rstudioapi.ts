@@ -144,6 +144,27 @@ export function showDialog(message: string): void {
 
 }
 
+export async function showPrompt(
+    title: string, message: string, defaultValue?: string
+): Promise<{ response: string | null }> {
+    const result = await window.showInputBox({
+        title: title,
+        prompt: message,
+        value: defaultValue ?? '',
+    });
+    return { response: result ?? null };
+}
+
+export async function askForPassword(
+    prompt: string
+): Promise<{ response: string | null }> {
+    const result = await window.showInputBox({
+        prompt: prompt,
+        password: true,
+    });
+    return { response: result ?? null };
+}
+
 export async function navigateToFile(file: string, line: number, column: number): Promise<void>{
 
     const targetDocument = await workspace.openTextDocument(Uri.file(file));

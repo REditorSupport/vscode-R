@@ -388,7 +388,14 @@ patch_rstudioapi <- function() {
     readRStudioPreference = readRStudioPreference,
     getConsoleEditorContext = .sess_not_yet_implemented,
     sourceMarkers = .sess_not_yet_implemented,
-    showPrompt = .sess_not_yet_implemented,
+    showPrompt = function(title, message, default = NULL) {
+      response <- request_client("rstudioapi/show_prompt", args = list(title = title, message = message, default = default))
+      response$response
+    },
+    askForPassword = function(prompt = "Please enter your password") {
+      response <- request_client("rstudioapi/ask_for_password", args = list(prompt = prompt))
+      response$response
+    },
     showQuestion = .sess_not_yet_implemented,
     updateDialog = .sess_not_yet_implemented,
     openProject = .sess_not_yet_implemented,
