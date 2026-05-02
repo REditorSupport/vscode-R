@@ -48,7 +48,7 @@ export class HttpgdManager {
             this.viewerOptions.fullWindow = conf.get('plot.defaults.fullWindowMode', false);
             this.viewerOptions.token = token;
             const viewer = new HttpgdViewer(host, this.viewerOptions);
-            if (isHost() && autoShareBrowser) {
+            if (isHost()) {
                 const disposable = await shareServer(url, 'httpgd');
                 viewer.webviewPanel?.onDidDispose(() => void disposable.dispose());
             }

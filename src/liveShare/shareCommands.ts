@@ -95,8 +95,8 @@ export const Commands: ICommands = {
         [Callback.NotifyWorkspaceUpdate]: (args: [hostWorkspace: WorkspaceData]): void => {
             void updateGuestWorkspace(args[0]);
         },
-        [Callback.NotifyPlotUpdate]: (args: [file: string]): void => {
-            void updateGuestPlot(args[0]);
+        [Callback.NotifyPlotUpdate]: (args: [data: string, format: string]): void => {
+            void updateGuestPlot(args[0], args[1]);
         },
         [Callback.NotifyGuestPlotManager]: (args: [url: string]): void => {
             void globalPlotManager?.showHttpgdPlot(args[0]);
@@ -146,16 +146,8 @@ export function liveShareOnRequest(name: string, command: unknown, service: vsls
 
 export function liveShareRequest(name: string, ...rest: unknown[]): unknown {
     if (isGuest()) {
-        if (rest !== undefined) {
-            return (service as vsls.SharedServiceProxy).request(name, rest);
-        } else {
-            return (service as vsls.SharedServiceProxy).request(name, []);
-        }
+        return (service as vsls.SharedServiceProxy).request(name, rest);
     } else {
-        if (rest !== undefined) {
-            return (service as vsls.SharedService).notify(name, { ...rest });
-        } else {
-            return (service as vsls.SharedService).notify(name, {});
-        }
+        return (service as vsls.SharedService).notify(name, rest);
     }
 }

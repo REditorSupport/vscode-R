@@ -591,20 +591,25 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
 /**
  * Prompt to install the bundled "sess" package
  */
-export async function promptToInstallSessPackage(cwd?: string | vscode.Uri): Promise<void> {
-    const _config = (exports as typeof import('./util')).config();
-    const sessionWatcher = _config.get<boolean>('sessionWatcher');
+export async function promptToInstallSessPackage(
+    cwd?: string | vscode.Uri,
+    _config = config,
+    _getRPackageVersion = getRPackageVersion,
+    _readFileSyncSafe = readFileSyncSafe
+): Promise<void> {
+    const activeConfig = _config();
+    const sessionWatcher = activeConfig.get<boolean>('sessionWatcher');
     if (!sessionWatcher) {
         return;
     }
 
     const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
     const descriptionPath = path.join(sessPath, 'DESCRIPTION');
-    const descriptionContent = (exports as typeof import('./util')).readFileSyncSafe(descriptionPath);
+    const descriptionContent = _readFileSyncSafe(descriptionPath);
     const match = descriptionContent?.match(/^Version:\s*(.+)$/m);
     const bundledVersion = match ? match[1] : undefined;
 
-    const installedVersion = await (exports as typeof import('./util')).getRPackageVersion('sess', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
+    const installedVersion = await _getRPackageVersion('sess', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
 
     if (installedVersion && bundledVersion && compareVersions(installedVersion, bundledVersion) >= 0) {
         return; // Already up to date

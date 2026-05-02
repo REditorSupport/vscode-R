@@ -747,6 +747,9 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
         case 'httpgd': {
             if (params.url) {
                 await globalPlotManager?.showHttpgdPlot(String(params.url));
+                if (isLiveShare() && isHost()) {
+                    rHostService?.notifyGuestPlotManager(String(params.url));
+                }
             }
             break;
         }
@@ -786,6 +789,9 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
                 const viewer = viewColumnConfig['view'] ?? 'Two';
                 if (viewer !== 'Disable') {
                     await showDataView(String(params.source), String(params.type), String(params.title), String(params.file), viewer);
+                }
+                if (isLiveShare() && isHost()) {
+                    rHostService?.notifyRequest(String(params.file), false);
                 }
             }
             break;

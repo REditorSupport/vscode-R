@@ -28,7 +28,7 @@ suite('Sess Install Test Suite', () => {
         const getVersionStub = sandbox.stub(util, 'getRPackageVersion').resolves(undefined);
         const showMessageStub = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         
-        await util.promptToInstallSessPackage();
+        await util.promptToInstallSessPackage(undefined, undefined, getVersionStub);
         
         assert.strictEqual(getVersionStub.called, false);
         assert.strictEqual(showMessageStub.called, false);
@@ -36,14 +36,14 @@ suite('Sess Install Test Suite', () => {
 
     test('promptToInstallSessPackage prompts to install if not installed', async () => {
         await vscode.workspace.getConfiguration('r').update('sessionWatcher', true, vscode.ConfigurationTarget.Global);
-        sandbox.stub(util, 'getRPackageVersion').resolves(undefined);
+        const getVersionStub = sandbox.stub(util, 'getRPackageVersion').resolves(undefined);
         
         // Mock reading DESCRIPTION file
-        sandbox.stub(util, 'readFileSyncSafe').returns('Package: sess\nVersion: 0.1.0\n');
+        const readFileStub = sandbox.stub(util, 'readFileSyncSafe').returns('Package: sess\nVersion: 0.1.0\n');
         
         const showMessageStub = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         
-        await util.promptToInstallSessPackage();
+        await util.promptToInstallSessPackage(undefined, undefined, getVersionStub, readFileStub);
         
         assert.strictEqual(showMessageStub.calledOnce, true);
         const args = showMessageStub.getCall(0).args;
@@ -52,14 +52,14 @@ suite('Sess Install Test Suite', () => {
 
     test('promptToInstallSessPackage prompts to update if installed version is older', async () => {
         await vscode.workspace.getConfiguration('r').update('sessionWatcher', true, vscode.ConfigurationTarget.Global);
-        sandbox.stub(util, 'getRPackageVersion').resolves('0.0.9');
+        const getVersionStub = sandbox.stub(util, 'getRPackageVersion').resolves('0.0.9');
         
         // Mock reading DESCRIPTION file with newer version
-        sandbox.stub(util, 'readFileSyncSafe').returns('Package: sess\nVersion: 0.1.0\n');
+        const readFileStub = sandbox.stub(util, 'readFileSyncSafe').returns('Package: sess\nVersion: 0.1.0\n');
         
         const showMessageStub = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         
-        await util.promptToInstallSessPackage();
+        await util.promptToInstallSessPackage(undefined, undefined, getVersionStub, readFileStub);
         
         assert.strictEqual(showMessageStub.calledOnce, true);
         const args = showMessageStub.getCall(0).args;
@@ -68,13 +68,13 @@ suite('Sess Install Test Suite', () => {
 
     test('promptToInstallSessPackage does not prompt if installed version is newer or equal', async () => {
         await vscode.workspace.getConfiguration('r').update('sessionWatcher', true, vscode.ConfigurationTarget.Global);
-        sandbox.stub(util, 'getRPackageVersion').resolves('0.1.0');
+        const getVersionStub = sandbox.stub(util, 'getRPackageVersion').resolves('0.1.0');
         
-        sandbox.stub(util, 'readFileSyncSafe').returns('Package: sess\nVersion: 0.1.0\n');
+        const readFileStub = sandbox.stub(util, 'readFileSyncSafe').returns('Package: sess\nVersion: 0.1.0\n');
         
         const showMessageStub = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         
-        await util.promptToInstallSessPackage();
+        await util.promptToInstallSessPackage(undefined, undefined, getVersionStub, readFileStub);
         
         assert.strictEqual(showMessageStub.called, false);
     });

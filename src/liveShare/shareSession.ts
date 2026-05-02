@@ -5,14 +5,13 @@ import { extensionContext, globalPlotManager, globalRHelp, rWorkspace } from '..
 import { asViewColumn, config, readContent } from '../util';
 import { showBrowser, showDataView, WorkspaceData } from '../session';
 import { showWebView } from '../webViewer';
-import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem } from '.';
+import { liveSession, UUID, rGuestService, _sessionStatusBarItem as sessionStatusBarItem, isGuest, guestResDir } from '.';
 import { autoShareBrowser } from './shareTree';
 import { docProvider, docScheme } from './virtualDocs';
 
 // Workspace Vars
 let guestPid: string;
 export let guestWorkspace: WorkspaceData | undefined;
-export let guestResDir: string;
 let rVer: string;
 let info: IRequest['info'];
 
@@ -46,21 +45,7 @@ export interface IRequest {
     };
 }
 
-export function initGuest(context: vscode.ExtensionContext): void {
-    // create status bar item that contains info about the *guest* session watcher
-    console.info('Create guestSessionStatusBarItem');
-    const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
-    sessionStatusBarItem.command = 'r.activateRSessionGuest';
-    sessionStatusBarItem.text = 'Guest R: (not attached)';
-    sessionStatusBarItem.tooltip = 'Click to activate host R session';
-    sessionStatusBarItem.show();
-    context.subscriptions.push(
-        sessionStatusBarItem,
-        vscode.workspace.registerTextDocumentContentProvider(docScheme, docProvider)
-    );
-    rGuestService?.setStatusBarItem(sessionStatusBarItem);
-    guestResDir = path.join(context.extensionPath, 'dist', 'resources');
-}
+
 
 export function detachGuest(): void {
     console.info('[Guest Service] detach guest from workspace');
@@ -70,20 +55,13 @@ export function detachGuest(): void {
     rWorkspace?.refresh();
 }
 
-export function activateRSessionGuest(): void {
-    if (config().get<boolean>('sessionWatcher', true)) {
-        console.info('[activateRSessionGuest]');
-        void rGuestService?.requestAttach();
-    } else {
-        void vscode.window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
-    }
-}
+
 
 // Guest version of session.ts updateRequest(), no need to check for changes in files
 // as this is handled by the session.ts variant
 // the force parameter is used for ensuring that the 'attach' case is appropriately called on guest join
 export async function updateGuestRequest(file: string, force: boolean = false): Promise<void> {
-    const requestContent: string | undefined = await readContent(file, 'utf8');
+    const requestContent: string | undefined = await rGuestService?.requestFileContent(file, 'utf8');
     if (!requestContent) {
         return;
     }
@@ -197,14 +175,11 @@ export function updateGuestWorkspace(hostWorkspace: WorkspaceData): void {
 // Instead of creating a file, we pass the base64 of the plot image
 // to the guest, and read that into an html page
 let panel: vscode.WebviewPanel | undefined = undefined;
-export async function updateGuestPlot(file: string): Promise<void> {
-    const plotContent = await readContent(file, 'base64');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    
+export function updateGuestPlot(data: string, format: string): void {
     const guestPlotView: vscode.ViewColumn = asViewColumn(config().get<string>('session.viewers.viewColumn.plot'), vscode.ViewColumn.Two);
-    if (plotContent) {
+    if (data) {
         if (panel) {
-            panel.webview.html = getGuestImageHtml(plotContent);
+            panel.webview.html = getGuestImageHtml(data, format);
             panel.reveal(guestPlotView, true);
         } else {
             panel = vscode.window.createWebviewPanel('dataview', 'R Guest Plot',
@@ -218,7 +193,7 @@ export async function updateGuestPlot(file: string): Promise<void> {
                     retainContextWhenHidden: true,
                     localResourceRoots: [vscode.Uri.file(guestResDir)],
                 });
-            const content = getGuestImageHtml(plotContent);
+            const content = getGuestImageHtml(data, format);
             panel.webview.html = content;
             panel.onDidDispose(
                 () => {
@@ -234,7 +209,14 @@ export async function updateGuestPlot(file: string): Promise<void> {
 
 // Purely used in order to decode a base64 string into
 // an image format, bypassing saving a file onto the guest's system
-function getGuestImageHtml(content: string) {
+function getGuestImageHtml(content: string, format: string) {
+    let imageSrc = '';
+    if (format === 'svglite' || format === 'svg') {
+        imageSrc = `data:image/svg+xml;base64,${String(content)}`;
+    } else {
+        imageSrc = `data:image/png;base64,${String(content)}`;
+    }
+
     return `
 <!doctype HTML>
 <html>
@@ -242,22 +224,26 @@ function getGuestImageHtml(content: string) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style type="text/css">
-    body {
-        color: black;
+    body, html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
         background-color: var(--vscode-editor-background);
+        display: flex;
+        justify-content: center;
+        align-items: center;
     }
     img {
-        position: absolute;
-        top:0;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        margin: auto;
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
     }
     </style>
 </head>
 <body>
-    <img src = "data:image/png;base64, ${String(content)}">
+    <img src = "${imageSrc}">
 </body>
 </html>
 `;

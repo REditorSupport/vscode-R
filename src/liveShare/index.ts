@@ -9,7 +9,9 @@ import * as vsls from 'vsls';
 import * as fs from 'fs-extra';
 
 import { enableSessionWatcher, extensionContext } from '../extension';
-import { activateRSessionGuest, browserDisposables, initGuest } from './shareSession';
+import { docScheme, docProvider } from './virtualDocs';
+import * as path from 'path';
+import { browserDisposables } from './shareSession';
 import { initTreeView, rLiveShareProvider, shareWorkspace, ToggleNode } from './shareTree';
 import { Commands, Callback, liveShareOnRequest, liveShareRequest } from './shareCommands';
 
@@ -79,6 +81,10 @@ export async function initLiveShare(context: vscode.ExtensionContext): Promise<v
         void vscode.commands.executeCommand('setContext', 'r.liveShare:isGuest', isGuestSession);
 
         // push commands
+        context.subscriptions.push(
+            vscode.commands.registerCommand('r.activateRSessionGuest', () => activateRSessionGuest())
+        );
+
         if (!isGuestSession) {
             context.subscriptions.push(
                 vscode.commands.registerCommand(
@@ -90,10 +96,6 @@ export async function initLiveShare(context: vscode.ExtensionContext): Promise<v
                         rLiveShareProvider.refresh();
                     }
                 )
-            );
-        } else {
-            context.subscriptions.push(
-                vscode.commands.registerCommand('r.activateRSessionGuest', () => activateRSessionGuest())
             );
         }
     }
@@ -144,6 +146,7 @@ export async function LiveSessionListener(): Promise<void> {
                 break;
             case vsls.Role.Guest:
                 console.log('[LiveSessionListener] guest event');
+                initGuest(extensionContext);
                 await rGuestService?.startService();
                 break;
             case vsls.Role.Host:
@@ -165,6 +168,7 @@ export async function LiveSessionListener(): Promise<void> {
             break;
         case vsls.Role.Guest:
             console.log('[LiveSessionListener] guest event');
+            initGuest(extensionContext);
             await rGuestService.startService();
             break;
         default:
@@ -200,7 +204,19 @@ export class HostService {
         // Provides core liveshare functionality
         // The shared service is used as a RPC service
         // to pass messages between the host and guests
-        service = await liveSession.shareService(ShareProviderName);
+        console.info(`[HostService] Attempting to share service: ${ShareProviderName}`);
+        try {
+            await liveSession.unshareService(ShareProviderName);
+        } catch (e) {
+            // ignore error if it wasn't shared
+        }
+        try {
+            service = await liveSession.shareService(ShareProviderName);
+            console.info(`[HostService] shareService returned: ${String(!!service)}`);
+        } catch (e) {
+            console.error(`[HostService] shareService threw error: ${String(e)}`);
+            service = null;
+        }
         if (service) {
             this._isStarted = true;
             for (const command in Commands.host) {
@@ -233,9 +249,9 @@ export class HostService {
             void this.notifyWorkspace(workspaceData);
         }
     }
-    public notifyPlot(file: string): void {
+    public notifyPlot(data: string, format: string): void {
         if (this._isStarted && shareWorkspace) {
-            void liveShareRequest(Callback.NotifyPlotUpdate, file);
+            void liveShareRequest(Callback.NotifyPlotUpdate, data, format);
         }
     }
     public notifyGuestPlotManager(url: string): void {
@@ -256,7 +272,9 @@ export class GuestService {
         return this._isStarted;
     }
     public async startService(): Promise<void> {
+        console.info(`[GuestService] Attempting to get shared service: ${ShareProviderName}`);
         service = await liveSession.getSharedService(ShareProviderName);
+        console.info(`[GuestService] getSharedService returned: ${String(!!service)}`);
         if (service) {
             this._isStarted = true;
             this.requestAttach();
@@ -350,5 +368,47 @@ async function sessionCleanup(): Promise<void> {
             browserDisposables.splice(key);
         }
         rLiveShareProvider.refresh();
+    }
+}
+
+export let guestResDir: string;
+
+export function initGuest(context: vscode.ExtensionContext): void {
+    if (_sessionStatusBarItem) {
+        console.info('initGuest: sessionStatusBarItem already exists');
+        return;
+    }
+    console.info('Create guestSessionStatusBarItem');
+    const sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+    sessionStatusBarItem.command = 'r.activateRSessionGuest';
+    sessionStatusBarItem.text = 'Guest R: (not attached)';
+    sessionStatusBarItem.tooltip = 'Click to activate host R session';
+    sessionStatusBarItem.show();
+    context.subscriptions.push(
+        sessionStatusBarItem,
+        vscode.workspace.registerTextDocumentContentProvider(docScheme, docProvider)
+    );
+    _sessionStatusBarItem = sessionStatusBarItem;
+    rGuestService?.setStatusBarItem(sessionStatusBarItem);
+    guestResDir = path.join(context.extensionPath, 'dist', 'resources');
+}
+
+export async function activateRSessionGuest(): Promise<void> {
+    if (!isGuest()) {
+        void vscode.window.showInformationMessage('This command is only available for guests.');
+        return;
+    }
+    if (config().get<boolean>('sessionWatcher', true)) {
+        console.info('[activateRSessionGuest]');
+        if (!rGuestService?.isStarted()) {
+            await rGuestService?.startService();
+        }
+        if (rGuestService?.isStarted()) {
+            void rGuestService.requestAttach();
+        } else {
+            void vscode.window.showWarningMessage('Failed to connect to host R service. Please ensure the host has enabled sharing.');
+        }
+    } else {
+        void vscode.window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
     }
 }
