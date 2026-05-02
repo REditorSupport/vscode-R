@@ -592,19 +592,33 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
  * Prompt to install the bundled "sess" package
  */
 export async function promptToInstallSessPackage(cwd?: string | vscode.Uri): Promise<void> {
-    const _config = config();
+    const _config = (exports as typeof import('./util')).config();
     const sessionWatcher = _config.get<boolean>('sessionWatcher');
     if (!sessionWatcher) {
         return;
     }
-    const sessVersion = await getRPackageVersion('sess', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
-    if (sessVersion) {
-        return;
-    }
 
     const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
+    const descriptionPath = path.join(sessPath, 'DESCRIPTION');
+    const descriptionContent = (exports as typeof import('./util')).readFileSyncSafe(descriptionPath);
+    const match = descriptionContent?.match(/^Version:\s*(.+)$/m);
+    const bundledVersion = match ? match[1] : undefined;
+
+    const installedVersion = await (exports as typeof import('./util')).getRPackageVersion('sess', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
+
+    if (installedVersion && bundledVersion && compareVersions(installedVersion, bundledVersion) >= 0) {
+        return; // Already up to date
+    } else if (installedVersion && !bundledVersion) {
+        return; // Cannot determine bundled version, assume OK
+    }
+
     const installSessScript = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
-    const installMsg = 'R package "sess" (shipped with vscode-R) is required for the session watcher to work. Do you want to install it?';
+    
+    let installMsg = 'R package "sess" (shipped with vscode-R) is required for the session watcher to work. Do you want to install it?';
+    if (installedVersion && bundledVersion && compareVersions(installedVersion, bundledVersion) < 0) {
+        installMsg = `A newer version of R package "sess" (${bundledVersion}) is available (installed: ${installedVersion}). Do you want to update it?`;
+    }
+
     await vscode.window.showErrorMessage(installMsg, 'Yes', 'No')
         .then(async function (select) {
             if (select === 'Yes') {
