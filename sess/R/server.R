@@ -20,6 +20,9 @@ sess_app <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpg
   # Temporary file for static plot serving
   .sess_env$latest_plot_path <- file.path(.sess_env$tempdir, "sess_plot.png")
 
+  is_manual <- (!is.null(port) && !is.na(port) && nzchar(port)) ||
+    (!is.null(token) && !is.na(token) && nzchar(token))
+
   if (is.null(port) || is.na(port)) {
     port <- Sys.getenv("SESS_PORT")
   }
@@ -27,8 +30,23 @@ sess_app <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpg
     token <- Sys.getenv("SESS_TOKEN")
   }
 
+  # Derive file path for fallback/reconnection
+  pid <- Sys.getpid()
+  home <- path.expand("~")
+  file_path <- file.path(home, ".vscode-R", "sessions", sprintf("%d.json", pid))
+
   if (!nzchar(port) || !nzchar(token)) {
-    warning("[sess] SESS_PORT or SESS_TOKEN not set. Cannot connect to VS Code.")
+    if (file.exists(file_path)) {
+      tryCatch({
+        config <- jsonlite::fromJSON(readLines(file_path, warn = FALSE))
+        port <- config$port
+        token <- config$token
+      }, error = function(e) NULL)
+    }
+  }
+
+  if (!nzchar(port) || !nzchar(token)) {
+    warning("[sess] Connection info not available. Cannot connect to VS Code.")
     return(invisible(NULL))
   }
 
@@ -37,93 +55,116 @@ sess_app <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpg
     cat(sprintf("\r%s\n\n%s", msg, prompt))
   }
 
-  url <- sprintf("ws://127.0.0.1:%s/?token=%s", port, token)
-  ws <- websocket::WebSocket$new(url, autoConnect = FALSE)
+  connect <- function() {
+    url <- sprintf("ws://127.0.0.1:%s/?token=%s", port, token)
+    ws <- websocket::WebSocket$new(
+      url,
+      autoConnect = FALSE,
+      accessLogChannels = "none",
+      errorLogChannels = "none"
+    )
 
-  ws$onOpen(function(event) {
-    .sess_env$ws <- ws
-    print_async_msg("[sess] Connected to VS Code")
+    ws$onOpen(function(event) {
+      .sess_env$ws <- ws
+      print_async_msg("[sess] Connected to VS Code")
 
-    # Send the attach handshake immediately upon connection
-    notify_client("attach", list(
-      version = sprintf("%s.%s", R.version$major, R.version$minor),
-      pid = Sys.getpid(),
-      tempdir = .sess_env$tempdir,
-      wd = getwd(),
-      info = list(
-        command = commandArgs()[[1L]],
-        version = R.version.string,
-        start_time = format(Sys.time())
-      )
-    ))
-  })
-
-  ws$onMessage(function(event) {
-    # Handle JSON-RPC 2.0 messages COMING FROM the client
-    payload <- tryCatch(jsonlite::fromJSON(event$data), error = function(e) NULL)
-
-    if (!is.null(payload) && !is.null(payload$id)) {
-      if (!is.null(payload$method)) {
-        # It's a Request from the Client (e.g., 'workspace', 'plot_latest')
-        handlers <- list(
-          "workspace" = function(p) get_workspace_data(),
-          "hover" = function(p) handle_hover(p$expr),
-          "completion" = function(p) handle_complete(p$expr, p$trigger),
-          "plot_latest" = function(p) handle_plot_latest(p)
+      # Send the attach handshake immediately upon connection
+      notify_client("attach", list(
+        version = sprintf("%s.%s", R.version$major, R.version$minor),
+        pid = Sys.getpid(),
+        tempdir = .sess_env$tempdir,
+        wd = getwd(),
+        info = list(
+          command = commandArgs()[[1L]],
+          version = R.version.string,
+          start_time = format(Sys.time())
         )
+      ))
+    })
 
-        if (payload$method %in% names(handlers)) {
-          res <- tryCatch(
-            {
-              handlers[[payload$method]](payload$params)
-            },
-            error = function(e) {
-              warning(sprintf(
-                "[sess] Error in handler for '%s': %s",
-                payload$method, e$message
-              ))
-              NULL
-            }
+    ws$onMessage(function(event) {
+      # Handle JSON-RPC 2.0 messages COMING FROM the client
+      payload <- tryCatch(jsonlite::fromJSON(event$data), error = function(e) NULL)
+
+      if (!is.null(payload) && !is.null(payload$id)) {
+        if (!is.null(payload$method)) {
+          # It's a Request from the Client (e.g., 'workspace', 'plot_latest')
+          handlers <- list(
+            "workspace" = function(p) get_workspace_data(),
+            "hover" = function(p) handle_hover(p$expr),
+            "completion" = function(p) handle_complete(p$expr, p$trigger),
+            "plot_latest" = function(p) handle_plot_latest(p)
           )
 
-          succ_resp <- list(
-            jsonrpc = "2.0",
-            id = payload$id,
-            result = res
-          )
-          ws$send(jsonlite::toJSON(succ_resp, auto_unbox = TRUE, null = "null", force = TRUE))
+          if (payload$method %in% names(handlers)) {
+            res <- tryCatch(
+              {
+                handlers[[payload$method]](payload$params)
+              },
+              error = function(e) {
+                warning(sprintf(
+                  "[sess] Error in handler for '%s': %s",
+                  payload$method, e$message
+                ))
+                NULL
+              }
+            )
+
+            succ_resp <- list(
+              jsonrpc = "2.0",
+              id = payload$id,
+              result = res
+            )
+            ws$send(jsonlite::toJSON(succ_resp, auto_unbox = TRUE, null = "null", force = TRUE))
+          } else {
+            err_resp <- list(
+              jsonrpc = "2.0",
+              id = payload$id,
+              error = list(code = -32601, message = "Method not found")
+            )
+            ws$send(jsonlite::toJSON(err_resp, auto_unbox = TRUE, null = "null", force = TRUE))
+          }
         } else {
-          err_resp <- list(
-            jsonrpc = "2.0",
-            id = payload$id,
-            error = list(code = -32601, message = "Method not found")
-          )
-          ws$send(jsonlite::toJSON(err_resp, auto_unbox = TRUE, null = "null", force = TRUE))
-        }
-      } else {
-        # It's a Response (to our RStudio API request)
-        if (!is.null(payload$result)) {
-          .sess_env$pending_responses[[as.character(payload$id)]] <-
-            payload$result
-        } else if (!is.null(payload$error)) {
-          .sess_env$pending_responses[[as.character(payload$id)]] <-
-            structure(payload$error, class = "json_rpc_error")
+          # It's a Response (to our RStudio API request)
+          if (!is.null(payload$result)) {
+            .sess_env$pending_responses[[as.character(payload$id)]] <-
+              payload$result
+          } else if (!is.null(payload$error)) {
+            .sess_env$pending_responses[[as.character(payload$id)]] <-
+              structure(payload$error, class = "json_rpc_error")
+          }
         }
       }
-    }
-  })
+    })
 
-  ws$onClose(function(event) {
-    .sess_env$ws <- NULL
-    print_async_msg("[sess] Disconnected from VS Code")
-  })
+    ws$onClose(function(event) {
+      .sess_env$ws <- NULL
+      if (is_manual) {
+        print_async_msg("[sess] Disconnected from VS Code.")
+        return()
+      }
+      print_async_msg("[sess] Disconnected from VS Code. Retrying in 5 seconds...")
+      later::later(function() {
+        if (file.exists(file_path)) {
+          tryCatch({
+            config <- jsonlite::fromJSON(readLines(file_path, warn = FALSE))
+            port <<- config$port
+            token <<- config$token
+          }, error = function(e) NULL)
+        }
+        connect()
+      }, 5)
+    })
 
-  ws$onError(function(event) {
-    print_async_msg(sprintf("[sess] WebSocket error: %s", event$message))
-  })
+    ws$onError(function(event) {
+      print_async_msg(sprintf("[sess] WebSocket error: %s", event$message))
+    })
+
+    ws$connect()
+  }
 
   # Connect to VS Code
-  ws$connect()
+  connect()
 
   # Register runtime hooks
   if (is.na(use_rstudioapi)) use_rstudioapi <- TRUE

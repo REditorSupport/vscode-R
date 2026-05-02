@@ -390,7 +390,7 @@
         "command": "r.activateRSession"
       },
       {
-        "title": "Connect to R Session",
+        "title": "Attach External R Session (Copy command)",
         "category": "R",
         "command": "r.connectToSession"
       },

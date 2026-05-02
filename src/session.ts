@@ -2,6 +2,7 @@
 
 import * as fs from 'fs-extra';
 import * as path from 'path';
+import * as os from 'os';
 import * as vscode from 'vscode';
 import { commands, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
@@ -96,7 +97,10 @@ export function deploySessionWatcher(extensionPath: string): void {
     resDir = path.join(extensionPath, 'dist', 'resources');
 
     // Initialize the WebSocket server when the extension activates
-    void getGlobalSessionServer().catch(err => {
+    void getGlobalSessionServer().then(async (srv) => {
+        await pruneSessionFiles();
+        await updateActiveTerminalFiles(srv.port, srv.token);
+    }).catch(err => {
         console.error('Failed to initialize global session server', err);
     });
 
@@ -116,6 +120,59 @@ export const activeConnections = new Set<ExtWebSocket>();
 const pendingRequests = new Map<number, { resolve: (value: unknown) => void, reject: (reason?: unknown) => void }>();
 
 let globalSessionServer: { port: number, token: string } | undefined;
+
+function isPidRunning(pid: number): boolean {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (e) {
+        return (e as NodeJS.ErrnoException).code !== 'ESRCH';
+    }
+}
+
+async function pruneSessionFiles() {
+    const homeDir = os.homedir();
+    const sessionsDir = path.join(homeDir, '.vscode-R', 'sessions');
+    if (!await fs.pathExists(sessionsDir)) {
+        return;
+    }
+    const files = await fs.readdir(sessionsDir);
+    for (const file of files) {
+        if (file.endsWith('.json')) {
+            const pidStr = path.basename(file, '.json');
+            const pid = parseInt(pidStr, 10);
+            if (!isNaN(pid)) {
+                if (!isPidRunning(pid)) {
+                    try {
+                        await fs.remove(path.join(sessionsDir, file));
+                    } catch (e) {
+                        console.error(`Failed to remove stale session file ${file}`, e);
+                    }
+                }
+            }
+        }
+    }
+}
+
+export async function writeSessionFile(pid: string, port: number, token: string) {
+    const homeDir = os.homedir();
+    const sessionsDir = path.join(homeDir, '.vscode-R', 'sessions');
+    await fs.ensureDir(sessionsDir);
+    const filePath = path.join(sessionsDir, `${pid}.json`);
+    await fs.writeJson(filePath, { port, token });
+}
+
+async function updateActiveTerminalFiles(port: number, token: string) {
+    const terminals = vscode.window.terminals;
+    for (const term of terminals) {
+        if (term.name === 'R Interactive') {
+            const pid = await term.processId;
+            if (pid) {
+                await writeSessionFile(pid.toString(), port, token);
+            }
+        }
+    }
+}
 
 export async function getGlobalSessionServer(): Promise<{ port: number, token: string }> {
     if (globalSessionServer) {
@@ -959,7 +1016,7 @@ export async function sessionRequest(server: SessionServer, data: Record<string,
 
 export async function connectToSession(): Promise<void> {
     const { port, token } = await getGlobalSessionServer();
-    const url = `ws://127.0.0.1:${port}?token=${token}`;
-    void vscode.env.clipboard.writeText(url);
-    void vscode.window.showInformationMessage(`R Session URL copied to clipboard: ${url}\n\nIn your R console, run: sess::sess_app(port=${port}, token="${token}")`);
+    const command = `sess::sess_app(port=${port}, token="${token}")`;
+    void vscode.env.clipboard.writeText(command);
+    void vscode.window.showInformationMessage(`R command copied to clipboard: ${command}`);
 }

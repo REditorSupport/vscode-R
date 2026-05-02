@@ -179,7 +179,7 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
-import { getGlobalSessionServer } from './session';
+import { getGlobalSessionServer, writeSessionFile } from './session';
 
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     const workspaceFolderPath = getCurrentWorkspaceFolder()?.uri.fsPath;
@@ -219,6 +219,13 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     }
     rTerm = vscode.window.createTerminal(termOptions);
     rTerm.show(preserveshow);
+    
+    void rTerm.processId.then(async (pid) => {
+        if (pid) {
+            const { port, token } = await getGlobalSessionServer();
+            await writeSessionFile(pid.toString(), port, token);
+        }
+    });
     
     return true;
 }
