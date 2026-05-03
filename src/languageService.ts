@@ -4,6 +4,7 @@ import * as os from 'os';
 import { dirname } from 'path';
 import * as net from 'net';
 import { URL } from 'url';
+import * as fs from 'fs';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
 import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables } from './util';
@@ -136,6 +137,23 @@ export class LanguageService implements Disposable {
                 // Synchronize the setting section 'r' to the server
                 configurationSection: 'r.lsp',
                 fileEvents: workspace.createFileSystemWatcher('**/*.{R,r}'),
+            },
+            middleware: {
+                handleDiagnostics: (uri, diagnostics, next) => {
+                    const supportedSchemes = ['file', 'untitled', 'vscode-notebook-cell'];
+                    
+                    // Drop diagnostics for unsupported schemes (like git://)
+                    if (!supportedSchemes.includes(uri.scheme)) {
+                        return next(uri, []); 
+                    }
+                    
+                    // Drop diagnostics for files that no longer exist on disk
+                    if (uri.scheme === 'file' && !fs.existsSync(uri.fsPath)) {
+                        return next(uri, []);
+                    }
+                    
+                    return next(uri, diagnostics);
+                }
             },
             revealOutputChannelOn: RevealOutputChannelOn.Never,
             errorHandler: {
@@ -324,8 +342,11 @@ export class LanguageService implements Disposable {
             this.startMultiLanguageService();
         } else {
             const documentSelector: DocumentFilter[] = [
-                { language: 'r' },
-                { language: 'rmd' },
+                { scheme: 'file', language: 'r' },
+                { scheme: 'file', language: 'rmd' },
+                { scheme: 'untitled', language: 'r' },
+                { scheme: 'untitled', language: 'rmd' },
+                { scheme: 'vscode-notebook-cell', language: 'r' },
             ];
 
             const workspaceFolder = workspace.workspaceFolders?.[0];
