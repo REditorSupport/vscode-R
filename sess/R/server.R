@@ -7,7 +7,7 @@
 #'   be enabled? Defaults to TRUE.
 #' @param use_httpgd Logical. Should httpgd be used for plotting if available? Defaults to TRUE
 #' @export
-sess_app <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE) {
+connect <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE) {
   # Initialize state
   .sess_env$server <- NULL
   .sess_env$ws <- NULL
@@ -55,7 +55,7 @@ sess_app <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpg
     cat(sprintf("\r%s\n\n%s", msg, prompt))
   }
 
-  connect <- function() {
+  do_connect <- function() {
     url <- sprintf("ws://127.0.0.1:%s/?token=%s", port, token)
     ws <- websocket::WebSocket$new(
       url,
@@ -152,7 +152,7 @@ sess_app <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpg
             token <<- config$token
           }, error = function(e) NULL)
         }
-        connect()
+        do_connect()
       }, 5)
     })
 
@@ -164,7 +164,7 @@ sess_app <- function(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpg
   }
 
   # Connect to VS Code
-  connect()
+  do_connect()
 
   # Register runtime hooks
   if (is.na(use_rstudioapi)) use_rstudioapi <- TRUE

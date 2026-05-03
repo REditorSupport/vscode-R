@@ -1016,7 +1016,7 @@ export async function sessionRequest(server: SessionServer, data: Record<string,
 
 export async function connectToSession(): Promise<void> {
     const { port, token } = await getGlobalSessionServer();
-    const command = `sess::sess_app(port=${port}, token="${token}")`;
+    const command = `sess::connect(port=${port}, token="${token}")`;
     void vscode.env.clipboard.writeText(command);
     void vscode.window.showInformationMessage(`R command copied to clipboard: ${command}`);
 }
