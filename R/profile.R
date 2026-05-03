@@ -25,7 +25,7 @@ local({
 })
 
 if (requireNamespace("sess", quietly = TRUE)) {
-    sess::sess_app(
+    sess::connect(
         use_rstudioapi = as.logical(Sys.getenv("SESS_RSTUDIOAPI", "TRUE")),
         use_httpgd = as.logical(Sys.getenv("SESS_USE_HTTPGD", "TRUE"))
     )
