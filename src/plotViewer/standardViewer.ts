@@ -1,7 +1,7 @@
 
 import * as vscode from 'vscode';
 import { asViewColumn, config, UriIcon } from '../util';
-import { sessionRequest, server } from '../session';
+import { sessionRequest, globalPipePath } from '../session';
 import { PlotViewer } from './types';
 
 interface PlotResponse {
@@ -75,13 +75,13 @@ export class StandardPlotViewer implements PlotViewer {
     }
 
     private async requestPlot() {
-        if (!server || !this.panel) {
+        if (!globalPipePath || !this.panel) {
             return;
         }
 
         const format = config().get<string>('plot.format', 'svglite');
         const devArgs = config().get<Record<string, unknown>>('plot.devArgs');
-        const response = await sessionRequest(server, {
+        const response = await sessionRequest({
             method: 'plot_latest',
             params: {
                 width: this.viewWidth,

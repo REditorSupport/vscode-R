@@ -100,7 +100,7 @@ suite('Session Communication', () => {
             expr: 'my_list',
             trigger: '$'
         };
-        const completionResult = await session.sessionRequest(session.activeSession.server, {
+        const completionResult = await session.sessionRequest({
             method: 'completion',
             params: completionRequestParams
         }) as Record<string, unknown>[];
@@ -162,7 +162,7 @@ suite('Session Communication', () => {
         let svgliteResp: { data?: string, format?: string, error?: unknown } | undefined;
         await waitFor(async () => {
             try {
-                svgliteResp = await session.sessionRequest(activeSession.server, {
+                svgliteResp = await session.sessionRequest({
                     method: 'plot_latest',
                     params: { width: 800, height: 600, format: 'svglite' }
                 }) as { data?: string, format?: string, error?: unknown };
@@ -193,7 +193,7 @@ suite('Session Communication', () => {
         let pngResp: { data?: string, format?: string } | undefined;
         await waitFor(async () => {
             try {
-                pngResp = await session.sessionRequest(activeSession.server, {
+                pngResp = await session.sessionRequest({
                     method: 'plot_latest',
                     params: { width: 800, height: 600, format: 'png' }
                 }) as { data?: string, format?: string };

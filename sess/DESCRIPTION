@@ -8,12 +8,14 @@ Description: Implements a high-performance HTTP and WebSocket server for R Inter
 License: MIT
 Encoding: UTF-8
 LazyData: true
-Imports: 
-    websocket,
+Imports:
+    processx (>= 3.5.0),
     later,
     jsonlite,
     utils,
     methods,
     rstudioapi,
     svglite
+Suggests:
+    testthat (>= 3.0.0)
 Config/roxygen2/version: 8.0.0
