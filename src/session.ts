@@ -216,7 +216,7 @@ export async function getGlobalPipePath(): Promise<string> {
                                         pending.resolve(message.result);
                                     }
                                 }
-                            } else if (!message.id) {
+                            } else if (message.id === undefined || message.id === null) {
                                 await handleNotification(message, socket);
                             } else {
                                 await handleRequest(message, socket);
