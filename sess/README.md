@@ -1,9 +1,16 @@
 # `sess`: Modern R IPC Protocol
 
-The `sess` package provides a lightweight IPC layer between an R session and a client (such as the VS Code R extension). It uses JSON-RPC 2.0 messages over:
+The `sess` package provides an IPC layer between an R session and a client (such as the VS Code R extension).
+
+Transport:
 
 - Unix domain sockets (macOS/Linux)
 - Windows named pipes
+
+Protocol:
+
+- JSON-RPC 2.0 messages
+- JSON Lines (JSONL, newline-delimited JSON) framing (one JSON message per line)
 
 ## 1. Connection Handshake
 
@@ -22,20 +29,86 @@ If `pipe_path` is omitted, `connect()` resolves it in this order:
 1. `SESS_PIPE` environment variable
 2. `~/.vscode-R/sessions/{PID}.json` (`pipe` field)
 
-After connecting, `sess` sends an `attach` notification with R version, process id, and session metadata.
+After connecting, `sess` sends an `attach` notification.
 
-## 2. Message Transport
+Example:
 
-Transport is NDJSON (newline-delimited JSON). Each line is one JSON-RPC message.
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "attach",
+  "params": {
+    "version": "4.5.0",
+    "pid": 12345,
+    "tempdir": "/tmp/Rtmp.../sess",
+    "wd": "/path/to/project",
+    "info": {
+      "command": "/usr/bin/R",
+      "version": "R version 4.5.0 (...) ",
+      "start_time": "2026-05-05 06:00:00"
+    }
+  }
+}
+```
 
-- R writes JSON-RPC payloads with a trailing `\n`
-- R polls the pipe periodically and dispatches complete lines
+## 2. Message Transport and Framing
 
-The protocol semantics remain JSON-RPC 2.0.
+Transport uses JSON Lines (JSONL, newline-delimited JSON):
 
-### Notifications (`notify_client`)
+- sender writes one JSON-RPC object + `\n`
+- receiver buffers stream chunks and dispatches complete lines only
 
-R sends JSON-RPC notifications (without `id`) for one-way events such as:
+This preserves JSON-RPC semantics while handling stream fragmentation safely.
+
+## 3. JSON-RPC Message Types
+
+### Notification (one-way)
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "method_name",
+  "params": {}
+}
+```
+
+### Request (expects response)
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "method_name",
+  "params": {}
+}
+```
+
+### Response (success)
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {}
+}
+```
+
+### Response (error)
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32601,
+    "message": "Method not found"
+  }
+}
+```
+
+## 4. Notifications from R to Client
+
+`notify_client()` sends one-way events (no `id`), including:
 
 - `attach`
 - `dataview`
@@ -47,10 +120,11 @@ R sends JSON-RPC notifications (without `id`) for one-way events such as:
 - `restart_r`
 - `send_to_console`
 
-### Requests (`request_client`)
+## 5. Requests from R to Client (`request_client`)
 
-R can synchronously call client methods (JSON-RPC request with `id`) via `request_client()`.
-This is used for RStudio API emulation methods, such as:
+`request_client()` sends JSON-RPC requests and waits for matching response `id`.
+
+Used by RStudio API emulation methods, such as:
 
 - `rstudioapi/active_editor_context`
 - `rstudioapi/replace_text_in_current_selection`
@@ -65,16 +139,89 @@ This is used for RStudio API emulation methods, such as:
 - `rstudioapi/document_new`
 - `rstudioapi/document_close`
 
-### Client Pull Requests
+Coordinate convention on the wire:
 
-The client can request state from R with JSON-RPC requests:
+- rows/columns are 1-indexed (R-style)
+- client may convert to internal 0-indexed representation
 
-- `workspace`
-- `plot_latest`
-- `hover`
-- `completion`
+## 6. Requests from Client to R (Pull API)
 
-## 3. Hook Registration & Options
+Client queries R state through JSON-RPC requests.
+
+### `workspace`
+
+Request:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"workspace","params":{}}
+```
+
+Response (example):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "globalenv": {
+      "my_df": {"class": ["data.frame"], "type": "list", "length": 11}
+    },
+    "search": ["package:stats", "package:graphics"],
+    "loaded_namespaces": ["sess", "utils"]
+  }
+}
+```
+
+### `plot_latest`
+
+Request params example:
+
+```json
+{"width":800,"height":600,"format":"svglite"}
+```
+
+Response example:
+
+```json
+{"jsonrpc":"2.0","id":2,"result":{"format":"svglite","data":"<base64 or svg payload>"}}
+```
+
+### `hover`
+
+Request params example:
+
+```json
+{"expr":"head(mtcars)"}
+```
+
+Response example:
+
+```json
+{"jsonrpc":"2.0","id":3,"result":{"str":"'data.frame': 6 obs. ..."}}
+```
+
+### `completion`
+
+Request params example:
+
+```json
+{"expr":"mtcars","trigger":"$"}
+```
+
+Response example:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "result": [
+    {"name":"mpg","type":"double","str":"numeric"},
+    {"name":"cyl","type":"double","str":"numeric"}
+  ]
+}
+```
+
+## 7. Hook Registration and Options
 
 `connect()` initializes runtime hooks via `register_hooks()`.
 
@@ -84,7 +231,7 @@ Intercepted features include:
 - `browser()`, `viewer()`, `page_viewer()`
 - help topic rendering hooks
 
-Relevant options include:
+Relevant options:
 
 - `sess.row_limit`
 - `sess.dataview`
@@ -92,19 +239,24 @@ Relevant options include:
 - `sess.webview`
 - `sess.helpPanel`
 
-## 4. Connection Discovery
+## 8. Discovery File
 
-To support VS Code reloads and attach workflows, the extension writes:
+To support reloads and attach workflows, the extension writes:
 
 - `~/.vscode-R/sessions/{PID}.json`
 
-`sess::connect()` reads this file as a fallback when direct connection parameters are not provided.
+`sess::connect()` reads this file as fallback when direct pipe parameters are unavailable.
 
-## 5. Legacy IPC Comparison
+## 9. What Changed from the WebSocket Transport
 
-Compared with legacy file-watcher IPC, `sess` provides:
+Changed:
 
-- JSON-RPC 2.0 for structured messaging
-- socket/pipe transport instead of lock-file command channels
-- on-demand workspace queries
-- lower background churn and fewer file watch races
+- transport is now UDS / named pipe
+- framing is JSON Lines (JSONL) over stream sockets
+- authentication token exchange is removed
+
+Unchanged:
+
+- JSON-RPC method names and payload shapes
+- request/response correlation by `id`
+- high-level feature behavior (workspace, hover, completion, plot, dataview, RStudio API emulation)
