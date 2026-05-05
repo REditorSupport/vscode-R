@@ -130,8 +130,8 @@ suite('R Terminal', () => {
             sessionDir: '',
             workingDir: '',
             workspaceData: { search: [], loaded_namespaces: [], globalenv: {} },
-            server: { host: '127.0.0.1', port: 1234, token: 'abc' },
-            ws: {} as unknown as session.Session['ws']
+            pipePath: '',
+            socket: { destroyed: true, destroy: () => undefined } as unknown as session.Session['socket']
         };
 
         await session.activateSession(fakeSession as unknown as session.Session);

@@ -3,6 +3,8 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as os from 'os';
+import * as net from 'net';
+import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { commands, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
 
@@ -15,18 +17,10 @@ import { homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBa
 
 import { showWebView } from './webViewer';
 
-import WebSocket from 'ws';
-
 export interface SessionInfo {
     version: string;
     command: string;
     start_time: string;
-}
-
-interface ExtWebSocket extends WebSocket {
-    _terminalPid?: number;
-    _port?: number;
-    _token?: string;
 }
 
 export interface GlobalEnv {
@@ -48,15 +42,15 @@ export interface WorkspaceData {
     globalenv: GlobalEnv;
 }
 
-export interface SessionServer {
-    host: string;
-    port: number;
-    token: string;
+// Thin adapter to track per-socket metadata alongside net.Socket
+interface IpcSocket extends net.Socket {
+    _terminalPid?: number;
+    _pipePath?: string;
 }
 
 export class Session {
-    public server: SessionServer;
-    public ws: WebSocket;
+    public pipePath: string;
+    public socket: IpcSocket;
     public pid: string;
     public rVer: string;
     public info: SessionInfo;
@@ -64,9 +58,9 @@ export class Session {
     public workingDir: string;
     public workspaceData: WorkspaceData;
 
-    constructor(server: SessionServer, ws: WebSocket) {
-        this.server = server;
-        this.ws = ws;
+    constructor(pipePath: string, socket: IpcSocket) {
+        this.pipePath = pipePath;
+        this.socket = socket;
         this.pid = '';
         this.rVer = '';
         this.info = { version: '', command: '', start_time: '' };
@@ -85,7 +79,7 @@ export let workingDir: string;
 let rVer: string;
 let pid: string;
 let info: SessionInfo;
-export let server: SessionServer | undefined;
+export let globalPipePath: string | undefined;
 export let workspaceFile: string;
 
 const sessions = new Map<string, Session>();
@@ -96,10 +90,9 @@ export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
 
-    // Initialize the WebSocket server when the extension activates
-    void getGlobalSessionServer().then(async (srv) => {
+    void getGlobalPipePath().then(async (pipePath) => {
         await pruneSessionFiles();
-        await updateActiveTerminalFiles(srv.port, srv.token);
+        await updateActiveTerminalFiles(pipePath);
     }).catch(err => {
         console.error('Failed to initialize global session server', err);
     });
@@ -112,14 +105,15 @@ export function deploySessionWatcher(extensionPath: string): void {
     });
 }
 
-import * as crypto from 'crypto';
-
-let wsClient: ExtWebSocket | undefined;
-export const activeConnections = new Set<ExtWebSocket>();
+let pipeClient: IpcSocket | undefined;
+export const activeConnections = new Set<IpcSocket>();
 
 const pendingRequests = new Map<number, { resolve: (value: unknown) => void, reject: (reason?: unknown) => void }>();
 
-let globalSessionServer: { port: number, token: string } | undefined;
+// Per-socket read buffers for NDJSON framing
+const readBuffers = new Map<IpcSocket, string>();
+
+let globalSessionServer: net.Server | undefined;
 
 function isPidRunning(pid: number): boolean {
     try {
@@ -154,104 +148,110 @@ async function pruneSessionFiles() {
     }
 }
 
-export async function writeSessionFile(pid: string, port: number, token: string) {
+export async function writeSessionFile(pid: string, pipePath: string) {
     const homeDir = os.homedir();
     const sessionsDir = path.join(homeDir, '.vscode-R', 'sessions');
     await fs.ensureDir(sessionsDir);
     const filePath = path.join(sessionsDir, `${pid}.json`);
-    await fs.writeJson(filePath, { port, token });
+    await fs.writeJson(filePath, { pipe: pipePath });
 }
 
-async function updateActiveTerminalFiles(port: number, token: string) {
+async function updateActiveTerminalFiles(pipePath: string) {
     const terminals = vscode.window.terminals;
     for (const term of terminals) {
         if (term.name === 'R Interactive') {
             const pid = await term.processId;
             if (pid) {
-                await writeSessionFile(pid.toString(), port, token);
+                await writeSessionFile(pid.toString(), pipePath);
             }
         }
     }
 }
 
-export async function getGlobalSessionServer(): Promise<{ port: number, token: string }> {
-    if (globalSessionServer) {
-        return globalSessionServer;
+function makePipePath(): string {
+    const suffix = crypto.randomBytes(8).toString('hex');
+    if (process.platform === 'win32') {
+        return `\\\\.\\pipe\\vscode-r-${suffix}`;
+    } else {
+        return path.join(os.tmpdir(), `vscode-r-${suffix}.sock`);
+    }
+}
+
+export async function getGlobalPipePath(): Promise<string> {
+    if (globalPipePath) {
+        return globalPipePath;
     }
 
     return new Promise((resolve, reject) => {
-        const token = crypto.randomBytes(16).toString('hex');
-        const wss = new WebSocket.Server({ port: 0, host: '127.0.0.1' });
+        const pipePath = makePipePath();
+        const server = net.createServer((rawSocket) => {
+            const socket = rawSocket as IpcSocket;
+            console.info('[SessionServer] Client connected via IPC pipe');
+            activeConnections.add(socket);
+            pipeClient = socket;
+            readBuffers.set(socket, '');
 
-        wss.on('listening', () => {
-            const address = wss.address();
-            if (typeof address === 'object' && address !== null) {
-                globalSessionServer = { port: address.port, token };
-                console.info(`[SessionServer] Listening on ws://127.0.0.1:${address.port}?token=${token}`);
-                
-                // Initialize the old global server object for compatibility
-                server = { host: '127.0.0.1', port: address.port, token };
-                resolve(globalSessionServer);
-            } else {
-                reject(new Error('Failed to get WebSocket server address'));
-            }
-        });
+            socket.on('data', (data: Buffer) => {
+                const incoming = data.toString('utf8');
+                const buf = (readBuffers.get(socket) ?? '') + incoming;
+                const lines = buf.split('\n');
+                // Last element is a potentially incomplete line — keep in buffer
+                readBuffers.set(socket, lines[lines.length - 1]);
 
-        wss.on('connection', (ws: ExtWebSocket, req) => {
-            const url = new URL(req.url || '', `http://${req.headers.host || '127.0.0.1'}`);
-            const clientToken = url.searchParams.get('token');
-
-            if (clientToken !== token) {
-                console.warn('[SessionServer] Connection rejected: invalid token');
-                ws.close();
-                return;
-            }
-
-            console.info('[SessionServer] Client connected');
-            activeConnections.add(ws);
-            wsClient = ws;
-
-            ws.on('message', (data: WebSocket.Data) => {
-                void (async () => {
-                    try {
-                        const message = JSON.parse(data.toString()) as Record<string, unknown>;
-                        if (message.id !== undefined && !message.method) {
-                            // Response to a client request
-                            const id = Number(message.id);
-                            const pending = pendingRequests.get(id);
-                            if (pending) {
-                                pendingRequests.delete(id);
-                                if (message.error) {
-                                    pending.reject(message.error);
-                                } else {
-                                    pending.resolve(message.result);
+                for (let i = 0; i < lines.length - 1; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+                    void (async () => {
+                        try {
+                            const message = JSON.parse(line) as Record<string, unknown>;
+                            if (message.id !== undefined && !message.method) {
+                                // Response to a request we sent
+                                const id = Number(message.id);
+                                const pending = pendingRequests.get(id);
+                                if (pending) {
+                                    pendingRequests.delete(id);
+                                    if (message.error) {
+                                        pending.reject(message.error);
+                                    } else {
+                                        pending.resolve(message.result);
+                                    }
                                 }
+                            } else if (!message.id) {
+                                await handleNotification(message, socket);
+                            } else {
+                                await handleRequest(message, socket);
                             }
-                        } else if (!message.id) {
-                            // Notification from server
-                            await handleNotification(message, ws);
-                        } else {
-                            // Request from server
-                            await handleRequest(message, ws);
+                        } catch (e) {
+                            console.error('[SessionServer] Error handling message', e);
                         }
-                    } catch (e) {
-                        console.error('[SessionServer] Error handling message', e);
-                    }
-                })();
-            });
-
-            ws.on('close', () => {
-                console.info('[SessionServer] Client disconnected');
-                activeConnections.delete(ws);
-                if (wsClient === ws) {
-                    wsClient = undefined;
+                    })();
                 }
             });
+
+            socket.on('close', () => {
+                console.info('[SessionServer] Client disconnected');
+                readBuffers.delete(socket);
+                activeConnections.delete(socket);
+                if (pipeClient === socket) {
+                    pipeClient = undefined;
+                }
+            });
+
+            socket.on('error', (err) => {
+                console.error('[SessionServer] Socket error', err);
+            });
         });
 
-        wss.on('error', (err) => {
+        server.on('error', (err) => {
             console.error('[SessionServer] Server error', err);
             reject(err);
+        });
+
+        server.listen(pipePath, () => {
+            globalPipePath = pipePath;
+            globalSessionServer = server;
+            console.info(`[SessionServer] Listening on ${pipePath}`);
+            resolve(pipePath);
         });
     });
 }
@@ -325,14 +325,14 @@ function writeSettings() {
 }
 
 async function updatePlot() {
-    if (!server) {return;}
+    if (!globalPipePath) {return;}
     await globalPlotManager?.showStandardPlot();
 }
 
 export async function updateWorkspace() {
-    if (!server) {return;}
+    if (!globalPipePath) {return;}
     try {
-        const response = await sessionRequest(server, { method: 'workspace' });
+        const response = await sessionRequest({ method: 'workspace' });
         if (response) {
             workspaceData = response as WorkspaceData;
             if (activeSession) {
@@ -693,14 +693,14 @@ import * as rstudioapi from './rstudioapi';
 
 export async function activateSession(session: Session): Promise<void> {
     activeSession = session;
-    wsClient = session.ws as ExtWebSocket;
-    server = session.server;
+    pipeClient = session.socket;
+    globalPipePath = session.pipePath;
     pid = session.pid;
     rVer = session.rVer;
     info = session.info;
     sessionDir = session.sessionDir;
     workingDir = session.workingDir;
-    
+
     if (sessionStatusBarItem) {
         sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
         sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
@@ -727,7 +727,13 @@ export async function switchSessionByTerminal(terminal: vscode.Terminal | undefi
     }
 }
 
-async function handleNotification(message: Record<string, unknown>, ws: ExtWebSocket) {
+function sendToSocket(socket: IpcSocket, data: Record<string, unknown>): void {
+    if (!socket.destroyed) {
+        socket.write(JSON.stringify(data) + '\n');
+    }
+}
+
+async function handleNotification(message: Record<string, unknown>, socket: IpcSocket) {
     const method = String(message.method);
     const params = (message.params as Record<string, unknown>) || {};
 
@@ -735,13 +741,12 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
         case 'attach': {
             if (!params.tempdir || !params.wd) {return;}
             const rPid = String(params.pid);
-            const terminalPid = ws._terminalPid ? String(ws._terminalPid) : rPid;
-            
+            const terminalPid = socket._terminalPid ? String(socket._terminalPid) : rPid;
+
             let session = sessions.get(terminalPid);
             if (!session) {
-                session = new Session({ host: '127.0.0.1', port: ws._port || 0, token: ws._token || '' }, ws);
+                session = new Session(socket._pipePath ?? globalPipePath ?? '', socket);
                 sessions.set(terminalPid, session);
-                // Also map R PID if it's different
                 if (rPid !== terminalPid) {
                     sessions.set(rPid, session);
                 }
@@ -752,7 +757,6 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
             session.sessionDir = String(params.tempdir);
             session.workingDir = String(params.wd);
 
-            // Switch active session
             await activateSession(session);
 
             console.info(`[startSessionWatcher] attach R PID: ${rPid}, terminal PID: ${terminalPid}`);
@@ -760,17 +764,11 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
             if (params.plot_url) {
                 await globalPlotManager?.showHttpgdPlot(String(params.plot_url));
             }
-            void updateWorkspace(); // Initial workspace fetch
+            void updateWorkspace();
             void watchProcess(rPid).then((v: string) => { void cleanupSession(v); });
             break;
         }
 
-        // case 'detach': {
-        //     if (params.pid) {
-        //         await cleanupSession(String(params.pid));
-        //     }
-        //     break;
-        // }
         case 'workspace_updated': {
             void updateWorkspace();
             break;
@@ -844,13 +842,13 @@ async function handleNotification(message: Record<string, unknown>, ws: ExtWebSo
     }
 }
 
-async function handleRequest(message: Record<string, unknown>, ws: ExtWebSocket) {
+async function handleRequest(message: Record<string, unknown>, socket: IpcSocket) {
     if (message.method) {
         const method = String(message.method);
         const params = (message.params as Record<string, unknown>) || {};
         let result: unknown = null;
         let error: unknown = null;
-        
+
         try {
             switch (method) {
                 case 'rstudioapi/active_editor_context':
@@ -910,22 +908,19 @@ async function handleRequest(message: Record<string, unknown>, ws: ExtWebSocket)
         } catch (e) {
             error = { code: -32603, message: String(e) };
         }
-        
-        if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({
-                jsonrpc: '2.0',
-                id: message.id,
-                result: result,
-                error: error
-            }));
-        }
+
+        sendToSocket(socket, {
+            jsonrpc: '2.0',
+            id: message.id,
+            result: result,
+            error: error
+        });
     }
 }
 
 export async function cleanupSession(pidArg: string): Promise<void> {
     const session = sessions.get(pidArg);
     if (session) {
-        // Find all keys in sessions that point to this session and remove them
         const keysToRemove: string[] = [];
         for (const [k, v] of sessions.entries()) {
             if (v === session) {
@@ -933,12 +928,11 @@ export async function cleanupSession(pidArg: string): Promise<void> {
             }
         }
         keysToRemove.forEach(k => sessions.delete(k));
-        // Terminate the WebSocket
-        session.ws.terminate();
+        session.socket.destroy();
     }
     if (activeSession === session || pid === pidArg) {
         resetStatusBar();
-        server = undefined;
+        globalPipePath = undefined;
         activeSession = undefined;
         workspaceData.globalenv = {};
         workspaceData.loaded_namespaces = [];
@@ -972,12 +966,12 @@ async function watchProcess(pid: string): Promise<string> {
     return pid;
 }
 
-export async function sessionRequest(server: SessionServer, data: Record<string, unknown>): Promise<unknown> {
+export async function sessionRequest(data: Record<string, unknown>): Promise<unknown> {
     try {
-        if (!wsClient || wsClient.readyState !== WebSocket.OPEN) {
-            throw new Error('WebSocket is not connected');
+        if (!pipeClient || pipeClient.destroyed) {
+            throw new Error('IPC socket is not connected');
         }
-        
+
         return await new Promise((resolve, reject) => {
             const id = data.id !== undefined ? Number(data.id) : Math.floor(Math.random() * 1000000);
             const payload = data.jsonrpc ? data : {
@@ -985,17 +979,16 @@ export async function sessionRequest(server: SessionServer, data: Record<string,
                 id,
                 ...data
             };
-            
+
             pendingRequests.set(id, { resolve, reject });
-            
+
             try {
-                wsClient?.send(JSON.stringify(payload));
+                pipeClient?.write(JSON.stringify(payload) + '\n');
             } catch (e) {
                 pendingRequests.delete(id);
                 reject(e);
             }
-            
-            // Timeout after 5 seconds
+
             setTimeout(() => {
                 if (pendingRequests.has(id)) {
                     pendingRequests.delete(id);
@@ -1015,8 +1008,14 @@ export async function sessionRequest(server: SessionServer, data: Record<string,
 }
 
 export async function connectToSession(): Promise<void> {
-    const { port, token } = await getGlobalSessionServer();
-    const command = `sess::connect(port=${port}, token="${token}")`;
+    const pipePath = await getGlobalPipePath();
+    const command = `sess::connect(pipe_path="${pipePath.replace(/\\/g, '\\\\')}")`;
     void vscode.env.clipboard.writeText(command);
     void vscode.window.showInformationMessage(`R command copied to clipboard: ${command}`);
+}
+
+// Kept for backward compatibility - callers in rTerminal.ts use this
+export async function getGlobalSessionServer(): Promise<{ port: number, token: string }> {
+    await getGlobalPipePath();
+    return { port: 0, token: '' };
 }

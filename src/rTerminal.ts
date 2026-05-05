@@ -179,7 +179,7 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
-import { getGlobalSessionServer, writeSessionFile } from './session';
+import { getGlobalPipePath, writeSessionFile } from './session';
 
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     const workspaceFolderPath = getCurrentWorkspaceFolder()?.uri.fsPath;
@@ -193,12 +193,11 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     };
     const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'profile.R'));
     if (config().get<boolean>('sessionWatcher')) {
-        const { port, token } = await getGlobalSessionServer();
+        const pipePath = await getGlobalPipePath();
         termOptions.env = {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
-            SESS_PORT: port.toString(),
-            SESS_TOKEN: token,
+            SESS_PIPE: pipePath,
             SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
             SESS_USE_HTTPGD: config().get<boolean>('plot.useHttpgd') ? 'TRUE' : 'FALSE'
         };
@@ -220,10 +219,10 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     rTerm = vscode.window.createTerminal(termOptions);
     rTerm.show(preserveshow);
     
-    void rTerm.processId.then(async (pid) => {
+    void rTerm.processId.then(async (pid: number | undefined) => {
         if (pid) {
-            const { port, token } = await getGlobalSessionServer();
-            await writeSessionFile(pid.toString(), port, token);
+            const pipePath = await getGlobalPipePath();
+            await writeSessionFile(pid.toString(), pipePath);
         }
     });
     
