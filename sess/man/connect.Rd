@@ -2,21 +2,19 @@
 % Please edit documentation in R/server.R
 \name{connect}
 \alias{connect}
-\title{Start the client R IPC connection}
+\title{Connect to the VS Code IPC server}
 \usage{
-connect(port = NULL, token = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE)
+connect(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE)
 }
 \arguments{
-\item{port}{Integer. The port of the VS Code WebSocket server.
-If NULL, it will use SESS_PORT env var.}
+\item{pipe_path}{Character. Path to the named pipe / Unix domain socket.
+If NULL, uses the SESS_PIPE environment variable, then falls back to the
+session JSON file written by the extension.}
 
-\item{token}{String. The authentication token. If NULL, it will use SESS_TOKEN env var.}
+\item{use_rstudioapi}{Logical. Enable rstudioapi emulation. Defaults to TRUE.}
 
-\item{use_rstudioapi}{Logical. Should the rstudioapi emulation layer
-be enabled? Defaults to TRUE.}
-
-\item{use_httpgd}{Logical. Should httpgd be used for plotting if available? Defaults to TRUE}
+\item{use_httpgd}{Logical. Use httpgd for plotting if available. Defaults to TRUE.}
 }
 \description{
-Start the client R IPC connection
+Connect to the VS Code IPC server
 }

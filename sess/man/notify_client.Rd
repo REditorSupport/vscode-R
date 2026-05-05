@@ -2,7 +2,7 @@
 % Please edit documentation in R/dispatch.R
 \name{notify_client}
 \alias{notify_client}
-\title{Notify the client via WebSocket (JSON-RPC 2.0 Notification)}
+\title{Notify the client via IPC pipe (JSON-RPC 2.0 Notification)}
 \usage{
 notify_client(method, params = list())
 }
@@ -12,5 +12,5 @@ notify_client(method, params = list())
 \item{params}{A list containing the arguments for the command}
 }
 \description{
-Pushes an event instantly to the client extension via the active WebSocket connection.
+Pushes an event instantly to the client extension via the active IPC pipe connection.
 }
