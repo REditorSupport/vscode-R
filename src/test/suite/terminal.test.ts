@@ -49,8 +49,7 @@ suite('R Terminal', () => {
 
         assert.strictEqual(options.name, 'R Interactive');
         assert.ok(options.env);
-        assert.ok(options.env['SESS_PORT']);
-        assert.ok(options.env['SESS_TOKEN']);
+        assert.ok(options.env['SESS_PIPE']);
         assert.strictEqual(options.env['SESS_RSTUDIOAPI'], 'TRUE');
         assert.strictEqual(options.env['SESS_USE_HTTPGD'], 'TRUE');
         assert.ok(options.env['R_PROFILE_USER']);
@@ -72,7 +71,7 @@ suite('R Terminal', () => {
 
         const options = await rTerminal.makeTerminalOptions();
 
-        assert.ok(options.env === undefined || options.env['SESS_PORT'] === undefined);
+        assert.ok(options.env === undefined || options.env['SESS_PIPE'] === undefined);
     });
 
     test('createRTerm and restartRTerminal integration test', async () => {
