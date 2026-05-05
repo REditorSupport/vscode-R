@@ -1,188 +1,110 @@
-# `sess`: Modern R IPC Server Protocol
+# `sess`: Modern R IPC Protocol
 
-The `sess` package provides a high-performance, token-authenticated IPC (Inter-Process Communication) mechanism between R and a client (such as an IDE or editor extension). It uses a pure **WebSocket** architecture to replace legacy file-based watchers.
+The `sess` package provides a lightweight IPC layer between an R session and a client (such as the VS Code R extension). It uses JSON-RPC 2.0 messages over:
+
+- Unix domain sockets (macOS/Linux)
+- Windows named pipes
 
 ## 1. Connection Handshake
 
-### Starting the Server
-
-The server can be started by calling `sess::sess_app()`:
+Start the client connection from R:
 
 ```r
-sess::sess_app(
-  port = NULL,           # Integer: Server port (random if NULL)
-  token = NULL,          # String: Authentication token (random if NULL)
-  use_rstudioapi = TRUE, # Logical: Enable RStudio API emulation
-  use_httpgd = TRUE      # Logical: Use httpgd for plotting if available
+sess::connect(
+  pipe_path = NULL,      # Character: pipe/socket path. NULL -> SESS_PIPE or session file fallback
+  use_rstudioapi = TRUE, # Logical: enable rstudioapi emulation
+  use_httpgd = TRUE      # Logical: use httpgd for plotting if available
 )
 ```
 
-It prints a connection string to the R console:
+If `pipe_path` is omitted, `connect()` resolves it in this order:
 
-```text
-[sess] Server address: ws://127.0.0.1:PORT?token=TOKEN
-```
+1. `SESS_PIPE` environment variable
+2. `~/.vscode-R/sessions/{PID}.json` (`pipe` field)
 
-## 2. Communication Channels
+After connecting, `sess` sends an `attach` notification with R version, process id, and session metadata.
 
-`sess` uses a pure WebSocket architecture following the **JSON-RPC 2.0** specification for all structured data exchange. The WebSocket connection serves three main purposes: pushing instantaneous events from R to the client via notifications, allowing R to synchronously call client-side methods, and allowing the client to query R state via asynchronous requests.
+## 2. Message Transport
 
-### 1. Client Notifications (`notify_client`)
+Transport is NDJSON (newline-delimited JSON). Each line is one JSON-RPC message.
 
-The WebSocket is used for instantaneous events pushed from R to the client as **JSON-RPC Notifications** (no `id`).
+- R writes JSON-RPC payloads with a trailing `\n`
+- R polls the pipe periodically and dispatches complete lines
 
-**Notification Format:**
+The protocol semantics remain JSON-RPC 2.0.
 
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "method_name",
-  "params": { ... }
-}
-```
+### Notifications (`notify_client`)
 
-The following methods are sent as notifications from R to the client:
+R sends JSON-RPC notifications (without `id`) for one-way events such as:
 
-- **`attach`**: Sent immediately upon connection. Includes PID, R version, and session metadata.
-- **`detach`**: Sent when the R session is shutting down (params: `pid`).
-- **`dataview`**: Triggered by `View()`. Params include a temporary JSON file path containing the data.
-- **`plot_updated`**: Notifies that a new static plot is available. The client should request the `plot_latest` method.
-- **`httpgd`**: Provides a URL for an `httpgd` live plot server (params: `url`).
-- **`help`**: Requests the client to display an R help page (params: `requestPath`).
-- **`browser`**: Requests the client to open a URL (params: `url`, `title`, `viewer`).
-- **`webview`**: Requests the client to open a local HTML file or URL in a webview (params: `file`, `title`, `viewer`).
-- **`restart_r`**: Requests the client to restart the R session (params: `command`, `clean`).
-- **`send_to_console`**: Sends code to the console for execution without blocking the R session (params: `code`, `execute`, `focus`, `animate`).
+- `attach`
+- `dataview`
+- `plot_updated`
+- `httpgd`
+- `help`
+- `browser`
+- `webview`
+- `restart_r`
+- `send_to_console`
 
-### 2. Synchronous Client Requests (`request_client`)
+### Requests (`request_client`)
 
-The `request_client()` function allows R to call client-side functions synchronously by sending a **JSON-RPC Request** (with an `id`) over the WebSocket. This is primarily used to emulate the RStudio API.
+R can synchronously call client methods (JSON-RPC request with `id`) via `request_client()`.
+This is used for RStudio API emulation methods, such as:
 
-**Coordinate Handling**: The `sess` protocol uses **1-indexed** coordinates for all rows (lines) and columns (characters) on the wire. This aligns with R's internal representation. The client (e.g., VS Code extension) is responsible for converting these to its internal 0-indexed representation if necessary.
+- `rstudioapi/active_editor_context`
+- `rstudioapi/replace_text_in_current_selection`
+- `rstudioapi/insert_or_modify_text`
+- `rstudioapi/show_dialog`
+- `rstudioapi/navigate_to_file`
+- `rstudioapi/set_selection_ranges`
+- `rstudioapi/document_save`
+- `rstudioapi/get_project_path`
+- `rstudioapi/document_context`
+- `rstudioapi/document_save_all`
+- `rstudioapi/document_new`
+- `rstudioapi/document_close`
 
-**Serialization Format**:
+### Client Pull Requests
 
-- **Position**: A numeric array `[row, column]`.
-- **Range**: An object `{ "start": [row, column], "end": [row, column] }`.
+The client can request state from R with JSON-RPC requests:
 
-Below are the JSON-RPC methods sent from R to the client to emulate RStudio API functionality:
-
-- **`rstudioapi/active_editor_context`**: Requests the current context of the active editor.
-- **`rstudioapi/replace_text_in_current_selection`**: Replaces text in the current selection (params: `text`, `id`).
-- **`rstudioapi/insert_or_modify_text`**: Inserts or modifies text at specific locations (params: `query`, `id`).
-- **`rstudioapi/show_dialog`**: Displays a message dialog to the user (params: `message`).
-- **`rstudioapi/navigate_to_file`**: Opens and navigates to a specific file, line, and column (params: `file`, `line`, `column`).
-- **`rstudioapi/set_selection_ranges`**: Sets the cursor or selection ranges in the editor (params: `ranges`, `id`).
-- **`rstudioapi/document_save`**: Saves the specified document (params: `id`).
-- **`rstudioapi/get_project_path`**: Retrieves the current project path.
-- **`rstudioapi/document_context`**: Retrieves the context of a specific document (params: `id`).
-- **`rstudioapi/document_save_all`**: Saves all open documents.
-- **`rstudioapi/document_new`**: Creates a new document with specified text and type (params: `text`, `type`, `position`).
-- **`rstudioapi/document_close`**: Closes the specified document (params: `id`, `save`).
-
-### 3. Server Requests (Pull API)
-
-The Pull API allows the client to query state using **JSON-RPC Requests** sent over the active WebSocket.
-
-#### JSON-RPC Request Format
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "method_name",
-  "params": { ... }
-}
-```
-
-#### Available Methods
-
-**`workspace`**
-Returns object metadata from the Global Environment.
-
-- **Request Params**: None.
-- **Response Result**:
-
-  ```json
-  {
-    "globalenv": {
-      "my_df": { "class": "data.frame", "type": "list", "length": 5, "str": "data.frame: 32 obs. of 11 variables:" }
-    },
-    "search": ["package:stats", "package:graphics"],
-    "loaded_namespaces": ["sess", "httpuv"]
-  }
-  ```
-
-**`plot_latest`**
-Returns the most recent static plot captured by the R session.
-
-- **Request Params**: None.
-- **Response Result**: `{"data": "iVBORw0KGgoAAAANSUhEUgA..."}` (base64 encoded PNG string). Returns `{"data": null}` if no plot exists.
-
-**`hover`**
-
-- **Request Params**: `{"expr": "head(mtcars)"}`
-- **Response Result**: `{"str": " 'data.frame': 6 obs. of 11 variables: ..."}`
-
-**`completion`**
-
-- **Request Params**: `{"expr": "mtcars", "trigger": "$"}`
-- **Response Result**:
-
-  ```json
-  [
-    { "name": "mpg", "type": "double", "str": "numeric" },
-    { "name": "cyl", "type": "double", "str": "numeric" }
-  ]
-  ```
-
----
+- `workspace`
+- `plot_latest`
+- `hover`
+- `completion`
 
 ## 3. Hook Registration & Options
 
-By default, the package does not inject hooks into the R session on load. Calling `sess::sess_app()` will start the server and automatically call `sess::register_hooks()` to enable features like automatic `View()` interception or plot redirection.
+`connect()` initializes runtime hooks via `register_hooks()`.
 
-### Intercepted Functions
+Intercepted features include:
 
-- **`utils::View()`**: Redirects data to the client's data viewer. Supports `data.frame`, `matrix`, `list`, and `ArrowTabular` objects.
-- **`browser()`**, **`viewer()`**, **`page_viewer()`**: Redirects URLs and HTML files to the client's browser or webview.
-- **Help System**: Intercepts help topic printing to route HTML help to the client.
+- `utils::View()`
+- `browser()`, `viewer()`, `page_viewer()`
+- help topic rendering hooks
 
-### Global Options
+Relevant options include:
 
-- **`sess.row_limit`**: Limits the number of rows sent to the data viewer (default: 100). Set to 0 for no limit.
-- **`sess.dataview`**: Target viewer column for data (default: `"Two"`).
-- **`sess.browser`**: Target viewer for browser (default: `"Active"`).
-- **`sess.webview`**: Target viewer for webview (default: `"Two"`).
-- **`sess.helpPanel`**: Target viewer for help (default: `"Two"`).
+- `sess.row_limit`
+- `sess.dataview`
+- `sess.browser`
+- `sess.webview`
+- `sess.helpPanel`
 
-## 4. Comparison with Legacy IPC
+## 4. Connection Discovery
 
-The `sess` package replaces the legacy file-based IPC mechanism with a modern, in-memory WebSocket architecture using **JSON-RPC 2.0**.
+To support VS Code reloads and attach workflows, the extension writes:
 
-| Feature | Legacy IPC (File-based) | Modern IPC (`sess`) |
-| :--- | :--- | :--- |
-| **Command Dispatch** | `request.log` + `request.lock` | **WS Notification** (JSON-RPC) |
-| **Workspace State** | `workspace.json` + `workspace.lock` | **WS Request `workspace`** (On-demand) |
-| **Static Plots** | `plot.png` + `plot.lock` | **WS Notification** + **WS Request `plot_latest`** |
-| **RStudio API (Sync)**| `request.log` + `response.lock` | **WS Request** (JSON-RPC) |
-| **Client Queries** | Internal HTTP Server (`httpuv`) | **WS Request** (JSON-RPC 2.0) |
-| **Transport Reliability**| OS-level File System Watchers | **WebSocket** |
-| **Protocol Standard** | Ad-hoc JSON formats | **JSON-RPC 2.0** |
+- `~/.vscode-R/sessions/{PID}.json`
 
-### Architectural Shifts
+`sess::connect()` reads this file as a fallback when direct connection parameters are not provided.
 
-1. **Elimination of File Watchers**: Replaces unreliable OS-level file system watchers with persistent WebSocket connections for instantaneous event pushing.
-2. **On-Demand Evaluation**: Evaluations of the Global Environment are now performed only when requested by the client, reducing R's background workload.
-3. **Unified Standard**: Unifies all structured communication under the **JSON-RPC 2.0** standard across a single WebSocket connection.
+## 5. Legacy IPC Comparison
 
-### Connection Discovery & Reconnection
+Compared with legacy file-watcher IPC, `sess` provides:
 
-While `sess` primarily uses WebSockets for low-latency communication, it uses a file-based
-discovery mechanism to handle VS Code window reloads and support manual connections:
-
-1. **Initial Connection**: VS Code passes `SESS_PORT` and `SESS_TOKEN` environment variables when launching R. R connects directly.
-2. **Discovery File**: VS Code writes the current connection info to `~/.vscode-R/sessions/{PID}.json`.
-3. **Reconnection**: If disconnected (e.g., after a window reload), R retries connecting by
-   reading the file to find the new port and token. Automatic reconnection is skipped
-   for manual connections (where port/token were passed as arguments).
+- JSON-RPC 2.0 for structured messaging
+- socket/pipe transport instead of lock-file command channels
+- on-demand workspace queries
+- lower background churn and fewer file watch races

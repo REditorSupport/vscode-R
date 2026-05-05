@@ -2,7 +2,7 @@
 % Please edit documentation in R/dispatch.R
 \name{rpc_send}
 \alias{rpc_send}
-\title{Send a message to the client via WebSocket (JSON-RPC 2.0)}
+\title{Send a message to the client via IPC pipe (JSON-RPC 2.0)}
 \usage{
 rpc_send(method, params = list(), request = FALSE)
 }
