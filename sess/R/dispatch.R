@@ -7,7 +7,14 @@ ipc_write <- function(data) {
   line <- paste0(jsonlite::toJSON(data, auto_unbox = TRUE, null = "null", force = TRUE), "\n")
   tryCatch(
     {
-      processx::conn_write(con, line)
+      remainder <- processx::conn_write(con, line)
+
+      # processx::conn_write() may perform a partial write and return
+      # remaining bytes; keep writing until all data is flushed.
+      while (is.raw(remainder) && length(remainder) > 0) {
+        remainder <- processx::conn_write(con, remainder)
+      }
+
       invisible(TRUE)
     },
     error = function(e) {
