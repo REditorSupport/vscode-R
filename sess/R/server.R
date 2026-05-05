@@ -41,6 +41,14 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE) 
     return(invisible(NULL))
   }
 
+  # processx uses the \\?\pipe\ namespace on Windows.
+  # Normalize \\.\pipe\* paths from Node.js to improve compatibility.
+  if (.Platform$OS.type == "windows") {
+    if (startsWith(pipe_path, "\\\\.\\pipe\\")) {
+      pipe_path <- sub("^\\\\\\\\\\.\\\\pipe\\\\", "\\\\\\\\?\\\\pipe\\\\", pipe_path)
+    }
+  }
+
   print_async_msg <- function(msg) {
     prompt <- if (interactive()) getOption("prompt") else ""
     cat(sprintf("\r%s\n\n%s", msg, prompt))
