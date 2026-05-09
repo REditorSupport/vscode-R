@@ -201,7 +201,9 @@ export async function getGlobalPipePath(): Promise<string> {
 
                 for (let i = 0; i < lines.length - 1; i++) {
                     const line = lines[i].trim();
-                    if (!line) continue;
+                    if (!line) {
+                        continue;
+                    }
                     void (async () => {
                         try {
                             const message = JSON.parse(line) as Record<string, unknown>;
@@ -269,30 +271,22 @@ function getAttachSessionScriptPath(pipePath: string): string {
     return path.join(tmpDir(), `${scriptBase}.R`);
 }
 
-function buildAttachSessionScript(pipePath: string, sessPath: string): string {
+function buildAttachSessionScript(pipePath: string, sessPath: string, installSessScriptPath: string): string {
     return [
         'local({',
         `  pipe_path <- ${asRStringLiteral(pipePath)}`,
         `  sess_src <- ${asRStringLiteral(sessPath)}`,
+        `  install_sess_script <- ${asRStringLiteral(installSessScriptPath)}`,
         '  bundled_version <- tryCatch(read.dcf(file.path(sess_src, "DESCRIPTION"))[1, "Version"], error = function(e) NA_character_)',
         '  installed_version <- suppressWarnings(tryCatch(as.character(utils::packageVersion("sess")), error = function(e) NA_character_))',
         '  needs_install <- is.na(installed_version) || (!is.na(bundled_version) && utils::compareVersion(installed_version, bundled_version) < 0)',
         '  if (needs_install) {',
-        '    lib_candidates <- unique(c(.libPaths(), Sys.getenv("R_LIBS_USER", unset = "")))',
-        '    lib_candidates <- lib_candidates[nzchar(lib_candidates)]',
-        '    writable <- lib_candidates[vapply(lib_candidates, function(lib) {',
-        '      if (!dir.exists(lib)) {',
-        '        dir.create(lib, recursive = TRUE, showWarnings = FALSE)',
-        '      }',
-        '      file.access(lib, 2) == 0',
-        '    }, logical(1))]',
-        '    if (length(writable) < 1) {',
-        '      message("[vscode-R] Could not find a writable library path for this terminal.")',
-        '      message("[vscode-R] Install the bundled sess package manually:")',
-        '      message(sprintf("install.packages(%s, repos = NULL, type = \\"source\\")", shQuote(sess_src)))',
-        '      stop("No writable R library path available for installing sess")',
+        '    if (!file.exists(install_sess_script)) {',
+        '      stop(sprintf("install_sess.R not found: %s", install_sess_script))',
         '    }',
-        '    install.packages(sess_src, repos = NULL, type = "source", lib = writable[[1]])',
+        '    Sys.setenv(VSCODE_R_SESS_PKG_PATH = sess_src)',
+        '    on.exit(Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO")), add = TRUE)',
+        '    source(install_sess_script, local = TRUE)',
         '  }',
         '  sess::connect(pipe_path = pipe_path)',
         '})',
@@ -303,8 +297,9 @@ function buildAttachSessionScript(pipePath: string, sessPath: string): string {
 export async function getAttachSessionCommand(): Promise<string> {
     const pipePath = await getGlobalPipePath();
     const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
+    const installSessScriptPath = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
     const scriptPath = getAttachSessionScriptPath(pipePath);
-    await fs.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath), { encoding: 'utf-8' });
+    await fs.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, installSessScriptPath), { encoding: 'utf-8' });
     attachSessionScriptPath = scriptPath;
 
     return `source(${asRStringLiteral(scriptPath)})`;
