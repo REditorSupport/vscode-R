@@ -250,3 +250,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     return rExtension;
 }
+
+export async function deactivate(): Promise<void> {
+    await session.shutdownSessionWatcher();
+}

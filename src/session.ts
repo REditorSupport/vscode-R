@@ -13,7 +13,7 @@ import { config, readContent, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
-import { homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem } from './extension';
+import { extensionContext, homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, tmpDir } from './extension';
 
 import { showWebView } from './webViewer';
 
@@ -114,6 +114,7 @@ const pendingRequests = new Map<number, { resolve: (value: unknown) => void, rej
 const readBuffers = new Map<IpcSocket, string>();
 
 let globalSessionServer: net.Server | undefined;
+let attachSessionScriptPath: string | undefined;
 
 function isPidRunning(pid: number): boolean {
     try {
@@ -200,7 +201,9 @@ export async function getGlobalPipePath(): Promise<string> {
 
                 for (let i = 0; i < lines.length - 1; i++) {
                     const line = lines[i].trim();
-                    if (!line) continue;
+                    if (!line) {
+                        continue;
+                    }
                     void (async () => {
                         try {
                             const message = JSON.parse(line) as Record<string, unknown>;
@@ -256,6 +259,96 @@ export async function getGlobalPipePath(): Promise<string> {
     });
 }
 
+function asRStringLiteral(value: string): string {
+    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function getAttachSessionScriptPath(pipePath: string): string {
+    if (pipePath.endsWith('.sock')) {
+        return pipePath.replace(/\.sock$/, '.R');
+    }
+    const scriptBase = path.basename(pipePath).replace(/[^a-zA-Z0-9_.-]/g, '_') || 'attach_session';
+    return path.join(tmpDir(), `${scriptBase}.R`);
+}
+
+function buildAttachSessionScript(pipePath: string, sessPath: string, installSessScriptPath: string): string {
+    return [
+        'local({',
+        `  pipe_path <- ${asRStringLiteral(pipePath)}`,
+        `  sess_src <- ${asRStringLiteral(sessPath)}`,
+        `  install_sess_script <- ${asRStringLiteral(installSessScriptPath)}`,
+        '  bundled_version <- tryCatch(read.dcf(file.path(sess_src, "DESCRIPTION"))[1, "Version"], error = function(e) NA_character_)',
+        '  installed_version <- suppressWarnings(tryCatch(as.character(utils::packageVersion("sess")), error = function(e) NA_character_))',
+        '  needs_install <- is.na(installed_version) || (!is.na(bundled_version) && utils::compareVersion(installed_version, bundled_version) < 0)',
+        '  if (needs_install) {',
+        '    if (!file.exists(install_sess_script)) {',
+        '      stop(sprintf("install_sess.R not found: %s", install_sess_script))',
+        '    }',
+        '    Sys.setenv(VSCODE_R_SESS_PKG_PATH = sess_src)',
+        '    on.exit(Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO")), add = TRUE)',
+        '    source(install_sess_script, local = TRUE)',
+        '  }',
+        '  sess::connect(pipe_path = pipe_path)',
+        '})',
+        '',
+    ].join('\n');
+}
+
+export async function getAttachSessionCommand(): Promise<string> {
+    const pipePath = await getGlobalPipePath();
+    const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
+    const installSessScriptPath = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
+    const scriptPath = getAttachSessionScriptPath(pipePath);
+    await fs.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, installSessScriptPath), { encoding: 'utf-8' });
+    attachSessionScriptPath = scriptPath;
+
+    return `source(${asRStringLiteral(scriptPath)})`;
+}
+
+async function removePathIfExists(pathLike: string): Promise<void> {
+    try {
+        if (await fs.pathExists(pathLike)) {
+            await fs.remove(pathLike);
+        }
+    } catch (e) {
+        console.warn(`[session cleanup] Failed to remove ${pathLike}`, e);
+    }
+}
+
+export async function shutdownSessionWatcher(): Promise<void> {
+    const pipePath = globalPipePath;
+
+    for (const socket of activeConnections) {
+        socket.destroy();
+    }
+    activeConnections.clear();
+    pipeClient = undefined;
+    readBuffers.clear();
+
+    if (globalSessionServer) {
+        await new Promise<void>((resolve) => {
+            try {
+                globalSessionServer?.close(() => resolve());
+            } catch {
+                resolve();
+            }
+        });
+        globalSessionServer = undefined;
+    }
+
+    if (attachSessionScriptPath) {
+        await removePathIfExists(attachSessionScriptPath);
+        attachSessionScriptPath = undefined;
+    }
+
+    if (pipePath && pipePath.endsWith('.sock')) {
+        await removePathIfExists(pipePath);
+        await removePathIfExists(pipePath.replace(/\.sock$/, '.R'));
+    }
+
+    globalPipePath = undefined;
+}
+
 export async function activateRSession(): Promise<void> {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[activateRSession]');
@@ -282,6 +375,30 @@ export async function activateRSession(): Promise<void> {
                     return;
                 }
             }
+        }
+
+        if (config().get<boolean>('alwaysUseActiveTerminal')) {
+            if (terminal) {
+                const command = await getAttachSessionCommand();
+                terminal.sendText(command, true);
+                terminal.show();
+                return;
+            }
+
+            const action = await window.showInformationMessage(
+                'No active terminal is available. You can copy the attach command or create a managed R terminal.',
+                'Copy Attach Command',
+                'Create R Terminal'
+            );
+
+            if (action === 'Copy Attach Command') {
+                await connectToSession();
+                return;
+            }
+            if (action === 'Create R Terminal') {
+                await rTerminal.createRTerm();
+            }
+            return;
         }
 
         console.info('[activateRSession] Creating new R terminal');
@@ -1008,8 +1125,7 @@ export async function sessionRequest(data: Record<string, unknown>): Promise<unk
 }
 
 export async function connectToSession(): Promise<void> {
-    const pipePath = await getGlobalPipePath();
-    const command = `sess::connect(pipe_path="${pipePath.replace(/\\/g, '\\\\')}")`;
+    const command = await getAttachSessionCommand();
     void vscode.env.clipboard.writeText(command);
     void vscode.window.showInformationMessage(`R command copied to clipboard: ${command}`);
 }

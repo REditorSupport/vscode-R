@@ -1,10 +1,24 @@
 local({
     args <- commandArgs(trailingOnly = TRUE)
-    if (length(args) < 2) {
-        stop("Missing arguments: pkg_path and repo")
+    pkg_path <- Sys.getenv("VSCODE_R_SESS_PKG_PATH", unset = "")
+    if (!nzchar(pkg_path) && length(args) >= 1) {
+        pkg_path <- args[1]
     }
-    pkg_path <- args[1]
-    repo <- args[2]
+
+    if (!nzchar(pkg_path)) {
+        stop("Missing pkg_path (set VSCODE_R_SESS_PKG_PATH or pass as first command arg)")
+    }
+
+    repo <- Sys.getenv("VSCODE_R_SESS_REPO", unset = "")
+    if (!nzchar(repo) && length(args) >= 2) {
+        repo <- args[2]
+    }
+    if (!nzchar(repo)) {
+        repo <- getOption("repos")[["CRAN"]]
+    }
+    if (is.na(repo) || identical(repo, "@CRAN@")) {
+        repo <- ""
+    }
 
     if (!file.exists(file.path(pkg_path, "DESCRIPTION"))) {
         stop(paste("DESCRIPTION file not found in", pkg_path))
@@ -23,7 +37,11 @@ local({
 
     if (length(deps) > 0) {
         message("Installing dependencies: ", paste(deps, collapse = ", "))
-        install.packages(deps, repos = repo)
+        if (nzchar(repo)) {
+            install.packages(deps, repos = repo)
+        } else {
+            install.packages(deps)
+        }
     }
 
     message("Installing sess package from: ", pkg_path)
