@@ -116,6 +116,17 @@ interface DataViewRequestMessage {
 
 const dynamicDataViewPanels = new WeakSet<vscode.WebviewPanel>();
 
+function escapeHtml(text: string): string {
+    const map: Record<string, string> = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        '\'': '&#39;',
+    };
+    return text.replace(/[&<>"']/g, c => map[c]);
+}
+
 function formatDataViewPanelTitle(baseTitle: string, totalRows: number): string {
     return `${baseTitle} (rows: ${totalRows.toLocaleString()})`;
 }
@@ -144,7 +155,10 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                 const result = await sessionRequest({
                     method: 'dataview_init',
                     params: { view_id: viewId },
-                }) as DataViewInitResult;
+                }) as DataViewInitResult | undefined;
+                if (!result || typeof result.totalRows !== 'number') {
+                    throw new Error('Invalid dataview_init response: missing or invalid totalRows');
+                }
                 if (Number.isFinite(result.totalRows)) {
                     panel.title = formatDataViewPanelTitle(baseTitle, result.totalRows);
                 }
@@ -162,7 +176,10 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                         sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
                         filterModel: msg.filterModel ?? {},
                     },
-                }) as DataViewPageResult;
+                }) as DataViewPageResult | undefined;
+                if (!result || typeof result.totalRows !== 'number') {
+                    throw new Error('Invalid dataview_page response: missing or invalid totalRows');
+                }
                 if (Number.isFinite(result.totalRows)) {
                     panel.title = formatDataViewPanelTitle(baseTitle, result.totalRows);
                 }
@@ -175,6 +192,8 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                     method: 'dataview_dispose',
                     params: { view_id: viewId },
                 });
+                // Remove from panels set to prevent duplicate disposal on panel close
+                dynamicDataViewPanels.delete(panel);
                 postResponse(msg.requestId, true, true);
                 return;
             }
@@ -661,7 +680,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>${title}</title>
+    <title>${escapeHtml(title)}</title>
     <style media="only screen">
     html, body {
         height: 100%;
@@ -1058,9 +1077,9 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
             enableCellTextSelection: true,
             ensureDomOrder: true,
             tooltipShowDelay: 100,
-            onFirstDataRendered: function() {
-                if (gridApi) {
-                    gridApi.columnApi?.autoSizeAllColumns(false);
+            onFirstDataRendered: function(params) {
+                if (params.columnApi) {
+                    params.columnApi.autoSizeAllColumns(false);
                 }
                 updateFetchStatusPosition();
             }
@@ -1124,7 +1143,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>${title}</title>
+    <title>${escapeHtml(title)}</title>
     <style media="only screen">
     html, body {
         height: 100%;
@@ -1326,7 +1345,7 @@ export async function getListHtml(webview: Webview, file: string, title: string)
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>${title}</title>
+    <title>${escapeHtml(title)}</title>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.js'))))}"></script>
     <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.css'))))}" rel="stylesheet">

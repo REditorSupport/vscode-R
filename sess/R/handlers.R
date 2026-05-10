@@ -437,8 +437,7 @@ dataview_apply_sort_model <- function(state, sort_model, row_idx) {
     return(row_idx)
   }
 
-  sort_vectors <- list()
-  decreasing <- logical(0)
+  sort_specs <- list()
 
   for (sort_item in sort_model) {
     col_id <- as.character(sort_item$colId %||% "")
@@ -448,22 +447,46 @@ dataview_apply_sort_model <- function(state, sort_model, row_idx) {
     }
     raw_values <- state$columns[[col_pos]][row_idx]
     type_hint <- state$types[[col_pos]]
+    is_desc <- identical(as.character(sort_item$sort), "desc")
+
     if (type_hint %in% c("num", "num-fmt")) {
-      sort_vectors[[length(sort_vectors) + 1L]] <- suppressWarnings(as.numeric(raw_values))
+      sort_vec <- suppressWarnings(as.numeric(raw_values))
     } else if (type_hint == "date") {
-      sort_vectors[[length(sort_vectors) + 1L]] <-
-        suppressWarnings(as.Date(as.character(raw_values)))
+      sort_vec <- suppressWarnings(as.Date(as.character(raw_values)))
     } else {
-      sort_vectors[[length(sort_vectors) + 1L]] <- tolower(as.character(raw_values))
+      sort_vec <- tolower(as.character(raw_values))
     }
-    decreasing <- c(decreasing, identical(as.character(sort_item$sort), "desc"))
+
+    sort_specs[[length(sort_specs) + 1L]] <- list(
+      values = sort_vec,
+      decreasing = is_desc
+    )
   }
 
-  if (!length(sort_vectors)) {
+  if (!length(sort_specs)) {
     return(row_idx)
   }
 
-  ord <- do.call(order, c(sort_vectors, list(na.last = TRUE, decreasing = decreasing)))
+  # Build arguments for order() with per-column decreasing handling.
+  # R's order() doesn't support per-column decreasing, so transform values:
+  # - For numeric: negate for descending
+  # - For other types: negate rank for descending
+  order_args <- list()
+  for (i in seq_along(sort_specs)) {
+    spec <- sort_specs[[i]]
+    if (spec$decreasing) {
+      if (is.numeric(spec$values)) {
+        order_args[[i]] <- -spec$values
+      } else {
+        order_args[[i]] <- -rank(spec$values, na.last = "keep")
+      }
+    } else {
+      order_args[[i]] <- spec$values
+    }
+  }
+  order_args$na.last <- TRUE
+
+  ord <- do.call(order, order_args)
   row_idx[ord]
 }
 
