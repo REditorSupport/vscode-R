@@ -86,6 +86,117 @@ const sessions = new Map<string, Session>();
 export let activeSession: Session | undefined;
 let activeBrowserUri: Uri | undefined;
 
+interface DataViewColumnDef {
+    headerName: string;
+    field: string;
+    cellClass: string;
+    type: string;
+}
+
+interface DataViewInitResult {
+    columns: DataViewColumnDef[];
+    totalRows: number;
+}
+
+interface DataViewPageResult {
+    rows: Record<string, string>[];
+    totalRows: number;
+    lastRow: number;
+}
+
+interface DataViewRequestMessage {
+    message: 'dataview/request';
+    action: 'init' | 'page' | 'dispose';
+    requestId: number;
+    startRow?: number;
+    endRow?: number;
+    sortModel?: unknown[];
+    filterModel?: Record<string, unknown>;
+}
+
+const dynamicDataViewPanels = new WeakSet<vscode.WebviewPanel>();
+
+function formatDataViewPanelTitle(baseTitle: string, totalRows: number): string {
+    return `${baseTitle} (rows: ${totalRows.toLocaleString()})`;
+}
+
+function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string): void {
+    dynamicDataViewPanels.add(panel);
+
+    const postResponse = (requestId: number, ok: boolean, result?: unknown, error?: string) => {
+        void panel.webview.postMessage({
+            message: 'dataview/response',
+            requestId,
+            ok,
+            result,
+            error,
+        });
+    };
+
+    panel.webview.onDidReceiveMessage(async (raw: unknown) => {
+        const msg = raw as Partial<DataViewRequestMessage>;
+        if (msg.message !== 'dataview/request' || typeof msg.requestId !== 'number') {
+            return;
+        }
+
+        try {
+            if (msg.action === 'init') {
+                const result = await sessionRequest({
+                    method: 'dataview_init',
+                    params: { view_id: viewId },
+                }) as DataViewInitResult;
+                if (Number.isFinite(result.totalRows)) {
+                    panel.title = formatDataViewPanelTitle(baseTitle, result.totalRows);
+                }
+                postResponse(msg.requestId, true, result);
+                return;
+            }
+
+            if (msg.action === 'page') {
+                const result = await sessionRequest({
+                    method: 'dataview_page',
+                    params: {
+                        view_id: viewId,
+                        startRow: Number(msg.startRow ?? 0),
+                        endRow: Number(msg.endRow ?? 0),
+                        sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
+                        filterModel: msg.filterModel ?? {},
+                    },
+                }) as DataViewPageResult;
+                if (Number.isFinite(result.totalRows)) {
+                    panel.title = formatDataViewPanelTitle(baseTitle, result.totalRows);
+                }
+                postResponse(msg.requestId, true, result);
+                return;
+            }
+
+            if (msg.action === 'dispose') {
+                await sessionRequest({
+                    method: 'dataview_dispose',
+                    params: { view_id: viewId },
+                });
+                postResponse(msg.requestId, true, true);
+                return;
+            }
+
+            postResponse(msg.requestId, false, undefined, `Unsupported dataview action: ${String(msg.action)}`);
+        } catch (e) {
+            postResponse(msg.requestId, false, undefined, e instanceof Error ? e.message : String(e));
+        }
+    });
+
+    panel.onDidDispose(() => {
+        if (!dynamicDataViewPanels.has(panel)) {
+            return;
+        }
+        dynamicDataViewPanels.delete(panel);
+        void sessionRequest({
+            method: 'dataview_dispose',
+            params: { view_id: viewId },
+        });
+    });
+}
+
 export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
@@ -495,8 +606,8 @@ export function openExternalBrowser(): void {
     }
 }
 
-export async function showDataView(source: string, type: string, title: string, file: string, viewer: string): Promise<void> {
-    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}`);
+export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, viewId?: string): Promise<void> {
+    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, viewId: ${String(viewId ?? '')}`);
 
     if (source === 'table') {
         const panel = window.createWebviewPanel('dataview', title,
@@ -510,9 +621,12 @@ export async function showDataView(source: string, type: string, title: string, 
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
             });
-        const content = await getTableHtml(panel.webview, file, title);
+        const content = await getTableHtml(panel.webview, file || undefined, title);
         panel.iconPath = new UriIcon('open-preview');
         panel.webview.html = content;
+        if (viewId) {
+            attachDynamicDataViewBridge(panel, viewId, title);
+        }
     } else if (source === 'list') {
         const panel = window.createWebviewPanel('dataview', title,
             {
@@ -538,8 +652,263 @@ export async function showDataView(source: string, type: string, title: string, 
     console.info('[showDataView] Done');
 }
 
-export async function getTableHtml(webview: Webview, file: string, title: string): Promise<string> {
+export async function getTableHtml(webview: Webview, file: string | undefined, title: string): Promise<string> {
     const pageSize = config().get<number>('session.data.pageSize', 500);
+    if (!file) {
+        return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${title}</title>
+    <style media="only screen">
+    html, body {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    html {
+        position: absolute;
+        top: 0;
+        left: 0;
+        padding: 0;
+        overflow: auto;
+    }
+
+    body {
+        padding: 0;
+        overflow: auto;
+    }
+
+    [class*="vscode"] div.ag-root-wrapper {
+        background-color: var(--vscode-editor-background);
+    }
+
+    [class*="vscode"] div.ag-header {
+        background-color: var(--vscode-sideBar-background);
+    }
+
+    [class*="vscode"] div.ag-header-cell[aria-sort="ascending"], div.ag-header-cell[aria-sort="descending"] {
+        color: var(--vscode-textLink-activeForeground);
+    }
+
+    [class*="vscode"] div.ag-row {
+        color: var(--vscode-editor-foreground);
+    }
+
+    [class*="vscode"] .ag-row-hover {
+        background-color: var(--vscode-list-hoverBackground) !important;
+        color: var(--vscode-list-hoverForeground);
+    }
+
+    [class*="vscode"] .ag-row-selected {
+        background-color: var(--vscode-editor-selectionBackground) !important;
+        color: var(--vscode-editor-selectionForeground) !important;
+    }
+
+    [class*="vscode"] div.ag-row-even {
+        border: 0px;
+        background-color: var(--vscode-editor-background);
+    }
+
+    [class*="vscode"] div.ag-row-odd {
+        border: 0px;
+        background-color: var(--vscode-sideBar-background);
+    }
+
+    [class*="vscode"] div.ag-ltr div.ag-has-focus div.ag-cell-focus:not(div.ag-cell-range-selected) {
+        border-color: var(--vscode-editorCursor-foreground);
+    }
+
+    [class*="vscode"] div.ag-menu {
+        background-color: var(--vscode-notifications-background);
+        color: var(--vscode-notifications-foreground);
+        border-color: var(--vscode-notifications-border);
+    }
+
+    [class*="vscode"] div.ag-filter-apply-panel-button {
+        background-color: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        border: 0;
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+
+    [class*="vscode"] div.ag-picker-field-wrapper {
+        background-color: var(--vscode-editor-background);
+        color: var(--vscode-editor-foreground);
+        border-color: var(--vscode-notificationCenter-border);
+    }
+
+    [class*="vscode"] input[class^=ag-] {
+        border-color: var(--vscode-notificationCenter-border) !important;
+    }
+
+    [class*="vscode"] .text-left {
+        text-align: left;
+    }
+
+    [class*="vscode"] .text-right {
+        text-align: right;
+    }
+    </style>
+    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
+    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
+    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham.min.css'))))}" rel="stylesheet">
+    <script>
+    const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : { postMessage: () => {} };
+    let requestIdSeq = 1;
+    const pending = new Map();
+
+    function request(action, payload) {
+        const requestId = requestIdSeq++;
+        return new Promise((resolve, reject) => {
+            pending.set(requestId, { resolve, reject });
+            vscode.postMessage({
+                message: 'dataview/request',
+                action,
+                requestId,
+                ...payload,
+            });
+        });
+    }
+
+    window.addEventListener('message', (event) => {
+        const data = event.data;
+        if (!data || data.message !== 'dataview/response') {
+            return;
+        }
+        const entry = pending.get(data.requestId);
+        if (!entry) {
+            return;
+        }
+        pending.delete(data.requestId);
+        if (data.ok) {
+            entry.resolve(data.result);
+        } else {
+            entry.reject(new Error(data.error || 'Unknown dataview error'));
+        }
+    });
+
+    const dateFilterParams = {
+        browserDatePicker: true,
+    };
+
+    function updateTheme() {
+        const gridDiv = document.querySelector('#myGrid');
+        if (document.body.classList.contains('vscode-light')) {
+            gridDiv.className = 'ag-theme-balham';
+        } else {
+            gridDiv.className = 'ag-theme-balham-dark';
+        }
+    }
+
+    async function initialize() {
+        const init = await request('init', {});
+        const columns = Array.isArray(init.columns) ? init.columns : [];
+        
+        columns.forEach((column) => {
+            if (column.type === 'dateColumn') {
+                column.filterParams = dateFilterParams;
+            } else if (column.type === 'datetimeColumn') {
+                column.filter = 'agDateColumnFilter';
+                column.filterParams = {
+                    ...dateFilterParams,
+                    buttons: ['reset', 'apply']
+                };
+            } else if (column.type === 'numberColumn') {
+                column.filter = 'agNumberColumnFilter';
+                column.filterParams = {
+                    ...column.filterParams,
+                    buttons: ['reset', 'apply']
+                };
+            } else if (column.type === 'setColumn') {
+                // With infinite row model, use text filter for factors/logicals
+                // The server-side filtering still works correctly
+                delete column.type;
+                column.filterParams = {
+                    buttons: ['reset', 'apply']
+                };
+            }
+        });
+
+        const blockSize = ${pageSize > 0 ? pageSize : 500};
+        const gridOptions = {
+            defaultColDef: {
+                sortable: true,
+                resizable: true,
+                filter: true,
+                width: 100,
+                minWidth: 50,
+                filterParams: {
+                    buttons: ['reset', 'apply']
+                }
+            },
+            columnDefs: columns,
+            rowModelType: 'infinite',
+            cacheBlockSize: blockSize,
+            pagination: ${pageSize > 0 ? 'true' : 'false'},
+            paginationPageSize: blockSize,
+            enableCellTextSelection: true,
+            ensureDomOrder: true,
+            tooltipShowDelay: 100,
+            onFirstDataRendered: function() {
+                gridOptions.columnApi.autoSizeAllColumns(false);
+            }
+        };
+
+        const datasource = {
+            getRows: async function(params) {
+                try {
+                    const result = await request('page', {
+                        startRow: params.startRow,
+                        endRow: params.endRow,
+                        sortModel: params.sortModel,
+                        filterModel: params.filterModel,
+                    });
+                    const resolvedLastRow = Number.isFinite(result.totalRows) ? result.totalRows : result.lastRow;
+                    params.successCallback(result.rows || [], resolvedLastRow);
+                } catch (e) {
+                    console.error('[dataview] Failed to load page', e);
+                    params.failCallback();
+                }
+            }
+        };
+
+        const gridDiv = document.querySelector('#myGrid');
+        new agGrid.Grid(gridDiv, gridOptions);
+        gridOptions.api.setDatasource(datasource);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        updateTheme();
+        initialize().catch((e) => {
+            console.error('[dataview] Initialization failed', e);
+        });
+
+        const observer = new MutationObserver(function () {
+            updateTheme();
+        });
+        observer.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class'],
+            childList: false,
+            characterData: false
+        });
+    });
+    </script>
+</head>
+<body>
+    <div id="myGrid" style="height: 100%;"></div>
+</body>
+</html>
+`;
+    }
+
     const content = await readContent(file, 'utf8');
     return `
 <!DOCTYPE html>
@@ -933,11 +1302,18 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             break;
         }
         case 'dataview': {
-            if (params.source && params.type && params.file && params.title) {
+            if (params.source && params.type && params.title) {
                 const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
                 const viewer = viewColumnConfig['view'] ?? 'Two';
                 if (viewer !== 'Disable') {
-                    await showDataView(String(params.source), String(params.type), String(params.title), String(params.file), viewer);
+                    await showDataView(
+                        String(params.source),
+                        String(params.type),
+                        String(params.title),
+                        String(params.file ?? ''),
+                        viewer,
+                        params.view_id ? String(params.view_id) : undefined,
+                    );
                 }
             }
             break;

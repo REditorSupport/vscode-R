@@ -10,6 +10,7 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE) 
   .sess_env$con <- NULL
   .sess_env$pending_responses <- list()
   .sess_env$read_buffer <- ""
+  .sess_env$dataviews <- list()
 
   .sess_env$tempdir <- file.path(tempdir(), "sess")
   dir.create(.sess_env$tempdir, showWarnings = FALSE, recursive = TRUE)
@@ -170,7 +171,10 @@ dispatch_message <- function(line) {
       "workspace" = function(p) get_workspace_data(),
       "hover" = function(p) handle_hover(p$expr),
       "completion" = function(p) handle_complete(p$expr, p$trigger),
-      "plot_latest" = function(p) handle_plot_latest(p)
+      "plot_latest" = function(p) handle_plot_latest(p),
+      "dataview_init" = function(p) handle_dataview_init(p),
+      "dataview_page" = function(p) handle_dataview_page(p),
+      "dataview_dispose" = function(p) handle_dataview_dispose(p)
     )
 
     if (payload$method %in% names(handlers)) {
