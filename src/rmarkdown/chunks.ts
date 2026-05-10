@@ -146,7 +146,6 @@ export function getChunks(document: vscode.TextDocument): RMarkdownChunk[] {
 export function getCurrentChunk(chunks: RMarkdownChunk[], line: number): RMarkdownChunk | undefined {
     const textEditor = vscode.window.activeTextEditor;
     if (!textEditor) {
-        void vscode.window.showWarningMessage('No text editor active.');
         return;
     }
 
