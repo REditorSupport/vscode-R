@@ -224,9 +224,11 @@ suite('Session Communication', () => {
     test('attach session artifacts are owner-only', async () => {
         const command = await session.getAttachSessionCommand();
         const commandMatch = command.match(/^source\((.*)\)$/);
-        assert.ok(commandMatch, 'attach command should be a source(...) call');
+        if (!commandMatch) {
+            throw new Error('attach command should be a source(...) call');
+        }
 
-        const scriptPath = JSON.parse(commandMatch![1]);
+        const scriptPath = commandMatch[1].slice(1, -1);
         const scriptStat = await fs.stat(scriptPath);
         assert.strictEqual(scriptStat.mode & 0o777, 0o600, 'attach script should be owner-only');
 
