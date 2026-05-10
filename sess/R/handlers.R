@@ -206,7 +206,10 @@ dataview_to_state <- function(data) {
     }
     row_index <- rownames(data)
     rownames(data) <- NULL
-    cols <- c(list(if (is.null(row_index)) seq_len(n) else trimws(row_index)), lapply(seq_len(ncol(data)), function(i) data[, i]))
+    cols <- c(
+      list(if (is.null(row_index)) seq_len(n) else trimws(row_index)),
+      lapply(seq_len(ncol(data)), function(i) data[, i])
+    )
     headers <- c(" ", colnames)
     matrix_type <- dataview_data_type(data)
     types <- c(if (is.null(row_index)) "num" else "string", rep(matrix_type, ncol(data)))
@@ -238,14 +241,14 @@ dataview_columns <- function(state) {
     } else {
       ""
     }
-    
+
     col_def <- list(
       headerName = jsonlite::unbox(title),
       field = jsonlite::unbox(as.character(index - 1L)),
       cellClass = jsonlite::unbox(class),
       type = jsonlite::unbox(ag_type)
     )
-    
+
     # For set filters, include unique values so ag-grid can show all options
     if (type %in% c("logical", "factor")) {
       unique_vals <- sort(unique(as.character(col_data)))
@@ -253,7 +256,7 @@ dataview_columns <- function(state) {
       # Keep as vector, not list, so JSON serialization is [val1, val2, ...]
       col_def$filterParams <- list(values = I(unique_vals))
     }
-    
+
     col_def
   }, list(state$headers, state$types, seq_along(state$headers), state$columns), NULL)
 }
@@ -294,13 +297,19 @@ dataview_match_condition <- function(values, cond, type_hint) {
   }
 
   # Determine filter type from cond or use hint
-  filter_type <- as.character(cond$filterType %||% 
-    if (type_hint == "date") "date" 
-    else if (type_hint == "datetime") "datetime"
-    else if (type_hint %in% c("num", "num-fmt")) "number" 
-    else if (type_hint %in% c("logical", "factor")) "set"
-    else "text"
-  )
+  filter_type <- if (!is.null(cond$filterType)) {
+    as.character(cond$filterType)
+  } else if (type_hint == "date") {
+    "date"
+  } else if (type_hint == "datetime") {
+    "datetime"
+  } else if (type_hint %in% c("num", "num-fmt")) {
+    "number"
+  } else if (type_hint %in% c("logical", "factor")) {
+    "set"
+  } else {
+    "text"
+  }
 
   if (filter_type == "number") {
     nums <- suppressWarnings(as.numeric(values))
@@ -405,7 +414,9 @@ dataview_apply_filter_model <- function(state, filter_model, row_idx) {
     type_hint <- state$types[[col_pos]]
     column_match <- rep(TRUE, length(values))
 
-    if (!is.null(col_model$operator) && !is.null(col_model$condition1) && !is.null(col_model$condition2)) {
+    if (!is.null(col_model$operator) &&
+          !is.null(col_model$condition1) &&
+          !is.null(col_model$condition2)) {
       left <- dataview_match_condition(values, col_model$condition1, type_hint)
       right <- dataview_match_condition(values, col_model$condition2, type_hint)
       op <- toupper(as.character(col_model$operator))
@@ -440,7 +451,8 @@ dataview_apply_sort_model <- function(state, sort_model, row_idx) {
     if (type_hint %in% c("num", "num-fmt")) {
       sort_vectors[[length(sort_vectors) + 1L]] <- suppressWarnings(as.numeric(raw_values))
     } else if (type_hint == "date") {
-      sort_vectors[[length(sort_vectors) + 1L]] <- suppressWarnings(as.Date(as.character(raw_values)))
+      sort_vectors[[length(sort_vectors) + 1L]] <-
+        suppressWarnings(as.Date(as.character(raw_values)))
     } else {
       sort_vectors[[length(sort_vectors) + 1L]] <- tolower(as.character(raw_values))
     }
