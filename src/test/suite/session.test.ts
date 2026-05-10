@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as assert from 'assert';
 import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs-extra';
 
 import { mockExtensionContext } from '../common/mockvscode';
 import * as rTerminal from '../../rTerminal';
@@ -219,4 +221,37 @@ suite('Session Communication', () => {
         assert.ok(createWebviewPanelSpy.calledWith('webview'), 'webview should be triggered for html file');
 
     }).timeout(45000);
+
+    test('attach session artifacts are owner-only', async () => {
+        const command = await session.getAttachSessionCommand();
+        const commandMatch = command.match(/^source\((.*)\)$/);
+        if (!commandMatch) {
+            throw new Error('attach command should be a source(...) call');
+        }
+
+        const scriptPath = JSON.parse(commandMatch[1]) as string;
+        const scriptStat = await fs.stat(scriptPath);
+        if (process.platform !== 'win32') {
+            assert.strictEqual(scriptStat.mode & 0o777, 0o600, 'attach script should be owner-only');
+        }
+
+        const pipePath = session.globalPipePath;
+        assert.ok(pipePath, 'global pipe path should be set');
+
+        if (pipePath && process.platform !== 'win32') {
+            const pipeStat = await fs.stat(pipePath);
+            assert.strictEqual(pipeStat.mode & 0o777, 0o600, 'socket file should be owner-only');
+        }
+
+        const sessionFilePid = `perm-test-${process.pid}`;
+        await session.writeSessionFile(sessionFilePid, pipePath ?? '');
+        const sessionFilePath = path.join(os.homedir(), '.vscode-R', 'sessions', `${sessionFilePid}.json`);
+        const sessionFileStat = await fs.stat(sessionFilePath);
+        if (process.platform !== 'win32') {
+            assert.strictEqual(sessionFileStat.mode & 0o777, 0o600, 'session handoff file should be owner-only');
+        }
+        await fs.remove(sessionFilePath);
+
+        await session.shutdownSessionWatcher();
+    }).timeout(15000);
 });

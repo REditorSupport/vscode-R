@@ -285,6 +285,7 @@ export async function writeSessionFile(pid: string, pipePath: string) {
     await fs.ensureDir(sessionsDir);
     const filePath = path.join(sessionsDir, `${pid}.json`);
     await fs.writeJson(filePath, { pipe: pipePath });
+    await setOwnerOnlyPermissions(filePath);
 }
 
 async function updateActiveTerminalFiles(pipePath: string) {
@@ -297,6 +298,14 @@ async function updateActiveTerminalFiles(pipePath: string) {
             }
         }
     }
+}
+
+async function setOwnerOnlyPermissions(filePath: string): Promise<void> {
+    if (process.platform === 'win32') {
+        return;
+    }
+
+    await fs.chmod(filePath, 0o600);
 }
 
 function makePipePath(): string {
@@ -381,10 +390,12 @@ export async function getGlobalPipePath(): Promise<string> {
         });
 
         server.listen(pipePath, () => {
-            globalPipePath = pipePath;
-            globalSessionServer = server;
-            console.info(`[SessionServer] Listening on ${pipePath}`);
-            resolve(pipePath);
+            void setOwnerOnlyPermissions(pipePath).then(() => {
+                globalPipePath = pipePath;
+                globalSessionServer = server;
+                console.info(`[SessionServer] Listening on ${pipePath}`);
+                resolve(pipePath);
+            }).catch(reject);
         });
     });
 }
@@ -429,7 +440,8 @@ export async function getAttachSessionCommand(): Promise<string> {
     const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
     const installSessScriptPath = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
     const scriptPath = getAttachSessionScriptPath(pipePath);
-    await fs.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, installSessScriptPath), { encoding: 'utf-8' });
+    await fs.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, installSessScriptPath), { encoding: 'utf-8', mode: 0o600 });
+    await setOwnerOnlyPermissions(scriptPath);
     attachSessionScriptPath = scriptPath;
 
     return `source(${asRStringLiteral(scriptPath)})`;
