@@ -768,12 +768,19 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         const requestId = requestIdSeq++;
         return new Promise((resolve, reject) => {
             pending.set(requestId, { resolve, reject });
-            vscode.postMessage({
-                message: 'dataview/request',
-                action,
-                requestId,
-                ...payload,
-            });
+            try {
+                console.log('[dataview] Sending request:', action, 'with payload:', payload);
+                vscode.postMessage({
+                    message: 'dataview/request',
+                    action,
+                    requestId,
+                    ...payload,
+                });
+            } catch (e) {
+                console.error('[dataview] Failed to send request:', e);
+                pending.delete(requestId);
+                reject(e);
+            }
         });
     }
 
@@ -808,11 +815,15 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     }
 
     async function initialize() {
+        console.log('[dataview] agGrid object:', window.agGrid);
+        console.log('[dataview] agGrid.Grid:', typeof window.agGrid.Grid);
+        
         const init = await request('init', {});
         const columns = Array.isArray(init.columns) ? init.columns : [];
         
         columns.forEach((column) => {
             if (column.type === 'dateColumn') {
+                column.filter = 'agDateColumnFilter';
                 column.filterParams = dateFilterParams;
             } else if (column.type === 'datetimeColumn') {
                 column.filter = 'agDateColumnFilter';
@@ -827,39 +838,21 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
                     buttons: ['reset', 'apply']
                 };
             } else if (column.type === 'setColumn') {
-                // With infinite row model, use text filter for factors/logicals
-                // The server-side filtering still works correctly
-                delete column.type;
+                // agSetColumnFilter requires ag-grid-enterprise in v35.
+                // Keep community build compatible by using text filter and
+                // relying on server-side filtering in sess.
+                column.filter = 'agTextColumnFilter';
                 column.filterParams = {
+                    ...column.filterParams,
                     buttons: ['reset', 'apply']
                 };
             }
+            // Remove column type field - v35 doesn't use it
+            delete column.type;
         });
 
         const blockSize = ${pageSize > 0 ? pageSize : 500};
-        const gridOptions = {
-            defaultColDef: {
-                sortable: true,
-                resizable: true,
-                filter: true,
-                width: 100,
-                minWidth: 50,
-                filterParams: {
-                    buttons: ['reset', 'apply']
-                }
-            },
-            columnDefs: columns,
-            rowModelType: 'infinite',
-            cacheBlockSize: blockSize,
-            pagination: ${pageSize > 0 ? 'true' : 'false'},
-            paginationPageSize: blockSize,
-            enableCellTextSelection: true,
-            ensureDomOrder: true,
-            tooltipShowDelay: 100,
-            onFirstDataRendered: function() {
-                gridOptions.columnApi.autoSizeAllColumns(false);
-            }
-        };
+        let gridApi;
 
         const datasource = {
             getRows: async function(params) {
@@ -879,9 +872,45 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
             }
         };
 
+        const gridOptions = {
+            theme: 'legacy',
+            defaultColDef: {
+                sortable: true,
+                resizable: true,
+                filter: true,
+                width: 100,
+                minWidth: 50,
+                filterParams: {
+                    buttons: ['reset', 'apply']
+                }
+            },
+            columnDefs: columns,
+            rowModelType: 'infinite',
+            datasource: datasource,
+            cacheBlockSize: blockSize,
+            pagination: ${pageSize > 0 ? 'true' : 'false'},
+            paginationPageSize: blockSize,
+            paginationPageSizeSelector: [20, 50, 100, blockSize],
+            enableCellTextSelection: true,
+            ensureDomOrder: true,
+            tooltipShowDelay: 100,
+            onFirstDataRendered: function() {
+                if (gridApi) {
+                    gridApi.columnApi?.autoSizeAllColumns(false);
+                }
+            }
+        };
+
         const gridDiv = document.querySelector('#myGrid');
-        new agGrid.Grid(gridDiv, gridOptions);
-        gridOptions.api.setDatasource(datasource);
+        try {
+            console.log('[dataview] Creating grid with options:', gridOptions);
+            gridApi = window.agGrid.createGrid(gridDiv, gridOptions);
+            console.log('[dataview] Grid created successfully');
+        } catch (e) {
+            console.error('[dataview] Grid creation failed:', e);
+            console.error('[dataview] Error stack:', e instanceof Error ? e.stack : 'N/A');
+            gridDiv.innerHTML = '<div style="padding: 20px; color: red;">Error: ' + (e instanceof Error ? e.message : String(e)) + '</div>';
+        }
     }
 
     document.addEventListener('DOMContentLoaded', () => {
@@ -1056,6 +1085,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         rowSelection: 'multiple',
         pagination: ${pageSize > 0 ? 'true' : 'false'},
         paginationPageSize: ${pageSize},
+        paginationPageSizeSelector: [20, 50, 100, ${pageSize}],
         enableCellTextSelection: true,
         ensureDomOrder: true,
         tooltipShowDelay: 100,
@@ -1075,11 +1105,13 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     document.addEventListener('DOMContentLoaded', () => {
         gridOptions.columnDefs.forEach(function(column) {
             if (column.type === 'dateColumn') {
+                column.filter = 'agDateColumnFilter';
                 column.filterParams = dateFilterParams;
             }
+            delete column.type;
         });
         const gridDiv = document.querySelector('#myGrid');
-        new agGrid.Grid(gridDiv, gridOptions);
+        gridApi = window.agGrid.createGrid(gridDiv, gridOptions);
     });
     function onload() {
         updateTheme();
