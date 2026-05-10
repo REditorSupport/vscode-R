@@ -2013,7 +2013,7 @@
     "typescript": "^4.9.5"
   },
   "dependencies": {
-    "ag-grid-community": "^31.3.4",
+    "ag-grid-community": "^35.2.1",
     "cheerio": "1.0.0-rc.12",
     "crypto": "^1.0.1",
     "ejs": "^3.1.10",
