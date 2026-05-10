@@ -285,6 +285,7 @@ export async function writeSessionFile(pid: string, pipePath: string) {
     await fs.ensureDir(sessionsDir);
     const filePath = path.join(sessionsDir, `${pid}.json`);
     await fs.writeJson(filePath, { pipe: pipePath });
+    await setOwnerOnlyPermissions(filePath);
 }
 
 async function updateActiveTerminalFiles(pipePath: string) {

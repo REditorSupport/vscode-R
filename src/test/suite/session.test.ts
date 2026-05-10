@@ -238,6 +238,13 @@ suite('Session Communication', () => {
             assert.strictEqual(pipeStat.mode & 0o777, 0o600, 'socket file should be owner-only');
         }
 
+        const sessionFilePid = `perm-test-${process.pid}`;
+        await session.writeSessionFile(sessionFilePid, pipePath ?? '');
+        const sessionFilePath = path.join(process.env.HOME ?? '', '.vscode-R', 'sessions', `${sessionFilePid}.json`);
+        const sessionFileStat = await fs.stat(sessionFilePath);
+        assert.strictEqual(sessionFileStat.mode & 0o777, 0o600, 'session handoff file should be owner-only');
+        await fs.remove(sessionFilePath);
+
         await session.shutdownSessionWatcher();
     }).timeout(15000);
 });
