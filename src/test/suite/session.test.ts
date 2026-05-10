@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as assert from 'assert';
 import * as path from 'path';
+import * as fs from 'fs-extra';
 
 import { mockExtensionContext } from '../common/mockvscode';
 import * as rTerminal from '../../rTerminal';
@@ -219,4 +220,24 @@ suite('Session Communication', () => {
         assert.ok(createWebviewPanelSpy.calledWith('webview'), 'webview should be triggered for html file');
 
     }).timeout(45000);
+
+    test('attach session artifacts are owner-only', async () => {
+        const command = await session.getAttachSessionCommand();
+        const commandMatch = command.match(/^source\((.*)\)$/);
+        assert.ok(commandMatch, 'attach command should be a source(...) call');
+
+        const scriptPath = JSON.parse(commandMatch![1]);
+        const scriptStat = await fs.stat(scriptPath);
+        assert.strictEqual(scriptStat.mode & 0o777, 0o600, 'attach script should be owner-only');
+
+        const pipePath = session.globalPipePath;
+        assert.ok(pipePath, 'global pipe path should be set');
+
+        if (pipePath && process.platform !== 'win32') {
+            const pipeStat = await fs.stat(pipePath);
+            assert.strictEqual(pipeStat.mode & 0o777, 0o600, 'socket file should be owner-only');
+        }
+
+        await session.shutdownSessionWatcher();
+    }).timeout(15000);
 });
