@@ -757,12 +757,11 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     }
     </style>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
-    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
-    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham.min.css'))))}" rel="stylesheet">
     <script>
     const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : { postMessage: () => {} };
     let requestIdSeq = 1;
     const pending = new Map();
+    let gridApi;
 
     function request(action, payload) {
         const requestId = requestIdSeq++;
@@ -805,12 +804,16 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         browserDatePicker: true,
     };
 
-    function updateTheme() {
-        const gridDiv = document.querySelector('#myGrid');
+    function getAgTheme() {
         if (document.body.classList.contains('vscode-light')) {
-            gridDiv.className = 'ag-theme-balham';
-        } else {
-            gridDiv.className = 'ag-theme-balham-dark';
+            return window.agGrid.themeBalham.withPart(window.agGrid.colorSchemeLight);
+        }
+        return window.agGrid.themeBalham.withPart(window.agGrid.colorSchemeDark);
+    }
+
+    function updateTheme() {
+        if (gridApi) {
+            gridApi.setGridOption('theme', getAgTheme());
         }
     }
 
@@ -852,7 +855,6 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         });
 
         const blockSize = ${pageSize > 0 ? pageSize : 500};
-        let gridApi;
 
         const datasource = {
             getRows: async function(params) {
@@ -873,7 +875,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         };
 
         const gridOptions = {
-            theme: 'legacy',
+            theme: getAgTheme(),
             defaultColDef: {
                 sortable: true,
                 resizable: true,
@@ -1047,8 +1049,6 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     }
     </style>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
-    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid.min.css'))))}" rel="stylesheet">
-    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-theme-balham.min.css'))))}" rel="stylesheet">
     <script>
     const dateFilterParams = {
         browserDatePicker: true,
@@ -1068,8 +1068,16 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
             }
         }
     };
+    let gridApi;
+    function getAgTheme() {
+        if (document.body.classList.contains('vscode-light')) {
+            return window.agGrid.themeBalham.withPart(window.agGrid.colorSchemeLight);
+        }
+        return window.agGrid.themeBalham.withPart(window.agGrid.colorSchemeDark);
+    }
     const data = ${String(content)};
     const gridOptions = {
+        theme: getAgTheme(),
         defaultColDef: {
             sortable: true,
             resizable: true,
@@ -1095,11 +1103,8 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         gridOptions.columnApi.autoSizeAllColumns(false);
     }
     function updateTheme() {
-        const gridDiv = document.querySelector('#myGrid');
-        if (document.body.classList.contains('vscode-light')) {
-            gridDiv.className = 'ag-theme-balham';
-        } else {
-            gridDiv.className = 'ag-theme-balham-dark';
+        if (gridApi) {
+            gridApi.setGridOption('theme', getAgTheme());
         }
     }
     document.addEventListener('DOMContentLoaded', () => {
@@ -1112,6 +1117,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         });
         const gridDiv = document.querySelector('#myGrid');
         gridApi = window.agGrid.createGrid(gridDiv, gridOptions);
+        updateTheme();
     });
     function onload() {
         updateTheme();
