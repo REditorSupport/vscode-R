@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as assert from 'assert';
 import * as path from 'path';
+import * as os from 'os';
 import * as fs from 'fs-extra';
 
 import { mockExtensionContext } from '../common/mockvscode';
@@ -228,9 +229,11 @@ suite('Session Communication', () => {
             throw new Error('attach command should be a source(...) call');
         }
 
-        const scriptPath = commandMatch[1].slice(1, -1);
+        const scriptPath = JSON.parse(commandMatch[1]) as string;
         const scriptStat = await fs.stat(scriptPath);
-        assert.strictEqual(scriptStat.mode & 0o777, 0o600, 'attach script should be owner-only');
+        if (process.platform !== 'win32') {
+            assert.strictEqual(scriptStat.mode & 0o777, 0o600, 'attach script should be owner-only');
+        }
 
         const pipePath = session.globalPipePath;
         assert.ok(pipePath, 'global pipe path should be set');
@@ -242,9 +245,11 @@ suite('Session Communication', () => {
 
         const sessionFilePid = `perm-test-${process.pid}`;
         await session.writeSessionFile(sessionFilePid, pipePath ?? '');
-        const sessionFilePath = path.join(process.env.HOME ?? '', '.vscode-R', 'sessions', `${sessionFilePid}.json`);
+        const sessionFilePath = path.join(os.homedir(), '.vscode-R', 'sessions', `${sessionFilePid}.json`);
         const sessionFileStat = await fs.stat(sessionFilePath);
-        assert.strictEqual(sessionFileStat.mode & 0o777, 0o600, 'session handoff file should be owner-only');
+        if (process.platform !== 'win32') {
+            assert.strictEqual(sessionFileStat.mode & 0o777, 0o600, 'session handoff file should be owner-only');
+        }
         await fs.remove(sessionFilePath);
 
         await session.shutdownSessionWatcher();
