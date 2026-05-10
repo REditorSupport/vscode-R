@@ -755,6 +755,59 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     [class*="vscode"] .text-right {
         text-align: right;
     }
+
+    #gridContainer {
+        position: relative;
+        height: 100%;
+    }
+
+    #fetchStatus {
+        position: absolute;
+        top: var(--fetch-status-top, 52px);
+        right: 8px;
+        z-index: 20;
+        display: none;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 4px;
+        border: 1px solid var(--vscode-panel-border);
+        background-color: var(--vscode-editorWidget-background);
+        color: var(--vscode-editorWidget-foreground);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+        font-size: 12px;
+        max-width: min(68vw, 560px);
+    }
+
+    #fetchStatus.visible {
+        display: flex;
+    }
+
+    #fetchStatus[data-state="warning"] {
+        border-color: var(--vscode-inputValidation-warningBorder);
+    }
+
+    #fetchStatus[data-state="error"] {
+        border-color: var(--vscode-inputValidation-errorBorder);
+    }
+
+    #fetchStatusText {
+        word-break: break-word;
+    }
+
+    #fetchRetryBtn {
+        display: none;
+        border: 0;
+        padding: 3px 8px;
+        background-color: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    #fetchStatus.show-retry #fetchRetryBtn {
+        display: inline-block;
+    }
     </style>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
     <script>
@@ -762,6 +815,100 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     let requestIdSeq = 1;
     const pending = new Map();
     let gridApi;
+    let activeFetches = 0;
+    let longFetchTimer;
+    const LONG_FETCH_DELAY_MS = 2000;
+
+    function clearLongFetchTimer() {
+        if (longFetchTimer) {
+            clearTimeout(longFetchTimer);
+            longFetchTimer = undefined;
+        }
+    }
+
+    function setFetchStatus(state, message, showRetry) {
+        const statusEl = document.querySelector('#fetchStatus');
+        const textEl = document.querySelector('#fetchStatusText');
+        if (!statusEl || !textEl) {
+            return;
+        }
+
+        if (state === 'hidden') {
+            statusEl.classList.remove('visible', 'show-retry');
+            statusEl.dataset.state = '';
+            textEl.textContent = '';
+            return;
+        }
+
+        statusEl.dataset.state = state;
+        textEl.textContent = message;
+        statusEl.classList.add('visible');
+        statusEl.classList.toggle('show-retry', Boolean(showRetry));
+    }
+
+    function updateFetchStatusPosition() {
+        const containerEl = document.querySelector('#gridContainer');
+        if (!containerEl) {
+            return;
+        }
+
+        let headerHeight = 0;
+        if (gridApi && typeof gridApi.getSizesForCurrentTheme === 'function') {
+            const sizes = gridApi.getSizesForCurrentTheme();
+            if (sizes && Number.isFinite(sizes.headerHeight)) {
+                headerHeight = Number(sizes.headerHeight);
+            }
+        }
+
+        if (!headerHeight) {
+            const headerEl = document.querySelector('#myGrid .ag-header');
+            if (headerEl) {
+                headerHeight = headerEl.getBoundingClientRect().height;
+            }
+        }
+
+        const topOffset = Math.max(8, Math.round(headerHeight) + 8);
+        containerEl.style.setProperty('--fetch-status-top', String(topOffset) + 'px');
+    }
+
+    function beginFetch(message) {
+        activeFetches += 1;
+        if (activeFetches === 1) {
+            setFetchStatus('loading', message || 'Fetching data...', false);
+            clearLongFetchTimer();
+            longFetchTimer = setTimeout(() => {
+                if (activeFetches > 0) {
+                    setFetchStatus('warning', 'Still waiting for R session response. It may be busy running code.', false);
+                }
+            }, LONG_FETCH_DELAY_MS);
+        }
+    }
+
+    function finishFetch(ok, errorMessage) {
+        activeFetches = Math.max(0, activeFetches - 1);
+        if (activeFetches !== 0) {
+            return;
+        }
+
+        clearLongFetchTimer();
+        if (ok) {
+            setFetchStatus('hidden', '', false);
+        } else {
+            setFetchStatus('error', errorMessage || 'Failed to fetch data from R session.', true);
+        }
+    }
+
+    function retryCurrentPage() {
+        if (!gridApi) {
+            return;
+        }
+        setFetchStatus('loading', 'Retrying data fetch...', false);
+        if (typeof gridApi.refreshInfiniteCache === 'function') {
+            gridApi.refreshInfiniteCache();
+        } else if (typeof gridApi.purgeInfiniteCache === 'function') {
+            gridApi.purgeInfiniteCache();
+        }
+    }
 
     function request(action, payload) {
         const requestId = requestIdSeq++;
@@ -815,13 +962,24 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         if (gridApi) {
             gridApi.setGridOption('theme', getAgTheme());
         }
+        updateFetchStatusPosition();
     }
 
     async function initialize() {
         console.log('[dataview] agGrid object:', window.agGrid);
         console.log('[dataview] agGrid.Grid:', typeof window.agGrid.Grid);
-        
-        const init = await request('init', {});
+
+        beginFetch('Loading data viewer metadata...');
+        let init;
+        try {
+            init = await request('init', {});
+            finishFetch(true);
+        } catch (e) {
+            const initError = e instanceof Error ? e.message : String(e);
+            finishFetch(false, 'Failed to initialize data viewer: ' + initError);
+            throw e;
+        }
+
         const columns = Array.isArray(init.columns) ? init.columns : [];
         
         columns.forEach((column) => {
@@ -858,6 +1016,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 
         const datasource = {
             getRows: async function(params) {
+                beginFetch('Fetching rows from R session...');
                 try {
                     const result = await request('page', {
                         startRow: params.startRow,
@@ -867,9 +1026,12 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
                     });
                     const resolvedLastRow = Number.isFinite(result.totalRows) ? result.totalRows : result.lastRow;
                     params.successCallback(result.rows || [], resolvedLastRow);
+                    finishFetch(true);
                 } catch (e) {
                     console.error('[dataview] Failed to load page', e);
                     params.failCallback();
+                    const pageError = e instanceof Error ? e.message : String(e);
+                    finishFetch(false, 'Failed to fetch page: ' + pageError);
                 }
             }
         };
@@ -900,6 +1062,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
                 if (gridApi) {
                     gridApi.columnApi?.autoSizeAllColumns(false);
                 }
+                updateFetchStatusPosition();
             }
         };
 
@@ -908,6 +1071,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
             console.log('[dataview] Creating grid with options:', gridOptions);
             gridApi = window.agGrid.createGrid(gridDiv, gridOptions);
             console.log('[dataview] Grid created successfully');
+            updateFetchStatusPosition();
         } catch (e) {
             console.error('[dataview] Grid creation failed:', e);
             console.error('[dataview] Error stack:', e instanceof Error ? e.stack : 'N/A');
@@ -916,9 +1080,16 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        const retryBtn = document.querySelector('#fetchRetryBtn');
+        if (retryBtn) {
+            retryBtn.addEventListener('click', retryCurrentPage);
+        }
+
         updateTheme();
         initialize().catch((e) => {
             console.error('[dataview] Initialization failed', e);
+            const initError = e instanceof Error ? e.message : String(e);
+            setFetchStatus('error', 'Initialization failed: ' + initError, true);
         });
 
         const observer = new MutationObserver(function () {
@@ -934,7 +1105,13 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     </script>
 </head>
 <body>
-    <div id="myGrid" style="height: 100%;"></div>
+    <div id="gridContainer">
+        <div id="myGrid" style="height: 100%;"></div>
+        <div id="fetchStatus" data-state="" role="status" aria-live="polite">
+            <span id="fetchStatusText"></span>
+            <button id="fetchRetryBtn" type="button">Retry</button>
+        </div>
+    </div>
 </body>
 </html>
 `;
