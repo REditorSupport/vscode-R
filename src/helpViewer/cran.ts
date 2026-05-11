@@ -25,7 +25,6 @@ export async function getPackagesFromCran(cranUrl: string): Promise<Package[]> {
     for(const site of cranSites){
         try{
             // fetch html
-            process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // seems to fail otherwise?
             const res = await fetch(site.url);
             const html = await (res).text();
 
@@ -33,9 +32,6 @@ export async function getPackagesFromCran(cranUrl: string): Promise<Package[]> {
             packages = site.parseFunction(html, site.url);
         } catch(e) {
             // These errors are expected, if the repo does not serve a specific URL
-        } finally {
-            // make sure to use safe https again
-            process.env.NODE_TLS_REJECT_UNAUTHORIZED = '1';
         }
 
         // break if successfully fetched & parsed
