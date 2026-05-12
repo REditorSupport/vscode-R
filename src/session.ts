@@ -128,10 +128,6 @@ function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, c => map[c]);
 }
 
-function formatDataViewPanelTitle(baseTitle: string, totalRows: number): string {
-    return `${baseTitle} (rows: ${totalRows.toLocaleString()})`;
-}
-
 function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string): void {
     const postResponse = (requestId: number, ok: boolean, result?: unknown, error?: string) => {
         void panel.webview.postMessage({
@@ -158,9 +154,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                 if (!result || typeof result.totalRows !== 'number') {
                     throw new Error('Invalid dataview_init response: missing or invalid totalRows');
                 }
-                if (Number.isFinite(result.totalRows)) {
-                    panel.title = formatDataViewPanelTitle(baseTitle, result.totalRows);
-                }
+                panel.title = baseTitle;
                 postResponse(msg.requestId, true, result);
                 return;
             }
@@ -179,9 +173,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                 if (!result || typeof result.totalRows !== 'number') {
                     throw new Error('Invalid dataview_page response: missing or invalid totalRows');
                 }
-                if (Number.isFinite(result.totalRows)) {
-                    panel.title = formatDataViewPanelTitle(baseTitle, result.totalRows);
-                }
+                panel.title = baseTitle;
                 postResponse(msg.requestId, true, result);
                 return;
             }
@@ -637,17 +629,14 @@ export function openExternalBrowser(): void {
     }
 }
 
-export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, viewId?: string, totalRows?: number): Promise<void> {
+export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, viewId?: string): Promise<void> {
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, viewId: ${String(viewId ?? '')}`);
-    const panelTitle = totalRows !== undefined && Number.isFinite(totalRows)
-        ? formatDataViewPanelTitle(title, totalRows)
-        : title;
 
     if (source === 'table') {
         if (viewId) {
             const existing = dynamicDataViewPanels.get(viewId);
             if (existing) {
-                existing.title = panelTitle;
+                existing.title = title;
                 existing.reveal(ViewColumn[viewer as keyof typeof ViewColumn], true);
                 const content = await getTableHtml(existing.webview, undefined, title);
                 existing.webview.html = `${content}\n<!-- dataview-reload:${++dynamicDataViewReloadRevision} -->`;
@@ -655,7 +644,7 @@ export async function showDataView(source: string, type: string, title: string, 
             }
         }
 
-        const panel = window.createWebviewPanel('dataview', panelTitle,
+        const panel = window.createWebviewPanel('dataview', title,
             {
                 preserveFocus: true,
                 viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
@@ -1574,7 +1563,6 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                         String(params.file ?? ''),
                         viewer,
                         params.view_id ? String(params.view_id) : undefined,
-                        typeof params.total_rows === 'number' ? params.total_rows : undefined,
                     );
                 }
             }

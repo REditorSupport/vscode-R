@@ -38,8 +38,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
         title = title,
         source = "table",
         type = "json",
-        view_id = registration$view_id,
-        total_rows = registration$total_rows
+        view_id = registration$view_id
       ))
     } else if (is.list(x)) {
       file_path <- tempfile(tmpdir = .sess_env$tempdir, fileext = ".json")
