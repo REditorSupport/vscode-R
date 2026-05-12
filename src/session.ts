@@ -14,6 +14,7 @@ import * as rTerminal from './rTerminal';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { extensionContext, homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, tmpDir } from './extension';
+import { resolveBackend, CommonPlotManager } from './plotViewer';
 
 import { showWebView } from './webViewer';
 
@@ -409,11 +410,18 @@ function getAttachSessionScriptPath(pipePath: string): string {
 }
 
 function buildAttachSessionScript(pipePath: string, sessPath: string, installSessScriptPath: string): string {
+    const backend = resolveBackend();
+    const useHttpgd = backend === 'httpgd' || backend === 'auto' ? 'TRUE' : 'FALSE';
+    const useJgd = backend === 'jgd' || backend === 'auto' ? 'TRUE' : 'FALSE';
+    const jgdSocket = (backend === 'jgd' || backend === 'auto')
+        ? (globalPlotManager as CommonPlotManager)?.getJgdEnvVars()?.['JGD_SOCKET'] ?? ''
+        : '';
     return [
         'local({',
         `  pipe_path <- ${asRStringLiteral(pipePath)}`,
         `  sess_src <- ${asRStringLiteral(sessPath)}`,
         `  install_sess_script <- ${asRStringLiteral(installSessScriptPath)}`,
+        ...(jgdSocket ? [`  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})`] : []),
         '  bundled_version <- tryCatch(read.dcf(file.path(sess_src, "DESCRIPTION"))[1, "Version"], error = function(e) NA_character_)',
         '  installed_version <- suppressWarnings(tryCatch(as.character(utils::packageVersion("sess")), error = function(e) NA_character_))',
         '  needs_install <- is.na(installed_version) || (!is.na(bundled_version) && utils::compareVersion(installed_version, bundled_version) < 0)',
@@ -425,7 +433,7 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, installSes
         '    on.exit(Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO")), add = TRUE)',
         '    source(install_sess_script, local = TRUE)',
         '  }',
-        '  sess::connect(pipe_path = pipe_path)',
+        `  sess::connect(pipe_path = pipe_path, use_httpgd = ${useHttpgd}, use_jgd = ${useJgd})`,
         '})',
         '',
     ].join('\n');
