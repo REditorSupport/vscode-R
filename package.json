@@ -1841,8 +1841,7 @@
         "r.plot.useHttpgd": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer.\n\nRequires the `httpgd` R package version 1.2.0 or later.",
-          "markdownDeprecationMessage": "Use `#r.plot.backend#` instead."
+          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer.\n\nRequires the `httpgd` R package version 1.2.0 or later.\n\n**Deprecated:** Use `#r.plot.backend#` instead. When `#r.plot.backend#` is `auto`, setting this to `true` forces httpgd."
         },
         "r.plot.backend": {
           "type": "string",
@@ -1854,12 +1853,12 @@
             "jgd"
           ],
           "markdownEnumDescriptions": [
-            "Automatic: uses httpgd if `#r.plot.useHttpgd#` is true, otherwise standard",
+            "Automatic: tries JGD first (if installed), then httpgd, then standard. Respects `#r.plot.useHttpgd#` if set.",
             "Standard static plot viewer (PNG/SVG)",
             "httpgd-based interactive plot viewer (requires `httpgd` R package)",
             "JGD-based interactive plot viewer (requires `jgd` R package)"
           ],
-          "markdownDescription": "Select the plot backend.\n\nWhen set to `auto`, the backend is determined by the legacy `#r.plot.useHttpgd#` setting."
+          "markdownDescription": "Select the plot backend.\n\nWhen set to `auto`, the best available backend is used (JGD if installed, then httpgd, then standard). Setting `#r.plot.useHttpgd#` to `true` forces httpgd."
         },
         "r.plot.jgd.historyLimit": {
           "type": "number",
