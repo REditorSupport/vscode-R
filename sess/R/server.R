@@ -11,6 +11,9 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE) 
   .sess_env$pending_responses <- list()
   .sess_env$read_buffer <- ""
   .sess_env$dataviews <- list()
+  if (is.null(.sess_env$dataview_registry)) {
+    .sess_env$dataview_registry <- new.env(parent = emptyenv())
+  }
 
   .sess_env$tempdir <- file.path(tempdir(), "sess")
   dir.create(.sess_env$tempdir, showWarnings = FALSE, recursive = TRUE)
