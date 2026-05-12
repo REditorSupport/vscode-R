@@ -204,7 +204,7 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
             SESS_USE_HTTPGD: backend === 'httpgd' ? 'TRUE' : 'FALSE',
             SESS_PLOT_BACKEND: backend,
         };
-        if (backend === 'jgd') {
+        if (backend === 'jgd' || backend === 'auto') {
             const jgdVars = (globalPlotManager as CommonPlotManager)?.getJgdEnvVars() ?? {};
             Object.assign(termOptions.env, jgdVars);
         }

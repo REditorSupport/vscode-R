@@ -25,10 +25,10 @@ local({
 })
 
 if (requireNamespace("sess", quietly = TRUE)) {
-    plot_backend <- Sys.getenv("SESS_PLOT_BACKEND", "standard")
+    plot_backend <- Sys.getenv("SESS_PLOT_BACKEND", "auto")
     sess::connect(
         use_rstudioapi = as.logical(Sys.getenv("SESS_RSTUDIOAPI", "TRUE")),
-        use_httpgd = (plot_backend == "httpgd"),
-        use_jgd = (plot_backend == "jgd")
+        use_httpgd = (plot_backend %in% c("auto", "httpgd")),
+        use_jgd = (plot_backend %in% c("auto", "jgd"))
     )
 }

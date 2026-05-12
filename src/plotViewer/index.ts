@@ -8,11 +8,11 @@ import { JgdManager } from './jgdViewer';
 import { extensionContext } from '../extension';
 import { config } from '../util';
 
-export function resolveBackend(): 'standard' | 'httpgd' | 'jgd' {
+export function resolveBackend(): 'auto' | 'standard' | 'httpgd' | 'jgd' {
     const explicit = config().get<string>('plot.backend', 'auto');
     if (explicit !== 'auto') return explicit as 'standard' | 'httpgd' | 'jgd';
     if (config().get<boolean>('plot.useHttpgd', false)) return 'httpgd';
-    return 'standard';
+    return 'auto';
 }
 
 const commands = [
@@ -56,8 +56,8 @@ export class CommonPlotManager implements PlotManager {
 
     get activeViewer(): PlotViewer | undefined {
         const backend = resolveBackend();
-        if (backend === 'jgd') {
-            return this.jgdManager.getViewer() || this.standardPlotViewer;
+        if (backend === 'jgd' || backend === 'auto') {
+            return this.jgdManager.getViewer() || this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
         }
         return this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
     }
@@ -128,7 +128,7 @@ export function initializePlotManager(): PlotManager {
     manager.initialize();
 
     const backend = resolveBackend();
-    if (backend === 'jgd') {
+    if (backend === 'jgd' || backend === 'auto') {
         manager.jgdManager.start();
     }
 
