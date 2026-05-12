@@ -114,7 +114,8 @@ interface DataViewRequestMessage {
     filterModel?: Record<string, unknown>;
 }
 
-const dynamicDataViewPanels = new WeakSet<vscode.WebviewPanel>();
+const dynamicDataViewPanels = new Map<string, vscode.WebviewPanel>();
+let dynamicDataViewReloadRevision = 0;
 
 function escapeHtml(text: string): string {
     const map: Record<string, string> = {
@@ -127,13 +128,7 @@ function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, c => map[c]);
 }
 
-function formatDataViewPanelTitle(baseTitle: string, totalRows: number): string {
-    return `${baseTitle} (rows: ${totalRows.toLocaleString()})`;
-}
-
 function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string): void {
-    dynamicDataViewPanels.add(panel);
-
     const postResponse = (requestId: number, ok: boolean, result?: unknown, error?: string) => {
         void panel.webview.postMessage({
             message: 'dataview/response',
@@ -159,9 +154,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                 if (!result || typeof result.totalRows !== 'number') {
                     throw new Error('Invalid dataview_init response: missing or invalid totalRows');
                 }
-                if (Number.isFinite(result.totalRows)) {
-                    panel.title = formatDataViewPanelTitle(baseTitle, result.totalRows);
-                }
+                panel.title = baseTitle;
                 postResponse(msg.requestId, true, result);
                 return;
             }
@@ -180,9 +173,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                 if (!result || typeof result.totalRows !== 'number') {
                     throw new Error('Invalid dataview_page response: missing or invalid totalRows');
                 }
-                if (Number.isFinite(result.totalRows)) {
-                    panel.title = formatDataViewPanelTitle(baseTitle, result.totalRows);
-                }
+                panel.title = baseTitle;
                 postResponse(msg.requestId, true, result);
                 return;
             }
@@ -192,8 +183,9 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                     method: 'dataview_dispose',
                     params: { view_id: viewId },
                 });
-                // Remove from panels set to prevent duplicate disposal on panel close
-                dynamicDataViewPanels.delete(panel);
+                if (dynamicDataViewPanels.get(viewId) === panel) {
+                    dynamicDataViewPanels.delete(viewId);
+                }
                 postResponse(msg.requestId, true, true);
                 return;
             }
@@ -205,10 +197,10 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
     });
 
     panel.onDidDispose(() => {
-        if (!dynamicDataViewPanels.has(panel)) {
+        if (dynamicDataViewPanels.get(viewId) !== panel) {
             return;
         }
-        dynamicDataViewPanels.delete(panel);
+        dynamicDataViewPanels.delete(viewId);
         void sessionRequest({
             method: 'dataview_dispose',
             params: { view_id: viewId },
@@ -641,6 +633,17 @@ export async function showDataView(source: string, type: string, title: string, 
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, viewId: ${String(viewId ?? '')}`);
 
     if (source === 'table') {
+        if (viewId) {
+            const existing = dynamicDataViewPanels.get(viewId);
+            if (existing) {
+                existing.title = title;
+                existing.reveal(ViewColumn[viewer as keyof typeof ViewColumn], true);
+                const content = await getTableHtml(existing.webview, undefined, title);
+                existing.webview.html = `${content}\n<!-- dataview-reload:${++dynamicDataViewReloadRevision} -->`;
+                return;
+            }
+        }
+
         const panel = window.createWebviewPanel('dataview', title,
             {
                 preserveFocus: true,
@@ -652,12 +655,13 @@ export async function showDataView(source: string, type: string, title: string, 
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
             });
-        const content = await getTableHtml(panel.webview, file || undefined, title);
         panel.iconPath = new UriIcon('open-preview');
-        panel.webview.html = content;
         if (viewId) {
+            dynamicDataViewPanels.set(viewId, panel);
             attachDynamicDataViewBridge(panel, viewId, title);
         }
+        const content = await getTableHtml(panel.webview, file || undefined, title);
+        panel.webview.html = content;
     } else if (source === 'list') {
         const panel = window.createWebviewPanel('dataview', title,
             {

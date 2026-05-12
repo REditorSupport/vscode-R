@@ -261,12 +261,25 @@ dataview_columns <- function(state) {
   }, list(state$headers, state$types, seq_along(state$headers), state$columns), NULL)
 }
 
-dataview_register <- function(data) {
+dataview_new_id <- function() {
+  repeat {
+    ts <- gsub("[^0-9]", "", format(Sys.time(), "%Y%m%d%H%M%OS6"), perl = TRUE)
+    view_id <- sprintf("dv_%s_%06d", ts, sample.int(999999L, 1L))
+    if (is.null(.sess_env$dataviews) || is.null(.sess_env$dataviews[[view_id]])) {
+      return(view_id)
+    }
+  }
+}
+
+dataview_register <- function(data, view_id = NULL) {
   if (is.null(.sess_env$dataviews)) {
     .sess_env$dataviews <- list()
   }
-  ts <- gsub("[^0-9]", "", format(Sys.time(), "%Y%m%d%H%M%OS6"), perl = TRUE)
-  view_id <- sprintf("dv_%s_%06d", ts, sample.int(999999L, 1L))
+
+  if (is.null(view_id)) {
+    view_id <- dataview_new_id()
+  }
+
   state <- dataview_to_state(data)
   .sess_env$dataviews[[view_id]] <- state
   list(

@@ -5,6 +5,10 @@
 #' @export
 register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
   # 1. Override View() to serve table data via paged RPC.
+  if (is.null(.sess_env$dataview_registry)) {
+    .sess_env$dataview_registry <- new.env(parent = emptyenv())
+  }
+
   show_dataview <- function(x, title = deparse(substitute(x))) {
     # make sure title is computed.
     force(title)
@@ -14,14 +18,27 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
     }
 
     if (is.data.frame(x) || is.matrix(x)) {
-      registration <- dataview_register(x)
+      title_key <- paste(as.character(title), collapse = "\n")
+      dataview_registry <- .sess_env$dataview_registry
+      has_view_id <- nzchar(title_key) &&
+        exists(title_key, envir = dataview_registry, inherits = FALSE)
+      view_id <- if (has_view_id) {
+        get(title_key, envir = dataview_registry, inherits = FALSE)
+      } else {
+        id <- dataview_new_id()
+        if (nzchar(title_key)) {
+          assign(title_key, id, envir = dataview_registry)
+        }
+        id
+      }
+
+      registration <- dataview_register(x, view_id = view_id)
 
       notify_client("dataview", list(
         title = title,
         source = "table",
         type = "json",
-        view_id = registration$view_id,
-        total_rows = registration$total_rows
+        view_id = registration$view_id
       ))
     } else if (is.list(x)) {
       file_path <- tempfile(tmpdir = .sess_env$tempdir, fileext = ".json")
