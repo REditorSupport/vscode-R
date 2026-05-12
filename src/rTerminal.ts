@@ -5,12 +5,13 @@ import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
 
-import { extensionContext } from './extension';
+import { extensionContext, globalPlotManager } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
 import { cleanupSession, deferWorkspaceRefresh } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
+import { resolveBackend, CommonPlotManager } from './plotViewer';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
@@ -194,13 +195,19 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'profile.R'));
     if (config().get<boolean>('sessionWatcher')) {
         const pipePath = await getGlobalPipePath();
+        const backend = resolveBackend();
         termOptions.env = {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
             SESS_PIPE: pipePath,
             SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
-            SESS_USE_HTTPGD: config().get<boolean>('plot.useHttpgd') ? 'TRUE' : 'FALSE'
+            SESS_USE_HTTPGD: backend === 'httpgd' ? 'TRUE' : 'FALSE',
+            SESS_PLOT_BACKEND: backend,
         };
+        if (backend === 'jgd') {
+            const jgdVars = (globalPlotManager as CommonPlotManager)?.getJgdEnvVars() ?? {};
+            Object.assign(termOptions.env, jgdVars);
+        }
     }
     return termOptions;
 }

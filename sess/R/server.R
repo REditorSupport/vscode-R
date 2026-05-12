@@ -5,8 +5,9 @@
 #'   session JSON file written by the extension.
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation. Defaults to TRUE.
 #' @param use_httpgd Logical. Use httpgd for plotting if available. Defaults to TRUE.
+#' @param use_jgd Logical. Use jgd for plotting if available. Defaults to FALSE.
 #' @export
-connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE) {
+connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
   .sess_env$con <- NULL
   .sess_env$pending_responses <- list()
   .sess_env$read_buffer <- ""
@@ -93,7 +94,8 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE) 
 
   if (is.na(use_rstudioapi)) use_rstudioapi <- TRUE
   if (is.na(use_httpgd)) use_httpgd <- TRUE
-  register_hooks(use_rstudioapi = use_rstudioapi, use_httpgd = use_httpgd)
+  if (is.na(use_jgd)) use_jgd <- FALSE
+  register_hooks(use_rstudioapi = use_rstudioapi, use_httpgd = use_httpgd, use_jgd = use_jgd)
 
   invisible(NULL)
 }
