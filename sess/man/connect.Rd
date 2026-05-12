@@ -4,7 +4,12 @@
 \alias{connect}
 \title{Connect to the VS Code IPC server}
 \usage{
-connect(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE)
+connect(
+  pipe_path = NULL,
+  use_rstudioapi = TRUE,
+  use_httpgd = TRUE,
+  use_jgd = FALSE
+)
 }
 \arguments{
 \item{pipe_path}{Character. Path to the named pipe / Unix domain socket.
@@ -14,6 +19,8 @@ session JSON file written by the extension.}
 \item{use_rstudioapi}{Logical. Enable rstudioapi emulation. Defaults to TRUE.}
 
 \item{use_httpgd}{Logical. Use httpgd for plotting if available. Defaults to TRUE.}
+
+\item{use_jgd}{Logical. Use jgd for plotting if available. Defaults to FALSE.}
 }
 \description{
 Connect to the VS Code IPC server

@@ -1841,7 +1841,45 @@
         "r.plot.useHttpgd": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer.\n\nRequires the `httpgd` R package version 1.2.0 or later."
+          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer.\n\nRequires the `httpgd` R package version 1.2.0 or later.",
+          "markdownDeprecationMessage": "Use `#r.plot.backend#` instead."
+        },
+        "r.plot.backend": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "standard",
+            "httpgd",
+            "jgd"
+          ],
+          "markdownEnumDescriptions": [
+            "Automatic: uses httpgd if `#r.plot.useHttpgd#` is true, otherwise standard",
+            "Standard static plot viewer (PNG/SVG)",
+            "httpgd-based interactive plot viewer (requires `httpgd` R package)",
+            "JGD-based interactive plot viewer (requires `jgd` R package)"
+          ],
+          "markdownDescription": "Select the plot backend.\n\nWhen set to `auto`, the backend is determined by the legacy `#r.plot.useHttpgd#` setting."
+        },
+        "r.plot.jgd.historyLimit": {
+          "type": "number",
+          "default": 50,
+          "description": "Maximum number of plots retained in JGD history per session."
+        },
+        "r.plot.jgd.exportWidth": {
+          "type": "number",
+          "default": 7,
+          "description": "Default export width in inches for JGD plots."
+        },
+        "r.plot.jgd.exportHeight": {
+          "type": "number",
+          "default": 7,
+          "description": "Default export height in inches for JGD plots."
+        },
+        "r.plot.jgd.exportDpi": {
+          "type": "number",
+          "default": 150,
+          "description": "Default export DPI for JGD plots."
         },
         "r.plot.format": {
           "type": "string",

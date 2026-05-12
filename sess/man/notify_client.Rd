@@ -12,5 +12,5 @@ notify_client(method, params = list())
 \item{params}{A list containing the arguments for the command}
 }
 \description{
-Pushes an event instantly to the client extension via the active IPC pipe connection.
+Notify the client via IPC pipe (JSON-RPC 2.0 Notification)
 }
