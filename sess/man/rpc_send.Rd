@@ -17,6 +17,6 @@ rpc_send(method, params = list(), request = FALSE)
 The result of the request if request=TRUE, otherwise TRUE if sent.
 }
 \description{
-This is the internal workhorse for both Notifications and Requests.
+Send a message to the client via IPC pipe (JSON-RPC 2.0)
 }
 \keyword{internal}

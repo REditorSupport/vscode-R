@@ -4,7 +4,16 @@ import { PlotViewer, PlotManager } from './types';
 import { HttpgdManager, HttpgdViewer } from './httpgdViewer';
 export { HttpgdManager };
 import { StandardPlotViewer } from './standardViewer';
+import { JgdManager } from './jgdViewer';
 import { extensionContext } from '../extension';
+import { config } from '../util';
+
+export function resolveBackend(): 'auto' | 'standard' | 'httpgd' | 'jgd' {
+    const explicit = config().get<string>('plot.backend', 'auto');
+    if (explicit !== 'auto') return explicit as 'standard' | 'httpgd' | 'jgd';
+    if (config().get<boolean>('plot.useHttpgd', false)) return 'httpgd';
+    return 'auto';
+}
 
 const commands = [
     'showViewers',
@@ -29,23 +38,33 @@ const commands = [
 export class CommonPlotManager implements PlotManager {
     public httpgdManager: HttpgdManager;
     public standardPlotViewer: StandardPlotViewer;
+    public jgdManager: JgdManager;
 
     constructor() {
         this.httpgdManager = new HttpgdManager();
         this.standardPlotViewer = new StandardPlotViewer();
+        this.jgdManager = new JgdManager();
     }
 
     get viewers(): PlotViewer[] {
         const viewers: PlotViewer[] = [...this.httpgdManager.viewers];
+        const jgdViewer = this.jgdManager.getViewer();
+        if (jgdViewer) viewers.push(jgdViewer);
         viewers.push(this.standardPlotViewer);
         return viewers;
     }
 
     get activeViewer(): PlotViewer | undefined {
+        const backend = resolveBackend();
+        if (backend === 'jgd' || backend === 'auto') {
+            return this.jgdManager.getViewer() || this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
+        }
         return this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
     }
 
     public initialize(): void {
+        this.jgdManager.initialize(extensionContext.extensionUri);
+
         for (const cmd of commands) {
             const fullCommand = `r.plot.${cmd}`;
             extensionContext.subscriptions.push(
@@ -54,6 +73,8 @@ export class CommonPlotManager implements PlotManager {
                 })
             );
         }
+
+        void vscode.commands.executeCommand('setContext', 'r.plot.backend', resolveBackend());
     }
 
     public async showStandardPlot(): Promise<void> {
@@ -62,6 +83,14 @@ export class CommonPlotManager implements PlotManager {
 
     public async showHttpgdPlot(url: string): Promise<void> {
         await this.httpgdManager.showViewer(url);
+    }
+
+    public getJgdEnvVars(): Record<string, string> {
+        return this.jgdManager.getEnvVars();
+    }
+
+    public dispose(): void {
+        this.jgdManager.stop();
     }
 
     private async handleCommand(command: string, hostOrWebviewUri?: string | vscode.Uri, ...args: unknown[]): Promise<void> {
@@ -97,5 +126,11 @@ export class CommonPlotManager implements PlotManager {
 export function initializePlotManager(): PlotManager {
     const manager = new CommonPlotManager();
     manager.initialize();
+
+    const backend = resolveBackend();
+    if (backend === 'jgd' || backend === 'auto') {
+        manager.jgdManager.start();
+    }
+
     return manager;
 }

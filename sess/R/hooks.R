@@ -2,8 +2,9 @@
 #'
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation.
 #' @param use_httpgd Logical. Enable httpgd plot device if available.
+#' @param use_jgd Logical. Enable jgd plot device if available.
 #' @export
-register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
+register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
   # 1. Override View() to serve table data via paged RPC.
   if (is.null(.sess_env$dataview_registry)) {
     .sess_env$dataview_registry <- new.env(parent = emptyenv())
@@ -129,8 +130,12 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE) {
     invisible(x)
   }
 
-  # 4. httpgd or Static Plot Hook
-  if (use_httpgd && requireNamespace("httpgd", quietly = TRUE)) {
+  # 4. Plot device: JGD > httpgd > Standard
+  if (use_jgd && nzchar(Sys.getenv("JGD_SOCKET")) && requireNamespace("jgd", quietly = TRUE)) {
+    options(device = function(...) {
+      jgd::jgd()
+    })
+  } else if (use_httpgd && requireNamespace("httpgd", quietly = TRUE)) {
     options(device = function(...) {
       httpgd::hgd(silent = TRUE)
       notify_client("httpgd", list(url = httpgd::hgd_url()))

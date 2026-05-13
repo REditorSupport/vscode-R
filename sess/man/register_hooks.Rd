@@ -4,12 +4,14 @@
 \alias{register_hooks}
 \title{Register hooks for the client IPC}
 \usage{
-register_hooks(use_rstudioapi = TRUE, use_httpgd = TRUE)
+register_hooks(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE)
 }
 \arguments{
 \item{use_rstudioapi}{Logical. Enable rstudioapi emulation.}
 
 \item{use_httpgd}{Logical. Enable httpgd plot device if available.}
+
+\item{use_jgd}{Logical. Enable jgd plot device if available.}
 }
 \description{
 Register hooks for the client IPC
