@@ -33,13 +33,15 @@ See the [sess package README](./sess/README.md) for more details on the protocol
 
 4. Create an R file and start coding.
 
-The following software or extensions are recommended to enhance the experience of using R in VS Code:
+The following software are recommended to enhance the experience of using R in VS Code:
 
-* [radian](https://github.com/randy3k/radian): A modern R console that corrects many limitations of the official R terminal and supports many features such as syntax highlighting and auto-completion.
+* Interactive plot backends (install one for a better R plotting experience):
+  * [jgd](https://github.com/grantmcdermott/jgd): Lightweight JSON graphics device with native vscode-R integration.
+  * [httpgd](https://github.com/nx10/httpgd): SVG-based graphics device served via HTTP and WebSockets.
+
+* [arf](https://github.com/eitsupi/arf): Modern R console with many features: syntax highlighting, fuzzy history search, multiline editing, vi/emacs keybindings, R version switching, etc. Successor to [radian](https://github.com/randy3k/radian) written in Rust.
 
 * [VSCode-R-Debugger](https://github.com/ManuelHentschel/VSCode-R-Debugger): A VS Code extension to support R debugging capabilities.
-
-* [httpgd](https://github.com/nx10/httpgd): An R package to provide a graphics device that asynchronously serves SVG graphics via HTTP and WebSockets.
 
 Go to the installation wiki pages ([Windows](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Windows) | [macOS](https://github.com/REditorSupport/vscode-R/wiki/Installation:-macOS) | [Linux](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Linux)) for more detailed instructions.
 
@@ -65,7 +67,7 @@ Go to the installation wiki pages ([Windows](https://github.com/REditorSupport/v
 
 * [Data viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#data-viewer): Viewing `data.frame` or `matrix` in a grid or a list structure in a treeview.
 
-* [Plot viewer](https://github.com/REditorSupport/vscode-R/wiki/Plot-viewer): PNG file viewer and SVG plot viewer based on [httpgd](https://github.com/nx10/httpgd).
+* [Plot viewer](https://github.com/REditorSupport/vscode-R/wiki/Plot-viewer): Interactive plot viewer with support for [jgd](https://github.com/grantmcdermott/jgd) and [httpgd](https://github.com/nx10/httpgd) backends, plus a standard PNG/SVG fallback.
 
 * [Webpage viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#webpage-viewer): Viewing [htmlwidgets](https://www.htmlwidgets.org) such as interactive graphics and [visual profiling results](https://rstudio.github.io/profvis/).
 
