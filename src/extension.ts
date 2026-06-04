@@ -204,6 +204,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     globalPlotManager = plotViewer.initializePlotManager();
 
     // Set JGD_SOCKET env var for R child processes when JGD server is running
+    context.environmentVariableCollection.persistent = false;
     if (plotViewer.resolveBackend() === 'jgd' || plotViewer.resolveBackend() === 'auto') {
         const jgdVars = (globalPlotManager as plotViewer.CommonPlotManager).getJgdEnvVars();
         for (const [key, value] of Object.entries(jgdVars)) {
