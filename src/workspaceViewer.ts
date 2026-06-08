@@ -359,7 +359,7 @@ export class GlobalEnvItem extends TreeItem {
     ) {
         super(
             label,
-            GlobalEnvItem.setCollapsibleState(type, str, hasChildren)
+            GlobalEnvItem.setCollapsibleState(type, hasChildren)
         );
         this.treeLevel = treeLevel ?? TreeLevel.Scalar;
         this.priority = dim ? 1 : 0;
@@ -433,11 +433,9 @@ export class GlobalEnvItem extends TreeItem {
     in the futere for more tree levels.*/
     private static setCollapsibleState(
         type: string,
-        str: string,
         hasChildren?: boolean
     ): vscode.TreeItemCollapsibleState {
-        const expandable = hasChildren ?? str.includes('\n');
-        if (collapsibleTypes.includes(type) && expandable) {
+        if (collapsibleTypes.includes(type) && hasChildren) {
             return TreeItemCollapsibleState.Collapsed;
         } else {
             return TreeItemCollapsibleState.None;
