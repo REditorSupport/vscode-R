@@ -9,7 +9,7 @@ import { extensionContext } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession } from './session';
+import { cleanupSession, deferWorkspaceRefresh } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
@@ -342,6 +342,7 @@ export async function runChunksInTerm(chunks: vscode.Range[]): Promise<void> {
 }
 
 export async function runTextInTerm(text: string, execute: boolean = true): Promise<void> {
+    deferWorkspaceRefresh();
     const term = await chooseTerminal();
     if (term === undefined) {
         return;

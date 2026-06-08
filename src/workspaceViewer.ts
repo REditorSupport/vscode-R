@@ -4,15 +4,39 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window, ThemeIcon } from 'vscode';
 import { runTextInTerm } from './rTerminal';
-import { workspaceData, workingDir, WorkspaceData, GlobalEnv } from './session';
+import { workspaceData, workingDir, WorkspaceData, GlobalEnv, globalPipePath, sessionRequest } from './session';
 import { config } from './util';
 import { extensionContext, globalRHelp } from './extension';
 import { PackageNode } from './helpViewer/treeView';
 
 const collapsibleTypes: string[] = [
     'list',
-    'environment'
+    'environment',
+    'pairlist',
+    'S4'
 ];
+
+interface WorkspaceChild {
+    str: string;
+    class: string;
+    type: string;
+    has_children: boolean;
+    selector?: WorkspaceSelector;
+}
+
+interface WorkspaceSelector {
+    kind: 'index' | 'name' | 'slot';
+    value: number | string;
+}
+
+interface WorkspaceChildPage {
+    children: WorkspaceChild[];
+    nextStart?: number;
+}
+
+function getFirstClass(rClass: string[] | string | undefined): string {
+    return Array.isArray(rClass) ? rClass[0] : rClass ?? '';
+}
 
 async function populatePackageNodes(): Promise<void> {
     const rootNode = globalRHelp?.treeViewWrapper.helpViewProvider.rootItem;
@@ -34,14 +58,20 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     private readonly attachedNamespacesRootItem: TreeItem;
     private readonly loadedNamespacesRootItem: TreeItem;
     private readonly globalEnvRootItem: TreeItem;
-    private _onDidChangeTreeData: EventEmitter<void> = new EventEmitter();
+    private readonly childPages = new Map<string, WorkspaceChildPage>();
+    private readonly childPageLoads = new Set<string>();
+    private childPageGeneration = 0;
+    private _onDidChangeTreeData: EventEmitter<TreeItem | undefined> = new EventEmitter();
 
-    public readonly onDidChangeTreeData: Event<void> = this._onDidChangeTreeData.event;
+    public readonly onDidChangeTreeData: Event<TreeItem | undefined> = this._onDidChangeTreeData.event;
     public data: WorkspaceData | undefined;
 
     public refresh(): void {
         this.data = workspaceData;
-        this._onDidChangeTreeData.fire();
+        this.childPageGeneration++;
+        this.childPages.clear();
+        this.childPageLoads.clear();
+        this._onDidChangeTreeData.fire(undefined);
     }
 
     public constructor() {
@@ -60,6 +90,9 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
         extensionContext.subscriptions.push(
             vscode.commands.registerCommand(PackageItem.command, async (node: PackageNode) => {
                 await node.showQuickPick();
+            }),
+            vscode.commands.registerCommand(LoadMoreItem.command, async (node: LoadMoreItem) => {
+                await this.loadMore(node.parent, node.start);
             })
         );
 
@@ -105,19 +138,25 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             } else if (element.id === 'globalenv') {
                 return this.getGlobalEnvItems(this.data.globalenv);
             } else if (element instanceof GlobalEnvItem) {
-                return element.str
-                    .split('\n')
-                    .filter((elem, index) => { return index > 0; })
-                    .map(strItem =>
-                        new GlobalEnvItem(
-                            '',
-                            '',
-                            strItem.replace(/\s+/g, ' ').trim(),
-                            '',
-                            0,
-                            element.treeLevel + 1
-                        )
-                    );
+                const page = await this.getGlobalEnvChildren(element);
+                const items: TreeItem[] = page.children.map(child =>
+                    new GlobalEnvItem(
+                        '',
+                        child.class,
+                        child.str.replace(/\s+/g, ' ').trim(),
+                        child.type,
+                        0,
+                        element.treeLevel + 1,
+                        undefined,
+                        child.has_children,
+                        element.rootName,
+                        child.selector ? [...element.objectPath, child.selector] : element.objectPath
+                    )
+                );
+                if (page.nextStart !== undefined) {
+                    items.push(new LoadMoreItem(element, page.nextStart));
+                }
+                return items;
             } else {
                 return [];
             }
@@ -137,7 +176,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             str: string,
             type: string,
             size?: number,
-            dim?: number[]
+            dim?: number[],
+            hasChildren?: boolean
         ): GlobalEnvItem => {
             return new GlobalEnvItem(
                 key,
@@ -147,17 +187,19 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                 size,
                 TreeLevel.Parent,
                 dim,
+                hasChildren,
             );
         };
 
         const items = globalenv ? Object.keys(globalenv).map((key) =>
             toItem(
                 key,
-                globalenv[key].class[0],
+                getFirstClass(globalenv[key].class),
                 globalenv[key].str,
                 globalenv[key].type,
                 globalenv[key].size,
                 globalenv[key].dim,
+                globalenv[key].has_children,
             )) : [];
 
         function sortItems(a: GlobalEnvItem, b: GlobalEnvItem) {
@@ -171,6 +213,83 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
         }
 
         return items.sort((a, b) => sortItems(a, b));
+    }
+
+    private getChildPageKey(element: GlobalEnvItem): string {
+        return JSON.stringify([element.rootName, element.objectPath]);
+    }
+
+    private async getGlobalEnvChildren(element: GlobalEnvItem): Promise<WorkspaceChildPage> {
+        const key = this.getChildPageKey(element);
+        const cached = this.childPages.get(key);
+        if (cached) {
+            return cached;
+        }
+
+        const generation = this.childPageGeneration;
+        const page = await this.requestGlobalEnvChildren(element, 1);
+        if (generation === this.childPageGeneration) {
+            this.childPages.set(key, page);
+            return page;
+        }
+        return { children: [] };
+    }
+
+    private async requestGlobalEnvChildren(element: GlobalEnvItem, start: number): Promise<WorkspaceChildPage> {
+        if (globalPipePath && element.rootName) {
+            try {
+                const response = await sessionRequest({
+                    method: 'workspace_children',
+                    params: {
+                        name: element.rootName,
+                        path: element.objectPath,
+                        start,
+                    },
+                }) as { children?: unknown, next_start?: unknown } | undefined;
+                if (response && Array.isArray(response.children)) {
+                    const children = response.children.filter((child): child is WorkspaceChild =>
+                        typeof child === 'object' &&
+                        child !== null &&
+                        'str' in child &&
+                        'type' in child &&
+                        'has_children' in child
+                    );
+                    const nextStart = typeof response.next_start === 'number' ?
+                        response.next_start :
+                        undefined;
+                    return { children, nextStart };
+                }
+            } catch {
+                return { children: [] };
+            }
+        }
+
+        return { children: [] };
+    }
+
+    private async loadMore(parent: GlobalEnvItem, start: number): Promise<void> {
+        const key = this.getChildPageKey(parent);
+        const loadKey = `${key}:${start}`;
+        if (this.childPageLoads.has(loadKey)) {
+            return;
+        }
+
+        this.childPageLoads.add(loadKey);
+        const generation = this.childPageGeneration;
+        try {
+            const current = this.childPages.get(key) ?? { children: [] };
+            const next = await this.requestGlobalEnvChildren(parent, start);
+            if (generation !== this.childPageGeneration) {
+                return;
+            }
+            this.childPages.set(key, {
+                children: [...current.children, ...next.children],
+                nextStart: next.nextStart
+            });
+            this._onDidChangeTreeData.fire(parent);
+        } finally {
+            this.childPageLoads.delete(loadKey);
+        }
     }
 }
 
@@ -195,20 +314,36 @@ class PackageItem extends TreeItem {
     }
 }
 
+class LoadMoreItem extends TreeItem {
+    public static command = 'r.workspaceViewer.loadMore';
+
+    public constructor(
+        public readonly parent: GlobalEnvItem,
+        public readonly start: number
+    ) {
+        super('...', TreeItemCollapsibleState.None);
+        this.tooltip = 'Load next 500 items';
+        this.iconPath = new ThemeIcon('ellipsis');
+        this.command = {
+            command: LoadMoreItem.command,
+            title: 'Load next 500 items',
+            arguments: [this]
+        };
+    }
+}
+
 enum TreeLevel {
     Parent = 0,
-    Scalar = 1,
-    Child = 2
+    Scalar = 1
 }
 
 export class GlobalEnvItem extends TreeItem {
     declare public label?: string;
-    public desc?: string;
-    public str: string;
-    public type: string;
     public treeLevel: number;
     public contextValue: string;
     public priority: number;
+    public rootName: string;
+    public objectPath: WorkspaceSelector[];
 
     constructor(
         label: string,
@@ -218,15 +353,18 @@ export class GlobalEnvItem extends TreeItem {
         size?: number,
         treeLevel?: number,
         dim?: number[],
+        hasChildren?: boolean,
+        rootName?: string,
+        objectPath?: WorkspaceSelector[],
     ) {
         super(
             label,
-            GlobalEnvItem.setCollapsibleState(treeLevel ?? TreeLevel.Scalar, type, str)
+            GlobalEnvItem.setCollapsibleState(type, str, hasChildren)
         );
-        this.type = type;
-        this.str = str;
         this.treeLevel = treeLevel ?? TreeLevel.Scalar;
         this.priority = dim ? 1 : 0;
+        this.rootName = rootName ?? label;
+        this.objectPath = objectPath ?? [];
 
         this.description = this.getDescription(
             dim,
@@ -293,8 +431,13 @@ export class GlobalEnvItem extends TreeItem {
     during the super constructor above. I created it to give full control
     of what elements can have have 'child' nodes os not. It can be expanded
     in the futere for more tree levels.*/
-    private static setCollapsibleState(treeLevel: number, type: string, str: string): vscode.TreeItemCollapsibleState {
-        if (treeLevel === TreeLevel.Parent && collapsibleTypes.includes(type) && str.includes('\n')) {
+    private static setCollapsibleState(
+        type: string,
+        str: string,
+        hasChildren?: boolean
+    ): vscode.TreeItemCollapsibleState {
+        const expandable = hasChildren ?? str.includes('\n');
+        if (collapsibleTypes.includes(type) && expandable) {
             return TreeItemCollapsibleState.Collapsed;
         } else {
             return TreeItemCollapsibleState.None;

@@ -1,21 +1,88 @@
 # Handlers for the client Pull Requests (HTTP GET/POST)
 
+capture_str <- function(object, max_level = 0L) {
+  paste0(utils::capture.output(
+    utils::str(object,
+      max.level = max_level,
+      give.attr = FALSE,
+      vec.len = 1L
+    )
+  ), collapse = "\n")
+}
+
+try_capture_str <- function(object, max_level = 0L) {
+  tryCatch(
+    capture_str(object, max_level),
+    error = function(e) paste0(class(object), collapse = ", ")
+  )
+}
+
+workspace_child_count <- function(object) {
+  if (is.environment(object)) {
+    length(object)
+  } else if (isS4(object)) {
+    length(methods::slotNames(object))
+  } else if (typeof(object) %in% c("list", "pairlist")) {
+    length(object)
+  } else {
+    0L
+  }
+}
+
 get_workspace_data <- function() {
   env <- .GlobalEnv
-  all_names <- ls(env)
+  all_names <- ls(env, sorted = FALSE)
 
   objs <- lapply(all_names, function(name) {
+    if (bindingIsActive(name, env)) {
+      return(list(
+        class = "active_binding",
+        type = "active_binding",
+        length = 0L,
+        str = "(active-binding)",
+        has_children = FALSE
+      ))
+    }
+
     obj <- env[[name]]
-    list(
+    obj_class <- class(obj)
+    obj_type <- typeof(obj)
+    obj_length <- length(obj)
+    obj_dim <- dim(obj)
+    first_class <- if (length(obj_class)) obj_class[[1]] else obj_type
+    info <- list(
       class = class(obj),
-      type = typeof(obj),
-      length = length(obj),
-      # Create a concise string representation
-      str = paste0(
-        utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE)),
-        collapse = "\n"
-      )
+      type = obj_type,
+      length = obj_length,
+      str = if (!is.null(obj_dim)) {
+        paste0(first_class, ": ", paste(obj_dim, collapse = " x "))
+      } else if (obj_type == "environment") {
+        "<environment>"
+      } else if (obj_type %in% c("closure", "builtin")) {
+        trimws(try_capture_str(obj))
+      } else {
+        paste0(first_class, ", length ", obj_length)
+      },
+      has_children = workspace_child_count(obj) > 0L
     )
+
+    obj_names <- if (is.object(obj)) {
+      utils::.DollarNames(obj, pattern = "")
+    } else if (is.recursive(obj)) {
+      names(obj)
+    } else {
+      NULL
+    }
+    if (length(obj_names)) {
+      info$names <- obj_names
+    }
+    if (isS4(obj)) {
+      info$slots <- methods::slotNames(obj)
+    }
+    if (!is.null(obj_dim)) {
+      info$dim <- obj_dim
+    }
+    info
   })
   names(objs) <- all_names
 
@@ -26,16 +93,113 @@ get_workspace_data <- function() {
   )
 }
 
+workspace_object <- function(name, path = list()) {
+  object <- get(name, envir = .GlobalEnv, inherits = FALSE)
+  for (selector in path) {
+    object <- switch(selector$kind,
+      index = object[[as.integer(selector$value)]],
+      name = get(selector$value, envir = object, inherits = FALSE),
+      slot = methods::slot(object, selector$value),
+      stop("Unknown workspace selector")
+    )
+  }
+  object
+}
+
+workspace_child_page_size <- 500L
+
+workspace_child_item <- function(object, str, selector) {
+  list(
+    str = str,
+    class = paste(class(object), collapse = ", "),
+    type = typeof(object),
+    has_children = workspace_child_count(object) > 0L,
+    selector = selector
+  )
+}
+
+workspace_child_label <- function(name, index) {
+  if (!is.null(name) && !is.na(name) && nzchar(name)) {
+    paste0("$ ", name)
+  } else {
+    paste0("[[", index, "]]")
+  }
+}
+
+get_workspace_children <- function(name, path = list(), start = 1L) {
+  tryCatch({
+    object <- workspace_object(name, path)
+    child_count <- workspace_child_count(object)
+    if (child_count == 0L) {
+      return(list(children = I(list()), next_start = NULL))
+    }
+
+    start <- max(1L, as.integer(start))
+    end <- min(child_count, start + workspace_child_page_size - 1L)
+    if (start > end) {
+      return(list(children = I(list()), next_start = NULL))
+    }
+
+    children <- if (is.environment(object)) {
+      child_names <- ls(object, sorted = FALSE)[seq.int(start, end)]
+      lapply(child_names, function(child_name) {
+        if (bindingIsActive(child_name, object)) {
+          list(
+            str = paste0("$ ", child_name, ": (active-binding)"),
+            class = "active_binding",
+            type = "active_binding",
+            has_children = FALSE
+          )
+        } else {
+          child <- get(child_name, envir = object, inherits = FALSE)
+          workspace_child_item(
+            child,
+            paste0("$ ", child_name, ": ", trimws(try_capture_str(child))),
+            list(kind = "name", value = child_name)
+          )
+        }
+      })
+    } else if (isS4(object)) {
+      child_names <- methods::slotNames(object)[seq.int(start, end)]
+      lapply(child_names, function(child_name) {
+        child <- methods::slot(object, child_name)
+        workspace_child_item(
+          child,
+          paste0("@ ", child_name, ": ", trimws(try_capture_str(child))),
+          list(kind = "slot", value = child_name)
+        )
+      })
+    } else {
+      indices <- seq.int(start, end)
+      child_names <- names(object)
+      lapply(indices, function(index) {
+        child <- object[[index]]
+        child_name <- if (is.null(child_names)) NULL else child_names[[index]]
+        workspace_child_item(
+          child,
+          paste0(
+            workspace_child_label(child_name, index),
+            ": ",
+            trimws(try_capture_str(child))
+          ),
+          list(kind = "index", value = index)
+        )
+      })
+    }
+
+    list(
+      children = I(children),
+      next_start = if (end < child_count) end + 1L else NULL
+    )
+  }, error = function(e) list(children = I(list()), next_start = NULL))
+}
+
 handle_hover <- function(expr_str) {
   tryCatch(
     {
       expr <- parse(text = expr_str, keep.source = FALSE)[[1]]
       obj <- eval(expr, .GlobalEnv)
-      str_preview <- paste0(
-        utils::capture.output(utils::str(obj, max.level = 0, give.attr = FALSE)),
-        collapse = "\n"
-      )
-      list(str = str_preview)
+      list(str = capture_str(obj))
     },
     error = function(e) NULL
   )
@@ -77,7 +241,7 @@ handle_complete <- function(expr_str, trigger = NULL) {
     }))
   }
 
-  if (trigger == "@" && methods::isS4(obj)) {
+  if (trigger == "@" && isS4(obj)) {
     nms <- methods::slotNames(obj)
     return(lapply(nms, function(n) {
       item <- methods::slot(obj, n)

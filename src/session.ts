@@ -25,14 +25,15 @@ export interface SessionInfo {
 
 export interface GlobalEnv {
     [key: string]: {
-        class: string[];
+        class: string[] | string;
         type: string;
         length: number;
         str: string;
         size?: number;
         dim?: number[],
         names?: string[],
-        slots?: string[]
+        slots?: string[],
+        has_children?: boolean
     }
 }
 
@@ -85,6 +86,9 @@ export let workspaceFile: string;
 const sessions = new Map<string, Session>();
 export let activeSession: Session | undefined;
 let activeBrowserUri: Uri | undefined;
+let workspaceRefreshTimer: NodeJS.Timeout | undefined;
+let workspaceRefreshInProgress = false;
+let workspaceRefreshPending = false;
 
 interface DataViewColumnDef {
     headerName: string;
@@ -580,15 +584,48 @@ async function updatePlot() {
     await globalPlotManager?.showStandardPlot();
 }
 
+export function deferWorkspaceRefresh(): void {
+    if (workspaceRefreshTimer) {
+        clearTimeout(workspaceRefreshTimer);
+        workspaceRefreshTimer = undefined;
+    }
+}
+
+function scheduleWorkspaceRefresh(delayMs: number = 500): void {
+    workspaceRefreshPending = true;
+    if (workspaceRefreshTimer) {
+        clearTimeout(workspaceRefreshTimer);
+    }
+    workspaceRefreshTimer = setTimeout(() => {
+        workspaceRefreshTimer = undefined;
+        void runWorkspaceRefresh();
+    }, delayMs);
+}
+
+async function runWorkspaceRefresh(): Promise<void> {
+    if (workspaceRefreshInProgress || !workspaceRefreshPending) {
+        return;
+    }
+    workspaceRefreshPending = false;
+    workspaceRefreshInProgress = true;
+    try {
+        await updateWorkspace();
+    } finally {
+        workspaceRefreshInProgress = false;
+        if (workspaceRefreshPending) {
+            scheduleWorkspaceRefresh();
+        }
+    }
+}
+
 export async function updateWorkspace() {
-    if (!globalPipePath) {return;}
+    const requestedSession = activeSession;
+    if (!globalPipePath || !requestedSession) {return;}
     try {
         const response = await sessionRequest({ method: 'workspace' });
-        if (response) {
+        if (response && activeSession === requestedSession) {
             workspaceData = response as WorkspaceData;
-            if (activeSession) {
-                activeSession.workspaceData = workspaceData;
-            }
+            requestedSession.workspaceData = workspaceData;
             void rWorkspace?.refresh();
             console.info('[updateWorkspace] Done');
         }
@@ -1500,13 +1537,15 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             if (params.plot_url) {
                 await globalPlotManager?.showHttpgdPlot(String(params.plot_url));
             }
-            void updateWorkspace();
+            scheduleWorkspaceRefresh(0);
             void watchProcess(rPid).then((v: string) => { void cleanupSession(v); });
             break;
         }
 
         case 'workspace_updated': {
-            void updateWorkspace();
+            if (socket === activeSession?.socket) {
+                scheduleWorkspaceRefresh();
+            }
             break;
         }
         case 'help': {
@@ -1674,6 +1713,8 @@ export async function cleanupSession(pidArg: string): Promise<void> {
         session.socket.destroy();
     }
     if (activeSession === session || pid === pidArg) {
+        deferWorkspaceRefresh();
+        workspaceRefreshPending = false;
         resetStatusBar();
         globalPipePath = undefined;
         activeSession = undefined;
