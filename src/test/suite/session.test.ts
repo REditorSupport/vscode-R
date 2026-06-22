@@ -138,6 +138,11 @@ suite('Session Communication', () => {
         sandbox.stub(util, 'getRterm').resolves(rPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves();
 
+        // svglite is a Suggests (optional) dependency of the sess package, so it may or
+        // may not be present. Detect it before stubbing so the format assertions below
+        // can verify the correct code path (SVG when installed, png fallback otherwise).
+        const svgliteInstalled = (await util.getRPackageVersion('svglite')) !== undefined;
+
         const result = await rTerminal.createRTerm(true);
         assert.ok(result);
         await waitFor(() => session.activeSession, 15000, 200);
@@ -175,7 +180,14 @@ suite('Session Communication', () => {
         }, 15000, 500);
         
         assert.ok(svgliteResp && svgliteResp.data, 'svglite data should be returned');
-        assert.strictEqual(svgliteResp.format, 'svglite', 'format should be svglite');
+        // svglite is an optional (Suggests) dependency of the sess package. When it is
+        // installed the handler renders SVG; otherwise it falls back to png. Assert the
+        // path that actually applies to this environment so both branches are tested.
+        if (svgliteInstalled) {
+            assert.strictEqual(svgliteResp.format, 'svglite', 'format should be svglite when svglite is installed');
+        } else {
+            assert.strictEqual(svgliteResp.format, 'png', 'format should fall back to png when svglite is not installed');
+        }
 
         // Reset history to ensure we track the next plot if we were to recreate the panel
         // Wait, since panel is reused, we shouldn't reset history if we just want it to pass,
