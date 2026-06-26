@@ -128,6 +128,11 @@ suite('Session Communication', () => {
                 if (key === 'sessionWatcher') { return true; }
                 if (key === 'rterm.option') { return ['--no-save']; }
                 if (key === 'plot.useHttpgd') { return false; }
+                // Pin the standard plot backend so this test is deterministic.
+                // Otherwise it resolves to 'auto', which prefers jgd when jgd is
+                // installed (now the case in CI since the build installs Suggests),
+                // and the r.standardPlot webview is never created.
+                if (key === 'plot.backend') { return 'standard'; }
                 if (key === 'session.data.pageSize') { return 500; }
                 if (key === 'session.viewers.viewColumn') { return {
                     plot: 'Two',
