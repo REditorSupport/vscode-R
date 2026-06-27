@@ -48,6 +48,7 @@ export interface JgdGetDimensions {
 export class JgdSocketServer {
     private server: net.Server | null = null;
     private socketPath: string = '';
+    private socketDir: string = '';
     private sessions: Map<string, RSession> = new Map();
     private connectionListeners: ConnectionChangeListener[] = [];
     private sessionCounter = 0;
@@ -131,7 +132,11 @@ export class JgdSocketServer {
                 this.notifyReady();
             });
         } else {
-            this.socketPath = path.join(os.tmpdir(), `jgd-${token}.sock`);
+            // Place the socket in a private 0o700 directory so other local
+            // users cannot connect to it (mirrors the IPC pipe handling in #1705).
+            this.socketDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jgd-'));
+            try { fs.chmodSync(this.socketDir, 0o700); } catch { /* ignore */ }
+            this.socketPath = path.join(this.socketDir, `${token}.sock`);
             try { fs.unlinkSync(this.socketPath); } catch { /* ignore */ }
 
             this.server.listen(this.socketPath, () => {
@@ -157,6 +162,10 @@ export class JgdSocketServer {
         this.server?.close();
         if (!isWindows) {
             try { fs.unlinkSync(this.socketPath); } catch { /* ignore */ }
+            if (this.socketDir) {
+                try { fs.rmSync(this.socketDir, { recursive: true, force: true }); } catch { /* ignore */ }
+                this.socketDir = '';
+            }
         }
     }
 

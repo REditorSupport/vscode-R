@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { PlotViewer } from './types';
 import { PlotHistory, PlotFrame } from './jgdPlotHistory';
 import { JgdSocketServer, JgdMessage } from './jgdSocketServer';
-import { config } from '../util';
+import { config, UriIcon } from '../util';
 
 interface MetricsRequest {
     id: number;
@@ -413,6 +413,7 @@ export class JgdViewer implements PlotViewer {
             }
         );
 
+        this.panel.iconPath = new UriIcon('graph');
         this.panel.webview.html = this.getWebviewHtml();
 
         this.panel.webview.onDidReceiveMessage((raw: WebviewMessage) => {
@@ -527,6 +528,7 @@ export class JgdViewer implements PlotViewer {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: blob:;">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1108,7 +1110,7 @@ function handleExport(format, exportW, exportH) {
                 if (!blob) return;
                 const reader = new FileReader();
                 reader.onload = () => {
-                    const base64 = btoa(String.fromCharCode(...new Uint8Array(reader.result)));
+                    const base64 = uint8ToBase64(new Uint8Array(reader.result));
                     vscode.postMessage({ type: 'export_data', format: 'png', data: base64 });
                 };
                 reader.readAsArrayBuffer(blob);
@@ -1122,6 +1124,17 @@ function handleExport(format, exportW, exportH) {
 }
 
 function svgEsc(s) { return s.replace(/&/g,'&amp;').replace(/[<]/g,'&lt;').replace(/[>]/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// Encode bytes to base64 in chunks. A naive String.fromCharCode(...bytes)
+// overflows the call stack for large exports (e.g. high DPI at large sizes).
+function uint8ToBase64(bytes) {
+    let binary = '';
+    const chunk = 8192;
+    for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+}
 
 const cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\\s*\\([^()]*(?:\\([^)]*\\)[^()]*)*\\)(?:\\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\\s*\\([^()]*(?:\\([^)]*\\)[^()]*)*\\))*$/;
 function isSafeCssFilter(s) {
@@ -1137,7 +1150,7 @@ function svgClose(name) { return String.fromCharCode(60) + '/' + name + '>'; }
 
 function svgGcStroke(gc) {
     if (!gc || gc.col == null) return ' stroke="none"';
-    let s = ' stroke="' + gc.col + '"';
+    let s = ' stroke="' + svgEsc(String(gc.col)) + '"';
     s += ' stroke-width="' + (gc.lwd || 1) + '"';
     s += ' stroke-linecap="' + (gc.lend || 'round') + '"';
     s += ' stroke-linejoin="' + (gc.ljoin || 'round') + '"';
@@ -1147,7 +1160,7 @@ function svgGcStroke(gc) {
 
 function svgGcFill(gc) {
     if (!gc || gc.fill == null) return ' fill="none"';
-    return ' fill="' + gc.fill + '"';
+    return ' fill="' + svgEsc(String(gc.fill)) + '"';
 }
 
 function svgFont(gc) {
@@ -1241,7 +1254,7 @@ function plotToSvg(plot, exportW, exportH) {
                 const col = (op.gc && op.gc.col != null) ? op.gc.col : 'black';
                 let transform = 'translate(' + op.x + ',' + op.y + ')';
                 if (op.rot) transform += ' rotate(' + (-op.rot) + ')';
-                s += svgTag('text', ' transform="' + transform + '" font-family="' + f.family + '" font-size="' + f.size + '" font-weight="' + f.weight + '" font-style="' + f.style + '" text-anchor="' + anchor + '" fill="' + col + '"') + svgEsc(op.str) + svgClose('text') + '\\n';
+                s += svgTag('text', ' transform="' + transform + '" font-family="' + svgEsc(String(f.family)) + '" font-size="' + f.size + '" font-weight="' + f.weight + '" font-style="' + f.style + '" text-anchor="' + anchor + '" fill="' + svgEsc(String(col)) + '"') + svgEsc(op.str) + svgClose('text') + '\\n';
                 break;
             }
             case 'raster': {
@@ -1253,7 +1266,7 @@ function plotToSvg(plot, exportW, exportH) {
                     const cx = dx + aw / 2, cy = dy + ah / 2;
                     transform = ' transform="rotate(' + (-op.rot) + ',' + cx + ',' + cy + ')"';
                 }
-                s += svgTag('image', ' x="' + dx + '" y="' + dy + '" width="' + aw + '" height="' + ah + '" href="' + op.data + '"' + transform, true) + '\\n';
+                s += svgTag('image', ' x="' + dx + '" y="' + dy + '" width="' + aw + '" height="' + ah + '" href="' + svgEsc(String(op.data)) + '"' + transform, true) + '\\n';
                 break;
             }
             case 'beginGroup': {
