@@ -118,6 +118,27 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
     options(device = function(...) {
       jgd::jgd()
     })
+
+    # On reattach (e.g. after a VS Code window reload) the renderer starts a new
+    # socket, but any jgd device opened before the reload is still bound to the
+    # old, now-dead socket. jgd::jgd() only reads JGD_SOCKET at device-creation
+    # time, so the stale device never reconnects and plots silently go nowhere.
+    # Reopen it against the new socket, replaying the current plot if possible.
+    reconnect_jgd_device <- function() {
+      devs <- grDevices::dev.list()
+      if (is.null(devs) || !"jgd" %in% names(devs)) {
+        return(invisible(FALSE))
+      }
+      grDevices::dev.set(devs[names(devs) == "jgd"][[1]])
+      recorded <- tryCatch(grDevices::recordPlot(), error = function(e) NULL)
+      tryCatch(grDevices::dev.off(), error = function(e) NULL)
+      tryCatch(jgd::jgd(), error = function(e) NULL)
+      if (!is.null(recorded)) {
+        tryCatch(grDevices::replayPlot(recorded), error = function(e) NULL)
+      }
+      invisible(TRUE)
+    }
+    reconnect_jgd_device()
   } else if (use_httpgd && requireNamespace("httpgd", quietly = TRUE)) {
     options(device = function(...) {
       httpgd::hgd(silent = TRUE)

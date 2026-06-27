@@ -1,7 +1,7 @@
 Package: sess
 Type: Package
 Title: Modern R IPC Server
-Version: 3.0.0
+Version: 3.0.1
 Author: Gemini
 Maintainer: Gemini <gemini@example.com>
 Description: Implements a high-performance IPC client for R sessions using Unix domain sockets and Windows named pipes. Replaces legacy file-system watcher based workflows while keeping JSON-RPC communication semantics for IDE/editor integration.
