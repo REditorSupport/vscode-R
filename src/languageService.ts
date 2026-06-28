@@ -652,8 +652,11 @@ export class LanguageService implements Disposable {
 
     private singleServerDocumentSelector(): DocumentFilter[] {
         return [
-            { language: 'r' },
-            { language: 'rmd' },
+            { scheme: 'file', language: 'r' },
+            { scheme: 'file', language: 'rmd' },
+            { scheme: 'untitled', language: 'r' },
+            { scheme: 'untitled', language: 'rmd' },
+            { scheme: 'vscode-notebook-cell', language: 'r' },
         ];
     }
 
