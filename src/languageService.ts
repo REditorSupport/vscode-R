@@ -202,9 +202,17 @@ export class LanguageService implements Disposable {
             client = new LanguageClient('r', 'R Language Server', tcpServerOptions, clientOptions);
         }
 
-        extensionContext.subscriptions.push(client);
-        await client.start();
-        return client;
+        try {
+            await client.start();
+            return client;
+        } catch (error) {
+            try {
+                await client.dispose();
+            } catch {
+                // A failed start may leave no active connection to stop.
+            }
+            throw error;
+        }
     }
 
 
