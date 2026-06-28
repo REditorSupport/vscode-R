@@ -97,6 +97,16 @@ suite('Session Communication', () => {
         assert.ok(listData, 'my_list should be in workspaceData.globalenv');
         const className = Array.isArray(listData.class) ? listData.class[0] : listData.class;
         assert.strictEqual(className, 'list', 'my_list should be a list');
+        assert.strictEqual(listData.has_children, true, 'my_list should be expandable');
+
+        const childrenResult = await session.sessionRequest({
+            method: 'workspace_children',
+            params: { name: 'my_list', path: [], start: 1 }
+        }) as { children: Record<string, unknown>[], next_start?: number };
+
+        assert.ok(Array.isArray(childrenResult.children), 'workspace children should be an array');
+        assert.strictEqual(childrenResult.children.length, 1, 'my_list should have one workspace child');
+        assert.match(String(childrenResult.children[0].str), /hello_vscode/);
         
         const completionRequestParams = {
             expr: 'my_list',
