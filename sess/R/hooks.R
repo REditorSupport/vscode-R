@@ -162,6 +162,26 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
       notify_client("httpgd", list(url = httpgd::hgd_url()))
     })
   } else {
+    # If a specific interactive backend was explicitly requested but is
+    # unavailable, warn before silently degrading to the standard viewer.
+    # (use_jgd && use_httpgd means "auto", which is meant to degrade quietly.)
+    if (xor(use_jgd, use_httpgd)) {
+      if (use_jgd && !requireNamespace("jgd", quietly = TRUE)) {
+        warning("[sess] Plot backend \"jgd\" was requested but the jgd package ",
+                "is not installed. Falling back to the standard plot viewer. ",
+                "Install jgd, or change the r.plot.backend setting.", call. = FALSE)
+      } else if (use_jgd) {
+        warning("[sess] Plot backend \"jgd\" was requested but no renderer ",
+                "connection is available. Falling back to the standard plot ",
+                "viewer.", call. = FALSE)
+      } else if (use_httpgd) {
+        warning("[sess] Plot backend \"httpgd\" was requested but the httpgd ",
+                "package is not installed. Falling back to the standard plot ",
+                "viewer. Install httpgd, or change the r.plot.backend setting.",
+                call. = FALSE)
+      }
+    }
+
     # Default to static plot capturing (Re-implementation based on legacy plot handler)
     plot_file <- .sess_env$latest_plot_path
     file.create(plot_file, showWarnings = FALSE)
