@@ -93,9 +93,13 @@ let workspaceRefreshPending = false;
 
 interface DataViewColumnDef {
     headerName: string;
+    headerTooltip?: string;
     field: string;
-    cellClass: string;
     type: string;
+    filter?: string | boolean;
+    sortable?: boolean;
+    cellDataType?: string;
+    suppressHeaderMenuButton?: boolean;
 }
 
 interface DataViewInitResult {
@@ -104,14 +108,15 @@ interface DataViewInitResult {
 }
 
 interface DataViewPageResult {
-    rows: Record<string, string>[];
+    rows: Record<string, unknown>[];
     totalRows: number;
+    totalUnfiltered: number;
     lastRow: number;
 }
 
 interface DataViewRequestMessage {
     message: 'dataview/request';
-    action: 'init' | 'page' | 'dispose';
+    action: 'init' | 'page';
     requestId: number;
     startRow?: number;
     endRow?: number;
@@ -156,8 +161,8 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                     method: 'dataview_init',
                     params: { view_id: viewId },
                 }) as DataViewInitResult | undefined;
-                if (!result || typeof result.totalRows !== 'number') {
-                    throw new Error('Invalid dataview_init response: missing or invalid totalRows');
+                if (!result || !Array.isArray(result.columns) || typeof result.totalRows !== 'number') {
+                    throw new Error('Invalid dataview_init response');
                 }
                 panel.title = baseTitle;
                 postResponse(msg.requestId, true, result);
@@ -175,23 +180,13 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                         filterModel: msg.filterModel ?? {},
                     },
                 }) as DataViewPageResult | undefined;
-                if (!result || typeof result.totalRows !== 'number') {
-                    throw new Error('Invalid dataview_page response: missing or invalid totalRows');
+                if (!result || !Array.isArray(result.rows) ||
+                    typeof result.totalRows !== 'number' ||
+                    typeof result.totalUnfiltered !== 'number') {
+                    throw new Error('Invalid dataview_page response');
                 }
                 panel.title = baseTitle;
                 postResponse(msg.requestId, true, result);
-                return;
-            }
-
-            if (msg.action === 'dispose') {
-                await sessionRequest({
-                    method: 'dataview_dispose',
-                    params: { view_id: viewId },
-                });
-                if (dynamicDataViewPanels.get(viewId) === panel) {
-                    dynamicDataViewPanels.delete(viewId);
-                }
-                postResponse(msg.requestId, true, true);
                 return;
             }
 
@@ -828,14 +823,6 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         border-color: var(--vscode-notificationCenter-border) !important;
     }
 
-    [class*="vscode"] .text-left {
-        text-align: left;
-    }
-
-    [class*="vscode"] .text-right {
-        text-align: right;
-    }
-
     #gridContainer {
         position: relative;
         height: 100%;
@@ -1061,35 +1048,23 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         }
 
         const columns = Array.isArray(init.columns) ? init.columns : [];
+        let filteredRows = init.totalRows;
+        let totalRows = init.totalRows;
+        let isFiltered = false;
         
         columns.forEach((column) => {
+            if (column.field === '0') {
+                column.headerValueGetter = () =>
+                    isFiltered ? '(' + filteredRows + '/' + totalRows + ')' : '';
+            }
             if (column.type === 'dateColumn') {
                 column.filter = 'agDateColumnFilter';
                 column.filterParams = dateFilterParams;
-            } else if (column.type === 'datetimeColumn') {
-                column.filter = 'agDateColumnFilter';
-                column.filterParams = {
-                    ...dateFilterParams,
-                    buttons: ['reset', 'apply']
-                };
-            } else if (column.type === 'numberColumn') {
-                column.filter = 'agNumberColumnFilter';
-                column.filterParams = {
-                    ...column.filterParams,
-                    buttons: ['reset', 'apply']
-                };
-            } else if (column.type === 'setColumn') {
-                // agSetColumnFilter requires ag-grid-enterprise in v35.
-                // Keep community build compatible by using text filter and
-                // relying on server-side filtering in sess.
-                column.filter = 'agTextColumnFilter';
-                column.filterParams = {
-                    ...column.filterParams,
-                    buttons: ['reset', 'apply']
-                };
+                column.width = 200;
             }
-            // Remove column type field - v35 doesn't use it
-            delete column.type;
+            if (column.type !== 'numericColumn') {
+                delete column.type;
+            }
         });
 
         const blockSize = ${pageSize > 0 ? pageSize : 500};
@@ -1104,6 +1079,10 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
                         sortModel: params.sortModel,
                         filterModel: params.filterModel,
                     });
+                    filteredRows = result.totalRows;
+                    totalRows = result.totalUnfiltered;
+                    isFiltered = Object.keys(params.filterModel || {}).length > 0;
+                    gridApi?.refreshHeader();
                     const resolvedLastRow = Number.isFinite(result.totalRows) ? result.totalRows : result.lastRow;
                     params.successCallback(result.rows || [], resolvedLastRow);
                     finishFetch(true);
