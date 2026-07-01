@@ -329,13 +329,21 @@ get_column_def <- function(name, field, value) {
   if (!is.null(units)) {
     tooltip <- sprintf("%s, units: %s", tooltip, toString(units))
   }
-  if (is.numeric(value)) {
+  if (inherits(value, "integer64")) {
+    if (!requireNamespace("bit64", quietly = TRUE)) {
+      stop("Viewing integer64 columns requires the optional 'bit64' package")
+    }
+    type <- "bigintColumn"
+    filter <- "agBigIntColumnFilter"
+  } else if (is.numeric(value)) {
     type <- "numericColumn"
     filter <- "agNumberColumnFilter"
-  } else if (inherits(value, "Date") ||
-               inherits(value, "POSIXct") ||
-               inherits(value, "POSIXlt")) {
+  } else if (inherits(value, "Date")) {
     type <- "dateColumn"
+    filter <- "agDateColumnFilter"
+  } else if (inherits(value, "POSIXct") ||
+               inherits(value, "POSIXlt")) {
+    type <- "datetimeColumn"
     filter <- "agDateColumnFilter"
   } else if (is.logical(value)) {
     type <- "booleanColumn"
@@ -549,9 +557,22 @@ dataview_match_condition <- function(values, cond) {
   } else if (inherits(values, "Date") ||
                inherits(values, "POSIXct") ||
                inherits(values, "POSIXlt")) {
-    ds <- as.Date(values)
-    d1 <- as.Date(if (is.null(cond$dateFrom)) cond$filter else cond$dateFrom)
-    d2 <- as.Date(if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo)
+    if (inherits(values, "Date")) {
+      ds <- as.Date(values)
+      d1 <- as.Date(if (is.null(cond$dateFrom)) cond$filter else cond$dateFrom)
+      d2 <- as.Date(if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo)
+    } else {
+      ds <- as.POSIXct(values)
+      tz <- attr(ds, "tzone", exact = TRUE) %||% ""
+      d1 <- as.POSIXct(
+        if (is.null(cond$dateFrom)) cond$filter else cond$dateFrom,
+        tz = tz
+      )
+      d2 <- as.POSIXct(
+        if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo,
+        tz = tz
+      )
+    }
     result <- switch(cond_type,
       equals = ds == d1,
       notEqual = ds != d1,
@@ -563,9 +584,15 @@ dataview_match_condition <- function(values, cond) {
       rep(TRUE, length(values))
     )
   } else if (is.numeric(values) || is.logical(values)) {
-    nums <- as.numeric(values)
-    f1 <- suppressWarnings(as.numeric(cond$filter))
-    f2 <- suppressWarnings(as.numeric(cond$filterTo))
+    if (inherits(values, "integer64")) {
+      nums <- values
+      f1 <- bit64::as.integer64(cond$filter)
+      f2 <- bit64::as.integer64(cond$filterTo)
+    } else {
+      nums <- as.numeric(values)
+      f1 <- suppressWarnings(as.numeric(cond$filter))
+      f2 <- suppressWarnings(as.numeric(cond$filterTo))
+    }
     result <- switch(cond_type,
       equals = nums == f1,
       notEqual = nums != f1,
@@ -686,16 +713,27 @@ dataview_apply_sort_model <- function(state, sort_model, row_idx) {
     return(row_idx)
   }
 
-  order_args <- lapply(sort_specs, function(spec) spec$values)
-  order_args[[length(order_args) + 1L]] <- row_idx
-  decreasing <- vapply(sort_specs, function(spec) spec$decreasing, logical(1L))
-  decreasing <- c(decreasing, FALSE)
-  args <- c(order_args, list(
-    na.last = TRUE,
-    decreasing = decreasing,
-    method = "radix"
-  ))
-  row_idx[do.call(order, args)]
+  row_order <- seq_along(row_idx)
+  for (i in rev(seq_along(sort_specs))) {
+    spec <- sort_specs[[i]]
+    values <- spec$values[row_order]
+    order_index <- if (inherits(values, "integer64")) {
+      bit64::order(
+        values,
+        na.last = TRUE,
+        decreasing = spec$decreasing
+      )
+    } else {
+      order(
+        values,
+        na.last = TRUE,
+        decreasing = spec$decreasing,
+        method = "radix"
+      )
+    }
+    row_order <- row_order[order_index]
+  }
+  row_idx[row_order]
 }
 
 dataview_query_key <- function(sort_model, filter_model) {
@@ -723,6 +761,16 @@ dataview_query_indices <- function(state, sort_model, filter_model) {
 
 dataview_rows <- function(state, row_idx) {
   page <- dataview_slice(state$data, row_idx)
+  if (is.data.frame(page)) {
+    for (position in seq_len(ncol(page))) {
+      if (inherits(page[[position]], "POSIXct") ||
+            inherits(page[[position]], "POSIXlt")) {
+        page[[position]] <- format(page[[position]], "%Y-%m-%dT%H:%M:%S")
+      } else if (inherits(page[[position]], "integer64")) {
+        page[[position]] <- as.character(page[[position]])
+      }
+    }
+  }
   rows <- cbind(
     data.frame(
       dataview_column_values(state, 1L, row_idx),

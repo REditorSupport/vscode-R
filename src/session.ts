@@ -1051,16 +1051,23 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         let filteredRows = init.totalRows;
         let totalRows = init.totalRows;
         let isFiltered = false;
+        const bigintFields = [];
         
         columns.forEach((column) => {
             if (column.field === '0') {
                 column.headerValueGetter = () =>
                     isFiltered ? '(' + filteredRows + '/' + totalRows + ')' : '';
             }
-            if (column.type === 'dateColumn') {
+            if (column.type === 'dateColumn' || column.type === 'datetimeColumn') {
+                column.cellDataType =
+                    column.type === 'dateColumn' ? 'dateString' : 'dateTimeString';
                 column.filter = 'agDateColumnFilter';
                 column.filterParams = dateFilterParams;
                 column.width = 200;
+            } else if (column.type === 'bigintColumn') {
+                column.cellDataType = 'bigint';
+                column.filter = 'agBigIntColumnFilter';
+                bigintFields.push(column.field);
             }
             if (column.type !== 'numericColumn') {
                 delete column.type;
@@ -1084,7 +1091,15 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
                     isFiltered = Object.keys(params.filterModel || {}).length > 0;
                     gridApi?.refreshHeader();
                     const resolvedLastRow = Number.isFinite(result.totalRows) ? result.totalRows : result.lastRow;
-                    params.successCallback(result.rows || [], resolvedLastRow);
+                    const rows = result.rows || [];
+                    rows.forEach((row) => {
+                        bigintFields.forEach((field) => {
+                            if (row[field] != null) {
+                                row[field] = BigInt(row[field]);
+                            }
+                        });
+                    });
+                    params.successCallback(rows, resolvedLastRow);
                     finishFetch(true);
                 } catch (e) {
                     console.error('[dataview] Failed to load page', e);
