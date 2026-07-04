@@ -1473,6 +1473,7 @@ export async function activateSession(session: Session): Promise<void> {
     info = session.info;
     sessionDir = session.sessionDir;
     workingDir = session.workingDir;
+    workspaceData = session.workspaceData;
 
     if (sessionStatusBarItem) {
         sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
@@ -1481,6 +1482,7 @@ export async function activateSession(session: Session): Promise<void> {
     }
     await setContext('rSessionActive', true);
     rWorkspace?.refresh();
+    scheduleWorkspaceRefresh();
 }
 
 export function resetStatusBar(): void {
