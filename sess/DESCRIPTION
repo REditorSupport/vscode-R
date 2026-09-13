@@ -16,6 +16,7 @@ Imports:
     methods,
     rstudioapi
 Suggests:
+    bit64,
     jgd,
     svglite,
     tinytest

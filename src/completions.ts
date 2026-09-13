@@ -152,7 +152,7 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
                 const obj = globalenv[key];
                 const item = new vscode.CompletionItem(
                     key,
-                    obj.type === 'closure' || obj.type === 'builtin'
+                    obj.type === 'closure' || obj.type === 'builtin' 
                         ? vscode.CompletionItemKind.Function
                         : vscode.CompletionItemKind.Field
                 );

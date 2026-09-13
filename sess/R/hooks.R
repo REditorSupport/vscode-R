@@ -14,11 +14,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
     # make sure title is computed.
     force(title)
 
-    if (inherits(x, "ArrowTabular")) {
-      x <- as.data.frame(x)
-    }
-
-    if (is.data.frame(x) || is.matrix(x)) {
+    if (dataview_is_table(x)) {
       title_key <- paste(as.character(title), collapse = "\n")
       dataview_registry <- .sess_env$dataview_registry
       has_view_id <- nzchar(title_key) &&
