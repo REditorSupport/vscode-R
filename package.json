@@ -1322,6 +1322,16 @@
             "type": "string"
           }
         },
+        "r.rterm.preferredConsoles": {
+          "type": "array",
+          "default": [
+            "R"
+          ],
+          "markdownDescription": "Ordered list of R console executable names to search for on `PATH` when no explicit terminal path is set (e.g. `r.rterm.linux`). The first entry found on `PATH` will be used. Examples: `arf`, `radian`, `R`.",
+          "items": {
+            "type": "string"
+          }
+        },
         "r.libPaths": {
           "type": "array",
           "items": {
