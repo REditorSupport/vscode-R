@@ -19,31 +19,39 @@ Version 3.0.0 introduces a major architectural shift for session watching:
 
 See the [sess package README](./sess/README.md) for more details on the protocol.
 
-## Getting started
+## Quickstart
 
 1. [Install R](https://cloud.r-project.org/) (>= 3.4.0) on your system. For Windows users, Writing R Path to the registry is recommended in the installation.
 
-2. Install [`languageserver`](https://github.com/REditorSupport/languageserver) in R.
+2. Install the [`languageserver`](https://github.com/REditorSupport/languageserver) package from R.
 
     ```r
     install.packages("languageserver")
     ```
 
-3. Install the R extension for VS Code from the [VS Code Extension Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r).
+3. Install this R extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r).
 
-4. Create an R file and start coding.
+    ```r
+    code --install-extension REditorSupport.r
+    ```
 
-The following software are recommended to enhance the experience of using R in VS Code:
+4. Create an R file and start coding!
 
-* Interactive plot backends (install one for a better R plotting experience):
-  * [jgd](https://github.com/grantmcdermott/jgd): Lightweight JSON graphics device with native vscode-R integration.
-  * [httpgd](https://github.com/nx10/httpgd): SVG-based graphics device served via HTTP and WebSockets.
+#### Recommended extras
 
-* [arf](https://github.com/eitsupi/arf): Modern R console with many features: syntax highlighting, fuzzy history search, multiline editing, vi/emacs keybindings, R version switching, etc. Successor to [radian](https://github.com/randy3k/radian) written in Rust.
+Steps 1-3 above are all that's required to get started with R in VS Code. But we also recommend the following software for a fully optimized R + VS code experience:
 
-* [VSCode-R-Debugger](https://github.com/ManuelHentschel/VSCode-R-Debugger): A VS Code extension to support R debugging capabilities.
+* Install an interactive plotting backend for a better R graphics experience:
+    * [jgd](https://github.com/grantmcdermott/jgd): Lightweight JSON graphics device with native vscode-R integration.
+    * [httpgd](https://github.com/nx10/httpgd): SVG-based graphics device served via HTTP and WebSockets.
 
-Go to the installation wiki pages ([Windows](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Windows) | [macOS](https://github.com/REditorSupport/vscode-R/wiki/Installation:-macOS) | [Linux](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Linux)) for more detailed instructions.
+* [arf](https://github.com/eitsupi/arf): A modern R console with many features: syntax highlighting, multiline editing, vi/emacs keybindings, R version switching, etc. Successor to [radian](https://github.com/randy3k/radian) written in Rust.
+
+* Complementary VS Code extensions:
+   * [Quarto](https://marketplace.visualstudio.com/items?itemName=quarto.quarto): the official Quarto plugin for VS Code.
+   * [VSCode-R-Debugger](https://github.com/ManuelHentschel/VSCode-R-Debugger): enables VS Code's debugging facilities for R scripts.
+
+Please consult the relevant installation wiki pages for your OS ([Windows](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Windows) | [macOS](https://github.com/REditorSupport/vscode-R/wiki/Installation:-macOS) | [Linux](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Linux)) for more detailed instructions.
 
 ## Features
 
