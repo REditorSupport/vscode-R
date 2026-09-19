@@ -6,6 +6,7 @@
 
 * fix(rstudioapi): resolve emulation issues and viewer routing
 * fix(liveshare): resolve activation errors, file reading bugs, and add hooks for sess compatibility
+* fix(workspace): fix code submission delays when the workspace contains many or large objects
 
 ### Features
 
@@ -16,6 +17,9 @@
 * feat(session): implement file-based reconnection and suppress verbose logs
 * feat(plot): new `r.plot.backend` enum setting for finer-grained control of the preferred plotting backend, including integration with the lightweight `jgd` graphics device (default if installed). `r.plot.useHttpgd` is still respected, but may be deprecated in a future release.
 * feat(term): new `r.rterm.preferredConsoles` enum setting enables for string-based R console selection (`"R"` (default), `"arf"`, and/or `"radian"`), automatically resolved against the user's `PATH`. `r.term.<os>` is still respected (and prioritized) if provided.
+* feat(dataview): keep one viewer per data name, refreshing the existing viewer on repeated `View()` calls
+* feat(dataview): load data rows on demand while scrolling, with support for Arrow and Polars DataFrames
+* feat(workspace): support recursive expansion of nested lists, environments, pairlists, S4 objects, and data frames
 
 ### Performance
 
@@ -24,6 +28,7 @@
 ### Other
 
 * Remove the unused `r.workspaceViewer.showObjectSize` setting and obsolete object-size tooltip support
+* Remove obsolete `r.session.objectLengthLimit`, `r.session.objectTimeout`, and `r.session.levelOfObjectDetail` settings following the switch to on-demand workspace inspection
 
 ### Styling
 
