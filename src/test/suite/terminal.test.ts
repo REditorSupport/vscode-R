@@ -22,8 +22,8 @@ suite('R Terminal', () => {
         sandbox.restore();
     });
 
-    test('makeTerminalOptions sets session watcher environment variables', async () => {
-        // Stub config to enable sessionWatcher with httpgd backend
+    test('makeTerminalOptions respects legacy plot.useHttpgd configurations', async () => {
+        // Leave plot.backend at its default to verify the legacy boolean still selects httpgd.
         const configStub = {
             get: (key: string, defaultValue?: unknown) => {
                 if (key === 'sessionWatcher') {
@@ -55,6 +55,32 @@ suite('R Terminal', () => {
         assert.strictEqual(options.env['SESS_PLOT_BACKEND'], 'httpgd');
         assert.ok(options.env['R_PROFILE_USER']);
         assert.ok(options.env['R_PROFILE_USER'].endsWith(path.join('R', 'profile.R')));
+    });
+
+    test('makeTerminalOptions prefers an explicit plot.backend over legacy plot.useHttpgd', async () => {
+        const configStub = {
+            get: (key: string, defaultValue?: unknown) => {
+                if (key === 'sessionWatcher') {
+                    return true;
+                }
+                if (key === 'plot.backend') {
+                    return 'standard';
+                }
+                if (key === 'plot.useHttpgd') {
+                    return true;
+                }
+                return defaultValue;
+            }
+        };
+        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+
+        const options = await rTerminal.makeTerminalOptions();
+
+        assert.ok(options.env);
+        assert.strictEqual(options.env['SESS_USE_HTTPGD'], 'FALSE');
+        assert.strictEqual(options.env['SESS_PLOT_BACKEND'], 'standard');
     });
 
     test('makeTerminalOptions does not set session watcher env if disabled', async () => {

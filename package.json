@@ -1792,7 +1792,7 @@
         },
         "r.plot.devArgs": {
           "type": "object",
-          "markdownDescription": "The supplementary arguments for the rendering device (e.g., `png()` or `svglite()`) used by the standard plot viewer. Note that width and height are now handled dynamically by the responsive viewer and will be overridden. Requires `#r.plot.useHttpgd#` to be set to `false`. \n\nChanges the option `sess.devArgs` in R.",
+          "markdownDescription": "Supplementary arguments for the rendering device (for example, `png()` or `svglite()`) used by the `standard` plot backend. This setting is ignored by the `httpgd` and `jgd` backends. Width and height are managed dynamically by the responsive viewer and will be overridden.\n\nChanges the option `sess.devArgs` in R.",
           "default": {
             "width": 800,
             "height": 1200
@@ -1826,7 +1826,9 @@
         "r.plot.useHttpgd": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Use the httpgd-based plot viewer instead of the base VSCode-R plot viewer.\n\nRequires the `httpgd` R package version 1.2.0 or later.\n\n**Deprecated:** Use `#r.plot.backend#` instead. When `#r.plot.backend#` is `auto`, setting this to `true` forces httpgd."
+          "markdownDescription": "Legacy compatibility setting for selecting the httpgd plot viewer. When `#r.plot.backend#` is `auto`, setting this to `true` selects the `httpgd` backend. An explicit `#r.plot.backend#` value takes precedence.\n\nRequires the `httpgd` R package version 1.2.0 or later.",
+          "markdownDeprecationMessage": "Deprecated: use `#r.plot.backend#` instead. This setting is retained for compatibility with existing configurations but will be removed in a future release.",
+          "deprecationMessage": "Deprecated: use r.plot.backend instead. This setting is retained for compatibility with existing configurations but will be removed in a future release."
         },
         "r.plot.backend": {
           "type": "string",
@@ -1838,12 +1840,12 @@
             "jgd"
           ],
           "markdownEnumDescriptions": [
-            "Automatic: tries JGD first (if installed), then httpgd, then standard. Respects `#r.plot.useHttpgd#` if set.",
+            "Automatic: tries JGD first (if installed), then httpgd, then standard. Existing `#r.plot.useHttpgd#` configurations remain supported.",
             "Standard static plot viewer (PNG/SVG)",
             "httpgd-based interactive plot viewer (requires `httpgd` R package)",
             "JGD-based interactive plot viewer (requires `jgd` R package)"
           ],
-          "markdownDescription": "Select the plot backend.\n\nWhen set to `auto`, the best available backend is used (JGD if installed, then httpgd, then standard). Setting `#r.plot.useHttpgd#` to `true` forces httpgd."
+          "markdownDescription": "The canonical setting for selecting the plot backend.\n\nWhen set to `auto`, the best available backend is used (JGD if installed, then httpgd, then standard). For compatibility, setting `#r.plot.useHttpgd#` to `true` selects httpgd while this setting remains `auto`; an explicit backend value takes precedence."
         },
         "r.plot.jgd.historyLimit": {
           "type": "number",
@@ -1872,7 +1874,7 @@
             "png",
             "svglite"
           ],
-          "description": "The graphics format to use for the standard plot viewer. Requires `#r.plot.useHttpgd#` to be set to `false`."
+          "markdownDescription": "The graphics format used by the `standard` plot backend. This setting is ignored by the `httpgd` and `jgd` backends."
         },
         "r.plot.defaults.colorTheme": {
           "type": "string",
