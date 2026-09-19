@@ -339,7 +339,7 @@ get_column_def <- function(name, field, value) {
     }
     type <- "bigintColumn"
     filter <- "agBigIntColumnFilter"
-  } else if (is.numeric(value)) {
+  } else if (is.numeric(value) && !is.object(value)) {
     type <- "numericColumn"
     filter <- "agNumberColumnFilter"
   } else if (inherits(value, "Date")) {
@@ -349,7 +349,7 @@ get_column_def <- function(name, field, value) {
                inherits(value, "POSIXlt")) {
     type <- "datetimeColumn"
     filter <- "agDateColumnFilter"
-  } else if (is.logical(value)) {
+  } else if (is.logical(value) && !is.object(value)) {
     type <- "booleanColumn"
     filter <- TRUE
   } else {
@@ -374,7 +374,7 @@ get_column_def <- function(name, field, value) {
     filter = jsonlite::unbox(filter),
     sortable = jsonlite::unbox(sortable)
   )
-  if (is.logical(value)) {
+  if (identical(type, "booleanColumn")) {
     col_def$cellDataType <- jsonlite::unbox("boolean")
   }
   if (identical(field, "0")) {
@@ -541,6 +541,30 @@ dataview_column_values <- function(state, position, row_idx = NULL) {
   if (is.null(row_idx)) values else values[row_idx]
 }
 
+dataview_format_column <- function(values) {
+  if (!is.object(values) || !is.null(dim(values))) {
+    return(values)
+  }
+
+  # Let the class supply its display, without changing the stored values used for sorting.
+  formatted <- tryCatch(
+    format(values, trim = TRUE, justify = "none"),
+    error = function(e) NULL
+  )
+  if (!is.character(formatted) || !is.null(dim(formatted)) ||
+        length(formatted) != length(values)) {
+    formatted <- tryCatch(as.character(values), error = function(e) NULL)
+  }
+  if (!is.character(formatted) || !is.null(dim(formatted)) ||
+        length(formatted) != length(values)) {
+    return(values)
+  }
+  tryCatch({
+    formatted[is.na(values)] <- NA_character_
+    formatted
+  }, error = function(e) values)
+}
+
 dataview_match_condition <- function(values, cond) {
   if (is.null(cond$type)) {
     return(rep(TRUE, length(values)))
@@ -674,6 +698,9 @@ dataview_apply_filter_model <- function(state, filter_model, row_idx) {
     }
 
     values <- dataview_column_values(state, col_pos, row_idx)
+    if (state$columns[[col_pos]]$type == "textColumn") {
+      values <- dataview_format_column(values)
+    }
     column_match <- dataview_filter_values(values, col_model)
     column_match[is.na(column_match)] <- FALSE
     matched <- matched & column_match
@@ -773,6 +800,8 @@ dataview_rows <- function(state, row_idx) {
         page[[position]] <- format(page[[position]], "%Y-%m-%dT%H:%M:%S")
       } else if (inherits(page[[position]], "integer64")) {
         page[[position]] <- as.character(page[[position]])
+      } else if (state$columns[[position + 1L]]$type == "textColumn") {
+        page[[position]] <- dataview_format_column(page[[position]])
       }
     }
   }
