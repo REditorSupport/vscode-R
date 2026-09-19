@@ -17,9 +17,13 @@ try_capture_str <- function(object, max_level = 0L) {
   )
 }
 
+workspace_env_names <- function(env) {
+  ls(env, sorted = FALSE)
+}
+
 workspace_child_count <- function(object) {
   if (is.environment(object)) {
-    length(object)
+    length(workspace_env_names(object))
   } else if (isS4(object)) {
     length(methods::slotNames(object))
   } else if (typeof(object) %in% c("list", "pairlist")) {
@@ -31,7 +35,7 @@ workspace_child_count <- function(object) {
 
 get_workspace_data <- function() {
   env <- .GlobalEnv
-  all_names <- ls(env, sorted = FALSE)
+  all_names <- workspace_env_names(env)
 
   objs <- lapply(all_names, function(name) {
     if (bindingIsActive(name, env)) {
@@ -141,7 +145,7 @@ get_workspace_children <- function(name, path = list(), start = 1L) {
     }
 
     children <- if (is.environment(object)) {
-      child_names <- ls(object, sorted = FALSE)[seq.int(start, end)]
+      child_names <- workspace_env_names(object)[seq.int(start, end)]
       lapply(child_names, function(child_name) {
         if (bindingIsActive(child_name, object)) {
           list(
