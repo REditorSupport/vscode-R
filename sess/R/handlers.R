@@ -748,7 +748,8 @@ dataview_query_key <- function(sort_model, filter_model) {
     ),
     auto_unbox = TRUE,
     null = "null",
-    force = TRUE
+    force = TRUE,
+    digits = NA
   )
 }
 
