@@ -183,9 +183,13 @@ export async function runFromLineToEnd(): Promise<void>  {
 import { getGlobalPipePath, writeSessionFile } from './session';
 
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
-    const workspaceFolderPath = getCurrentWorkspaceFolder()?.uri.fsPath;
-    const termPath = await getRterm();
-    const shellArgs: string[] = config().get<string[]>('rterm.option')?.map(util.substituteVariables) || [];
+    const workspaceFolder = getCurrentWorkspaceFolder();
+    const resource = workspaceFolder?.uri;
+    const workspaceFolderPath = resource?.fsPath;
+    const currentConfig = config(resource);
+    const termPath = await getRterm(resource);
+    const shellArgs: string[] = currentConfig.get<string[]>('rterm.option')
+        ?.map(value => util.substituteVariables(value, resource)) || [];
     const termOptions: vscode.TerminalOptions = {
         name: 'R Interactive',
         shellPath: termPath,

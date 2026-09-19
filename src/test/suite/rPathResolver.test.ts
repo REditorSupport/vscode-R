@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 
 import {
+    createRPathResolverDependencies,
     ExecutableResolution,
     findExecutableOnPath,
     formatRPath,
@@ -302,8 +303,59 @@ suite('R executable resolver', () => {
         assert.strictEqual(selectWorkspaceFolder([first], undefined), first);
         assert.strictEqual(selectWorkspaceFolder([first, second], second), second);
         assert.strictEqual(selectWorkspaceFolder([first, second], undefined), first);
+        assert.strictEqual(selectWorkspaceFolder([first, second], second, first), first);
         assert.strictEqual(selectWorkspaceFolder([], undefined), undefined);
         assert.strictEqual(selectWorkspaceFolder(undefined, undefined), undefined);
+    });
+
+    test('dependency adapter reads configuration for the requested resource', async () => {
+        type Resource = 'workspace-a' | 'workspace-b';
+        const settings: Record<Resource | 'default', Record<string, string>> = {
+            'workspace-a': { executablePath: '/workspace-a/R' },
+            'workspace-b': { executablePath: '/workspace-b/R' },
+            default: { executablePath: '/default/R' },
+        };
+        const existingPaths = new Set(['/workspace-a/R', '/workspace-b/R', '/default/R']);
+        const dependencies = (resource?: Resource) => createRPathResolverDependencies({
+            resource,
+            getConfiguration: requestedResource => ({
+                get: <T>(setting: string) => settings[requestedResource ?? 'default'][setting] as T | undefined,
+            }),
+            substituteVariables: value => value,
+            findExecutable: () => undefined,
+            pathExists: value => existingPaths.has(value),
+            getSystemR: () => Promise.resolve(undefined),
+        });
+
+        assert.strictEqual((await resolveBackgroundR(dependencies('workspace-a'), 'rpath.linux')).path, '/workspace-a/R');
+        assert.strictEqual((await resolveBackgroundR(dependencies('workspace-b'), 'rpath.linux')).path, '/workspace-b/R');
+        assert.strictEqual((await resolveBackgroundR(dependencies(), 'rpath.linux')).path, '/default/R');
+    });
+
+    test('dependency adapter substitutes workspaceFolder for the requested resource', async () => {
+        type Resource = 'workspace-a' | 'workspace-b';
+        const workspaceFolders: Record<Resource | 'default', string> = {
+            'workspace-a': '/workspace-a',
+            'workspace-b': '/workspace-b',
+            default: '/active-workspace',
+        };
+        const existingPaths = new Set(['/workspace-a/R', '/workspace-b/R', '/active-workspace/R']);
+        const dependencies = (resource?: Resource) => createRPathResolverDependencies({
+            resource,
+            getConfiguration: () => ({
+                get: <T>(setting: string) => (setting === 'executablePath' ? '${workspaceFolder}/R' : undefined) as T | undefined,
+            }),
+            substituteVariables: (value, requestedResource) => substitutePathVariables(value, {
+                workspaceFolder: workspaceFolders[requestedResource ?? 'default'],
+            }),
+            findExecutable: () => undefined,
+            pathExists: value => existingPaths.has(value),
+            getSystemR: () => Promise.resolve(undefined),
+        });
+
+        assert.strictEqual((await resolveBackgroundR(dependencies('workspace-a'), 'rpath.linux')).path, '/workspace-a/R');
+        assert.strictEqual((await resolveBackgroundR(dependencies('workspace-b'), 'rpath.linux')).path, '/workspace-b/R');
+        assert.strictEqual((await resolveBackgroundR(dependencies(), 'rpath.linux')).path, '/active-workspace/R');
     });
 
     test('quoted configured values are resolved and formatting preserves getRpath quote behavior', async () => {

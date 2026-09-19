@@ -24,10 +24,36 @@ export interface RPathResolverDependencies {
     getSystemR: () => Promise<string | undefined>;
 }
 
+export interface ConfigurationReader {
+    get: <T>(setting: string) => T | undefined;
+}
+
+export interface RPathResolverAdapterOptions<Resource> {
+    resource?: Resource;
+    getConfiguration: (resource?: Resource) => ConfigurationReader;
+    substituteVariables: (value: string, resource?: Resource) => string;
+    findExecutable: (name: string) => string | undefined;
+    pathExists: (value: string) => boolean;
+    getSystemR: () => Promise<string | undefined>;
+}
+
 export interface SystemRResolverDependencies {
     platform: NodeJS.Platform;
     findExecutable: (name: string) => string | undefined;
     getWindowsInstallPath: () => Promise<string | undefined>;
+}
+
+export function createRPathResolverDependencies<Resource>(
+    options: RPathResolverAdapterOptions<Resource>
+): RPathResolverDependencies {
+    const currentConfig = options.getConfiguration(options.resource);
+    return {
+        getSetting: setting => currentConfig.get<string>(setting),
+        substituteVariables: value => options.substituteVariables(value, options.resource),
+        findExecutable: options.findExecutable,
+        pathExists: options.pathExists,
+        getSystemR: options.getSystemR,
+    };
 }
 
 interface ConfiguredExecutableResolution extends ExecutableResolution {
@@ -53,8 +79,12 @@ export function substitutePathVariables(value: string, variables: PathVariables)
 
 export function selectWorkspaceFolder<T>(
     workspaceFolders: readonly T[] | undefined,
-    activeFileWorkspaceFolder: T | undefined
+    activeFileWorkspaceFolder: T | undefined,
+    resourceWorkspaceFolder?: T
 ): T | undefined {
+    if (resourceWorkspaceFolder) {
+        return resourceWorkspaceFolder;
+    }
     if (!workspaceFolders?.length) {
         return undefined;
     }

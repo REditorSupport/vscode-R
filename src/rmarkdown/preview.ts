@@ -311,7 +311,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     private async previewDocument(filePath: string, fileName?: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn): Promise<DisposableProcess | undefined> {
         const knitWorkingDir = this.getKnitDir(knitDir, filePath);
         const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : '';
-        this.rPath = await getRpath();
+        this.rPath = await getRpath(false, undefined, vscode.Uri.file(filePath));
 
         const lim = '<<<vsc>>>';
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
@@ -425,4 +425,3 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         void preview.refreshContent(this.useCodeTheme);
     }
 }
-
