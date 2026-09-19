@@ -15,7 +15,7 @@
 * feat: evaluate params from YAML header in Rmd files before running code
 * feat: check sess package version and prompt for update
 * feat(session): implement file-based reconnection and suppress verbose logs
-* feat(plot): new `r.plot.backend` enum setting for finer-grained control of the preferred plotting backend, including integration with the lightweight `jgd` graphics device (default if installed). `r.plot.useHttpgd` is still respected, but may be deprecated in a future release.
+* feat(plot): new `r.plot.backend` enum setting for finer-grained control of the preferred plotting backend, including integration with the lightweight `jgd` graphics device (default if installed). `r.plot.useHttpgd` is deprecated in favor of `r.plot.backend`; it remains supported for compatibility with existing configurations but will be removed in a future release.
 * feat(term): new `r.rterm.preferredConsoles` enum setting enables for string-based R console selection (`"R"` (default), `"arf"`, and/or `"radian"`), automatically resolved against the user's `PATH`. `r.term.<os>` is still respected (and prioritized) if provided.
 * feat(dataview): keep one viewer per data name, refreshing the existing viewer on repeated `View()` calls
 * feat(dataview): load data rows on demand while scrolling, with support for Arrow and Polars DataFrames
