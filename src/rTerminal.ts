@@ -217,10 +217,10 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     void util.promptToInstallSessPackage(termOptions.cwd);
     const termPath = termOptions.shellPath;
     if(!termPath){
-        void vscode.window.showErrorMessage('Could not find R path. Please check r.rterm and r.rpath setting.');
+        void vscode.window.showErrorMessage('Could not find an R console executable. Please check the r.consolePath and r.executablePath settings.');
         return false;
     } else if(!fs.existsSync(termPath)){
-        void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check r.rterm setting.`);
+        void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check the r.consolePath setting.`);
         return false;
     }
     rTerm = vscode.window.createTerminal(termOptions);

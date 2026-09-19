@@ -371,7 +371,7 @@ suite('system R resolver', () => {
         assert.strictEqual(registryCalls, 0);
     });
 
-    test('Windows registry InstallPath supplies bin\\R.exe after PATH misses', async () => {
+    test(String.raw`Windows registry InstallPath supplies bin\R.exe after PATH misses`, async () => {
         assert.strictEqual(await resolveSystemR({
             platform: 'win32',
             findExecutable: () => undefined,
