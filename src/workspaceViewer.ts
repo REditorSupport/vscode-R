@@ -145,7 +145,6 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                         child.class,
                         child.str.replace(/\s+/g, ' ').trim(),
                         child.type,
-                        0,
                         element.treeLevel + 1,
                         undefined,
                         child.has_children,
@@ -175,7 +174,6 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             rClass: string,
             str: string,
             type: string,
-            size?: number,
             dim?: number[],
             hasChildren?: boolean
         ): GlobalEnvItem => {
@@ -184,7 +182,6 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                 rClass,
                 str,
                 type,
-                size,
                 TreeLevel.Parent,
                 dim,
                 hasChildren,
@@ -197,7 +194,6 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                 getFirstClass(globalenv[key].class),
                 globalenv[key].str,
                 globalenv[key].type,
-                globalenv[key].size,
                 globalenv[key].dim,
                 globalenv[key].has_children,
             )) : [];
@@ -350,7 +346,6 @@ export class GlobalEnvItem extends TreeItem {
         rClass: string,
         str: string,
         type: string,
-        size?: number,
         treeLevel?: number,
         dim?: number[],
         hasChildren?: boolean,
@@ -372,7 +367,7 @@ export class GlobalEnvItem extends TreeItem {
             rClass,
             type
         );
-        this.tooltip = this.getTooltip(label, rClass, size, treeLevel);
+        this.tooltip = this.getTooltip(label, rClass, treeLevel);
         this.iconPath = this.getIcon(type, dim);
         this.contextValue = treeLevel === 0 ? 'rootNode' : `childNode${this.treeLevel}`;
     }
@@ -389,24 +384,12 @@ export class GlobalEnvItem extends TreeItem {
         }
     }
 
-    private getSizeString(bytes: number): string {
-        if (bytes < 1024) {
-            return `${bytes} bytes`;
-        } else {
-            const e = Math.floor(Math.log(bytes) / Math.log(1024));
-            return (bytes / Math.pow(1024, e)).toFixed(0) + 'KMGTP'.charAt(e - 1) + 'b';
-        }
-    }
-
     private getTooltip(
         label: string,
         rClass: string,
-        size?: number,
         treeLevel?: number
     ): string {
-        if (size && treeLevel === TreeLevel.Parent) {
-            return `${label} (${rClass}, ${this.getSizeString(size)})`;
-        } else if (treeLevel === TreeLevel.Scalar) {
+        if (treeLevel === TreeLevel.Scalar) {
             return '';
         } else {
             return `${label} (${rClass})`;

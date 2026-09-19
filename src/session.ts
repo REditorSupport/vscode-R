@@ -30,7 +30,6 @@ export interface GlobalEnv {
         type: string;
         length: number;
         str: string;
-        size?: number;
         dim?: number[],
         names?: string[],
         slots?: string[],
