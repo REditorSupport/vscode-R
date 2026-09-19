@@ -50,6 +50,22 @@ local({
   expect_false(isTRUE(result))
 })
 
+# Environment expansion must retain visible members when hidden bindings exist (R6).
+local({
+  name <- basename(tempfile("workspace_environment_"))
+  object <- new.env(parent = emptyenv())
+  object$values <- list(first = 1L)
+  object$.hidden <- TRUE
+  assign(name, object, envir = .GlobalEnv)
+  on.exit(rm(list = name, envir = .GlobalEnv), add = TRUE)
+
+  page <- sess:::get_workspace_children(name)
+  expect_equal(
+    lapply(page$children, function(child) child$selector),
+    list(list(kind = "name", value = "values"))
+  )
+})
+
 # dataview init/page/dispose lifecycle works
 local({
   .sess_env <- sess:::.sess_env
