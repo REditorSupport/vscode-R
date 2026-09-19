@@ -34,7 +34,6 @@
             ],
             "type": "character",
             "length": 1,
-            "size": 112,
             "str": "chr \"a\""
         },
         "b": {
@@ -43,7 +42,6 @@
             ],
             "type": "integer",
             "length": 1,
-            "size": 56,
             "str": "int 1"
         },
         "c": {
@@ -52,7 +50,6 @@
             ],
             "type": "double",
             "length": 1,
-            "size": 56,
             "str": "num 1.5"
         },
         "d": {
@@ -61,7 +58,6 @@
             ],
             "type": "complex",
             "length": 1,
-            "size": 64,
             "str": "cplx 0+0i"
         },
         "e": {
@@ -70,7 +66,6 @@
             ],
             "type": "logical",
             "length": 1,
-            "size": 56,
             "str": "logi TRUE"
         },
         "f": {
@@ -79,7 +74,6 @@
             ],
             "type": "closure",
             "length": 1,
-            "size": 1240,
             "str": "function (x, ...)"
         },
         "g": {
@@ -88,7 +82,6 @@
             ],
             "type": "environment",
             "length": 11,
-            "size": 56,
             "str": "<environment: R_GlobalEnv>",
             "names": [
                 "a",
@@ -110,7 +103,6 @@
             ],
             "type": "list",
             "length": 2,
-            "size": 520,
             "str": "List of 2\n $ a: num 1\n $ b: chr \"foo\"",
             "names": [
                 "a",
@@ -123,7 +115,6 @@
             ],
             "type": "list",
             "length": 11,
-            "size": 7208,
             "str": "'data.frame':\t32 obs. of  11 variables:\n $ mpg : num  21 21 ...\n $ cyl : num  6 6 ...\n $ disp: num  160 160 ...\n $ hp  : num  110 110 ...\n $ drat: num  3.9 3.9 ...\n $ wt  : num  2.62 ...\n $ qsec: num  16.5 ...\n $ vs  : num  0 0 ...\n $ am  : num  1 1 ...\n $ gear: num  4 4 ...\n $ carb: num  4 4 ...",
             "names": [
                 "mpg",

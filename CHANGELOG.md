@@ -21,6 +21,10 @@
 
 * perf: optimize package monitoring in helpServer.R
 
+### Other
+
+* Remove the unused `r.workspaceViewer.showObjectSize` setting and obsolete object-size tooltip support
+
 ### Styling
 
 * style: fix line length lint error in sess/R/rstudioapi.R

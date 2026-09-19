@@ -1755,11 +1755,6 @@
           "default": 8,
           "markdownDescription": "Delay in milliseconds before sending each line to rterm. Requires `#r.bracketedPaste#` to be `false`."
         },
-        "r.workspaceViewer.showObjectSize": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Show object size when hovering over a workspace viewer item."
-        },
         "r.workspaceViewer.removeHiddenItems": {
           "type": "boolean",
           "default": false,
