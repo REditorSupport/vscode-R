@@ -1119,7 +1119,7 @@
         {
           "command": "r.workspaceViewer.view",
           "group": "inline",
-          "when": "view == workspaceViewer && viewItem == rootNode"
+          "when": "view == workspaceViewer && (viewItem == rootNode || viewItem == viewableNode)"
         },
         {
           "command": "r.workspaceViewer.remove",

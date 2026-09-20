@@ -118,6 +118,7 @@ workspace_child_item <- function(object, str, selector) {
     class = paste(class(object), collapse = ", "),
     type = typeof(object),
     has_children = workspace_child_count(object) > 0L,
+    viewable = is.list(object) || dataview_is_table(object),
     selector = selector
   )
 }
@@ -128,6 +129,16 @@ workspace_child_label <- function(name, index) {
   } else {
     paste0("[[", index, "]]")
   }
+}
+
+handle_workspace_view <- function(name, path = list()) {
+  title <- paste0(c(name, vapply(path, function(selector) switch(selector$kind,
+    index = if (!is.null(selector$name) && !is.na(selector$name) && nzchar(selector$name)) paste0("$", selector$name) else paste0("[[", selector$value, "]]"),
+    name = paste0("$", selector$value),
+    slot = paste0("@", selector$value)
+  ), "")), collapse = "")
+  utils::View(workspace_object(name, path), title = title)
+  TRUE
 }
 
 get_workspace_children <- function(name, path = list(), start = 1L) {
@@ -186,7 +197,7 @@ get_workspace_children <- function(name, path = list(), start = 1L) {
             ": ",
             trimws(try_capture_str(child))
           ),
-          list(kind = "index", value = index)
+          list(kind = "index", value = index, name = child_name)
         )
       })
     }

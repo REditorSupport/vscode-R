@@ -21,6 +21,7 @@ interface WorkspaceChild {
     class: string;
     type: string;
     has_children: boolean;
+    viewable?: boolean;
     selector?: WorkspaceSelector;
 }
 
@@ -149,7 +150,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                         undefined,
                         child.has_children,
                         element.rootName,
-                        child.selector ? [...element.objectPath, child.selector] : element.objectPath
+                        child.selector ? [...element.objectPath, child.selector] : element.objectPath,
+                        child.viewable
                     )
                 );
                 if (page.nextStart !== undefined) {
@@ -351,6 +353,7 @@ export class GlobalEnvItem extends TreeItem {
         hasChildren?: boolean,
         rootName?: string,
         objectPath?: WorkspaceSelector[],
+        viewable?: boolean,
     ) {
         super(
             label,
@@ -369,7 +372,7 @@ export class GlobalEnvItem extends TreeItem {
         );
         this.tooltip = this.getTooltip(label, rClass, treeLevel);
         this.iconPath = this.getIcon(type, dim);
-        this.contextValue = treeLevel === 0 ? 'rootNode' : `childNode${this.treeLevel}`;
+        this.contextValue = treeLevel === 0 ? 'rootNode' : viewable ? 'viewableNode' : `childNode${this.treeLevel}`;
     }
 
     private getDescription(dim: number[] | undefined, str: string, rClass: string, type: string): string {
@@ -494,8 +497,16 @@ export function loadWorkspace(): void {
     });
 }
 
-export function viewItem(node: string): void {
-    void runTextInTerm(`View(${node})`);
+export function viewItem(node: GlobalEnvItem): void {
+    if (globalPipePath && node.rootName) {
+        void sessionRequest({
+            method: 'workspace_view',
+            params: {
+                name: node.rootName,
+                path: node.objectPath,
+            },
+        });
+    }
 }
 
 export function removeItem(node: string): void {
