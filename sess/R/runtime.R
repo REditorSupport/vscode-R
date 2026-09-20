@@ -1,4 +1,15 @@
 # Runtime state is deliberately independent from the IPC connection state.
+.runtime_empty_diagnostics <- function() {
+  list(
+    workspace_callback_entries = 0L,
+    workspace_notify_attempts = 0L,
+    workspace_notify_sent = 0L,
+    plot_callback_entries = 0L,
+    plot_notify_attempts = 0L,
+    plot_notify_sent = 0L
+  )
+}
+
 .runtime_state <- function() {
   if (is.null(.sess_env$runtime)) {
     state <- new.env(parent = emptyenv())
@@ -10,9 +21,16 @@
     state$task_callbacks <- list()
     state$devices <- list()
     state$fields <- list()
+    state$diagnostics <- .runtime_empty_diagnostics()
     .sess_env$runtime <- state
   }
   .sess_env$runtime
+}
+
+.runtime_diagnostic_increment <- function(name) {
+  state <- .runtime_state()
+  state$diagnostics[[name]] <- state$diagnostics[[name]] + 1L
+  invisible(state$diagnostics[[name]])
 }
 
 .runtime_clear_viewer_state <- function() {
@@ -210,7 +228,7 @@
         method_name <- paste(entry$generic, entry$class, sep = ".")
         if (is.environment(table) &&
               exists(method_name, envir = table, inherits = FALSE) &&
-            identical(get(method_name, envir = table, inherits = FALSE), entry$installed)) {
+              identical(get(method_name, envir = table, inherits = FALSE), entry$installed)) {
           rm(list = method_name, envir = table)
         }
       }

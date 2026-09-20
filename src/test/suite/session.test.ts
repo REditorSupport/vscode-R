@@ -14,6 +14,20 @@ import * as plotViewer from '../../plotViewer';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
+interface RuntimeDebugSnapshot {
+    runtime_active?: boolean;
+    task_callback_names?: string[];
+    transport_generation?: number;
+    callback_counts?: Record<string, number>;
+}
+
+async function readRuntimeDebugSnapshot(): Promise<RuntimeDebugSnapshot | undefined> {
+    return await session.sessionRequest({
+        method: 'debug_runtime_state',
+        params: {}
+    }) as RuntimeDebugSnapshot | undefined;
+}
+
 async function waitFor<T>(condition: () => T | Promise<T>, timeout = 10000, interval = 100): Promise<T> {
     const start = Date.now();
     while (Date.now() - start < timeout) {
@@ -91,6 +105,8 @@ suite('Session Communication', () => {
         
         await new Promise(resolve => setTimeout(resolve, 2000));
 
+        const workspaceBaseline = await readRuntimeDebugSnapshot();
+        assert.ok(workspaceBaseline?.runtime_active, 'sess runtime should be active before assignment');
         const markerPath = path.join(
             os.tmpdir(),
             `vscode-r-command-marker-${process.pid}-${Date.now()}`
@@ -118,6 +134,22 @@ suite('Session Communication', () => {
             return rpcWorkspace?.globalenv?.['my_list'];
         }, 10000, 200);
         assert.ok(rpcWorkspace?.globalenv?.['my_list'], 'workspace RPC should include my_list');
+
+        const workspaceDebug = await readRuntimeDebugSnapshot();
+        console.info('[session test diagnostic] assignment baseline/after:',
+            JSON.stringify({ before: workspaceBaseline, after: workspaceDebug }));
+        assert.ok(workspaceDebug?.runtime_active, 'sess runtime should remain active');
+        assert.ok(workspaceDebug?.task_callback_names?.includes('sess.workspace'));
+        assert.ok(
+            (workspaceDebug?.callback_counts?.workspace_callback_entries ?? 0) >
+                (workspaceBaseline?.callback_counts?.workspace_callback_entries ?? 0),
+            `workspace callback did not run: ${JSON.stringify(workspaceDebug)}`
+        );
+        assert.ok(
+            (workspaceDebug?.callback_counts?.workspace_notify_sent ?? 0) >
+                (workspaceBaseline?.callback_counts?.workspace_notify_sent ?? 0),
+            `workspace_updated notification was not sent: ${JSON.stringify(workspaceDebug)}`
+        );
         
         await waitFor(() => {
             const ge = session.workspaceData?.globalenv;
@@ -206,7 +238,30 @@ suite('Session Communication', () => {
         const createWebviewPanelSpy = sandbox.spy(vscode.window, 'createWebviewPanel');
 
         // 1. Test svglite
-        term.sendText('plot(0, main="svglite")\n');
+        const plotBaseline = await readRuntimeDebugSnapshot();
+        assert.ok(plotBaseline?.runtime_active, 'sess runtime should be active before plotting');
+        const plotMarkerPath = path.join(
+            os.tmpdir(),
+            `vscode-r-plot-marker-${process.pid}-${Date.now()}`
+        );
+        commandMarkerPath = plotMarkerPath;
+        await fs.remove(plotMarkerPath);
+        term.sendText(
+            `plot(0, main="svglite"); ` +
+            `writeLines("evaluated", ${JSON.stringify(plotMarkerPath)})\n`
+        );
+        await waitFor(() => fs.pathExists(plotMarkerPath), 10000, 200);
+
+        const plotDebug = await readRuntimeDebugSnapshot();
+        console.info('[session test diagnostic] plot baseline/after:',
+            JSON.stringify({ before: plotBaseline, after: plotDebug }));
+        assert.ok(plotDebug?.runtime_active, 'sess runtime should remain active');
+        assert.ok(plotDebug?.task_callback_names?.includes('sess.plot'));
+        assert.ok(
+            (plotDebug?.callback_counts?.plot_callback_entries ?? 0) >
+                (plotBaseline?.callback_counts?.plot_callback_entries ?? 0),
+            `plot task callback did not run: ${JSON.stringify(plotDebug)}`
+        );
         await waitFor(() => createWebviewPanelSpy.calledWith('r.standardPlot'), 10000, 200);
         assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be triggered for svglite');
 

@@ -137,6 +137,18 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
   identical(incomplete, FALSE)
 }
 
+# Temporary CI-only introspection for separating callback failures from client
+# notification handling failures. Remove after the lifecycle regression is found.
+.runtime_debug_snapshot <- function() {
+  state <- .runtime_state()
+  list(
+    runtime_active = isTRUE(state$active),
+    task_callback_names = getTaskCallbackNames(),
+    transport_generation = .sess_env$transport_generation,
+    callback_counts = state$diagnostics
+  )
+}
+
 #' Poll the IPC connection for incoming messages (internal)
 #'
 #' Runs as a recurring later callback; dispatches NDJSON messages from vscode.
@@ -242,6 +254,7 @@ dispatch_message <- function(line) {
     # Request from vscode → R must reply
     handlers <- list(
       "workspace" = function(p) get_workspace_data(),
+      "debug_runtime_state" = function(p) .runtime_debug_snapshot(),
       "workspace_children" = function(p) get_workspace_children(p$name, p$path, p$start),
       "hover" = function(p) handle_hover(p$expr),
       "completion" = function(p) handle_complete(p$expr, p$trigger),

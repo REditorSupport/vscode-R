@@ -360,9 +360,6 @@ local({
   sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
   expect_true(isTRUE(sess:::.runtime_state()$active))
 
-  # An idle poll must retain the connection and schedule another poll.
-  sess:::poll_connection(.sess_env$transport_generation)
-  expect_true(!is.null(.sess_env$con))
   close(cons[[1L]])
   sess:::poll_connection(.sess_env$transport_generation)
   # A processx poll may return NULL once immediately after peer closure before

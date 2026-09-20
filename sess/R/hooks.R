@@ -16,6 +16,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
   if (isTRUE(state$active)) runtime_stop()
   state <- .runtime_state()
   state$active <- TRUE
+  state$diagnostics <- .runtime_empty_diagnostics()
   completed <- FALSE
   on.exit(if (!completed) try(runtime_stop(), silent = TRUE), add = TRUE)
 
@@ -236,7 +237,11 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
                 plot_updated <<- FALSE
                 last_plot_record_length <<- curr_length
                 .runtime_set_field("latest_plot_record", record)
+                .runtime_diagnostic_increment("plot_notify_attempts")
                 sent <- notify_client("plot_updated")
+                if (isTRUE(sent)) {
+                  .runtime_diagnostic_increment("plot_notify_sent")
+                }
                 # Temporary CI diagnostic; remove after poll/callback cause is known.
                 message("[sess diagnostic] plot_updated notify sent=", isTRUE(sent))
               }
@@ -255,6 +260,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
 
     update_plot()
     .runtime_add_task_callback(function(...) {
+      .runtime_diagnostic_increment("plot_callback_entries")
       # Temporary CI diagnostic; remove after poll/callback cause is known.
       message("[sess diagnostic] entered sess.plot task callback; active=",
               isTRUE(.runtime_state()$active))
@@ -279,11 +285,16 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
   # This notifies the client whenever a top-level command is completed,
   # suggesting that the Global Environment might have changed.
   .runtime_add_task_callback(function(...) {
+    .runtime_diagnostic_increment("workspace_callback_entries")
     # Temporary CI diagnostic; remove after poll/callback cause is known.
     message("[sess diagnostic] entered sess.workspace task callback; active=",
             isTRUE(.runtime_state()$active))
     if (!isTRUE(.runtime_state()$active)) return(FALSE)
+    .runtime_diagnostic_increment("workspace_notify_attempts")
     sent <- notify_client("workspace_updated")
+    if (isTRUE(sent)) {
+      .runtime_diagnostic_increment("workspace_notify_sent")
+    }
     message("[sess diagnostic] workspace_updated notify sent=", isTRUE(sent))
     TRUE
   }, name = "sess.workspace")
