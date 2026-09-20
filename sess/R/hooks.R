@@ -236,7 +236,9 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
                 plot_updated <<- FALSE
                 last_plot_record_length <<- curr_length
                 .runtime_set_field("latest_plot_record", record)
-                notify_client("plot_updated")
+                sent <- notify_client("plot_updated")
+                # Temporary CI diagnostic; remove after poll/callback cause is known.
+                message("[sess diagnostic] plot_updated notify sent=", isTRUE(sent))
               }
             }
           }
@@ -252,7 +254,12 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
     .runtime_set_hook("grid.newpage", new_plot, "replace")
 
     update_plot()
-    .runtime_add_task_callback(update_plot, name = "sess.plot")
+    .runtime_add_task_callback(function(...) {
+      # Temporary CI diagnostic; remove after poll/callback cause is known.
+      message("[sess diagnostic] entered sess.plot task callback; active=",
+              isTRUE(.runtime_state()$active))
+      update_plot(...)
+    }, name = "sess.plot")
   }
 
   # 5. rstudioapi hooks
@@ -272,8 +279,12 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
   # This notifies the client whenever a top-level command is completed,
   # suggesting that the Global Environment might have changed.
   .runtime_add_task_callback(function(...) {
+    # Temporary CI diagnostic; remove after poll/callback cause is known.
+    message("[sess diagnostic] entered sess.workspace task callback; active=",
+            isTRUE(.runtime_state()$active))
     if (!isTRUE(.runtime_state()$active)) return(FALSE)
-    notify_client("workspace_updated")
+    sent <- notify_client("workspace_updated")
+    message("[sess diagnostic] workspace_updated notify sent=", isTRUE(sent))
     TRUE
   }, name = "sess.workspace")
 

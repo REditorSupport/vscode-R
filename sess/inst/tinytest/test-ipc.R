@@ -360,8 +360,18 @@ local({
   sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
   expect_true(isTRUE(sess:::.runtime_state()$active))
 
+  # An idle poll must retain the connection and schedule another poll.
+  sess:::poll_connection(.sess_env$transport_generation)
+  expect_true(!is.null(.sess_env$con))
   close(cons[[1L]])
   sess:::poll_connection(.sess_env$transport_generation)
+  # A processx poll may return NULL once immediately after peer closure before
+  # reporting readable EOF. Let the recurring poll callback observe that EOF.
+  for (i in seq_len(50L)) {
+    if (is.null(.sess_env$con)) break
+    Sys.sleep(0.02)
+    later::run_now()
+  }
   expect_null(.sess_env$con)
   expect_false(isTRUE(sess:::.runtime_state()$active))
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 0L)

@@ -209,7 +209,7 @@
         table <- get0(".__S3MethodsTable__.", envir = dispatch_env, inherits = FALSE)
         method_name <- paste(entry$generic, entry$class, sep = ".")
         if (is.environment(table) &&
-            exists(method_name, envir = table, inherits = FALSE) &&
+              exists(method_name, envir = table, inherits = FALSE) &&
             identical(get(method_name, envir = table, inherits = FALSE), entry$installed)) {
           rm(list = method_name, envir = table)
         }
@@ -293,7 +293,7 @@ runtime_stop <- function() {
   if (!isTRUE(state$active) && !length(state$options) &&
         !length(state$bindings) && !length(state$hooks) &&
         !length(state$s3_methods) && !length(state$task_callbacks) &&
-      !length(state$devices) && !length(state$fields)) {
+        !length(state$devices) && !length(state$fields)) {
     .runtime_clear_viewer_state()
     return(invisible(NULL))
   }

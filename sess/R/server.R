@@ -154,11 +154,22 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
     }
   )
 
-  if (is.null(ready) || is.null(.sess_env$con) ||
+  if (is.null(.sess_env$con) ||
         !identical(generation, .sess_env$transport_generation)) {
     return()
   }
 
+  # processx can return NULL transiently for a just-closed connection before
+  # the following poll reports readable EOF. Keep the loop alive so the read
+  # path can confirm EOF and run transport/runtime cleanup.
+  if (is.null(ready)) {
+    if (!identical(.sess_env$poll_null_diagnostic_generation, generation)) {
+      .sess_env$poll_null_diagnostic_generation <- generation
+      # Temporary CI diagnostic; remove after poll/callback cause is known.
+      message("[sess diagnostic] poll returned NULL; generation=", generation,
+              "; connected=", !is.null(.sess_env$con))
+    }
+  }
   if (!is.null(ready) && length(ready) > 0 && identical(ready[[1]], "ready")) {
     chunk <- tryCatch(
       processx::conn_read_chars(con),
