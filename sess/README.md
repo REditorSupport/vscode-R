@@ -1,10 +1,10 @@
-# sess — A high-performance IPC server for R
+# sess — A high-performance IPC bridge for R sessions
 
-`sess` is an R package that connects running R sessions to an editor client. Our
-primary target client is the
-[VS Code R extension](https://github.com/REditorSupport/vscode-R), where `sess`
-powers many of the extension's core features: workspace viewer, data viewer,
-plot viewer, help panel, hover and completion, and RStudio API emulation.
+`sess` is an R package for connecting your R sessions to an editor (client). The
+[VS Code R extension](https://github.com/REditorSupport/vscode-R) is our primary
+target client and `sess` powers many of the extension's core features:
+workspace, data and plot viewers, help panel, hover and completion, RStudio API
+emulation, etc.
 
 Under the hood, `sess` talks to the client over a local socket (Unix domain
 socket on macOS/Linux, named pipe on Windows) using

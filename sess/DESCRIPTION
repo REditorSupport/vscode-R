@@ -1,10 +1,10 @@
 Package: sess
 Type: Package
-Title: Modern R IPC Server
+Title: High-Performance IPC Bridge for R Sessions
 Version: 3.0.0
 Author: Gemini
 Maintainer: Gemini <gemini@example.com>
-Description: Implements a high-performance IPC client for R sessions using Unix domain sockets and Windows named pipes. Replaces legacy file-system watcher based workflows while keeping JSON-RPC communication semantics for IDE/editor integration.
+Description: Implements a high-performance IPC bridge for R sessions using Unix domain sockets and Windows named pipes. Replaces legacy file-system watcher based workflows while keeping JSON-RPC communication semantics for IDE/editor integration.
 License: MIT
 Encoding: UTF-8
 LazyData: true
