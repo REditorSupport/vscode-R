@@ -81,10 +81,17 @@ local({
 })
 
 
-# Workspace children expose the View action only for supported table objects.
+# Workspace children expose View for both structured and text-viewable objects.
 local({
   selector <- list(kind = "index", value = 1L)
   expect_true(sess:::workspace_child_item(data.frame(x = 1), "df", selector)$viewable)
   expect_true(sess:::workspace_child_item(matrix(1:4, 2), "matrix", selector)$viewable)
   expect_true(sess:::workspace_child_item(list(x = 1), "list", selector)$viewable)
+  expect_true(sess:::workspace_child_item(new.env(), "environment", selector)$viewable)
+  expect_true(sess:::workspace_child_item(pairlist(x = 1), "pairlist", selector)$viewable)
+  methods::setClass("list_viewer_test_slots", slots = c(child = "list"))
+  on.exit(methods::removeClass("list_viewer_test_slots"), add = TRUE)
+  object <- methods::new("list_viewer_test_slots", child = list(x = 1))
+  expect_true(sess:::workspace_child_item(object, "S4", selector)$viewable)
+  expect_true(sess:::workspace_child_item(1:3, "vector", selector)$viewable)
 })

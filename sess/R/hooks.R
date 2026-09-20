@@ -14,7 +14,13 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
     # make sure title is computed.
     force(title)
 
-    view_type <- if (dataview_is_table(x)) "table" else if (is.list(x)) "list" else "object"
+    view_type <- if (dataview_is_table(x)) {
+      "table"
+    } else if (is.list(x) || is.environment(x) || isS4(x)) {
+      "list"
+    } else {
+      "object"
+    }
     if (view_type != "object") {
       title_key <- paste(as.character(title), collapse = "\n")
       registry_key <- paste0(view_type, ":", title_key)
@@ -41,18 +47,39 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
         view_id = registration$view_id
       ))
     } else if (view_type == "list") {
+      child_kind <- if (is.environment(x)) "name" else if (isS4(x)) "slot" else "index"
+      x_names <- switch(child_kind,
+        name = workspace_env_names(x),
+        slot = methods::slotNames(x),
+        index = names(x)
+      )
       .sess_env$dataviews[[view_id]] <- list(
         type = "list",
         data = x,
-        title = title_key
+        title = title_key,
+        kind = child_kind,
+        names = x_names
       )
-      x_names <- names(x)
-      children <- lapply(seq_along(x), function(index) {
-        child <- x[[index]]
+      indices <- if (child_kind == "index") seq_along(x) else seq_along(x_names)
+      children <- lapply(indices, function(index) {
+        child_name <- if (is.null(x_names)) NULL else x_names[[index]]
+        label <- if (child_kind == "slot") {
+          paste0("@ ", child_name)
+        } else {
+          workspace_child_label(child_name, index)
+        }
+        if (child_kind == "name" && bindingIsActive(child_name, x)) {
+          return(list(label = label, str = "(active-binding)", viewable = FALSE, index = index))
+        }
+        child <- switch(child_kind,
+          name = get(child_name, envir = x, inherits = FALSE),
+          slot = methods::slot(x, child_name),
+          index = x[[index]]
+        )
         list(
-          label = workspace_child_label(if (is.null(x_names)) NULL else x_names[[index]], index),
+          label = label,
           str = trimws(try_capture_str(child)),
-          viewable = is.list(child) || dataview_is_table(child),
+          viewable = TRUE,
           index = index
         )
       })
