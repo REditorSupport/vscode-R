@@ -121,19 +121,33 @@
   invisible(NULL)
 }
 
+.runtime_s3_dispatch_env <- function(generic, envir) {
+  generic_function <- try(get(generic, envir = envir), silent = TRUE)
+  if (inherits(generic_function, "try-error") || !is.function(generic_function)) {
+    return(envir)
+  }
+  generic_envir <- environment(generic_function)
+  if (is.null(generic_envir)) envir else generic_envir
+}
+
 .runtime_register_s3 <- function(generic, class, method, envir) {
   state <- .runtime_state()
-  original <- utils::getS3method(generic, class, envir = envir, optional = TRUE)
+  registration_envir <- new.env(parent = envir)
+  dispatch_envir <- .runtime_s3_dispatch_env(generic, envir)
+  original <- utils::getS3method(generic, class, envir = dispatch_envir,
+                                 optional = TRUE)
   original_namespace_methods <- if (isNamespace(envir)) {
     getNamespaceInfo(envir, "S3methods")
   } else {
     NULL
   }
-  registerS3method(generic, class, method, envir = envir)
+  registerS3method(generic, class, method, envir = registration_envir)
   state$s3_methods[[length(state$s3_methods) + 1L]] <- list(
     generic = generic,
     class = class,
-    envir = envir,
+    envir = registration_envir,
+    namespace_envir = envir,
+    dispatch_envir = dispatch_envir,
     original = original,
     installed = method,
     original_namespace_methods = original_namespace_methods,
@@ -176,35 +190,37 @@
   state$task_callbacks <- list()
 
   for (entry in rev(state$s3_methods)) {
-    current <- utils::getS3method(entry$generic, entry$class,
-                                  envir = entry$envir, optional = TRUE)
-    if (identical(current, entry$installed) && !is.null(entry$original)) {
-      try(registerS3method(entry$generic, entry$class, entry$original,
-                           envir = entry$envir), silent = TRUE)
-    } else if (identical(current, entry$installed) && is.null(entry$original)) {
-      generic <- try(get(entry$generic, envir = entry$envir), silent = TRUE)
-      dispatch_env <- if (!inherits(generic, "try-error") &&
-                            is.function(generic) &&
-                            !is.null(environment(generic))) {
-        environment(generic)
+    current <- utils::getS3method(
+      entry$generic,
+      entry$class,
+      envir = entry$dispatch_envir,
+      optional = TRUE
+    )
+    restore_namespace_methods <- isNamespace(entry$namespace_envir) &&
+      identical(getNamespaceInfo(entry$namespace_envir, "S3methods"),
+                entry$installed_namespace_methods)
+
+    if (identical(current, entry$installed)) {
+      if (!is.null(entry$original)) {
+        try(registerS3method(entry$generic, entry$class, entry$original,
+                             envir = entry$envir), silent = TRUE)
       } else {
-        asNamespace("base")
-      }
-      table <- get0(".__S3MethodsTable__.", envir = dispatch_env, inherits = FALSE)
-      method_name <- paste(entry$generic, entry$class, sep = ".")
-      if (is.environment(table) &&
+        dispatch_env <- entry$dispatch_envir
+        table <- get0(".__S3MethodsTable__.", envir = dispatch_env, inherits = FALSE)
+        method_name <- paste(entry$generic, entry$class, sep = ".")
+        if (is.environment(table) &&
             exists(method_name, envir = table, inherits = FALSE) &&
             identical(get(method_name, envir = table, inherits = FALSE), entry$installed)) {
-        rm(list = method_name, envir = table)
+          rm(list = method_name, envir = table)
+        }
       }
-      if (isNamespace(entry$envir) &&
-            identical(getNamespaceInfo(entry$envir, "S3methods"),
-                      entry$installed_namespace_methods)) {
-        try(
-          setNamespaceInfo(entry$envir, "S3methods", entry$original_namespace_methods),
-          silent = TRUE
-        )
-      }
+    }
+    if (restore_namespace_methods) {
+      try(
+        setNamespaceInfo(entry$namespace_envir, "S3methods",
+                         entry$original_namespace_methods),
+        silent = TRUE
+      )
     }
   }
   state$s3_methods <- list()
@@ -276,7 +292,7 @@ runtime_stop <- function() {
   state <- .runtime_state()
   if (!isTRUE(state$active) && !length(state$options) &&
         !length(state$bindings) && !length(state$hooks) &&
-      !length(state$s3_methods) && !length(state$task_callbacks) &&
+        !length(state$s3_methods) && !length(state$task_callbacks) &&
       !length(state$devices) && !length(state$fields)) {
     .runtime_clear_viewer_state()
     return(invisible(NULL))
