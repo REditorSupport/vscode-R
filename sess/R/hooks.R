@@ -12,8 +12,12 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
 #'
 #' @keywords internal
 runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
+  .sess_env$runtime_start_phase <- "initialize"
   state <- .runtime_state()
-  if (isTRUE(state$active)) runtime_stop()
+  if (isTRUE(state$active)) {
+    .sess_env$runtime_start_phase <- "previous-runtime-stop"
+    runtime_stop()
+  }
   state <- .runtime_state()
   state$active <- TRUE
   state$diagnostics <- .runtime_empty_diagnostics()
@@ -21,6 +25,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
   on.exit(if (!completed) try(runtime_stop(), silent = TRUE), add = TRUE)
 
   # 1. Override View() to serve table data via paged RPC.
+  .sess_env$runtime_start_phase <- "view"
   if (is.null(.sess_env$dataview_registry)) {
     .runtime_set_field("dataview_registry", new.env(parent = emptyenv()))
   }
@@ -76,6 +81,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
   .runtime_rebind("View", show_dataview, ns = "utils")
 
   # 2. Browser & Webview Options
+  .sess_env$runtime_start_phase <- "viewer-options"
   make_viewer <- function(method) {
     function(url, ...) {
       if (!is.character(url)) {
@@ -107,6 +113,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
   .runtime_set_option("help_type", "html")
 
   # 3. Help System Interception
+  .sess_env$runtime_start_phase <- "help-s3"
   sess_print.help_files_with_topic <- function(x, ...) {
     if (length(x) >= 1 && is.character(x)) {
       file <- x[1]
@@ -139,6 +146,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
     invisible(x)
   }
   # 4. Plot device: JGD > httpgd > Standard
+  .sess_env$runtime_start_phase <- "plot"
   if (use_jgd && nzchar(Sys.getenv("JGD_SOCKET")) && requireNamespace("jgd", quietly = TRUE)) {
     .runtime_set_option("device", function(...) {
       jgd::jgd()
@@ -269,6 +277,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
   }
 
   # 5. rstudioapi hooks
+  .sess_env$runtime_start_phase <- "rstudioapi"
   if (use_rstudioapi) {
     rstudioapi_hook <- function(...) {
       patch_rstudioapi()
@@ -282,6 +291,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
   }
 
   # 6. Workspace Update Callback
+  .sess_env$runtime_start_phase <- "workspace-callback"
   # This notifies the client whenever a top-level command is completed,
   # suggesting that the Global Environment might have changed.
   .runtime_add_task_callback(function(...) {
@@ -299,6 +309,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
     TRUE
   }, name = "sess.workspace")
 
+  .sess_env$runtime_start_phase <- "complete"
   completed <- TRUE
   invisible(NULL)
 }

@@ -100,10 +100,28 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
   if (is.na(use_rstudioapi)) use_rstudioapi <- TRUE
   if (is.na(use_httpgd)) use_httpgd <- TRUE
   if (is.na(use_jgd)) use_jgd <- FALSE
+  .sess_env$runtime_start_attempted <- FALSE
+  .sess_env$runtime_start_error <- NULL
+  .sess_env$runtime_start_phase <- NULL
   if (isTRUE(connected) && !is.null(.sess_env$con)) {
-    runtime_start(use_rstudioapi = use_rstudioapi,
-                  use_httpgd = use_httpgd,
-                  use_jgd = use_jgd)
+    .sess_env$runtime_start_attempted <- TRUE
+    tryCatch(
+      runtime_start(use_rstudioapi = use_rstudioapi,
+                    use_httpgd = use_httpgd,
+                    use_jgd = use_jgd),
+      error = function(e) {
+        # Temporary CI diagnostic; rethrow unchanged so startup errors stay visible.
+        error_call <- conditionCall(e)
+        .sess_env$runtime_start_error <- list(
+          step = .sess_env$runtime_start_phase,
+          message = conditionMessage(e),
+          call = if (is.null(error_call)) NULL else {
+            paste(deparse(error_call), collapse = " ")
+          }
+        )
+        stop(e)
+      }
+    )
   }
 
   invisible(NULL)
@@ -145,6 +163,10 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
     runtime_active = isTRUE(state$active),
     task_callback_names = getTaskCallbackNames(),
     transport_generation = .sess_env$transport_generation,
+    runtime_start_attempted = isTRUE(.sess_env$runtime_start_attempted),
+    runtime_start_phase = .sess_env$runtime_start_phase,
+    runtime_start_error = .sess_env$runtime_start_error,
+    last_error = geterrmessage(),
     callback_counts = state$diagnostics
   )
 }

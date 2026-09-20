@@ -18,6 +18,14 @@ interface RuntimeDebugSnapshot {
     runtime_active?: boolean;
     task_callback_names?: string[];
     transport_generation?: number;
+    runtime_start_attempted?: boolean;
+    runtime_start_phase?: string | null;
+    runtime_start_error?: {
+        step?: string | null;
+        message?: string;
+        call?: string | null;
+    } | null;
+    last_error?: string;
     callback_counts?: Record<string, number>;
 }
 
