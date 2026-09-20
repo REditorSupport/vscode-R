@@ -21,6 +21,7 @@ interface WorkspaceChild {
     class: string;
     type: string;
     has_children: boolean;
+    viewable?: boolean;
     selector?: WorkspaceSelector;
 }
 
@@ -161,7 +162,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                         child.has_children,
                         element.rootName,
                         child.selector ? [...element.objectPath, child.selector] : element.objectPath,
-                        element.owner
+                        element.owner,
+                        child.viewable
                     )
                 );
                 if (page.nextStart !== undefined) {
@@ -369,6 +371,7 @@ export class GlobalEnvItem extends TreeItem {
         rootName?: string,
         objectPath?: WorkspaceSelector[],
         public readonly owner?: Session,
+        viewable?: boolean,
     ) {
         super(
             label,
@@ -387,7 +390,7 @@ export class GlobalEnvItem extends TreeItem {
         );
         this.tooltip = this.getTooltip(label, rClass, treeLevel);
         this.iconPath = this.getIcon(type, dim);
-        this.contextValue = treeLevel === 0 ? 'rootNode' : `childNode${this.treeLevel}`;
+        this.contextValue = treeLevel === 0 ? 'rootNode' : viewable ? 'viewableNode' : `childNode${this.treeLevel}`;
     }
 
     private getDescription(dim: number[] | undefined, str: string, rClass: string, type: string): string {
@@ -492,8 +495,11 @@ export async function loadWorkspace(): Promise<void> {
 }
 
 export async function viewItem(node: GlobalEnvItem): Promise<void> {
-    if (node.owner && node.label) {
-        await runWorkspaceCode(`View(get(${JSON.stringify(node.label)}, envir = .GlobalEnv, inherits = FALSE), title = ${JSON.stringify(node.label)})`, node.owner);
+    if (node.owner && !node.owner.workspaceUnavailable && node.rootName) {
+        await sessionRequest({
+            method: 'workspace_view',
+            params: { name: node.rootName, path: node.objectPath },
+        }, node.owner);
     }
 }
 

@@ -322,3 +322,11 @@ local({
   expect_identical(page$rows[["2"]], df$Ozone[c(4L, 3L), , drop = FALSE])
   expect_identical(serialize(df, NULL), original)
 })
+
+# Workspace children expose the View action only for supported table objects.
+local({
+  selector <- list(kind = "index", value = 1L)
+  expect_true(sess:::workspace_child_item(data.frame(x = 1), "df", selector)$viewable)
+  expect_true(sess:::workspace_child_item(matrix(1:4, 2), "matrix", selector)$viewable)
+  expect_true(sess:::workspace_child_item(list(x = 1), "list", selector)$viewable)
+})
