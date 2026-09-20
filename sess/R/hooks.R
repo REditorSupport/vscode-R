@@ -14,21 +14,24 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
     # make sure title is computed.
     force(title)
 
-    if (dataview_is_table(x)) {
+    view_type <- if (dataview_is_table(x)) "table" else if (is.list(x)) "list" else "object"
+    if (view_type != "object") {
       title_key <- paste(as.character(title), collapse = "\n")
+      registry_key <- paste0(view_type, ":", title_key)
       dataview_registry <- .sess_env$dataview_registry
-      has_view_id <- nzchar(title_key) &&
-        exists(title_key, envir = dataview_registry, inherits = FALSE)
-      view_id <- if (has_view_id) {
-        get(title_key, envir = dataview_registry, inherits = FALSE)
+      view_id <- if (nzchar(title_key) &&
+                       exists(registry_key, envir = dataview_registry, inherits = FALSE)) {
+        get(registry_key, envir = dataview_registry, inherits = FALSE)
       } else {
         id <- dataview_new_id()
         if (nzchar(title_key)) {
-          assign(title_key, id, envir = dataview_registry)
+          assign(registry_key, id, envir = dataview_registry)
         }
         id
       }
+    }
 
+    if (view_type == "table") {
       registration <- dataview_register(x, view_id = view_id)
 
       notify_client("dataview", list(
@@ -37,12 +40,11 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
         type = "json",
         view_id = registration$view_id
       ))
-    } else if (is.list(x)) {
-      view_id <- dataview_new_id()
+    } else if (view_type == "list") {
       .sess_env$dataviews[[view_id]] <- list(
         type = "list",
         data = x,
-        title = paste(as.character(title), collapse = "\n")
+        title = title_key
       )
       x_names <- names(x)
       children <- lapply(seq_along(x), function(index) {
