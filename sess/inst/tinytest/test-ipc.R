@@ -93,9 +93,11 @@ local({
     filterModel = list()
   ))
 
-  expect_equal(length(page_res$rows), 2)
-  expect_equal(page_res$rows[[1]][["1"]], "3")
-  expect_equal(page_res$rows[[2]][["1"]], "1")
+  # rows is a data frame; jsonlite serializes it as an array of row objects
+  # keyed by field name ("0" is the row label column).
+  expect_equal(nrow(page_res$rows), 2)
+  expect_equal(page_res$rows[1, "1"], 3)
+  expect_equal(page_res$rows[2, "1"], 1)
 
   disposed <- sess:::handle_dataview_dispose(list(view_id = registration$view_id))
   expect_true(isTRUE(disposed))
@@ -127,9 +129,9 @@ local({
   ))
 
   expect_equal(filtered$totalRows, 2)
-  expect_equal(length(filtered$rows), 2)
-  expect_equal(filtered$rows[[1]][["2"]], "banana")
-  expect_equal(filtered$rows[[2]][["2"]], "berry")
+  expect_equal(nrow(filtered$rows), 2)
+  expect_equal(filtered$rows[1, "2"], "banana")
+  expect_equal(filtered$rows[2, "2"], "berry")
 
   sorted <- sess:::handle_dataview_page(list(
     view_id = registration$view_id,
@@ -142,9 +144,10 @@ local({
   ))
 
   expect_equal(sorted$totalRows, 3)
-  expect_equal(sorted$rows[[1]][["1"]], "30")
-  expect_equal(sorted$rows[[2]][["1"]], "20")
-  expect_equal(sorted$rows[[3]][["1"]], "10")
+  expect_equal(nrow(sorted$rows), 3)
+  expect_equal(sorted$rows[1, "1"], 30)
+  expect_equal(sorted$rows[2, "1"], 20)
+  expect_equal(sorted$rows[3, "1"], 10)
 })
 
 # NDJSON framing round-trips correctly through a socket pair.

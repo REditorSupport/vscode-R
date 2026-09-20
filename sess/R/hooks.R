@@ -94,6 +94,21 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
   )
 
   # 3. Help System Interception
+  # Capture utils' own print methods before registering ours over them, so the
+  # fallbacks below do not need ::: to reach unexported internals.
+  if (is.null(.sess_env$orig_print_help_files)) {
+    .sess_env$orig_print_help_files <- utils::getS3method(
+      "print", "help_files_with_topic",
+      envir = asNamespace("utils")
+    )
+  }
+  if (is.null(.sess_env$orig_print_hsearch)) {
+    .sess_env$orig_print_hsearch <- utils::getS3method(
+      "print", "hsearch",
+      envir = asNamespace("utils")
+    )
+  }
+
   sess_print.help_files_with_topic <- function(x, ...) {
     if (length(x) >= 1 && is.character(x)) {
       file <- x[1]
@@ -104,7 +119,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
         viewer = getOption("sess.helpPanel", "Two")
       ))
     } else {
-      utils:::print.help_files_with_topic(x, ...)
+      .sess_env$orig_print_help_files(x, ...)
     }
     invisible(x)
   }
@@ -115,13 +130,14 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
 
   sess_print.hsearch <- function(x, ...) {
     if (length(x) >= 1) {
-      requestPath <- paste0("/doc/html/Search?pattern=", tools:::escapeAmpersand(x$pattern))
+      pattern <- gsub("&", "&amp;", x$pattern, fixed = TRUE)
+      requestPath <- paste0("/doc/html/Search?pattern=", pattern)
       notify_client("help", list(
         requestPath = requestPath,
         viewer = getOption("sess.helpPanel", "Two")
       ))
     } else {
-      utils:::print.hsearch(x, ...)
+      .sess_env$orig_print_hsearch(x, ...)
     }
     invisible(x)
   }
