@@ -118,7 +118,7 @@ workspace_child_item <- function(object, str, selector) {
     class = paste(class(object), collapse = ", "),
     type = typeof(object),
     has_children = workspace_child_count(object) > 0L,
-    viewable = is.list(object) || dataview_is_table(object),
+    viewable = TRUE,
     selector = selector
   )
 }
@@ -211,19 +211,33 @@ get_workspace_children <- function(name, path = list(), start = 1L) {
 
 handle_listview_view <- function(view_id, index) {
   state <- .sess_env$dataviews[[as.character(view_id)]]
-  index <- as.integer(index)
-  if (is.null(state) || !identical(state$type, "list") ||
-      is.na(index) || index < 1L || index > length(state$data)) {
+  if (is.null(state) || !identical(state$type, "list")) {
     return(FALSE)
   }
-  child_names <- names(state$data)
-  child_name <- if (is.null(child_names)) NULL else child_names[[index]]
-  title <- if (!is.null(child_name) && !is.na(child_name) && nzchar(child_name)) {
+  index <- as.integer(index)
+  child_count <- if (state$kind == "index") length(state$data) else length(state$names)
+  if (length(index) != 1L || is.na(index) || index < 1L || index > child_count) {
+    return(FALSE)
+  }
+  child_name <- if (is.null(state$names)) NULL else state$names[[index]]
+  if (state$kind == "name" &&
+        (!exists(child_name, envir = state$data, inherits = FALSE) ||
+           bindingIsActive(child_name, state$data))) {
+    return(FALSE)
+  }
+  child <- switch(state$kind,
+    name = get(child_name, envir = state$data, inherits = FALSE),
+    slot = methods::slot(state$data, child_name),
+    index = state$data[[index]]
+  )
+  title <- if (state$kind == "slot") {
+    paste0(state$title, "@", child_name)
+  } else if (!is.null(child_name) && !is.na(child_name) && nzchar(child_name)) {
     paste0(state$title, "$", child_name)
   } else {
     paste0(state$title, "[[", index, "]]")
   }
-  utils::View(state$data[[index]], title = title)
+  utils::View(child, title = title)
   TRUE
 }
 
