@@ -147,9 +147,122 @@ local({
   expect_equal(sorted$rows[[3]][["1"]], "10")
 })
 
-# NDJSON framing round-trips correctly through a socket pair.
-# Kept last: tinytest runs files as flat scripts, so an unrecoverable socket
-# error here must not mask the blocks above. Socket support is
+# Runtime startup and shutdown are reversible and idempotent.
+local({
+  .sess_env <- sess:::.sess_env
+  old_plot_path <- .sess_env$latest_plot_path
+  .sess_env$latest_plot_path <- tempfile(fileext = ".png")
+  on.exit({
+    sess:::runtime_stop()
+    unlink(.sess_env$latest_plot_path)
+    .sess_env$latest_plot_path <- old_plot_path
+  }, add = TRUE)
+
+  utils_ns <- asNamespace("utils")
+  old_view <- get("View", utils_ns, inherits = FALSE)
+  old_options <- lapply(c("browser", "viewer", "page_viewer", "help_type", "device"), getOption)
+  names(old_options) <- c("browser", "viewer", "page_viewer", "help_type", "device")
+  old_plot_hook <- getHook("plot.new")
+  old_grid_hook <- getHook("grid.newpage")
+  old_help_method <- utils::getS3method("print", "help_files_with_topic",
+                                        envir = utils_ns)
+
+  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  expect_true(isTRUE(sess:::.runtime_state()$active))
+  expect_false(identical(get("View", utils_ns, inherits = FALSE), old_view))
+  expect_true(is.function(getOption("viewer")))
+  expect_false(identical(utils::getS3method("print", "help_files_with_topic",
+                                            envir = utils_ns), old_help_method))
+  expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 1L)
+  expect_false(identical(getHook("plot.new"), old_plot_hook))
+  expect_false(identical(getHook("grid.newpage"), old_grid_hook))
+
+  callbacks_after_first_start <- getTaskCallbackNames()
+  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 1L)
+  expect_equal(length(grep("^sess.plot$", getTaskCallbackNames())),
+               length(grep("^sess.plot$", callbacks_after_first_start)))
+
+  sess:::runtime_stop()
+  expect_false(isTRUE(sess:::.runtime_state()$active))
+  expect_identical(get("View", utils_ns, inherits = FALSE), old_view)
+  expect_identical(getOption("browser"), old_options$browser)
+  expect_identical(getOption("viewer"), old_options$viewer)
+  expect_identical(getOption("page_viewer"), old_options$page_viewer)
+  expect_identical(getOption("help_type"), old_options$help_type)
+  expect_identical(getOption("device"), old_options$device)
+  expect_identical(getHook("plot.new"), old_plot_hook)
+  expect_identical(getHook("grid.newpage"), old_grid_hook)
+  expect_identical(utils::getS3method("print", "help_files_with_topic",
+                                      envir = utils_ns), old_help_method)
+  expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 0L)
+  expect_equal(length(grep("^sess.plot$", getTaskCallbackNames())), 0L)
+})
+
+# Cleanup preserves options and bindings changed by user code after startup.
+local({
+  .sess_env <- sess:::.sess_env
+  old_plot_path <- .sess_env$latest_plot_path
+  .sess_env$latest_plot_path <- tempfile(fileext = ".png")
+  utils_ns <- asNamespace("utils")
+  original_view <- get("View", utils_ns, inherits = FALSE)
+  binding_was_locked <- bindingIsLocked("View", utils_ns)
+  original_viewer <- getOption("viewer")
+  user_view <- function(...) "user view"
+  user_viewer <- function(...) "user viewer"
+  on.exit({
+    sess:::runtime_stop()
+    if (binding_was_locked) unlockBinding("View", utils_ns)
+    assign("View", original_view, envir = utils_ns)
+    if (binding_was_locked) lockBinding("View", utils_ns)
+    options(viewer = original_viewer)
+    unlink(.sess_env$latest_plot_path)
+    .sess_env$latest_plot_path <- old_plot_path
+  }, add = TRUE)
+
+  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  options(viewer = user_viewer)
+  if (binding_was_locked) unlockBinding("View", utils_ns)
+  assign("View", user_view, envir = utils_ns)
+  if (binding_was_locked) lockBinding("View", utils_ns)
+  sess:::runtime_stop()
+
+  expect_identical(getOption("viewer"), user_viewer)
+  expect_identical(get("View", utils_ns, inherits = FALSE), user_view)
+})
+
+# rstudioapi overrides and its package-load hook are restored at runtime stop.
+local({
+  if (!requireNamespace("rstudioapi", quietly = TRUE)) return(invisible(NULL))
+  rstudioapi_ns <- asNamespace("rstudioapi")
+  if (!exists("isAvailable", envir = rstudioapi_ns, inherits = FALSE)) {
+    return(invisible(NULL))
+  }
+
+  .sess_env <- sess:::.sess_env
+  old_plot_path <- .sess_env$latest_plot_path
+  .sess_env$latest_plot_path <- tempfile(fileext = ".png")
+  original_is_available <- get("isAvailable", rstudioapi_ns, inherits = FALSE)
+  rstudioapi_hook_name <- packageEvent("rstudioapi", "onLoad")
+  original_load_hook <- getHook(rstudioapi_hook_name)
+  on.exit({
+    sess:::runtime_stop()
+    unlink(.sess_env$latest_plot_path)
+    .sess_env$latest_plot_path <- old_plot_path
+  }, add = TRUE)
+
+  sess:::runtime_start(use_rstudioapi = TRUE, use_httpgd = FALSE, use_jgd = FALSE)
+  expect_false(identical(get("isAvailable", rstudioapi_ns, inherits = FALSE),
+                         original_is_available))
+  expect_false(identical(getHook(rstudioapi_hook_name), original_load_hook))
+
+  sess:::runtime_stop()
+  expect_identical(get("isAvailable", rstudioapi_ns, inherits = FALSE),
+                   original_is_available)
+  expect_identical(getHook(rstudioapi_hook_name), original_load_hook)
+})
+
+# NDJSON framing round-trips correctly through a socket pair. Socket support is
 # environment-sensitive (some processx builds/platforms fail to accept or read
 # the loopback connection), so any infrastructure error becomes a silent skip
 # rather than a failure. A genuine framing/protocol bug yields wrong captured
@@ -200,4 +313,122 @@ local({
   expect_true(nzchar(res$received))
   expect_equal(res$method, "ping")
   expect_equal(res$value, 42L)
+})
+
+# A peer disappearing while a request is waiting stops the runtime, and a new
+# connection can start a fresh runtime without duplicating callbacks.
+local({
+  .sess_env <- sess:::.sess_env
+  if (!requireNamespace("processx", quietly = TRUE) || .Platform$OS.type == "windows") {
+    return(invisible(NULL))
+  }
+
+  listener <- function() {
+    path <- tempfile(fileext = ".sock")
+    server <- tryCatch(processx::conn_create_unix_socket(path, encoding = ""),
+                       error = function(e) NULL)
+    if (is.null(server)) return(NULL)
+    list(path = path, server = server)
+  }
+  accept_peer <- function(server) {
+    ready <- tryCatch(processx::poll(list(server), 1000L), error = function(e) NULL)
+    if (is.null(ready) || !ready[[1]] %in% c("connect", "ready")) return(NULL)
+    tryCatch(processx::conn_accept_unix_socket(server), error = function(e) NULL)
+  }
+
+  first <- listener()
+  if (is.null(first)) return(invisible(NULL))
+  utils_ns <- asNamespace("utils")
+  original_view <- get("View", utils_ns, inherits = FALSE)
+  original_options <- lapply(c("browser", "viewer", "page_viewer", "help_type", "device"), getOption)
+  names(original_options) <- c("browser", "viewer", "page_viewer", "help_type", "device")
+  original_help_method <- utils::getS3method("print", "help_files_with_topic",
+                                             envir = utils_ns)
+  original_plot_hook <- getHook("plot.new")
+  original_grid_hook <- getHook("grid.newpage")
+  second <- NULL
+  first_peer <- NULL
+  second_peer <- NULL
+  on.exit({
+    sess:::.transport_disconnect()
+    for (con in list(first_peer, second_peer, first$server,
+                     if (!is.null(second)) second$server else NULL)) {
+      if (!is.null(con)) try(close(con), silent = TRUE)
+    }
+    unlink(c(first$path, if (!is.null(second)) second$path else character()))
+  }, add = TRUE)
+
+  connected <- tryCatch({
+    sess::connect(first$path, use_rstudioapi = FALSE,
+                  use_httpgd = FALSE, use_jgd = FALSE)
+    first_peer <- accept_peer(first$server)
+    !is.null(first_peer) && !is.null(.sess_env$con)
+  }, error = function(e) FALSE)
+  if (!isTRUE(connected)) return(invisible(NULL))
+
+  close(first_peer)
+  result <- suppressWarnings(sess::request_client("test/disconnect_wait"))
+  expect_false(isTRUE(result))
+  expect_null(.sess_env$con)
+  expect_false(isTRUE(sess:::.runtime_state()$active))
+  expect_identical(get("View", utils_ns, inherits = FALSE), original_view)
+  expect_identical(getOption("browser"), original_options$browser)
+  expect_identical(getOption("viewer"), original_options$viewer)
+  expect_identical(getOption("page_viewer"), original_options$page_viewer)
+  expect_identical(getOption("help_type"), original_options$help_type)
+  expect_identical(getOption("device"), original_options$device)
+  expect_identical(utils::getS3method("print", "help_files_with_topic",
+                                      envir = utils_ns), original_help_method)
+  expect_identical(getHook("plot.new"), original_plot_hook)
+  expect_identical(getHook("grid.newpage"), original_grid_hook)
+  expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 0L)
+  expect_equal(length(grep("^sess.plot$", getTaskCallbackNames())), 0L)
+
+  second <- listener()
+  if (is.null(second)) return(invisible(NULL))
+  sess::connect(second$path, use_rstudioapi = FALSE,
+                use_httpgd = FALSE, use_jgd = FALSE)
+  second_peer <- accept_peer(second$server)
+  if (is.null(second_peer) || is.null(.sess_env$con)) return(invisible(NULL))
+  expect_true(isTRUE(sess:::.runtime_state()$active))
+  expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 1L)
+  sess:::.transport_disconnect()
+  expect_null(.sess_env$con)
+  expect_false(isTRUE(sess:::.runtime_state()$active))
+})
+
+# A transport write failure also stops the runtime promptly.
+local({
+  .sess_env <- sess:::.sess_env
+  if (!requireNamespace("processx", quietly = TRUE) || .Platform$OS.type == "windows") {
+    return(invisible(NULL))
+  }
+
+  path <- tempfile(fileext = ".sock")
+  server <- tryCatch(processx::conn_create_unix_socket(path, encoding = ""),
+                     error = function(e) NULL)
+  if (is.null(server)) return(invisible(NULL))
+  peer <- NULL
+  on.exit({
+    sess:::.transport_disconnect()
+    if (!is.null(peer)) try(close(peer), silent = TRUE)
+    try(close(server), silent = TRUE)
+    unlink(path)
+  }, add = TRUE)
+
+  connected <- tryCatch({
+    sess::connect(path, use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+    ready <- processx::poll(list(server), 1000L)
+    if (ready[[1]] %in% c("connect", "ready")) {
+      peer <- processx::conn_accept_unix_socket(server)
+    }
+    !is.null(peer) && !is.null(.sess_env$con)
+  }, error = function(e) FALSE)
+  if (!isTRUE(connected)) return(invisible(NULL))
+
+  close(.sess_env$con)
+  sent <- suppressWarnings(sess:::ipc_write(list(method = "test/write_failure")))
+  expect_false(isTRUE(sent))
+  expect_null(.sess_env$con)
+  expect_false(isTRUE(sess:::.runtime_state()$active))
 })
