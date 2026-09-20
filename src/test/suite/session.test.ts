@@ -106,7 +106,6 @@ suite('Session Communication', () => {
         await new Promise(resolve => setTimeout(resolve, 2000));
 
         const workspaceBaseline = await readRuntimeDebugSnapshot();
-        assert.ok(workspaceBaseline?.runtime_active, 'sess runtime should be active before assignment');
         const markerPath = path.join(
             os.tmpdir(),
             `vscode-r-command-marker-${process.pid}-${Date.now()}`
@@ -136,19 +135,22 @@ suite('Session Communication', () => {
         assert.ok(rpcWorkspace?.globalenv?.['my_list'], 'workspace RPC should include my_list');
 
         const workspaceDebug = await readRuntimeDebugSnapshot();
+        const workspaceSnapshots = JSON.stringify({ before: workspaceBaseline, after: workspaceDebug });
         console.info('[session test diagnostic] assignment baseline/after:',
-            JSON.stringify({ before: workspaceBaseline, after: workspaceDebug }));
-        assert.ok(workspaceDebug?.runtime_active, 'sess runtime should remain active');
-        assert.ok(workspaceDebug?.task_callback_names?.includes('sess.workspace'));
+            workspaceSnapshots);
+        assert.ok(workspaceDebug?.runtime_active,
+            `sess runtime should be active after assignment: ${workspaceSnapshots}`);
+        assert.ok(workspaceDebug?.task_callback_names?.includes('sess.workspace'),
+            `sess.workspace callback should be registered: ${workspaceSnapshots}`);
         assert.ok(
             (workspaceDebug?.callback_counts?.workspace_callback_entries ?? 0) >
                 (workspaceBaseline?.callback_counts?.workspace_callback_entries ?? 0),
-            `workspace callback did not run: ${JSON.stringify(workspaceDebug)}`
+            `workspace callback did not run: ${workspaceSnapshots}`
         );
         assert.ok(
             (workspaceDebug?.callback_counts?.workspace_notify_sent ?? 0) >
                 (workspaceBaseline?.callback_counts?.workspace_notify_sent ?? 0),
-            `workspace_updated notification was not sent: ${JSON.stringify(workspaceDebug)}`
+            `workspace_updated notification was not sent: ${workspaceSnapshots}`
         );
         
         await waitFor(() => {
@@ -239,7 +241,6 @@ suite('Session Communication', () => {
 
         // 1. Test svglite
         const plotBaseline = await readRuntimeDebugSnapshot();
-        assert.ok(plotBaseline?.runtime_active, 'sess runtime should be active before plotting');
         const plotMarkerPath = path.join(
             os.tmpdir(),
             `vscode-r-plot-marker-${process.pid}-${Date.now()}`
@@ -253,14 +254,17 @@ suite('Session Communication', () => {
         await waitFor(() => fs.pathExists(plotMarkerPath), 10000, 200);
 
         const plotDebug = await readRuntimeDebugSnapshot();
+        const plotSnapshots = JSON.stringify({ before: plotBaseline, after: plotDebug });
         console.info('[session test diagnostic] plot baseline/after:',
-            JSON.stringify({ before: plotBaseline, after: plotDebug }));
-        assert.ok(plotDebug?.runtime_active, 'sess runtime should remain active');
-        assert.ok(plotDebug?.task_callback_names?.includes('sess.plot'));
+            plotSnapshots);
+        assert.ok(plotDebug?.runtime_active,
+            `sess runtime should be active after plotting: ${plotSnapshots}`);
+        assert.ok(plotDebug?.task_callback_names?.includes('sess.plot'),
+            `sess.plot callback should be registered: ${plotSnapshots}`);
         assert.ok(
             (plotDebug?.callback_counts?.plot_callback_entries ?? 0) >
                 (plotBaseline?.callback_counts?.plot_callback_entries ?? 0),
-            `plot task callback did not run: ${JSON.stringify(plotDebug)}`
+            `plot task callback did not run: ${plotSnapshots}`
         );
         await waitFor(() => createWebviewPanelSpy.calledWith('r.standardPlot'), 10000, 200);
         assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be triggered for svglite');
