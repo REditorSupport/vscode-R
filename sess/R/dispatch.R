@@ -4,7 +4,7 @@ ipc_write <- function(data) {
   con <- .sess_env$con
   if (is.null(con)) return(invisible(FALSE))
 
-  json <- jsonlite::toJSON(data, auto_unbox = TRUE, null = "null", force = TRUE)
+  json <- jsonlite::toJSON(data, auto_unbox = TRUE, null = "null", force = TRUE, digits = NA)
   line <- c(charToRaw(enc2utf8(json)), as.raw(0x0a))
   tryCatch(
     {

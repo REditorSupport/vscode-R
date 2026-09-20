@@ -70,32 +70,47 @@ local({
 local({
   .sess_env <- sess:::.sess_env
   orig_dataviews <- .sess_env$dataviews
-  on.exit(.sess_env$dataviews <- orig_dataviews, add = TRUE)
+  orig_con <- .sess_env$con
+  pipe <- processx::conn_create_pipepair()
+  on.exit({
+    .sess_env$dataviews <- orig_dataviews
+    .sess_env$con <- orig_con
+    lapply(pipe, close)
+  }, add = TRUE)
+  .sess_env$con <- pipe[[2L]]
 
   .sess_env$dataviews <- list()
 
-  df <- data.frame(a = c(3, 1, 2), b = c("x", "y", "z"), stringsAsFactors = FALSE)
+  df <- data.frame(
+    a = c(1.54e-03, 1.54e-04, 1.54e-05, 1.54e-06, 6.65e-13, 1.54e-100,
+          -1.54e-05, 0, 1.23456789, 42),
+    b = letters[1:10]
+  )
   registration <- sess:::dataview_register(df)
 
   expect_true(is.character(registration$view_id))
-  expect_equal(registration$total_rows, 3)
+  expect_equal(registration$total_rows, nrow(df))
   expect_length(registration$columns, 3)
 
   init_res <- sess:::handle_dataview_init(list(view_id = registration$view_id))
-  expect_equal(init_res$totalRows, 3)
+  expect_equal(init_res$totalRows, nrow(df))
   expect_length(init_res$columns, 3)
 
   page_res <- sess:::handle_dataview_page(list(
     view_id = registration$view_id,
     startRow = 0L,
-    endRow = 2L,
+    endRow = nrow(df) - 1L,
     sortModel = list(),
     filterModel = list()
   ))
 
-  expect_equal(length(page_res$rows), 2)
-  expect_equal(page_res$rows[[1]][["1"]], "3")
-  expect_equal(page_res$rows[[2]][["1"]], "1")
+  expected <- head(df$a, -1L)
+  expect_equal(nrow(page_res$rows), nrow(df) - 1L)
+  expect_equal(page_res$rows[["1"]], expected)
+
+  sess:::rpc_reply("page", page_res)
+  response <- jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]))
+  expect_true(all(abs(response$result$rows[["1"]] - expected) <= abs(expected) * 1e-14))
 
   disposed <- sess:::handle_dataview_dispose(list(view_id = registration$view_id))
   expect_true(isTRUE(disposed))
@@ -113,7 +128,7 @@ local({
 
   .sess_env$dataviews <- list()
 
-  df <- data.frame(a = c(10, 30, 20), b = c("apple", "banana", "berry"), stringsAsFactors = FALSE)
+  df <- data.frame(a = c(1.54e-05, 3.54e-05, 2.54e-05), b = c("apple", "banana", "berry"))
   registration <- sess:::dataview_register(df)
 
   filtered <- sess:::handle_dataview_page(list(
@@ -127,9 +142,8 @@ local({
   ))
 
   expect_equal(filtered$totalRows, 2)
-  expect_equal(length(filtered$rows), 2)
-  expect_equal(filtered$rows[[1]][["2"]], "banana")
-  expect_equal(filtered$rows[[2]][["2"]], "berry")
+  expect_equal(nrow(filtered$rows), 2)
+  expect_equal(filtered$rows[["2"]], c("banana", "berry"))
 
   sorted <- sess:::handle_dataview_page(list(
     view_id = registration$view_id,
@@ -142,9 +156,17 @@ local({
   ))
 
   expect_equal(sorted$totalRows, 3)
-  expect_equal(sorted$rows[[1]][["1"]], "30")
-  expect_equal(sorted$rows[[2]][["1"]], "20")
-  expect_equal(sorted$rows[[3]][["1"]], "10")
+  expect_equal(sorted$rows[["1"]], sort(df$a, decreasing = TRUE))
+
+  for (value in df$a[1:2]) {
+    filtered <- sess:::handle_dataview_page(list(
+      view_id = registration$view_id,
+      filterModel = list(
+        "1" = list(filterType = "number", type = "equals", filter = value)
+      )
+    ))
+    expect_equal(filtered$rows[["1"]], value, tolerance = 1e-14)
+  }
 })
 
 # NDJSON framing round-trips correctly through a socket pair.
