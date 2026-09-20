@@ -174,7 +174,7 @@ dispatch_message <- function(line) {
     # Request from vscode → R must reply
     handlers <- list(
       "workspace" = function(p) get_workspace_data(),
-      "workspace_children" = function(p) get_workspace_children(p$name, p$path, p$start),
+      "workspace_children" = function(p) get_workspace_children(p$name, p$path, p$start, p$view_id),
       "workspace_view" = function(p) handle_workspace_view(p$name, p$path),
       "hover" = function(p) handle_hover(p$expr),
       "completion" = function(p) handle_complete(p$expr, p$trigger),

@@ -60,34 +60,8 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
         kind = child_kind,
         names = x_names
       )
-      indices <- if (child_kind == "index") seq_along(x) else seq_along(x_names)
-      children <- lapply(indices, function(index) {
-        child_name <- if (is.null(x_names)) NULL else x_names[[index]]
-        label <- if (child_kind == "slot") {
-          paste0("@ ", child_name)
-        } else {
-          workspace_child_label(child_name, index)
-        }
-        if (child_kind == "name" && bindingIsActive(child_name, x)) {
-          return(list(label = label, str = "(active-binding)", viewable = FALSE, index = index))
-        }
-        child <- switch(child_kind,
-          name = get(child_name, envir = x, inherits = FALSE),
-          slot = methods::slot(x, child_name),
-          index = x[[index]]
-        )
-        list(
-          label = label,
-          str = trimws(try_capture_str(child)),
-          viewable = TRUE,
-          index = index
-        )
-      })
-      file_path <- tempfile(tmpdir = .sess_env$tempdir, fileext = ".json")
-      jsonlite::write_json(list(children = I(children)), file_path, auto_unbox = TRUE)
       notify_client("dataview", list(
         title = title,
-        file = file_path,
         source = "list",
         type = "json",
         view_id = view_id

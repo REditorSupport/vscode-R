@@ -737,7 +737,7 @@ export async function showDataView(source: string, type: string, title: string, 
             if (existing) {
                 existing.title = title;
                 existing.reveal(ViewColumn[viewer as keyof typeof ViewColumn], true);
-                existing.webview.html = await getListHtml(existing.webview, file, title);
+                existing.webview.html = getListHtml(existing.webview, title);
                 return;
             }
         }
@@ -756,11 +756,23 @@ export async function showDataView(source: string, type: string, title: string, 
         panel.iconPath = new UriIcon('open-preview');
         if (viewId) {
             dynamicDataViewPanels.set(viewId, panel);
-            panel.webview.onDidReceiveMessage((message: { message?: string; index?: number }) => {
+            panel.webview.onDidReceiveMessage(async (message: { message?: string; index?: number; start?: number; requestId?: number }) => {
                 if (message.message === 'listview/view' && typeof message.index === 'number' && Number.isInteger(message.index)) {
                     void sessionRequest({
                         method: 'listview_view',
                         params: { view_id: viewId, index: message.index },
+                    });
+                } else if (message.message === 'listview/page' && typeof message.start === 'number' &&
+                    Number.isInteger(message.start) && typeof message.requestId === 'number') {
+                    const page = await sessionRequest({
+                        method: 'workspace_children',
+                        params: { view_id: viewId, start: message.start },
+                    }) as { children?: unknown; next_start?: number | null } | undefined;
+                    void panel.webview.postMessage({
+                        message: 'listview/page',
+                        requestId: message.requestId,
+                        ...page,
+                        error: Array.isArray(page?.children) ? undefined : 'Unable to load items. Check the R session and try again.',
                     });
                 }
             });
@@ -774,7 +786,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 });
             });
         }
-        panel.webview.html = await getListHtml(panel.webview, file, title);
+        panel.webview.html = getListHtml(panel.webview, title);
     } else {
         await commands.executeCommand('vscode.open', Uri.file(file), {
             preserveFocus: true,
@@ -1580,8 +1592,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 `;
 }
 
-export async function getListHtml(webview: Webview, file: string, title: string): Promise<string> {
-    const content = (await fs.readFile(file, 'utf8')).replace(/</g, '\\u003c');
+export function getListHtml(webview: Webview, title: string): string {
     const icon = new UriIcon('open-preview-codicon');
     const darkIcon = webview.asWebviewUri(icon.dark).toString();
     const lightIcon = webview.asWebviewUri(icon.light).toString();
@@ -1638,6 +1649,12 @@ export async function getListHtml(webview: Webview, file: string, title: string)
         width: 16px;
         height: 16px;
     }
+    #load-more {
+        margin: 8px;
+    }
+    #load-more[hidden] {
+        display: none;
+    }
     .light-icon {
         display: none;
     }
@@ -1651,38 +1668,72 @@ export async function getListHtml(webview: Webview, file: string, title: string)
 </head>
 <body>
     <div id="list"></div>
+    <button id="load-more">Load more</button>
+    <div id="status" role="status"></div>
     <script>
     const vscode = acquireVsCodeApi();
-    const data = ${content};
+    const requestId = ${++dynamicDataViewReloadRevision};
     const list = document.getElementById('list');
+    const loadMore = document.getElementById('load-more');
+    const status = document.getElementById('status');
+    let nextStart = 1;
 
-    for (const item of data.children) {
-        const row = document.createElement('div');
-        row.className = 'item';
+    function loadPage() {
+        if (loadMore.disabled || nextStart === null) {
+            return;
+        }
+        loadMore.disabled = true;
+        loadMore.textContent = 'Loading…';
+        status.textContent = '';
+        vscode.postMessage({ message: 'listview/page', requestId, start: nextStart });
+    }
 
-        const label = document.createElement('span');
-        label.className = 'label';
-        label.textContent = item.label;
-        row.appendChild(label);
-
-        const str = document.createElement('span');
-        str.className = 'str';
-        str.textContent = item.str;
-        row.appendChild(str);
-
-        if (item.viewable) {
-            const button = document.createElement('button');
-            button.title = 'View';
-            button.setAttribute('aria-label', 'View');
-            button.innerHTML = '<img class="dark-icon" src="${darkIcon}" alt=""><img class="light-icon" src="${lightIcon}" alt="">';
-            button.addEventListener('click', () => {
-                vscode.postMessage({ message: 'listview/view', index: item.index });
-            });
-            row.appendChild(button);
+    loadMore.addEventListener('click', loadPage);
+    window.addEventListener('message', (event) => {
+        const message = event.data;
+        if (message.message !== 'listview/page' || message.requestId !== requestId) {
+            return;
+        }
+        loadMore.disabled = false;
+        if (message.error) {
+            status.textContent = message.error;
+            loadMore.textContent = 'Retry';
+            return;
         }
 
-        list.appendChild(row);
-    }
+        for (const item of message.children) {
+            const row = document.createElement('div');
+            row.className = 'item';
+
+            const label = document.createElement('span');
+            label.className = 'label';
+            label.textContent = item.label;
+            row.appendChild(label);
+
+            const str = document.createElement('span');
+            str.className = 'str';
+            str.textContent = item.str;
+            row.appendChild(str);
+
+            if (item.viewable) {
+                const button = document.createElement('button');
+                button.title = 'View';
+                button.setAttribute('aria-label', 'View');
+                button.innerHTML = '<img class="dark-icon" src="${darkIcon}" alt=""><img class="light-icon" src="${lightIcon}" alt="">';
+                button.addEventListener('click', () => {
+                    vscode.postMessage({ message: 'listview/view', index: item.index });
+                });
+                row.appendChild(button);
+            }
+
+            list.appendChild(row);
+        }
+        nextStart = message.next_start ?? null;
+        loadMore.hidden = nextStart === null;
+        loadMore.textContent = 'Load more';
+        status.textContent = list.childElementCount ? '' : 'No items';
+    });
+    loadPage();
     </script>
 </body>
 </html>
