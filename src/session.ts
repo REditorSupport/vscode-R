@@ -966,6 +966,16 @@ export async function showDataView(source: string, type: string, title: string, 
         const content = await getTableHtml(panel.webview, file || undefined, title);
         panel.webview.html = content;
     } else if (source === 'list') {
+        if (viewId) {
+            const existing = dynamicDataViewPanels.get(viewId);
+            if (existing) {
+                existing.title = title;
+                existing.reveal(ViewColumn[viewer as keyof typeof ViewColumn], true);
+                existing.webview.html = await getListHtml(existing.webview, file, title);
+                return;
+            }
+        }
+
         const panel = window.createWebviewPanel('dataview', title,
             {
                 preserveFocus: true,
@@ -975,11 +985,11 @@ export async function showDataView(source: string, type: string, title: string, 
                 enableScripts: true,
                 enableFindWidget: true,
                 retainContextWhenHidden: true,
-                localResourceRoots: [Uri.file(resDir), Uri.file(extensionContext.asAbsolutePath('images/icons'))],
+                localResourceRoots: [Uri.file(extensionContext.asAbsolutePath('images/icons'))],
             });
-        const content = await getListHtml(panel.webview, file, title);
         panel.iconPath = new UriIcon('open-preview');
         if (viewId) {
+            dynamicDataViewPanels.set(viewId, panel);
             panel.webview.onDidReceiveMessage((message: { message?: string; index?: number }) => {
                 if (message.message === 'listview/view' && typeof message.index === 'number' && Number.isInteger(message.index)) {
                     void sessionRequest({
@@ -989,13 +999,16 @@ export async function showDataView(source: string, type: string, title: string, 
                 }
             });
             panel.onDidDispose(() => {
+                if (dynamicDataViewPanels.get(viewId) === panel) {
+                    dynamicDataViewPanels.delete(viewId);
+                }
                 void sessionRequest({
                     method: 'dataview_dispose',
                     params: { view_id: viewId },
                 });
             });
         }
-        panel.webview.html = content;
+        panel.webview.html = await getListHtml(panel.webview, file, title);
     } else {
         await commands.executeCommand('vscode.open', Uri.file(file), {
             preserveFocus: true,
@@ -1693,10 +1706,10 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 }
 
 export async function getListHtml(webview: Webview, file: string, title: string): Promise<string> {
-    const content = (await readContent(file, 'utf8')).replace(/</g, '\\u003c');
+    const content = (await fs.readFile(file, 'utf8')).replace(/</g, '\\u003c');
     const icon = new UriIcon('open-preview-codicon');
-    const darkIcon = webview.asWebviewUri(icon.dark);
-    const lightIcon = webview.asWebviewUri(icon.light);
+    const darkIcon = webview.asWebviewUri(icon.dark).toString();
+    const lightIcon = webview.asWebviewUri(icon.light).toString();
 
     return `
 <!doctype HTML>
