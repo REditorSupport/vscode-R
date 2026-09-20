@@ -38,13 +38,30 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
         view_id = registration$view_id
       ))
     } else if (is.list(x)) {
+      view_id <- dataview_new_id()
+      .sess_env$dataviews[[view_id]] <- list(
+        type = "list",
+        data = x,
+        title = paste(as.character(title), collapse = "\n")
+      )
+      x_names <- names(x)
+      children <- lapply(seq_along(x), function(index) {
+        child <- x[[index]]
+        list(
+          label = workspace_child_label(if (is.null(x_names)) NULL else x_names[[index]], index),
+          str = trimws(try_capture_str(child)),
+          viewable = is.list(child) || dataview_is_table(child),
+          index = index
+        )
+      })
       file_path <- tempfile(tmpdir = .sess_env$tempdir, fileext = ".json")
-      jsonlite::write_json(x, file_path, auto_unbox = TRUE, null = "null", na = "string")
+      jsonlite::write_json(list(children = I(children)), file_path, auto_unbox = TRUE)
       notify_client("dataview", list(
         title = title,
         file = file_path,
         source = "list",
-        type = "json"
+        type = "json",
+        view_id = view_id
       ))
     } else {
       code <- if (is.primitive(x)) utils::capture.output(print(x)) else deparse(x)

@@ -745,6 +745,22 @@ export async function showDataView(source: string, type: string, title: string, 
             });
         const content = await getListHtml(panel.webview, file, title);
         panel.iconPath = new UriIcon('open-preview');
+        if (viewId) {
+            panel.webview.onDidReceiveMessage((message: { message?: string; index?: number }) => {
+                if (message.message === 'listview/view' && typeof message.index === 'number' && Number.isInteger(message.index)) {
+                    void sessionRequest({
+                        method: 'listview_view',
+                        params: { view_id: viewId, index: message.index },
+                    });
+                }
+            });
+            panel.onDidDispose(() => {
+                void sessionRequest({
+                    method: 'dataview_dispose',
+                    params: { view_id: viewId },
+                });
+            });
+        }
         panel.webview.html = content;
     } else {
         await commands.executeCommand('vscode.open', Uri.file(file), {
@@ -1552,7 +1568,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 }
 
 export async function getListHtml(webview: Webview, file: string, title: string): Promise<string> {
-    const content = await readContent(file, 'utf8');
+    const content = (await readContent(file, 'utf8')).replace(/</g, '\\u003c');
 
     return `
 <!doctype HTML>
@@ -1561,64 +1577,80 @@ export async function getListHtml(webview: Webview, file: string, title: string)
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(title)}</title>
-    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
-    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.js'))))}"></script>
-    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.css'))))}" rel="stylesheet">
-    <style type="text/css">
+    <style>
     body {
-        color: var(--vscode-editor-foreground);
+        margin: 0;
+        color: var(--vscode-foreground);
         background-color: var(--vscode-editor-background);
+        font-family: var(--vscode-font-family);
+        font-size: var(--vscode-font-size);
     }
-
-    .json-document {
-        padding: 0 0;
+    .item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 28px;
+        padding: 2px 8px;
     }
-
-    pre#json-renderer {
-        font-family: var(--vscode-editor-font-family);
-        border: 0;
+    .item:hover {
+        background-color: var(--vscode-list-hoverBackground);
+        color: var(--vscode-list-hoverForeground);
     }
-
-    ul.json-dict, ol.json-array {
+    .label {
+        min-width: 140px;
         color: var(--vscode-symbolIcon-fieldForeground);
-        border-left: 1px dotted var(--vscode-editorLineNumber-foreground);
+        white-space: nowrap;
     }
-
-    .json-literal {
-        color: var(--vscode-symbolIcon-variableForeground);
+    .str {
+        flex: 1;
+        color: var(--vscode-descriptionForeground);
+        white-space: pre-wrap;
     }
-
-    .json-string {
-        color: var(--vscode-symbolIcon-stringForeground);
+    button {
+        border: 0;
+        padding: 2px 8px;
+        color: var(--vscode-button-foreground);
+        background-color: var(--vscode-button-background);
+        cursor: pointer;
     }
-
-    a.json-toggle:before {
-        color: var(--vscode-button-secondaryBackground);
-    }
-
-    a.json-toggle:hover:before {
-        color: var(--vscode-button-secondaryHoverBackground);
-    }
-
-    a.json-placeholder {
-        color: var(--vscode-input-placeholderForeground);
+    button:hover {
+        background-color: var(--vscode-button-hoverBackground);
     }
     </style>
-    <script>
-    var data = ${String(content)};
-    $(document).ready(function() {
-      var options = {
-        collapsed: false,
-        rootCollapsable: false,
-        withQuotes: false,
-        withLinks: true
-      };
-      $("#json-renderer").jsonViewer(data, options);
-    });
-    </script>
 </head>
 <body>
-    <pre id="json-renderer"></pre>
+    <div id="list"></div>
+    <script>
+    const vscode = acquireVsCodeApi();
+    const data = ${content};
+    const list = document.getElementById('list');
+
+    for (const item of data.children) {
+        const row = document.createElement('div');
+        row.className = 'item';
+
+        const label = document.createElement('span');
+        label.className = 'label';
+        label.textContent = item.label;
+        row.appendChild(label);
+
+        const str = document.createElement('span');
+        str.className = 'str';
+        str.textContent = item.str;
+        row.appendChild(str);
+
+        if (item.viewable) {
+            const button = document.createElement('button');
+            button.textContent = 'View';
+            button.addEventListener('click', () => {
+                vscode.postMessage({ message: 'listview/view', index: item.index });
+            });
+            row.appendChild(button);
+        }
+
+        list.appendChild(row);
+    }
+    </script>
 </body>
 </html>
 `;

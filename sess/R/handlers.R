@@ -209,6 +209,24 @@ get_workspace_children <- function(name, path = list(), start = 1L) {
   }, error = function(e) list(children = I(list()), next_start = NULL))
 }
 
+handle_listview_view <- function(view_id, index) {
+  state <- .sess_env$dataviews[[as.character(view_id)]]
+  index <- as.integer(index)
+  if (is.null(state) || !identical(state$type, "list") ||
+      is.na(index) || index < 1L || index > length(state$data)) {
+    return(FALSE)
+  }
+  child_names <- names(state$data)
+  child_name <- if (is.null(child_names)) NULL else child_names[[index]]
+  title <- if (!is.null(child_name) && !is.na(child_name) && nzchar(child_name)) {
+    paste0(state$title, "$", child_name)
+  } else {
+    paste0(state$title, "[[", index, "]]")
+  }
+  utils::View(state$data[[index]], title = title)
+  TRUE
+}
+
 handle_hover <- function(expr_str) {
   tryCatch(
     {

@@ -179,6 +179,7 @@ dispatch_message <- function(line) {
       "hover" = function(p) handle_hover(p$expr),
       "completion" = function(p) handle_complete(p$expr, p$trigger),
       "plot_latest" = function(p) handle_plot_latest(p),
+      "listview_view" = function(p) handle_listview_view(p$view_id, p$index),
       "dataview_init" = function(p) handle_dataview_init(p),
       "dataview_page" = function(p) handle_dataview_page(p),
       "dataview_dispose" = function(p) handle_dataview_dispose(p)
