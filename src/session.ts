@@ -741,7 +741,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 enableScripts: true,
                 enableFindWidget: true,
                 retainContextWhenHidden: true,
-                localResourceRoots: [Uri.file(resDir)],
+                localResourceRoots: [Uri.file(resDir), Uri.file(extensionContext.asAbsolutePath('images/icons'))],
             });
         const content = await getListHtml(panel.webview, file, title);
         panel.iconPath = new UriIcon('open-preview');
@@ -1569,6 +1569,9 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 
 export async function getListHtml(webview: Webview, file: string, title: string): Promise<string> {
     const content = (await readContent(file, 'utf8')).replace(/</g, '\\u003c');
+    const icon = new UriIcon('open-preview-codicon');
+    const darkIcon = webview.asWebviewUri(icon.dark);
+    const lightIcon = webview.asWebviewUri(icon.light);
 
     return `
 <!doctype HTML>
@@ -1607,14 +1610,29 @@ export async function getListHtml(webview: Webview, file: string, title: string)
         white-space: pre-wrap;
     }
     button {
+        display: flex;
+        align-items: center;
         border: 0;
-        padding: 2px 8px;
-        color: var(--vscode-button-foreground);
-        background-color: var(--vscode-button-background);
+        padding: 2px;
+        color: var(--vscode-foreground);
+        background: transparent;
         cursor: pointer;
     }
     button:hover {
-        background-color: var(--vscode-button-hoverBackground);
+        background-color: var(--vscode-toolbar-hoverBackground);
+    }
+    button img {
+        width: 16px;
+        height: 16px;
+    }
+    .light-icon {
+        display: none;
+    }
+    body.vscode-light .dark-icon {
+        display: none;
+    }
+    body.vscode-light .light-icon {
+        display: block;
     }
     </style>
 </head>
@@ -1641,7 +1659,9 @@ export async function getListHtml(webview: Webview, file: string, title: string)
 
         if (item.viewable) {
             const button = document.createElement('button');
-            button.textContent = 'View';
+            button.title = 'View';
+            button.setAttribute('aria-label', 'View');
+            button.innerHTML = '<img class="dark-icon" src="${darkIcon}" alt=""><img class="light-icon" src="${lightIcon}" alt="">';
             button.addEventListener('click', () => {
                 vscode.postMessage({ message: 'listview/view', index: item.index });
             });
