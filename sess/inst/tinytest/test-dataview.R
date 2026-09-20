@@ -29,29 +29,53 @@ local({
   }
 })
 
-# Arbitrary classes supply their own display and text-filter values.
+# S3 and S4 numeric subclasses supply their own display and text-filter values.
 local({
   registerS3method("[", "dataview_test", function(x, ...) {
     structure(NextMethod(), class = class(x))
   })
-  registerS3method("format", "dataview_test", function(x, ...) {
-    paste0("value:", unclass(x))
-  })
-  on.exit(rm(
-    list = c("[.dataview_test", "format.dataview_test"),
-    envir = get(".__S3MethodsTable__.", envir = asNamespace("base"))
-  ), add = TRUE)
+  class_env <- environment()
+  methods::setClass("dataview_s4_test", contains = "numeric", where = class_env)
+  on.exit({
+    methods::removeMethod("[", "dataview_s4_test", where = class_env)
+    methods::removeClass("dataview_s4_test", where = class_env)
+    rm(
+      list = c("[.dataview_test", "format.dataview_test", "format.dataview_s4_test"),
+      envir = get(".__S3MethodsTable__.", envir = asNamespace("base"))
+    )
+  }, add = TRUE)
+  methods::setMethod("[", "dataview_s4_test", function(x, i, j, ..., drop = TRUE) {
+    methods::new("dataview_s4_test", as.numeric(x)[i])
+  }, where = class_env)
+  for (class_name in c("dataview_test", "dataview_s4_test")) {
+    registerS3method("format", class_name, function(x, ...) {
+      paste0("value:", as.numeric(x))
+    })
+  }
 
-  df <- data.frame(id = 1:4)
-  df$value <- structure(c(20, 2, 10, NA_real_), class = "dataview_test")
-  state <- sess:::dataview_to_state(df)
-  expect_equal(as.character(state$columns[[3L]]$type), "textColumn")
-  expect_equal(as.character(state$columns[[3L]]$filter), "agTextColumnFilter")
-  expect_equal(
-    sess:::dataview_rows(state, 1:4)[["2"]],
-    c("value:20", "value:2", "value:10", NA_character_)
+  values <- c(20, 2, 10, NA_real_)
+  cases <- list(
+    S3 = structure(values, class = "dataview_test"),
+    S4 = methods::new("dataview_s4_test", values)
   )
-  expect_equal(sess:::dataview_query_indices(
-    state, NULL, list("2" = list(type = "equals", filter = "value:2"))
-  ), 2L)
+  for (case_name in names(cases)) {
+    df <- data.frame(id = 1:4)
+    df$value <- cases[[case_name]]
+    expect_equal(isS4(df$value), case_name == "S4", info = case_name)
+    expect_true(is.numeric(df$value), info = case_name)
+    expect_true(is.object(df$value), info = case_name)
+
+    state <- sess:::dataview_to_state(df)
+    expect_equal(as.character(state$columns[[3L]]$type), "textColumn", info = case_name)
+    expect_equal(
+      as.character(state$columns[[3L]]$filter), "agTextColumnFilter", info = case_name
+    )
+    expect_equal(
+      sess:::dataview_rows(state, 1:4)[["2"]],
+      c("value:20", "value:2", "value:10", NA_character_), info = case_name
+    )
+    expect_equal(sess:::dataview_query_indices(
+      state, NULL, list("2" = list(type = "equals", filter = "value:2"))
+    ), 2L, info = case_name)
+  }
 })
