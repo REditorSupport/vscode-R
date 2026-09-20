@@ -1,15 +1,4 @@
 # Runtime state is deliberately independent from the IPC connection state.
-.runtime_empty_diagnostics <- function() {
-  list(
-    workspace_callback_entries = 0L,
-    workspace_notify_attempts = 0L,
-    workspace_notify_sent = 0L,
-    plot_callback_entries = 0L,
-    plot_notify_attempts = 0L,
-    plot_notify_sent = 0L
-  )
-}
-
 .runtime_state <- function() {
   if (is.null(.sess_env$runtime)) {
     state <- new.env(parent = emptyenv())
@@ -21,16 +10,9 @@
     state$task_callbacks <- list()
     state$devices <- list()
     state$fields <- list()
-    state$diagnostics <- .runtime_empty_diagnostics()
     .sess_env$runtime <- state
   }
   .sess_env$runtime
-}
-
-.runtime_diagnostic_increment <- function(name) {
-  state <- .runtime_state()
-  state$diagnostics[[name]] <- state$diagnostics[[name]] + 1L
-  invisible(state$diagnostics[[name]])
 }
 
 .runtime_clear_viewer_state <- function() {
@@ -39,6 +21,12 @@
   .sess_env$dataviews <- list()
   .sess_env$dataview_registry <- new.env(parent = emptyenv())
   invisible(NULL)
+}
+
+.runtime_named_value <- function(name, value) {
+  values <- list(value)
+  names(values) <- name
+  values
 }
 
 .runtime_set_field <- function(name, value) {
@@ -69,7 +57,7 @@
   if (is.null(state$options[[name]])) {
     state$options[[name]] <- list(original = getOption(name))
   }
-  do.call(options, setNames(list(value), name))
+  do.call(options, .runtime_named_value(name, value))
   state$options[[name]]$installed <- getOption(name)
   invisible(value)
 }
@@ -293,7 +281,7 @@
   for (name in names(state$options)) {
     entry <- state$options[[name]]
     if (identical(getOption(name), entry$installed)) {
-      try(do.call(options, setNames(list(entry$original), name)), silent = TRUE)
+      try(do.call(options, .runtime_named_value(name, entry$original)), silent = TRUE)
     }
   }
   state$options <- list()

@@ -1707,11 +1707,6 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
         }
 
         case 'workspace_updated': {
-            // Temporary CI diagnostic; remove after poll/callback cause is known.
-            console.info(
-                '[sess diagnostic] received workspace_updated; active=',
-                socket === activeSession?.socket
-            );
             if (socket === activeSession?.socket) {
                 scheduleWorkspaceRefresh();
             }
@@ -1777,8 +1772,6 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             break;
         }
         case 'plot_updated': {
-            // Temporary CI diagnostic; remove after poll/callback cause is known.
-            console.info('[sess diagnostic] received plot_updated');
             void updatePlot();
             break;
         }

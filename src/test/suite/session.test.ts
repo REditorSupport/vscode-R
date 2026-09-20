@@ -14,28 +14,6 @@ import * as plotViewer from '../../plotViewer';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
-interface RuntimeDebugSnapshot {
-    runtime_active?: boolean;
-    task_callback_names?: string[];
-    transport_generation?: number;
-    runtime_start_attempted?: boolean;
-    runtime_start_phase?: string | null;
-    runtime_start_error?: {
-        step?: string | null;
-        message?: string;
-        call?: string | null;
-    } | null;
-    last_error?: string;
-    callback_counts?: Record<string, number>;
-}
-
-async function readRuntimeDebugSnapshot(): Promise<RuntimeDebugSnapshot | undefined> {
-    return await session.sessionRequest({
-        method: 'debug_runtime_state',
-        params: {}
-    }) as RuntimeDebugSnapshot | undefined;
-}
-
 async function waitFor<T>(condition: () => T | Promise<T>, timeout = 10000, interval = 100): Promise<T> {
     const start = Date.now();
     while (Date.now() - start < timeout) {
@@ -113,7 +91,6 @@ suite('Session Communication', () => {
         
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        const workspaceBaseline = await readRuntimeDebugSnapshot();
         const markerPath = path.join(
             os.tmpdir(),
             `vscode-r-command-marker-${process.pid}-${Date.now()}`
@@ -129,9 +106,8 @@ suite('Session Communication', () => {
         // that R received and evaluated the command before probing the RPC.
         await waitFor(() => fs.pathExists(markerPath), 10000, 200);
 
-        // Verify the read/request path independently from the pushed workspace
-        // refresh notification so a failure distinguishes poll-loop issues
-        // from task-callback notification issues.
+        // Verify the workspace request path after command execution, independently
+        // from the pushed workspace refresh notification.
         let rpcWorkspace: { globalenv?: Record<string, unknown> } | undefined;
         await waitFor(async () => {
             rpcWorkspace = await session.sessionRequest({
@@ -141,25 +117,6 @@ suite('Session Communication', () => {
             return rpcWorkspace?.globalenv?.['my_list'];
         }, 10000, 200);
         assert.ok(rpcWorkspace?.globalenv?.['my_list'], 'workspace RPC should include my_list');
-
-        const workspaceDebug = await readRuntimeDebugSnapshot();
-        const workspaceSnapshots = JSON.stringify({ before: workspaceBaseline, after: workspaceDebug });
-        console.info('[session test diagnostic] assignment baseline/after:',
-            workspaceSnapshots);
-        assert.ok(workspaceDebug?.runtime_active,
-            `sess runtime should be active after assignment: ${workspaceSnapshots}`);
-        assert.ok(workspaceDebug?.task_callback_names?.includes('sess.workspace'),
-            `sess.workspace callback should be registered: ${workspaceSnapshots}`);
-        assert.ok(
-            (workspaceDebug?.callback_counts?.workspace_callback_entries ?? 0) >
-                (workspaceBaseline?.callback_counts?.workspace_callback_entries ?? 0),
-            `workspace callback did not run: ${workspaceSnapshots}`
-        );
-        assert.ok(
-            (workspaceDebug?.callback_counts?.workspace_notify_sent ?? 0) >
-                (workspaceBaseline?.callback_counts?.workspace_notify_sent ?? 0),
-            `workspace_updated notification was not sent: ${workspaceSnapshots}`
-        );
         
         await waitFor(() => {
             const ge = session.workspaceData?.globalenv;
@@ -248,7 +205,6 @@ suite('Session Communication', () => {
         const createWebviewPanelSpy = sandbox.spy(vscode.window, 'createWebviewPanel');
 
         // 1. Test svglite
-        const plotBaseline = await readRuntimeDebugSnapshot();
         const plotMarkerPath = path.join(
             os.tmpdir(),
             `vscode-r-plot-marker-${process.pid}-${Date.now()}`
@@ -261,19 +217,6 @@ suite('Session Communication', () => {
         );
         await waitFor(() => fs.pathExists(plotMarkerPath), 10000, 200);
 
-        const plotDebug = await readRuntimeDebugSnapshot();
-        const plotSnapshots = JSON.stringify({ before: plotBaseline, after: plotDebug });
-        console.info('[session test diagnostic] plot baseline/after:',
-            plotSnapshots);
-        assert.ok(plotDebug?.runtime_active,
-            `sess runtime should be active after plotting: ${plotSnapshots}`);
-        assert.ok(plotDebug?.task_callback_names?.includes('sess.plot'),
-            `sess.plot callback should be registered: ${plotSnapshots}`);
-        assert.ok(
-            (plotDebug?.callback_counts?.plot_callback_entries ?? 0) >
-                (plotBaseline?.callback_counts?.plot_callback_entries ?? 0),
-            `plot task callback did not run: ${plotSnapshots}`
-        );
         await waitFor(() => createWebviewPanelSpy.calledWith('r.standardPlot'), 10000, 200);
         assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be triggered for svglite');
 

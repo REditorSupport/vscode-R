@@ -100,26 +100,32 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
   if (is.na(use_rstudioapi)) use_rstudioapi <- TRUE
   if (is.na(use_httpgd)) use_httpgd <- TRUE
   if (is.na(use_jgd)) use_jgd <- FALSE
-  .sess_env$runtime_start_attempted <- FALSE
-  .sess_env$runtime_start_error <- NULL
-  .sess_env$runtime_start_phase <- NULL
   if (isTRUE(connected) && !is.null(.sess_env$con)) {
-    .sess_env$runtime_start_attempted <- TRUE
     tryCatch(
       runtime_start(use_rstudioapi = use_rstudioapi,
                     use_httpgd = use_httpgd,
                     use_jgd = use_jgd),
       error = function(e) {
-        # Temporary CI diagnostic; rethrow unchanged so startup errors stay visible.
+        phase <- .sess_env$runtime_start_phase
         error_call <- conditionCall(e)
-        .sess_env$runtime_start_error <- list(
-          step = .sess_env$runtime_start_phase,
-          message = conditionMessage(e),
-          call = if (is.null(error_call)) NULL else {
-            paste(deparse(error_call), collapse = " ")
-          }
+        call_text <- if (is.null(error_call)) {
+          ""
+        } else {
+          paste(deparse(error_call), collapse = " ")
+        }
+        call_suffix <- if (nzchar(call_text)) {
+          paste0(" (", call_text, ")")
+        } else {
+          ""
+        }
+        message(
+          "[sess] Runtime startup failed during ", phase, ": ",
+          conditionMessage(e), call_suffix
         )
         stop(e)
+      },
+      finally = {
+        .sess_env$runtime_start_phase <- NULL
       }
     )
   }
@@ -155,22 +161,6 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
   identical(incomplete, FALSE)
 }
 
-# Temporary CI-only introspection for separating callback failures from client
-# notification handling failures. Remove after the lifecycle regression is found.
-.runtime_debug_snapshot <- function() {
-  state <- .runtime_state()
-  list(
-    runtime_active = isTRUE(state$active),
-    task_callback_names = getTaskCallbackNames(),
-    transport_generation = .sess_env$transport_generation,
-    runtime_start_attempted = isTRUE(.sess_env$runtime_start_attempted),
-    runtime_start_phase = .sess_env$runtime_start_phase,
-    runtime_start_error = .sess_env$runtime_start_error,
-    last_error = geterrmessage(),
-    callback_counts = state$diagnostics
-  )
-}
-
 #' Poll the IPC connection for incoming messages (internal)
 #'
 #' Runs as a recurring later callback; dispatches NDJSON messages from vscode.
@@ -193,17 +183,7 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
     return()
   }
 
-  # processx can return NULL transiently for a just-closed connection before
-  # the following poll reports readable EOF. Keep the loop alive so the read
-  # path can confirm EOF and run transport/runtime cleanup.
-  if (is.null(ready)) {
-    if (!identical(.sess_env$poll_null_diagnostic_generation, generation)) {
-      .sess_env$poll_null_diagnostic_generation <- generation
-      # Temporary CI diagnostic; remove after poll/callback cause is known.
-      message("[sess diagnostic] poll returned NULL; generation=", generation,
-              "; connected=", !is.null(.sess_env$con))
-    }
-  }
+  # A NULL poll result is transient; keep the loop alive and reschedule below.
   if (!is.null(ready) && length(ready) > 0 && identical(ready[[1]], "ready")) {
     chunk <- tryCatch(
       processx::conn_read_chars(con),
@@ -276,7 +256,6 @@ dispatch_message <- function(line) {
     # Request from vscode → R must reply
     handlers <- list(
       "workspace" = function(p) get_workspace_data(),
-      "debug_runtime_state" = function(p) .runtime_debug_snapshot(),
       "workspace_children" = function(p) get_workspace_children(p$name, p$path, p$start),
       "hover" = function(p) handle_hover(p$expr),
       "completion" = function(p) handle_complete(p$expr, p$trigger),
