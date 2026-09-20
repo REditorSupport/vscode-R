@@ -155,7 +155,7 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
   )
 
   if (is.null(ready) || is.null(.sess_env$con) ||
-      !identical(generation, .sess_env$transport_generation)) {
+        !identical(generation, .sess_env$transport_generation)) {
     return()
   }
 

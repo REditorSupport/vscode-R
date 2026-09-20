@@ -15,6 +15,14 @@
   .sess_env$runtime
 }
 
+.runtime_clear_viewer_state <- function() {
+  # Open dataviews and title-to-id mappings belong to one runtime connection.
+  # Keep an empty registry available, but never restore data from a prior run.
+  .sess_env$dataviews <- list()
+  .sess_env$dataview_registry <- new.env(parent = emptyenv())
+  invisible(NULL)
+}
+
 .runtime_set_field <- function(name, value) {
   state <- .runtime_state()
   index <- which(vapply(state$fields, function(entry) identical(entry$name, name), logical(1)))
@@ -53,7 +61,7 @@
   if (locked) unlockBinding(sym, env)
   on.exit({
     if (locked && exists(sym, envir = env, inherits = FALSE) &&
-        !bindingIsLocked(sym, env)) {
+          !bindingIsLocked(sym, env)) {
       lockBinding(sym, env)
     }
   }, add = TRUE)
@@ -176,8 +184,8 @@
     } else if (identical(current, entry$installed) && is.null(entry$original)) {
       generic <- try(get(entry$generic, envir = entry$envir), silent = TRUE)
       dispatch_env <- if (!inherits(generic, "try-error") &&
-                          is.function(generic) &&
-                          !is.null(environment(generic))) {
+                            is.function(generic) &&
+                            !is.null(environment(generic))) {
         environment(generic)
       } else {
         asNamespace("base")
@@ -185,13 +193,13 @@
       table <- get0(".__S3MethodsTable__.", envir = dispatch_env, inherits = FALSE)
       method_name <- paste(entry$generic, entry$class, sep = ".")
       if (is.environment(table) &&
-          exists(method_name, envir = table, inherits = FALSE) &&
-          identical(get(method_name, envir = table, inherits = FALSE), entry$installed)) {
+            exists(method_name, envir = table, inherits = FALSE) &&
+            identical(get(method_name, envir = table, inherits = FALSE), entry$installed)) {
         rm(list = method_name, envir = table)
       }
       if (isNamespace(entry$envir) &&
-          identical(getNamespaceInfo(entry$envir, "S3methods"),
-                    entry$installed_namespace_methods)) {
+            identical(getNamespaceInfo(entry$envir, "S3methods"),
+                      entry$installed_namespace_methods)) {
         try(
           setNamespaceInfo(entry$envir, "S3methods", entry$original_namespace_methods),
           silent = TRUE
@@ -217,7 +225,7 @@
     env <- entry$env
     name <- entry$name
     if (exists(name, envir = env, inherits = FALSE) &&
-        identical(get(name, envir = env, inherits = FALSE), entry$installed)) {
+          identical(get(name, envir = env, inherits = FALSE), entry$installed)) {
       try(.runtime_assign_binding(name, entry$original, env), silent = TRUE)
     }
   }
@@ -238,7 +246,7 @@
     exists_current <- exists(entry$name, envir = .sess_env, inherits = FALSE)
     current <- if (exists_current) get(entry$name, envir = .sess_env, inherits = FALSE) else NULL
     if (identical(exists_current, entry$installed_exists) &&
-        (!exists_current || identical(current, entry$installed))) {
+          (!exists_current || identical(current, entry$installed))) {
       if (entry$original_exists) {
         assign(entry$name, entry$original, envir = .sess_env)
       } else if (exists_current) {
@@ -255,6 +263,7 @@
     }
   }
   state$options <- list()
+  .runtime_clear_viewer_state()
   state$active <- FALSE
   invisible(NULL)
 }
@@ -266,9 +275,10 @@
 runtime_stop <- function() {
   state <- .runtime_state()
   if (!isTRUE(state$active) && !length(state$options) &&
-      !length(state$bindings) && !length(state$hooks) &&
+        !length(state$bindings) && !length(state$hooks) &&
       !length(state$s3_methods) && !length(state$task_callbacks) &&
       !length(state$devices) && !length(state$fields)) {
+    .runtime_clear_viewer_state()
     return(invisible(NULL))
   }
   # Prevent callbacks from sending new notifications during cleanup.

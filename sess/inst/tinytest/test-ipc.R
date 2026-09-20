@@ -93,9 +93,10 @@ local({
     filterModel = list()
   ))
 
-  expect_equal(length(page_res$rows), 2)
-  expect_equal(page_res$rows[[1]][["1"]], "3")
-  expect_equal(page_res$rows[[2]][["1"]], "1")
+  expect_true(is.data.frame(page_res$rows))
+  expect_equal(nrow(page_res$rows), 2)
+  expect_equal(page_res$rows[["1"]][[1L]], 3)
+  expect_equal(page_res$rows[["1"]][[2L]], 1)
 
   disposed <- sess:::handle_dataview_dispose(list(view_id = registration$view_id))
   expect_true(isTRUE(disposed))
@@ -127,9 +128,9 @@ local({
   ))
 
   expect_equal(filtered$totalRows, 2)
-  expect_equal(length(filtered$rows), 2)
-  expect_equal(filtered$rows[[1]][["2"]], "banana")
-  expect_equal(filtered$rows[[2]][["2"]], "berry")
+  expect_equal(nrow(filtered$rows), 2)
+  expect_equal(filtered$rows[["2"]][[1L]], "banana")
+  expect_equal(filtered$rows[["2"]][[2L]], "berry")
 
   sorted <- sess:::handle_dataview_page(list(
     view_id = registration$view_id,
@@ -142,20 +143,24 @@ local({
   ))
 
   expect_equal(sorted$totalRows, 3)
-  expect_equal(sorted$rows[[1]][["1"]], "30")
-  expect_equal(sorted$rows[[2]][["1"]], "20")
-  expect_equal(sorted$rows[[3]][["1"]], "10")
+  expect_equal(sorted$rows[["1"]][[1L]], 30)
+  expect_equal(sorted$rows[["1"]][[2L]], 20)
+  expect_equal(sorted$rows[["1"]][[3L]], 10)
 })
 
 # Runtime startup and shutdown are reversible and idempotent.
 local({
   .sess_env <- sess:::.sess_env
   old_plot_path <- .sess_env$latest_plot_path
+  old_dataviews <- .sess_env$dataviews
+  old_dataview_registry <- .sess_env$dataview_registry
   .sess_env$latest_plot_path <- tempfile(fileext = ".png")
   on.exit({
     sess:::runtime_stop()
     unlink(.sess_env$latest_plot_path)
     .sess_env$latest_plot_path <- old_plot_path
+    .sess_env$dataviews <- old_dataviews
+    .sess_env$dataview_registry <- old_dataview_registry
   }, add = TRUE)
 
   utils_ns <- asNamespace("utils")
@@ -167,7 +172,17 @@ local({
   old_help_method <- utils::getS3method("print", "help_files_with_topic",
                                         envir = utils_ns)
 
+  stale_registry <- new.env(parent = emptyenv())
+  assign("stale view", "stale_view_id", envir = stale_registry)
+  .sess_env$dataviews <- list(stale_view_id = list())
+  .sess_env$dataview_registry <- stale_registry
+  sess:::runtime_stop()
+  expect_equal(.sess_env$dataviews, list())
+  expect_length(ls(.sess_env$dataview_registry, all.names = TRUE), 0L)
+
   sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  expect_equal(.sess_env$dataviews, list())
+  expect_length(ls(.sess_env$dataview_registry, all.names = TRUE), 0L)
   expect_true(isTRUE(sess:::.runtime_state()$active))
   expect_false(identical(get("View", utils_ns, inherits = FALSE), old_view))
   expect_true(is.function(getOption("viewer")))
@@ -177,17 +192,38 @@ local({
   expect_false(identical(getHook("plot.new"), old_plot_hook))
   expect_false(identical(getHook("grid.newpage"), old_grid_hook))
 
+  dataview_data <- data.frame(value = 1:2)
+  assign("lifecycle dataview", "runtime_view_before_restart",
+         envir = .sess_env$dataview_registry)
+  utils::View(dataview_data, title = "lifecycle dataview")
+  first_view_id <- get("lifecycle dataview", envir = .sess_env$dataview_registry)
+  expect_identical(first_view_id, "runtime_view_before_restart")
+  expect_true(first_view_id %in% names(.sess_env$dataviews))
+
   grDevices::pdf(NULL)
   sess:::.runtime_track_device()
   runtime_device <- grDevices::dev.cur()
 
   callbacks_after_first_start <- getTaskCallbackNames()
   sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  expect_equal(.sess_env$dataviews, list())
+  expect_length(ls(.sess_env$dataview_registry, all.names = TRUE), 0L)
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 1L)
   expect_equal(length(grep("^sess.plot$", getTaskCallbackNames())),
                length(grep("^sess.plot$", callbacks_after_first_start)))
 
+  utils::View(dataview_data, title = "lifecycle dataview")
+  second_view_id <- get("lifecycle dataview", envir = .sess_env$dataview_registry)
+  expect_false(identical(first_view_id, second_view_id))
+  expect_true(second_view_id %in% names(.sess_env$dataviews))
+
   sess:::runtime_stop()
+  expect_equal(.sess_env$dataviews, list())
+  expect_length(ls(.sess_env$dataview_registry, all.names = TRUE), 0L)
+  expect_error(
+    sess:::handle_dataview_init(list(view_id = second_view_id)),
+    "Unknown dataview id"
+  )
   expect_false(isTRUE(sess:::.runtime_state()$active))
   expect_identical(get("View", utils_ns, inherits = FALSE), old_view)
   expect_identical(getOption("browser"), old_options$browser)
