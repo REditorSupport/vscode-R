@@ -53,7 +53,9 @@
   if (locked) unlockBinding(sym, env)
   on.exit({
     if (locked && exists(sym, envir = env, inherits = FALSE) &&
-        !bindingIsLocked(sym, env)) lockBinding(sym, env)
+        !bindingIsLocked(sym, env)) {
+      lockBinding(sym, env)
+    }
   }, add = TRUE)
   assign(sym, value, envir = env)
   invisible(value)
@@ -63,7 +65,11 @@
   envs <- if (is.character(ns)) {
     namespace <- asNamespace(ns)
     attached <- paste0("package:", ns)
-    if (attached %in% search()) c(list(namespace), list(as.environment(attached))) else list(namespace)
+    if (attached %in% search()) {
+      c(list(namespace), list(as.environment(attached)))
+    } else {
+      list(namespace)
+    }
   } else if (is.environment(ns)) {
     list(ns)
   } else {
@@ -123,16 +129,20 @@
     original = original,
     installed = method,
     original_namespace_methods = original_namespace_methods,
-    installed_namespace_methods = if (isNamespace(envir)) getNamespaceInfo(envir, "S3methods") else NULL
+    installed_namespace_methods = if (isNamespace(envir)) {
+      getNamespaceInfo(envir, "S3methods")
+    } else {
+      NULL
+    }
   )
   invisible(method)
 }
 
 .runtime_add_task_callback <- function(fun, name) {
   state <- .runtime_state()
-  id <- addTaskCallback(fun, name = name)
-  state$task_callbacks[[length(state$task_callbacks) + 1L]] <- id
-  invisible(id)
+  addTaskCallback(fun, name = name)
+  state$task_callbacks[[length(state$task_callbacks) + 1L]] <- name
+  invisible(name)
 }
 
 .runtime_track_device <- function(id = grDevices::dev.cur()) {
@@ -141,7 +151,10 @@
   if (is.null(devices)) return(invisible(NULL))
   name <- names(devices)[match(id, devices)]
   if (length(name) && !is.na(name)) {
-    state$devices[[length(state$devices) + 1L]] <- list(id = unname(id), name = name)
+    state$devices[[length(state$devices) + 1L]] <- list(
+      id = unname(id),
+      name = name
+    )
   }
   invisible(id)
 }
@@ -149,8 +162,8 @@
 .runtime_restore <- function() {
   state <- .runtime_state()
 
-  for (id in rev(state$task_callbacks)) {
-    try(removeTaskCallback(id), silent = TRUE)
+  for (name in rev(state$task_callbacks)) {
+    try(removeTaskCallback(name), silent = TRUE)
   }
   state$task_callbacks <- list()
 
@@ -162,7 +175,8 @@
                            envir = entry$envir), silent = TRUE)
     } else if (identical(current, entry$installed) && is.null(entry$original)) {
       generic <- try(get(entry$generic, envir = entry$envir), silent = TRUE)
-      dispatch_env <- if (!inherits(generic, "try-error") && is.function(generic) &&
+      dispatch_env <- if (!inherits(generic, "try-error") &&
+                          is.function(generic) &&
                           !is.null(environment(generic))) {
         environment(generic)
       } else {
@@ -170,13 +184,18 @@
       }
       table <- get0(".__S3MethodsTable__.", envir = dispatch_env, inherits = FALSE)
       method_name <- paste(entry$generic, entry$class, sep = ".")
-      if (is.environment(table) && exists(method_name, envir = table, inherits = FALSE) &&
+      if (is.environment(table) &&
+          exists(method_name, envir = table, inherits = FALSE) &&
           identical(get(method_name, envir = table, inherits = FALSE), entry$installed)) {
         rm(list = method_name, envir = table)
       }
       if (isNamespace(entry$envir) &&
-          identical(getNamespaceInfo(entry$envir, "S3methods"), entry$installed_namespace_methods)) {
-        try(setNamespaceInfo(entry$envir, "S3methods", entry$original_namespace_methods), silent = TRUE)
+          identical(getNamespaceInfo(entry$envir, "S3methods"),
+                    entry$installed_namespace_methods)) {
+        try(
+          setNamespaceInfo(entry$envir, "S3methods", entry$original_namespace_methods),
+          silent = TRUE
+        )
       }
     }
   }
@@ -204,19 +223,14 @@
   }
   state$bindings <- list()
 
-  # Devices opened through sess's device factory are closed so plotting resumes
-  # on the device that was active before the factory was used.
-  original_device <- grDevices::dev.cur()
+  # Close devices opened through sess's device factory so plotting resumes on
+  # the device R selects after the runtime-owned device is removed.
   for (entry in rev(state$devices)) {
     devices <- grDevices::dev.list()
     index <- if (is.null(devices)) NA_integer_ else match(entry$id, devices)
     if (!is.na(index) && identical(names(devices)[[index]], entry$name)) {
       try(grDevices::dev.off(which = entry$id), silent = TRUE)
     }
-  }
-  devices <- grDevices::dev.list()
-  if (!is.null(devices) && original_device %in% devices) {
-    try(grDevices::dev.set(original_device), silent = TRUE)
   }
   state$devices <- list()
 
@@ -251,8 +265,8 @@
 #' @keywords internal
 runtime_stop <- function() {
   state <- .runtime_state()
-  if (!isTRUE(state$active) &&
-      !length(state$options) && !length(state$bindings) && !length(state$hooks) &&
+  if (!isTRUE(state$active) && !length(state$options) &&
+      !length(state$bindings) && !length(state$hooks) &&
       !length(state$s3_methods) && !length(state$task_callbacks) &&
       !length(state$devices) && !length(state$fields)) {
     return(invisible(NULL))

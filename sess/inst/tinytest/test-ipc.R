@@ -177,6 +177,10 @@ local({
   expect_false(identical(getHook("plot.new"), old_plot_hook))
   expect_false(identical(getHook("grid.newpage"), old_grid_hook))
 
+  grDevices::pdf(NULL)
+  sess:::.runtime_track_device()
+  runtime_device <- grDevices::dev.cur()
+
   callbacks_after_first_start <- getTaskCallbackNames()
   sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 1L)
@@ -193,6 +197,7 @@ local({
   expect_identical(getOption("device"), old_options$device)
   expect_identical(getHook("plot.new"), old_plot_hook)
   expect_identical(getHook("grid.newpage"), old_grid_hook)
+  expect_false(runtime_device %in% grDevices::dev.list())
   expect_identical(utils::getS3method("print", "help_files_with_topic",
                                       envir = utils_ns), old_help_method)
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 0L)
@@ -262,6 +267,59 @@ local({
   expect_identical(getHook(rstudioapi_hook_name), original_load_hook)
 })
 
+# An empty ready-read is EOF only after processx confirms no more data can
+# arrive. Errors from the EOF check are treated conservatively as still open.
+local({
+  if (!requireNamespace("processx", quietly = TRUE)) return(invisible(NULL))
+  cons <- tryCatch(processx::conn_create_pipepair(), error = function(e) NULL)
+  if (is.null(cons)) return(invisible(NULL))
+  on.exit({
+    try(close(cons[[1L]]), silent = TRUE)
+    try(close(cons[[2L]]), silent = TRUE)
+  }, add = TRUE)
+
+  expect_false(sess:::.transport_empty_read_is_eof(cons[[2L]]))
+  expect_false(sess:::.transport_empty_read_is_eof(NULL))
+  close(cons[[1L]])
+  chunk <- processx::conn_read_chars(cons[[2L]])
+  expect_true(is.null(chunk) || !length(chunk) || !any(nzchar(chunk)))
+  expect_true(sess:::.transport_empty_read_is_eof(cons[[2L]]))
+})
+
+# EOF observed by the polling loop stops the runtime and releases the transport
+# on every platform without depending on a Unix-domain socket.
+local({
+  if (!requireNamespace("processx", quietly = TRUE)) return(invisible(NULL))
+  cons <- tryCatch(processx::conn_create_pipepair(), error = function(e) NULL)
+  if (is.null(cons)) return(invisible(NULL))
+
+  .sess_env <- sess:::.sess_env
+  old_plot_path <- .sess_env$latest_plot_path
+  .sess_env$latest_plot_path <- tempfile(fileext = ".png")
+  on.exit({
+    sess:::.transport_disconnect(silent = TRUE)
+    try(close(cons[[1L]]), silent = TRUE)
+    try(close(cons[[2L]]), silent = TRUE)
+    unlink(.sess_env$latest_plot_path)
+    .sess_env$latest_plot_path <- old_plot_path
+  }, add = TRUE)
+
+  .sess_env$con <- cons[[2L]]
+  .sess_env$transport_generation <- if (is.null(.sess_env$transport_generation)) {
+    1L
+  } else {
+    .sess_env$transport_generation + 1L
+  }
+  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  expect_true(isTRUE(sess:::.runtime_state()$active))
+
+  close(cons[[1L]])
+  sess:::poll_connection(.sess_env$transport_generation)
+  expect_null(.sess_env$con)
+  expect_false(isTRUE(sess:::.runtime_state()$active))
+  expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 0L)
+})
+
 # NDJSON framing round-trips correctly through a socket pair. Socket support is
 # environment-sensitive (some processx builds/platforms fail to accept or read
 # the loopback connection), so any infrastructure error becomes a silent skip
@@ -272,7 +330,7 @@ local({
 local({
   if (!requireNamespace("processx", quietly = TRUE) ||
         .Platform$OS.type == "windows") {
-    # Windows named pipe paths are tested separately.
+    # This check specifically exercises Unix-domain socket framing.
     return(invisible(NULL))
   }
 
@@ -340,8 +398,9 @@ local({
   if (is.null(first)) return(invisible(NULL))
   utils_ns <- asNamespace("utils")
   original_view <- get("View", utils_ns, inherits = FALSE)
-  original_options <- lapply(c("browser", "viewer", "page_viewer", "help_type", "device"), getOption)
-  names(original_options) <- c("browser", "viewer", "page_viewer", "help_type", "device")
+  option_names <- c("browser", "viewer", "page_viewer", "help_type", "device")
+  original_options <- lapply(option_names, getOption)
+  names(original_options) <- option_names
   original_help_method <- utils::getS3method("print", "help_files_with_topic",
                                              envir = utils_ns)
   original_plot_hook <- getHook("plot.new")

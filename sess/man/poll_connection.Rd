@@ -4,7 +4,7 @@
 \alias{poll_connection}
 \title{Poll the IPC connection for incoming messages (internal)}
 \usage{
-poll_connection()
+poll_connection(generation = .sess_env$transport_generation)
 }
 \description{
 Runs as a recurring later callback; dispatches NDJSON messages from vscode.

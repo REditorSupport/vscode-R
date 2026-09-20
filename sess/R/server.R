@@ -126,6 +126,17 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
   invisible(NULL)
 }
 
+.transport_empty_read_is_eof <- function(con) {
+  # A ready poll can race with a read that finds no bytes. Treat only a
+  # connection known to have reached EOF as disconnected; processx documents
+  # conn_is_incomplete() as FALSE once no more data can arrive.
+  incomplete <- tryCatch(
+    processx::conn_is_incomplete(con),
+    error = function(e) TRUE
+  )
+  identical(incomplete, FALSE)
+}
+
 #' Poll the IPC connection for incoming messages (internal)
 #'
 #' Runs as a recurring later callback; dispatches NDJSON messages from vscode.
@@ -144,7 +155,9 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
   )
 
   if (is.null(ready) || is.null(.sess_env$con) ||
-      !identical(generation, .sess_env$transport_generation)) return()
+      !identical(generation, .sess_env$transport_generation)) {
+    return()
+  }
 
   if (!is.null(ready) && length(ready) > 0 && identical(ready[[1]], "ready")) {
     chunk <- tryCatch(
@@ -156,32 +169,35 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
     )
 
     if (is.null(.sess_env$con)) return()
-    if (is.null(chunk) || !nzchar(chunk)) {
-      .transport_disconnect(silent = TRUE)
-      return()
-    }
-
-    .sess_env$read_buffer <- paste0(.sess_env$read_buffer, chunk)
-    parts <- strsplit(.sess_env$read_buffer, "\n", fixed = TRUE)[[1]]
-
-    n <- length(parts)
-    # Keep any trailing partial line in the buffer
-    if (endsWith(.sess_env$read_buffer, "\n")) {
-      .sess_env$read_buffer <- ""
+    has_data <- !is.null(chunk) && length(chunk) > 0L && any(nzchar(chunk))
+    if (!has_data) {
+      if (.transport_empty_read_is_eof(con)) {
+        .transport_disconnect(silent = TRUE)
+        return()
+      }
     } else {
-      .sess_env$read_buffer <- parts[n]
-      parts <- parts[-n]
-    }
+      .sess_env$read_buffer <- paste0(.sess_env$read_buffer, paste0(chunk, collapse = ""))
+      parts <- strsplit(.sess_env$read_buffer, "\n", fixed = TRUE)[[1]]
 
-    for (line in parts) {
-      line <- trimws(line)
-      if (!nzchar(line)) next
-      tryCatch(
-        dispatch_message(line),
-        error = function(e) {
-          warning("[sess] Error dispatching message: ", e$message)
-        }
-      )
+      n <- length(parts)
+      # Keep any trailing partial line in the buffer
+      if (endsWith(.sess_env$read_buffer, "\n")) {
+        .sess_env$read_buffer <- ""
+      } else {
+        .sess_env$read_buffer <- parts[n]
+        parts <- parts[-n]
+      }
+
+      for (line in parts) {
+        line <- trimws(line)
+        if (!nzchar(line)) next
+        tryCatch(
+          dispatch_message(line),
+          error = function(e) {
+            warning("[sess] Error dispatching message: ", e$message)
+          }
+        )
+      }
     }
   } else if (length(ready) > 0 && ready[[1]] %in% c("closed", "error")) {
     .transport_disconnect(silent = TRUE)
