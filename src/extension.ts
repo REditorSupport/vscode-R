@@ -23,6 +23,7 @@ import * as plotViewer from './plotViewer';
 import { PlotManager } from './plotViewer/types';
 import * as languageService from './languageService';
 import { RTaskProvider } from './tasks';
+import { showRDebuggerCompatibilityWarningOnce } from './rDebuggerCompatibility';
 
 
 // global objects used in other files
@@ -39,6 +40,13 @@ export let sessionStatusBarItem: vscode.StatusBarItem | undefined = undefined;
 
 // Called (once) when the extension is activated
 export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
+    const rDebugger = vscode.extensions.getExtension('RDebugger.r-debugger');
+    if (rDebugger) {
+        void showRDebuggerCompatibilityWarningOnce(context.globalState, rDebugger.packageJSON, message =>
+            vscode.window.showWarningMessage(message)
+        );
+    }
+
     if (vscode.extensions.getExtension('mikhail-arkhipov.r')) {
         void vscode.window.showInformationMessage('The R Tools (Mikhail-Arkhipov.r) extension is enabled and will have conflicts with vscode-R. To use vscode-R, please disable or uninstall the extension.');
         void vscode.commands.executeCommand('workbench.extensions.search', '@installed R Tools');
