@@ -48,7 +48,7 @@ suite('Session Communication', () => {
             rTerminal.deleteTerminal(rTerminal.rTerm);
             
             if (pid) {
-                // Ensure the underlying websocket connections and activeSession 
+                // Ensure the underlying IPC socket connections and activeSession
                 // are wiped clean so the next test waits properly.
                 await session.cleanupSession(pid.toString());
             }

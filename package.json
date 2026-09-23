@@ -1762,7 +1762,7 @@
         },
         "r.plot.devArgs": {
           "type": "object",
-          "markdownDescription": "Supplementary arguments for the rendering device (for example, `png()` or `svglite()`) used by the `standard` plot backend. This setting is ignored by the `httpgd` and `jgd` backends. Width and height are managed dynamically by the responsive viewer and will be overridden.\n\nChanges the option `sess.devArgs` in R.",
+          "markdownDescription": "Supplementary arguments for the rendering device (for example, `png()` or `svglite()`) used by the `standard` plot backend. This setting is ignored by the `httpgd` and `jgd` backends. Width and height are managed dynamically by the responsive viewer and will be overridden.",
           "default": {
             "width": 800,
             "height": 1200
