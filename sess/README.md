@@ -260,7 +260,12 @@ Relevant options:
 
 To support reloads and attach workflows, the extension writes:
 
-- `~/.vscode-R/sessions/{PID}.json`
+- `{user home}/.vscode-R/sessions/{PID}.json`
+
+On Unix, `{user home}` is `~`. On Windows it is the user profile directory
+from `USERPROFILE` (or `HOMEDRIVE` + `HOMEPATH` if `USERPROFILE` is unset),
+matching Node.js `os.homedir()`; it may differ from R's `path.expand("~")`
+location, which can resolve to Documents.
 
 `sess::connect()` reads this file as fallback when no endpoint argument or environment variable is available.
 

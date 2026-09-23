@@ -49,6 +49,47 @@ local({
   )
 })
 
+# Discovery follows Node's home-directory choice on Windows, even when R's `~`
+# expands to Documents. On Unix it continues to use the R home expansion.
+local({
+  pid <- 12345L
+  windows_profile_path <- sess:::.discovery_file_path(
+    pid = pid,
+    platform = "windows",
+    user_profile = "C:/Users/alice",
+    home_drive = "E:",
+    home_path = "\\Users\\alice",
+    home = "C:/Users/alice/Documents"
+  )
+  expect_equal(
+    windows_profile_path,
+    file.path("C:/Users/alice", ".vscode-R", "sessions", "12345.json")
+  )
+
+  windows_fallback_path <- sess:::.discovery_file_path(
+    pid = pid,
+    platform = "windows",
+    user_profile = "",
+    home_drive = "E:",
+    home_path = "\\Users\\alice",
+    home = "C:/Users/alice/Documents"
+  )
+  expect_equal(
+    windows_fallback_path,
+    file.path("E:\\Users\\alice", ".vscode-R", "sessions", "12345.json")
+  )
+
+  unix_path <- sess:::.discovery_file_path(
+    pid = pid,
+    platform = "unix",
+    user_profile = "C:/Users/alice",
+    home_drive = "E:",
+    home_path = "\\Users\\alice",
+    home = "/home/alice"
+  )
+  expect_equal(unix_path, file.path("/home/alice", ".vscode-R", "sessions", "12345.json"))
+})
+
 # Discovery uses versioned `endpoint`; an old pipe field remains a compatibility fallback.
 local({
   path <- tempfile(fileext = ".json")

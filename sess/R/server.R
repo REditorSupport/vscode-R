@@ -106,6 +106,24 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
 
 # Resolve direct arguments, environment variables, then the extension's
 # per-process discovery file. Old `pipe`/SESS_PIPE names are read-only fallbacks.
+.discovery_file_path <- function(pid = Sys.getpid(), platform = .Platform$OS.type,
+                                 user_profile = Sys.getenv("USERPROFILE"),
+                                 home_drive = Sys.getenv("HOMEDRIVE"),
+                                 home_path = Sys.getenv("HOMEPATH"),
+                                 home = path.expand("~")) {
+  discovery_home <- home
+  if (identical(platform, "windows")) {
+    if (length(user_profile) == 1L && !is.na(user_profile) && nzchar(user_profile)) {
+      discovery_home <- user_profile
+    } else if (length(home_drive) == 1L && !is.na(home_drive) && nzchar(home_drive) &&
+               length(home_path) == 1L && !is.na(home_path) && nzchar(home_path)) {
+      discovery_home <- paste0(home_drive, home_path)
+    }
+  }
+
+  file.path(discovery_home, ".vscode-R", "sessions", sprintf("%d.json", pid))
+}
+
 .resolve_endpoint <- function(endpoint = NULL, discovery_path = NULL,
                               env_endpoint = Sys.getenv("SESS_ENDPOINT"),
                               env_pipe = Sys.getenv("SESS_PIPE")) {
@@ -120,8 +138,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
   }
 
   if (is.null(discovery_path)) {
-    discovery_path <- file.path(path.expand("~"), ".vscode-R", "sessions",
-                                sprintf("%d.json", Sys.getpid()))
+    discovery_path <- .discovery_file_path()
   }
   if (!file.exists(discovery_path)) return("")
 
