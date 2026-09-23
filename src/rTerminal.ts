@@ -304,7 +304,7 @@ function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
     }
 
     const creationOptions = term.creationOptions;
-    const cwd = 'cwd' in creationOptions ? creationOptions.cwd : undefined;
+    const cwd = creationOptions && 'cwd' in creationOptions ? creationOptions.cwd : undefined;
     const cwdResource = typeof cwd === 'string' ? vscode.Uri.file(cwd) : cwd;
     return cwdResource
         ? getCurrentWorkspaceFolder(cwdResource)?.uri ?? cwdResource

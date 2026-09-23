@@ -35,7 +35,7 @@ suite('R Terminal', () => {
         sandbox.stub(vscode.window, 'activeTerminal').value(terminal as unknown as vscode.Terminal);
         const delayStub = sandbox.stub(util, 'delay').resolves();
         await rTerminal.runTextInTerm('first\nsecond');
-        return delayStub.firstCall.args[0] as number;
+        return delayStub.firstCall.args[0];
     }
 
     setup(() => {
@@ -218,9 +218,9 @@ suite('R Terminal', () => {
             requestedResources.push(requestedResource);
             return configStub;
         });
-        sandbox.stub(util, 'getRterm').callsFake(async requestedResource => {
+        sandbox.stub(util, 'getRterm').callsFake(requestedResource => {
             assert.strictEqual(requestedResource, resource);
-            return process.execPath;
+            return Promise.resolve(process.execPath);
         });
         sandbox.stub(util, 'substituteVariables').callsFake((value, requestedResource) => {
             assert.strictEqual(requestedResource, resource);

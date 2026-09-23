@@ -6,7 +6,7 @@ import * as os from 'os';
 import * as net from 'net';
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
-import { commands, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
+import { commands, Uri, ViewColumn, Webview, window, env } from 'vscode';
 
 import { restartRTerminal } from './rTerminal';
 import { config, readContent, setContext, UriIcon } from './util';
