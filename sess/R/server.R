@@ -116,7 +116,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
     if (length(user_profile) == 1L && !is.na(user_profile) && nzchar(user_profile)) {
       discovery_home <- user_profile
     } else if (length(home_drive) == 1L && !is.na(home_drive) && nzchar(home_drive) &&
-               length(home_path) == 1L && !is.na(home_path) && nzchar(home_path)) {
+                 length(home_path) == 1L && !is.na(home_path) && nzchar(home_path)) {
       discovery_home <- paste0(home_drive, home_path)
     }
   }
