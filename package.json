@@ -236,7 +236,7 @@
         "category": "R"
       },
       {
-        "command": "editor.action.webvieweditor.showFind",
+        "command": "r.webview.find",
         "title": "R: Find in WebView",
         "icon": "$(search)",
         "category": "R"
@@ -984,12 +984,12 @@
           "group": "navigation"
         },
         {
-          "command": "editor.action.webvieweditor.showFind",
+          "command": "r.webview.find",
           "when": "resourceScheme =~ /webview/ && r.browser.active",
           "group": "navigation"
         },
         {
-          "command": "editor.action.webvieweditor.showFind",
+          "command": "r.webview.find",
           "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
         },

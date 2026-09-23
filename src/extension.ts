@@ -155,6 +155,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // browser controls
         'r.browser.refresh': session.refreshBrowser,
         'r.browser.openExternal': session.openExternalBrowser,
+        'r.webview.find': () => vscode.commands.executeCommand('editor.action.webvieweditor.showFind'),
 
         // (help related commands are registered in rHelp.initializeHelp)
     };
