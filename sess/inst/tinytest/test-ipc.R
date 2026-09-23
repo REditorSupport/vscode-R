@@ -540,7 +540,7 @@ local({
   }, add = TRUE)
 
   connected <- tryCatch({
-    sess::connect(first$path, use_rstudioapi = FALSE,
+    sess::connect(endpoint = first$path, use_rstudioapi = FALSE,
                   use_httpgd = FALSE, use_jgd = FALSE)
     first_peer <- accept_peer(first$server)
     !is.null(first_peer) && !is.null(.sess_env$con)
@@ -569,7 +569,7 @@ local({
 
   second <- listener()
   if (is.null(second)) return(invisible(NULL))
-  sess::connect(second$path, use_rstudioapi = FALSE,
+  sess::connect(endpoint = second$path, use_rstudioapi = FALSE,
                 use_httpgd = FALSE, use_jgd = FALSE)
   second_peer <- accept_peer(second$server)
   if (is.null(second_peer) || is.null(.sess_env$con)) return(invisible(NULL))
@@ -600,7 +600,7 @@ local({
   }, add = TRUE)
 
   connected <- tryCatch({
-    sess::connect(path, use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+    sess::connect(endpoint = path, use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
     ready <- processx::poll(list(server), 1000L)
     if (ready[[1]] %in% c("connect", "ready")) {
       peer <- processx::conn_accept_unix_socket(server)

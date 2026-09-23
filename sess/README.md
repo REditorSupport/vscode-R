@@ -18,16 +18,17 @@ Start the client connection from R:
 
 ```r
 sess::connect(
-  pipe_path = NULL,      # Character: pipe/socket path. NULL -> SESS_PIPE or session file fallback
+  endpoint = NULL,       # Character: local pipe/socket endpoint. NULL -> SESS_ENDPOINT or session file fallback
   use_rstudioapi = TRUE, # Logical: enable rstudioapi emulation
   use_httpgd = TRUE      # Logical: use httpgd for plotting if available
 )
 ```
 
-If `pipe_path` is omitted, `connect()` resolves it in this order:
+If `endpoint` is omitted, `connect()` resolves it in this order:
 
-1. `SESS_PIPE` environment variable
-2. `~/.vscode-R/sessions/{PID}.json` (`pipe` field)
+1. `SESS_ENDPOINT` environment variable
+2. `SESS_PIPE` environment variable (compatibility fallback)
+3. `~/.vscode-R/sessions/{PID}.json` (`endpoint` field)
 
 After connecting, `sess` sends an `attach` notification.
 
@@ -38,6 +39,10 @@ Example:
   "jsonrpc": "2.0",
   "method": "attach",
   "params": {
+    "protocol_version": 1,
+    "sess_version": "3.0.0",
+    "session_id": "sess-session-...",
+    "host": "compute42",
     "version": "4.5.0",
     "pid": 12345,
     "tempdir": "/tmp/Rtmp.../sess",
@@ -50,6 +55,10 @@ Example:
   }
 }
 ```
+
+`protocol_version` versions the `sess` message contract independently of the R
+version. The extension rejects an attach message with an unsupported protocol
+version and reports the incompatible version.
 
 ## 2. Message Transport and Framing
 
@@ -253,7 +262,13 @@ To support reloads and attach workflows, the extension writes:
 
 - `~/.vscode-R/sessions/{PID}.json`
 
-`sess::connect()` reads this file as fallback when direct pipe parameters are unavailable.
+`sess::connect()` reads this file as fallback when no endpoint argument or environment variable is available.
+
+The discovery JSON has schema version `1` and uses the `endpoint` field:
+
+```json
+{"version":1,"endpoint":"/path/to/session.sock"}
+```
 
 ## 9. What Changed from the WebSocket Transport
 

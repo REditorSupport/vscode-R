@@ -5,16 +5,16 @@
 \title{Connect to the VS Code IPC server}
 \usage{
 connect(
-  pipe_path = NULL,
+  endpoint = NULL,
   use_rstudioapi = TRUE,
   use_httpgd = TRUE,
   use_jgd = FALSE
 )
 }
 \arguments{
-\item{pipe_path}{Character. Path to the named pipe / Unix domain socket.
-If NULL, uses the SESS_PIPE environment variable, then falls back to the
-session JSON file written by the extension.}
+\item{endpoint}{Character. Local named pipe / Unix domain socket endpoint.
+If NULL, uses SESS_ENDPOINT, then the session JSON file written by the
+extension. SESS_PIPE is accepted as a compatibility fallback.}
 
 \item{use_rstudioapi}{Logical. Enable rstudioapi emulation. Defaults to TRUE.}
 

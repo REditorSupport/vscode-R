@@ -1,13 +1,13 @@
 #' Connect to the VS Code IPC server
 #'
-#' @param pipe_path Character. Path to the named pipe / Unix domain socket.
-#'   If NULL, uses the SESS_PIPE environment variable, then falls back to the
-#'   session JSON file written by the extension.
+#' @param endpoint Character. Local named pipe / Unix domain socket endpoint.
+#'   If NULL, uses SESS_ENDPOINT, then the session JSON file written by the
+#'   extension. SESS_PIPE is accepted as a compatibility fallback.
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation. Defaults to TRUE.
 #' @param use_httpgd Logical. Use httpgd for plotting if available. Defaults to TRUE.
 #' @param use_jgd Logical. Use jgd for plotting if available. Defaults to FALSE.
 #' @export
-connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
+connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
   # Invalidate poll callbacks and restore a previous runtime before reconnecting.
   .transport_disconnect(silent = TRUE)
   .sess_env$con <- NULL
@@ -23,27 +23,8 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
 
   .sess_env$latest_plot_path <- file.path(.sess_env$tempdir, "sess_plot.png")
 
-  is_manual <- !is.null(pipe_path) && !is.na(pipe_path) && nzchar(pipe_path)
-
-  if (is.null(pipe_path) || is.na(pipe_path)) {
-    pipe_path <- Sys.getenv("SESS_PIPE")
-  }
-
-  # Fallback: read from session JSON file written by the extension
-  pid <- Sys.getpid()
-  home <- path.expand("~")
-  file_path <- file.path(home, ".vscode-R", "sessions", sprintf("%d.json", pid))
-
-  if (!nzchar(pipe_path)) {
-    if (file.exists(file_path)) {
-      tryCatch({
-        cfg <- jsonlite::fromJSON(readLines(file_path, warn = FALSE))
-        pipe_path <- cfg$pipe
-      }, error = function(e) NULL)
-    }
-  }
-
-  if (!nzchar(pipe_path)) {
+  endpoint <- .resolve_endpoint(endpoint)
+  if (!nzchar(endpoint)) {
     warning("[sess] Connection info not available. Cannot connect to VS Code.")
     return(invisible(NULL))
   }
@@ -51,8 +32,8 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
   # processx uses the \\?\pipe\ namespace on Windows.
   # Normalize \\.\pipe\* paths from Node.js to improve compatibility.
   if (.Platform$OS.type == "windows") {
-    if (startsWith(pipe_path, "\\\\.\\pipe\\")) {
-      pipe_path <- sub("^\\\\\\\\\\.\\\\pipe\\\\", "\\\\\\\\?\\\\pipe\\\\", pipe_path)
+    if (startsWith(endpoint, "\\\\.\\pipe\\")) {
+      endpoint <- sub("^\\\\\\\\\\.\\\\pipe\\\\", "\\\\\\\\?\\\\pipe\\\\", endpoint)
     }
   }
 
@@ -63,9 +44,9 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
 
   do_connect <- function() {
     con <- tryCatch(
-      processx::conn_connect_unix_socket(pipe_path, encoding = ""),
+      processx::conn_connect_unix_socket(endpoint, encoding = ""),
       error = function(e) {
-        print_async_msg(sprintf("[sess] Failed to connect to IPC pipe: %s", e$message))
+        print_async_msg(sprintf("[sess] Failed to connect to IPC endpoint: %s", e$message))
         NULL
       }
     )
@@ -73,18 +54,8 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
 
     .sess_env$con <- con
 
-    # Send attach handshake
-    notify_client("attach", list(
-      version = sprintf("%s.%s", R.version$major, R.version$minor),
-      pid = Sys.getpid(),
-      tempdir = .sess_env$tempdir,
-      wd = getwd(),
-      info = list(
-        command = commandArgs()[[1L]],
-        version = R.version.string,
-        start_time = format(Sys.time())
-      )
-    ))
+    # session_id is stable across reconnects during this R process lifetime.
+    notify_client("attach", .session_attach_metadata())
 
     if (is.null(.sess_env$con)) return(FALSE)
 
@@ -131,6 +102,64 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
   }
 
   invisible(NULL)
+}
+
+# Resolve direct arguments, environment variables, then the extension's
+# per-process discovery file. Old `pipe`/SESS_PIPE names are read-only fallbacks.
+.resolve_endpoint <- function(endpoint = NULL, discovery_path = NULL,
+                              env_endpoint = Sys.getenv("SESS_ENDPOINT"),
+                              env_pipe = Sys.getenv("SESS_PIPE")) {
+  if (!is.null(endpoint) && length(endpoint) == 1L && !is.na(endpoint) && nzchar(endpoint)) {
+    return(endpoint)
+  }
+  if (length(env_endpoint) == 1L && !is.na(env_endpoint) && nzchar(env_endpoint)) {
+    return(env_endpoint)
+  }
+  if (length(env_pipe) == 1L && !is.na(env_pipe) && nzchar(env_pipe)) {
+    return(env_pipe)
+  }
+
+  if (is.null(discovery_path)) {
+    discovery_path <- file.path(path.expand("~"), ".vscode-R", "sessions",
+                                sprintf("%d.json", Sys.getpid()))
+  }
+  if (!file.exists(discovery_path)) return("")
+
+  tryCatch({
+    cfg <- jsonlite::fromJSON(readLines(discovery_path, warn = FALSE), simplifyVector = FALSE)
+    if (!is.null(cfg$version)) {
+      version <- suppressWarnings(as.integer(cfg$version))
+      if (is.na(version) || version != 1L) {
+        warning("[sess] Unsupported session discovery version: ", cfg$version)
+        return("")
+      }
+    }
+    value <- cfg$endpoint
+    if (is.null(value) || !length(value) || is.na(value) || !nzchar(value)) {
+      value <- cfg$pipe
+    }
+    if (is.null(value) || !length(value) || is.na(value) || !nzchar(value)) "" else value
+  }, error = function(e) "")
+}
+
+.session_attach_metadata <- function() {
+  host <- Sys.info()[["nodename"]]
+  if (is.null(host) || is.na(host)) host <- ""
+  list(
+    protocol_version = 1L,
+    sess_version = as.character(utils::packageVersion("sess")),
+    session_id = .sess_env$session_id,
+    host = unname(host),
+    version = sprintf("%s.%s", R.version$major, R.version$minor),
+    pid = Sys.getpid(),
+    tempdir = .sess_env$tempdir,
+    wd = getwd(),
+    info = list(
+      command = commandArgs()[[1L]],
+      version = R.version.string,
+      start_time = format(Sys.time())
+    )
+  )
 }
 
 .transport_disconnect <- function(silent = FALSE) {
