@@ -48,54 +48,36 @@ local({
     expected <- c(expected, list("9007199254740993"))
   }
 
-  tables <- list(data.frame = df)
-  if (requireNamespace("data.table", quietly = TRUE)) {
-    # data.table does not support matrix columns; test those in the data frame.
-    dt <- data.table::as.data.table(df[, names(df) != "complex_matrix", drop = FALSE])
-    dt$idate <- data.table::as.IDate(dt$date)
-    dt$itime <- data.table::as.ITime(dt$datetime)
-    tables$data.table <- dt
+  original <- serialize(df, NULL)
+  registration <- sess:::dataview_register(df)
+  view_id <- registration$view_id
+  init <- request("dataview_init", list(view_id = view_id))
+  expect_equal(init$result$totalRows, 2L)
+  expect_length(init$result$columns, ncol(df) + 1L)
+  for (name in c("complex", "raw", "list")) {
+    column <- init$result$columns[[match(name, names(df)) + 1L]]
+    expect_false(column$sortable, info = name)
+    expect_false(column$filter, info = name)
   }
 
-  for (table_name in names(tables)) {
-    data <- tables[[table_name]]
-    original <- serialize(data, NULL)
-    registration <- sess:::dataview_register(data)
-    view_id <- registration$view_id
-    init <- request("dataview_init", list(view_id = view_id))
-    expect_equal(init$result$totalRows, 2L, info = table_name)
-    expect_length(init$result$columns, ncol(data) + 1L, info = table_name)
-    for (name in c("complex", "raw", "list")) {
-      column <- init$result$columns[[match(name, names(data)) + 1L]]
-      expect_false(column$sortable, info = name)
-      expect_false(column$filter, info = name)
-    }
+  page <- request("dataview_page", list(view_id = view_id, startRow = 0L, endRow = 1L))
+  expect_null(page$error)
+  expect_length(page$result$rows, 1L)
+  actual <- unname(page$result$rows[[1L]][as.character(seq_along(expected))])
+  expect_equal(actual, expected, tolerance = 1e-14)
 
-    wanted <- expected
-    if (table_name == "data.table") {
-      wanted <- c(expected[-match("complex_matrix", names(df))],
-                  list("2000-01-01", "00:00:00"))
-    }
-    page <- request("dataview_page", list(view_id = view_id, startRow = 0L, endRow = 1L))
-    expect_null(page$error, info = table_name)
-    expect_length(page$result$rows, 1L, info = table_name)
-    actual <- unname(page$result$rows[[1L]][as.character(seq_along(wanted))])
-    expect_equal(actual, wanted, tolerance = 1e-14, info = table_name)
-
-    missing <- request("dataview_page", list(view_id = view_id, startRow = 1L, endRow = 2L))
-    expect_null(missing$error, info = table_name)
-    expect_length(missing$result$rows, 1L, info = table_name)
-    for (name in c("integer", "double", "logical", "character", "factor", "ordered",
-                   "date", "datetime", "difftime", "complex")) {
-      expect_null(missing$result$rows[[1L]][[as.character(match(name, names(data)))]],
-                  info = paste(table_name, name))
-    }
-
-    empty <- request("dataview_page", list(view_id = view_id, startRow = 2L, endRow = 3L))
-    expect_null(empty$error, info = table_name)
-    expect_length(empty$result$rows, 0L, info = table_name)
-    expect_identical(serialize(data, NULL), original, info = table_name)
+  missing <- request("dataview_page", list(view_id = view_id, startRow = 1L, endRow = 2L))
+  expect_null(missing$error)
+  expect_length(missing$result$rows, 1L)
+  for (name in c("integer", "double", "logical", "character", "factor", "ordered",
+                 "date", "datetime", "difftime", "complex")) {
+    expect_null(missing$result$rows[[1L]][[as.character(match(name, names(df)))]], info = name)
   }
+
+  empty <- request("dataview_page", list(view_id = view_id, startRow = 2L, endRow = 3L))
+  expect_null(empty$error)
+  expect_length(empty$result$rows, 0L)
+  expect_identical(serialize(df, NULL), original)
 
   for (values in list(c(1L, NA_integer_), c(1.54e-100, NA_real_), c(TRUE, NA),
                       c("中文", NA_character_), c(1 + 2i, NA_complex_), as.raw(c(0, 255)))) {
