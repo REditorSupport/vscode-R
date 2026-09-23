@@ -53,7 +53,6 @@ suite('R Terminal', () => {
             assert.ok(options.env);
             assert.ok(discoveryFile);
             assert.strictEqual(options.env['SESS_ENDPOINT'], null);
-            assert.strictEqual(options.env['SESS_PIPE'], null);
             assert.strictEqual(options.env['SESS_RSTUDIOAPI'], 'TRUE');
             assert.strictEqual(options.env['SESS_USE_HTTPGD'], 'TRUE');
             assert.strictEqual(options.env['SESS_PLOT_BACKEND'], 'httpgd');

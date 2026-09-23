@@ -207,7 +207,6 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
             // Remove inherited endpoint overrides so the per-terminal discovery file
             // remains authoritative, including after a VS Code window reload.
             SESS_ENDPOINT: null,
-            SESS_PIPE: null,
             SESS_DISCOVERY_FILE: discoveryFile,
             SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
             SESS_USE_HTTPGD: backend === 'httpgd' ? 'TRUE' : 'FALSE',

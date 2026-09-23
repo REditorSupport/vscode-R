@@ -221,7 +221,6 @@ export function deploySessionWatcher(extensionPath: string): void {
     resDir = path.join(extensionPath, 'dist', 'resources');
 
     void getGlobalPipePath().then(async (pipePath) => {
-        await pruneSessionFiles();
         await refreshTerminalDiscoveryFiles(pipePath);
     }).catch(err => {
         console.error('Failed to initialize global session server', err);
@@ -250,39 +249,6 @@ const pendingRequests = new Map<number, {
 
 let globalSessionServer: net.Server | undefined;
 let attachSessionScriptPath: string | undefined;
-
-function isPidRunning(pid: number): boolean {
-    try {
-        process.kill(pid, 0);
-        return true;
-    } catch (e) {
-        return (e as NodeJS.ErrnoException).code !== 'ESRCH';
-    }
-}
-
-async function pruneSessionFiles() {
-    const homeDir = os.homedir();
-    const sessionsDir = path.join(homeDir, '.vscode-R', 'sessions');
-    if (!await fs.pathExists(sessionsDir)) {
-        return;
-    }
-    const files = await fs.readdir(sessionsDir);
-    for (const file of files) {
-        if (file.endsWith('.json')) {
-            const pidStr = path.basename(file, '.json');
-            const pid = parseInt(pidStr, 10);
-            if (!isNaN(pid)) {
-                if (!isPidRunning(pid)) {
-                    try {
-                        await fs.remove(path.join(sessionsDir, file));
-                    } catch (e) {
-                        console.error(`Failed to remove stale session file ${file}`, e);
-                    }
-                }
-            }
-        }
-    }
-}
 
 interface SessionDiscoveryFile {
     version: 1;
@@ -371,21 +337,9 @@ async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string
     return undefined;
 }
 
-// TODO(4.0): Remove compatibility updates for legacy ~/.vscode-R discovery files.
-async function updateExistingLegacySessionFile(pid: number, endpoint: string, homeDir: string): Promise<void> {
-    const sessionsDir = path.join(homeDir, '.vscode-R', 'sessions');
-    const filePath = path.join(sessionsDir, `${pid}.json`);
-    if (!await fs.pathExists(filePath)) {
-        return;
-    }
-    await fs.writeJson(filePath, { version: 1, endpoint });
-    await setOwnerOnlyPermissions(filePath);
-}
-
 export async function refreshTerminalDiscoveryFiles(
     pipePath: string,
     terminals: readonly vscode.Terminal[] = vscode.window.terminals,
-    legacyHome = os.homedir(),
 ): Promise<void> {
     for (const term of terminals) {
         const envPath = terminalDiscoveryPath(term);
@@ -400,9 +354,6 @@ export async function refreshTerminalDiscoveryFiles(
         discoveryPath ??= await findDiscoveryFileForTerminal(terminalPid);
         if (discoveryPath) {
             await updateSessionDiscoveryFile(discoveryPath, pipePath, terminalPid);
-        }
-        if (term.name === 'R Interactive') {
-            await updateExistingLegacySessionFile(terminalPid, pipePath, legacyHome);
         }
     }
 }

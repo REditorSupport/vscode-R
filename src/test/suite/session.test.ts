@@ -370,31 +370,6 @@ suite('Session Communication', () => {
         }
     });
 
-    test('reload updates an existing legacy discovery file without creating one', async () => {
-        const legacyHome = path.join(os.tmpdir(), `vscode-r-legacy-home-${process.pid}`);
-        const endpoint = await session.getGlobalPipePath();
-        const terminalPid = 45232;
-        const terminal = {
-            name: 'R Interactive',
-            processId: Promise.resolve(terminalPid),
-            creationOptions: { name: 'R Interactive', env: {} },
-        } as unknown as vscode.Terminal;
-        const legacyDirectory = path.join(legacyHome, '.vscode-R', 'sessions');
-        await fs.ensureDir(legacyDirectory);
-
-        try {
-            await session.refreshTerminalDiscoveryFiles(endpoint, [terminal], legacyHome);
-            assert.strictEqual(await fs.pathExists(path.join(legacyDirectory, `${terminalPid}.json`)), false);
-
-            const existingLegacyFile = path.join(legacyDirectory, `${terminalPid}.json`);
-            await fs.writeJson(existingLegacyFile, { version: 1, endpoint: 'old-endpoint' });
-            await session.refreshTerminalDiscoveryFiles(`${endpoint}.reload`, [terminal], legacyHome);
-            assert.deepStrictEqual(await fs.readJson(existingLegacyFile), { version: 1, endpoint: `${endpoint}.reload` });
-        } finally {
-            await fs.remove(legacyHome);
-        }
-    });
-
     test('IPC protocol keys sessions by session_id and ignores close from a replaced socket', async () => {
         const endpoint = await session.getGlobalPipePath();
         const first = net.createConnection(endpoint);
