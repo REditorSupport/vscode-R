@@ -440,14 +440,17 @@ suite('Session Communication', () => {
             });
             sendAttach('session-a');
             await waitFor(() => session.activeSession?.sessionId === 'session-a');
+            const attachedSession = session.activeSession;
+            if (!attachedSession) {
+                throw new Error('session A should have attached');
+            }
+            const boundSocket = attachedSession.socket;
 
-            const clientClosed = new Promise<void>(resolve => client.once('close', resolve));
             sendAttach('session-b');
             await waitFor(() => showError.called);
-            await clientClosed;
-            await waitFor(() => !session.activeSession);
-
             assert.match(String(showError.firstCall.args[0]), /already bound to session session-a/);
+            await waitFor(() => !session.activeSession);
+            await waitFor(() => !session.activeConnections.has(boundSocket));
             assert.notStrictEqual(session.activeSession?.sessionId, 'session-b');
         } finally {
             client.destroy();
