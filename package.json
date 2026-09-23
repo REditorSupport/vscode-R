@@ -74,7 +74,7 @@
       {
         "view": "workspaceViewer",
         "when": "!r.WorkspaceViewer:show",
-        "contents": "R workspace viewer requires that the [session watcher be enabled](https://github.com/REditorSupport/vscode-R/wiki/R-Session-watcher)."
+        "contents": "R workspace viewer requires that the [session watcher be enabled](command:workbench.action.openSettings?[\"@id:r.sessionWatcher\"])."
       },
       {
         "view": "rHelpPages",
