@@ -221,7 +221,7 @@ Response example:
 }
 ```
 
-## 7. Hook Registration and Options
+## 7. Hook Registration and Cleanup
 
 After the IPC connection succeeds, `connect()` starts the same VS Code runtime
 integration managed by `register_hooks()`. If polling or writing detects that the
@@ -238,13 +238,6 @@ Intercepted features include:
 - `utils::View()`
 - `browser()`, `viewer()`, `page_viewer()`
 - help topic rendering hooks
-
-Relevant options:
-
-- `sess.dataview`
-- `sess.browser`
-- `sess.webview`
-- `sess.helpPanel`
 
 ## 8. Discovery File
 

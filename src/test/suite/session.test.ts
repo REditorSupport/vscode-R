@@ -60,6 +60,44 @@ suite('Session Communication', () => {
         sandbox.restore();
     });
 
+    async function showHelpWith(viewColumn: Record<string, string> | undefined, params: Record<string, unknown> = { requestPath: 'base/html/mean.html' }) {
+        const showHelpForPath = sandbox.stub().resolves();
+        sandbox.stub(extension, 'globalRHelp').value({ showHelpForPath } as unknown as NonNullable<typeof extension.globalRHelp>);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'session.viewers.viewColumn' ? viewColumn : undefined
+        } as unknown as vscode.WorkspaceConfiguration);
+
+        await session.showHelpNotification(params);
+        return showHelpForPath;
+    }
+
+    test('help notification uses configured Active view column', async () => {
+        const showHelpForPath = await showHelpWith({ helpPanel: 'Active' });
+
+        sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Active');
+    });
+
+    test('help notification does not open when help panel is disabled', async () => {
+        const showHelpForPath = await showHelpWith({ helpPanel: 'Disable' });
+
+        sinon.assert.notCalled(showHelpForPath);
+    });
+
+    test('help notification defaults to the second view column', async () => {
+        const showHelpForPath = await showHelpWith(undefined);
+
+        sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Two');
+    });
+
+    test('help notification ignores stale viewer parameter from sess', async () => {
+        const showHelpForPath = await showHelpWith({ helpPanel: 'Active' }, {
+            requestPath: 'base/html/mean.html',
+            viewer: 'Two'
+        });
+
+        sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Active');
+    });
+
     test('communication: hello <- 1 updates workspace and provides completion', async () => {
         const configStub = {
             get: (key: string) => {

@@ -1702,7 +1702,7 @@
             },
             "view": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by View()? \n\nChanges the option 'sess.dataview' in R.",
+              "description": "Which view column to show the WebView triggered by View()?",
               "enum": [
                 "Two",
                 "Active",
@@ -1719,7 +1719,7 @@
             },
             "helpPanel": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by the help panel? \n\nChanges the option 'sess.helpPanel' in R.",
+              "description": "Which view column to show the WebView triggered by the help panel?",
               "enum": [
                 "Two",
                 "Active",

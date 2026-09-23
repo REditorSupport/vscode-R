@@ -1707,9 +1707,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             break;
         }
         case 'help': {
-            if (globalRHelp && params.requestPath) {
-                await globalRHelp.showHelpForPath(String(params.requestPath), params.viewer);
-            }
+            await showHelpNotification(params);
             break;
         }
         case 'httpgd': {
@@ -1779,6 +1777,17 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
         }
         default:
             console.error(`[startSessionWatcher] Unsupported notification method: ${method}`);
+    }
+}
+
+export async function showHelpNotification(params: Record<string, unknown>): Promise<void> {
+    if (!globalRHelp || !params.requestPath) {
+        return;
+    }
+
+    const viewer = config().get<Record<string, string>>('session.viewers.viewColumn')?.helpPanel ?? 'Two';
+    if (viewer !== 'Disable') {
+        await globalRHelp.showHelpForPath(String(params.requestPath), viewer);
     }
 }
 
