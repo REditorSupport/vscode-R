@@ -148,7 +148,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
   list(
     protocol_version = 1L,
     sess_version = as.character(utils::packageVersion("sess")),
-    session_id = .sess_env$session_id,
+    session_id = .session_id(),
     host = unname(host),
     version = sprintf("%s.%s", R.version$major, R.version$minor),
     pid = Sys.getpid(),
