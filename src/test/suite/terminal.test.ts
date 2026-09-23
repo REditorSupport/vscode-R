@@ -22,6 +22,21 @@ async function waitForDiscoveryRemoval(filePath: string): Promise<void> {
     assert.fail(`Timed out waiting for discovery file removal: ${filePath}`);
 }
 
+async function waitForDiscoveryPid(filePath: string, expectedPid: number): Promise<void> {
+    const deadline = Date.now() + 1000;
+    while (Date.now() < deadline) {
+        if (await fs.pathExists(filePath)) {
+            const discovery: unknown = await fs.readJson(filePath);
+            if (typeof discovery === 'object' && discovery !== null &&
+                'terminalPid' in discovery && discovery.terminalPid === expectedPid) {
+                return;
+            }
+        }
+        await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.fail(`Timed out waiting for terminal PID ${expectedPid} in discovery file: ${filePath}`);
+}
+
 suite('R Terminal', () => {
     let sandbox: sinon.SinonSandbox;
 
@@ -219,6 +234,108 @@ suite('R Terminal', () => {
         // Clean up
         rTerminal.rTerm?.dispose();
     });
+
+    test('createRTerm removes its discovery file when the configured executable is invalid', async () => {
+        const createdDiscoveryFiles: string[] = [];
+        const createDiscoveryFile = session.createSessionDiscoveryFile;
+        sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async endpoint => {
+            const filePath = await createDiscoveryFile(endpoint);
+            createdDiscoveryFiles.push(filePath);
+            return filePath;
+        });
+        const configStub = {
+            get: (key: string) => key === 'sessionWatcher' ? true : undefined,
+        };
+        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(util, 'getRterm').resolves(`${process.execPath}.does-not-exist`);
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+
+        try {
+            assert.strictEqual(await rTerminal.createRTerm(), false);
+            assert.strictEqual(createdDiscoveryFiles.length, 1);
+            assert.strictEqual(await fs.pathExists(createdDiscoveryFiles[0]), false);
+        } finally {
+            await Promise.all(createdDiscoveryFiles.map(filePath => fs.remove(filePath)));
+        }
+    });
+
+    test('createRTerm removes its discovery file when VS Code terminal creation throws', async () => {
+        const createdDiscoveryFiles: string[] = [];
+        const createDiscoveryFile = session.createSessionDiscoveryFile;
+        sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async endpoint => {
+            const filePath = await createDiscoveryFile(endpoint);
+            createdDiscoveryFiles.push(filePath);
+            return filePath;
+        });
+        const configStub = {
+            get: (key: string) => key === 'sessionWatcher' ? true : undefined,
+        };
+        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(vscode.window, 'createTerminal').throws(new Error('terminal creation failed'));
+
+        try {
+            await assert.rejects(rTerminal.createRTerm(), /terminal creation failed/);
+            assert.strictEqual(createdDiscoveryFiles.length, 1);
+            assert.strictEqual(await fs.pathExists(createdDiscoveryFiles[0]), false);
+        } finally {
+            await Promise.all(createdDiscoveryFiles.map(filePath => fs.remove(filePath)));
+        }
+    });
+
+    test('createRTerm records process IDs for all managed terminals when they resolve out of order', async () => {
+        let resolveFirst!: (pid: number | undefined) => void;
+        let resolveSecond!: (pid: number | undefined) => void;
+        const firstProcessId = new Promise<number | undefined>(resolve => { resolveFirst = resolve; });
+        const secondProcessId = new Promise<number | undefined>(resolve => { resolveSecond = resolve; });
+        const firstTerminal = {
+            name: 'R Interactive', processId: firstProcessId,
+            show: () => undefined, dispose: () => undefined,
+        } as unknown as vscode.Terminal;
+        const secondTerminal = {
+            name: 'R Interactive', processId: secondProcessId,
+            show: () => undefined, dispose: () => undefined,
+        } as unknown as vscode.Terminal;
+        const configStub = {
+            get: (key: string) => key === 'sessionWatcher' ? true : undefined,
+        };
+        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        const createTerminalStub = sandbox.stub(vscode.window, 'createTerminal');
+        createTerminalStub.onFirstCall().returns(firstTerminal);
+        createTerminalStub.onSecondCall().returns(secondTerminal);
+
+        let firstDiscoveryFile: string | undefined;
+        let secondDiscoveryFile: string | undefined;
+        try {
+            assert.strictEqual(await rTerminal.createRTerm(), true);
+            assert.strictEqual(await rTerminal.createRTerm(), true);
+            const firstOptions = createTerminalStub.firstCall.args[0] as vscode.TerminalOptions;
+            const secondOptions = createTerminalStub.secondCall.args[0] as vscode.TerminalOptions;
+            const firstPath = firstOptions.env?.['SESS_DISCOVERY_FILE'];
+            const secondPath = secondOptions.env?.['SESS_DISCOVERY_FILE'];
+            if (typeof firstPath !== 'string' || typeof secondPath !== 'string') {
+                throw new Error('Managed terminals should receive discovery-file paths');
+            }
+            firstDiscoveryFile = firstPath;
+            secondDiscoveryFile = secondPath;
+
+            resolveSecond(45249);
+            await waitForDiscoveryPid(secondDiscoveryFile, 45249);
+            resolveFirst(45247);
+            await waitForDiscoveryPid(firstDiscoveryFile, 45247);
+        } finally {
+            if (firstDiscoveryFile) {
+                await fs.remove(firstDiscoveryFile);
+            }
+            if (secondDiscoveryFile) {
+                await fs.remove(secondDiscoveryFile);
+            }
+        }
+    });
+
     test('active R session PID matches terminal PID', async () => {
         const configStub = {
             get: (key: string) => {

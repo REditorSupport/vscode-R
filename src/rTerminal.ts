@@ -230,20 +230,40 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     const termOptions = await makeTerminalOptions();
     void util.promptToInstallSessPackage(termOptions.cwd);
     const termPath = termOptions.shellPath;
+    const discoveryFile = termOptions.env?.['SESS_DISCOVERY_FILE'];
+    const discardDiscoveryFile = async () => {
+        if (typeof discoveryFile === 'string') {
+            try {
+                await fs.promises.unlink(discoveryFile);
+            } catch (error) {
+                if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+                    return;
+                }
+                console.error('Failed to remove unused session discovery file', error);
+            }
+        }
+    };
     if(!termPath){
         void vscode.window.showErrorMessage('Could not find an R console executable. Please check the r.consolePath and r.executablePath settings.');
+        await discardDiscoveryFile();
         return false;
     } else if(!fs.existsSync(termPath)){
         void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check the r.consolePath setting.`);
+        await discardDiscoveryFile();
         return false;
     }
-    const createdTerminal = vscode.window.createTerminal(termOptions);
+    let createdTerminal: vscode.Terminal;
+    try {
+        createdTerminal = vscode.window.createTerminal(termOptions);
+    } catch (error) {
+        await discardDiscoveryFile();
+        throw error;
+    }
     rTerm = createdTerminal;
     createdTerminal.show(preserveshow);
 
-    const discoveryFile = termOptions.env?.['SESS_DISCOVERY_FILE'];
     void Promise.resolve(createdTerminal.processId).then(async (pid: number | undefined) => {
-        if (pid && typeof discoveryFile === 'string' && rTerm === createdTerminal && !isTerminalClosed(createdTerminal)) {
+        if (pid && typeof discoveryFile === 'string' && !isTerminalClosed(createdTerminal)) {
             const pipePath = await getGlobalPipePath();
             if (!isTerminalClosed(createdTerminal)) {
                 await updateTerminalSessionDiscoveryFile(createdTerminal, discoveryFile, pipePath, pid);
