@@ -8,7 +8,7 @@
 .session_id <- function() {
   pid <- Sys.getpid()
   if (is.null(.sess_env$session_id) ||
-      !identical(.sess_env$session_pid, pid)) {
+        !identical(.sess_env$session_pid, pid)) {
     .sess_env$session_pid <- pid
     .sess_env$session_id <- basename(tempfile("sess-session-"))
   }

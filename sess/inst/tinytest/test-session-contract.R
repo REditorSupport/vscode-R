@@ -15,21 +15,22 @@ local({
 
 # A fork child inherits the namespace environment, but must get its own identity.
 local({
-  old_session_id <- sess:::.sess_env$session_id
-  old_session_pid <- sess:::.sess_env$session_pid
+  sess_env <- sess:::.sess_env
+  old_session_id <- sess_env$session_id
+  old_session_pid <- sess_env$session_pid
   on.exit({
-    sess:::.sess_env$session_id <- old_session_id
-    sess:::.sess_env$session_pid <- old_session_pid
+    sess_env$session_id <- old_session_id
+    sess_env$session_pid <- old_session_pid
   })
 
   inherited_pid <- if (Sys.getpid() == 1L) 2L else 1L
-  sess:::.sess_env$session_pid <- inherited_pid
+  sess_env$session_pid <- inherited_pid
   first <- sess:::.session_id()
   second <- sess:::.session_id()
 
   expect_false(identical(first, old_session_id))
   expect_equal(first, second)
-  expect_equal(sess:::.sess_env$session_pid, Sys.getpid())
+  expect_equal(sess_env$session_pid, Sys.getpid())
 })
 
 # Explicit endpoint and canonical environment variable take precedence.
