@@ -18,7 +18,7 @@ Start the client connection from R:
 
 ```r
 sess::connect(
-  endpoint = NULL,       # Character: local pipe/socket endpoint. NULL -> SESS_ENDPOINT or session file fallback
+  endpoint = NULL,       # Character: local pipe/socket endpoint. NULL -> SESS_ENDPOINT or SESS_DISCOVERY_FILE
   use_rstudioapi = TRUE, # Logical: enable rstudioapi emulation
   use_httpgd = TRUE      # Logical: use httpgd for plotting if available
 )
@@ -27,8 +27,14 @@ sess::connect(
 If `endpoint` is omitted, `connect()` resolves it in this order:
 
 1. `SESS_ENDPOINT` environment variable
-2. `SESS_PIPE` environment variable (compatibility fallback)
-3. `~/.vscode-R/sessions/{PID}.json` (`endpoint` field)
+2. `SESS_DISCOVERY_FILE` environment variable (a JSON file with schema version `1` and an `endpoint` field)
+3. `SESS_PIPE` environment variable (3.x compatibility fallback)
+4. The legacy per-process session file, if present (3.x compatibility fallback)
+
+When `SESS_DISCOVERY_FILE` is set, that file is authoritative. If it is missing,
+invalid, or uses an unsupported schema version, `connect()` reports the problem
+and does not fall back to a potentially stale legacy endpoint. Additional
+fields in the discovery JSON are ignored by `sess`.
 
 After connecting, `sess` sends an `attach` notification.
 
@@ -258,22 +264,21 @@ Relevant options:
 
 ## 8. Discovery File
 
-To support reloads and attach workflows, the extension writes:
-
-- `{user home}/.vscode-R/sessions/{PID}.json`
-
-On Unix, `{user home}` is `~`. On Windows it is the user profile directory
-from `USERPROFILE` (or `HOMEDRIVE` + `HOMEPATH` if `USERPROFILE` is unset),
-matching Node.js `os.homedir()`; it may differ from R's `path.expand("~")`
-location, which can resolve to Documents.
-
-`sess::connect()` reads this file as fallback when no endpoint argument or environment variable is available.
-
-The discovery JSON has schema version `1` and uses the `endpoint` field:
+The client passes the discovery-file path to R through `SESS_DISCOVERY_FILE`.
+The physical location is chosen by the client and is not part of the `sess`
+protocol. The JSON schema is versioned independently from the attach protocol
+and uses `version: 1` plus an `endpoint` field:
 
 ```json
 {"version":1,"endpoint":"/path/to/session.sock"}
 ```
+
+`sess` uses `version` and `endpoint`; it ignores other fields such as
+extension-private metadata. For 3.x compatibility,
+`SESS_PIPE` and the old PID-named file under `~/.vscode-R/sessions/` remain
+read-only fallbacks. That old file may contain the pre-versioned `pipe` field.
+The Windows legacy lookup uses `USERPROFILE` (or `HOMEDRIVE` + `HOMEPATH` if
+`USERPROFILE` is unset) because R's `path.expand("~")` may point to Documents.
 
 ## 9. What Changed from the WebSocket Transport
 

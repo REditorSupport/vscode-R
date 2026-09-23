@@ -13,8 +13,8 @@ connect(
 }
 \arguments{
 \item{endpoint}{Character. Local named pipe / Unix domain socket endpoint.
-If NULL, uses SESS_ENDPOINT, then the session JSON file written by the
-extension. SESS_PIPE is accepted as a compatibility fallback.}
+If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE. SESS_PIPE and the
+legacy per-process session file are accepted as 3.x compatibility fallbacks.}
 
 \item{use_rstudioapi}{Logical. Enable rstudioapi emulation. Defaults to TRUE.}
 

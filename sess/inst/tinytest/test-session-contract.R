@@ -33,18 +33,18 @@ local({
   expect_equal(sess_env$session_pid, Sys.getpid())
 })
 
-# Explicit endpoint and canonical environment variable take precedence.
+# Explicit endpoint and environment handoffs take precedence.
 local({
   expect_equal(
-    sess:::.resolve_endpoint("explicit", env_endpoint = "env", env_pipe = "old"),
+    sess:::.resolve_endpoint("explicit", env_endpoint = "env", env_discovery_file = "", env_pipe = "old"),
     "explicit"
   )
   expect_equal(
-    sess:::.resolve_endpoint(NULL, env_endpoint = "env", env_pipe = "old"),
+    sess:::.resolve_endpoint(NULL, env_endpoint = "env", env_discovery_file = "", env_pipe = "old"),
     "env"
   )
   expect_equal(
-    sess:::.resolve_endpoint(NULL, env_endpoint = "", env_pipe = "old"),
+    sess:::.resolve_endpoint(NULL, env_endpoint = "", env_discovery_file = "", env_pipe = "old"),
     "old"
   )
 })
@@ -90,29 +90,77 @@ local({
   expect_equal(unix_path, file.path("/home/alice", ".vscode-R", "sessions", "12345.json"))
 })
 
-# Discovery uses versioned `endpoint`; an old pipe field remains a compatibility fallback.
+# Canonical discovery uses SESS_DISCOVERY_FILE and versioned `endpoint`.
 local({
   path <- tempfile(fileext = ".json")
+  legacy_path <- tempfile(fileext = ".json")
   on.exit(unlink(path), add = TRUE)
+  on.exit(unlink(legacy_path), add = TRUE)
 
-  writeLines('{"version":1,"endpoint":"canonical-endpoint"}', path)
+  writeLines('{"version":1,"endpoint":"canonical-endpoint","terminalPid":321}', path)
   expect_equal(
-    sess:::.resolve_endpoint(NULL, path, env_endpoint = "", env_pipe = ""),
+    sess:::.resolve_endpoint(
+      NULL, env_endpoint = "environment-endpoint", env_discovery_file = path,
+      env_pipe = "old-pipe", legacy_discovery_path = legacy_path
+    ),
+    "environment-endpoint"
+  )
+  expect_equal(
+    sess:::.resolve_endpoint(
+      NULL, env_endpoint = "", env_discovery_file = path, env_pipe = "old-pipe",
+      legacy_discovery_path = legacy_path
+    ),
     "canonical-endpoint"
   )
 
-  writeLines('{"version":1,"pipe":"legacy-pipe"}', path)
+  # An explicit discovery path is authoritative, even if it is absent.
+  expect_warning(
+    expect_equal(
+      sess:::.resolve_endpoint(
+        NULL, env_endpoint = "", env_discovery_file = paste0(path, ".missing"),
+        env_pipe = "old-pipe", legacy_discovery_path = legacy_path
+      ),
+      ""
+    ),
+    "does not exist"
+  )
+
+  # Legacy PID-named files can still carry a pre-versioned `pipe` field.
+  writeLines('{"pipe":"legacy-pipe"}', legacy_path)
   expect_equal(
-    sess:::.resolve_endpoint(NULL, path, env_endpoint = "", env_pipe = ""),
+    sess:::.resolve_endpoint(
+      NULL, env_endpoint = "", env_discovery_file = "", env_pipe = "",
+      legacy_discovery_path = legacy_path
+    ),
     "legacy-pipe"
+  )
+  writeLines('{"version":1,"pipe":"legacy-rc-pipe"}', legacy_path)
+  expect_equal(
+    sess:::.resolve_endpoint(
+      NULL, env_endpoint = "", env_discovery_file = "", env_pipe = "",
+      legacy_discovery_path = legacy_path
+    ),
+    "legacy-rc-pipe"
   )
 
   writeLines('{"version":2,"endpoint":"future-endpoint"}', path)
   expect_warning(
     expect_equal(
-      sess:::.resolve_endpoint(NULL, path, env_endpoint = "", env_pipe = ""),
+      sess:::.resolve_endpoint(
+        NULL, env_endpoint = "", env_discovery_file = path, env_pipe = "old-pipe",
+        legacy_discovery_path = legacy_path
+      ),
       ""
     ),
     "Unsupported session discovery version"
+  )
+
+  writeLines('{"version":1,"pipe":"wrong-field"}', path)
+  expect_warning(
+    expect_equal(
+      sess:::.resolve_endpoint(NULL, env_endpoint = "", env_discovery_file = path),
+      ""
+    ),
+    "has no endpoint"
   )
 })
