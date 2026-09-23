@@ -241,7 +241,6 @@ Intercepted features include:
 
 Relevant options:
 
-- `sess.row_limit`
 - `sess.dataview`
 - `sess.browser`
 - `sess.webview`

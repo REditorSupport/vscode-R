@@ -13,7 +13,7 @@ import { config, readContent, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
-import { extensionContext, homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, tmpDir } from './extension';
+import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, tmpDir } from './extension';
 import { resolveBackend, CommonPlotManager } from './plotViewer';
 
 import { showWebView } from './webViewer';
@@ -219,12 +219,6 @@ export function deploySessionWatcher(extensionPath: string): void {
         console.error('Failed to initialize global session server', err);
     });
 
-    writeSettings();
-    workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('r')) {
-            writeSettings();
-        }
-    });
 }
 
 let pipeClient: IpcSocket | undefined;
@@ -605,11 +599,6 @@ export function removeSessionFiles(): void {
         removeDirectory(sessionDir);
     }
     console.info('[removeSessionFiles] Done');
-}
-
-function writeSettings() {
-    const settingPath = path.join(homeExtDir(), 'settings.json');
-    fs.writeFileSync(settingPath, JSON.stringify(config()));
 }
 
 async function updatePlot() {

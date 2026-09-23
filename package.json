@@ -30,7 +30,6 @@
   },
   "activationEvents": [
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
-    "onCommand:r.runSelectionInActiveTerm",
     "onWebviewPanel:rhelp"
   ],
   "main": "./dist/extension",
@@ -175,16 +174,6 @@
       }
     ],
     "commands": [
-      {
-        "command": "r.liveShare.toggle",
-        "title": "Toggle Live Share",
-        "category": "R"
-      },
-      {
-        "command": "r.liveShare.retry",
-        "title": "Retry Live Share",
-        "category": "R"
-      },
       {
         "command": "r.workspaceViewer.refreshEntry",
         "title": "Manual Refresh",
@@ -940,10 +929,6 @@
         {
           "command": "r.helpPanel.openForPath",
           "when": "false"
-        },
-        {
-          "command": "r.liveShare.toggle",
-          "when": "false"
         }
       ],
       "editor/title/run": [
@@ -1200,22 +1185,18 @@
           "command": "r.helpPanel.summarizeTopics",
           "group": "inline@8",
           "when": "view == rHelpPages && viewItem =~ /_summarizeTopics_/"
-        },
-        {
-          "command": "r.liveShare.toggle",
-          "when": "view == rLiveShare"
         }
       ],
       "view/title": [
         {
           "command": "r.workspaceViewer.load",
           "group": "navigation@0",
-          "when": "r.WorkspaceViewer:show && view == workspaceViewer && !r.liveShare:isGuest"
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer"
         },
         {
           "command": "r.workspaceViewer.save",
           "group": "navigation@1",
-          "when": "r.WorkspaceViewer:show && view == workspaceViewer && !r.liveShare:isGuest"
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer"
         },
         {
           "command": "r.workspaceViewer.clear",
@@ -1231,11 +1212,6 @@
           "command": "r.helpPanel.showQuickPick",
           "group": "navigation",
           "when": "view == rHelpPages"
-        },
-        {
-          "command": "r.liveShare.retry",
-          "group": "navigation@3",
-          "when": "view == rLiveShare && r.liveShare:aborted"
         }
       ],
       "explorer/context": [
@@ -1615,11 +1591,6 @@
           "default": true,
           "description": "Enable R session watcher. Required for workspace viewer and most features to work with an R session. Restart required to take effect."
         },
-        "r.session.useWebServer": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Enable experimental use of web server in the R session to handle session requests from the extension. Requires `#r.sessionWatcher#` to be set to `true`. Requires the `httpuv` R package."
-        },
         "r.session.watchGlobalEnvironment": {
           "type": "boolean",
           "default": true,
@@ -1629,11 +1600,6 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Requires `#r.sessionWatcher#` to be set to `true`."
-        },
-        "r.session.data.rowLimit": {
-          "type": "integer",
-          "default": 0,
-          "markdownDescription": "The maximum number of rows to be displayed in the data viewer. `0` means no limit. Changes the option `sess.row_limit` in R. Requires `#r.sessionWatcher#` to be set to `true`."
         },
         "r.session.data.pageSize": {
           "type": "integer",
@@ -1771,26 +1737,6 @@
           "type": "boolean",
           "default": true,
           "description": "Prompt the user for confirmation when clearing the workspace."
-        },
-        "r.liveShare.timeout": {
-          "type": "integer",
-          "default": 10000,
-          "description": "Time in milliseconds before aborting attempt to connect to Live Share API."
-        },
-        "r.liveShare.defaults.commandForward": {
-          "type": "boolean",
-          "default": false,
-          "description": "Default boolean value for guest command forwarding."
-        },
-        "r.liveShare.defaults.shareWorkspace": {
-          "type": "boolean",
-          "default": true,
-          "description": "Default boolean value for sharing the R workspace with guests."
-        },
-        "r.liveShare.defaults.shareBrowser": {
-          "type": "boolean",
-          "default": false,
-          "description": "Default boolean value for automatically sharing R browser ports with guests."
         },
         "r.plot.devArgs": {
           "type": "object",
