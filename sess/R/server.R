@@ -116,7 +116,8 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
 
   # An explicit discovery path is authoritative. If it is missing or
   # incompatible, do not connect using a stale endpoint.
-  if (length(env_discovery_file) == 1L && !is.na(env_discovery_file) && nzchar(env_discovery_file)) {
+  if (length(env_discovery_file) == 1L && !is.na(env_discovery_file) &&
+        nzchar(env_discovery_file)) {
     return(.read_discovery_endpoint(env_discovery_file, warn = TRUE))
   }
   ""
@@ -133,7 +134,10 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
   if (!file.exists(path)) {
     if (isTRUE(warn)) {
       return(warn_problem(sprintf(
-        "Session discovery file '%s' does not exist. Check SESS_DISCOVERY_FILE or restart the R terminal.",
+        paste0(
+          "Session discovery file '%s' does not exist. ",
+          "Check SESS_DISCOVERY_FILE or restart the R terminal."
+        ),
         path
       )))
     }
@@ -143,12 +147,18 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
   tryCatch({
     cfg <- jsonlite::fromJSON(readLines(path, warn = FALSE), simplifyVector = FALSE)
     if (!is.list(cfg)) {
-      return(warn_problem(sprintf("Invalid session discovery data in '%s'; expected a JSON object.", path)))
+      return(warn_problem(sprintf(
+        "Invalid session discovery data in '%s'; expected a JSON object.",
+        path
+      )))
     }
 
     if (is.null(cfg$version)) {
       return(warn_problem(sprintf(
-        "Session discovery file '%s' has no supported schema version; expected version 1 with an endpoint field.",
+        paste0(
+          "Session discovery file '%s' has no supported schema version; ",
+          "expected version 1 with an endpoint field."
+        ),
         path
       )))
     }
@@ -156,7 +166,10 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
     version <- suppressWarnings(as.integer(cfg$version))
     if (length(version) != 1L || is.na(version) || version != 1L) {
       return(warn_problem(sprintf(
-        "Unsupported session discovery version '%s' in '%s'; update vscode-R or use a version 1 discovery file.",
+        paste0(
+          "Unsupported session discovery version '%s' in '%s'; ",
+          "update vscode-R or use a version 1 discovery file."
+        ),
         paste(cfg$version, collapse = ", "), path
       )))
     }
@@ -170,7 +183,11 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
     }
     value
   }, error = function(e) {
-    warn_problem(sprintf("Could not read session discovery file '%s': %s", path, conditionMessage(e)))
+    warn_problem(sprintf(
+      "Could not read session discovery file '%s': %s",
+      path,
+      conditionMessage(e)
+    ))
   })
 }
 
