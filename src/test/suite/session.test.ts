@@ -290,13 +290,14 @@ suite('Session Communication', () => {
 
     test('attach session artifacts are owner-only', async () => {
         const command = await session.getAttachSessionCommand();
-        assert.match(command, /sess::connect\(endpoint = endpoint/);
         const commandMatch = command.match(/^source\((.*)\)$/);
         if (!commandMatch) {
             throw new Error('attach command should be a source(...) call');
         }
 
         const scriptPath = JSON.parse(commandMatch[1]) as string;
+        const scriptContent = await fs.readFile(scriptPath, 'utf8');
+        assert.match(scriptContent, /sess::connect\(endpoint = endpoint/);
         const scriptStat = await fs.stat(scriptPath);
         if (process.platform !== 'win32') {
             assert.strictEqual(scriptStat.mode & 0o777, 0o600, 'attach script should be owner-only');
