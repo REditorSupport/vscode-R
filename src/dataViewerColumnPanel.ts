@@ -328,7 +328,7 @@ export function getDataViewerColumnPanelScript(): string {
             list.insertBefore(draggedItem, insertAfter ? target.nextSibling : target);
             clearDrag();
             gridApi.applyColumnState({
-                state: [{ colId: '0' }, ...Array.from(list.children, item => ({ colId: item.dataset.colId }))],
+                state: Array.from(list.children, item => ({ colId: item.dataset.colId })),
                 applyOrder: true
             });
         });
