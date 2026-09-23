@@ -266,14 +266,16 @@ dispatch_message <- function(line) {
     )
 
     if (payload$method %in% names(handlers)) {
-      res <- tryCatch(
-        handlers[[payload$method]](payload$params),
+      tryCatch(
+        {
+          res <- handlers[[payload$method]](payload$params)
+          rpc_reply(payload$id, result = res)
+        },
         error = function(e) {
+          rpc_reply(payload$id, error = list(code = -32603L, message = conditionMessage(e)))
           warning(sprintf("[sess] Error in handler for '%s': %s", payload$method, e$message))
-          NULL
         }
       )
-      rpc_reply(payload$id, result = res)
     } else {
       rpc_reply(payload$id, error = list(code = -32601L, message = "Method not found"))
     }
