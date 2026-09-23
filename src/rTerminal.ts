@@ -9,7 +9,15 @@ import { extensionContext, globalPlotManager } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupTerminalAssociation, deferWorkspaceRefresh } from './session';
+import {
+    cleanupTerminalAssociation,
+    createSessionDiscoveryFile,
+    deferWorkspaceRefresh,
+    getGlobalPipePath,
+    isTerminalClosed,
+    removeTerminalDiscoveryFile,
+    updateTerminalSessionDiscoveryFile,
+} from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
 import { resolveBackend, CommonPlotManager } from './plotViewer';
 import * as fs from 'fs';
@@ -180,8 +188,6 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
-import { createSessionDiscoveryFile, getGlobalPipePath, updateTerminalSessionDiscoveryFile } from './session';
-
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     const workspaceFolder = getCurrentWorkspaceFolder();
     const resource = workspaceFolder?.uri;
@@ -236,10 +242,10 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     createdTerminal.show(preserveshow);
 
     const discoveryFile = termOptions.env?.['SESS_DISCOVERY_FILE'];
-    void createdTerminal.processId.then(async (pid: number | undefined) => {
-        if (pid && typeof discoveryFile === 'string' && rTerm === createdTerminal && !session.isTerminalClosed(createdTerminal)) {
+    void Promise.resolve(createdTerminal.processId).then(async (pid: number | undefined) => {
+        if (pid && typeof discoveryFile === 'string' && rTerm === createdTerminal && !isTerminalClosed(createdTerminal)) {
             const pipePath = await getGlobalPipePath();
-            if (!session.isTerminalClosed(createdTerminal)) {
+            if (!isTerminalClosed(createdTerminal)) {
                 await updateTerminalSessionDiscoveryFile(createdTerminal, discoveryFile, pipePath, pid);
             }
         }
@@ -261,7 +267,7 @@ export function deleteTerminal(term: vscode.Terminal): void {
     if (exitReason === vscode.TerminalExitReason.User
         || exitReason === vscode.TerminalExitReason.Process
         || exitReason === vscode.TerminalExitReason.Extension) {
-        void session.removeTerminalDiscoveryFile(term).catch(error => {
+        void removeTerminalDiscoveryFile(term).catch(error => {
             console.error('Failed to remove terminal session discovery file', error);
         });
     }
