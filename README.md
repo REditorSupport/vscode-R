@@ -10,8 +10,9 @@ Go to the [wiki](https://github.com/REditorSupport/vscode-R/wiki) to view the do
 
 Version 3.0.0 introduces a major architectural shift for session watching:
 
-* **`sess` R Package**: Replaces the legacy file-based IPC with a modern,
-    in-memory WebSocket architecture using JSON-RPC 2.0.
+* **`sess` R Package**: Replaces legacy file-based IPC with Unix domain sockets
+    on macOS/Linux and Windows named pipes, using JSON Lines framing and
+    JSON-RPC 2.0 messages.
 * **Better Performance and Reliability**: No more OS-level file watchers.
     Communication is faster and more robust.
 * **Automatic Installation**: The extension will prompt you to install the

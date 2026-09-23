@@ -9,7 +9,7 @@
 
 ### Features
 
-* feat(sess): migrate session watcher to WebSockets/JSON-RPC 2.0
+* feat(sess): migrate session watcher to Unix domain sockets / Windows named pipes with JSON Lines framing and JSON-RPC 2.0
 * feat: implement rstudioapi::showPrompt() and rstudioapi::askForPassword() for sess package
 * feat: evaluate params from YAML header in Rmd files before running code
 * feat: check sess package version and prompt for update
