@@ -413,6 +413,44 @@ suite('Session Communication', () => {
         }
     }).timeout(15000);
 
+    test('rejects a different session attaching on an already-bound IPC socket', async () => {
+        const showError = sandbox.stub(vscode.window, 'showErrorMessage');
+        const endpoint = await session.getGlobalPipePath();
+        const client = net.createConnection(endpoint);
+        const sendAttach = (sessionId: string) => client.write(`${JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'attach',
+            params: {
+                protocol_version: 1,
+                session_id: sessionId,
+                host: 'remote-compute-node',
+                sess_version: '3.0.0',
+                pid: 1234,
+                version: 'R 4.4.0',
+                info: { version: '4.4.0', command: 'R', start_time: 'now' },
+                tempdir: '/tmp/session',
+                wd: '/workspace'
+            }
+        })}\n`);
+
+        try {
+            await new Promise<void>((resolve, reject) => {
+                client.once('connect', resolve);
+                client.once('error', reject);
+            });
+            sendAttach('session-a');
+            await waitFor(() => session.activeSession?.sessionId === 'session-a');
+
+            sendAttach('session-b');
+            await waitFor(() => showError.called && client.destroyed && !session.activeSession);
+
+            assert.match(String(showError.firstCall.args[0]), /already bound to session session-a/);
+            assert.notStrictEqual(session.activeSession?.sessionId, 'session-b');
+        } finally {
+            client.destroy();
+        }
+    }).timeout(10000);
+
     test('rejects an incompatible attach protocol version', async () => {
         const showError = sandbox.stub(vscode.window, 'showErrorMessage');
         const endpoint = await session.getGlobalPipePath();

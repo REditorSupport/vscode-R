@@ -1743,11 +1743,32 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 return;
             }
 
+            const boundSessionId = socket._sessionId;
+            if (boundSessionId) {
+                if (boundSessionId !== sessionId) {
+                    void window.showErrorMessage(`Cannot attach R session ${sessionId}: this IPC connection is already bound to session ${boundSessionId}. Reconnect using a new IPC connection.`);
+                    socket.destroy();
+                }
+                // An attach notification is only accepted once per socket. Treat a
+                // repeated handshake for the same session as an idempotent no-op.
+                return;
+            }
+
             const rPid = params.pid === undefined || params.pid === null ? '' : String(params.pid);
             const terminalPid = rPid && isLocalHost(host)
                 ? await findLocalTerminalPid(rPid)
                 : undefined;
             if (socket.destroyed) {
+                return;
+            }
+            // Another attach notification on this socket may have completed while
+            // local terminal association was being resolved above.
+            const attachedSessionId = socket._sessionId;
+            if (attachedSessionId) {
+                if (attachedSessionId !== sessionId) {
+                    void window.showErrorMessage(`Cannot attach R session ${sessionId}: this IPC connection is already bound to session ${attachedSessionId}. Reconnect using a new IPC connection.`);
+                    socket.destroy();
+                }
                 return;
             }
             const previous = sessions.get(sessionId);
