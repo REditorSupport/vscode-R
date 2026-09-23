@@ -36,79 +36,30 @@ local({
 # Explicit endpoint and environment handoffs take precedence.
 local({
   expect_equal(
-    sess:::.resolve_endpoint("explicit", env_endpoint = "env", env_discovery_file = "", env_pipe = "old"),
+    sess:::.resolve_endpoint("explicit", env_endpoint = "env", env_discovery_file = ""),
     "explicit"
   )
   expect_equal(
-    sess:::.resolve_endpoint(NULL, env_endpoint = "env", env_discovery_file = "", env_pipe = "old"),
+    sess:::.resolve_endpoint(NULL, env_endpoint = "env", env_discovery_file = ""),
     "env"
   )
-  expect_equal(
-    sess:::.resolve_endpoint(NULL, env_endpoint = "", env_discovery_file = "", env_pipe = "old"),
-    "old"
-  )
-})
-
-# Discovery follows Node's home-directory choice on Windows, even when R's `~`
-# expands to Documents. On Unix it continues to use the R home expansion.
-local({
-  pid <- 12345L
-  windows_profile_path <- sess:::.discovery_file_path(
-    pid = pid,
-    platform = "windows",
-    user_profile = "C:/Users/alice",
-    home_drive = "E:",
-    home_path = "\\Users\\alice",
-    home = "C:/Users/alice/Documents"
-  )
-  expect_equal(
-    windows_profile_path,
-    file.path("C:/Users/alice", ".vscode-R", "sessions", "12345.json")
-  )
-
-  windows_fallback_path <- sess:::.discovery_file_path(
-    pid = pid,
-    platform = "windows",
-    user_profile = "",
-    home_drive = "E:",
-    home_path = "\\Users\\alice",
-    home = "C:/Users/alice/Documents"
-  )
-  expect_equal(
-    windows_fallback_path,
-    file.path("E:\\Users\\alice", ".vscode-R", "sessions", "12345.json")
-  )
-
-  unix_path <- sess:::.discovery_file_path(
-    pid = pid,
-    platform = "unix",
-    user_profile = "C:/Users/alice",
-    home_drive = "E:",
-    home_path = "\\Users\\alice",
-    home = "/home/alice"
-  )
-  expect_equal(unix_path, file.path("/home/alice", ".vscode-R", "sessions", "12345.json"))
 })
 
 # Canonical discovery uses SESS_DISCOVERY_FILE and versioned `endpoint`.
 local({
   path <- tempfile(fileext = ".json")
-  legacy_path <- tempfile(fileext = ".json")
   on.exit(unlink(path), add = TRUE)
-  on.exit(unlink(legacy_path), add = TRUE)
 
   writeLines('{"version":1,"endpoint":"canonical-endpoint","terminalPid":321}', path)
   expect_equal(
     sess:::.resolve_endpoint(
-      NULL, env_endpoint = "environment-endpoint", env_discovery_file = path,
-      env_pipe = "old-pipe", legacy_discovery_path = legacy_path
+      NULL, env_endpoint = "environment-endpoint", env_discovery_file = path
     ),
     "environment-endpoint"
   )
   expect_equal(
     sess:::.resolve_endpoint(
-      NULL, env_endpoint = "", env_discovery_file = path, env_pipe = "old-pipe",
-      legacy_discovery_path = legacy_path
+      NULL, env_endpoint = "", env_discovery_file = path
     ),
     "canonical-endpoint"
   )
@@ -117,45 +68,23 @@ local({
   expect_warning(
     expect_equal(
       sess:::.resolve_endpoint(
-        NULL, env_endpoint = "", env_discovery_file = paste0(path, ".missing"),
-        env_pipe = "old-pipe", legacy_discovery_path = legacy_path
+        NULL, env_endpoint = "", env_discovery_file = paste0(path, ".missing")
       ),
       ""
     ),
     "does not exist"
   )
 
-  # Legacy PID-named files can still carry a pre-versioned `pipe` field.
-  writeLines('{"pipe":"legacy-pipe"}', legacy_path)
-  expect_equal(
-    sess:::.resolve_endpoint(
-      NULL, env_endpoint = "", env_discovery_file = "", env_pipe = "",
-      legacy_discovery_path = legacy_path
-    ),
-    "legacy-pipe"
-  )
-  writeLines('{"version":1,"pipe":"legacy-rc-pipe"}', legacy_path)
-  expect_equal(
-    sess:::.resolve_endpoint(
-      NULL, env_endpoint = "", env_discovery_file = "", env_pipe = "",
-      legacy_discovery_path = legacy_path
-    ),
-    "legacy-rc-pipe"
-  )
-
   writeLines('{"version":2,"endpoint":"future-endpoint"}', path)
   expect_warning(
     expect_equal(
-      sess:::.resolve_endpoint(
-        NULL, env_endpoint = "", env_discovery_file = path, env_pipe = "old-pipe",
-        legacy_discovery_path = legacy_path
-      ),
+      sess:::.resolve_endpoint(NULL, env_endpoint = "", env_discovery_file = path),
       ""
     ),
     "Unsupported session discovery version"
   )
 
-  writeLines('{"version":1,"pipe":"wrong-field"}', path)
+  writeLines('{"version":1,"pipe":"obsolete-field"}', path)
   expect_warning(
     expect_equal(
       sess:::.resolve_endpoint(NULL, env_endpoint = "", env_discovery_file = path),

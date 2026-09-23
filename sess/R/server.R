@@ -1,8 +1,7 @@
 #' Connect to the VS Code IPC server
 #'
 #' @param endpoint Character. Local named pipe / Unix domain socket endpoint.
-#'   If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE. SESS_PIPE and the
-#'   legacy per-process session file are accepted as 3.x compatibility fallbacks.
+#'   If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE.
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation. Defaults to TRUE.
 #' @param use_httpgd Logical. Use httpgd for plotting if available. Defaults to TRUE.
 #' @param use_jgd Logical. Use jgd for plotting if available. Defaults to FALSE.
@@ -104,33 +103,10 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
   invisible(NULL)
 }
 
-# Resolve direct arguments, environment variables, then discovery data.
-# SESS_DISCOVERY_FILE is the canonical, location-independent handoff. Old
-# SESS_PIPE and the PID-named home-directory file are read-only 3.x fallbacks.
-# TODO(sess-4.0): remove SESS_PIPE and the ~/.vscode-R discovery fallback.
-.discovery_file_path <- function(pid = Sys.getpid(), platform = .Platform$OS.type,
-                                 user_profile = Sys.getenv("USERPROFILE"),
-                                 home_drive = Sys.getenv("HOMEDRIVE"),
-                                 home_path = Sys.getenv("HOMEPATH"),
-                                 home = path.expand("~")) {
-  discovery_home <- home
-  if (identical(platform, "windows")) {
-    if (length(user_profile) == 1L && !is.na(user_profile) && nzchar(user_profile)) {
-      discovery_home <- user_profile
-    } else if (length(home_drive) == 1L && !is.na(home_drive) && nzchar(home_drive) &&
-                 length(home_path) == 1L && !is.na(home_path) && nzchar(home_path)) {
-      discovery_home <- paste0(home_drive, home_path)
-    }
-  }
-
-  file.path(discovery_home, ".vscode-R", "sessions", sprintf("%d.json", pid))
-}
-
+# Resolve the direct argument, environment variables, then discovery data.
 .resolve_endpoint <- function(endpoint = NULL,
                               env_endpoint = Sys.getenv("SESS_ENDPOINT"),
-                              env_discovery_file = Sys.getenv("SESS_DISCOVERY_FILE"),
-                              env_pipe = Sys.getenv("SESS_PIPE"),
-                              legacy_discovery_path = NULL) {
+                              env_discovery_file = Sys.getenv("SESS_DISCOVERY_FILE")) {
   if (!is.null(endpoint) && length(endpoint) == 1L && !is.na(endpoint) && nzchar(endpoint)) {
     return(endpoint)
   }
@@ -138,21 +114,15 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
     return(env_endpoint)
   }
 
-  # An explicit discovery path is authoritative. In particular, do not connect
-  # to a stale legacy endpoint if this file is missing or incompatible.
+  # An explicit discovery path is authoritative. If it is missing or
+  # incompatible, do not connect using a stale endpoint.
   if (length(env_discovery_file) == 1L && !is.na(env_discovery_file) && nzchar(env_discovery_file)) {
     return(.read_discovery_endpoint(env_discovery_file, warn = TRUE))
   }
-  if (length(env_pipe) == 1L && !is.na(env_pipe) && nzchar(env_pipe)) {
-    return(env_pipe)
-  }
-
-  if (is.null(legacy_discovery_path)) legacy_discovery_path <- .discovery_file_path()
-  endpoint <- .read_discovery_endpoint(legacy_discovery_path, warn = FALSE, allow_legacy_pipe = TRUE)
-  if (is.null(endpoint)) "" else endpoint
+  ""
 }
 
-.read_discovery_endpoint <- function(path, warn = FALSE, allow_legacy_pipe = FALSE) {
+.read_discovery_endpoint <- function(path, warn = FALSE) {
   warn_problem <- function(message) {
     if (isTRUE(warn)) warning("[sess] ", message, call. = FALSE)
     ""
@@ -176,11 +146,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
       return(warn_problem(sprintf("Invalid session discovery data in '%s'; expected a JSON object.", path)))
     }
 
-    # Pre-versioned legacy PID files may use the old `pipe` field.
     if (is.null(cfg$version)) {
-      if (isTRUE(allow_legacy_pipe) && is_endpoint(cfg$pipe)) {
-        return(cfg$pipe)
-      }
       return(warn_problem(sprintf(
         "Session discovery file '%s' has no supported schema version; expected version 1 with an endpoint field.",
         path
@@ -196,11 +162,6 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
     }
 
     value <- cfg$endpoint
-    # Some 3.x RC discovery files added a schema version before renaming
-    # `pipe` to `endpoint`; accept that field only on the legacy PID path.
-    if (!is_endpoint(value) && isTRUE(allow_legacy_pipe)) {
-      value <- cfg$pipe
-    }
     if (!is_endpoint(value)) {
       return(warn_problem(sprintf(
         "Session discovery file '%s' has no endpoint; check the vscode-R session setup.",

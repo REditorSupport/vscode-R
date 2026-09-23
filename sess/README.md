@@ -28,13 +28,11 @@ If `endpoint` is omitted, `connect()` resolves it in this order:
 
 1. `SESS_ENDPOINT` environment variable
 2. `SESS_DISCOVERY_FILE` environment variable (a JSON file with schema version `1` and an `endpoint` field)
-3. `SESS_PIPE` environment variable (3.x compatibility fallback)
-4. The legacy per-process session file, if present (3.x compatibility fallback)
 
 When `SESS_DISCOVERY_FILE` is set, that file is authoritative. If it is missing,
 invalid, or uses an unsupported schema version, `connect()` reports the problem
-and does not fall back to a potentially stale legacy endpoint. Additional
-fields in the discovery JSON are ignored by `sess`.
+and does not connect. Additional fields in the discovery JSON are ignored by
+`sess`.
 
 After connecting, `sess` sends an `attach` notification.
 
@@ -274,11 +272,7 @@ and uses `version: 1` plus an `endpoint` field:
 ```
 
 `sess` uses `version` and `endpoint`; it ignores other fields such as
-extension-private metadata. For 3.x compatibility,
-`SESS_PIPE` and the old PID-named file under `~/.vscode-R/sessions/` remain
-read-only fallbacks. That old file may contain the pre-versioned `pipe` field.
-The Windows legacy lookup uses `USERPROFILE` (or `HOMEDRIVE` + `HOMEPATH` if
-`USERPROFILE` is unset) because R's `path.expand("~")` may point to Documents.
+extension-private metadata.
 
 ## 9. What Changed from the WebSocket Transport
 
