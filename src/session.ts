@@ -13,7 +13,7 @@ import { config, readContent, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
-import { extensionContext, homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, tmpDir } from './extension';
+import { extensionContext, homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem } from './extension';
 import { resolveBackend, CommonPlotManager } from './plotViewer';
 
 import { showWebView } from './webViewer';
@@ -222,7 +222,7 @@ export function deploySessionWatcher(extensionPath: string): void {
 
     void getGlobalPipePath().then(async (pipePath) => {
         await pruneSessionFiles();
-        await updateActiveTerminalFiles(pipePath);
+        await refreshTerminalDiscoveryFiles(pipePath);
     }).catch(err => {
         console.error('Failed to initialize global session server', err);
     });
@@ -284,24 +284,144 @@ async function pruneSessionFiles() {
     }
 }
 
-export async function writeSessionFile(pid: string, pipePath: string) {
-    const homeDir = os.homedir();
+interface SessionDiscoveryFile {
+    version: 1;
+    endpoint: string;
+    terminalPid?: number;
+}
+
+function getSessionDiscoveryDir(): string {
+    return path.join(extensionContext.globalStorageUri.fsPath, 'sessions');
+}
+
+function isExtensionDiscoveryPath(filePath: string): boolean {
+    const discoveryDir = path.resolve(getSessionDiscoveryDir());
+    const resolvedPath = path.resolve(filePath);
+    return path.dirname(resolvedPath) === discoveryDir && /^[a-f0-9]{32}\.json$/i.test(path.basename(resolvedPath));
+}
+
+function terminalDiscoveryPath(terminal: vscode.Terminal): string | undefined {
+    const creationOptions = terminal.creationOptions as vscode.TerminalOptions | undefined;
+    const candidate = creationOptions?.env?.['SESS_DISCOVERY_FILE'];
+    return typeof candidate === 'string' && candidate.length > 0 && isExtensionDiscoveryPath(candidate)
+        ? candidate
+        : undefined;
+}
+
+export async function createSessionDiscoveryFile(endpoint: string): Promise<string> {
+    const discoveryDir = getSessionDiscoveryDir();
+    await fs.ensureDir(discoveryDir);
+    const filePath = path.join(discoveryDir, `${crypto.randomBytes(16).toString('hex')}.json`);
+    await writeSessionDiscoveryFile(filePath, endpoint);
+    return filePath;
+}
+
+async function writeSessionDiscoveryFile(filePath: string, endpoint: string, terminalPid?: number): Promise<void> {
+    if (!isExtensionDiscoveryPath(filePath)) {
+        throw new Error('Refusing to write session discovery data outside extension global storage');
+    }
+    const data: SessionDiscoveryFile = { version: 1, endpoint };
+    if (terminalPid !== undefined) {
+        data.terminalPid = terminalPid;
+    } else if (await fs.pathExists(filePath)) {
+        const existing = await fs.readJson(filePath) as Partial<SessionDiscoveryFile>;
+        if (typeof existing.terminalPid === 'number') {
+            data.terminalPid = existing.terminalPid;
+        }
+    }
+    await fs.ensureDir(path.dirname(filePath));
+    const temporaryPath = `${filePath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+    try {
+        await fs.writeJson(temporaryPath, data, { mode: 0o600 });
+        await setOwnerOnlyPermissions(temporaryPath);
+        await fs.rename(temporaryPath, filePath);
+        await setOwnerOnlyPermissions(filePath);
+    } catch (error) {
+        await fs.remove(temporaryPath).catch(() => undefined);
+        throw error;
+    }
+}
+
+export async function updateSessionDiscoveryFile(filePath: string, endpoint: string, terminalPid?: number): Promise<void> {
+    await writeSessionDiscoveryFile(filePath, endpoint, terminalPid);
+}
+
+async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string | undefined> {
+    const discoveryDir = getSessionDiscoveryDir();
+    if (!await fs.pathExists(discoveryDir)) {
+        return undefined;
+    }
+    for (const file of await fs.readdir(discoveryDir)) {
+        if (!file.endsWith('.json')) {
+            continue;
+        }
+        const filePath = path.join(discoveryDir, file);
+        if (!isExtensionDiscoveryPath(filePath)) {
+            continue;
+        }
+        try {
+            const discovery = await fs.readJson(filePath) as Partial<SessionDiscoveryFile>;
+            if (discovery.version === 1 && discovery.terminalPid === terminalPid && typeof discovery.endpoint === 'string') {
+                return filePath;
+            }
+        } catch (e) {
+            console.warn(`[session discovery] Failed to read ${filePath}`, e);
+        }
+    }
+    return undefined;
+}
+
+// TODO(4.0): Remove compatibility updates for legacy ~/.vscode-R discovery files.
+async function updateExistingLegacySessionFile(pid: number, endpoint: string, homeDir: string): Promise<void> {
     const sessionsDir = path.join(homeDir, '.vscode-R', 'sessions');
-    await fs.ensureDir(sessionsDir);
     const filePath = path.join(sessionsDir, `${pid}.json`);
-    await fs.writeJson(filePath, { version: 1, endpoint: pipePath });
+    if (!await fs.pathExists(filePath)) {
+        return;
+    }
+    await fs.writeJson(filePath, { version: 1, endpoint });
     await setOwnerOnlyPermissions(filePath);
 }
 
-async function updateActiveTerminalFiles(pipePath: string) {
-    const terminals = vscode.window.terminals;
+export async function refreshTerminalDiscoveryFiles(
+    pipePath: string,
+    terminals: readonly vscode.Terminal[] = vscode.window.terminals,
+    legacyHome = os.homedir(),
+): Promise<void> {
     for (const term of terminals) {
-        if (term.name === 'R Interactive') {
-            const pid = await term.processId;
-            if (pid) {
-                await writeSessionFile(pid.toString(), pipePath);
-            }
+        const envPath = terminalDiscoveryPath(term);
+        if (!envPath && term.name !== 'R Interactive') {
+            continue;
         }
+        const terminalPid = await term.processId;
+        if (!terminalPid) {
+            continue;
+        }
+        let discoveryPath = envPath;
+        discoveryPath ??= await findDiscoveryFileForTerminal(terminalPid);
+        if (discoveryPath) {
+            await updateSessionDiscoveryFile(discoveryPath, pipePath, terminalPid);
+        }
+        if (term.name === 'R Interactive') {
+            await updateExistingLegacySessionFile(terminalPid, pipePath, legacyHome);
+        }
+    }
+}
+
+export async function updateTerminalDiscovery(terminal: vscode.Terminal): Promise<void> {
+    if (!globalPipePath) {
+        return;
+    }
+    const terminalPid = await terminal.processId;
+    if (terminalPid === undefined) {
+        return;
+    }
+    let discoveryPath = terminalDiscoveryPath(terminal);
+    if (!discoveryPath && terminal.name !== 'R Interactive') {
+        return;
+    }
+    discoveryPath ??= await findDiscoveryFileForTerminal(terminalPid);
+    if (discoveryPath) {
+        await updateSessionDiscoveryFile(discoveryPath, globalPipePath, terminalPid);
     }
 }
 
@@ -456,11 +576,8 @@ function asRStringLiteral(value: string): string {
 }
 
 function getAttachSessionScriptPath(pipePath: string): string {
-    if (pipePath.endsWith('.sock')) {
-        return pipePath.replace(/\.sock$/, '.R');
-    }
     const scriptBase = path.basename(pipePath).replace(/[^a-zA-Z0-9_.-]/g, '_') || 'attach_session';
-    return path.join(tmpDir(), `${scriptBase}.R`);
+    return path.join(extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', `${scriptBase}.R`);
 }
 
 function buildAttachSessionScript(pipePath: string, sessPath: string, installSessScriptPath: string): string {
@@ -498,6 +615,7 @@ export async function getAttachSessionCommand(): Promise<string> {
     const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
     const installSessScriptPath = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
     const scriptPath = getAttachSessionScriptPath(pipePath);
+    await fs.ensureDir(path.dirname(scriptPath));
     await fs.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, installSessScriptPath), { encoding: 'utf-8', mode: 0o600 });
     await setOwnerOnlyPermissions(scriptPath);
     attachSessionScriptPath = scriptPath;

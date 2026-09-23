@@ -298,6 +298,7 @@ suite('Session Communication', () => {
         const scriptPath = JSON.parse(commandMatch[1]) as string;
         const scriptContent = await fs.readFile(scriptPath, 'utf8');
         assert.match(scriptContent, /sess::connect\(endpoint = endpoint/);
+        assert.strictEqual(path.dirname(scriptPath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach'));
         const scriptStat = await fs.stat(scriptPath);
         if (process.platform !== 'win32') {
             assert.strictEqual(scriptStat.mode & 0o777, 0o600, 'attach script should be owner-only');
@@ -311,9 +312,9 @@ suite('Session Communication', () => {
             assert.strictEqual(pipeStat.mode & 0o777, 0o600, 'socket file should be owner-only');
         }
 
-        const sessionFilePid = `perm-test-${process.pid}`;
-        await session.writeSessionFile(sessionFilePid, pipePath ?? '');
-        const sessionFilePath = path.join(os.homedir(), '.vscode-R', 'sessions', `${sessionFilePid}.json`);
+        const sessionFilePath = await session.createSessionDiscoveryFile(pipePath ?? '');
+        assert.strictEqual(path.dirname(sessionFilePath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'sessions'));
+        assert.match(path.basename(sessionFilePath), /^[a-f0-9]{32}\.json$/);
         assert.deepStrictEqual(await fs.readJson(sessionFilePath), { version: 1, endpoint: pipePath ?? '' });
         const sessionFileStat = await fs.stat(sessionFilePath);
         if (process.platform !== 'win32') {
@@ -323,6 +324,76 @@ suite('Session Communication', () => {
 
         await session.shutdownSessionWatcher();
     }).timeout(15000);
+
+    test('reload rewrites the same extension-owned discovery file using terminal PID metadata', async () => {
+        const oldEndpoint = await session.getGlobalPipePath();
+        const discoveryFile = await session.createSessionDiscoveryFile(oldEndpoint);
+        const terminalPid = 45231; // Deliberately distinct from any R process PID.
+        await session.updateSessionDiscoveryFile(discoveryFile, oldEndpoint, terminalPid);
+        const newEndpoint = `${oldEndpoint}.reload`;
+        const terminal = {
+            name: 'R Interactive',
+            processId: Promise.resolve(terminalPid),
+            creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: discoveryFile } },
+        } as unknown as vscode.Terminal;
+        let wrapperDiscoveryFile: string | undefined;
+        try {
+            await session.refreshTerminalDiscoveryFiles(newEndpoint, [terminal]);
+
+            assert.deepStrictEqual(await fs.readJson(discoveryFile), {
+                version: 1,
+                endpoint: newEndpoint,
+                terminalPid,
+            });
+
+            // Restored VS Code terminals may not expose creationOptions.env. The
+            // extension-owned terminal PID metadata must still locate the same file.
+            wrapperDiscoveryFile = await session.createSessionDiscoveryFile(oldEndpoint);
+            const wrapperTerminalPid = 45233;
+            await session.updateSessionDiscoveryFile(wrapperDiscoveryFile, oldEndpoint, wrapperTerminalPid);
+            const wrapperTerminal = {
+                name: 'R Interactive',
+                processId: Promise.resolve(wrapperTerminalPid),
+                creationOptions: { name: 'R Interactive' },
+            } as unknown as vscode.Terminal;
+            await session.refreshTerminalDiscoveryFiles(newEndpoint, [wrapperTerminal]);
+            assert.deepStrictEqual(await fs.readJson(wrapperDiscoveryFile), {
+                version: 1,
+                endpoint: newEndpoint,
+                terminalPid: wrapperTerminalPid,
+            });
+        } finally {
+            await fs.remove(discoveryFile);
+            if (wrapperDiscoveryFile) {
+                await fs.remove(wrapperDiscoveryFile);
+            }
+        }
+    });
+
+    test('reload updates an existing legacy discovery file without creating one', async () => {
+        const legacyHome = path.join(os.tmpdir(), `vscode-r-legacy-home-${process.pid}`);
+        const endpoint = await session.getGlobalPipePath();
+        const terminalPid = 45232;
+        const terminal = {
+            name: 'R Interactive',
+            processId: Promise.resolve(terminalPid),
+            creationOptions: { name: 'R Interactive', env: {} },
+        } as unknown as vscode.Terminal;
+        const legacyDirectory = path.join(legacyHome, '.vscode-R', 'sessions');
+        await fs.ensureDir(legacyDirectory);
+
+        try {
+            await session.refreshTerminalDiscoveryFiles(endpoint, [terminal], legacyHome);
+            assert.strictEqual(await fs.pathExists(path.join(legacyDirectory, `${terminalPid}.json`)), false);
+
+            const existingLegacyFile = path.join(legacyDirectory, `${terminalPid}.json`);
+            await fs.writeJson(existingLegacyFile, { version: 1, endpoint: 'old-endpoint' });
+            await session.refreshTerminalDiscoveryFiles(`${endpoint}.reload`, [terminal], legacyHome);
+            assert.deepStrictEqual(await fs.readJson(existingLegacyFile), { version: 1, endpoint: `${endpoint}.reload` });
+        } finally {
+            await fs.remove(legacyHome);
+        }
+    });
 
     test('IPC protocol keys sessions by session_id and ignores close from a replaced socket', async () => {
         const endpoint = await session.getGlobalPipePath();

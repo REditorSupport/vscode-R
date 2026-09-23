@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as assert from 'assert';
 import * as path from 'path';
+import * as fs from 'fs-extra';
 
 import { mockExtensionContext } from '../common/mockvscode';
 import * as rTerminal from '../../rTerminal';
@@ -46,16 +47,28 @@ suite('R Terminal', () => {
         sandbox.stub(util, 'promptToInstallSessPackage').resolves();
 
         const options = await rTerminal.makeTerminalOptions();
-
-        assert.strictEqual(options.name, 'R Interactive');
-        assert.ok(options.env);
-        assert.ok(options.env['SESS_ENDPOINT']);
-        assert.strictEqual(options.env['SESS_PIPE'], undefined);
-        assert.strictEqual(options.env['SESS_RSTUDIOAPI'], 'TRUE');
-        assert.strictEqual(options.env['SESS_USE_HTTPGD'], 'TRUE');
-        assert.strictEqual(options.env['SESS_PLOT_BACKEND'], 'httpgd');
-        assert.ok(options.env['R_PROFILE_USER']);
-        assert.ok(options.env['R_PROFILE_USER'].endsWith(path.join('R', 'profile.R')));
+        const discoveryFile = options.env?.['SESS_DISCOVERY_FILE'];
+        try {
+            assert.strictEqual(options.name, 'R Interactive');
+            assert.ok(options.env);
+            assert.ok(discoveryFile);
+            assert.strictEqual(options.env['SESS_ENDPOINT'], null);
+            assert.strictEqual(options.env['SESS_PIPE'], null);
+            assert.strictEqual(options.env['SESS_RSTUDIOAPI'], 'TRUE');
+            assert.strictEqual(options.env['SESS_USE_HTTPGD'], 'TRUE');
+            assert.strictEqual(options.env['SESS_PLOT_BACKEND'], 'httpgd');
+            assert.ok(options.env['R_PROFILE_USER']);
+            assert.ok(options.env['R_PROFILE_USER'].endsWith(path.join('R', 'profile.R')));
+            if (typeof discoveryFile !== 'string') {
+                throw new Error('SESS_DISCOVERY_FILE should be a string path');
+            }
+            const discovery = await fs.readJson(discoveryFile);
+            assert.deepStrictEqual(discovery, { version: 1, endpoint: session.globalPipePath });
+        } finally {
+            if (typeof discoveryFile === 'string') {
+                await fs.remove(discoveryFile);
+            }
+        }
     });
 
     test('makeTerminalOptions prefers an explicit plot.backend over legacy plot.useHttpgd', async () => {
@@ -99,7 +112,7 @@ suite('R Terminal', () => {
 
         const options = await rTerminal.makeTerminalOptions();
 
-        assert.ok(options.env === undefined || options.env['SESS_ENDPOINT'] === undefined);
+        assert.ok(options.env === undefined || options.env['SESS_DISCOVERY_FILE'] === undefined);
     });
 
     test('createRTerm and restartRTerminal integration test', async () => {
