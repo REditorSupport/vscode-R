@@ -378,6 +378,7 @@ get_column_def <- function(name, field, value) {
     col_def$cellDataType <- jsonlite::unbox("boolean")
   }
   if (identical(field, "0")) {
+    col_def$lockPosition <- jsonlite::unbox("left")
     col_def$suppressHeaderMenuButton <- jsonlite::unbox(TRUE)
   }
   col_def
