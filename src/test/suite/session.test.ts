@@ -441,8 +441,11 @@ suite('Session Communication', () => {
             sendAttach('session-a');
             await waitFor(() => session.activeSession?.sessionId === 'session-a');
 
+            const clientClosed = new Promise<void>(resolve => client.once('close', resolve));
             sendAttach('session-b');
-            await waitFor(() => showError.called && client.destroyed && !session.activeSession);
+            await waitFor(() => showError.called);
+            await clientClosed;
+            await waitFor(() => !session.activeSession);
 
             assert.match(String(showError.firstCall.args[0]), /already bound to session session-a/);
             assert.notStrictEqual(session.activeSession?.sessionId, 'session-b');
