@@ -180,7 +180,7 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
-import { createSessionDiscoveryFile, getGlobalPipePath, updateSessionDiscoveryFile } from './session';
+import { createSessionDiscoveryFile, getGlobalPipePath, updateTerminalSessionDiscoveryFile } from './session';
 
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     const workspaceFolder = getCurrentWorkspaceFolder();
@@ -237,11 +237,13 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
 
     const discoveryFile = termOptions.env?.['SESS_DISCOVERY_FILE'];
     void createdTerminal.processId.then(async (pid: number | undefined) => {
-        if (pid && typeof discoveryFile === 'string' && rTerm === createdTerminal) {
+        if (pid && typeof discoveryFile === 'string' && rTerm === createdTerminal && !session.isTerminalClosed(createdTerminal)) {
             const pipePath = await getGlobalPipePath();
-            await updateSessionDiscoveryFile(discoveryFile, pipePath, pid);
+            if (!session.isTerminalClosed(createdTerminal)) {
+                await updateTerminalSessionDiscoveryFile(createdTerminal, discoveryFile, pipePath, pid);
+            }
         }
-    });
+    }).catch(error => console.error('Failed to update terminal session discovery file', error));
     
     return true;
 }
@@ -255,9 +257,16 @@ export async function restartRTerminal(): Promise<void>{
 }
 
 export function deleteTerminal(term: vscode.Terminal): void {
-    // Keep discovery files across terminal close events because VS Code may emit
-    // them while preserving terminals during a window reload.
-    // TODO: Prune stale extension-owned discovery files once terminal persistence can be distinguished from closure.
+    const exitReason = term.exitStatus?.reason;
+    if (exitReason === vscode.TerminalExitReason.User
+        || exitReason === vscode.TerminalExitReason.Process
+        || exitReason === vscode.TerminalExitReason.Extension) {
+        void session.removeTerminalDiscoveryFile(term).catch(error => {
+            console.error('Failed to remove terminal session discovery file', error);
+        });
+    }
+    // TODO: Prune orphaned extension-owned discovery files left by crashes, when
+    // safe lifecycle information is available without relying on local PID polling.
     if (isDeepStrictEqual(term, rTerm)) {
         rTerm = undefined;
         if (config().get<boolean>('sessionWatcher')) {

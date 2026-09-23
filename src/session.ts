@@ -247,6 +247,25 @@ const pendingRequests = new Map<number, {
     socket: IpcSocket;
 }>();
 
+const closedTerminals = new WeakSet<vscode.Terminal>();
+const terminalDiscoveryOperations = new WeakMap<vscode.Terminal, Promise<void>>();
+
+function queueTerminalDiscoveryOperation(terminal: vscode.Terminal, operation: () => Promise<void>): Promise<void> {
+    const previous = terminalDiscoveryOperations.get(terminal) ?? Promise.resolve();
+    const current = previous.catch(() => undefined).then(operation);
+    terminalDiscoveryOperations.set(terminal, current);
+    void current.then(() => {
+        if (terminalDiscoveryOperations.get(terminal) === current) {
+            terminalDiscoveryOperations.delete(terminal);
+        }
+    }, () => {
+        if (terminalDiscoveryOperations.get(terminal) === current) {
+            terminalDiscoveryOperations.delete(terminal);
+        }
+    });
+    return current;
+}
+
 let globalSessionServer: net.Server | undefined;
 let attachSessionScriptPath: string | undefined;
 
@@ -272,6 +291,33 @@ function terminalDiscoveryPath(terminal: vscode.Terminal): string | undefined {
     return typeof candidate === 'string' && candidate.length > 0 && isExtensionDiscoveryPath(candidate)
         ? candidate
         : undefined;
+}
+
+export function isTerminalClosed(terminal: vscode.Terminal): boolean {
+    return closedTerminals.has(terminal);
+}
+
+/**
+ * Delete the discovery file owned by a terminal that VS Code confirms has ended.
+ * Missing exit reasons are intentionally handled by the caller as uncertain because
+ * VS Code also closes terminals while preserving them for a window reload.
+ */
+export async function removeTerminalDiscoveryFile(terminal: vscode.Terminal): Promise<void> {
+    closedTerminals.add(terminal);
+
+    await queueTerminalDiscoveryOperation(terminal, async () => {
+        let discoveryPath = terminalDiscoveryPath(terminal);
+        if (!discoveryPath && terminal.name === 'R Interactive') {
+            const terminalPid = await terminal.processId;
+            if (terminalPid !== undefined) {
+                discoveryPath = await findDiscoveryFileForTerminal(terminalPid);
+            }
+        }
+
+        if (discoveryPath) {
+            await fs.remove(discoveryPath);
+        }
+    });
 }
 
 export async function createSessionDiscoveryFile(endpoint: string): Promise<string> {
@@ -312,6 +358,19 @@ export async function updateSessionDiscoveryFile(filePath: string, endpoint: str
     await writeSessionDiscoveryFile(filePath, endpoint, terminalPid);
 }
 
+export async function updateTerminalSessionDiscoveryFile(
+    terminal: vscode.Terminal,
+    filePath: string,
+    endpoint: string,
+    terminalPid?: number,
+): Promise<void> {
+    await queueTerminalDiscoveryOperation(terminal, async () => {
+        if (!isTerminalClosed(terminal)) {
+            await writeSessionDiscoveryFile(filePath, endpoint, terminalPid);
+        }
+    });
+}
+
 async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string | undefined> {
     const discoveryDir = getSessionDiscoveryDir();
     if (!await fs.pathExists(discoveryDir)) {
@@ -345,28 +404,31 @@ export async function refreshTerminalDiscoveryFiles(
     terminals: readonly vscode.Terminal[] = vscode.window.terminals,
 ): Promise<void> {
     for (const term of terminals) {
+        if (isTerminalClosed(term)) {
+            continue;
+        }
         const envPath = terminalDiscoveryPath(term);
         if (!envPath && term.name !== 'R Interactive') {
             continue;
         }
         const terminalPid = await term.processId;
-        if (!terminalPid) {
+        if (!terminalPid || isTerminalClosed(term)) {
             continue;
         }
         let discoveryPath = envPath;
         discoveryPath ??= await findDiscoveryFileForTerminal(terminalPid);
-        if (discoveryPath) {
-            await updateSessionDiscoveryFile(discoveryPath, pipePath, terminalPid);
+        if (discoveryPath && !isTerminalClosed(term)) {
+            await updateTerminalSessionDiscoveryFile(term, discoveryPath, pipePath, terminalPid);
         }
     }
 }
 
 export async function updateTerminalDiscovery(terminal: vscode.Terminal): Promise<void> {
-    if (!globalPipePath) {
+    if (!globalPipePath || isTerminalClosed(terminal)) {
         return;
     }
     const terminalPid = await terminal.processId;
-    if (terminalPid === undefined) {
+    if (terminalPid === undefined || isTerminalClosed(terminal)) {
         return;
     }
     let discoveryPath = terminalDiscoveryPath(terminal);
@@ -374,8 +436,8 @@ export async function updateTerminalDiscovery(terminal: vscode.Terminal): Promis
         return;
     }
     discoveryPath ??= await findDiscoveryFileForTerminal(terminalPid);
-    if (discoveryPath) {
-        await updateSessionDiscoveryFile(discoveryPath, globalPipePath, terminalPid);
+    if (discoveryPath && !isTerminalClosed(terminal)) {
+        await updateTerminalSessionDiscoveryFile(terminal, discoveryPath, globalPipePath, terminalPid);
     }
 }
 

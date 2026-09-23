@@ -11,6 +11,17 @@ import * as session from '../../session';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
+async function waitForDiscoveryRemoval(filePath: string): Promise<void> {
+    const deadline = Date.now() + 1000;
+    while (Date.now() < deadline) {
+        if (!await fs.pathExists(filePath)) {
+            return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.fail(`Timed out waiting for discovery file removal: ${filePath}`);
+}
+
 suite('R Terminal', () => {
     let sandbox: sinon.SinonSandbox;
 
@@ -61,12 +72,85 @@ suite('R Terminal', () => {
             if (typeof discoveryFile !== 'string') {
                 throw new Error('SESS_DISCOVERY_FILE should be a string path');
             }
-            const discovery = await fs.readJson(discoveryFile);
+            const discovery: unknown = await fs.readJson(discoveryFile);
             assert.deepStrictEqual(discovery, { version: 1, endpoint: session.globalPipePath });
         } finally {
             if (typeof discoveryFile === 'string') {
                 await fs.remove(discoveryFile);
             }
+        }
+    });
+
+    test('deleteTerminal removes only its discovery file after an explicit terminal close', async () => {
+        const endpoint = await session.getGlobalPipePath();
+        const discoveryFile = await session.createSessionDiscoveryFile(endpoint);
+        const unrelatedFile = await session.createSessionDiscoveryFile(endpoint);
+        const terminal = {
+            name: 'R Interactive',
+            processId: Promise.resolve(45239),
+            creationOptions: {
+                name: 'R Interactive',
+                env: { SESS_DISCOVERY_FILE: discoveryFile },
+            },
+            exitStatus: { code: undefined, reason: vscode.TerminalExitReason.User },
+        } as unknown as vscode.Terminal;
+
+        try {
+            rTerminal.deleteTerminal(terminal);
+            await waitForDiscoveryRemoval(discoveryFile);
+            assert.strictEqual(await fs.pathExists(unrelatedFile), true);
+        } finally {
+            await fs.remove(discoveryFile);
+            await fs.remove(unrelatedFile);
+        }
+    });
+
+    test('deleteTerminal keeps discovery files for shutdown and uncertain exits', async () => {
+        const endpoint = await session.getGlobalPipePath();
+        const shutdownFile = await session.createSessionDiscoveryFile(endpoint);
+        const unknownFile = await session.createSessionDiscoveryFile(endpoint);
+        const shutdownTerminal = {
+            name: 'R Interactive',
+            processId: Promise.resolve(45241),
+            creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: shutdownFile } },
+            exitStatus: { code: undefined, reason: vscode.TerminalExitReason.Shutdown },
+        } as unknown as vscode.Terminal;
+        const unknownTerminal = {
+            name: 'R Interactive',
+            processId: Promise.resolve(45243),
+            creationOptions: { name: 'R Interactive', env: { SESS_DISCOVERY_FILE: unknownFile } },
+            exitStatus: { code: undefined, reason: vscode.TerminalExitReason.Unknown },
+        } as unknown as vscode.Terminal;
+
+        try {
+            rTerminal.deleteTerminal(shutdownTerminal);
+            rTerminal.deleteTerminal(unknownTerminal);
+            await new Promise(resolve => setTimeout(resolve, 10));
+            assert.strictEqual(await fs.pathExists(shutdownFile), true);
+            assert.strictEqual(await fs.pathExists(unknownFile), true);
+        } finally {
+            await fs.remove(shutdownFile);
+            await fs.remove(unknownFile);
+        }
+    });
+
+    test('deleteTerminal finds a restored R terminal discovery file by terminal PID metadata', async () => {
+        const endpoint = await session.getGlobalPipePath();
+        const discoveryFile = await session.createSessionDiscoveryFile(endpoint);
+        const terminalPid = 45245;
+        await session.updateSessionDiscoveryFile(discoveryFile, endpoint, terminalPid);
+        const terminal = {
+            name: 'R Interactive',
+            processId: Promise.resolve(terminalPid),
+            creationOptions: { name: 'R Interactive' },
+            exitStatus: { code: undefined, reason: vscode.TerminalExitReason.Process },
+        } as unknown as vscode.Terminal;
+
+        try {
+            rTerminal.deleteTerminal(terminal);
+            await waitForDiscoveryRemoval(discoveryFile);
+        } finally {
+            await fs.remove(discoveryFile);
         }
     });
 

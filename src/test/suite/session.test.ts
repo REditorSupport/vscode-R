@@ -391,8 +391,12 @@ suite('Session Communication', () => {
             } as unknown as vscode.Terminal;
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [terminal]);
 
-            assert.strictEqual((await fs.readJson(olderFile)).endpoint, oldEndpoint);
-            assert.strictEqual((await fs.readJson(newerFile)).endpoint, newEndpoint);
+            const olderDiscovery: unknown = await fs.readJson(olderFile);
+            const newerDiscovery: unknown = await fs.readJson(newerFile);
+            assert.ok(typeof olderDiscovery === 'object' && olderDiscovery !== null && 'endpoint' in olderDiscovery);
+            assert.ok(typeof newerDiscovery === 'object' && newerDiscovery !== null && 'endpoint' in newerDiscovery);
+            assert.strictEqual(olderDiscovery.endpoint, oldEndpoint);
+            assert.strictEqual(newerDiscovery.endpoint, newEndpoint);
         } finally {
             await fs.remove(olderFile);
             await fs.remove(newerFile);
