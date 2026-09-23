@@ -105,7 +105,11 @@ export async function getRterm(resource?: vscode.Uri): Promise<string | undefine
         return rpath;
     }
 
-    void vscode.window.showErrorMessage(`Cannot find R for creating R terminal. Change setting r.${rConsolePathSetting} to an R console executable.`);
+    if (resolution.setting) {
+        void vscode.window.showErrorMessage(`Cannot find the R console executable configured by r.${resolution.setting}. Check the r.${resolution.setting} setting.`);
+    } else {
+        void vscode.window.showErrorMessage(`Cannot find an R console executable. Configure r.${rConsolePathSetting}, r.${getRPathConfigEntry(true)}, or r.${rExecutablePathSetting}.`);
+    }
     return undefined;
 }
 

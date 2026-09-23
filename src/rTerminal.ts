@@ -10,12 +10,13 @@ import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
 import { cleanupSession, deferWorkspaceRefresh } from './session';
-import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
+import { config, delay, getRterm, getCurrentWorkspaceFolder, getRPathConfigEntry } from './util';
 import { resolveBackend, CommonPlotManager } from './plotViewer';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
 export let rTerm: vscode.Terminal | undefined = undefined;
+let rTermResource: vscode.Uri | undefined;
 
 let lastParamsRmdPath: string | undefined;
 let lastParamsRmdVersion: number | undefined;
@@ -182,14 +183,47 @@ export async function runFromLineToEnd(): Promise<void>  {
 
 import { getGlobalPipePath, writeSessionFile } from './session';
 
-export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
-    const workspaceFolder = getCurrentWorkspaceFolder();
-    const resource = workspaceFolder?.uri;
+function getExplicitSetting<T>(configuration: vscode.WorkspaceConfiguration, key: string): T | undefined {
+    const inspected = typeof configuration.inspect === 'function' ? configuration.inspect<T>(key) : undefined;
+    if (!inspected) {
+        return undefined;
+    }
+    return inspected.workspaceFolderValue ?? inspected.workspaceValue ?? inspected.globalValue;
+}
+
+function getConsoleArgs(configuration: vscode.WorkspaceConfiguration): string[] {
+    const canonical = getExplicitSetting<string[]>(configuration, 'consoleArgs');
+    if (canonical !== undefined) {
+        return canonical;
+    }
+    const legacy = getExplicitSetting<string[]>(configuration, 'rterm.option');
+    if (legacy !== undefined) {
+        return legacy;
+    }
+    return configuration.get<string[]>('consoleArgs') ?? ['--no-save', '--no-restore'];
+}
+
+function getConsoleSendDelay(resource?: vscode.Uri): number {
+    const currentConfig = config(resource);
+    const canonical = getExplicitSetting<number>(currentConfig, 'consoleSendDelay');
+    if (canonical !== undefined) {
+        return canonical;
+    }
+    const legacy = getExplicitSetting<number>(currentConfig, 'rtermSendDelay');
+    if (legacy !== undefined) {
+        return legacy;
+    }
+    return currentConfig.get<number>('consoleSendDelay') ?? 8;
+}
+
+export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode.TerminalOptions> {
+    const workspaceFolder = resource ? getCurrentWorkspaceFolder(resource) : getCurrentWorkspaceFolder();
+    resource = resource ?? workspaceFolder?.uri;
     const workspaceFolderPath = resource?.fsPath;
     const currentConfig = config(resource);
     const termPath = await getRterm(resource);
-    const shellArgs: string[] = currentConfig.get<string[]>('rterm.option')
-        ?.map(value => util.substituteVariables(value, resource)) || [];
+    const shellArgs = getConsoleArgs(currentConfig)
+        .map(value => util.substituteVariables(value, resource));
     const termOptions: vscode.TerminalOptions = {
         name: 'R Interactive',
         shellPath: termPath,
@@ -216,18 +250,19 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     return termOptions;
 }
 
-export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
-    const termOptions = await makeTerminalOptions();
+export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri): Promise<boolean> {
+    resource = resource ?? getCurrentWorkspaceFolder()?.uri;
+    const termOptions = await makeTerminalOptions(resource);
     void util.promptToInstallSessPackage(termOptions.cwd);
     const termPath = termOptions.shellPath;
     if(!termPath){
-        void vscode.window.showErrorMessage('Could not find an R console executable. Please check the r.consolePath and r.executablePath settings.');
         return false;
     } else if(!fs.existsSync(termPath)){
-        void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check the r.consolePath setting.`);
+        void vscode.window.showErrorMessage(`Cannot find R console executable at ${termPath}. Please check r.consolePath, r.${getRPathConfigEntry(true)}, or r.executablePath.`);
         return false;
     }
     rTerm = vscode.window.createTerminal(termOptions);
+    rTermResource = resource;
     rTerm.show(preserveshow);
     
     void rTerm.processId.then(async (pid: number | undefined) => {
@@ -242,15 +277,17 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
 
 export async function restartRTerminal(): Promise<void>{
     if (typeof rTerm !== 'undefined'){
+        const resource = rTermResource;
         rTerm.dispose();
         deleteTerminal(rTerm);
-        await createRTerm(true);
+        await createRTerm(true, resource);
     }
 }
 
 export function deleteTerminal(term: vscode.Terminal): void {
     if (isDeepStrictEqual(term, rTerm)) {
         rTerm = undefined;
+        rTermResource = undefined;
         if (config().get<boolean>('sessionWatcher')) {
             void term.processId.then((v) => {
                 if (v) {
@@ -259,6 +296,19 @@ export function deleteTerminal(term: vscode.Terminal): void {
             });
         }
     }
+}
+
+function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
+    if (term === rTerm && rTermResource) {
+        return rTermResource;
+    }
+
+    const creationOptions = term.creationOptions;
+    const cwd = 'cwd' in creationOptions ? creationOptions.cwd : undefined;
+    const cwdResource = typeof cwd === 'string' ? vscode.Uri.file(cwd) : cwd;
+    return cwdResource
+        ? getCurrentWorkspaceFolder(cwdResource)?.uri ?? cwdResource
+        : getCurrentWorkspaceFolder()?.uri;
 }
 
 export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
@@ -363,7 +413,8 @@ export async function runTextInTerm(text: string, execute: boolean = true): Prom
         text = `\x1b[200~${text}\x1b[201~`;
         term.sendText(text, execute);
     } else {
-        const rtermSendDelay: number = config().get('rtermSendDelay') || 8;
+        const resource = getTerminalResource(term);
+        const rtermSendDelay = getConsoleSendDelay(resource);
         const split = text.split('\n');
         const last_split = split.length - 1;
         for (const [count, line] of split.entries()) {

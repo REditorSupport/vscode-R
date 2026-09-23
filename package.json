@@ -1267,7 +1267,7 @@
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "markdownDescription": "Absolute or substituted path to the executable used to launch the interactive R console, or an executable name available on `PATH`. Alternative consoles such as arf (or radian) are supported. The supported substitutions are `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}`."
+          "markdownDescription": "Use an absolute or substituted path, or a bare executable name such as `R`, `arf`, or `radian` resolved from `PATH` to launch the interactive R console. The supported substitutions are `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}`."
         },
         "r.rpath.windows": {
           "type": "string",
@@ -1318,6 +1318,20 @@
             "--no-restore"
           ],
           "description": "R command line options.",
+          "markdownDeprecationMessage": "Deprecated. Use `#r.consoleArgs#` instead.",
+          "deprecationMessage": "Deprecated. Use r.consoleArgs instead.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "r.consoleArgs": {
+          "type": "array",
+          "default": [
+            "--no-save",
+            "--no-restore"
+          ],
+          "scope": "machine-overridable",
+          "description": "Arguments passed to the interactive R console.",
           "items": {
             "type": "string"
           }
@@ -1726,7 +1740,15 @@
         "r.rtermSendDelay": {
           "type": "integer",
           "default": 8,
-          "markdownDescription": "Delay in milliseconds before sending each line to rterm. Requires `#r.bracketedPaste#` to be `false`."
+          "markdownDescription": "Delay in milliseconds before sending each line to the R console. Requires `#r.bracketedPaste#` to be `false`.",
+          "markdownDeprecationMessage": "Deprecated. Use `#r.consoleSendDelay#` instead.",
+          "deprecationMessage": "Deprecated. Use r.consoleSendDelay instead."
+        },
+        "r.consoleSendDelay": {
+          "type": "integer",
+          "default": 8,
+          "scope": "machine-overridable",
+          "markdownDescription": "Delay in milliseconds before sending each line to the R console. Requires `#r.bracketedPaste#` to be `false`."
         },
         "r.workspaceViewer.removeHiddenItems": {
           "type": "boolean",
@@ -1793,7 +1815,7 @@
             "httpgd-based interactive plot viewer (requires `httpgd` R package)",
             "JGD-based interactive plot viewer (requires `jgd` R package)"
           ],
-          "markdownDescription": "The canonical setting for selecting the plot backend.\n\nWhen set to `auto`, the best available backend is used (JGD if installed, then httpgd, then standard). For compatibility, setting `#r.plot.useHttpgd#` to `true` selects httpgd while this setting remains `auto`; an explicit backend value takes precedence."
+          "markdownDescription": "The canonical setting for selecting the plot backend.\n\nWhen set to `auto`, the best available backend is used (JGD if installed, then httpgd, then standard). For backwards compatibility, setting `#r.plot.useHttpgd#` to `true` selects httpgd while this setting remains `auto`; an explicit backend value takes precedence."
         },
         "r.plot.jgd.historyLimit": {
           "type": "number",
