@@ -20,6 +20,7 @@ ipc_write <- function(data) {
     },
     error = function(e) {
       warning("[sess] Failed to send IPC message: ", e$message)
+      .transport_disconnect(silent = TRUE)
       invisible(FALSE)
     }
   )
@@ -49,17 +50,20 @@ rpc_send <- function(method, params = list(), request = FALSE) {
     msg$id <- req_id
   }
 
-  ipc_write(msg)
+  sent <- ipc_write(msg)
+  if (!isTRUE(sent)) return(invisible(FALSE))
 
   if (!request) {
     invisible(TRUE)
   } else {
     # NON-BLOCKING WAIT:
     # Run later callbacks (which include poll_connection) while waiting for a response.
-    while (is.null(.sess_env$pending_responses[[req_id]])) {
+    while (!is.null(.sess_env$con) && is.null(.sess_env$pending_responses[[req_id]])) {
       later::run_now()
       Sys.sleep(0.01)
     }
+
+    if (is.null(.sess_env$con)) return(invisible(FALSE))
 
     response <- .sess_env$pending_responses[[req_id]]
     .sess_env$pending_responses[[req_id]] <- NULL

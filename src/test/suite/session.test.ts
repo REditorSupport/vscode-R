@@ -28,6 +28,7 @@ async function waitFor<T>(condition: () => T | Promise<T>, timeout = 10000, inte
 
 suite('Session Communication', () => {
     let sandbox: sinon.SinonSandbox;
+    let commandMarkerPath: string | undefined;
 
     setup(() => {
         sandbox = sinon.createSandbox();
@@ -51,6 +52,10 @@ suite('Session Communication', () => {
                 // are wiped clean so the next test waits properly.
                 await session.cleanupSession(pid.toString());
             }
+        }
+        if (commandMarkerPath) {
+            await fs.remove(commandMarkerPath);
+            commandMarkerPath = undefined;
         }
         sandbox.restore();
     });
@@ -85,8 +90,33 @@ suite('Session Communication', () => {
         const term = rTerminal.rTerm;
         
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        term.sendText('my_list <- list(hello_vscode = 12345)\n');
+
+        const markerPath = path.join(
+            os.tmpdir(),
+            `vscode-r-command-marker-${process.pid}-${Date.now()}`
+        );
+        commandMarkerPath = markerPath;
+        await fs.remove(markerPath);
+        term.sendText(
+            `my_list <- list(hello_vscode = 12345); ` +
+            `writeLines("evaluated", ${JSON.stringify(markerPath)})\n`
+        );
+
+        // This filesystem marker is independent of the IPC path and confirms
+        // that R received and evaluated the command before probing the RPC.
+        await waitFor(() => fs.pathExists(markerPath), 10000, 200);
+
+        // Verify the workspace request path after command execution, independently
+        // from the pushed workspace refresh notification.
+        let rpcWorkspace: { globalenv?: Record<string, unknown> } | undefined;
+        await waitFor(async () => {
+            rpcWorkspace = await session.sessionRequest({
+                method: 'workspace',
+                params: {}
+            }) as { globalenv?: Record<string, unknown> } | undefined;
+            return rpcWorkspace?.globalenv?.['my_list'];
+        }, 10000, 200);
+        assert.ok(rpcWorkspace?.globalenv?.['my_list'], 'workspace RPC should include my_list');
         
         await waitFor(() => {
             const ge = session.workspaceData?.globalenv;
@@ -175,7 +205,18 @@ suite('Session Communication', () => {
         const createWebviewPanelSpy = sandbox.spy(vscode.window, 'createWebviewPanel');
 
         // 1. Test svglite
-        term.sendText('plot(0, main="svglite")\n');
+        const plotMarkerPath = path.join(
+            os.tmpdir(),
+            `vscode-r-plot-marker-${process.pid}-${Date.now()}`
+        );
+        commandMarkerPath = plotMarkerPath;
+        await fs.remove(plotMarkerPath);
+        term.sendText(
+            `plot(0, main="svglite"); ` +
+            `writeLines("evaluated", ${JSON.stringify(plotMarkerPath)})\n`
+        );
+        await waitFor(() => fs.pathExists(plotMarkerPath), 10000, 200);
+
         await waitFor(() => createWebviewPanelSpy.calledWith('r.standardPlot'), 10000, 200);
         assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be triggered for svglite');
 

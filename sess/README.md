@@ -223,7 +223,15 @@ Response example:
 
 ## 7. Hook Registration and Options
 
-`connect()` initializes runtime hooks via `register_hooks()`.
+After the IPC connection succeeds, `connect()` starts the same VS Code runtime
+integration managed by `register_hooks()`. If polling or writing detects that the
+transport has closed, the runtime is stopped automatically. Runtime shutdown
+removes its task callbacks and restores the options, bindings, S3 method, and
+plot hooks it installed when their current values have not been changed by
+other code. Runtime-owned graphics devices are also closed so later plotting no
+longer targets a stale VS Code connection. A plot held only by a `jgd` device
+may not survive a disconnect/reload. Calling `register_hooks()` again replaces
+its previous runtime installation instead of accumulating callbacks.
 
 Intercepted features include:
 

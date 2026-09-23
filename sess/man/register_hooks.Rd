@@ -2,7 +2,7 @@
 % Please edit documentation in R/hooks.R
 \name{register_hooks}
 \alias{register_hooks}
-\title{Register hooks for the client IPC}
+\title{Register VS Code runtime integrations}
 \usage{
 register_hooks(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE)
 }
@@ -14,5 +14,5 @@ register_hooks(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE)
 \item{use_jgd}{Logical. Enable jgd plot device if available.}
 }
 \description{
-Register hooks for the client IPC
+Register VS Code runtime integrations
 }

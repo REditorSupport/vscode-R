@@ -1,13 +1,38 @@
-#' Register hooks for the client IPC
+#' Register VS Code runtime integrations
 #'
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation.
 #' @param use_httpgd Logical. Enable httpgd plot device if available.
 #' @param use_jgd Logical. Enable jgd plot device if available.
 #' @export
 register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
+  runtime_start(use_rstudioapi, use_httpgd, use_jgd)
+}
+
+#' Start the VS Code runtime integration (internal)
+#'
+#' @keywords internal
+runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
+  .sess_env$runtime_start_phase <- "initialize"
+  state <- .runtime_state()
+  if (isTRUE(state$active)) {
+    .sess_env$runtime_start_phase <- "previous-runtime-stop"
+    runtime_stop()
+  }
+  state <- .runtime_state()
+  state$active <- TRUE
+  completed <- FALSE
+  on.exit({
+    if (!completed) {
+      try(runtime_stop(), silent = TRUE)
+    } else {
+      .sess_env$runtime_start_phase <- NULL
+    }
+  }, add = TRUE)
+
   # 1. Override View() to serve table data via paged RPC.
+  .sess_env$runtime_start_phase <- "view"
   if (is.null(.sess_env$dataview_registry)) {
-    .sess_env$dataview_registry <- new.env(parent = emptyenv())
+    .runtime_set_field("dataview_registry", new.env(parent = emptyenv()))
   }
 
   show_dataview <- function(x, title = deparse(substitute(x))) {
@@ -58,9 +83,10 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
       ))
     }
   }
-  rebind("View", show_dataview, ns = "utils")
+  .runtime_rebind("View", show_dataview, ns = "utils")
 
   # 2. Browser & Webview Options
+  .sess_env$runtime_start_phase <- "viewer-options"
   make_viewer <- function(method) {
     function(url, ...) {
       if (!is.character(url)) {
@@ -86,14 +112,13 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
     }
   }
 
-  options(
-    browser = make_viewer("browser"),
-    viewer = make_viewer("webview"),
-    page_viewer = make_viewer("page_viewer"),
-    help_type = "html"
-  )
+  .runtime_set_option("browser", make_viewer("browser"))
+  .runtime_set_option("viewer", make_viewer("webview"))
+  .runtime_set_option("page_viewer", make_viewer("page_viewer"))
+  .runtime_set_option("help_type", "html")
 
   # 3. Help System Interception
+  .sess_env$runtime_start_phase <- "help-s3"
   sess_print.help_files_with_topic <- function(x, ...) {
     if (length(x) >= 1 && is.character(x)) {
       file <- x[1]
@@ -108,7 +133,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
     }
     invisible(x)
   }
-  registerS3method(
+  .runtime_register_s3(
     "print", "help_files_with_topic", sess_print.help_files_with_topic,
     envir = asNamespace("utils")
   )
@@ -125,11 +150,12 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
     }
     invisible(x)
   }
-
   # 4. Plot device: JGD > httpgd > Standard
+  .sess_env$runtime_start_phase <- "plot"
   if (use_jgd && nzchar(Sys.getenv("JGD_SOCKET")) && requireNamespace("jgd", quietly = TRUE)) {
-    options(device = function(...) {
+    .runtime_set_option("device", function(...) {
       jgd::jgd()
+      .runtime_track_device()
     })
 
     # On reattach (e.g. after a VS Code window reload) the renderer starts a new
@@ -145,7 +171,13 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
       grDevices::dev.set(devs[names(devs) == "jgd"][[1]])
       recorded <- tryCatch(grDevices::recordPlot(), error = function(e) NULL)
       tryCatch(grDevices::dev.off(), error = function(e) NULL)
+      before_reopen <- grDevices::dev.list()
       tryCatch(jgd::jgd(), error = function(e) NULL)
+      after_reopen <- grDevices::dev.list()
+      if (!is.null(after_reopen)) {
+        opened <- if (is.null(before_reopen)) after_reopen else setdiff(after_reopen, before_reopen)
+        if (length(opened)) .runtime_track_device(opened[[1L]])
+      }
       if (!is.null(recorded)) {
         tryCatch(grDevices::replayPlot(recorded), error = function(e) NULL)
       }
@@ -153,8 +185,9 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
     }
     reconnect_jgd_device()
   } else if (use_httpgd && requireNamespace("httpgd", quietly = TRUE)) {
-    options(device = function(...) {
+    .runtime_set_option("device", function(...) {
       httpgd::hgd(silent = TRUE)
+      .runtime_track_device()
       notify_client("httpgd", list(url = httpgd::hgd_url()))
     })
   } else {
@@ -197,9 +230,10 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
       }
     }
 
-    options(device = function(...) {
+    .runtime_set_option("device", function(...) {
       grDevices::pdf(NULL, width = 7, height = 7, bg = "white")
-      options(sess.null_dev = grDevices::dev.cur())
+      .runtime_track_device()
+      .runtime_set_option("sess.null_dev", grDevices::dev.cur())
       grDevices::dev.control(displaylist = "enable")
     })
 
@@ -215,7 +249,7 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
               if (plot_updated || curr_length != last_plot_record_length) {
                 plot_updated <<- FALSE
                 last_plot_record_length <<- curr_length
-                .sess_env$latest_plot_record <- record
+                .runtime_set_field("latest_plot_record", record)
                 notify_client("plot_updated")
               }
             }
@@ -228,18 +262,23 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
       TRUE
     }
 
-    setHook("plot.new", new_plot, "replace")
-    setHook("grid.newpage", new_plot, "replace")
+    .runtime_set_hook("plot.new", new_plot, "replace")
+    .runtime_set_hook("grid.newpage", new_plot, "replace")
 
     update_plot()
-    addTaskCallback(update_plot, name = "sess.plot")
+    .runtime_add_task_callback(function(...) {
+      update_plot(...)
+    }, name = "sess.plot")
   }
 
   # 5. rstudioapi hooks
+  .sess_env$runtime_start_phase <- "rstudioapi"
   if (use_rstudioapi) {
-    setHook(packageEvent("rstudioapi", "onLoad"), function(...) {
+    rstudioapi_hook <- function(...) {
       patch_rstudioapi()
-    }, action = "append")
+    }
+    .runtime_set_hook(packageEvent("rstudioapi", "onLoad"),
+                      rstudioapi_hook, action = "append")
 
     if ("rstudioapi" %in% loadedNamespaces()) {
       patch_rstudioapi()
@@ -247,13 +286,15 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
   }
 
   # 6. Workspace Update Callback
+  .sess_env$runtime_start_phase <- "workspace-callback"
   # This notifies the client whenever a top-level command is completed,
   # suggesting that the Global Environment might have changed.
-  removeTaskCallback("sess.workspace")
-  addTaskCallback(function(...) {
+  .runtime_add_task_callback(function(...) {
+    if (!isTRUE(.runtime_state()$active)) return(FALSE)
     notify_client("workspace_updated")
     TRUE
   }, name = "sess.workspace")
 
+  completed <- TRUE
   invisible(NULL)
 }

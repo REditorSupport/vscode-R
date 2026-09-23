@@ -451,7 +451,7 @@ patch_rstudioapi <- function() {
 
   for (name in names(overrides)) {
     if (exists(name, envir = asNamespace("rstudioapi"), inherits = FALSE)) {
-      rebind(name, overrides[[name]], "rstudioapi")
+      .runtime_rebind(name, overrides[[name]], "rstudioapi")
     }
   }
 }
