@@ -257,7 +257,7 @@ export async function restartRTerminal(): Promise<void>{
 export function deleteTerminal(term: vscode.Terminal): void {
     // Keep discovery files across terminal close events because VS Code may emit
     // them while preserving terminals during a window reload.
-    // TODO(4.0): Prune extension-owned discovery files once terminal persistence can be distinguished from closure.
+    // TODO: Prune stale extension-owned discovery files once terminal persistence can be distinguished from closure.
     if (isDeepStrictEqual(term, rTerm)) {
         rTerm = undefined;
         if (config().get<boolean>('sessionWatcher')) {

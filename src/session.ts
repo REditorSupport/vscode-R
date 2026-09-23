@@ -317,6 +317,7 @@ async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string
     if (!await fs.pathExists(discoveryDir)) {
         return undefined;
     }
+    const candidates: Array<{ filePath: string; mtimeMs: number }> = [];
     for (const file of await fs.readdir(discoveryDir)) {
         if (!file.endsWith('.json')) {
             continue;
@@ -328,13 +329,15 @@ async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string
         try {
             const discovery = await fs.readJson(filePath) as Partial<SessionDiscoveryFile>;
             if (discovery.version === 1 && discovery.terminalPid === terminalPid && typeof discovery.endpoint === 'string') {
-                return filePath;
+                const stat = await fs.stat(filePath);
+                candidates.push({ filePath, mtimeMs: stat.mtimeMs });
             }
         } catch (e) {
             console.warn(`[session discovery] Failed to read ${filePath}`, e);
         }
     }
-    return undefined;
+    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs || a.filePath.localeCompare(b.filePath));
+    return candidates[0]?.filePath;
 }
 
 export async function refreshTerminalDiscoveryFiles(
@@ -611,7 +614,6 @@ export async function shutdownSessionWatcher(): Promise<void> {
 
     if (pipePath && pipePath.endsWith('.sock')) {
         await removePathIfExists(pipePath);
-        await removePathIfExists(pipePath.replace(/\.sock$/, '.R'));
     }
 
     globalPipePath = undefined;

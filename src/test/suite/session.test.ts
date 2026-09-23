@@ -370,6 +370,35 @@ suite('Session Communication', () => {
         }
     });
 
+    test('reload chooses the newest discovery file when terminal PID metadata is duplicated', async () => {
+        const oldEndpoint = await session.getGlobalPipePath();
+        const newEndpoint = `${oldEndpoint}.reload`;
+        const terminalPid = 45235;
+        const olderFile = await session.createSessionDiscoveryFile(oldEndpoint);
+        const newerFile = await session.createSessionDiscoveryFile(oldEndpoint);
+        const olderTime = new Date(Date.now() - 10_000);
+        const newerTime = new Date(Date.now() - 5_000);
+        try {
+            await session.updateSessionDiscoveryFile(olderFile, oldEndpoint, terminalPid);
+            await session.updateSessionDiscoveryFile(newerFile, oldEndpoint, terminalPid);
+            await fs.utimes(olderFile, olderTime, olderTime);
+            await fs.utimes(newerFile, newerTime, newerTime);
+
+            const terminal = {
+                name: 'R Interactive',
+                processId: Promise.resolve(terminalPid),
+                creationOptions: { name: 'R Interactive' },
+            } as unknown as vscode.Terminal;
+            await session.refreshTerminalDiscoveryFiles(newEndpoint, [terminal]);
+
+            assert.strictEqual((await fs.readJson(olderFile)).endpoint, oldEndpoint);
+            assert.strictEqual((await fs.readJson(newerFile)).endpoint, newEndpoint);
+        } finally {
+            await fs.remove(olderFile);
+            await fs.remove(newerFile);
+        }
+    });
+
     test('IPC protocol keys sessions by session_id and ignores close from a replaced socket', async () => {
         const endpoint = await session.getGlobalPipePath();
         const first = net.createConnection(endpoint);
