@@ -543,6 +543,20 @@ dataview_column_values <- function(state, position, row_idx = NULL) {
 }
 
 dataview_format_column <- function(values) {
+  # jsonlite's complex formatter rejects the IPC precision setting, digits = NA.
+  if (is.complex(values)) {
+    formatted <- format(values, trim = TRUE, justify = "none")
+    formatted[is.na(values)] <- NA_character_
+    return(formatted)
+  }
+  if (is.list(values) && !is.object(values)) {
+    return(lapply(values, function(value) {
+      if (is.complex(value) || (is.list(value) && !is.object(value))) {
+        return(dataview_format_column(value))
+      }
+      value
+    }))
+  }
   if (!is.object(values) || !is.null(dim(values))) {
     return(values)
   }
@@ -794,6 +808,9 @@ dataview_query_indices <- function(state, sort_model, filter_model) {
 
 dataview_rows <- function(state, row_idx) {
   page <- dataview_slice(state$data, row_idx)
+  if (is.matrix(page)) {
+    page <- as.data.frame(page, optional = TRUE)
+  }
   if (is.data.frame(page)) {
     for (position in seq_len(ncol(page))) {
       if (inherits(page[[position]], "POSIXct") ||

@@ -39,6 +39,52 @@ local({
   expect_equal(resp$code, -32601L)
 })
 
+# Handler and serialization failures return RPC errors without breaking later requests.
+local({
+  .sess_env <- sess:::.sess_env
+  orig_con <- .sess_env$con
+  orig_dataviews <- .sess_env$dataviews
+  pipe <- processx::conn_create_pipepair()
+  on.exit({
+    .sess_env$con <- orig_con
+    .sess_env$dataviews <- orig_dataviews
+    lapply(pipe, close)
+  }, add = TRUE)
+  .sess_env$con <- pipe[[2L]]
+  request <- function(method, view_id) {
+    sess:::dispatch_message(as.character(jsonlite::toJSON(
+      list(jsonrpc = "2.0", id = "failure", method = method,
+           params = list(view_id = view_id)),
+      auto_unbox = TRUE
+    )))
+  }
+  response <- function() {
+    jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]))
+  }
+
+  expect_warning(request("dataview_page", "missing"), "Unknown dataview id")
+  failed <- response()
+  expect_equal(failed$id, "failure")
+  expect_equal(failed$error$code, -32603L)
+  expect_true(grepl("Unknown dataview id", failed$error$message, fixed = TRUE))
+  expect_null(failed$result)
+
+  view_id <- sess:::dataview_register(data.frame(value = 1:2))$view_id
+  # Force a serialization failure after the handler returns.
+  .sess_env$dataviews[[view_id]]$columns[[2L]]$headerTooltip <- 1 + 2i
+  expect_warning(request("dataview_init", view_id), "digits")
+  failed <- response()
+  expect_equal(failed$id, "failure")
+  expect_equal(failed$error$code, -32603L)
+  expect_true(grepl("digits", failed$error$message, fixed = TRUE))
+  expect_null(failed$result)
+
+  request("dataview_page", view_id)
+  page <- response()
+  expect_null(page$error)
+  expect_equal(page$result$rows[["1"]], 1:2)
+})
+
 # ipc_write returns FALSE when no connection is open
 local({
   .sess_env <- sess:::.sess_env
