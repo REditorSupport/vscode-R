@@ -84,6 +84,24 @@ local({
     "Unsupported session discovery version"
   )
 
+  invalid_versions <- c(
+    '{"version":1.5,"endpoint":"fractional-endpoint"}',
+    '{"version":1.0,"endpoint":"double-endpoint"}',
+    '{"version":"1","endpoint":"string-endpoint"}',
+    '{"version":"1.5","endpoint":"string-endpoint"}',
+    '{"version":[1],"endpoint":"array-endpoint"}'
+  )
+  for (json in invalid_versions) {
+    writeLines(json, path)
+    expect_warning(
+      expect_equal(
+        sess:::.resolve_endpoint(NULL, env_endpoint = "", env_discovery_file = path),
+        ""
+      ),
+      "Unsupported session discovery version"
+    )
+  }
+
   writeLines('{"version":1,"pipe":"obsolete-field"}', path)
   expect_warning(
     expect_equal(

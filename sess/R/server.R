@@ -163,8 +163,8 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
       )))
     }
 
-    version <- suppressWarnings(as.integer(cfg$version))
-    if (length(version) != 1L || is.na(version) || version != 1L) {
+    version <- cfg$version
+    if (!identical(version, 1L)) {
       return(warn_problem(sprintf(
         paste0(
           "Unsupported session discovery version '%s' in '%s'; ",
