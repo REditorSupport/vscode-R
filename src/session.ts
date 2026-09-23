@@ -48,9 +48,13 @@ export interface WorkspaceData {
 interface IpcSocket extends net.Socket {
     _terminalPid?: number;
     _pipePath?: string;
+    _sessionId?: string;
 }
 
 export class Session {
+    public sessionId: string;
+    public host: string;
+    public sessVersion: string;
     public pipePath: string;
     public socket: IpcSocket;
     public pid: string;
@@ -60,7 +64,10 @@ export class Session {
     public workingDir: string;
     public workspaceData: WorkspaceData;
 
-    constructor(pipePath: string, socket: IpcSocket) {
+    constructor(sessionId: string, host: string, sessVersion: string, pipePath: string, socket: IpcSocket) {
+        this.sessionId = sessionId;
+        this.host = host;
+        this.sessVersion = sessVersion;
         this.pipePath = pipePath;
         this.socket = socket;
         this.pid = '';
@@ -85,6 +92,7 @@ export let globalPipePath: string | undefined;
 export let workspaceFile: string;
 
 const sessions = new Map<string, Session>();
+const terminalSessions = new Map<string, Session>();
 export let activeSession: Session | undefined;
 let activeBrowserUri: Uri | undefined;
 let workspaceRefreshTimer: NodeJS.Timeout | undefined;
@@ -230,7 +238,15 @@ export function deploySessionWatcher(extensionPath: string): void {
 let pipeClient: IpcSocket | undefined;
 export const activeConnections = new Set<IpcSocket>();
 
-const pendingRequests = new Map<number, { resolve: (value: unknown) => void, reject: (reason?: unknown) => void }>();
+function isCurrentSocket(socket: IpcSocket): boolean {
+    return !!socket._sessionId && sessions.get(socket._sessionId)?.socket === socket;
+}
+
+const pendingRequests = new Map<number, {
+    resolve: (value: unknown) => void;
+    reject: (reason?: unknown) => void;
+    socket: IpcSocket;
+}>();
 
 let globalSessionServer: net.Server | undefined;
 let attachSessionScriptPath: string | undefined;
@@ -273,7 +289,7 @@ export async function writeSessionFile(pid: string, pipePath: string) {
     const sessionsDir = path.join(homeDir, '.vscode-R', 'sessions');
     await fs.ensureDir(sessionsDir);
     const filePath = path.join(sessionsDir, `${pid}.json`);
-    await fs.writeJson(filePath, { pipe: pipePath });
+    await fs.writeJson(filePath, { version: 1, endpoint: pipePath });
     await setOwnerOnlyPermissions(filePath);
 }
 
@@ -317,7 +333,6 @@ export async function getGlobalPipePath(): Promise<string> {
             const socket = rawSocket as IpcSocket;
             console.info('[SessionServer] Client connected via IPC pipe');
             activeConnections.add(socket);
-            pipeClient = socket;
 
             let readBuffers: Buffer[] = [];
             let readBufferLength = 0;
@@ -335,11 +350,14 @@ export async function getGlobalPipePath(): Promise<string> {
                 void (async () => {
                     try {
                         const message = JSON.parse(line) as Record<string, unknown>;
+                        if (message.method !== 'attach' && !isCurrentSocket(socket)) {
+                            return;
+                        }
                         if (message.id !== undefined && !message.method) {
                             // Response to a request we sent
                             const id = Number(message.id);
                             const pending = pendingRequests.get(id);
-                            if (pending) {
+                            if (pending?.socket === socket) {
                                 pendingRequests.delete(id);
                                 if (message.error) {
                                     pending.reject(message.error);
@@ -397,13 +415,23 @@ export async function getGlobalPipePath(): Promise<string> {
                 readBuffers = [];
                 readBufferLength = 0;
                 activeConnections.delete(socket);
+                for (const [id, pending] of pendingRequests.entries()) {
+                    if (pending.socket === socket) {
+                        pendingRequests.delete(id);
+                        pending.reject(new Error('IPC socket disconnected'));
+                    }
+                }
                 if (pipeClient === socket) {
                     pipeClient = undefined;
+                }
+                if (socket._sessionId) {
+                    void cleanupSession(socket._sessionId, socket);
                 }
             });
 
             socket.on('error', (err) => {
                 console.error('[SessionServer] Socket error', err);
+                socket.destroy();
             });
         });
 
@@ -444,7 +472,7 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, installSes
         : '';
     return [
         'local({',
-        `  pipe_path <- ${asRStringLiteral(pipePath)}`,
+        `  endpoint <- ${asRStringLiteral(pipePath)}`,
         `  sess_src <- ${asRStringLiteral(sessPath)}`,
         `  install_sess_script <- ${asRStringLiteral(installSessScriptPath)}`,
         ...(jgdSocket ? [`  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})`] : []),
@@ -459,7 +487,7 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, installSes
         '    on.exit(Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO")), add = TRUE)',
         '    source(install_sess_script, local = TRUE)',
         '  }',
-        `  sess::connect(pipe_path = pipe_path, use_httpgd = ${useHttpgd}, use_jgd = ${useJgd})`,
+        `  sess::connect(endpoint = endpoint, use_httpgd = ${useHttpgd}, use_jgd = ${useJgd})`,
         '})',
         '',
     ].join('\n');
@@ -527,7 +555,7 @@ export async function activateRSession(): Promise<void> {
         if (terminal) {
             const pidArg = await terminal.processId;
             if (pidArg) {
-                const session = sessions.get(String(pidArg));
+                const session = terminalSessions.get(String(pidArg));
                 if (session) {
                     console.info(`[activateRSession] Found existing session for PID: ${pidArg}`);
                     await activateSession(session);
@@ -541,7 +569,7 @@ export async function activateRSession(): Promise<void> {
             console.info('[activateRSession] Focusing terminal of the active session');
             for (const term of window.terminals) {
                 const termPid = await term.processId;
-                if (termPid && sessions.get(String(termPid)) === activeSession) {
+                if (termPid && terminalSessions.get(String(termPid)) === activeSession) {
                     term.show();
                     return;
                 }
@@ -1659,9 +1687,23 @@ export function resetStatusBar(): void {
     }
 }
 
+function isLocalHost(host: string): boolean {
+    return host.length > 0 && host.toLocaleLowerCase() === os.hostname().toLocaleLowerCase();
+}
+
+async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
+    for (const terminal of window.terminals) {
+        const terminalPid = await terminal.processId;
+        if (terminalPid !== undefined && String(terminalPid) === rPid) {
+            return String(terminalPid);
+        }
+    }
+    return undefined;
+}
+
 export async function switchSessionByTerminal(terminal: vscode.Terminal | undefined): Promise<void> {
     const terminalPid = await terminal?.processId;
-    const session = terminalPid ? sessions.get(String(terminalPid)) : undefined;
+    const session = terminalPid ? terminalSessions.get(String(terminalPid)) : undefined;
     if (session) {
         await activateSession(session);
     } else {
@@ -1681,33 +1723,71 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
 
     switch (method) {
         case 'attach': {
-            if (!params.tempdir || !params.wd) {return;}
-            const rPid = String(params.pid);
-            const terminalPid = socket._terminalPid ? String(socket._terminalPid) : rPid;
+            const protocolVersion = params.protocol_version;
+            const sessionId = typeof params.session_id === 'string' ? params.session_id.trim() : '';
+            const host = typeof params.host === 'string' ? params.host : '';
+            if (protocolVersion !== 1) {
+                const found = protocolVersion === undefined ? 'missing' : String(protocolVersion);
+                void window.showErrorMessage(`Cannot attach R session: unsupported sess protocol version ${found}; this extension requires protocol version 1.`);
+                socket.destroy();
+                return;
+            }
+            if (!sessionId) {
+                void window.showErrorMessage('Cannot attach R session: the sess attach handshake has no session_id. Update the sess package and try again.');
+                socket.destroy();
+                return;
+            }
+            if (!params.tempdir || !params.wd) {
+                void window.showErrorMessage('Cannot attach R session: the sess attach handshake is missing session paths. Update the sess package and try again.');
+                socket.destroy();
+                return;
+            }
 
-            let session = sessions.get(terminalPid);
-            if (!session) {
-                session = new Session(socket._pipePath ?? globalPipePath ?? '', socket);
-                sessions.set(terminalPid, session);
-                if (rPid !== terminalPid) {
-                    sessions.set(rPid, session);
+            const rPid = params.pid === undefined || params.pid === null ? '' : String(params.pid);
+            const terminalPid = rPid && isLocalHost(host)
+                ? await findLocalTerminalPid(rPid)
+                : undefined;
+            if (socket.destroyed) {
+                return;
+            }
+            const previous = sessions.get(sessionId);
+            if (previous) {
+                for (const [key, associated] of terminalSessions.entries()) {
+                    if (associated === previous) {
+                        terminalSessions.delete(key);
+                    }
                 }
+            }
+            const session = new Session(
+                sessionId,
+                host || 'unknown',
+                typeof params.sess_version === 'string' ? params.sess_version : 'unknown',
+                socket._pipePath ?? globalPipePath ?? '',
+                socket,
+            );
+            socket._sessionId = sessionId;
+            if (terminalPid) {
+                socket._terminalPid = Number(terminalPid);
+                terminalSessions.set(terminalPid, session);
+            }
+            sessions.set(sessionId, session);
+            if (previous && previous.socket !== socket) {
+                previous.socket.destroy();
             }
             session.rVer = String(params.version);
             session.pid = rPid;
-            session.info = params.info as SessionInfo;
+            session.info = (params.info as SessionInfo | undefined) ?? { version: session.rVer, command: '', start_time: '' };
             session.sessionDir = String(params.tempdir);
             session.workingDir = String(params.wd);
 
             await activateSession(session);
 
-            console.info(`[startSessionWatcher] attach R PID: ${rPid}, terminal PID: ${terminalPid}`);
+            console.info(`[startSessionWatcher] attach session ${sessionId} (${host || 'unknown'}:${rPid || 'unknown'}), terminal PID: ${terminalPid ?? 'unassociated'}`);
             purgeAddinPickerItems();
             if (params.plot_url) {
                 await globalPlotManager?.showHttpgdPlot(String(params.plot_url));
             }
             scheduleWorkspaceRefresh(0);
-            void watchProcess(rPid).then((v: string) => { void cleanupSession(v); });
             break;
         }
 
@@ -1869,59 +1949,44 @@ async function handleRequest(message: Record<string, unknown>, socket: IpcSocket
     }
 }
 
-export async function cleanupSession(pidArg: string): Promise<void> {
-    const session = sessions.get(pidArg);
-    if (session) {
-        const keysToRemove: string[] = [];
-        for (const [k, v] of sessions.entries()) {
-            if (v === session) {
-                keysToRemove.push(k);
-            }
+export function cleanupTerminalAssociation(terminalPid: string): void {
+    terminalSessions.delete(terminalPid);
+}
+
+export async function cleanupSession(sessionId: string, closingSocket?: IpcSocket): Promise<void> {
+    const session = sessions.get(sessionId);
+    if (!session || (closingSocket && session.socket !== closingSocket)) {
+        return;
+    }
+    sessions.delete(sessionId);
+    for (const [terminalPid, associated] of terminalSessions.entries()) {
+        if (associated === session) {
+            terminalSessions.delete(terminalPid);
         }
-        keysToRemove.forEach(k => sessions.delete(k));
+    }
+    if (pipeClient === session.socket) {
+        pipeClient = undefined;
+    }
+    if (!session.socket.destroyed && session.socket !== closingSocket) {
         session.socket.destroy();
     }
-    if (activeSession === session || pid === pidArg) {
+    if (activeSession === session) {
         deferWorkspaceRefresh();
         workspaceRefreshPending = false;
         resetStatusBar();
-        globalPipePath = undefined;
         activeSession = undefined;
         workspaceData.globalenv = {};
         workspaceData.loaded_namespaces = [];
         workspaceData.search = [];
         rWorkspace?.refresh();
-        removeSessionFiles();
         await setContext('rSessionActive', false);
     }
 }
 
-async function watchProcess(pid: string): Promise<string> {
-    function pidIsRunning(pid: number) {
-        try {
-            process.kill(pid, 0);
-            return true;
-        } catch (e) {
-            return false;
-        }
-    }
-
-    const pidArg = Number(pid);
-
-    let res = true;
-    do {
-        res = pidIsRunning(pidArg);
-        await new Promise(resolve => {
-            setTimeout(resolve, 1000);
-        });
-
-    } while (res);
-    return pid;
-}
-
 export async function sessionRequest(data: Record<string, unknown>): Promise<unknown> {
     try {
-        if (!pipeClient || pipeClient.destroyed) {
+        const socket = pipeClient;
+        if (!socket || socket.destroyed) {
             throw new Error('IPC socket is not connected');
         }
 
@@ -1933,10 +1998,10 @@ export async function sessionRequest(data: Record<string, unknown>): Promise<unk
                 ...data
             };
 
-            pendingRequests.set(id, { resolve, reject });
+            pendingRequests.set(id, { resolve, reject, socket });
 
             try {
-                pipeClient?.write(JSON.stringify(payload) + '\n');
+                socket.write(JSON.stringify(payload) + '\n');
             } catch (e) {
                 pendingRequests.delete(id);
                 reject(e);

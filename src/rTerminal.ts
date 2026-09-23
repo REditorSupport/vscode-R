@@ -9,7 +9,7 @@ import { extensionContext, globalPlotManager } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession, deferWorkspaceRefresh } from './session';
+import { cleanupTerminalAssociation, deferWorkspaceRefresh } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
 import { resolveBackend, CommonPlotManager } from './plotViewer';
 import * as fs from 'fs';
@@ -203,7 +203,7 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
         termOptions.env = {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
-            SESS_PIPE: pipePath,
+            SESS_ENDPOINT: pipePath,
             SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
             SESS_USE_HTTPGD: backend === 'httpgd' ? 'TRUE' : 'FALSE',
             SESS_PLOT_BACKEND: backend,
@@ -254,7 +254,7 @@ export function deleteTerminal(term: vscode.Terminal): void {
         if (config().get<boolean>('sessionWatcher')) {
             void term.processId.then((v) => {
                 if (v) {
-                    void cleanupSession(v.toString());
+                    void cleanupTerminalAssociation(v.toString());
                 }
             });
         }

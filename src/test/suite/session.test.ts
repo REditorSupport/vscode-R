@@ -4,6 +4,7 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs-extra';
+import * as net from 'net';
 
 import { mockExtensionContext } from '../common/mockvscode';
 import * as rTerminal from '../../rTerminal';
@@ -39,19 +40,16 @@ suite('Session Communication', () => {
     });
 
     teardown(async () => {
+        const attachedSessionId = session.activeSession?.sessionId;
         if (rTerminal.rTerm) {
-            const pid = await rTerminal.rTerm.processId;
             rTerminal.rTerm.dispose();
             
             // Explicitly invoke the extension's terminal cleanup logic
             // since the mocked VS Code environment won't fire onDidCloseTerminal
             rTerminal.deleteTerminal(rTerminal.rTerm);
-            
-            if (pid) {
-                // Ensure the underlying websocket connections and activeSession 
-                // are wiped clean so the next test waits properly.
-                await session.cleanupSession(pid.toString());
-            }
+        }
+        if (attachedSessionId) {
+            await session.cleanupSession(attachedSessionId);
         }
         if (commandMarkerPath) {
             await fs.remove(commandMarkerPath);
@@ -292,6 +290,7 @@ suite('Session Communication', () => {
 
     test('attach session artifacts are owner-only', async () => {
         const command = await session.getAttachSessionCommand();
+        assert.match(command, /sess::connect\(endpoint = endpoint/);
         const commandMatch = command.match(/^source\((.*)\)$/);
         if (!commandMatch) {
             throw new Error('attach command should be a source(...) call');
@@ -314,6 +313,7 @@ suite('Session Communication', () => {
         const sessionFilePid = `perm-test-${process.pid}`;
         await session.writeSessionFile(sessionFilePid, pipePath ?? '');
         const sessionFilePath = path.join(os.homedir(), '.vscode-R', 'sessions', `${sessionFilePid}.json`);
+        assert.deepStrictEqual(await fs.readJson(sessionFilePath), { version: 1, endpoint: pipePath ?? '' });
         const sessionFileStat = await fs.stat(sessionFilePath);
         if (process.platform !== 'win32') {
             assert.strictEqual(sessionFileStat.mode & 0o777, 0o600, 'session handoff file should be owner-only');
@@ -322,4 +322,115 @@ suite('Session Communication', () => {
 
         await session.shutdownSessionWatcher();
     }).timeout(15000);
+
+    test('IPC protocol keys sessions by session_id and ignores close from a replaced socket', async () => {
+        const endpoint = await session.getGlobalPipePath();
+        const first = net.createConnection(endpoint);
+        let second: net.Socket | undefined;
+        let third: net.Socket | undefined;
+        const sendAttach = async (socket: net.Socket, pid: number) => {
+            await new Promise<void>((resolve, reject) => {
+                socket.once('connect', resolve);
+                socket.once('error', reject);
+            });
+            socket.write(`${JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'attach',
+                params: {
+                    protocol_version: 1,
+                    session_id: 'stable-session-id',
+                    host: 'remote-compute-node',
+                    sess_version: '3.0.0',
+                    pid,
+                    version: 'R 4.4.0',
+                    info: { version: '4.4.0', command: 'R', start_time: 'now' },
+                    tempdir: '/tmp/session',
+                    wd: '/workspace'
+                }
+            })}\n`);
+        };
+
+        try {
+            await sendAttach(first, 1234);
+            await waitFor(() => session.activeSession?.sessionId === 'stable-session-id');
+            assert.strictEqual(session.activeSession?.pid, '1234');
+            assert.strictEqual(session.activeSession?.host, 'remote-compute-node');
+            const originalSession = session.activeSession;
+            if (!originalSession) {
+                throw new Error('original session should have attached');
+            }
+
+            const reconnect = net.createConnection(endpoint);
+            second = reconnect;
+            await sendAttach(reconnect, 9876);
+            await waitFor(() => session.activeSession?.pid === '9876');
+            assert.strictEqual(session.activeSession?.sessionId, 'stable-session-id');
+            assert.strictEqual(session.activeSession?.pid, '9876');
+            const replacementSession = session.activeSession;
+
+            await session.cleanupSession('stable-session-id', originalSession.socket);
+            assert.strictEqual(session.activeSession, replacementSession, 'cleanup from the old socket must not remove the replacement session');
+
+            first.destroy();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            assert.strictEqual(session.activeSession, replacementSession, 'old socket close must not clear the replacement session');
+
+            const otherSession = net.createConnection(endpoint);
+            third = otherSession;
+            await new Promise<void>((resolve, reject) => {
+                otherSession.once('connect', resolve);
+                otherSession.once('error', reject);
+            });
+            otherSession.write(`${JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'attach',
+                params: {
+                    protocol_version: 1,
+                    session_id: 'other-session-id',
+                    host: 'other-compute-node',
+                    sess_version: '3.0.0',
+                    pid: 9876,
+                    version: 'R 4.4.0',
+                    info: { version: '4.4.0', command: 'R', start_time: 'now' },
+                    tempdir: '/tmp/other-session',
+                    wd: '/workspace'
+                }
+            })}\n`);
+            await waitFor(() => session.activeSession?.sessionId === 'other-session-id');
+            assert.strictEqual(session.activeSession?.pid, '9876', 'distinct session ids can share an R PID');
+
+            second.destroy();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            assert.strictEqual(session.activeSession?.sessionId, 'other-session-id', 'closing a different session must not affect the active session');
+
+            third.destroy();
+            await waitFor(() => !session.activeSession);
+        } finally {
+            first.destroy();
+            second?.destroy();
+            third?.destroy();
+        }
+    }).timeout(15000);
+
+    test('rejects an incompatible attach protocol version', async () => {
+        const showError = sandbox.stub(vscode.window, 'showErrorMessage');
+        const endpoint = await session.getGlobalPipePath();
+        const client = net.createConnection(endpoint);
+        try {
+            await new Promise<void>((resolve, reject) => {
+                client.once('connect', resolve);
+                client.once('error', reject);
+            });
+            client.write(`${JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'attach',
+                params: { protocol_version: 2, session_id: 'future-session' }
+            })}\n`);
+            await waitFor(() => showError.called);
+            assert.match(String(showError.firstCall.args[0]), /unsupported sess protocol version 2/);
+            assert.notStrictEqual(session.activeSession?.sessionId, 'future-session');
+        } finally {
+            client.destroy();
+        }
+    }).timeout(10000);
 });
