@@ -92,6 +92,8 @@ let info: SessionInfo;
 export let globalPipePath: string | undefined;
 export let workspaceFile: string;
 
+const SESS_PROTOCOL_VERSION = 1;
+
 const sessions = new Map<string, Session>();
 const terminalSessions = new Map<string, Session>();
 export let activeSession: Session | undefined;
@@ -600,7 +602,7 @@ export async function getConnectionInfo(): Promise<RSessionConnectionInfo | unde
         ? (globalPlotManager as CommonPlotManager)?.getJgdEnvVars()?.['JGD_SOCKET']
         : undefined;
     return {
-        protocolVersion: 1,
+        protocolVersion: SESS_PROTOCOL_VERSION,
         endpoint,
         plotBackend,
         ...(jgdSocket ? { jgdSocket } : {}),
@@ -1892,9 +1894,9 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             const protocolVersion = params.protocol_version;
             const sessionId = typeof params.session_id === 'string' ? params.session_id.trim() : '';
             const host = typeof params.host === 'string' ? params.host : '';
-            if (protocolVersion !== 1) {
+            if (protocolVersion !== SESS_PROTOCOL_VERSION) {
                 const found = protocolVersion === undefined ? 'missing' : String(protocolVersion);
-                void window.showErrorMessage(`Cannot attach R session: unsupported sess protocol version ${found}; this extension requires protocol version 1.`);
+                void window.showErrorMessage(`Cannot attach R session: unsupported sess protocol version ${found}; this extension requires protocol version ${SESS_PROTOCOL_VERSION}.`);
                 socket.destroy();
                 return;
             }
