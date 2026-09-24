@@ -57,6 +57,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // is used to export an interface to the help panel
     // this export is used e.g. by vscode-r-debugger to show the help panel from within debug sessions
     const rExtension = new apiImplementation.RExtensionImplementation();
+    rExtension.session = {
+        getConnectionInfo: session.getConnectionInfo,
+        activate: session.activateSessionById,
+    };
 
     // assign extension context to global variable
     extensionContext = context;

@@ -6,6 +6,23 @@
 
 export declare class RExtension {
     helpPanel?: HelpPanel;
+    session: RSessionApi;
+}
+
+export interface RSessionConnectionInfo {
+    protocolVersion: number;
+    endpoint: string;
+    /** The configured, compatibility-resolved plot backend preference. */
+    plotBackend: 'auto' | 'standard' | 'httpgd' | 'jgd';
+    /** Present when plotBackend is jgd or auto and the JGD socket is available. */
+    jgdSocket?: string;
+}
+
+export interface RSessionApi {
+    /** Returns connection details, or undefined when the session watcher is disabled. */
+    getConnectionInfo(): Promise<RSessionConnectionInfo | undefined>;
+    /** Activates a connected session; returns false for unknown or disconnected sessions. */
+    activate(sessionId: string): Promise<boolean>;
 }
 
 export type HelpSubMenu = 'doc' | 'pkgList' | 'refresh' | '?' | '??';
@@ -15,6 +32,3 @@ export interface HelpPanel {
     dispose(): void;
     refresh(): void;
 }
-
-
-

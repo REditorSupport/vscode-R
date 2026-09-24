@@ -12,6 +12,7 @@ import * as util from '../../util';
 import * as session from '../../session';
 import * as extension from '../../extension';
 import * as plotViewer from '../../plotViewer';
+import type { RSessionApi } from '../../api';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
@@ -56,6 +57,92 @@ suite('Session Communication', () => {
             commandMarkerPath = undefined;
         }
         sandbox.restore();
+    });
+
+    test('public session API returns connection info only when the watcher is enabled', async () => {
+        const watcher = sandbox.stub(extension, 'enableSessionWatcher').value(false);
+        const api: RSessionApi = {
+            getConnectionInfo: session.getConnectionInfo,
+            activate: session.activateSessionById,
+        };
+        assert.strictEqual(await api.getConnectionInfo(), undefined);
+
+        watcher.value(true);
+        const configStub = {
+            get: (key: string) => key === 'plot.backend' ? 'standard' : undefined,
+        };
+        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        await waitFor(() => session.globalPipePath);
+
+        const connection = await api.getConnectionInfo();
+        assert.ok(connection);
+        assert.strictEqual(connection.protocolVersion, 1);
+        assert.strictEqual(connection.endpoint, session.globalPipePath);
+        assert.strictEqual(connection.plotBackend, 'standard');
+        assert.ok(!('socket' in connection), 'connection info should contain plain contract data only');
+    });
+
+    test('public session API activates a connected session by id and rejects missing or disconnected sessions', async () => {
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        const api: RSessionApi = {
+            getConnectionInfo: session.getConnectionInfo,
+            activate: session.activateSessionById,
+        };
+        const endpoint = await waitFor(() => session.globalPipePath);
+        if (!endpoint) {
+            throw new Error('Session watcher endpoint was not initialized');
+        }
+
+        const attached: Array<{ id: string; client: net.Socket; server: net.Socket }> = [];
+        const attach = async (id: string): Promise<void> => {
+            const existingSockets = new Set(session.activeConnections);
+            const client = net.createConnection(endpoint);
+            await new Promise<void>((resolve, reject) => {
+                client.once('connect', resolve);
+                client.once('error', reject);
+            });
+            const server = await waitFor(() =>
+                [...session.activeConnections].find(socket => !existingSockets.has(socket))
+            );
+            assert.ok(server);
+            attached.push({ id, client, server });
+            client.write(`${JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'attach',
+                params: {
+                    protocol_version: 1,
+                    session_id: id,
+                    host: 'test-remote-host',
+                    version: '4.4.0',
+                    pid: id,
+                    tempdir: '/tmp',
+                    wd: '/tmp',
+                    info: { version: 'R version 4.4.0', command: 'R', start_time: '' },
+                },
+            })}\n`);
+            await waitFor(() => session.activeSession?.sessionId === id);
+        };
+
+        try {
+            assert.strictEqual(await api.activate('missing-session'), false);
+            await attach('session-api-first');
+            await attach('session-api-second');
+
+            assert.strictEqual(session.activeSession?.sessionId, 'session-api-second');
+            assert.strictEqual(await api.activate('session-api-first'), true);
+            assert.strictEqual(session.activeSession?.sessionId, 'session-api-first');
+
+            const disconnected = attached.find(item => item.id === 'session-api-second');
+            assert.ok(disconnected);
+            disconnected.server.destroy();
+            assert.strictEqual(await api.activate('session-api-second'), false);
+        } finally {
+            for (const item of attached) {
+                item.client.destroy();
+                item.server.destroy();
+                await session.cleanupSession(item.id);
+            }
+        }
     });
 
     test('communication: hello <- 1 updates workspace and provides completion', async () => {

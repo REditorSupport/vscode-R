@@ -13,8 +13,9 @@ import { config, readContent, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
-import { extensionContext, homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem } from './extension';
+import { extensionContext, homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
 import { resolveBackend, CommonPlotManager } from './plotViewer';
+import type { RSessionConnectionInfo } from './api';
 
 import { showWebView } from './webViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
@@ -585,6 +586,25 @@ export async function getGlobalPipePath(): Promise<string> {
             }).catch(reject);
         });
     });
+}
+
+/** Return the public connection contract for downstream session clients. */
+export async function getConnectionInfo(): Promise<RSessionConnectionInfo | undefined> {
+    if (!enableSessionWatcher) {
+        return undefined;
+    }
+
+    const endpoint = await getGlobalPipePath();
+    const plotBackend = resolveBackend();
+    const jgdSocket = (plotBackend === 'jgd' || plotBackend === 'auto')
+        ? (globalPlotManager as CommonPlotManager)?.getJgdEnvVars()?.['JGD_SOCKET']
+        : undefined;
+    return {
+        protocolVersion: 1,
+        endpoint,
+        plotBackend,
+        ...(jgdSocket ? { jgdSocket } : {}),
+    };
 }
 
 function asRStringLiteral(value: string): string {
@@ -1811,6 +1831,19 @@ export async function activateSession(session: Session): Promise<void> {
     await setContext('rSessionActive', true);
     rWorkspace?.refresh();
     scheduleWorkspaceRefresh();
+}
+
+/** Activate a connected session by its stable protocol identity. */
+export async function activateSessionById(sessionId: string): Promise<boolean> {
+    if (!enableSessionWatcher || typeof sessionId !== 'string' || !sessionId.trim()) {
+        return false;
+    }
+    const target = sessions.get(sessionId);
+    if (!target || !isCurrentSocket(target.socket) || target.socket.destroyed || !target.socket.writable) {
+        return false;
+    }
+    await activateSession(target);
+    return true;
 }
 
 export function resetStatusBar(): void {
