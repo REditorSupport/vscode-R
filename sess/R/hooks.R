@@ -8,6 +8,21 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
   runtime_start(use_rstudioapi, use_httpgd, use_jgd)
 }
 
+# Schedule a workspace notification outside the top-level task callback. The
+# generation check prevents an old callback from writing to a later transport.
+.workspace_update_task_callback <- function(..., schedule = later::later) {
+  if (!isTRUE(.runtime_state()$active)) return(FALSE)
+  generation <- .sess_env$transport_generation
+  schedule(function() {
+    if (!isTRUE(.runtime_state()$active) ||
+          !identical(generation, .sess_env$transport_generation)) {
+      return(invisible(NULL))
+    }
+    notify_client("workspace_updated")
+  }, 0)
+  TRUE
+}
+
 #' Start the VS Code runtime integration (internal)
 #'
 #' @keywords internal
@@ -289,11 +304,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
   .sess_env$runtime_start_phase <- "workspace-callback"
   # This notifies the client whenever a top-level command is completed,
   # suggesting that the Global Environment might have changed.
-  .runtime_add_task_callback(function(...) {
-    if (!isTRUE(.runtime_state()$active)) return(FALSE)
-    notify_client("workspace_updated")
-    TRUE
-  }, name = "sess.workspace")
+  .runtime_add_task_callback(.workspace_update_task_callback, name = "sess.workspace")
 
   completed <- TRUE
   invisible(NULL)

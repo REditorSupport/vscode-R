@@ -441,6 +441,58 @@ local({
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 0L)
 })
 
+# Workspace task callbacks defer the notification, then check runtime and
+# transport state before sending it.
+local({
+  if (!requireNamespace("processx", quietly = TRUE)) return(invisible(NULL))
+  cons <- tryCatch(processx::conn_create_pipepair(), error = function(e) NULL)
+  if (is.null(cons)) return(invisible(NULL))
+
+  .sess_env <- sess:::.sess_env
+  state <- sess:::.runtime_state()
+  old_con <- .sess_env$con
+  old_generation <- .sess_env$transport_generation
+  old_active <- state$active
+  on.exit({
+    .sess_env$con <- old_con
+    .sess_env$transport_generation <- old_generation
+    state$active <- old_active
+    try(close(cons[[1L]]), silent = TRUE)
+    try(close(cons[[2L]]), silent = TRUE)
+  }, add = TRUE)
+
+  .sess_env$con <- cons[[2L]]
+  .sess_env$transport_generation <- if (is.null(old_generation)) 1L else old_generation + 1L
+  generation <- .sess_env$transport_generation
+  state$active <- TRUE
+
+  scheduled <- list()
+  scheduler <- function(callback, delay) {
+    expect_equal(delay, 0)
+    scheduled[[length(scheduled) + 1L]] <<- callback
+  }
+  expect_true(sess:::.workspace_update_task_callback(schedule = scheduler))
+  expect_length(scheduled, 1L)
+  expect_false(identical(processx::poll(list(cons[[1L]]), 0L)[[1L]], "ready"))
+  scheduled[[1L]]()
+  sent <- jsonlite::fromJSON(processx::conn_read_chars(cons[[1L]]))
+  expect_equal(sent$method, "workspace_updated")
+
+  state$active <- FALSE
+  expect_false(sess:::.workspace_update_task_callback(schedule = scheduler))
+  state$active <- TRUE
+  expect_true(sess:::.workspace_update_task_callback(schedule = scheduler))
+  state$active <- FALSE
+  scheduled[[2L]]()
+  expect_false(identical(processx::poll(list(cons[[1L]]), 0L)[[1L]], "ready"))
+
+  state$active <- TRUE
+  expect_true(sess:::.workspace_update_task_callback(schedule = scheduler))
+  .sess_env$transport_generation <- generation + 1L
+  scheduled[[3L]]()
+  expect_false(identical(processx::poll(list(cons[[1L]]), 0L)[[1L]], "ready"))
+})
+
 # NDJSON framing round-trips correctly through a socket pair. Socket support is
 # environment-sensitive (some processx builds/platforms fail to accept or read
 # the loopback connection), so any infrastructure error becomes a silent skip
