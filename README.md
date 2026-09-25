@@ -8,16 +8,11 @@ Go to the [wiki](https://github.com/REditorSupport/vscode-R/wiki) to view the do
 
 ## What's new in 3.0.0-rc
 
-Version 3.0.0 introduces a major architectural shift for session watching:
-
-* **`sess` R Package**: Replaces the legacy file-based IPC with a modern,
-    in-memory WebSocket architecture using JSON-RPC 2.0.
-* **Better Performance and Reliability**: No more OS-level file watchers.
-    Communication is faster and more robust.
-* **Automatic Installation**: The extension will prompt you to install the
-    `sess` package when you start an R session if it is not available.
-
-See the [sess package README](./sess/README.md) for more details on the protocol.
+v3.0.0 of the R Extension for VS Code is a major release. It introduces a
+significant architectural change via the [**`sess`**](./sess/README.md) R
+package, which powers faster and more robust communication with the underlying R
+session. `sess` is bundled with the extension and installed automatically if it
+is missing or outdated, so no manual setup is needed.
 
 ## Quickstart
 
@@ -29,11 +24,27 @@ See the [sess package README](./sess/README.md) for more details on the protocol
     install.packages("languageserver")
     ```
 
-3. Install this R extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r).
+3. Install the stable release of this extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r).
 
     ```r
     code --install-extension REditorSupport.r
     ```
+
+    Alternatively, you can test the latest development version by installing from GitHub:
+
+    <details>
+    <summary>Install the development version</summary>
+
+    The [`latest`](https://github.com/REditorSupport/vscode-R/releases/tag/latest)
+    pre-release is rebuilt from every push to `master`. Download and install it:
+
+    ```sh
+    curl -fsSL -o vscode-R.vsix \
+      https://github.com/REditorSupport/vscode-R/releases/download/latest/vscode-R.vsix
+    code --install-extension vscode-R.vsix
+    ```
+
+    </details>
 
 4. Create an R file and start coding!
 
