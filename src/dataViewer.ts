@@ -163,6 +163,9 @@ export function getDataViewerScript(): string {
         return {
             theme: getAgTheme(),
             initialState: viewerInitialState,
+            // Updating defaultColDef for floating filters rebuilds the columns.
+            // Keep the user's order until they explicitly reset the view.
+            maintainColumnOrder: true,
             defaultColDef: {
                 sortable: true, resizable: true, filter: true, cellDataType: false,
                 floatingFilter: viewerFloatingFilters,
