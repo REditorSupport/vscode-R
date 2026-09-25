@@ -15,6 +15,10 @@ export function resolveBackend(): 'auto' | 'standard' | 'httpgd' | 'jgd' {
     return 'auto';
 }
 
+export function jgdEnabled(backend = resolveBackend()): boolean {
+    return backend === 'jgd' || backend === 'auto';
+}
+
 const commands = [
     'showViewers',
     'openUrl',
@@ -55,8 +59,7 @@ export class CommonPlotManager implements PlotManager {
     }
 
     get activeViewer(): PlotViewer | undefined {
-        const backend = resolveBackend();
-        if (backend === 'jgd' || backend === 'auto') {
+        if (jgdEnabled()) {
             return this.jgdManager.getViewer() || this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
         }
         return this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
@@ -74,7 +77,31 @@ export class CommonPlotManager implements PlotManager {
             );
         }
 
-        void vscode.commands.executeCommand('setContext', 'r.plot.backend', resolveBackend());
+        this.applyBackend();
+        extensionContext.subscriptions.push(
+            vscode.workspace.onDidChangeConfiguration(e => {
+                if (e.affectsConfiguration('r.plot.backend') || e.affectsConfiguration('r.plot.useHttpgd')) {
+                    this.applyBackend();
+                }
+            })
+        );
+    }
+
+    // Start the JGD server when the backend allows it, so switching to jgd
+    // takes effect on the next R (re)start without reloading VS Code.
+    private applyBackend(): void {
+        const backend = resolveBackend();
+        void vscode.commands.executeCommand('setContext', 'r.plot.backend', backend);
+        if (!jgdEnabled(backend)) {
+            return;
+        }
+        this.jgdManager.start();
+        // Set JGD_SOCKET env var for R child processes
+        const envCollection = extensionContext.environmentVariableCollection;
+        envCollection.persistent = false;
+        for (const [key, value] of Object.entries(this.getJgdEnvVars())) {
+            envCollection.replace(key, value);
+        }
     }
 
     public async showStandardPlot(): Promise<void> {
@@ -126,11 +153,5 @@ export class CommonPlotManager implements PlotManager {
 export function initializePlotManager(): PlotManager {
     const manager = new CommonPlotManager();
     manager.initialize();
-
-    const backend = resolveBackend();
-    if (backend === 'jgd' || backend === 'auto') {
-        manager.jgdManager.start();
-    }
-
     return manager;
 }

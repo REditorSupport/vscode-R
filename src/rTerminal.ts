@@ -11,7 +11,7 @@ import * as selection from './selection';
 import { getSelection } from './selection';
 import { cleanupSession, deferWorkspaceRefresh } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder, getRPathConfigEntry } from './util';
-import { resolveBackend, CommonPlotManager } from './plotViewer';
+import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
@@ -242,7 +242,7 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
             SESS_USE_HTTPGD: backend === 'httpgd' ? 'TRUE' : 'FALSE',
             SESS_PLOT_BACKEND: backend,
         };
-        if (backend === 'jgd' || backend === 'auto') {
+        if (jgdEnabled(backend)) {
             const jgdVars = (globalPlotManager as CommonPlotManager)?.getJgdEnvVars() ?? {};
             Object.assign(termOptions.env, jgdVars);
         }
