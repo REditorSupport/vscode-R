@@ -1,5 +1,11 @@
 # sess — A high-performance IPC bridge for R sessions
 
+<!-- badges: start -->
+
+<a href="https://reditorsupport.r-universe.dev"><img src="https://reditorsupport.r-universe.dev/badges/sess" class="img-fluid" alt="R-universe version"></a>
+
+<!-- badges: end -->
+
 `sess` is an R package for connecting your R sessions to an editor (client). The
 [VS Code R extension](https://github.com/REditorSupport/vscode-R) is our primary
 target client and `sess` powers many of the extension's core features:
@@ -22,25 +28,13 @@ socket on macOS/Linux, named pipe on Windows) using
 > outdated. Managed R terminals ask first; attaching an existing session
 > installs without prompting.
 
-`sess` is not yet on CRAN, but the development version can be installed from
-GitHub:
+`sess` is not yet on CRAN. But you can install the development version from R-universe:
 
 ```r
-# install.packages("remotes")
-remotes::install_github("REditorSupport/vscode-R/sess")
-
-# or: pak::pak("REditorSupport/vscode-R/sess")
-```
-
-If you prefer not to install from within an R session, you can install from
-the terminal instead. A sparse clone fetches only the `sess` directory
-(requires git >= 2.25):
-
-```sh
-git clone --depth 1 --filter=blob:none --sparse https://github.com/REditorSupport/vscode-R.git
-cd vscode-R
-git sparse-checkout set sess
-R CMD INSTALL sess
+install.packages(
+  "sess",
+  repos = c("https://reditorsupport.r-universe.dev", getOption("repos"))
+)
 ```
 
 ## Usage
