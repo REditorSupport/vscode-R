@@ -1,10 +1,8 @@
 # R Extension for Visual Studio Code
 
-This [VS Code](https://code.visualstudio.com/) extension provides support for the [R programming language](https://www.r-project.org), including features such as R language service based on code analysis, interacting with R terminals, viewing data, plots, workspace variables, help pages, managing packages, and working with [R Markdown](https://rmarkdown.rstudio.com/) documents.
+This [VS Code](https://code.visualstudio.com/) extension provides support for the [R programming language](https://www.r-project.org), including features such as R language service based on code analysis, interacting with R terminals, viewing data, plots, workspace variables, help pages, managing packages, and working with [R Markdown](https://rmarkdown.rstudio.com/) documents. See the [wiki](https://github.com/REditorSupport/vscode-R/wiki) for full documentation.
 
-The R and R Markdown syntaxes are located in a slibing package [vscode-R-syntax](https://github.com/REditorSupport/vscode-R-syntax).
-
-Go to the [wiki](https://github.com/REditorSupport/vscode-R/wiki) to view the documentation of the extension.
+The R and R Markdown syntaxes are located in a sibling package [vscode-R-syntax](https://github.com/REditorSupport/vscode-R-syntax).
 
 ## What's new in 3.0.0-rc
 
@@ -16,7 +14,7 @@ is missing or outdated, so no manual setup is needed.
 
 ## Quickstart
 
-1. [Install R](https://cloud.r-project.org/) (>= 3.4.0) on your system. For Windows users, Writing R Path to the registry is recommended in the installation.
+1. [Install R](https://cloud.r-project.org/) (>= 3.4.0) on your system. On Windows, we recommend letting the installer write the R path to the registry.
 
 2. Install the [`languageserver`](https://github.com/REditorSupport/languageserver) package from R.
 
@@ -26,7 +24,7 @@ is missing or outdated, so no manual setup is needed.
 
 3. Install the stable release of this extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r).
 
-    ```r
+    ```sh
     code --install-extension REditorSupport.r
     ```
 
@@ -48,9 +46,9 @@ is missing or outdated, so no manual setup is needed.
 
 4. Create an R file and start coding!
 
-#### Recommended extras
+### Recommended extras
 
-Steps 1-3 above are all that's required to get started with R in VS Code. But we also recommend the following software for a fully optimized R + VS code experience:
+Steps 1–3 above are all that's required to get started with R in VS Code. But we also recommend the following software for a fully optimized R + VS Code experience:
 
 * Install an interactive plotting backend for a better R graphics experience:
     * [jgd](https://github.com/grantmcdermott/jgd): Lightweight JSON graphics device with native vscode-R integration.
@@ -94,7 +92,7 @@ Please consult the relevant installation wiki pages for your OS ([Windows](https
 
 * Session symbol hover and completion.
 
-* [Data viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#data-viewer): Viewing `data.frame` or `matrix` in a grid or a list structure in a treeview.
+* [Data viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#data-viewer): Viewing data frames, matrices, Arrow tables, and polars data frames in a paged, sortable, filterable grid; lists in a tree view.
 
 * [Plot viewer](https://github.com/REditorSupport/vscode-R/wiki/Plot-viewer): Interactive plot viewer with support for [jgd](https://github.com/grantmcdermott/jgd) and [httpgd](https://github.com/nx10/httpgd) backends, plus a standard PNG/SVG fallback.
 
@@ -110,7 +108,7 @@ Please consult the relevant installation wiki pages for your OS ([Windows](https
 
 ## Questions, issues, feature requests, and contributions
 
-* If you have a question about accomplishing something in general with the extension, please [ask on Stack Overflow](https://stackoverflow.com/questions/tagged/visual-studio-code+r).
+* If you have a question about accomplishing something in general with the extension, please [start a discussion](https://github.com/REditorSupport/vscode-R/discussions) or [ask on Stack Overflow](https://stackoverflow.com/questions/tagged/visual-studio-code+r).
 
 * If you find a problem or have a feature request with the extension, please [find out](https://github.com/REditorSupport/vscode-R/issues) if there is a current issue you may upvote or otherwise [file an issue](https://github.com/REditorSupport/vscode-R/issues/new/choose).
 
