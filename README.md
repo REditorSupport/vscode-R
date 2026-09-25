@@ -14,12 +14,11 @@ The R and R Markdown syntaxes are located in a sibling package [vscode-R-syntax]
 
 ## What's new in 3.0.0-rc
 
-Version 3.0.0 introduces the [**`sess`**](./sess/README.md) R package for
-faster and more reliable session communication. It replaces file-based IPC
-with Unix domain sockets on macOS/Linux and named pipes on Windows, using
-JSON Lines framing and JSON-RPC 2.0 messages. The extension bundles `sess`
-and installs it if missing or outdated. Managed R terminals prompt before
-installation; attaching an existing session installs it automatically.
+v3.0.0 of the R Extension for VS Code is a major release. It introduces a
+significant architectural change via the [**`sess`**](./sess/README.md) R
+package, which powers faster and more robust communication with the underlying R
+session. `sess` is bundled with the extension and installed automatically if it
+is missing or outdated, so no manual setup is needed.
 
 ## Quickstart
 
