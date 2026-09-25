@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+v3.0.0 of the R Extension for VS code is a major release. It introduces a
+significant architectural change via the
+[**`sess`**](https://github.com/REditorSupport/vscode-R/tree/master/sess) R
+Package, which powers faster and more robust communication with the underlying R
+session. In turn, this enables a variety of ancillary improvements and feature
+requests, which we hope to continue building on. The extension will
+automatically prompt users to install `sess` (on their behalf) if it is not
+detected.
+
 ### Bug Fixes
 
 * fix(rstudioapi): resolve emulation issues and viewer routing
