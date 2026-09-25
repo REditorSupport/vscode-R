@@ -12,7 +12,6 @@ import {
     getRpath,
     doWithProgress,
     DummyMemento,
-    getRPathConfigEntry,
     escapeHtml,
     makeWebviewCommandUriString,
     uniqueEntries,
@@ -532,7 +531,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         );
         if (!aliases) {
             void vscode.window.showErrorMessage(
-                `Failed to get list of R functions. Make sure that \`jsonlite\` is installed and r.${getRPathConfigEntry()} points to a valid R executable.`,
+                'Failed to get list of R functions. Make sure that `jsonlite` is installed and r.executablePath points to a valid R executable.',
             );
             return undefined;
         }

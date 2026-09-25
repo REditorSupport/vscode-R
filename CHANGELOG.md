@@ -25,7 +25,7 @@ detected.
 * feat: check sess package version and prompt for update
 * feat(session): implement file-based reconnection and suppress verbose logs
 * feat(plot): new `r.plot.backend` enum setting for finer-grained control of the preferred plotting backend, including integration with the lightweight `jgd` graphics device (default if installed). `r.plot.useHttpgd` is deprecated in favor of `r.plot.backend`; it remains supported for compatibility with existing configurations but will be removed in a future release.
-* feat(term): new `r.rterm.preferredConsoles` enum setting enables for string-based R console selection (`"R"` (default), `"arf"`, and/or `"radian"`), automatically resolved against the user's `PATH`. `r.term.<os>` is still respected (and prioritized) if provided.
+* feat(r-path): add `r.executablePath` as the canonical setting for vanilla R used by background processes and `r.consolePath` for the interactive R console. Both accept an absolute or substituted path, or a bare executable name available on `PATH`; for example, `r.executablePath` can be the bare vanilla executable name `R`, while `r.consolePath` can be `arf` (or `radian`). Path settings are resolved against the relevant workspace resource when one is available. When `r.consolePath` and the legacy `r.rterm.<platform>` setting are unset, an explicitly configured `r.executablePath` is also used for the console. The legacy `r.rpath.<platform>` settings never affect console selection. The legacy `r.rpath.<platform>` and `r.rterm.<platform>` settings are deprecated in favor of the canonical settings, remain supported for backward compatibility, and may be removed in a future release.
 * feat(dataview): keep one viewer per data name, refreshing the existing viewer on repeated `View()` calls
 * feat(dataview): load data rows on demand while scrolling, with support for Arrow and Polars DataFrames
 * feat(workspace): support recursive expansion of nested lists, environments, pairlists, S4 objects, and data frames
@@ -38,6 +38,7 @@ detected.
 
 * Remove the unused `r.workspaceViewer.showObjectSize` setting and obsolete object-size tooltip support
 * Remove obsolete `r.session.objectLengthLimit`, `r.session.objectTimeout`, and `r.session.levelOfObjectDetail` settings following the switch to on-demand workspace inspection
+* Remove `r.helpPanel.rpath`, which was previously deprecated and no longer used by the extension
 
 ### Styling
 

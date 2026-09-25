@@ -140,14 +140,13 @@ export class RTaskProvider implements vscode.TaskProvider {
         }
 
         const tasks: vscode.Task[] = [];
-        const rPath = await getRpath(false);
-        if (!rPath) {
-            return [];
-        }
-
         for (const folder of folders) {
             const isRPackage = fs.existsSync(path.join(folder.uri.fsPath, 'DESCRIPTION'));
             if (isRPackage) {
+                const rPath = await getRpath(false, undefined, folder.uri);
+                if (!rPath) {
+                    continue;
+                }
                 for (const rtask of rtasks) {
                     const task = asRTask(rPath, folder, rtask);
                     tasks.push(task);
@@ -163,10 +162,11 @@ export class RTaskProvider implements vscode.TaskProvider {
             group: task.group,
             name: task.name
         };
-        const rPath = await getRpath(false);
+        const folder = task.scope && typeof task.scope !== 'number' ? task.scope : undefined;
+        const rPath = await getRpath(false, undefined, folder?.uri);
         if (!rPath) {
             throw 'R path not set.';
         }
-        return asRTask(rPath, vscode.TaskScope.Workspace, taskInfo);
+        return asRTask(rPath, folder ?? vscode.TaskScope.Workspace, taskInfo);
     }
 }

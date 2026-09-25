@@ -77,6 +77,13 @@ R's interactive features to the client:
 | `rstudioapi` | Editor functions such as `getActiveDocumentContext()` and `insertText()` are emulated when `use_rstudioapi = TRUE`. |
 | Top-level task callback | The client is notified after each command so it can refresh the workspace view. |
 
+These changes are undone when the connection closes. `sess` removes its task
+callbacks, closes its graphics devices, and restores any options, bindings, S3
+methods and plot hooks it replaced (unless other code has since changed them).
+A plot held only by a jgd device may not survive a disconnect or window reload.
+Calling `register_hooks()` again replaces the previous installation rather than
+stacking hooks.
+
 ### Graphics devices
 
 For displaying R plots, `sess` chooses a graphics device in this order:

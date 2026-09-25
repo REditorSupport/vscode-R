@@ -1,3 +1,125 @@
+# Mixed R column types survive paged RPC, including empty pages and missing values.
+local({
+  .sess_env <- sess:::.sess_env
+  orig_dataviews <- .sess_env$dataviews
+  orig_con <- .sess_env$con
+  pipe <- processx::conn_create_pipepair()
+  on.exit({
+    .sess_env$dataviews <- orig_dataviews
+    .sess_env$con <- orig_con
+    lapply(pipe, close)
+  }, add = TRUE)
+  .sess_env$con <- pipe[[2L]]
+
+  request <- function(method, params) {
+    sess:::dispatch_message(as.character(jsonlite::toJSON(
+      list(jsonrpc = "2.0", id = "types", method = method, params = params),
+      auto_unbox = TRUE
+    )))
+    jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]), simplifyVector = FALSE)
+  }
+
+  df <- data.frame(
+    integer = c(42L, NA_integer_),
+    double = c(1.54e-100, NA_real_),
+    huge_double = c(1.23456789012345e14, NA_real_),
+    logical = c(TRUE, NA),
+    character = c('中文 😀 "quoted" <html>', NA_character_),
+    factor = factor(c("apple", NA)),
+    ordered = ordered(c("low", NA), levels = c("low", "high")),
+    date = as.Date(c("2000-01-01", NA)),
+    datetime = as.POSIXct(c("2020-01-01", NA), tz = "Australia/Sydney"),
+    difftime = as.difftime(c(60, NA), units = "secs"),
+    complex = c(1 + 2i, NA_complex_),
+    raw = as.raw(c(0, 255)),
+    check.names = FALSE
+  )
+  df[["column with spaces"]] <- c("001", "")
+  df[["a.b$c@d"]] <- c(FALSE, TRUE)
+  df$list <- list(list(number = 1L, value = 3 - 4i), NULL)
+  df$complex_matrix <- I(matrix(c(1 + 2i, NA_complex_), ncol = 1))
+  expected <- list(
+    42L, 1.54e-100, 1.23456789012345e14, TRUE, '中文 😀 "quoted" <html>',
+    "apple", "low", "2000-01-01", "2020-01-01T00:00:00", "60 secs",
+    "1+2i", "0", "001", FALSE, list(number = 1L, value = "3-4i"), list("1+2i")
+  )
+  if (requireNamespace("bit64", quietly = TRUE)) {
+    df$integer64 <- bit64::as.integer64(c("9007199254740993", NA))
+    expected <- c(expected, list("9007199254740993"))
+  }
+
+  original <- serialize(df, NULL)
+  registration <- sess:::dataview_register(df)
+  view_id <- registration$view_id
+  init <- request("dataview_init", list(view_id = view_id))
+  expect_equal(init$result$totalRows, 2L)
+  expect_length(init$result$columns, ncol(df) + 1L)
+  for (name in c("complex", "raw", "list")) {
+    column <- init$result$columns[[match(name, names(df)) + 1L]]
+    expect_false(column$sortable, info = name)
+    expect_false(column$filter, info = name)
+  }
+
+  page <- request("dataview_page", list(view_id = view_id, startRow = 0L, endRow = 1L))
+  expect_null(page$error)
+  expect_length(page$result$rows, 1L)
+  actual <- unname(page$result$rows[[1L]][as.character(seq_along(expected))])
+  expect_equal(actual, expected, tolerance = 1e-14)
+
+  missing <- request("dataview_page", list(view_id = view_id, startRow = 1L, endRow = 2L))
+  expect_null(missing$error)
+  expect_length(missing$result$rows, 1L)
+  for (name in c("integer", "double", "logical", "character", "factor", "ordered",
+                 "date", "datetime", "difftime", "complex")) {
+    expect_null(missing$result$rows[[1L]][[as.character(match(name, names(df)))]], info = name)
+  }
+
+  empty <- request("dataview_page", list(view_id = view_id, startRow = 2L, endRow = 3L))
+  expect_null(empty$error)
+  expect_length(empty$result$rows, 0L)
+  expect_identical(serialize(df, NULL), original)
+
+  for (values in list(c(1L, NA_integer_), c(1.54e-100, NA_real_), c(TRUE, NA),
+                      c("中文", NA_character_), c(1 + 2i, NA_complex_), as.raw(c(0, 255)))) {
+    matrix <- matrix(values, ncol = 1L)
+    view_id <- sess:::dataview_register(matrix)$view_id
+    page <- request("dataview_page", list(view_id = view_id, startRow = 0L, endRow = 2L))
+    expect_null(page$error, info = typeof(values))
+    expect_length(page$result$rows, 2L, info = typeof(values))
+    if (is.complex(values)) {
+      expect_equal(page$result$rows[[1L]][["1"]], "1+2i")
+      expect_null(page$result$rows[[2L]][["1"]])
+    }
+  }
+
+  df <- data.frame(id = 1:2)
+  df$time <- as.POSIXlt(c("2020-01-01", NA), tz = "Australia/Sydney")
+  view_id <- sess:::dataview_register(df)$view_id
+  page <- request("dataview_page", list(view_id = view_id))
+  expect_equal(page$result$rows[[1L]][["2"]], "2020-01-01T00:00:00")
+  expect_null(page$result$rows[[2L]][["2"]])
+
+  df <- data.frame(value = c(-Inf, Inf, NaN, NA_real_, 0, 1),
+                   all_na_numeric = NA_real_, all_na_character = NA_character_)
+  view_id <- sess:::dataview_register(df)$view_id
+  page <- request("dataview_page", list(view_id = view_id))
+  expect_null(page$error)
+  expect_length(page$result$rows, 6L)
+  expect_equal(page$result$rows[[5L]][["1"]], 0)
+  expect_equal(page$result$rows[[6L]][["1"]], 1)
+  for (row in page$result$rows) {
+    expect_null(row[["2"]])
+    expect_null(row[["3"]])
+  }
+
+  nested <- list(date = as.Date("2000-01-01"),
+                 table = data.frame(value = 1:2), value = list(1 + 2i))
+  formatted <- sess:::dataview_format_column(list(nested))[[1L]]
+  expect_identical(formatted$date, nested$date)
+  expect_identical(formatted$table, nested$table)
+  expect_equal(formatted$value, list("1+2i"))
+})
+
 # Small numbers survive the actual JSON response and remain distinct in cached filters.
 local({
   .sess_env <- sess:::.sess_env

@@ -7,7 +7,7 @@ import { URL } from 'url';
 import * as fs from 'fs';
 import { LanguageClient, LanguageClientOptions, StreamInfo, DocumentFilter, ErrorAction, CloseAction, RevealOutputChannelOn } from 'vscode-languageclient/node';
 import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, OutputChannel, window, WorkspaceFolder } from 'vscode';
-import { DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables } from './util';
+import { config, DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables } from './util';
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 
@@ -57,13 +57,15 @@ export class LanguageService implements Disposable {
     }
 
     private async createClient(selector: DocumentFilter[],
-        cwd: string, workspaceFolder: WorkspaceFolder | undefined, outputChannel: OutputChannel): Promise<LanguageClient> {
+        cwd: string, workspaceFolder: WorkspaceFolder | undefined, outputChannel: OutputChannel,
+        resource?: Uri): Promise<LanguageClient> {
 
         let client: LanguageClient;
 
+        const resourceConfig = config(resource);
         const debug = this.config.get<boolean>('lsp.debug');
         const useRenvLibPath = this.config.get<boolean>('useRenvLibPath') ?? false;
-        const rPath = await getRpath() || ''; // TODO: Abort gracefully
+        const rPath = await getRpath(false, undefined, resource) || ''; // TODO: Abort gracefully
         if (debug) {
             console.log(`R path: ${rPath}`);
         }
@@ -87,7 +89,7 @@ export class LanguageService implements Disposable {
 
         const rScriptPath = extensionContext.asAbsolutePath('R/languageServer.R');
         const options = { cwd: cwd, env: env };
-        const args = (this.config.get<string[]>('lsp.args')?.map(substituteVariables) ?? []).concat(
+        const args = (resourceConfig.get<string[]>('lsp.args')?.map(value => substituteVariables(value, resource)) ?? []).concat(
             '--silent',
             '--no-echo',
             '--no-save',
@@ -227,7 +229,7 @@ export class LanguageService implements Disposable {
                         { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}` },
                     ];
                     const client = await this.createClient(documentSelector,
-                        dirname(document.uri.fsPath), folder, this.outputChannel);
+                        dirname(document.uri.fsPath), folder, this.outputChannel, folder?.uri ?? document.uri);
                     this.clients.set(key, client);
                     this.initSet.delete(key);
                 }
@@ -245,7 +247,7 @@ export class LanguageService implements Disposable {
                         { scheme: 'file', language: 'r', pattern: pattern },
                         { scheme: 'file', language: 'rmd', pattern: pattern },
                     ];
-                    const client = await this.createClient(documentSelector, folder.uri.fsPath, folder, this.outputChannel);
+                    const client = await this.createClient(documentSelector, folder.uri.fsPath, folder, this.outputChannel, folder.uri);
                     this.clients.set(key, client);
                     this.initSet.delete(key);
                 }
@@ -261,7 +263,7 @@ export class LanguageService implements Disposable {
                             { scheme: 'untitled', language: 'r' },
                             { scheme: 'untitled', language: 'rmd' },
                         ];
-                        const client = await this.createClient(documentSelector, os.homedir(), undefined, this.outputChannel);
+                        const client = await this.createClient(documentSelector, os.homedir(), undefined, this.outputChannel, document.uri);
                         this.clients.set(key, client);
                         this.initSet.delete(key);
                     }
@@ -277,7 +279,7 @@ export class LanguageService implements Disposable {
                             { scheme: 'file', pattern: document.uri.fsPath },
                         ];
                         const client = await this.createClient(documentSelector,
-                            dirname(document.uri.fsPath), undefined, this.outputChannel);
+                            dirname(document.uri.fsPath), undefined, this.outputChannel, document.uri);
                         this.clients.set(key, client);
                         this.initSet.delete(key);
                     }
@@ -351,7 +353,7 @@ export class LanguageService implements Disposable {
 
             const workspaceFolder = workspace.workspaceFolders?.[0];
             const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : os.homedir();
-            const client = await this.createClient(documentSelector, cwd, undefined, this.outputChannel);
+            const client = await this.createClient(documentSelector, cwd, undefined, this.outputChannel, workspaceFolder?.uri);
             this.clients.set('global', client);
         }
     }

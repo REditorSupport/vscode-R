@@ -8,6 +8,8 @@
 #' @param use_jgd Logical. Use jgd for plotting if available. Defaults to FALSE.
 #' @export
 connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
+  # Invalidate poll callbacks and restore a previous runtime before reconnecting.
+  .transport_disconnect(silent = TRUE)
   .sess_env$con <- NULL
   .sess_env$pending_responses <- list()
   .sess_env$read_buffer <- ""
@@ -67,7 +69,7 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
         NULL
       }
     )
-    if (is.null(con)) return()
+    if (is.null(con)) return(FALSE)
 
     .sess_env$con <- con
 
@@ -84,47 +86,122 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
       )
     ))
 
+    if (is.null(.sess_env$con)) return(FALSE)
+
     print_async_msg("[sess] Connected to VS Code")
 
     # Start the polling loop
-    poll_connection()
+    poll_connection(.sess_env$transport_generation)
+    TRUE
   }
 
-  do_connect()
+  connected <- do_connect()
 
   if (is.na(use_rstudioapi)) use_rstudioapi <- TRUE
   if (is.na(use_httpgd)) use_httpgd <- TRUE
   if (is.na(use_jgd)) use_jgd <- FALSE
-  register_hooks(use_rstudioapi = use_rstudioapi, use_httpgd = use_httpgd, use_jgd = use_jgd)
+  if (isTRUE(connected) && !is.null(.sess_env$con)) {
+    tryCatch(
+      runtime_start(use_rstudioapi = use_rstudioapi,
+                    use_httpgd = use_httpgd,
+                    use_jgd = use_jgd),
+      error = function(e) {
+        phase <- .sess_env$runtime_start_phase
+        error_call <- conditionCall(e)
+        call_text <- if (is.null(error_call)) {
+          ""
+        } else {
+          paste(deparse(error_call), collapse = " ")
+        }
+        call_suffix <- if (nzchar(call_text)) {
+          paste0(" (", call_text, ")")
+        } else {
+          ""
+        }
+        message(
+          "[sess] Runtime startup failed during ", phase, ": ",
+          conditionMessage(e), call_suffix
+        )
+        stop(e)
+      },
+      finally = {
+        .sess_env$runtime_start_phase <- NULL
+      }
+    )
+  }
 
   invisible(NULL)
+}
+
+.transport_disconnect <- function(silent = FALSE) {
+  con <- .sess_env$con
+  .sess_env$con <- NULL
+  .sess_env$transport_generation <- if (is.null(.sess_env$transport_generation)) {
+    1L
+  } else {
+    .sess_env$transport_generation + 1L
+  }
+  .sess_env$read_buffer <- ""
+  .sess_env$pending_responses <- list()
+
+  if (!is.null(con)) try(close(con), silent = TRUE)
+  runtime_stop()
+  if (!silent && !is.null(con)) message("[sess] Disconnected from VS Code")
+  invisible(NULL)
+}
+
+.transport_empty_read_is_eof <- function(con) {
+  # A ready poll can race with a read that finds no bytes. Treat only a
+  # connection known to have reached EOF as disconnected; processx documents
+  # conn_is_incomplete() as FALSE once no more data can arrive.
+  incomplete <- tryCatch(
+    processx::conn_is_incomplete(con),
+    error = function(e) TRUE
+  )
+  identical(incomplete, FALSE)
 }
 
 #' Poll the IPC connection for incoming messages (internal)
 #'
 #' Runs as a recurring later callback; dispatches NDJSON messages from vscode.
 #' @keywords internal
-poll_connection <- function() {
+poll_connection <- function(generation = .sess_env$transport_generation) {
   con <- .sess_env$con
-  if (is.null(con)) return()
+  if (is.null(con) || !identical(generation, .sess_env$transport_generation)) return()
 
   # Non-blocking poll: 0 ms timeout
   ready <- tryCatch(
     processx::poll(list(con), 0L),
-    error = function(e) NULL
+    error = function(e) {
+      .transport_disconnect(silent = TRUE)
+      NULL
+    }
   )
 
+  if (is.null(.sess_env$con) ||
+        !identical(generation, .sess_env$transport_generation)) {
+    return()
+  }
+
+  # A NULL poll result is transient; keep the loop alive and reschedule below.
   if (!is.null(ready) && length(ready) > 0 && identical(ready[[1]], "ready")) {
     chunk <- tryCatch(
       processx::conn_read_chars(con),
       error = function(e) {
-        .sess_env$con <- NULL
+        .transport_disconnect(silent = TRUE)
         NULL
       }
     )
 
-    if (!is.null(chunk) && nzchar(chunk)) {
-      .sess_env$read_buffer <- paste0(.sess_env$read_buffer, chunk)
+    if (is.null(.sess_env$con)) return()
+    has_data <- !is.null(chunk) && length(chunk) > 0L && any(nzchar(chunk))
+    if (!has_data) {
+      if (.transport_empty_read_is_eof(con)) {
+        .transport_disconnect(silent = TRUE)
+        return()
+      }
+    } else {
+      .sess_env$read_buffer <- paste0(.sess_env$read_buffer, paste0(chunk, collapse = ""))
       parts <- strsplit(.sess_env$read_buffer, "\n", fixed = TRUE)[[1]]
 
       n <- length(parts)
@@ -147,9 +224,14 @@ poll_connection <- function() {
         )
       }
     }
+  } else if (length(ready) > 0 && ready[[1]] %in% c("closed", "error")) {
+    .transport_disconnect(silent = TRUE)
+    return()
   }
 
-  later::later(poll_connection, 0.01)
+  if (!is.null(.sess_env$con) && identical(generation, .sess_env$transport_generation)) {
+    later::later(function() poll_connection(generation), 0.01)
+  }
 }
 
 #' Dispatch a single NDJSON line as a JSON-RPC message (internal)
@@ -184,14 +266,16 @@ dispatch_message <- function(line) {
     )
 
     if (payload$method %in% names(handlers)) {
-      res <- tryCatch(
-        handlers[[payload$method]](payload$params),
+      tryCatch(
+        {
+          res <- handlers[[payload$method]](payload$params)
+          rpc_reply(payload$id, result = res)
+        },
         error = function(e) {
+          rpc_reply(payload$id, error = list(code = -32603L, message = conditionMessage(e)))
           warning(sprintf("[sess] Error in handler for '%s': %s", payload$method, e$message))
-          NULL
         }
       )
-      rpc_reply(payload$id, result = res)
     } else {
       rpc_reply(payload$id, error = list(code = -32601L, message = "Method not found"))
     }

@@ -32,6 +32,9 @@ jobs:
         run: install.packages("remotes")
         shell: Rscript {0}
       - run: npm run build
+      - name: Run sess tests
+        run: tinytest::test_package("sess")
+        shell: Rscript {0}
       - name: Run tests (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test

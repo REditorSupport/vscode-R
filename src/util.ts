@@ -9,79 +9,60 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import { extensionContext } from './extension';
 import { randomBytes } from 'crypto';
+import {
+    createRPathResolverDependencies,
+    findExecutableOnPath,
+    formatRPath,
+    resolveBackgroundR,
+    resolveConsoleR,
+    resolveSystemR,
+    rConsolePathSetting,
+    rExecutablePathSetting,
+    selectWorkspaceFolder,
+    substitutePathVariables,
+} from './rPathResolver';
 
-export function config(): vscode.WorkspaceConfiguration {
-    return vscode.workspace.getConfiguration('r');
+export function config(resource?: vscode.Uri): vscode.WorkspaceConfiguration {
+    return vscode.workspace.getConfiguration('r', resource);
 }
 
-function substituteVariable(str: string, key: string, getValue: () => string | undefined) {
-    if (str.includes(key)) {
-        const value = getValue();
-        if (value) {
-            return str.replaceAll(key, value);
-        }
+export function substituteVariables(str: string, resource?: vscode.Uri): string {
+    if (!str.includes('${')) {
+        return str;
     }
-    return str;
-}
 
-export function substituteVariables(str: string): string {
-    let result = str;
-    if (str.includes('${')) {
-        result = substituteVariable(result, '${userHome}', () => homedir());
-        result = substituteVariable(result, '${workspaceFolder}', () => getCurrentWorkspaceFolder()?.uri.fsPath);
-        result = substituteVariable(result, '${fileWorkspaceFolder}', () => getActiveFileWorkspaceFolder()?.uri.fsPath);
-        result = substituteVariable(result, '${fileDirname}', () => {
-            const activeFilePath = vscode.window.activeTextEditor?.document.uri.fsPath;
-            if (activeFilePath) {
-                return path.dirname(activeFilePath);
-            }
-        });
-    }
-    return result;
+    const activeFilePath = vscode.window.activeTextEditor?.document.uri.fsPath;
+    return substitutePathVariables(str, {
+        userHome: homedir(),
+        workspaceFolder: getCurrentWorkspaceFolder(resource)?.uri.fsPath,
+        fileWorkspaceFolder: getActiveFileWorkspaceFolder()?.uri.fsPath,
+        fileDirname: activeFilePath ? path.dirname(activeFilePath) : undefined,
+    });
 }
 
 function getRfromEnvPath(platform: string, executableName: string = 'R') {
-    let splitChar = ':';
-    let fileExtension = '';
-
-    if (platform === 'win32') {
-        splitChar = ';';
-        fileExtension = '.exe';
-    }
-
-    const os_paths: string[] | string = process.env.PATH ? process.env.PATH.split(splitChar) : [];
-    for (const os_path of os_paths) {
-        const os_r_path: string = path.join(os_path, executableName + fileExtension);
-        if (fs.existsSync(os_r_path)) {
-            return os_r_path;
-        }
-    }
-    return '';
+    return findExecutableOnPath(executableName, platform as NodeJS.Platform, process.env.PATH, fs.existsSync) ?? '';
 }
 
 export async function getRpathFromSystem(): Promise<string> {
-
-    let rpath = '';
-    const platform: string = process.platform;
-
-    rpath ||= getRfromEnvPath(platform);
-
-    if (!rpath && platform === 'win32') {
-        // Find path from registry
-        try {
-            const key = new winreg({
-                hive: winreg.HKLM,
-                key: '\\Software\\R-Core\\R',
-            });
-            const item: winreg.RegistryItem = await new Promise((c, e) =>
-                key.get('InstallPath', (err, result) => err === null ? c(result) : e(err)));
-            rpath = path.join(item.value, 'bin', 'R.exe');
-        } catch (e) {
-            rpath = '';
-        }
-    }
-
-    return rpath;
+    const rpath = await resolveSystemR({
+        platform: process.platform,
+        findExecutable: name => getRfromEnvPath(process.platform, name) || undefined,
+        getWindowsInstallPath: async () => {
+            try {
+                const key = new winreg({
+                    hive: winreg.HKLM,
+                    key: '\\Software\\R-Core\\R',
+                });
+                const item: winreg.RegistryItem = await new Promise((c, e) =>
+                    key.get('InstallPath', (err, result) => err === null ? c(result) : e(err)));
+                return item.value;
+            } catch {
+                return undefined;
+            }
+        },
+    });
+    return rpath ?? '';
 }
 
 export function getRPathConfigEntry(term: boolean = false): string {
@@ -94,71 +75,49 @@ export function getRPathConfigEntry(term: boolean = false): string {
     return `${trunc}.${platform}`;
 }
 
-export async function getRpath(quote = false, overwriteConfig?: string): Promise<string | undefined> {
-    let rpath: string | undefined = '';
-
-    // try the config entry specified in the function arg:
-    if (overwriteConfig) {
-        rpath = config().get<string>(overwriteConfig);
-    }
-
-    // try the os-specific config entry for the rpath:
+export async function getRpath(
+    quote = false,
+    overwriteConfig?: string,
+    resource?: vscode.Uri
+): Promise<string | undefined> {
     const configEntry = getRPathConfigEntry();
-    rpath ||= config().get<string>(configEntry);
-    rpath &&= substituteVariables(rpath);
-
-    // read from path/registry:
-    rpath ||= await getRpathFromSystem();
-
-    // represent all invalid paths (undefined, '', null) as undefined:
-    rpath ||= undefined;
+    const resolution = await resolveBackgroundR(
+        getRPathResolverDependencies(resource),
+        configEntry,
+        overwriteConfig
+    );
+    const rpath = formatRPath(resolution, quote, process.platform);
 
     if (!rpath) {
         // inform user about missing R path:
-        void vscode.window.showErrorMessage(`Cannot find R to use for help, package installation etc. Change setting r.${configEntry} to R path.`);
-    } else if (quote && /^[^'"].* .*[^'"]$/.exec(rpath)) {
-        // if requested and rpath contains spaces, add quotes:
-        rpath = `"${rpath}"`;
-    } else if (!quote) {
-        rpath = rpath.replace(/^"(.*)"$/, '$1');
-        rpath = rpath.replace(/^'(.*)'$/, '$1');
-    } else if (process.platform === 'win32' && /^'.* .*'$/.exec(rpath)) {
-        // replace single quotes with double quotes on windows
-        rpath = rpath.replace(/^'(.*)'$/, '"$1"');
+        void vscode.window.showErrorMessage(`Cannot find R to use for help, package installation etc. Change setting r.${rExecutablePathSetting} to an R executable.`);
     }
 
     return rpath;
 }
 
-export async function getRterm(): Promise<string | undefined> {
+export async function getRterm(resource?: vscode.Uri): Promise<string | undefined> {
     const configEntry = getRPathConfigEntry(true);
-    let rpath = config().get<string>(configEntry);
-    rpath &&= substituteVariables(rpath);
+    const resolution = await resolveConsoleR(getRPathResolverDependencies(resource), configEntry);
+    const rpath = resolution.path;
 
-    if (!rpath) {
-        const platform: string = process.platform;
-        const preferredConsoles = config().get<string[]>('rterm.preferredConsoles', ['R']);
-
-        for (const consoleName of preferredConsoles) {
-            if (!consoleName) {
-                continue;
-            }
-            rpath = getRfromEnvPath(platform, consoleName);
-            if (rpath) {
-                break;
-            }
-        }
-    }
-
-    // Fall back to system R path if still not found
-    rpath ||= await getRpathFromSystem();
-
-    if (rpath !== '') {
+    if (rpath) {
         return rpath;
     }
 
-    void vscode.window.showErrorMessage(`Cannot find R for creating R terminal. Change setting r.${configEntry} to R path.`);
+    void vscode.window.showErrorMessage(`Cannot find R for creating R terminal. Change setting r.${rConsolePathSetting} to an R console executable.`);
     return undefined;
+}
+
+function getRPathResolverDependencies(resource?: vscode.Uri) {
+    return createRPathResolverDependencies({
+        resource,
+        getConfiguration: config,
+        substituteVariables,
+        findExecutable: name => getRfromEnvPath(process.platform, name) || undefined,
+        pathExists: fs.existsSync,
+        getSystemR: getRpathFromSystem,
+    });
 }
 
 export function ToRStringLiteral(s: string, quote: string): string {
@@ -198,16 +157,13 @@ function getActiveFileWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
     }
 }
 
-export function getCurrentWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
-    if (vscode.workspace.workspaceFolders !== undefined) {
-        if (vscode.workspace.workspaceFolders.length === 1) {
-            return vscode.workspace.workspaceFolders[0];
-        } else if (vscode.workspace.workspaceFolders.length > 1) {
-            return getActiveFileWorkspaceFolder() || vscode.workspace.workspaceFolders[0];
-        }
-    }
-
-    return undefined;
+export function getCurrentWorkspaceFolder(resource?: vscode.Uri): vscode.WorkspaceFolder | undefined {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    const resourceWorkspaceFolder = resource ? vscode.workspace.getWorkspaceFolder(resource) : undefined;
+    const activeFileWorkspaceFolder = !resourceWorkspaceFolder && workspaceFolders && workspaceFolders.length > 1
+        ? getActiveFileWorkspaceFolder()
+        : undefined;
+    return selectWorkspaceFolder(workspaceFolders, activeFileWorkspaceFolder, resourceWorkspaceFolder);
 }
 
 // Drop-in replacement for fs-extra.readFile (),
@@ -363,7 +319,9 @@ export function compareVersions(v1: string, v2: string): number {
 }
 
 export function getRLibPaths(): string | undefined {
-    return config().get<string[]>('libPaths')?.map(substituteVariables).join('\n');
+    return config().get<string[]>('libPaths')
+        ?.map(value => substituteVariables(value))
+        .join('\n');
 }
 
 // executes an R command returns its output to stdout
@@ -374,7 +332,8 @@ export function getRLibPaths(): string | undefined {
 // Single quotes are ok.
 //
 export async function executeRCommand(rCommand: string, cwd?: string | URL, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
-    const rPath = await getRpath();
+    const resource = resourceFromCwd(cwd);
+    const rPath = await getRpath(false, undefined, resource);
     if (!rPath) {
         return undefined;
     }
@@ -416,6 +375,16 @@ export async function executeRCommand(rCommand: string, cwd?: string | URL, fall
     }
 
     return ret;
+}
+
+function resourceFromCwd(cwd?: string | URL | vscode.Uri): vscode.Uri | undefined {
+    if (!cwd) {
+        return undefined;
+    }
+    if (cwd instanceof vscode.Uri) {
+        return cwd;
+    }
+    return typeof cwd === 'string' ? vscode.Uri.file(cwd) : vscode.Uri.parse(cwd.toString());
 }
 
 
@@ -572,6 +541,7 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
  * @returns a boolean Promise
  */
 export async function promptToInstallRPackage(name: string, section: string, cwd: string | URL, installMsg?: string, postInstallMsg?: string): Promise<void> {
+    const resource = resourceFromCwd(cwd);
     const _config = config();
     const prompt = _config.get<boolean>(section);
     if (!prompt) {
@@ -584,7 +554,7 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
         .then(async function (select) {
             if (select === 'Yes') {
                 const repo = await getCranUrl('', cwd);
-                const rPath = await getRpath();
+                const rPath = await getRpath(false, undefined, resource);
                 if (!rPath) {
                     void vscode.window.showErrorMessage('R path not set', 'OK');
                     return;
@@ -609,6 +579,7 @@ export async function promptToInstallSessPackage(
     _getRPackageVersion = getRPackageVersion,
     _readFileSyncSafe = readFileSyncSafe
 ): Promise<void> {
+    const resource = resourceFromCwd(cwd);
     const activeConfig = _config();
     const sessionWatcher = activeConfig.get<boolean>('sessionWatcher');
     if (!sessionWatcher) {
@@ -639,7 +610,7 @@ export async function promptToInstallSessPackage(
     await vscode.window.showErrorMessage(installMsg, 'Yes', 'No')
         .then(async function (select) {
             if (select === 'Yes') {
-                const rPath = await getRpath();
+                const rPath = await getRpath(false, undefined, resource);
                 if (!rPath) {
                     void vscode.window.showErrorMessage('R path not set', 'OK');
                     return;

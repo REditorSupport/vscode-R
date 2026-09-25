@@ -74,7 +74,7 @@
       {
         "view": "workspaceViewer",
         "when": "!r.WorkspaceViewer:show",
-        "contents": "R workspace viewer requires that the [session watcher be enabled](https://github.com/REditorSupport/vscode-R/wiki/R-Session-watcher)."
+        "contents": "R workspace viewer requires that the [session watcher be enabled](command:workbench.action.openSettings?[\"@id:r.sessionWatcher\"])."
       },
       {
         "view": "rHelpPages",
@@ -1281,35 +1281,59 @@
       "type": "object",
       "title": "R",
       "properties": {
+        "r.executablePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "Absolute or substituted path to the vanilla R executable used for background processes, or an executable name available on `PATH`. Do not use alternative consoles such as arf or radian. The supported substitutions are `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}`."
+        },
+        "r.consolePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "Absolute or substituted path to the executable used to launch the interactive R console, or an executable name available on `PATH`. Alternative consoles such as arf (or radian) are supported. The supported substitutions are `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}`."
+        },
         "r.rpath.windows": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to an R executable to launch R background processes (Windows). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
+          "markdownDescription": "Path to an R executable to launch R background processes (Windows). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported.",
+          "markdownDeprecationMessage": "Deprecated. Use `#r.executablePath#` instead.",
+          "deprecationMessage": "Deprecated. Use r.executablePath instead."
         },
         "r.rpath.mac": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to an R executable to launch R background processes (macOS). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
+          "markdownDescription": "Path to an R executable to launch R background processes (macOS). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported.",
+          "markdownDeprecationMessage": "Deprecated. Use `#r.executablePath#` instead.",
+          "deprecationMessage": "Deprecated. Use r.executablePath instead."
         },
         "r.rpath.linux": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to an R executable to launch R background processes (Linux). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
+          "markdownDescription": "Path to an R executable to launch R background processes (Linux). Must be \"vanilla\" R, not radian etc.! Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported.",
+          "markdownDeprecationMessage": "Deprecated. Use `#r.executablePath#` instead.",
+          "deprecationMessage": "Deprecated. Use r.executablePath instead."
         },
         "r.rterm.windows": {
           "type": "string",
           "default": "",
-          "markdownDescription": "R path for interactive terminals (Windows). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
+          "markdownDescription": "R path for interactive terminals (Windows). Can also be arf or radian. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported.",
+          "markdownDeprecationMessage": "Deprecated. Use `#r.consolePath#` instead.",
+          "deprecationMessage": "Deprecated. Use r.consolePath instead."
         },
         "r.rterm.mac": {
           "type": "string",
           "default": "",
-          "markdownDescription": "R path for interactive terminals (macOS). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
+          "markdownDescription": "R path for interactive terminals (macOS). Can also be arf or radian. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported.",
+          "markdownDeprecationMessage": "Deprecated. Use `#r.consolePath#` instead.",
+          "deprecationMessage": "Deprecated. Use r.consolePath instead."
         },
         "r.rterm.linux": {
           "type": "string",
           "default": "",
-          "markdownDescription": "R path for interactive terminals (Linux). Can also be radian etc. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported."
+          "markdownDescription": "R path for interactive terminals (Linux). Can also be arf or radian. Some variables defined in <https://code.visualstudio.com/docs/editor/variables-reference> such as `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}` are supported.",
+          "markdownDeprecationMessage": "Deprecated. Use `#r.consolePath#` instead.",
+          "deprecationMessage": "Deprecated. Use r.consolePath instead."
         },
         "r.rterm.option": {
           "type": "array",
@@ -1318,16 +1342,6 @@
             "--no-restore"
           ],
           "description": "R command line options.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "r.rterm.preferredConsoles": {
-          "type": "array",
-          "default": [
-            "R"
-          ],
-          "markdownDescription": "Ordered list of R console executable names to search for on `PATH` when no explicit terminal path is set (e.g. `r.rterm.linux`). The first entry found on `PATH` will be used. Examples: `arf`, `radian`, `R`.",
           "items": {
             "type": "string"
           }
@@ -1496,13 +1510,6 @@
             "."
           ],
           "markdownDescription": "Which local directories to try for local help pages previewer. Set to `[]` to disable."
-        },
-        "r.helpPanel.rpath": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "DEPRECATED! Path to an R executable. Must be \"vanilla\" R, not radian etc.! Will be read from registry or path if not set.",
-          "markdownDeprecationMessage": "Will be deprecated. Use `#r.rpath.windows#`, `#r.rpath.mac#`, or `#r.rpath.linux#` instead.",
-          "deprecationMessage": "Will be deprecated. Use r.rpath.windows, r.rpath.mac, or r.rpath.linux instead."
         },
         "r.helpPanel.enableHoverLinks": {
           "type": "boolean",
