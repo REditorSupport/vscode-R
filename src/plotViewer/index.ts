@@ -15,6 +15,10 @@ export function resolveBackend(): 'auto' | 'standard' | 'httpgd' | 'jgd' {
     return 'auto';
 }
 
+export function jgdEnabled(backend = resolveBackend()): boolean {
+    return backend === 'jgd' || backend === 'auto';
+}
+
 const commands = [
     'showViewers',
     'openUrl',
@@ -55,8 +59,7 @@ export class CommonPlotManager implements PlotManager {
     }
 
     get activeViewer(): PlotViewer | undefined {
-        const backend = resolveBackend();
-        if (backend === 'jgd' || backend === 'auto') {
+        if (jgdEnabled()) {
             return this.jgdManager.getViewer() || this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
         }
         return this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
@@ -89,7 +92,7 @@ export class CommonPlotManager implements PlotManager {
     private applyBackend(): void {
         const backend = resolveBackend();
         void vscode.commands.executeCommand('setContext', 'r.plot.backend', backend);
-        if (backend !== 'jgd' && backend !== 'auto') {
+        if (!jgdEnabled(backend)) {
             return;
         }
         this.jgdManager.start();

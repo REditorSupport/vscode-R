@@ -14,7 +14,7 @@ import * as rTerminal from './rTerminal';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { extensionContext, homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, tmpDir } from './extension';
-import { resolveBackend, CommonPlotManager } from './plotViewer';
+import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 
 import { showWebView } from './webViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
@@ -438,8 +438,9 @@ function getAttachSessionScriptPath(pipePath: string): string {
 function buildAttachSessionScript(pipePath: string, sessPath: string, installSessScriptPath: string): string {
     const backend = resolveBackend();
     const useHttpgd = backend === 'httpgd' || backend === 'auto' ? 'TRUE' : 'FALSE';
-    const useJgd = backend === 'jgd' || backend === 'auto' ? 'TRUE' : 'FALSE';
-    const jgdSocket = (backend === 'jgd' || backend === 'auto')
+    const jgd = jgdEnabled(backend);
+    const useJgd = jgd ? 'TRUE' : 'FALSE';
+    const jgdSocket = jgd
         ? (globalPlotManager as CommonPlotManager)?.getJgdEnvVars()?.['JGD_SOCKET'] ?? ''
         : '';
     return [
