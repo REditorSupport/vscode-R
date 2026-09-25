@@ -62,6 +62,16 @@ Steps 1-3 above are all that's required to get started with R in VS Code. But we
    * [Quarto](https://marketplace.visualstudio.com/items?itemName=quarto.quarto): the official Quarto plugin for VS Code.
    * [VSCode-R-Debugger](https://github.com/ManuelHentschel/VSCode-R-Debugger): enables VS Code's debugging facilities for R scripts.
 
+For example, assuming that you have installed `arf` and `jgd`, your user `settings.json` might include:
+
+```jsonc
+{
+    "r.consolePath": "arf",
+    "r.bracketedPaste": true,  // recommended for arf (and radian)
+    "r.plot.backend": "jgd"    // "auto" already prefers jgd, then httpgd
+}
+```
+
 Please consult the relevant installation wiki pages for your OS ([Windows](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Windows) | [macOS](https://github.com/REditorSupport/vscode-R/wiki/Installation:-macOS) | [Linux](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Linux)) for more detailed instructions.
 
 ## Features
