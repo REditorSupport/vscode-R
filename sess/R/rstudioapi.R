@@ -353,7 +353,7 @@ serialize_location <- function(location) {
 }
 
 namespace_has <- function(obj, namespace) {
-  attempt <- try(utils::getFromNamespace(obj, namespace), silent = TRUE)
+  attempt <- try(getFromNamespace(obj, namespace), silent = TRUE)
   !inherits(attempt, "try-error")
 }
 
