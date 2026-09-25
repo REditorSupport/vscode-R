@@ -52,7 +52,7 @@ is missing or outdated, so no manual setup is needed.
 
     </details>
 
-4. Create an R file and start coding!
+4. Create an R file and start coding! (Click **Yes** if prompted to install `sess`.)
 
 ### Recommended extras
 
