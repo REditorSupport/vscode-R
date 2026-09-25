@@ -1,5 +1,13 @@
 # R Extension for Visual Studio Code
 
+<!-- badges: start -->
+
+<a href="https://marketplace.visualstudio.com/items?itemName=reditorsupport.r"><img src="https://img.shields.io/github/v/release/REditorSupport/vscode-R?label=release" alt="Release"></a>
+<a href="https://github.com/REditorSupport/vscode-R/releases/tag/latest"><img src="https://img.shields.io/github/package-json/v/REditorSupport/vscode-R/master?label=dev" alt="Development version"></a>
+<a href="https://github.com/REditorSupport/vscode-R/actions/workflows/main.yml"><img src="https://img.shields.io/github/actions/workflow/status/REditorSupport/vscode-R/main.yml?branch=master&label=ci" alt="CI"></a>
+
+<!-- badges: end -->
+
 This [VS Code](https://code.visualstudio.com/) extension provides support for the [R programming language](https://www.r-project.org), including features such as R language service based on code analysis, interacting with R terminals, viewing data, plots, workspace variables, help pages, managing packages, and working with [R Markdown](https://rmarkdown.rstudio.com/) documents. See the [wiki](https://github.com/REditorSupport/vscode-R/wiki) for full documentation.
 
 The R and R Markdown syntaxes are located in a sibling package [vscode-R-syntax](https://github.com/REditorSupport/vscode-R-syntax).
