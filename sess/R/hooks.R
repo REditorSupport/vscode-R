@@ -8,19 +8,24 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
   runtime_start(use_rstudioapi, use_httpgd, use_jgd)
 }
 
-# Schedule a workspace notification outside the top-level task callback. The
-# generation check prevents an old callback from writing to a later transport.
-.workspace_update_task_callback <- function(..., schedule = later::later) {
+# Send runtime notifications after task callbacks return, so transport failure
+# cannot remove the currently executing task callback during runtime cleanup.
+.defer_runtime_notification <- function(method, schedule = later::later) {
   if (!isTRUE(.runtime_state()$active)) return(FALSE)
+  force(method)
   generation <- .sess_env$transport_generation
   schedule(function() {
     if (!isTRUE(.runtime_state()$active) ||
           !identical(generation, .sess_env$transport_generation)) {
       return(invisible(NULL))
     }
-    notify_client("workspace_updated")
+    notify_client(method)
   }, 0)
   TRUE
+}
+
+.workspace_update_task_callback <- function(..., schedule = later::later) {
+  .defer_runtime_notification("workspace_updated", schedule)
 }
 
 #' Start the VS Code runtime integration (internal)
@@ -265,7 +270,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
                 plot_updated <<- FALSE
                 last_plot_record_length <<- curr_length
                 .runtime_set_field("latest_plot_record", record)
-                notify_client("plot_updated")
+                .defer_runtime_notification("plot_updated")
               }
             }
           }
