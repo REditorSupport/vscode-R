@@ -31,7 +31,8 @@
   "activationEvents": [
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
     "onCommand:r.runSelectionInActiveTerm",
-    "onWebviewPanel:rhelp"
+    "onWebviewPanel:rhelp",
+    "onLanguage:r"
   ],
   "main": "./dist/extension",
   "contributes": {
