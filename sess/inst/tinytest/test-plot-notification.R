@@ -7,6 +7,7 @@ local({
   old_generation <- sess_env$transport_generation
   old_plot_path <- sess_env$latest_plot_path
   plot_path <- tempfile(fileext = ".png")
+  original_device <- grDevices::dev.cur()
   on.exit({
     sess:::runtime_stop()
     sess_env$con <- old_con
@@ -38,6 +39,10 @@ local({
     sess:::.defer_runtime_notification(method, schedule = scheduler)
   }
   env$runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  # tinytest already has a PDF device open. Explicitly open the sess device
+  # instead of relying on plot() to use the default device factory.
+  getOption("device")()
+  expect_equal(grDevices::dev.cur(), getOption("sess.null_dev"))
 
   graphics::plot(1)
   expect_true(task_callbacks[["sess.plot"]]())
@@ -64,4 +69,5 @@ local({
   expect_warning(scheduled[[3L]](), "Failed to send IPC message")
   expect_null(sess_env$con)
   expect_false(isTRUE(sess:::.runtime_state()$active))
+  expect_equal(grDevices::dev.cur(), original_device)
 })
