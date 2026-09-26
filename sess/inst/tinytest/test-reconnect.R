@@ -34,7 +34,7 @@ local({
     if (succeed) env$.sess_env$con <- "new connection"
   }
   path <- tempfile()
-  on.exit(unlink(path))
+  on.exit(unlink(path), add = TRUE)
   settings <- list(path = path, endpoint = "old", options = list(
     use_rstudioapi = FALSE, use_httpgd = TRUE, use_jgd = FALSE
   ))
