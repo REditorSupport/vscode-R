@@ -48,7 +48,7 @@ detected.
 
 ### Other
 
-* Hide context-dependent plot commands from the Command Palette and remove the unused Show Plot Viewers command, while retaining viewer-local controls.
+* Hide context-dependent plot commands from the Command Palette while keeping the Show Viewers command discoverable for reopening plot viewers and retaining viewer-local controls.
 
 * Remove Live Share integration, including its commands and settings. Remove other obsolete session settings that are no longer consumed.
 * Stop writing `~/.vscode-R/settings.json`; the current sess protocol no longer reads the propagated configuration. Remove the unused WebSocket server compatibility function, the unused `SESS_USE_HTTPGD` environment variable, and the path override argument left by the removed help-path setting.
