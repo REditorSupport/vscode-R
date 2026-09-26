@@ -12,7 +12,7 @@ export function mockActiveTextEditor(document: vscode.TextDocument, sandbox: sin
 
 export function mockExtensionContext(extension_root: string, sandbox: sinon.SinonSandbox) {
     const mockExtensionContext = {
-        environmentVariableCollection: sandbox.stub(),
+        environmentVariableCollection: { persistent: false, replace: sandbox.stub() },
         extension: sandbox.stub(),
         extensionMode: sandbox.stub(),
         extensionPath: extension_root,
