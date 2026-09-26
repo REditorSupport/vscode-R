@@ -20,7 +20,7 @@ ipc_write <- function(data) {
     },
     error = function(e) {
       warning("[sess] Failed to send IPC message: ", e$message)
-      .transport_disconnect(silent = TRUE)
+      .transport_disconnect(silent = TRUE, reconnect = TRUE)
       invisible(FALSE)
     }
   )

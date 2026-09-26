@@ -720,6 +720,15 @@ export async function activateRSession(): Promise<void> {
             }
         }
 
+        // Restore the selected managed terminal before focusing another session.
+        if (terminal && !isTerminalClosed(terminal) &&
+            (terminalDiscoveryPath(terminal) || terminal.name === 'R Interactive')) {
+            const command = await getAttachSessionCommand();
+            terminal.sendText(command, true);
+            terminal.show();
+            return;
+        }
+
         if (activeSession) {
             console.info('[activateRSession] Focusing terminal of the active session');
             for (const term of window.terminals) {

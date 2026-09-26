@@ -412,6 +412,60 @@ suite('Session Communication', () => {
         await session.shutdownSessionWatcher();
     }).timeout(15000);
 
+    test('manual recovery targets the selected managed terminal while another session is active', async () => {
+        const endpoint = await session.getGlobalPipePath();
+        const first = {
+            name: 'R Interactive', processId: Promise.resolve(45240),
+            creationOptions: { name: 'R Interactive' }, show: sandbox.spy(), sendText: sandbox.spy(),
+        };
+        const second = {
+            name: 'R Interactive', processId: Promise.resolve(45241),
+            creationOptions: { name: 'R Interactive' }, show: sandbox.spy(), sendText: sandbox.spy(),
+        };
+        sandbox.stub(vscode.window, 'terminals').value([first, second]);
+        const activeTerminal = sandbox.stub(vscode.window, 'activeTerminal').value(second);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'sessionWatcher' ? true : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
+        const client = net.createConnection(endpoint);
+        try {
+            await new Promise<void>((resolve, reject) => {
+                client.once('connect', resolve);
+                client.once('error', reject);
+            });
+            client.write(`${JSON.stringify({
+                jsonrpc: '2.0', method: 'attach', params: {
+                    protocol_version: 1, session_id: 'manual-recovery-first',
+                    host: os.hostname(), pid: 45240, version: '4.5.0',
+                    tempdir: os.tmpdir(), wd: os.tmpdir(),
+                    info: { version: 'R 4.5.0', command: 'R', start_time: '' },
+                },
+            })}\n`);
+            await waitFor(() => session.activeSession?.sessionId === 'manual-recovery-first');
+            await session.activateRSession();
+            sinon.assert.calledOnce(second.sendText);
+            sinon.assert.calledOnce(second.show);
+            sinon.assert.notCalled(first.sendText);
+            sinon.assert.notCalled(first.show);
+
+            // An attached terminal still activates its own session without sending R code.
+            activeTerminal.value(first);
+            await session.activateRSession();
+            sinon.assert.calledOnce(first.show);
+            sinon.assert.notCalled(first.sendText);
+
+            // Selecting an ordinary shell retains the existing focus behavior.
+            first.show.resetHistory();
+            activeTerminal.value({ ...second, name: 'bash' });
+            await session.activateRSession();
+            sinon.assert.calledOnce(first.show);
+            sinon.assert.calledOnce(second.sendText);
+        } finally {
+            client.destroy();
+            await session.cleanupSession('manual-recovery-first');
+        }
+    });
+
     test('reload rewrites the same extension-owned discovery file using terminal PID metadata', async () => {
         const oldEndpoint = await session.getGlobalPipePath();
         const discoveryFile = await session.createSessionDiscoveryFile(oldEndpoint);

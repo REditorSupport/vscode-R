@@ -24,3 +24,8 @@ If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE.}
 \description{
 Connect to the VS Code IPC server
 }
+\details{
+When SESS_DISCOVERY_FILE describes the connected endpoint, an
+unexpected disconnect waits for a replacement endpoint in that file and
+reconnects with the same runtime options and session identity.
+}

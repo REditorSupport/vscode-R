@@ -547,7 +547,7 @@ local({
 })
 
 # A peer disappearing while a request is waiting stops the runtime, and a new
-# connection can start a fresh runtime without duplicating callbacks.
+# discovery reconnect starts a fresh runtime without duplicating callbacks.
 local({
   .sess_env <- sess:::.sess_env
   if (!requireNamespace("processx", quietly = TRUE) || .Platform$OS.type == "windows") {
@@ -569,6 +569,20 @@ local({
 
   first <- listener()
   if (is.null(first)) return(invisible(NULL))
+  discovery <- tempfile(fileext = ".json")
+  old_discovery <- Sys.getenv("SESS_DISCOVERY_FILE", unset = NA_character_)
+  Sys.setenv(SESS_DISCOVERY_FILE = discovery)
+  publish <- function(endpoint) {
+    writeLines(jsonlite::toJSON(list(version = 1L, endpoint = endpoint),
+                               auto_unbox = TRUE), discovery)
+  }
+  publish(first$path)
+  on.exit({
+    if (is.na(old_discovery)) Sys.unsetenv("SESS_DISCOVERY_FILE") else
+      Sys.setenv(SESS_DISCOVERY_FILE = old_discovery)
+    unlink(discovery)
+  }, add = TRUE)
+  identity <- sess:::.session_id()
   utils_ns <- asNamespace("utils")
   original_view <- get("View", utils_ns, inherits = FALSE)
   option_names <- c("browser", "viewer", "page_viewer", "help_type", "device")
@@ -597,6 +611,7 @@ local({
     first_peer <- accept_peer(first$server)
     !is.null(first_peer) && !is.null(.sess_env$con)
   }, error = function(e) FALSE)
+  expect_true(isTRUE(connected))
   if (!isTRUE(connected)) return(invisible(NULL))
 
   close(first_peer)
@@ -620,11 +635,17 @@ local({
   expect_equal(length(grep("^sess.plot$", getTaskCallbackNames())), 0L)
 
   second <- listener()
+  expect_false(is.null(second))
   if (is.null(second)) return(invisible(NULL))
-  sess::connect(endpoint = second$path, use_rstudioapi = FALSE,
-                use_httpgd = FALSE, use_jgd = FALSE)
+  publish(second$path)
+  deadline <- Sys.time() + 5
+  while (is.null(.sess_env$con) && Sys.time() < deadline) later::run_now(0.1)
+  expect_false(is.null(.sess_env$con))
   second_peer <- accept_peer(second$server)
-  if (is.null(second_peer) || is.null(.sess_env$con)) return(invisible(NULL))
+  expect_false(is.null(second_peer))
+  expect_equal(sess:::.session_id(), identity)
+  expect_equal(.sess_env$reconnect$options,
+               list(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE))
   expect_true(isTRUE(sess:::.runtime_state()$active))
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 1L)
   sess:::.transport_disconnect()

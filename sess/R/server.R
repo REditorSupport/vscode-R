@@ -5,6 +5,9 @@
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation. Defaults to TRUE.
 #' @param use_httpgd Logical. Use httpgd for plotting if available. Defaults to TRUE.
 #' @param use_jgd Logical. Use jgd for plotting if available. Defaults to FALSE.
+#' @details When SESS_DISCOVERY_FILE describes the connected endpoint, an
+#'   unexpected disconnect waits for a replacement endpoint in that file and
+#'   reconnects with the same runtime options and session identity.
 #' @export
 connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
   # Invalidate poll callbacks and restore a previous runtime before reconnecting.
@@ -26,6 +29,18 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
   if (!nzchar(endpoint)) {
     warning("[sess] Connection info not available. Cannot connect to VS Code.")
     return(invisible(NULL))
+  }
+
+  discovery_file <- Sys.getenv("SESS_DISCOVERY_FILE")
+  # Only follow discovery if it describes this connection, including explicit
+  # endpoints from the generated attach script. Never redirect an unrelated client.
+  if (nzchar(discovery_file) &&
+        identical(.read_discovery_endpoint(discovery_file), endpoint)) {
+    .sess_env$reconnect <- list(
+      path = discovery_file, endpoint = endpoint,
+      options = list(use_rstudioapi = use_rstudioapi,
+                     use_httpgd = use_httpgd, use_jgd = use_jgd)
+    )
   }
 
   # processx uses the \\?\pipe\ namespace on Windows.
@@ -211,8 +226,42 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
   )
 }
 
-.transport_disconnect <- function(silent = FALSE) {
+# Wait for a replacement endpoint, keeping the last connected endpoint until
+# a retry succeeds. A published endpoint may not yet be accepting connections.
+.schedule_reconnect <- function(settings, generation = .sess_env$transport_generation,
+                                schedule = later::later) {
+  if (is.null(settings)) return(invisible(NULL))
+  force(generation)
+  pid <- Sys.getpid()
+  schedule(function() {
+    if (!identical(pid, Sys.getpid()) ||
+          !identical(generation, .sess_env$transport_generation) ||
+          !is.null(.sess_env$con)) return(invisible(NULL))
+    endpoint <- .read_discovery_endpoint(settings$path)
+    if (is.character(endpoint) && length(endpoint) == 1L && nzchar(endpoint) &&
+          !identical(endpoint, settings$endpoint)) {
+      tryCatch(
+        do.call(connect, c(list(endpoint = endpoint), settings$options)),
+        error = function(e) message("[sess] Reconnection failed: ", conditionMessage(e))
+      )
+      if (!is.null(.sess_env$con)) {
+        settings$endpoint <- endpoint
+        .sess_env$reconnect <- settings
+        return(invisible(NULL))
+      }
+      # An attach write/poll failure may itself have queued a retry. Cancel it
+      # before scheduling our retry so there is only one pending chain.
+      .transport_disconnect(silent = TRUE)
+    }
+    .schedule_reconnect(settings, .sess_env$transport_generation, schedule)
+  }, 1)
+  invisible(NULL)
+}
+
+.transport_disconnect <- function(silent = FALSE, reconnect = FALSE) {
   con <- .sess_env$con
+  settings <- .sess_env$reconnect
+  .sess_env$reconnect <- NULL
   .sess_env$con <- NULL
   .sess_env$transport_generation <- if (is.null(.sess_env$transport_generation)) {
     1L
@@ -224,6 +273,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
 
   if (!is.null(con)) try(close(con), silent = TRUE)
   runtime_stop()
+  if (reconnect && !is.null(con)) .schedule_reconnect(settings)
   if (!silent && !is.null(con)) message("[sess] Disconnected from VS Code")
   invisible(NULL)
 }
@@ -251,7 +301,7 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
   ready <- tryCatch(
     processx::poll(list(con), 0L),
     error = function(e) {
-      .transport_disconnect(silent = TRUE)
+      .transport_disconnect(silent = TRUE, reconnect = TRUE)
       NULL
     }
   )
@@ -266,7 +316,7 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
     chunk <- tryCatch(
       processx::conn_read_chars(con),
       error = function(e) {
-        .transport_disconnect(silent = TRUE)
+        .transport_disconnect(silent = TRUE, reconnect = TRUE)
         NULL
       }
     )
@@ -275,7 +325,7 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
     has_data <- !is.null(chunk) && length(chunk) > 0L && any(nzchar(chunk))
     if (!has_data) {
       if (.transport_empty_read_is_eof(con)) {
-        .transport_disconnect(silent = TRUE)
+        .transport_disconnect(silent = TRUE, reconnect = TRUE)
         return()
       }
     } else {
@@ -303,7 +353,7 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
       }
     }
   } else if (length(ready) > 0 && ready[[1]] %in% c("closed", "error")) {
-    .transport_disconnect(silent = TRUE)
+    .transport_disconnect(silent = TRUE, reconnect = TRUE)
     return()
   }
 
