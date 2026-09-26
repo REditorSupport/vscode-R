@@ -94,6 +94,7 @@ export class JgdManager {
     private viewer: JgdViewer | null = null;
     private extensionUri: vscode.Uri | null = null;
     private historyChangeDisposable: { dispose(): void } | null = null;
+    private started = false;
 
     constructor() {
         const maxPlots = config().get<number>('plot.jgd.historyLimit', 50);
@@ -106,6 +107,10 @@ export class JgdManager {
     }
 
     start() {
+        if (this.started) {
+            return;
+        }
+        this.started = true;
         this.server.setOnFrame((_sessionId, msg: JgdMessage) => {
             const current = this.history.currentPlot();
             if (current) {
@@ -138,6 +143,7 @@ export class JgdManager {
     }
 
     stop() {
+        this.started = false;
         this.server.stop();
         this.historyChangeDisposable?.dispose();
         this.viewer?.dispose();
@@ -192,9 +198,6 @@ export class JgdViewer implements PlotViewer {
 
     async handleCommand(command: string, ...args: unknown[]): Promise<void> {
         switch (command) {
-            case 'showViewers':
-                this.show(true);
-                break;
             case 'nextPlot': {
                 const plot = this.history.navigateNext();
                 if (plot) {

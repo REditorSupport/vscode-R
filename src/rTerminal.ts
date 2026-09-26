@@ -1,6 +1,7 @@
 'use strict';
 
 import * as path from 'path';
+import { getMigratedSetting } from './configuration';
 import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
@@ -9,13 +10,22 @@ import { extensionContext, globalPlotManager } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession, deferWorkspaceRefresh } from './session';
-import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
-import { resolveBackend, CommonPlotManager } from './plotViewer';
+import {
+    cleanupTerminalAssociation,
+    createSessionDiscoveryFile,
+    deferWorkspaceRefresh,
+    getGlobalPipePath,
+    isTerminalClosed,
+    removeTerminalDiscoveryFile,
+    updateTerminalSessionDiscoveryFile,
+} from './session';
+import { config, delay, getRterm, getCurrentWorkspaceFolder, getRPathConfigEntry } from './util';
+import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
 export let rTerm: vscode.Terminal | undefined = undefined;
+let rTermResource: vscode.Uri | undefined;
 
 let lastParamsRmdPath: string | undefined;
 let lastParamsRmdVersion: number | undefined;
@@ -180,16 +190,23 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
-import { getGlobalPipePath, writeSessionFile } from './session';
+function getConsoleArgs(configuration: vscode.WorkspaceConfiguration): string[] {
+    return getMigratedSetting<string[]>(configuration, 'consoleArgs', 'rterm.option')?.value
+        ?? ['--no-save', '--no-restore'];
+}
 
-export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
-    const workspaceFolder = getCurrentWorkspaceFolder();
-    const resource = workspaceFolder?.uri;
-    const workspaceFolderPath = resource?.fsPath;
-    const currentConfig = config(resource);
-    const termPath = await getRterm(resource);
-    const shellArgs: string[] = currentConfig.get<string[]>('rterm.option')
-        ?.map(value => util.substituteVariables(value, resource)) || [];
+function getConsoleSendDelay(resource?: vscode.Uri): number {
+    return getMigratedSetting<number>(config(resource), 'consoleSendDelay', 'rtermSendDelay')?.value ?? 8;
+}
+
+export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode.TerminalOptions> {
+    const workspaceFolder = resource ? getCurrentWorkspaceFolder(resource) : getCurrentWorkspaceFolder();
+    const configResource = resource ?? workspaceFolder?.uri;
+    const workspaceFolderPath = workspaceFolder?.uri.fsPath;
+    const currentConfig = config(configResource);
+    const termPath = await getRterm(configResource);
+    const shellArgs = getConsoleArgs(currentConfig)
+        .map(value => util.substituteVariables(value, configResource));
     const termOptions: vscode.TerminalOptions = {
         name: 'R Interactive',
         shellPath: termPath,
@@ -199,16 +216,19 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'profile.R'));
     if (config().get<boolean>('sessionWatcher')) {
         const pipePath = await getGlobalPipePath();
+        const discoveryFile = await createSessionDiscoveryFile(pipePath);
         const backend = resolveBackend();
         termOptions.env = {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
-            SESS_PIPE: pipePath,
+            // Remove inherited endpoint overrides so the per-terminal discovery file
+            // remains authoritative, including after a VS Code window reload.
+            SESS_ENDPOINT: null,
+            SESS_DISCOVERY_FILE: discoveryFile,
             SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
-            SESS_USE_HTTPGD: backend === 'httpgd' ? 'TRUE' : 'FALSE',
             SESS_PLOT_BACKEND: backend,
         };
-        if (backend === 'jgd' || backend === 'auto') {
+        if (jgdEnabled(backend)) {
             const jgdVars = (globalPlotManager as CommonPlotManager)?.getJgdEnvVars() ?? {};
             Object.assign(termOptions.env, jgdVars);
         }
@@ -216,49 +236,102 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     return termOptions;
 }
 
-export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
-    const termOptions = await makeTerminalOptions();
+export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri): Promise<boolean> {
+    resource = resource ?? getCurrentWorkspaceFolder()?.uri;
+    const termOptions = await makeTerminalOptions(resource);
     void util.promptToInstallSessPackage(termOptions.cwd);
     const termPath = termOptions.shellPath;
+    const discoveryFile = termOptions.env?.['SESS_DISCOVERY_FILE'];
+    const discardDiscoveryFile = async () => {
+        if (typeof discoveryFile === 'string') {
+            try {
+                await fs.promises.unlink(discoveryFile);
+            } catch (error) {
+                if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+                    return;
+                }
+                console.error('Failed to remove unused session discovery file', error);
+            }
+        }
+    };
     if(!termPath){
-        void vscode.window.showErrorMessage('Could not find an R console executable. Please check the r.consolePath and r.executablePath settings.');
+        await discardDiscoveryFile();
         return false;
     } else if(!fs.existsSync(termPath)){
-        void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check the r.consolePath setting.`);
+        void vscode.window.showErrorMessage(`Cannot find R console executable at ${termPath}. Please check r.consolePath, r.${getRPathConfigEntry(true)}, or r.executablePath.`);
+        await discardDiscoveryFile();
         return false;
     }
-    rTerm = vscode.window.createTerminal(termOptions);
-    rTerm.show(preserveshow);
-    
-    void rTerm.processId.then(async (pid: number | undefined) => {
-        if (pid) {
+    let createdTerminal: vscode.Terminal;
+    try {
+        createdTerminal = vscode.window.createTerminal(termOptions);
+    } catch (error) {
+        await discardDiscoveryFile();
+        throw error;
+    }
+    rTerm = createdTerminal;
+    rTermResource = resource;
+    createdTerminal.show(preserveshow);
+
+    void Promise.resolve(createdTerminal.processId).then(async (pid: number | undefined) => {
+        if (pid && typeof discoveryFile === 'string' && !isTerminalClosed(createdTerminal)) {
             const pipePath = await getGlobalPipePath();
-            await writeSessionFile(pid.toString(), pipePath);
+            if (!isTerminalClosed(createdTerminal)) {
+                await updateTerminalSessionDiscoveryFile(createdTerminal, discoveryFile, pipePath, pid);
+            }
         }
-    });
+    }).catch(error => console.error('Failed to update terminal session discovery file', error));
     
     return true;
 }
 
 export async function restartRTerminal(): Promise<void>{
     if (typeof rTerm !== 'undefined'){
+        const resource = rTermResource;
         rTerm.dispose();
         deleteTerminal(rTerm);
-        await createRTerm(true);
+        await createRTerm(true, resource);
     }
 }
 
 export function deleteTerminal(term: vscode.Terminal): void {
+    const exitReason = term.exitStatus?.reason;
+    if (exitReason === vscode.TerminalExitReason.User
+        || exitReason === vscode.TerminalExitReason.Process
+        || exitReason === vscode.TerminalExitReason.Extension) {
+        void removeTerminalDiscoveryFile(term).catch(error => {
+            console.error('Failed to remove terminal session discovery file', error);
+        });
+    }
+    // TODO: Prune orphaned extension-owned discovery files left by crashes, when
+    // safe lifecycle information is available without relying on local PID polling.
     if (isDeepStrictEqual(term, rTerm)) {
         rTerm = undefined;
+        rTermResource = undefined;
         if (config().get<boolean>('sessionWatcher')) {
             void term.processId.then((v) => {
                 if (v) {
-                    void cleanupSession(v.toString());
+                    void cleanupTerminalAssociation(v.toString());
                 }
             });
         }
     }
+}
+
+function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
+    if (term === rTerm && rTermResource) {
+        return rTermResource;
+    }
+
+    const creationOptions = term.creationOptions;
+    const cwd = creationOptions && 'cwd' in creationOptions ? creationOptions.cwd : undefined;
+    // Profile terminals store cwd as a path; retain the matching remote URI.
+    const cwdResource = typeof cwd === 'string'
+        ? vscode.workspace.workspaceFolders?.find(folder => folder.uri.fsPath === cwd)?.uri ?? vscode.Uri.file(cwd)
+        : cwd;
+    return cwdResource
+        ? getCurrentWorkspaceFolder(cwdResource)?.uri ?? cwdResource
+        : getCurrentWorkspaceFolder()?.uri;
 }
 
 export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
@@ -363,7 +436,8 @@ export async function runTextInTerm(text: string, execute: boolean = true): Prom
         text = `\x1b[200~${text}\x1b[201~`;
         term.sendText(text, execute);
     } else {
-        const rtermSendDelay: number = config().get('rtermSendDelay') || 8;
+        const resource = getTerminalResource(term);
+        const rtermSendDelay = getConsoleSendDelay(resource);
         const split = text.split('\n');
         const last_split = split.length - 1;
         for (const [count, line] of split.entries()) {

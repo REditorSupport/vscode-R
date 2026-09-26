@@ -2,18 +2,40 @@
 
 ## Unreleased
 
+v3.0.0 of the R Extension for VS code is a major release. It introduces a
+significant architectural change via the
+[**`sess`**](https://github.com/REditorSupport/vscode-R/tree/master/sess) R
+Package, which powers faster and more robust communication with the underlying R
+session. In turn, this enables a variety of ancillary improvements and feature
+requests, which we hope to continue building on. The extension will
+automatically prompt users to install `sess` (on their behalf) if it is not
+detected.
+
 ### Bug Fixes
 
 * fix(dataview): fit columns to the viewer width by default and preserve fit-width sizing when scrolling, resizing, or refreshing the viewer
 * fix(dataview): use supported grid and row-selection APIs in file-backed tables, initialize the grid after the document is ready, and preserve date and integer64 handling in both viewer modes
+* fix(console): use the workspace directory as terminal cwd when given a file URI
+* fix(console): preserve remote workspace configuration for R terminals created from the terminal profile
+
+* fix(sess): clean up failed runtime and server initialization and preserve the selected terminal during reconnect
+
+* fix(sess): share server startup across concurrent session clients and wait for startup during shutdown
+
+* fix(sess): defer workspace and plot notifications until task callbacks return
+
+* fix(sess): refresh JGD renderer discovery on reconnect and identify managed terminals by discovery ownership
+
+* fix(sess): reconnect managed R sessions after window reload and prioritize manual recovery of the selected R terminal
+
 * fix(rstudioapi): resolve emulation issues and viewer routing
-* fix(liveshare): resolve activation errors, file reading bugs, and add hooks for sess compatibility
 * fix(workspace): fix code submission delays when the workspace contains many or large objects
 
 ### Features
 
 * feat(dataview): upgrade AG Grid Community to 36.2.0, add searchable column pinning, inline filters and clear-all controls, row counts, saved view settings, full-value tooltips, and column sizing controls
 * feat(sess): migrate session watcher to WebSockets/JSON-RPC 2.0
+* feat(sess): migrate session watcher to Unix domain sockets / Windows named pipes with JSON Lines framing and JSON-RPC 2.0
 * feat: implement rstudioapi::showPrompt() and rstudioapi::askForPassword() for sess package
 * feat: evaluate params from YAML header in Rmd files before running code
 * feat: check sess package version and prompt for update
@@ -30,9 +52,17 @@
 
 ### Other
 
+* Hide context-dependent plot commands from the Command Palette while keeping the Show Viewers command discoverable for reopening plot viewers and retaining viewer-local controls.
+
+* Remove Live Share integration, including its commands and settings. Remove other obsolete session settings that are no longer consumed.
+* Stop writing `~/.vscode-R/settings.json`; the current sess protocol no longer reads the propagated configuration. Remove the unused WebSocket server compatibility function, the unused `SESS_USE_HTTPGD` environment variable, and the path override argument left by the removed help-path setting.
 * Remove the unused `r.workspaceViewer.showObjectSize` setting and obsolete object-size tooltip support
 * Remove obsolete `r.session.objectLengthLimit`, `r.session.objectTimeout`, and `r.session.levelOfObjectDetail` settings following the switch to on-demand workspace inspection
 * Remove `r.helpPanel.rpath`, which was previously deprecated and no longer used by the extension
+
+### Configuration
+
+* Add `r.consoleArgs` and `r.consoleSendDelay` as canonical settings, with legacy `r.rterm.option` and `r.rtermSendDelay` deprecated and supported for backward compatibility. Resolve renamed console and executable-path settings by workspace folder (where supported), workspace, then user scope; plot-backend settings use workspace then user scope. Prefer the canonical name within each scope. Empty paths and automatic backend selection retain their fallback behavior.
 
 ### Styling
 

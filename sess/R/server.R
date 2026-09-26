@@ -1,13 +1,17 @@
 #' Connect to the VS Code IPC server
 #'
-#' @param pipe_path Character. Path to the named pipe / Unix domain socket.
-#'   If NULL, uses the SESS_PIPE environment variable, then falls back to the
-#'   session JSON file written by the extension.
+#' @param endpoint Character. Local named pipe / Unix domain socket endpoint.
+#'   If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE.
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation. Defaults to TRUE.
 #' @param use_httpgd Logical. Use httpgd for plotting if available. Defaults to TRUE.
 #' @param use_jgd Logical. Use jgd for plotting if available. Defaults to FALSE.
+#' @details When SESS_DISCOVERY_FILE describes the connected endpoint, an
+#'   unexpected disconnect waits for a replacement endpoint in that file and
+#'   reconnects with the same runtime options and session identity. The optional
+#'   discovery jgdSocket string updates JGD_SOCKET when use_jgd is TRUE; an empty
+#'   string clears it, and an omitted field leaves it unchanged.
 #' @export
-connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
+connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
   # Invalidate poll callbacks and restore a previous runtime before reconnecting.
   .transport_disconnect(silent = TRUE)
   .sess_env$con <- NULL
@@ -23,36 +27,30 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
 
   .sess_env$latest_plot_path <- file.path(.sess_env$tempdir, "sess_plot.png")
 
-  is_manual <- !is.null(pipe_path) && !is.na(pipe_path) && nzchar(pipe_path)
-
-  if (is.null(pipe_path) || is.na(pipe_path)) {
-    pipe_path <- Sys.getenv("SESS_PIPE")
-  }
-
-  # Fallback: read from session JSON file written by the extension
-  pid <- Sys.getpid()
-  home <- path.expand("~")
-  file_path <- file.path(home, ".vscode-R", "sessions", sprintf("%d.json", pid))
-
-  if (!nzchar(pipe_path)) {
-    if (file.exists(file_path)) {
-      tryCatch({
-        cfg <- jsonlite::fromJSON(readLines(file_path, warn = FALSE))
-        pipe_path <- cfg$pipe
-      }, error = function(e) NULL)
-    }
-  }
-
-  if (!nzchar(pipe_path)) {
+  endpoint <- .resolve_endpoint(endpoint)
+  if (!nzchar(endpoint)) {
     warning("[sess] Connection info not available. Cannot connect to VS Code.")
     return(invisible(NULL))
+  }
+
+  discovery_file <- Sys.getenv("SESS_DISCOVERY_FILE")
+  # Only follow discovery if it describes this connection, including explicit
+  # endpoints from the generated attach script. Never redirect an unrelated client.
+  discovery <- if (nzchar(discovery_file)) .read_discovery(discovery_file) else NULL
+  if (!is.null(discovery) && identical(discovery$endpoint, endpoint)) {
+    .configure_discovery_jgd(discovery, use_jgd)
+    .sess_env$reconnect <- list(
+      path = discovery_file, endpoint = endpoint,
+      options = list(use_rstudioapi = use_rstudioapi,
+                     use_httpgd = use_httpgd, use_jgd = use_jgd)
+    )
   }
 
   # processx uses the \\?\pipe\ namespace on Windows.
   # Normalize \\.\pipe\* paths from Node.js to improve compatibility.
   if (.Platform$OS.type == "windows") {
-    if (startsWith(pipe_path, "\\\\.\\pipe\\")) {
-      pipe_path <- sub("^\\\\\\\\\\.\\\\pipe\\\\", "\\\\\\\\?\\\\pipe\\\\", pipe_path)
+    if (startsWith(endpoint, "\\\\.\\pipe\\")) {
+      endpoint <- sub("^\\\\\\\\\\.\\\\pipe\\\\", "\\\\\\\\?\\\\pipe\\\\", endpoint)
     }
   }
 
@@ -63,9 +61,9 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
 
   do_connect <- function() {
     con <- tryCatch(
-      processx::conn_connect_unix_socket(pipe_path, encoding = ""),
+      processx::conn_connect_unix_socket(endpoint, encoding = ""),
       error = function(e) {
-        print_async_msg(sprintf("[sess] Failed to connect to IPC pipe: %s", e$message))
+        print_async_msg(sprintf("[sess] Failed to connect to IPC endpoint: %s", e$message))
         NULL
       }
     )
@@ -73,18 +71,8 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
 
     .sess_env$con <- con
 
-    # Send attach handshake
-    notify_client("attach", list(
-      version = sprintf("%s.%s", R.version$major, R.version$minor),
-      pid = Sys.getpid(),
-      tempdir = .sess_env$tempdir,
-      wd = getwd(),
-      info = list(
-        command = commandArgs()[[1L]],
-        version = R.version.string,
-        start_time = format(Sys.time())
-      )
-    ))
+    # session_id is stable across reconnects during this R process lifetime.
+    notify_client("attach", .session_attach_metadata())
 
     if (is.null(.sess_env$con)) return(FALSE)
 
@@ -122,6 +110,7 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
           "[sess] Runtime startup failed during ", phase, ": ",
           conditionMessage(e), call_suffix
         )
+        .transport_disconnect(silent = TRUE)
         stop(e)
       },
       finally = {
@@ -133,8 +122,178 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
   invisible(NULL)
 }
 
-.transport_disconnect <- function(silent = FALSE) {
+# Resolve the direct argument, environment variables, then discovery data.
+.resolve_endpoint <- function(endpoint = NULL,
+                              env_endpoint = Sys.getenv("SESS_ENDPOINT"),
+                              env_discovery_file = Sys.getenv("SESS_DISCOVERY_FILE")) {
+  if (!is.null(endpoint) && length(endpoint) == 1L && !is.na(endpoint) && nzchar(endpoint)) {
+    return(endpoint)
+  }
+  if (length(env_endpoint) == 1L && !is.na(env_endpoint) && nzchar(env_endpoint)) {
+    return(env_endpoint)
+  }
+
+  # An explicit discovery path is authoritative. If it is missing or
+  # incompatible, do not connect using a stale endpoint.
+  if (length(env_discovery_file) == 1L && !is.na(env_discovery_file) &&
+        nzchar(env_discovery_file)) {
+    return(.read_discovery_endpoint(env_discovery_file, warn = TRUE))
+  }
+  ""
+}
+
+.read_discovery_endpoint <- function(path, warn = FALSE) {
+  discovery <- .read_discovery(path, warn)
+  if (is.null(discovery)) return(if (warn) "" else NULL)
+  discovery$endpoint
+}
+
+.read_discovery <- function(path, warn = FALSE) {
+  warn_problem <- function(message) {
+    if (isTRUE(warn)) warning("[sess] ", message, call. = FALSE)
+    NULL
+  }
+  is_endpoint <- function(value) {
+    is.character(value) && length(value) == 1L && !is.na(value) && nzchar(value)
+  }
+  if (!file.exists(path)) {
+    if (isTRUE(warn)) {
+      return(warn_problem(sprintf(
+        paste0(
+          "Session discovery file '%s' does not exist. ",
+          "Check SESS_DISCOVERY_FILE or restart the R terminal."
+        ),
+        path
+      )))
+    }
+    return(NULL)
+  }
+
+  tryCatch({
+    cfg <- jsonlite::fromJSON(readLines(path, warn = FALSE), simplifyVector = FALSE)
+    if (!is.list(cfg)) {
+      return(warn_problem(sprintf(
+        "Invalid session discovery data in '%s'; expected a JSON object.",
+        path
+      )))
+    }
+
+    if (is.null(cfg$version)) {
+      return(warn_problem(sprintf(
+        paste0(
+          "Session discovery file '%s' has no supported schema version; ",
+          "expected version 1 with an endpoint field."
+        ),
+        path
+      )))
+    }
+
+    version <- cfg$version
+    if (!identical(version, 1L)) {
+      return(warn_problem(sprintf(
+        paste0(
+          "Unsupported session discovery version '%s' in '%s'; ",
+          "update vscode-R or use a version 1 discovery file."
+        ),
+        paste(cfg$version, collapse = ", "), path
+      )))
+    }
+
+    value <- cfg$endpoint
+    if (!is_endpoint(value)) {
+      return(warn_problem(sprintf(
+        "Session discovery file '%s' has no endpoint; check the vscode-R session setup.",
+        path
+      )))
+    }
+    if ("jgdSocket" %in% names(cfg) &&
+          !(is.character(cfg$jgdSocket) && length(cfg$jgdSocket) == 1L &&
+              !is.na(cfg$jgdSocket))) {
+      return(warn_problem(sprintf(
+        "Invalid jgdSocket in session discovery file '%s'; expected a string.", path
+      )))
+    }
+    cfg
+  }, error = function(e) {
+    warn_problem(sprintf(
+      "Could not read session discovery file '%s': %s",
+      path,
+      conditionMessage(e)
+    ))
+  })
+}
+
+# Discovery configures only the optional JGD renderer, never arbitrary R state.
+.configure_discovery_jgd <- function(discovery, use_jgd) {
+  if (!isTRUE(use_jgd) || is.null(discovery$jgdSocket)) return(invisible(NULL))
+  if (nzchar(discovery$jgdSocket)) {
+    Sys.setenv(JGD_SOCKET = discovery$jgdSocket)
+  } else {
+    Sys.unsetenv("JGD_SOCKET")
+  }
+  invisible(NULL)
+}
+
+.session_attach_metadata <- function() {
+  host <- Sys.info()[["nodename"]]
+  if (is.null(host) || is.na(host)) host <- ""
+  list(
+    protocol_version = 1L,
+    sess_version = as.character(utils::packageVersion("sess")),
+    session_id = .session_id(),
+    host = unname(host),
+    version = sprintf("%s.%s", R.version$major, R.version$minor),
+    pid = Sys.getpid(),
+    tempdir = .sess_env$tempdir,
+    wd = getwd(),
+    info = list(
+      command = commandArgs()[[1L]],
+      version = R.version.string,
+      start_time = format(Sys.time())
+    )
+  )
+}
+
+# Wait for a replacement endpoint, keeping the last connected endpoint until
+# a retry succeeds. A published endpoint may not yet be accepting connections.
+.schedule_reconnect <- function(settings, generation = .sess_env$transport_generation,
+                                schedule = later::later) {
+  if (is.null(settings)) return(invisible(NULL))
+  force(generation)
+  pid <- Sys.getpid()
+  schedule(function() {
+    if (!identical(pid, Sys.getpid()) ||
+          !identical(generation, .sess_env$transport_generation) ||
+          !is.null(.sess_env$con)) return(invisible(NULL))
+    discovery <- .read_discovery(settings$path)
+    endpoint <- discovery$endpoint
+    if (is.character(endpoint) && length(endpoint) == 1L && nzchar(endpoint) &&
+          !identical(endpoint, settings$endpoint)) {
+      # Read endpoint and renderer from one snapshot, even if the file is
+      # replaced again while connect() runs.
+      .configure_discovery_jgd(discovery, settings$options$use_jgd)
+      tryCatch(
+        do.call(connect, c(list(endpoint = endpoint), settings$options)),
+        error = function(e) message("[sess] Reconnection failed: ", conditionMessage(e))
+      )
+      if (!is.null(.sess_env$con)) {
+        settings$endpoint <- endpoint
+        .sess_env$reconnect <- settings
+        return(invisible(NULL))
+      }
+      # An attach write/poll failure may itself have queued a retry. Cancel it
+      # before scheduling our retry so there is only one pending chain.
+      .transport_disconnect(silent = TRUE)
+    }
+    .schedule_reconnect(settings, .sess_env$transport_generation, schedule)
+  }, 1)
+  invisible(NULL)
+}
+
+.transport_disconnect <- function(silent = FALSE, reconnect = FALSE) {
   con <- .sess_env$con
+  settings <- .sess_env$reconnect
+  .sess_env$reconnect <- NULL
   .sess_env$con <- NULL
   .sess_env$transport_generation <- if (is.null(.sess_env$transport_generation)) {
     1L
@@ -146,6 +305,7 @@ connect <- function(pipe_path = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, 
 
   if (!is.null(con)) try(close(con), silent = TRUE)
   runtime_stop()
+  if (reconnect && !is.null(con)) .schedule_reconnect(settings)
   if (!silent && !is.null(con)) message("[sess] Disconnected from VS Code")
   invisible(NULL)
 }
@@ -173,7 +333,7 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
   ready <- tryCatch(
     processx::poll(list(con), 0L),
     error = function(e) {
-      .transport_disconnect(silent = TRUE)
+      .transport_disconnect(silent = TRUE, reconnect = TRUE)
       NULL
     }
   )
@@ -188,7 +348,7 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
     chunk <- tryCatch(
       processx::conn_read_chars(con),
       error = function(e) {
-        .transport_disconnect(silent = TRUE)
+        .transport_disconnect(silent = TRUE, reconnect = TRUE)
         NULL
       }
     )
@@ -197,7 +357,7 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
     has_data <- !is.null(chunk) && length(chunk) > 0L && any(nzchar(chunk))
     if (!has_data) {
       if (.transport_empty_read_is_eof(con)) {
-        .transport_disconnect(silent = TRUE)
+        .transport_disconnect(silent = TRUE, reconnect = TRUE)
         return()
       }
     } else {
@@ -225,7 +385,7 @@ poll_connection <- function(generation = .sess_env$transport_generation) {
       }
     }
   } else if (length(ready) > 0 && ready[[1]] %in% c("closed", "error")) {
-    .transport_disconnect(silent = TRUE)
+    .transport_disconnect(silent = TRUE, reconnect = TRUE)
     return()
   }
 

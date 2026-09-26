@@ -107,18 +107,6 @@ suite('R executable resolver', () => {
         assert.strictEqual(harness.getSystemRCalls(), 0);
     });
 
-    test('overwrite setting retains highest background precedence', async () => {
-        const harness = createDependencies(
-            { override: '/override/R', executablePath: '/canonical/R', 'rpath.linux': '/legacy/R' },
-            {},
-            ['/override/R', '/canonical/R', '/legacy/R']
-        );
-        assert.deepStrictEqual(
-            await resolveBackgroundR(harness.dependencies, 'rpath.linux', 'override'),
-            { path: '/override/R', setting: 'override', quote: undefined }
-        );
-    });
-
     test('console precedence is canonical, legacy, explicit canonical background, then system', async () => {
         const canonical = createDependencies(
             {
@@ -159,6 +147,76 @@ suite('R executable resolver', () => {
             await resolveConsoleR(system.dependencies, 'rterm.linux'),
             { path: '/system/R' }
         );
+    });
+
+    const scopes = ['globalValue', 'workspaceValue', 'workspaceFolderValue'] as const;
+    for (const kind of ['console', 'background'] as const) {
+        for (const platform of ['linux', 'mac', 'windows']) {
+            for (const canonicalScope of scopes) {
+                for (const legacyScope of scopes) {
+                    test(`${kind} path (${platform}): canonical ${canonicalScope} versus legacy ${legacyScope}`, async () => {
+                        const legacyKey = `${kind === 'console' ? 'rterm' : 'rpath'}.${platform}`;
+                        const canonicalKey = kind === 'console' ? 'consolePath' : 'executablePath';
+                        const inspected = {
+                            [canonicalKey]: { [canonicalScope]: '/canonical/console' },
+                            [legacyKey]: { [legacyScope]: '/legacy/console' }
+                        };
+                        const dependencies = createRPathResolverDependencies({
+                            resource: 'project/script.R',
+                            getConfiguration: resource => {
+                                assert.strictEqual(resource, 'project/script.R');
+                                return {
+                                    get: key => key === canonicalKey ? '/canonical/console' : '/legacy/console',
+                                    inspect: key => inspected[key],
+                                };
+                            },
+                            substituteVariables: value => value,
+                            findExecutable: () => undefined,
+                            pathExists: () => true,
+                            getSystemR: () => assert.fail('Configured console should be used'),
+                        });
+                        const canonicalWins = scopes.indexOf(canonicalScope) >= scopes.indexOf(legacyScope);
+                        const resolve = kind === 'console' ? resolveConsoleR : resolveBackgroundR;
+                        assert.deepStrictEqual(await resolve(dependencies, legacyKey), {
+                            path: canonicalWins ? '/canonical/console' : '/legacy/console',
+                            setting: canonicalWins ? canonicalKey : legacyKey,
+                            quote: undefined,
+                        });
+                    });
+                }
+            }
+        }
+
+    }
+
+    test('an empty workspace path shadows its user value and allows the legacy setting', async () => {
+        const harness = createDependencies({
+            consolePath: '', 'rterm.linux': '/legacy/console'
+        }, {}, ['/user/console', '/legacy/console']);
+        harness.dependencies.inspectSetting = key => key === 'consolePath'
+            ? { workspaceValue: '', globalValue: '/user/console' }
+            : { globalValue: '/legacy/console' };
+        assert.strictEqual((await resolveConsoleR(harness.dependencies, 'rterm.linux')).path, '/legacy/console');
+    });
+
+    test('invalid workspace legacy console path keeps its setting name and does not fall back', async () => {
+        const harness = createDependencies({
+            consolePath: '/user/console', 'rterm.linux': '/missing/console', executablePath: '/background/R'
+        }, {}, ['/user/console', '/background/R']);
+        harness.dependencies.inspectSetting = key => key === 'consolePath'
+            ? { globalValue: '/user/console' } : { workspaceValue: '/missing/console' };
+        assert.deepStrictEqual(await resolveConsoleR(harness.dependencies, 'rterm.linux'), {
+            path: undefined, setting: 'rterm.linux', quote: undefined
+        });
+        assert.strictEqual(harness.getSystemRCalls(), 0);
+    });
+
+    test('blank console path allows a legacy value at the same scope', async () => {
+        const harness = createDependencies({ consolePath: ' ', 'rterm.linux': '/legacy/console' }, {}, ['/legacy/console']);
+        harness.dependencies.inspectSetting = key => ({
+            workspaceFolderValue: key === 'consolePath' ? ' ' : '/legacy/console'
+        });
+        assert.strictEqual((await resolveConsoleR(harness.dependencies, 'rterm.linux')).path, '/legacy/console');
     });
 
     test('legacy background setting never feeds console fallback', async () => {
@@ -319,7 +377,7 @@ suite('R executable resolver', () => {
         const dependencies = (resource?: Resource) => createRPathResolverDependencies({
             resource,
             getConfiguration: requestedResource => ({
-                get: <T>(setting: string) => settings[requestedResource ?? 'default'][setting] as T | undefined,
+                get: (setting: string) => settings[requestedResource ?? 'default'][setting],
             }),
             substituteVariables: value => value,
             findExecutable: () => undefined,
@@ -343,7 +401,7 @@ suite('R executable resolver', () => {
         const dependencies = (resource?: Resource) => createRPathResolverDependencies({
             resource,
             getConfiguration: () => ({
-                get: <T>(setting: string) => (setting === 'executablePath' ? '${workspaceFolder}/R' : undefined) as T | undefined,
+                get: (setting: string) => setting === 'executablePath' ? '${workspaceFolder}/R' : undefined,
             }),
             substituteVariables: (value, requestedResource) => substitutePathVariables(value, {
                 workspaceFolder: workspaceFolders[requestedResource ?? 'default'],
