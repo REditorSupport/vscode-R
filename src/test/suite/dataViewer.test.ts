@@ -100,6 +100,7 @@ suite('Data viewer', () => {
         const saved = first.stored();
         assert.ok(saved);
         delete saved.sizingMode;
+        delete saved.gridState.partialColumnState;
         const next = viewerScript(saved).script;
         next.prepareViewerColumns(columns());
         const options = next.getViewerGridOptions(500);

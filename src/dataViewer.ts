@@ -143,6 +143,8 @@ export function getDataViewerScript(): string {
         // at the first page instead of restoring an invalid page/scroll offset.
         const gridState = {
             version: state.version,
+            // We persist only selected column-state sections for initialState.
+            partialColumnState: true,
             columnOrder: state.columnOrder,
             columnSizing: state.columnSizing,
             columnPinning: state.columnPinning,
