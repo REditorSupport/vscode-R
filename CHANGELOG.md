@@ -1,79 +1,27 @@
 # Changelog
 
-## Unreleased
+## 3.0.0 - 2026-09-26
 
-v3.0.0 of the R Extension for VS code is a major release. It introduces a
-significant architectural change via the
-[**`sess`**](https://github.com/REditorSupport/vscode-R/tree/master/sess) R
-Package, which powers faster and more robust communication with the underlying R
-session. In turn, this enables a variety of ancillary improvements and feature
-requests, which we hope to continue building on. The extension will
-automatically prompt users to install `sess` (on their behalf) if it is not
-detected.
+This major release updates the R session integration and adds substantial improvements to the plot, data, and workspace viewers. The extension bundles the [`sess`](https://github.com/REditorSupport/vscode-R/tree/main/sess) R package and prompts to install or update it when needed.
 
-### Bug Fixes
+### Highlights
 
-* fix(dataview): fit columns to the viewer width by default and preserve fit-width sizing when scrolling, resizing, or refreshing the viewer
-* fix(dataview): use supported grid and row-selection APIs in file-backed tables, initialize the grid after the document is ready, and preserve date and integer64 handling in both viewer modes
-* fix(console): use the workspace directory as terminal cwd when given a file URI
-* fix(console): preserve remote workspace configuration for R terminals created from the terminal profile
+* **More reliable R sessions:** Session communication now uses `sess` with local sockets or named pipes. Managed R sessions can reconnect after a VS Code window reload, and workspace updates no longer delay code submission when the environment contains large objects.
+* **More flexible plot viewing:** `r.plot.backend` selects `jgd`, `httpgd`, or the standard graphics device. Automatic selection prefers JGD when installed, then httpgd, then the standard device. JGD adds plot history and navigation; the Show Viewers command can reopen existing plot panels.
+* **Faster, more capable data and workspace viewers:** Data rows load on demand, including for Arrow and Polars data frames. The data viewer adds column controls, filtering, row counts, full-value tooltips, and saved sizing and layout; repeated `View()` calls refresh the existing viewer and retain its state when column names, order, and types are unchanged. Workspace objects also load their contents on demand and support nested lists, environments, pairlists, S4 objects, and data frames.
+* **R Markdown and RStudio API:** YAML parameters are evaluated before running R Markdown code. The session integration implements `rstudioapi::showPrompt()` and `rstudioapi::askForPassword()`.
+* **Improved console configuration:** Console and background R executable paths can be set separately, including executable names found on `PATH`; settings resolve in the relevant workspace context.
 
-* fix(sess): clean up failed runtime and server initialization and preserve the selected terminal during reconnect
+### Upgrade notes
 
-* fix(sess): share server startup across concurrent session clients and wait for startup during shutdown
+* **VS Code 1.110 or later is required.**
+* The canonical settings are `r.executablePath` (background R), `r.consolePath` (interactive console), `r.consoleArgs`, and `r.consoleSendDelay`. The old `r.rpath.<platform>`, `r.rterm.<platform>`, `r.rterm.option`, and `r.rtermSendDelay` settings remain supported but are deprecated.
+* Use `r.plot.backend` instead of `r.plot.useHttpgd`. The old setting remains supported; when the backend is `auto`, `r.plot.useHttpgd: true` continues to select httpgd. An explicitly selected backend takes precedence.
+* Live Share support and its `r.liveShare.*` settings have been removed.
+* The obsolete settings `r.helpPanel.rpath`, `r.session.useWebServer`, `r.session.data.rowLimit`, `r.session.objectLengthLimit`, `r.session.objectTimeout`, `r.session.levelOfObjectDetail`, and `r.workspaceViewer.showObjectSize` have been removed. On-demand loading replaces the old object detail and row limit controls.
+* Context-dependent plot commands are hidden from the Command Palette to keep viewer-specific actions out of the general command list. They remain registered for existing viewer controls and user keybindings; **R Plot: Show Viewers** remains discoverable for reopening plot panels.
 
-* fix(sess): defer workspace and plot notifications until task callbacks return
-
-* fix(sess): refresh JGD renderer discovery on reconnect and identify managed terminals by discovery ownership
-
-* fix(sess): reconnect managed R sessions after window reload and prioritize manual recovery of the selected R terminal
-
-* fix(rstudioapi): resolve emulation issues and viewer routing
-* fix(workspace): fix code submission delays when the workspace contains many or large objects
-
-### Features
-
-* feat(dataview): upgrade AG Grid Community to 36.2.0, add searchable column pinning, inline filters and clear-all controls, row counts, saved view settings, full-value tooltips, and column sizing controls
-* feat(sess): migrate session watcher to WebSockets/JSON-RPC 2.0
-* feat(sess): migrate session watcher to Unix domain sockets / Windows named pipes with JSON Lines framing and JSON-RPC 2.0
-* feat: implement rstudioapi::showPrompt() and rstudioapi::askForPassword() for sess package
-* feat: evaluate params from YAML header in Rmd files before running code
-* feat: check sess package version and prompt for update
-* feat(session): implement file-based reconnection and suppress verbose logs
-* feat(plot): new `r.plot.backend` enum setting for finer-grained control of the preferred plotting backend, including integration with the lightweight `jgd` graphics device (default if installed). `r.plot.useHttpgd` is deprecated in favor of `r.plot.backend`; it remains supported for compatibility with existing configurations but will be removed in a future release.
-* feat(r-path): add `r.executablePath` as the canonical setting for vanilla R used by background processes and `r.consolePath` for the interactive R console. Both accept an absolute or substituted path, or a bare executable name available on `PATH`; for example, `r.executablePath` can be the bare vanilla executable name `R`, while `r.consolePath` can be `arf` (or `radian`). Path settings are resolved against the relevant workspace resource when one is available. When `r.consolePath` and the legacy `r.rterm.<platform>` setting are unset, an explicitly configured `r.executablePath` is also used for the console. The legacy `r.rpath.<platform>` settings never affect console selection. The legacy `r.rpath.<platform>` and `r.rterm.<platform>` settings are deprecated in favor of the canonical settings, remain supported for backward compatibility, and may be removed in a future release.
-* feat(dataview): keep one viewer per data name, refreshing the existing viewer on repeated `View()` calls
-* feat(dataview): load data rows on demand while scrolling, with support for Arrow and Polars DataFrames
-* feat(workspace): support recursive expansion of nested lists, environments, pairlists, S4 objects, and data frames
-
-### Performance
-
-* perf: optimize package monitoring in helpServer.R
-
-### Other
-
-* Hide context-dependent plot commands from the Command Palette while keeping the Show Viewers command discoverable for reopening plot viewers and retaining viewer-local controls.
-
-* Remove Live Share integration, including its commands and settings. Remove other obsolete session settings that are no longer consumed.
-* Stop writing `~/.vscode-R/settings.json`; the current sess protocol no longer reads the propagated configuration. Remove the unused WebSocket server compatibility function, the unused `SESS_USE_HTTPGD` environment variable, and the path override argument left by the removed help-path setting.
-* Remove the unused `r.workspaceViewer.showObjectSize` setting and obsolete object-size tooltip support
-* Remove obsolete `r.session.objectLengthLimit`, `r.session.objectTimeout`, and `r.session.levelOfObjectDetail` settings following the switch to on-demand workspace inspection
-* Remove `r.helpPanel.rpath`, which was previously deprecated and no longer used by the extension
-
-### Configuration
-
-* Add `r.consoleArgs` and `r.consoleSendDelay` as canonical settings, with legacy `r.rterm.option` and `r.rtermSendDelay` deprecated and supported for backward compatibility. Resolve renamed console and executable-path settings by workspace folder (where supported), workspace, then user scope; plot-backend settings use workspace then user scope. Prefer the canonical name within each scope. Empty paths and automatic backend selection retain their fallback behavior.
-
-### Styling
-
-* style: fix line length lint error in sess/R/rstudioapi.R
-
-### Testing
-
-* test: implement comprehensive integration test suite and modernize CI
-* test: add Rmd params tests and cleanup test files
-* test(session): add retry logic for plot tests to avoid timeouts on Windows
-* test(session): add version check, retry logic, and fix lint warnings
+**Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v2.8.8...v3.0.0>
 
 ## 2.8.8 - 2026-03-24
 
@@ -114,6 +62,6 @@ detected.
 
 **Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v2.8.5...v2.8.6>
 
-See [CHANGELOG.old.md](https://github.com/REditorSupport/vscode-R/blob/master/CHANGELOG.old.md) for changes before v2.8.5.
+See [CHANGELOG.old.md](https://github.com/REditorSupport/vscode-R/blob/main/CHANGELOG.old.md) for changes before v2.8.5.
 
 <!-- generated by git-cliff -->
