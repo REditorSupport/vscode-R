@@ -109,7 +109,6 @@ suite('R Terminal', () => {
             assert.ok(discoveryFile);
             assert.strictEqual(options.env['SESS_ENDPOINT'], null);
             assert.strictEqual(options.env['SESS_RSTUDIOAPI'], 'TRUE');
-            assert.strictEqual(options.env['SESS_USE_HTTPGD'], 'TRUE');
             assert.strictEqual(options.env['SESS_PLOT_BACKEND'], 'httpgd');
             assert.ok(options.env['R_PROFILE_USER']);
             assert.ok(options.env['R_PROFILE_USER'].endsWith(path.join('R', 'profile.R')));
@@ -220,7 +219,6 @@ suite('R Terminal', () => {
         const options = await rTerminal.makeTerminalOptions();
 
         assert.ok(options.env);
-        assert.strictEqual(options.env['SESS_USE_HTTPGD'], 'FALSE');
         assert.strictEqual(options.env['SESS_PLOT_BACKEND'], 'standard');
     });
 
@@ -422,42 +420,42 @@ suite('R Terminal', () => {
         rTerminal.deleteTerminal(fakeTerminal as unknown as vscode.Terminal);
     });
 
-    test('profile R terminal send delay follows its workspace cwd instead of the active editor workspace', async () => {
-        const folderA = { uri: vscode.Uri.file(path.join(path.sep, 'workspace', 'a')) } as vscode.WorkspaceFolder;
-        const folderB = { uri: vscode.Uri.file(path.join(path.sep, 'workspace', 'b')) } as vscode.WorkspaceFolder;
-        sandbox.stub(vscode.window, 'activeTextEditor').value({ document: { uri: folderB.uri } } as vscode.TextEditor);
-        sandbox.stub(util, 'getCurrentWorkspaceFolder').callsFake((resource?: vscode.Uri) => {
-            if (resource?.fsPath === folderA.uri.fsPath) {
-                return folderA;
-            }
-            return folderB;
-        });
-        const requestedResources: Array<vscode.Uri | undefined> = [];
-        sandbox.stub(util, 'config').callsFake((resource?: vscode.Uri) => {
-            requestedResources.push(resource);
-            if (resource?.fsPath === folderA.uri.fsPath) {
-                return configuration({ consoleSendDelay: 31 }, {}, true);
-            }
-            if (resource?.fsPath === folderB.uri.fsPath) {
-                return configuration({ consoleSendDelay: 47 }, {}, true);
-            }
-            return configuration({}, { bracketedPaste: false, 'source.focus': 'none' });
-        });
-        const terminal = {
-            name: 'R Interactive',
-            creationOptions: { name: 'R Interactive', cwd: folderA.uri.fsPath },
-            show: () => undefined,
-            sendText: () => undefined
-        };
-        sandbox.stub(vscode.window, 'terminals').value([terminal as unknown as vscode.Terminal]);
-        sandbox.stub(vscode.window, 'activeTerminal').value(terminal as unknown as vscode.Terminal);
-        const delayStub = sandbox.stub(util, 'delay').resolves();
+    for (const scheme of ['file', 'vscode-remote']) {
+        const authority = scheme === 'vscode-remote' ? 'ssh-remote+test-host' : '';
+        test(`profile R terminal send delay preserves its ${scheme} workspace URI`, async () => {
+            const folderA = { uri: vscode.Uri.file(path.join(path.sep, 'workspace', 'a')).with({ scheme, authority }) } as vscode.WorkspaceFolder;
+            const folderB = { uri: vscode.Uri.file(path.join(path.sep, 'workspace', 'b')).with({ scheme, authority }) } as vscode.WorkspaceFolder;
+            sandbox.stub(vscode.window, 'activeTextEditor').value({ document: { uri: folderB.uri } } as vscode.TextEditor);
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value([folderA, folderB]);
+            sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake(resource =>
+                [folderA, folderB].find(folder => folder.uri.toString() === resource.toString()));
+            const requestedResources: Array<vscode.Uri | undefined> = [];
+            sandbox.stub(util, 'config').callsFake((resource?: vscode.Uri) => {
+                requestedResources.push(resource);
+                if (resource?.toString() === folderA.uri.toString()) {
+                    return configuration({ consoleSendDelay: 31 }, {}, true);
+                }
+                if (resource?.toString() === folderB.uri.toString()) {
+                    return configuration({ consoleSendDelay: 47 }, {}, true);
+                }
+                return configuration({}, { bracketedPaste: false, 'source.focus': 'none' });
+            });
+            const terminal = {
+                name: 'R Interactive',
+                creationOptions: { name: 'R Interactive', cwd: folderA.uri.fsPath },
+                show: () => undefined,
+                sendText: () => undefined
+            };
+            sandbox.stub(vscode.window, 'terminals').value([terminal as unknown as vscode.Terminal]);
+            sandbox.stub(vscode.window, 'activeTerminal').value(terminal as unknown as vscode.Terminal);
+            const delayStub = sandbox.stub(util, 'delay').resolves();
 
-        await rTerminal.runTextInTerm('first\nsecond');
+            await rTerminal.runTextInTerm('first\nsecond');
 
-        assert.ok(requestedResources.includes(folderA.uri), 'configuration should use the workspace containing the profile terminal cwd');
-        assert.strictEqual(delayStub.firstCall.args[0], 31);
-    });
+            assert.ok(requestedResources.includes(folderA.uri), 'configuration should use the workspace containing the profile terminal cwd');
+            assert.strictEqual(delayStub.firstCall.args[0], 31);
+        });
+    }
 
     test('createRTerm and restartRTerminal integration test', async () => {
         const configStub = {

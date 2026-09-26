@@ -14,6 +14,7 @@ detected.
 ### Bug Fixes
 
 * fix(console): use the workspace directory as terminal cwd when given a file URI
+* fix(console): preserve remote workspace configuration for R terminals created from the terminal profile
 
 * fix(sess): clean up failed runtime and server initialization and preserve the selected terminal during reconnect
 
@@ -49,8 +50,8 @@ detected.
 
 * Hide context-dependent plot commands from the Command Palette and remove the unused Show Plot Viewers command, while retaining viewer-local controls.
 
-* Remove obsolete Live Share manifest contributions and session settings that are no longer consumed.
-* Stop writing `~/.vscode-R/settings.json`; the current sess protocol no longer reads the propagated configuration. Remove the unused WebSocket server compatibility function and the path override argument left by the removed help-path setting.
+* Remove Live Share integration, including its commands and settings. Remove other obsolete session settings that are no longer consumed.
+* Stop writing `~/.vscode-R/settings.json`; the current sess protocol no longer reads the propagated configuration. Remove the unused WebSocket server compatibility function, the unused `SESS_USE_HTTPGD` environment variable, and the path override argument left by the removed help-path setting.
 * Remove the unused `r.workspaceViewer.showObjectSize` setting and obsolete object-size tooltip support
 * Remove obsolete `r.session.objectLengthLimit`, `r.session.objectTimeout`, and `r.session.levelOfObjectDetail` settings following the switch to on-demand workspace inspection
 * Remove `r.helpPanel.rpath`, which was previously deprecated and no longer used by the extension

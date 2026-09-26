@@ -226,7 +226,6 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
             SESS_ENDPOINT: null,
             SESS_DISCOVERY_FILE: discoveryFile,
             SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
-            SESS_USE_HTTPGD: backend === 'httpgd' ? 'TRUE' : 'FALSE',
             SESS_PLOT_BACKEND: backend,
         };
         if (jgdEnabled(backend)) {
@@ -326,7 +325,10 @@ function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
 
     const creationOptions = term.creationOptions;
     const cwd = creationOptions && 'cwd' in creationOptions ? creationOptions.cwd : undefined;
-    const cwdResource = typeof cwd === 'string' ? vscode.Uri.file(cwd) : cwd;
+    // Profile terminals store cwd as a path; retain the matching remote URI.
+    const cwdResource = typeof cwd === 'string'
+        ? vscode.workspace.workspaceFolders?.find(folder => folder.uri.fsPath === cwd)?.uri ?? vscode.Uri.file(cwd)
+        : cwd;
     return cwdResource
         ? getCurrentWorkspaceFolder(cwdResource)?.uri ?? cwdResource
         : getCurrentWorkspaceFolder()?.uri;
