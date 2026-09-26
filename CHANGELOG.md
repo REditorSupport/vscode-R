@@ -180,6 +180,9 @@ same user/workspace scope).
 - REditorSupport now has its own
   [R-universe](https://reditorsupport.r-universe.dev), providing up-to-date
   (dev) binary builds of our various R packages.
+- The default branch has been renamed from `master` to `main`. Contributors
+  should update their local clones and target `main` in pull requests.
+  (#1103, #1775 @randy3k)
 
 **Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v2.8.8...v3.0.0>
 
