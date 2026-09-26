@@ -475,7 +475,15 @@ export async function getGlobalPipePath(): Promise<string> {
 function startGlobalSessionServer(): Promise<string> {
     return new Promise((resolve, reject) => {
         const pipePath = makePipePath();
+        let listening = false;
+        let settled = false;
+        let initialized = false;
         const server = net.createServer((rawSocket) => {
+            // Do not accept attach messages until initialization has succeeded.
+            if (!initialized) {
+                rawSocket.destroy();
+                return;
+            }
             const socket = rawSocket as IpcSocket;
             socket._pipePath = pipePath;
             console.info('[SessionServer] Client connected via IPC pipe');
@@ -582,19 +590,45 @@ function startGlobalSessionServer(): Promise<string> {
             });
         });
 
+        const failStartup = (err: unknown): void => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            server.close(() => {
+                void (async () => {
+                    // Never unlink an endpoint whose listen failed (e.g. EADDRINUSE).
+                    if (listening && process.platform !== 'win32') {
+                        await removePathIfExists(pipePath);
+                    }
+                    reject(err);
+                })();
+            });
+        };
+
         server.on('error', (err) => {
             console.error('[SessionServer] Server error', err);
-            reject(err);
+            failStartup(err);
         });
 
-        server.listen(pipePath, () => {
-            void setOwnerOnlyPermissions(pipePath).then(() => {
-                globalPipePath = pipePath;
-                globalSessionServer = server;
-                console.info(`[SessionServer] Listening on ${pipePath}`);
-                resolve(pipePath);
-            }).catch(reject);
-        });
+        try {
+            server.listen(pipePath, () => {
+                listening = true;
+                void setOwnerOnlyPermissions(pipePath).then(() => {
+                    if (settled) {
+                        return;
+                    }
+                    settled = true;
+                    initialized = true;
+                    globalPipePath = pipePath;
+                    globalSessionServer = server;
+                    console.info(`[SessionServer] Listening on ${pipePath}`);
+                    resolve(pipePath);
+                }).catch(failStartup);
+            });
+        } catch (err) {
+            failStartup(err);
+        }
     });
 }
 
@@ -1952,6 +1986,8 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             const terminalPid = rPid && isLocalHost(host)
                 ? await findLocalTerminalPid(rPid)
                 : undefined;
+            const selectedTerminal = window.activeTerminal;
+            const selectedTerminalPid = terminalPid ? await selectedTerminal?.processId : undefined;
             if (socket.destroyed) {
                 return;
             }
@@ -1995,7 +2031,12 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             session.sessionDir = String(params.tempdir);
             session.workingDir = String(params.wd);
 
-            await activateSession(session);
+            // Reload does not trigger a terminal-selection event after every attach.
+            // Prefer its connected session when a terminal reconnects in the background.
+            const selectedSession = terminalPid && selectedTerminal === window.activeTerminal && selectedTerminalPid
+                ? terminalSessions.get(String(selectedTerminalPid))
+                : undefined;
+            await activateSession(selectedSession && !selectedSession.socket.destroyed ? selectedSession : session);
 
             console.info(`[startSessionWatcher] attach session ${sessionId} (${host || 'unknown'}:${rPid || 'unknown'}), terminal PID: ${terminalPid ?? 'unassociated'}`);
             purgeAddinPickerItems();

@@ -3,8 +3,9 @@ import * as sinon from 'sinon';
 import * as assert from 'assert';
 import * as path from 'path';
 import * as os from 'os';
-import * as fs from 'fs-extra';
+import fs from 'fs-extra';
 import * as net from 'net';
+import { EventEmitter } from 'events';
 
 import { mockExtensionContext } from '../common/mockvscode';
 import * as rTerminal from '../../rTerminal';
@@ -108,6 +109,50 @@ suite('Session Communication', () => {
         assert.strictEqual(session.globalPipePath, undefined);
         listen.restore();
 
+        try {
+            assert.ok(await session.getGlobalPipePath());
+        } finally {
+            await session.shutdownSessionWatcher();
+        }
+    });
+
+    test('post-listen initialization failure closes the unpublished server before retry', async () => {
+        await session.shutdownSessionWatcher();
+        const failure = new Error('Simulated post-listen failure');
+        const listen = sandbox.spy(net.Server.prototype, 'listen');
+        const close = sandbox.spy(net.Server.prototype, 'close');
+        // Unix fails at chmod; Windows has no permission setup, so inject an
+        // error immediately after listening, before initialization is published.
+        const fail = process.platform !== 'win32'
+            ? sandbox.stub(fs, 'chmod').rejects(failure)
+            : sandbox.stub(net.Server.prototype, 'emit').callsFake(function (this: net.Server, event: string, ...args: unknown[]) {
+                const result = EventEmitter.prototype.emit.call(this, event, ...args);
+                if (event === 'listening') {
+                    EventEmitter.prototype.emit.call(this, 'error', failure);
+                }
+                return result;
+            });
+        await assert.rejects(session.getGlobalPipePath(), error => error === failure);
+        const endpoint = listen.firstCall.args[0] as unknown as string;
+        const server = listen.firstCall.thisValue as net.Server;
+        assert.strictEqual(server.listening, false);
+        assert.strictEqual(session.globalPipePath, undefined);
+        if (process.platform !== 'win32') {
+            assert.strictEqual(await fs.pathExists(endpoint), false);
+        }
+        const client = net.createConnection(endpoint);
+        try {
+            await assert.rejects(new Promise<void>((resolve, reject) => {
+                client.once('connect', resolve);
+                client.once('error', reject);
+            }));
+        } finally {
+            client.destroy();
+        }
+        close.resetHistory();
+        await session.shutdownSessionWatcher();
+        assert.strictEqual(close.callCount, 0, 'failed server must not be published for shutdown');
+        fail.restore();
         try {
             assert.ok(await session.getGlobalPipePath());
         } finally {
@@ -498,6 +543,51 @@ suite('Session Communication', () => {
 
         await session.shutdownSessionWatcher();
     }).timeout(15000);
+
+    test('reconnecting terminals preserve the selected terminal in either attach order', async () => {
+        const endpoint = await session.getGlobalPipePath();
+        const selected = { processId: Promise.resolve(46240) };
+        const background = { processId: Promise.resolve(46241) };
+        sandbox.stub(vscode.window, 'terminals').value([selected, background]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(selected);
+
+        for (const order of [[46240, 46241], [46241, 46240]]) {
+            const clients: net.Socket[] = [];
+            const sockets: net.Socket[] = [];
+            try {
+                for (const terminalPid of order) {
+                    const existing = new Set(session.activeConnections);
+                    const client = net.createConnection(endpoint);
+                    clients.push(client);
+                    await new Promise<void>((resolve, reject) => {
+                        client.once('connect', resolve);
+                        client.once('error', reject);
+                    });
+                    const socket = await waitFor(() => [...session.activeConnections].find(s => !existing.has(s)));
+                    assert.ok(socket);
+                    sockets.push(socket);
+                    const id = `reconnected-${terminalPid}`;
+                    client.write(`${JSON.stringify({
+                        jsonrpc: '2.0', method: 'attach', params: {
+                            protocol_version: 1, session_id: id, host: os.hostname(),
+                            pid: terminalPid, version: '4.4.0', tempdir: '/tmp', wd: '/tmp',
+                        },
+                    })}\n`);
+                    await waitFor(() => socket._sessionId === id);
+                    if (terminalPid === 46241 && order[0] === 46240) {
+                        assert.strictEqual(session.activeSession?.sessionId, 'reconnected-46240');
+                    }
+                }
+                assert.strictEqual(session.activeSession?.sessionId, 'reconnected-46240');
+            } finally {
+                clients.forEach(client => client.destroy());
+                sockets.forEach(socket => socket.destroy());
+                for (const terminalPid of order) {
+                    await session.cleanupSession(`reconnected-${terminalPid}`);
+                }
+            }
+        }
+    });
 
     test('manual recovery targets the selected managed terminal while another session is active', async () => {
         const endpoint = await session.getGlobalPipePath();

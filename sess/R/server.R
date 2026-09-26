@@ -110,6 +110,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
           "[sess] Runtime startup failed during ", phase, ": ",
           conditionMessage(e), call_suffix
         )
+        .transport_disconnect(silent = TRUE)
         stop(e)
       },
       finally = {

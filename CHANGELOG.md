@@ -13,6 +13,8 @@ detected.
 
 ### Bug Fixes
 
+* fix(sess): clean up failed runtime and server initialization and preserve the selected terminal during reconnect
+
 * fix(sess): share server startup across concurrent session clients and wait for startup during shutdown
 
 * fix(sess): defer workspace and plot notifications until task callbacks return
