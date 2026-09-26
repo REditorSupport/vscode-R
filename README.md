@@ -3,8 +3,8 @@
 <!-- badges: start -->
 
 <a href="https://marketplace.visualstudio.com/items?itemName=reditorsupport.r"><img src="https://img.shields.io/github/v/release/REditorSupport/vscode-R?label=release" alt="Release"></a>
-<a href="https://github.com/REditorSupport/vscode-R/releases/tag/latest"><img src="https://img.shields.io/github/package-json/v/REditorSupport/vscode-R/master?label=dev" alt="Development version"></a>
-<a href="https://github.com/REditorSupport/vscode-R/actions/workflows/main.yml"><img src="https://img.shields.io/github/actions/workflow/status/REditorSupport/vscode-R/main.yml?branch=master&label=ci" alt="CI"></a>
+<a href="https://github.com/REditorSupport/vscode-R/releases/tag/latest"><img src="https://img.shields.io/github/package-json/v/REditorSupport/vscode-R/main?label=dev" alt="Development version"></a>
+<a href="https://github.com/REditorSupport/vscode-R/actions/workflows/main.yml"><img src="https://img.shields.io/github/actions/workflow/status/REditorSupport/vscode-R/main.yml?branch=main&label=ci" alt="CI"></a>
 
 <!-- badges: end -->
 
@@ -42,7 +42,7 @@ is missing or outdated, so no manual setup is needed.
     <summary>Install the development version</summary>
 
     The [`latest`](https://github.com/REditorSupport/vscode-R/releases/tag/latest)
-    pre-release is rebuilt from every push to `master`. Download and install it:
+    pre-release is rebuilt from every push to `main`. Download and install it:
 
     ```sh
     curl -fsSL -o vscode-R.vsix \
