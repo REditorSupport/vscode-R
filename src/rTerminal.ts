@@ -1,6 +1,7 @@
 'use strict';
 
 import * as path from 'path';
+import { getMigratedSetting } from './configuration';
 import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
@@ -183,47 +184,23 @@ export async function runFromLineToEnd(): Promise<void>  {
 
 import { getGlobalPipePath, writeSessionFile } from './session';
 
-function getExplicitSetting<T>(configuration: vscode.WorkspaceConfiguration, key: string): T | undefined {
-    const inspected = typeof configuration.inspect === 'function' ? configuration.inspect<T>(key) : undefined;
-    if (!inspected) {
-        return undefined;
-    }
-    return inspected.workspaceFolderValue ?? inspected.workspaceValue ?? inspected.globalValue;
-}
-
 function getConsoleArgs(configuration: vscode.WorkspaceConfiguration): string[] {
-    const canonical = getExplicitSetting<string[]>(configuration, 'consoleArgs');
-    if (canonical !== undefined) {
-        return canonical;
-    }
-    const legacy = getExplicitSetting<string[]>(configuration, 'rterm.option');
-    if (legacy !== undefined) {
-        return legacy;
-    }
-    return configuration.get<string[]>('consoleArgs') ?? ['--no-save', '--no-restore'];
+    return getMigratedSetting<string[]>(configuration, 'consoleArgs', 'rterm.option')?.value
+        ?? ['--no-save', '--no-restore'];
 }
 
 function getConsoleSendDelay(resource?: vscode.Uri): number {
-    const currentConfig = config(resource);
-    const canonical = getExplicitSetting<number>(currentConfig, 'consoleSendDelay');
-    if (canonical !== undefined) {
-        return canonical;
-    }
-    const legacy = getExplicitSetting<number>(currentConfig, 'rtermSendDelay');
-    if (legacy !== undefined) {
-        return legacy;
-    }
-    return currentConfig.get<number>('consoleSendDelay') ?? 8;
+    return getMigratedSetting<number>(config(resource), 'consoleSendDelay', 'rtermSendDelay')?.value ?? 8;
 }
 
 export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode.TerminalOptions> {
     const workspaceFolder = resource ? getCurrentWorkspaceFolder(resource) : getCurrentWorkspaceFolder();
-    resource = resource ?? workspaceFolder?.uri;
-    const workspaceFolderPath = resource?.fsPath;
-    const currentConfig = config(resource);
-    const termPath = await getRterm(resource);
+    const configResource = resource ?? workspaceFolder?.uri;
+    const workspaceFolderPath = workspaceFolder?.uri.fsPath;
+    const currentConfig = config(configResource);
+    const termPath = await getRterm(configResource);
     const shellArgs = getConsoleArgs(currentConfig)
-        .map(value => util.substituteVariables(value, resource));
+        .map(value => util.substituteVariables(value, configResource));
     const termOptions: vscode.TerminalOptions = {
         name: 'R Interactive',
         shellPath: termPath,

@@ -43,7 +43,7 @@ detected.
 
 ### Configuration
 
-* Add `r.consoleArgs` and `r.consoleSendDelay` as canonical settings, with legacy `r.rterm.option` and `r.rtermSendDelay` deprecated and supported for backward compatibility.
+* Add `r.consoleArgs` and `r.consoleSendDelay` as canonical settings, with legacy `r.rterm.option` and `r.rtermSendDelay` deprecated and supported for backward compatibility. For these settings and `r.consolePath` / `r.rterm.<platform>`, resolve workspace folder, workspace, then user scope, preferring the canonical name within each scope.
 
 ### Styling
 

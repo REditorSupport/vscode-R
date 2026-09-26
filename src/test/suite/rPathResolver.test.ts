@@ -161,6 +161,61 @@ suite('R executable resolver', () => {
         );
     });
 
+    const scopes = ['globalValue', 'workspaceValue', 'workspaceFolderValue'] as const;
+    for (const platform of ['linux', 'mac', 'windows']) {
+        for (const canonicalScope of scopes) {
+            for (const legacyScope of scopes) {
+                test(`console path (${platform}): canonical ${canonicalScope} versus legacy ${legacyScope}`, async () => {
+                    const legacyKey = `rterm.${platform}`;
+                    const inspected = {
+                        consolePath: { [canonicalScope]: '/canonical/console' },
+                        [legacyKey]: { [legacyScope]: '/legacy/console' }
+                    };
+                    const dependencies = createRPathResolverDependencies({
+                        resource: 'project/script.R',
+                        getConfiguration: resource => {
+                            assert.strictEqual(resource, 'project/script.R');
+                            return {
+                                get: key => key === 'consolePath' ? '/canonical/console' : '/legacy/console',
+                                inspect: key => inspected[key],
+                            };
+                        },
+                        substituteVariables: value => value,
+                        findExecutable: () => undefined,
+                        pathExists: () => true,
+                        getSystemR: () => assert.fail('Configured console should be used'),
+                    });
+                    const canonicalWins = scopes.indexOf(canonicalScope) >= scopes.indexOf(legacyScope);
+                    assert.deepStrictEqual(await resolveConsoleR(dependencies, legacyKey), {
+                        path: canonicalWins ? '/canonical/console' : '/legacy/console',
+                        setting: canonicalWins ? 'consolePath' : legacyKey,
+                        quote: undefined,
+                    });
+                });
+            }
+        }
+    }
+
+    test('invalid workspace legacy console path keeps its setting name and does not fall back', async () => {
+        const harness = createDependencies({
+            consolePath: '/user/console', 'rterm.linux': '/missing/console', executablePath: '/background/R'
+        }, {}, ['/user/console', '/background/R']);
+        harness.dependencies.inspectSetting = key => key === 'consolePath'
+            ? { globalValue: '/user/console' } : { workspaceValue: '/missing/console' };
+        assert.deepStrictEqual(await resolveConsoleR(harness.dependencies, 'rterm.linux'), {
+            path: undefined, setting: 'rterm.linux', quote: undefined
+        });
+        assert.strictEqual(harness.getSystemRCalls(), 0);
+    });
+
+    test('blank console path allows a legacy value at the same scope', async () => {
+        const harness = createDependencies({ consolePath: ' ', 'rterm.linux': '/legacy/console' }, {}, ['/legacy/console']);
+        harness.dependencies.inspectSetting = key => ({
+            workspaceFolderValue: key === 'consolePath' ? ' ' : '/legacy/console'
+        });
+        assert.strictEqual((await resolveConsoleR(harness.dependencies, 'rterm.linux')).path, '/legacy/console');
+    });
+
     test('legacy background setting never feeds console fallback', async () => {
         const harness = createDependencies({
             consolePath: '',
@@ -319,7 +374,7 @@ suite('R executable resolver', () => {
         const dependencies = (resource?: Resource) => createRPathResolverDependencies({
             resource,
             getConfiguration: requestedResource => ({
-                get: <T>(setting: string) => settings[requestedResource ?? 'default'][setting] as T | undefined,
+                get: (setting: string) => settings[requestedResource ?? 'default'][setting],
             }),
             substituteVariables: value => value,
             findExecutable: () => undefined,
@@ -343,7 +398,7 @@ suite('R executable resolver', () => {
         const dependencies = (resource?: Resource) => createRPathResolverDependencies({
             resource,
             getConfiguration: () => ({
-                get: <T>(setting: string) => (setting === 'executablePath' ? '${workspaceFolder}/R' : undefined) as T | undefined,
+                get: (setting: string) => setting === 'executablePath' ? '${workspaceFolder}/R' : undefined,
             }),
             substituteVariables: (value, requestedResource) => substitutePathVariables(value, {
                 workspaceFolder: workspaceFolders[requestedResource ?? 'default'],

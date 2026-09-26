@@ -22,10 +22,14 @@ suite('R Terminal', () => {
         } as unknown as vscode.WorkspaceConfiguration;
     }
 
-    async function sendDelayFor(values: Record<string, unknown>, defaults: Record<string, unknown> = {}): Promise<number> {
+    async function sendDelayFor(
+        values: Record<string, unknown>,
+        defaults: Record<string, unknown> = {},
+        settings = configuration(values, defaults)
+    ): Promise<number> {
         const resource = vscode.Uri.file(path.join(path.sep, 'workspace', 'project'));
         sandbox.stub(util, 'getCurrentWorkspaceFolder').returns({ uri: resource } as vscode.WorkspaceFolder);
-        sandbox.stub(util, 'config').returns(configuration(values, defaults));
+        sandbox.stub(util, 'config').returns(settings);
         const terminal = {
             name: 'R Interactive',
             show: () => undefined,
@@ -172,6 +176,61 @@ suite('R Terminal', () => {
 
         assert.deepStrictEqual(options.shellArgs, ['--no-save', '--no-restore']);
     });
+
+    const scopes = ['globalValue', 'workspaceValue', 'workspaceFolderValue'] as const;
+    for (const canonicalScope of scopes) {
+        for (const legacyScope of scopes) {
+            for (const setting of ['args', 'delay'] as const) {
+                test(`console ${setting}: canonical ${canonicalScope} versus legacy ${legacyScope}`, async () => {
+                    const canonicalKey = setting === 'args' ? 'consoleArgs' : 'consoleSendDelay';
+                    const legacyKey = setting === 'args' ? 'rterm.option' : 'rtermSendDelay';
+                    // Empty arguments and zero delay are explicit values, not fallbacks.
+                    const canonicalValue = setting === 'args' ? [] : 0;
+                    const legacyValue = setting === 'args' ? ['--vanilla'] : 23;
+                    const settings = configuration();
+                    sandbox.stub(settings, 'inspect').callsFake((key: string) => ({
+                        key,
+                        ...(key === canonicalKey ? { [canonicalScope]: canonicalValue }
+                            : key === legacyKey ? { [legacyScope]: legacyValue } : {})
+                    }));
+                    const expected = scopes.indexOf(canonicalScope) >= scopes.indexOf(legacyScope)
+                        ? canonicalValue : legacyValue;
+                    if (setting === 'args') {
+                        sandbox.stub(util, 'config').returns(settings);
+                        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+                        assert.deepStrictEqual((await rTerminal.makeTerminalOptions()).shellArgs, expected);
+                    } else {
+                        assert.strictEqual(await sendDelayFor({}, {}, settings), expected);
+                    }
+                });
+            }
+        }
+    }
+
+    for (const hasWorkspace of [true, false]) {
+        test(`file resource uses workspace cwd (workspace present: ${String(hasWorkspace)})`, async () => {
+            const folder = vscode.Uri.file(path.join(path.sep, 'workspace', 'project'));
+            const file = vscode.Uri.file(path.join(folder.fsPath, 'script.R'));
+            sandbox.stub(vscode.workspace, 'workspaceFolders').value(
+                hasWorkspace ? [{ uri: folder } as vscode.WorkspaceFolder] : undefined
+            );
+            sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake(resource => {
+                assert.strictEqual(resource, file);
+                return hasWorkspace ? { uri: folder } as vscode.WorkspaceFolder : undefined;
+            });
+            const configStub = sandbox.stub(util, 'config').returns(configuration({
+                consoleArgs: hasWorkspace ? ['--project=${workspaceFolder}'] : ['--quiet']
+            }));
+            const pathStub = sandbox.stub(util, 'getRterm').resolves(process.execPath);
+
+            const options = await rTerminal.makeTerminalOptions(file);
+
+            assert.strictEqual(options.cwd, hasWorkspace ? folder.fsPath : undefined);
+            assert.deepStrictEqual(options.shellArgs, hasWorkspace ? [`--project=${folder.fsPath}`] : ['--quiet']);
+            assert.ok(configStub.calledWithExactly(file));
+            assert.ok(pathStub.calledWithExactly(file));
+        });
+    }
 
     test('createRTerm reports an invalid legacy console path setting only once', async () => {
         const legacySetting = util.getRPathConfigEntry(true);
