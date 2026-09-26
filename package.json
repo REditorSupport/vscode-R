@@ -2034,12 +2034,13 @@
     "eslint": "^7.32.0",
     "eslint-plugin-jsdoc": "^35.5.1",
     "git-cliff": "^2.12.0",
+    "glob": "^13.0.6",
     "mocha": "^11.7.5",
     "sinon": "^15.2.0",
-    "typescript": "^4.9.5"
+    "typescript": "~5.8.3"
   },
   "dependencies": {
-    "ag-grid-community": "^35.2.1",
+    "ag-grid-community": "^36.2.0",
     "cheerio": "1.0.0-rc.12",
     "crypto": "^1.0.1",
     "ejs": "^3.1.10",

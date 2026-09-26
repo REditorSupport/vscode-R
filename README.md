@@ -114,6 +114,15 @@ Please consult the relevant installation wiki pages for your OS ([Windows](https
 
 * Full support of [Remote Development](https://code.visualstudio.com/docs/remote/remote-overview) via [SSH](https://code.visualstudio.com/docs/remote/ssh), [Containers](https://code.visualstudio.com/docs/remote/containers) and [WSL](https://code.visualstudio.com/docs/remote/wsl).
 
+## Exploring data
+
+Call `View(x)` to open a table. The viewer loads rows on demand and applies column filters and sorting in R across the full table.
+
+* **Columns** searches column names, shows or hides matching columns, and pins columns to either edge. Drag entries to reorder them. Row names stay pinned on the left.
+* **Filters** shows filter inputs below the headers. Press Enter to apply text and number filters; use the filter button for ranges, missing values, or combined conditions. **Clear filters** removes every column filter, including filters on hidden columns. The toolbar shows the matching and total row counts.
+* Columns fit the available width by default and adapt when the viewer is resized. **Size to content** sizes the currently displayed cells, up to 480 pixels, and keeps those widths; **Fit width** switches back to filling the viewer. Manually resized columns retain their widths while the remaining flexible columns share the space. Hover over a cell to see its full value.
+* Repeated `View()` calls for the same object retain the viewer's sizing mode, column layout, sorting, filters, and page size when the column names, order, and types are unchanged. Refreshed data starts on the first page. **Reset view** restores fit-width sizing, the default layout, filters, sorting, and configured page size.
+
 ## Questions, issues, feature requests, and contributions
 
 * If you have a question about accomplishing something in general with the extension, please [start a discussion](https://github.com/REditorSupport/vscode-R/discussions) or [ask on Stack Overflow](https://stackoverflow.com/questions/tagged/visual-studio-code+r).

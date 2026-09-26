@@ -17,6 +17,7 @@ import { extensionContext, homeExtDir, rWorkspace, globalRHelp, globalPlotManage
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 
 import { showWebView } from './webViewer';
+import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
 
 export interface SessionInfo {
@@ -856,7 +857,6 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 
     #gridContainer {
         position: relative;
-        height: 100%;
     }
 
     #fetchStatus {
@@ -934,6 +934,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         opacity: 0.75;
     }
     ${getDataViewerColumnPanelStyle()}
+    ${getDataViewerStyle()}
     </style>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
     <script>
@@ -942,6 +943,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     const pending = new Map();
     let gridApi;
     ${getDataViewerColumnPanelScript()}
+    ${getDataViewerScript()}
     let activeFetches = 0;
     let longFetchTimer;
     let filteredRows = 0;
@@ -952,14 +954,6 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     let scrollbarPressed = false;
     const LONG_FETCH_DELAY_MS = 2000;
     const rowNumberFormatter = new Intl.NumberFormat();
-    const emptyCellRenderer = () => '';
-    const naCellRenderer = () => {
-        const element = document.createElement('span');
-        element.className = 'dataview-na';
-        element.textContent = 'NA';
-        return element;
-    };
-
     function clearLongFetchTimer() {
         if (longFetchTimer) {
             clearTimeout(longFetchTimer);
@@ -993,22 +987,11 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
             return;
         }
 
-        let headerHeight = 0;
-        if (gridApi && typeof gridApi.getSizesForCurrentTheme === 'function') {
-            const sizes = gridApi.getSizesForCurrentTheme();
-            if (sizes && Number.isFinite(sizes.headerHeight)) {
-                headerHeight = Number(sizes.headerHeight);
-            }
-        }
-
-        if (!headerHeight) {
-            const headerEl = document.querySelector('#myGrid .ag-header');
-            if (headerEl) {
-                headerHeight = headerEl.getBoundingClientRect().height;
-            }
-        }
-
-        const topOffset = Math.max(8, Math.round(headerHeight) + 8);
+        const headerEl = document.querySelector('#myGrid .ag-header');
+        const topOffset = headerEl
+            ? Math.max(8, Math.round(headerEl.getBoundingClientRect().bottom -
+                containerEl.getBoundingClientRect().top) + 8)
+            : 8;
         containerEl.style.setProperty('--fetch-status-top', String(topOffset) + 'px');
     }
 
@@ -1166,17 +1149,6 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         }
     });
 
-    const dateFilterParams = {
-        browserDatePicker: true,
-    };
-
-    function getAgTheme() {
-        if (document.body.classList.contains('vscode-light')) {
-            return window.agGrid.themeBalham.withPart(window.agGrid.colorSchemeLight);
-        }
-        return window.agGrid.themeBalham.withPart(window.agGrid.colorSchemeDark);
-    }
-
     function updateTheme() {
         if (gridApi) {
             gridApi.setGridOption('theme', getAgTheme());
@@ -1185,9 +1157,6 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     }
 
     async function initialize() {
-        console.log('[dataview] agGrid object:', window.agGrid);
-        console.log('[dataview] agGrid.Grid:', typeof window.agGrid.Grid);
-
         beginFetch('Loading data viewer metadata...');
         let init;
         try {
@@ -1202,39 +1171,14 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         const columns = Array.isArray(init.columns) ? init.columns : [];
         filteredRows = init.totalRows;
         totalRows = init.totalRows;
-        const bigintFields = [];
-        
-        columns.forEach((column) => {
-            column.cellRendererSelector = params => {
-                if (params.data == null) {
-                    return { component: emptyCellRenderer };
-                }
-                return params.value == null
-                    ? { component: naCellRenderer }
-                    : undefined;
-            };
-            if (column.field === '0') {
-                column.headerValueGetter = () =>
-                    isFiltered
-                        ? '(' + rowNumberFormatter.format(filteredRows) +
-                            '/' + rowNumberFormatter.format(totalRows) + ')'
-                        : '';
-            }
-            if (column.type === 'dateColumn' || column.type === 'datetimeColumn') {
-                column.cellDataType =
-                    column.type === 'dateColumn' ? 'dateString' : 'dateTimeString';
-                column.filter = 'agDateColumnFilter';
-                column.filterParams = dateFilterParams;
-                column.width = 200;
-            } else if (column.type === 'bigintColumn') {
-                column.cellDataType = 'bigint';
-                column.filter = 'agBigIntColumnFilter';
-                bigintFields.push(column.field);
-            }
-            if (column.type !== 'numericColumn') {
-                delete column.type;
-            }
-        });
+        const bigintFields = prepareViewerColumns(columns);
+        updateViewerRowCount(filteredRows, totalRows);
+        const rowIndexColumn = columns.find(column => column.field === '0');
+        if (rowIndexColumn) {
+            rowIndexColumn.headerValueGetter = () => isFiltered
+                ? '(' + rowNumberFormatter.format(filteredRows) +
+                    '/' + rowNumberFormatter.format(totalRows) + ')' : '';
+        }
 
         const blockSize = ${pageSize > 0 ? pageSize : 500};
 
@@ -1251,17 +1195,11 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
                     filteredRows = result.totalRows;
                     totalRows = result.totalUnfiltered;
                     isFiltered = Object.keys(params.filterModel || {}).length > 0;
+                    updateViewerRowCount(filteredRows, totalRows);
                     gridApi?.refreshHeader();
                     updateScrollPosition();
                     const resolvedLastRow = Number.isFinite(result.totalRows) ? result.totalRows : result.lastRow;
-                    const rows = result.rows || [];
-                    rows.forEach((row) => {
-                        bigintFields.forEach((field) => {
-                            if (row[field] != null) {
-                                row[field] = BigInt(row[field]);
-                            }
-                        });
-                    });
+                    const rows = prepareViewerRows(result.rows || [], bigintFields);
                     params.successCallback(rows, resolvedLastRow);
                     finishFetch(true);
                 } catch (e) {
@@ -1274,30 +1212,15 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         };
 
         const gridOptions = {
-            theme: getAgTheme(),
-            defaultColDef: {
-                sortable: true,
-                resizable: true,
-                filter: true,
-                width: 100,
-                minWidth: 50,
-                filterParams: {
-                    buttons: ['reset', 'apply']
-                }
-            },
+            ...getViewerGridOptions(${pageSize}),
             columnDefs: columns,
             rowModelType: 'infinite',
             datasource: datasource,
             cacheBlockSize: blockSize,
-            pagination: ${pageSize > 0 ? 'true' : 'false'},
-            paginationPageSize: blockSize,
-            paginationPageSizeSelector: [20, 50, 100, blockSize],
-            enableCellTextSelection: true,
-            ensureDomOrder: true,
-            tooltipShowDelay: 100,
             onPaginationChanged: updateScrollPosition,
-            onFirstDataRendered: function(params) {
-                params.api.autoSizeAllColumns(false);
+            onGridSizeChanged: updateFetchStatusPosition,
+            onDisplayedColumnsChanged: updateFetchStatusPosition,
+            onFirstDataRendered: function() {
                 updateFetchStatusPosition();
                 attachScrollbarPositionIndicator();
             }
@@ -1307,13 +1230,13 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         try {
             console.log('[dataview] Creating grid with options:', gridOptions);
             gridApi = window.agGrid.createGrid(gridDiv, gridOptions);
-            initializeColumnPanel();
+            initializeViewerToolbar();
             console.log('[dataview] Grid created successfully');
             updateFetchStatusPosition();
         } catch (e) {
             console.error('[dataview] Grid creation failed:', e);
             console.error('[dataview] Error stack:', e instanceof Error ? e.stack : 'N/A');
-            gridDiv.innerHTML = '<div style="padding: 20px; color: red;">Error: ' + (e instanceof Error ? e.message : String(e)) + '</div>';
+            gridDiv.textContent = 'Error: ' + (e instanceof Error ? e.message : String(e));
         }
     }
 
@@ -1343,6 +1266,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     </script>
 </head>
 <body>
+    ${getDataViewerToolbarHtml()}
     <div id="gridContainer">
         <div id="myGrid" style="height: 100%;"></div>
         ${getDataViewerColumnPanelHtml()}
@@ -1464,76 +1388,36 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     [class*="vscode"] .text-right {
         text-align: right;
     }
+    ${getDataViewerStyle()}
+    ${getDataViewerColumnPanelStyle()}
     </style>
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
     <script>
-    const dateFilterParams = {
-        browserDatePicker: true,
-        comparator: function (filterLocalDateAtMidnight, cellValue) {
-            var dateAsString = cellValue;
-            if (dateAsString == null) return -1;
-            var dateParts = dateAsString.split('-');
-            var cellDate = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2].substr(0, 2)));
-            if (filterLocalDateAtMidnight.getTime() == cellDate.getTime()) {
-                return 0;
-            }
-            if (cellDate < filterLocalDateAtMidnight) {
-                return -1;
-            }
-            if (cellDate > filterLocalDateAtMidnight) {
-                return 1;
-            }
-        }
-    };
+    const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : {};
     let gridApi;
-    function getAgTheme() {
-        if (document.body.classList.contains('vscode-light')) {
-            return window.agGrid.themeBalham.withPart(window.agGrid.colorSchemeLight);
-        }
-        return window.agGrid.themeBalham.withPart(window.agGrid.colorSchemeDark);
-    }
-    const data = ${String(content)};
-    const gridOptions = {
-        theme: getAgTheme(),
-        defaultColDef: {
-            sortable: true,
-            resizable: true,
-            filter: true,
-            width: 100,
-            minWidth: 50,
-            filterParams: {
-                buttons: ['reset', 'apply']
-            }
-        },
-        columnDefs: data.columns,
-        rowData: data.data,
-        rowSelection: 'multiple',
-        pagination: ${pageSize > 0 ? 'true' : 'false'},
-        paginationPageSize: ${pageSize},
-        paginationPageSizeSelector: [20, 50, 100, ${pageSize}],
-        enableCellTextSelection: true,
-        ensureDomOrder: true,
-        tooltipShowDelay: 100,
-        onFirstDataRendered: onFirstDataRendered
-    };
-    function onFirstDataRendered(params) {
-        gridOptions.columnApi.autoSizeAllColumns(false);
-    }
+    ${getDataViewerColumnPanelScript()}
+    ${getDataViewerScript()}
+    const data = ${String(content).replace(/</g, '\\u003c')};
+    const bigintFields = prepareViewerColumns(data.columns);
     function updateTheme() {
         if (gridApi) {
             gridApi.setGridOption('theme', getAgTheme());
         }
     }
     document.addEventListener('DOMContentLoaded', () => {
-        gridOptions.columnDefs.forEach(function(column) {
-            if (column.type === 'dateColumn') {
-                column.filter = 'agDateColumnFilter';
-                column.filterParams = dateFilterParams;
-            }
-            delete column.type;
-        });
+        const gridOptions = {
+            ...getViewerGridOptions(${pageSize}),
+            columnDefs: data.columns,
+            rowData: prepareViewerRows(data.data, bigintFields),
+            rowSelection: {
+                mode: 'multiRow', checkboxes: false, headerCheckbox: false,
+                enableClickSelection: true
+            },
+            onModelUpdated: event => updateViewerRowCount(event.api.getDisplayedRowCount(), data.data.length)
+        };
         const gridDiv = document.querySelector('#myGrid');
         gridApi = window.agGrid.createGrid(gridDiv, gridOptions);
+        initializeViewerToolbar();
         updateTheme();
     });
     function onload() {
@@ -1551,7 +1435,11 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     </script>
 </head>
 <body onload='onload()'>
-    <div id="myGrid" style="height: 100%;"></div>
+    ${getDataViewerToolbarHtml()}
+    <div id="gridContainer">
+        <div id="myGrid" style="height: 100%;"></div>
+        ${getDataViewerColumnPanelHtml()}
+    </div>
 </body>
 </html>
 `;

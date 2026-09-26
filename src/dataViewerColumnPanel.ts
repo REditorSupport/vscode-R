@@ -2,76 +2,13 @@
 
 export function getDataViewerColumnPanelStyle(): string {
     return `
-    #myGrid {
-        --column-panel-toggle-space: 34px;
-    }
-
-    /* Reserve menu space in the last header without adding an empty data column. */
-    #myGrid .ag-header-cell.ag-column-last {
-        padding-right: calc(var(--ag-cell-horizontal-padding) + var(--column-panel-toggle-space));
-    }
-
-    #myGrid .ag-header-cell.ag-column-last .ag-header-cell-resize {
-        right: calc(var(--column-panel-toggle-space) - 3px);
-    }
-
-    #columnPanelToggle {
-        flex: 0 0 calc(var(--column-panel-toggle-space) - 6px);
-        align-self: center;
-        width: calc(var(--column-panel-toggle-space) - 6px);
-        height: 28px;
-        margin: 0 3px;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: var(--vscode-foreground);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    #columnPanelToggle:hover {
-        background-color: var(--vscode-toolbar-hoverBackground);
-    }
-
-    #columnPanelToggle[hidden] {
-        display: none;
-    }
-
-    #columnPanelToggle span,
-    #columnPanelToggle span::before,
-    #columnPanelToggle span::after {
-        display: block;
-        width: 14px;
-        height: 1.5px;
-        background-color: currentColor;
-        content: '';
-    }
-
-    #columnPanelToggle span {
-        position: relative;
-    }
-
-    #columnPanelToggle span::before {
-        position: absolute;
-        top: -5px;
-        left: 0;
-    }
-
-    #columnPanelToggle span::after {
-        position: absolute;
-        top: 5px;
-        left: 0;
-    }
-
     #columnPanel {
         position: absolute;
         top: 0;
         right: 0;
         z-index: 30;
         display: none;
-        width: min(320px, 42vw);
+        width: min(380px, 100%);
         height: 100%;
         box-sizing: border-box;
         border-left: 1px solid var(--vscode-panel-border);
@@ -101,6 +38,19 @@ export function getDataViewerColumnPanelStyle(): string {
         cursor: pointer;
         font-size: 18px;
         line-height: 1;
+    }
+
+    #columnPanelSearch {
+        margin: 8px 12px; padding: 5px; box-sizing: border-box; min-width: 0;
+        color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+        border: 1px solid var(--vscode-input-border, transparent);
+    }
+
+    .column-panel-item[hidden] { display: none; }
+    .column-panel-pin {
+        margin-left: auto; max-width: 85px; padding: 2px;
+        color: var(--vscode-dropdown-foreground); background: var(--vscode-dropdown-background);
+        border: 1px solid var(--vscode-dropdown-border);
     }
 
     #columnPanelActions {
@@ -168,12 +118,12 @@ export function getDataViewerColumnPanelStyle(): string {
 
 export function getDataViewerColumnPanelHtml(): string {
     return `
-        <button id="columnPanelToggle" type="button" aria-label="Columns" aria-controls="columnPanel" aria-expanded="false" title="Columns" hidden><span></span></button>
         <div id="columnPanel" aria-label="Columns panel">
             <div id="columnPanelHeader">
                 <span>Columns</span>
                 <button id="columnPanelClose" type="button" aria-label="Close columns panel">×</button>
             </div>
+            <input id="columnPanelSearch" type="search" aria-label="Search columns" placeholder="Search columns">
             <div id="columnPanelActions">
                 <button id="columnSelectAll" type="button">Select all</button>
                 <button id="columnDeselectAll" type="button">Deselect all</button>
@@ -192,31 +142,38 @@ export function getDataViewerColumnPanelScript(): string {
         const selectAll = document.querySelector('#columnSelectAll');
         const deselectAll = document.querySelector('#columnDeselectAll');
         const list = document.querySelector('#columnPanelList');
-        const header = document.querySelector('#myGrid .ag-header');
-        if (!gridApi || !panel || !toggle || !close || !selectAll || !deselectAll || !list || !header) {
+        const search = document.querySelector('#columnPanelSearch');
+        if (!gridApi || !panel || !toggle || !close || !selectAll || !deselectAll || !list || !search) {
             return;
         }
 
-        // Reserve space within the header's flex layout, without narrowing the rows.
-        header.append(toggle);
-        toggle.hidden = false;
-
         function getSelectableColumns() {
             return gridApi.getAllGridColumns().filter(column => column.getColId() !== '0');
+        }
+
+        function matchingColumns() {
+            const query = search.value.toLocaleLowerCase();
+            return getSelectableColumns().filter(column =>
+                String(column.getColDef().headerName ?? column.getColId()).toLocaleLowerCase().includes(query));
         }
 
         function updateVisibility() {
             if (!panel.classList.contains('visible')) {
                 return;
             }
+            const matches = new Set(matchingColumns().map(column => column.getColId()));
             let visibleCount = 0;
             for (const item of list.children) {
-                const visible = gridApi.getColumn(item.dataset.colId).isVisible();
-                item.querySelector('input').checked = visible;
-                visibleCount += visible ? 1 : 0;
+                const column = gridApi.getColumn(item.dataset.colId);
+                item.hidden = !matches.has(item.dataset.colId);
+                item.querySelector('input').checked = column.isVisible();
+                item.querySelector('select').value = column.getPinned() || '';
+                visibleCount += !item.hidden && column.isVisible() ? 1 : 0;
             }
-            selectAll.disabled = visibleCount === list.children.length;
+            selectAll.disabled = visibleCount === matches.size;
             deselectAll.disabled = visibleCount === 0;
+            selectAll.textContent = search.value ? 'Show matching' : 'Select all';
+            deselectAll.textContent = search.value ? 'Hide matching' : 'Deselect all';
         }
 
         function renderColumns() {
@@ -240,7 +197,16 @@ export function getDataViewerColumnPanelScript(): string {
                 label.textContent = name;
                 label.title = name;
 
-                item.append(checkbox, label);
+                const pin = document.createElement('select');
+                pin.className = 'column-panel-pin';
+                pin.setAttribute('aria-label', 'Pin ' + name);
+                for (const [value, text] of [['', 'Unpinned'], ['left', 'Pin left'], ['right', 'Pin right']]) {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = text;
+                    pin.append(option);
+                }
+                item.append(checkbox, label, pin);
                 list.append(item);
             }
 
@@ -249,10 +215,15 @@ export function getDataViewerColumnPanelScript(): string {
         }
 
         function setAllVisible(visible) {
-            gridApi.setColumnsVisible(getSelectableColumns().map(column => column.getColId()), visible);
+            gridApi.setColumnsVisible(matchingColumns().map(column => column.getColId()), visible);
         }
 
         gridApi.addEventListener('columnVisible', updateVisibility);
+        gridApi.addEventListener('columnPinned', updateVisibility);
+        gridApi.addEventListener('columnsReset', () => {
+            if (panel.classList.contains('visible')) { renderColumns(); }
+        });
+        search.addEventListener('input', updateVisibility);
         gridApi.addEventListener('columnMoved', event => {
             if (event.finished !== false && panel.classList.contains('visible')) {
                 renderColumns();
@@ -264,6 +235,7 @@ export function getDataViewerColumnPanelScript(): string {
             toggle.setAttribute('aria-expanded', String(visible));
             if (visible) {
                 renderColumns();
+                search.focus();
             }
         });
         close.addEventListener('click', () => {
@@ -271,12 +243,17 @@ export function getDataViewerColumnPanelScript(): string {
             toggle.setAttribute('aria-expanded', 'false');
             toggle.focus();
         });
+        panel.addEventListener('keydown', event => {
+            if (event.key === 'Escape') { close.click(); }
+        });
         selectAll.addEventListener('click', () => setAllVisible(true));
         deselectAll.addEventListener('click', () => setAllVisible(false));
         list.addEventListener('change', event => {
             const checkbox = event.target;
             if (checkbox.matches('input[type="checkbox"]')) {
                 gridApi.setColumnsVisible([checkbox.closest('.column-panel-item').dataset.colId], checkbox.checked);
+            } else if (checkbox.matches('select')) {
+                gridApi.setColumnsPinned([checkbox.closest('.column-panel-item').dataset.colId], checkbox.value || null);
             }
         });
 
@@ -292,7 +269,7 @@ export function getDataViewerColumnPanelScript(): string {
 
         list.addEventListener('dragstart', event => {
             const item = event.target.closest('.column-panel-item');
-            if (!item) {
+            if (!item || event.target.closest('input, select')) {
                 return;
             }
             draggedItem = item;
