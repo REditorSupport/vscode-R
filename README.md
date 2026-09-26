@@ -12,13 +12,12 @@ This [VS Code](https://code.visualstudio.com/) extension provides support for th
 
 The R and R Markdown syntaxes are located in a sibling package [vscode-R-syntax](https://github.com/REditorSupport/vscode-R-syntax).
 
-## What's new in 3.0.0-rc
+## What's new in 3.0.0
 
-v3.0.0 of the R Extension for VS Code is a major release. It introduces a
-significant architectural change via the [**`sess`**](./sess/README.md) R
-package, which powers faster and more robust communication with the underlying R
-session. `sess` is bundled with the extension and installed automatically if it
-is missing or outdated, so no manual setup is needed.
+v3.0.0 is a major release with faster, more reliable R session communication,
+powered by the [`sess`](./sess/README.md) package. The extension includes `sess`
+and prompts to install or update it when needed. See the [changelog](./CHANGELOG.md)
+for other changes and upgrade notes.
 
 ## Quickstart
 
@@ -30,7 +29,7 @@ is missing or outdated, so no manual setup is needed.
     install.packages("languageserver")
     ```
 
-3. Install the stable release of this extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r).
+3. Install the stable release of this extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r). This release requires VS Code 1.110 or later.
 
     ```sh
     code --install-extension REditorSupport.r
