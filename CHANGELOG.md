@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.0.0 - 2026-09-26
+## 3.0.0 - 2026-09-27
 
 This major release updates the R session integration and adds substantial improvements to the plot, data, and workspace viewers. The extension bundles the [`sess`](https://github.com/REditorSupport/vscode-R/tree/main/sess) R package and prompts to install or update it when needed.
 
