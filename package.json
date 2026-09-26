@@ -30,7 +30,9 @@
   },
   "activationEvents": [
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
-    "onWebviewPanel:rhelp"
+    "onWebviewPanel:rhelp",
+    "onLanguage:r",
+    "onLanguage:rmd"
   ],
   "main": "./dist/extension",
   "contributes": {
