@@ -27,7 +27,6 @@ export function jgdEnabled(backend = resolveBackend()): boolean {
 }
 
 const commands = [
-    'showViewers',
     'openUrl',
     'openExternal',
     'showIndex',
@@ -128,13 +127,6 @@ export class CommonPlotManager implements PlotManager {
     }
 
     private async handleCommand(command: string, hostOrWebviewUri?: string | vscode.Uri, ...args: unknown[]): Promise<void> {
-        if (command === 'showViewers') {
-            for (const viewer of this.viewers) {
-                viewer.show(true);
-            }
-            return;
-        }
-
         if (command === 'openUrl') {
             await this.httpgdManager.openUrl();
             return;

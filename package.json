@@ -748,12 +748,6 @@
         "icon": "$(zoom-out)"
       },
       {
-        "title": "Show Viewers",
-        "category": "R Plot",
-        "command": "r.plot.showViewers",
-        "icon": "$(versions)"
-      },
-      {
         "title": "Open Httpgd Url",
         "category": "R Plot",
         "command": "r.plot.openUrl",
@@ -842,6 +836,66 @@
     ],
     "menus": {
       "commandPalette": [
+        {
+          "command": "r.plot.toggleStyle",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.toggleFullWindow",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.togglePreviewPlots",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.exportPlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.closePlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.hidePlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.resetPlots",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.prevPlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.nextPlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.firstPlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.lastPlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.zoomIn",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.zoomOut",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.openUrl",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.openExternal",
+          "when": "false"
+        },
         {
           "command": "r.workspaceViewer.view",
           "when": "false"

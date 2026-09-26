@@ -47,6 +47,8 @@ detected.
 
 ### Other
 
+* Hide context-dependent plot commands from the Command Palette and remove the unused Show Plot Viewers command, while retaining viewer-local controls.
+
 * Remove obsolete Live Share manifest contributions and session settings that are no longer consumed.
 * Stop writing `~/.vscode-R/settings.json`; the current sess protocol no longer reads the propagated configuration. Remove the unused WebSocket server compatibility function and the path override argument left by the removed help-path setting.
 * Remove the unused `r.workspaceViewer.showObjectSize` setting and obsolete object-size tooltip support

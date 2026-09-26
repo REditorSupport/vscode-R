@@ -33,11 +33,8 @@ export class StandardPlotViewer implements PlotViewer {
         }
     }
 
-    public handleCommand(command: string): void {
-        if (command === 'showViewers') {
-            this.show();
-        }
-        // Other commands are not supported by the standard viewer
+    public handleCommand(): void {
+        // Contextual plot commands are not supported by the standard viewer.
     }
 
     public dispose(): void {
