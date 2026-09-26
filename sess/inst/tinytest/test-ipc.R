@@ -493,13 +493,8 @@ local({
   expect_false(identical(processx::poll(list(cons[[1L]]), 0L)[[1L]], "ready"))
 })
 
-# NDJSON framing round-trips correctly through a socket pair. Socket support is
-# environment-sensitive (some processx builds/platforms fail to accept or read
-# the loopback connection), so any infrastructure error becomes a silent skip
-# rather than a failure. A genuine framing/protocol bug yields wrong captured
-# values (asserted below), not a thrown error, so real failures still surface.
-# NB: exit_file() only halts at script top level, not inside local(), so we
-# skip with an early return() instead.
+# NDJSON framing round-trips through a Unix-domain socket. Windows uses named
+# pipes and is covered by the extension's IPC tests instead.
 local({
   if (!requireNamespace("processx", quietly = TRUE) ||
         .Platform$OS.type == "windows") {
@@ -514,19 +509,19 @@ local({
     unlink(pipe_path)
   }, add = TRUE)
 
-  res <- tryCatch({
+  res <- {
     cons$server <- processx::conn_create_unix_socket(pipe_path, encoding = "")
     cons$client <- processx::conn_connect_unix_socket(pipe_path, encoding = "")
 
     # Accept the incoming client on the server side
     processx::poll(list(cons$server), 1000L)
-    cons$conn <- processx::conn_accept_unix_socket(cons$server)
-    if (is.null(cons$conn)) stop("conn_accept_unix_socket returned NULL")
+    processx::conn_accept_unix_socket(cons$server)
+    cons$conn <- cons$server
 
     # Write a NDJSON line from client to server
     msg <- list(jsonrpc = "2.0", method = "ping", params = list(value = 42L))
     line <- paste0(jsonlite::toJSON(msg, auto_unbox = TRUE), "\n")
-    processx::conn_write(cons$client, line, sep = "")
+    processx::conn_write(cons$client, line)
 
     # Poll and read on server side
     ready <- processx::poll(list(cons$conn), 1000L)
@@ -534,10 +529,6 @@ local({
     parsed <- jsonlite::fromJSON(trimws(received), simplifyVector = FALSE)
     list(ready = ready[[1]], received = received,
          method = parsed$method, value = parsed$params$value)
-  }, error = function(e) NULL)
-
-  if (is.null(res)) {
-    return(invisible(NULL))
   }
 
   expect_equal(res$ready, "ready")
@@ -564,7 +555,10 @@ local({
   accept_peer <- function(server) {
     ready <- tryCatch(processx::poll(list(server), 1000L), error = function(e) NULL)
     if (is.null(ready) || !ready[[1]] %in% c("connect", "ready")) return(NULL)
-    tryCatch(processx::conn_accept_unix_socket(server), error = function(e) NULL)
+    tryCatch({
+      processx::conn_accept_unix_socket(server)
+      server
+    }, error = function(e) NULL)
   }
 
   first <- listener()
@@ -574,7 +568,7 @@ local({
   Sys.setenv(SESS_DISCOVERY_FILE = discovery)
   publish <- function(endpoint) {
     writeLines(jsonlite::toJSON(list(version = 1L, endpoint = endpoint),
-                               auto_unbox = TRUE), discovery)
+                                auto_unbox = TRUE), discovery)
   }
   publish(first$path)
   on.exit({
@@ -676,7 +670,8 @@ local({
     sess::connect(endpoint = path, use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
     ready <- processx::poll(list(server), 1000L)
     if (ready[[1]] %in% c("connect", "ready")) {
-      peer <- processx::conn_accept_unix_socket(server)
+      processx::conn_accept_unix_socket(server)
+      peer <- server
     }
     !is.null(peer) && !is.null(.sess_env$con)
   }, error = function(e) FALSE)

@@ -40,7 +40,7 @@ local({
   ))
   env$.schedule_reconnect(settings, schedule = schedule)
   tick() # Missing discovery file.
-  writeLines('{', path)
+  writeLines("{", path)
   tick() # Partially written discovery file.
   writeLines('{"version":2,"endpoint":"new"}', path)
   tick() # Unsupported discovery schema.
@@ -78,7 +78,7 @@ local({
     env$.sess_env$con <- NULL
     Sys.setenv(JGD_SOCKET = "dead-jgd")
     writeLines(jsonlite::toJSON(list(version = 1L, endpoint = "new", jgdSocket = socket),
-                               auto_unbox = TRUE), path)
+                                auto_unbox = TRUE), path)
     env$.schedule_reconnect(settings, schedule = schedule)
     tick()
     expect_equal(tail(seen_jgd, 1L), if (nzchar(socket)) socket else "<unset>")

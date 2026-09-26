@@ -143,8 +143,8 @@ local({
   sess:::.configure_discovery_jgd(sess:::.read_discovery(path), TRUE)
   expect_equal(Sys.getenv("JGD_SOCKET", unset = "<unset>"), "<unset>")
 
-  for (value in c('null', '123', 'true', '["socket"]', '{}')) {
-    writeLines(paste0('{"version":1,"endpoint":"sess-endpoint","jgdSocket":', value, '}'), path)
+  for (value in c("null", "123", "true", '["socket"]', "{}")) {
+    writeLines(paste0('{"version":1,"endpoint":"sess-endpoint","jgdSocket":', value, "}"), path)
     expect_warning(expect_null(sess:::.read_discovery(path, warn = TRUE)), "Invalid jgdSocket")
   }
 })
