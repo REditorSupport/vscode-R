@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    commit-message:
+      prefix: "ci: "
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+
+# TODO: node ecosystem config (#1732)
