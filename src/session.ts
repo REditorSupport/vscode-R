@@ -976,6 +976,16 @@ export async function showDataView(source: string, type: string, title: string, 
         const content = await getTableHtml(panel.webview, file || undefined, title);
         panel.webview.html = content;
     } else if (source === 'list') {
+        if (viewId) {
+            const existing = dynamicDataViewPanels.get(viewId);
+            if (existing) {
+                existing.title = title;
+                existing.reveal(ViewColumn[viewer as keyof typeof ViewColumn], true);
+                existing.webview.html = getListHtml(existing.webview, title);
+                return;
+            }
+        }
+
         const panel = window.createWebviewPanel('dataview', title,
             {
                 preserveFocus: true,
@@ -985,11 +995,42 @@ export async function showDataView(source: string, type: string, title: string, 
                 enableScripts: true,
                 enableFindWidget: true,
                 retainContextWhenHidden: true,
-                localResourceRoots: [Uri.file(resDir)],
+                localResourceRoots: [Uri.file(extensionContext.asAbsolutePath('images/icons'))],
             });
-        const content = await getListHtml(panel.webview, file, title);
         panel.iconPath = new UriIcon('open-preview');
-        panel.webview.html = content;
+        if (viewId) {
+            dynamicDataViewPanels.set(viewId, panel);
+            panel.webview.onDidReceiveMessage(async (message: { message?: string; index?: number; start?: number; requestId?: number }) => {
+                if (message.message === 'listview/view' && typeof message.index === 'number' && Number.isInteger(message.index)) {
+                    void sessionRequest({
+                        method: 'listview_view',
+                        params: { view_id: viewId, index: message.index },
+                    });
+                } else if (message.message === 'listview/page' && typeof message.start === 'number' &&
+                    Number.isInteger(message.start) && typeof message.requestId === 'number') {
+                    const page = await sessionRequest({
+                        method: 'workspace_children',
+                        params: { view_id: viewId, start: message.start },
+                    }) as { children?: unknown; next_start?: number | null } | undefined;
+                    void panel.webview.postMessage({
+                        message: 'listview/page',
+                        requestId: message.requestId,
+                        ...page,
+                        error: Array.isArray(page?.children) ? undefined : 'Unable to load items. Check the R session and try again.',
+                    });
+                }
+            });
+            panel.onDidDispose(() => {
+                if (dynamicDataViewPanels.get(viewId) === panel) {
+                    dynamicDataViewPanels.delete(viewId);
+                }
+                void sessionRequest({
+                    method: 'dataview_dispose',
+                    params: { view_id: viewId },
+                });
+            });
+        }
+        panel.webview.html = getListHtml(panel.webview, title);
     } else {
         await commands.executeCommand('vscode.open', Uri.file(file), {
             preserveFocus: true,
@@ -1799,8 +1840,10 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 `;
 }
 
-export async function getListHtml(webview: Webview, file: string, title: string): Promise<string> {
-    const content = await readContent(file, 'utf8');
+export function getListHtml(webview: Webview, title: string): string {
+    const icon = new UriIcon('open-preview-codicon');
+    const darkIcon = webview.asWebviewUri(icon.dark).toString();
+    const lightIcon = webview.asWebviewUri(icon.light).toString();
 
     return `
 <!doctype HTML>
@@ -1809,64 +1852,137 @@ export async function getListHtml(webview: Webview, file: string, title: string)
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(title)}</title>
-    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
-    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.js'))))}"></script>
-    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.css'))))}" rel="stylesheet">
-    <style type="text/css">
+    <style>
     body {
-        color: var(--vscode-editor-foreground);
+        margin: 0;
+        color: var(--vscode-foreground);
         background-color: var(--vscode-editor-background);
+        font-family: var(--vscode-font-family);
+        font-size: var(--vscode-font-size);
     }
-
-    .json-document {
-        padding: 0 0;
+    .item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 28px;
+        padding: 2px 8px;
     }
-
-    pre#json-renderer {
-        font-family: var(--vscode-editor-font-family);
-        border: 0;
+    .item:hover {
+        background-color: var(--vscode-list-hoverBackground);
+        color: var(--vscode-list-hoverForeground);
     }
-
-    ul.json-dict, ol.json-array {
+    .label {
+        min-width: 140px;
         color: var(--vscode-symbolIcon-fieldForeground);
-        border-left: 1px dotted var(--vscode-editorLineNumber-foreground);
+        white-space: nowrap;
     }
-
-    .json-literal {
-        color: var(--vscode-symbolIcon-variableForeground);
+    .str {
+        flex: 1;
+        color: var(--vscode-descriptionForeground);
+        white-space: pre-wrap;
     }
-
-    .json-string {
-        color: var(--vscode-symbolIcon-stringForeground);
+    button {
+        display: flex;
+        align-items: center;
+        border: 0;
+        padding: 2px;
+        color: var(--vscode-foreground);
+        background: transparent;
+        cursor: pointer;
     }
-
-    a.json-toggle:before {
-        color: var(--vscode-button-secondaryBackground);
+    button:hover {
+        background-color: var(--vscode-toolbar-hoverBackground);
     }
-
-    a.json-toggle:hover:before {
-        color: var(--vscode-button-secondaryHoverBackground);
+    button img {
+        width: 16px;
+        height: 16px;
     }
-
-    a.json-placeholder {
-        color: var(--vscode-input-placeholderForeground);
+    #load-more {
+        margin: 8px;
+    }
+    #load-more[hidden] {
+        display: none;
+    }
+    .light-icon {
+        display: none;
+    }
+    body.vscode-light .dark-icon {
+        display: none;
+    }
+    body.vscode-light .light-icon {
+        display: block;
     }
     </style>
-    <script>
-    var data = ${String(content)};
-    $(document).ready(function() {
-      var options = {
-        collapsed: false,
-        rootCollapsable: false,
-        withQuotes: false,
-        withLinks: true
-      };
-      $("#json-renderer").jsonViewer(data, options);
-    });
-    </script>
 </head>
 <body>
-    <pre id="json-renderer"></pre>
+    <div id="list"></div>
+    <button id="load-more">Load more</button>
+    <div id="status" role="status"></div>
+    <script>
+    const vscode = acquireVsCodeApi();
+    const requestId = ${++dynamicDataViewReloadRevision};
+    const list = document.getElementById('list');
+    const loadMore = document.getElementById('load-more');
+    const status = document.getElementById('status');
+    let nextStart = 1;
+
+    function loadPage() {
+        if (loadMore.disabled || nextStart === null) {
+            return;
+        }
+        loadMore.disabled = true;
+        loadMore.textContent = 'Loading…';
+        status.textContent = '';
+        vscode.postMessage({ message: 'listview/page', requestId, start: nextStart });
+    }
+
+    loadMore.addEventListener('click', loadPage);
+    window.addEventListener('message', (event) => {
+        const message = event.data;
+        if (message.message !== 'listview/page' || message.requestId !== requestId) {
+            return;
+        }
+        loadMore.disabled = false;
+        if (message.error) {
+            status.textContent = message.error;
+            loadMore.textContent = 'Retry';
+            return;
+        }
+
+        for (const item of message.children) {
+            const row = document.createElement('div');
+            row.className = 'item';
+
+            const label = document.createElement('span');
+            label.className = 'label';
+            label.textContent = item.label;
+            row.appendChild(label);
+
+            const str = document.createElement('span');
+            str.className = 'str';
+            str.textContent = item.str;
+            row.appendChild(str);
+
+            if (item.viewable) {
+                const button = document.createElement('button');
+                button.title = 'View';
+                button.setAttribute('aria-label', 'View');
+                button.innerHTML = '<img class="dark-icon" src="${darkIcon}" alt=""><img class="light-icon" src="${lightIcon}" alt="">';
+                button.addEventListener('click', () => {
+                    vscode.postMessage({ message: 'listview/view', index: item.index });
+                });
+                row.appendChild(button);
+            }
+
+            list.appendChild(row);
+        }
+        nextStart = message.next_start ?? null;
+        loadMore.hidden = nextStart === null;
+        loadMore.textContent = 'Load more';
+        status.textContent = list.childElementCount ? '' : 'No items';
+    });
+    loadPage();
+    </script>
 </body>
 </html>
 `;

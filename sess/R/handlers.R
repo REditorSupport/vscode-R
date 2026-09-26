@@ -118,6 +118,7 @@ workspace_child_item <- function(object, str, selector) {
     class = paste(class(object), collapse = ", "),
     type = typeof(object),
     has_children = workspace_child_count(object) > 0L,
+    viewable = TRUE,
     selector = selector
   )
 }
@@ -130,72 +131,118 @@ workspace_child_label <- function(name, index) {
   }
 }
 
-get_workspace_children <- function(name, path = list(), start = 1L) {
-  tryCatch({
-    object <- workspace_object(name, path)
-    child_count <- workspace_child_count(object)
-    if (child_count == 0L) {
-      return(list(children = I(list()), next_start = NULL))
-    }
+handle_workspace_view <- function(name, path = list()) {
+  title <- paste0(c(name, vapply(path, function(selector) switch(selector$kind,
+    index = if (!is.null(selector$name) && !is.na(selector$name) && nzchar(selector$name)) paste0("$", selector$name) else paste0("[[", selector$value, "]]"),
+    name = paste0("$", selector$value),
+    slot = paste0("@", selector$value)
+  ), "")), collapse = "")
+  utils::View(workspace_object(name, path), title = title)
+  TRUE
+}
 
+get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_id = NULL) {
+  tryCatch({
+    if (is.null(view_id)) {
+      object <- workspace_object(name, path)
+      kind <- if (is.environment(object)) "name" else if (isS4(object)) "slot" else "index"
+      child_names <- switch(kind,
+        name = workspace_env_names(object),
+        slot = methods::slotNames(object),
+        index = names(object)
+      )
+    } else {
+      state <- dataview_get_state(view_id)
+      if (!identical(state$type, "list")) stop("Not a list view")
+      object <- state$data
+      kind <- state$kind
+      child_names <- state$names
+    }
+    child_count <- if (kind == "index") workspace_child_count(object) else length(child_names)
     start <- max(1L, as.integer(start))
     end <- min(child_count, start + workspace_child_page_size - 1L)
     if (start > end) {
       return(list(children = I(list()), next_start = NULL))
     }
 
-    children <- if (is.environment(object)) {
-      child_names <- workspace_env_names(object)[seq.int(start, end)]
-      lapply(child_names, function(child_name) {
-        if (bindingIsActive(child_name, object)) {
-          list(
-            str = paste0("$ ", child_name, ": (active-binding)"),
-            class = "active_binding",
-            type = "active_binding",
-            has_children = FALSE
-          )
-        } else {
-          child <- get(child_name, envir = object, inherits = FALSE)
-          workspace_child_item(
-            child,
-            paste0("$ ", child_name, ": ", trimws(try_capture_str(child))),
-            list(kind = "name", value = child_name)
-          )
+    children <- lapply(seq.int(start, end), function(index) {
+      child_name <- if (is.null(child_names)) NULL else child_names[[index]]
+      label <- if (kind == "slot") {
+        paste0("@ ", child_name)
+      } else {
+        workspace_child_label(child_name, index)
+      }
+      unavailable <- if (kind == "name" && !exists(child_name, envir = object, inherits = FALSE)) {
+        "removed"
+      } else if (kind == "name" && bindingIsActive(child_name, object)) {
+        "active_binding"
+      } else {
+        NULL
+      }
+      if (!is.null(unavailable)) {
+        summary <- if (unavailable == "removed") "(removed)" else "(active-binding)"
+        if (!is.null(view_id)) {
+          return(list(label = label, str = summary, viewable = FALSE, index = index))
         }
-      })
-    } else if (isS4(object)) {
-      child_names <- methods::slotNames(object)[seq.int(start, end)]
-      lapply(child_names, function(child_name) {
-        child <- methods::slot(object, child_name)
-        workspace_child_item(
-          child,
-          paste0("@ ", child_name, ": ", trimws(try_capture_str(child))),
-          list(kind = "slot", value = child_name)
-        )
-      })
-    } else {
-      indices <- seq.int(start, end)
-      child_names <- names(object)
-      lapply(indices, function(index) {
-        child <- object[[index]]
-        child_name <- if (is.null(child_names)) NULL else child_names[[index]]
-        workspace_child_item(
-          child,
-          paste0(
-            workspace_child_label(child_name, index),
-            ": ",
-            trimws(try_capture_str(child))
-          ),
-          list(kind = "index", value = index)
-        )
-      })
-    }
+        return(list(
+          str = paste0(label, ": ", summary), class = unavailable,
+          type = unavailable, has_children = FALSE
+        ))
+      }
+      child <- switch(kind,
+        name = get(child_name, envir = object, inherits = FALSE),
+        slot = methods::slot(object, child_name),
+        index = object[[index]]
+      )
+      summary <- trimws(try_capture_str(child))
+      if (!is.null(view_id)) {
+        list(label = label, str = summary, viewable = TRUE, index = index)
+      } else {
+        selector <- if (kind == "index") {
+          list(kind = kind, value = index, name = child_name)
+        } else {
+          list(kind = kind, value = child_name)
+        }
+        workspace_child_item(child, paste0(label, ": ", summary), selector)
+      }
+    })
+    list(children = I(children), next_start = if (end < child_count) end + 1L else NULL)
+  }, error = function(e) {
+    if (!is.null(view_id)) stop(e)
+    list(children = I(list()), next_start = NULL)
+  })
+}
 
-    list(
-      children = I(children),
-      next_start = if (end < child_count) end + 1L else NULL
-    )
-  }, error = function(e) list(children = I(list()), next_start = NULL))
+handle_listview_view <- function(view_id, index) {
+  state <- .sess_env$dataviews[[as.character(view_id)]]
+  if (is.null(state) || !identical(state$type, "list")) {
+    return(FALSE)
+  }
+  index <- as.integer(index)
+  child_count <- if (state$kind == "index") length(state$data) else length(state$names)
+  if (length(index) != 1L || is.na(index) || index < 1L || index > child_count) {
+    return(FALSE)
+  }
+  child_name <- if (is.null(state$names)) NULL else state$names[[index]]
+  if (state$kind == "name" &&
+        (!exists(child_name, envir = state$data, inherits = FALSE) ||
+           bindingIsActive(child_name, state$data))) {
+    return(FALSE)
+  }
+  child <- switch(state$kind,
+    name = get(child_name, envir = state$data, inherits = FALSE),
+    slot = methods::slot(state$data, child_name),
+    index = state$data[[index]]
+  )
+  title <- if (state$kind == "slot") {
+    paste0(state$title, "@", child_name)
+  } else if (!is.null(child_name) && !is.na(child_name) && nzchar(child_name)) {
+    paste0(state$title, "$", child_name)
+  } else {
+    paste0(state$title, "[[", index, "]]")
+  }
+  utils::View(child, title = title)
+  TRUE
 }
 
 handle_hover <- function(expr_str) {
