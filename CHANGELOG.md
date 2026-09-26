@@ -13,6 +13,8 @@ detected.
 
 ### Bug Fixes
 
+* fix(sess): share server startup across concurrent session clients and wait for startup during shutdown
+
 * fix(sess): defer workspace and plot notifications until task callbacks return
 
 * fix(sess): refresh JGD renderer discovery on reconnect and identify managed terminals by discovery ownership

@@ -270,6 +270,7 @@ function queueTerminalDiscoveryOperation(terminal: vscode.Terminal, operation: (
 }
 
 let globalSessionServer: net.Server | undefined;
+let globalSessionServerStartup: Promise<string> | undefined;
 let attachSessionScriptPath: string | undefined;
 
 interface SessionDiscoveryFile {
@@ -462,10 +463,21 @@ export async function getGlobalPipePath(): Promise<string> {
         return globalPipePath;
     }
 
+    if (!globalSessionServerStartup) {
+        globalSessionServerStartup = startGlobalSessionServer().catch((err: unknown) => {
+            globalSessionServerStartup = undefined;
+            throw err;
+        });
+    }
+    return globalSessionServerStartup;
+}
+
+function startGlobalSessionServer(): Promise<string> {
     return new Promise((resolve, reject) => {
         const pipePath = makePipePath();
         const server = net.createServer((rawSocket) => {
             const socket = rawSocket as IpcSocket;
+            socket._pipePath = pipePath;
             console.info('[SessionServer] Client connected via IPC pipe');
             activeConnections.add(socket);
 
@@ -672,6 +684,9 @@ async function removePathIfExists(pathLike: string): Promise<void> {
 }
 
 export async function shutdownSessionWatcher(): Promise<void> {
+    // Startup publishes the server only after listen and permission setup finish.
+    // Wait before capturing it, otherwise it could survive extension shutdown.
+    await globalSessionServerStartup?.catch(() => undefined);
     const pipePath = globalPipePath;
 
     for (const socket of activeConnections) {
@@ -701,6 +716,7 @@ export async function shutdownSessionWatcher(): Promise<void> {
     }
 
     globalPipePath = undefined;
+    globalSessionServerStartup = undefined;
 }
 
 export async function activateRSession(): Promise<void> {

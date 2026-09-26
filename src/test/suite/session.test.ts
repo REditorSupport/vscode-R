@@ -59,6 +59,89 @@ suite('Session Communication', () => {
         sandbox.restore();
     });
 
+    test('concurrent server initialization and public API calls share one endpoint', async () => {
+        await session.shutdownSessionWatcher();
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        const listen = sandbox.spy(net.Server.prototype, 'listen');
+        const api: RSessionApi = {
+            getConnectionInfo: session.getConnectionInfo,
+            activate: session.activateSessionById,
+        };
+
+        try {
+            const [first, second, info] = await Promise.all([
+                session.getGlobalPipePath(),
+                session.getGlobalPipePath(),
+                api.getConnectionInfo(),
+            ]);
+            assert.strictEqual(listen.callCount, 1);
+            assert.strictEqual(first, second);
+            assert.strictEqual(first, info?.endpoint);
+
+            const client = net.createConnection(first);
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    client.once('connect', resolve);
+                    client.once('error', reject);
+                });
+                const socket = await waitFor(() => [...session.activeConnections][0]);
+                assert.strictEqual(socket._pipePath, first);
+            } finally {
+                client.destroy();
+            }
+        } finally {
+            await session.shutdownSessionWatcher();
+        }
+    });
+
+    test('server initialization can retry after a shared startup failure', async () => {
+        await session.shutdownSessionWatcher();
+        const failure = new Error('Simulated listen failure');
+        const listen = sandbox.stub(net.Server.prototype, 'listen').throws(failure);
+        const first = session.getGlobalPipePath();
+        const second = session.getGlobalPipePath();
+        await Promise.all([
+            assert.rejects(first, error => error === failure),
+            assert.rejects(second, error => error === failure),
+        ]);
+        assert.strictEqual(listen.callCount, 1);
+        assert.strictEqual(session.globalPipePath, undefined);
+        listen.restore();
+
+        try {
+            assert.ok(await session.getGlobalPipePath());
+        } finally {
+            await session.shutdownSessionWatcher();
+        }
+    });
+
+    test('shutdown waits for an in-progress server startup and permits a fresh start', async () => {
+        await session.shutdownSessionWatcher();
+        const startup = session.getGlobalPipePath();
+        const shutdown = session.shutdownSessionWatcher();
+        const endpoint = await startup;
+        await shutdown;
+        assert.strictEqual(session.globalPipePath, undefined);
+        if (process.platform !== 'win32') {
+            assert.strictEqual(await fs.pathExists(endpoint), false);
+        }
+        const client = net.createConnection(endpoint);
+        try {
+            await assert.rejects(new Promise<void>((resolve, reject) => {
+                client.once('connect', resolve);
+                client.once('error', reject);
+            }));
+        } finally {
+            client.destroy();
+        }
+
+        try {
+            assert.notStrictEqual(await session.getGlobalPipePath(), endpoint);
+        } finally {
+            await session.shutdownSessionWatcher();
+        }
+    });
+
     test('public session API returns connection info only when the watcher is enabled', async () => {
         const watcher = sandbox.stub(extension, 'enableSessionWatcher').value(false);
         const api: RSessionApi = {
