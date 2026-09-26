@@ -32,7 +32,8 @@
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
     "onCommand:r.runSelectionInActiveTerm",
     "onWebviewPanel:rhelp",
-    "onLanguage:r"
+    "onLanguage:r",
+    "onLanguage:rmd"
   ],
   "main": "./dist/extension",
   "contributes": {
