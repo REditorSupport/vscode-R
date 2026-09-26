@@ -114,7 +114,7 @@ export function getDataViewerScript(): string {
                 column.lockVisible = true;
                 column.floatingFilter = false;
                 column.suppressSizeToFit = true;
-                column.flex = 0;
+                column.initialFlex = 0;
             }
             if (column.type !== 'numericColumn') {
                 delete column.type;
@@ -239,6 +239,14 @@ export function getDataViewerScript(): string {
         document.querySelector('#viewerReset').addEventListener('click', () => {
             gridApi.setFilterModel(null);
             gridApi.resetColumnState();
+            const rowNameColumn = gridApi.getColumn('0');
+            if (rowNameColumn) {
+                // AG Grid skips width restoration for flex: 0. Clear flex when
+                // restoring the fixed row-name column's initial width.
+                gridApi.applyColumnState({ state: [{
+                    colId: '0', flex: null, width: rowNameColumn.getColDef().initialWidth
+                }] });
+            }
             gridApi.setGridOption('paginationPageSize', viewerDefaultPageSize);
             gridApi.paginationGoToFirstPage();
             setFloatingFilters(false);
