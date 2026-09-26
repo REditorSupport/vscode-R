@@ -44,18 +44,54 @@ When you start an R terminal from VS Code, the extension's R profile calls
 
 ```r
 sess::connect(
-  pipe_path = NULL,      # socket/pipe path; see below
+  endpoint = NULL,       # socket/pipe endpoint; see below
   use_rstudioapi = TRUE, # emulate rstudioapi functions
   use_httpgd = TRUE,     # allow httpgd as the plot device
   use_jgd = FALSE        # allow jgd as the plot device
 )
 ```
 
-If `pipe_path` is `NULL`, `connect()` looks for it in this order:
+If `endpoint` is omitted, `connect()` resolves it in this order:
 
-1. The `SESS_PIPE` environment variable.
-2. The `pipe` field of `~/.vscode-R/sessions/{PID}.json`, a discovery file the
-   extension writes so that sessions can reattach after a window reload.
+1. The `SESS_ENDPOINT` environment variable.
+2. The `endpoint` field of the JSON file named by `SESS_DISCOVERY_FILE`.
+
+The discovery file must have integer schema version `1` and a nonempty `endpoint`.
+When discovery is needed, a missing, invalid, or unsupported file prevents connection.
+An explicit endpoint or `SESS_ENDPOINT` takes precedence over discovery.
+
+If the discovery file describes the connected endpoint, unexpected disconnection
+starts a retry loop. It waits for a different endpoint and reconnects with the same
+runtime options and process-lifetime `session_id`. A manual `connect()` cancels
+pending retries. Each managed terminal has its own discovery file in extension
+storage; VS Code refreshes it after reload, using extension-private terminal PID
+metadata even when a wrapper's PID differs from R's. Unknown fields are ignored.
+
+### Discovery schema and extensions
+
+```json
+{"version":1,"endpoint":"/path/to/sess.sock","jgdSocket":"/path/to/jgd.sock"}
+```
+
+Only `version` and `endpoint` are required. Consumers must ignore unknown fields.
+New backends may add optional fields under version `1`: adding a field does not
+require a schema version bump. Removing or changing the meaning/type of existing
+fields, or making additional fields mandatory, is a breaking change and requires
+a new schema version. This discovery schema version is separate from the IPC
+`protocol_version`.
+
+The optional `jgdSocket` string describes the JGD renderer belonging to that
+endpoint. When `use_jgd = TRUE`, `sess` applies it before runtime initialization,
+including automatic reconnect: a nonempty string sets `JGD_SOCKET`, an empty
+string unsets it (renderer unavailable), and an omitted field leaves it untouched.
+A present value of another type is invalid. It does not enable JGD or override
+`use_jgd`; no arbitrary environment variables or R code are accepted. VS Code
+publishes endpoint and renderer together in one atomic file replacement, with
+an empty `jgdSocket` when its current backend does not provide JGD.
+
+Fields belonging to other backends remain optional and are interpreted only by
+implementations that support them. `terminalPid` is VS Code-private metadata for
+finding managed terminal discovery files; `sess` does not use it as identity.
 
 ## What `sess` changes in your R session
 
@@ -97,7 +133,7 @@ In VS Code, this is controlled by the `r.plot.backend` setting.
 
 | Name | Type | Purpose |
 |---|---|---|
-| `SESS_PIPE` | env var | Socket/pipe path used by `connect()`. |
+| `SESS_ENDPOINT` | env var | Socket/pipe path used by `connect()`. |
 | `SESS_RSTUDIOAPI` | env var | `TRUE`/`FALSE`; passed as `use_rstudioapi` by the extension's R profile. |
 | `SESS_PLOT_BACKEND` | env var | `auto`, `standard`, `httpgd` or `jgd`; sets `use_httpgd`/`use_jgd` in the extension's R profile. |
 | `JGD_SOCKET` | env var | Socket used by the jgd device; set by the extension. |
@@ -128,6 +164,10 @@ On connecting, `sess` sends an `attach` notification:
   "jsonrpc": "2.0",
   "method": "attach",
   "params": {
+    "protocol_version": 1,
+    "sess_version": "3.0.0",
+    "session_id": "sess-session-...",
+    "host": "compute42",
     "version": "4.5.0",
     "pid": 12345,
     "tempdir": "/tmp/Rtmp.../sess",
@@ -140,6 +180,13 @@ On connecting, `sess` sends an `attach` notification:
   }
 }
 ```
+
+`protocol_version` versions the message contract independently of the R package
+version. The extension rejects unsupported versions. `session_id` identifies an
+R process across reconnects; PID and host are metadata, not connection identity.
+The attached socket's lifetime controls cleanup. A replacement socket with the
+same identity supersedes the old one; a late close cannot remove its replacement.
+A fork child receives its own identity. Terminal PID association is local-only.
 
 ### Notifications from R to client
 
