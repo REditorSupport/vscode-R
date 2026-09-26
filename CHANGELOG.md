@@ -13,6 +13,8 @@ detected.
 
 ### Bug Fixes
 
+* fix(console): use the workspace directory as terminal cwd when given a file URI
+
 * fix(rstudioapi): resolve emulation issues and viewer routing
 * fix(workspace): fix code submission delays when the workspace contains many or large objects
 
@@ -36,14 +38,14 @@ detected.
 ### Other
 
 * Remove obsolete Live Share manifest contributions and session settings that are no longer consumed.
-* Stop writing `~/.vscode-R/settings.json`; the current sess protocol no longer reads the propagated configuration.
+* Stop writing `~/.vscode-R/settings.json`; the current sess protocol no longer reads the propagated configuration. Remove the unused WebSocket server compatibility function and the path override argument left by the removed help-path setting.
 * Remove the unused `r.workspaceViewer.showObjectSize` setting and obsolete object-size tooltip support
 * Remove obsolete `r.session.objectLengthLimit`, `r.session.objectTimeout`, and `r.session.levelOfObjectDetail` settings following the switch to on-demand workspace inspection
 * Remove `r.helpPanel.rpath`, which was previously deprecated and no longer used by the extension
 
 ### Configuration
 
-* Add `r.consoleArgs` and `r.consoleSendDelay` as canonical settings, with legacy `r.rterm.option` and `r.rtermSendDelay` deprecated and supported for backward compatibility. For these settings and `r.consolePath` / `r.rterm.<platform>`, resolve workspace folder, workspace, then user scope, preferring the canonical name within each scope.
+* Add `r.consoleArgs` and `r.consoleSendDelay` as canonical settings, with legacy `r.rterm.option` and `r.rtermSendDelay` deprecated and supported for backward compatibility. Resolve renamed console, executable-path, and plot-backend settings by workspace folder, workspace, then user scope, preferring the canonical name within each scope. Empty paths and automatic backend selection retain their fallback behavior.
 
 ### Styling
 

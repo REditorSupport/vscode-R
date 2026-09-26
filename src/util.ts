@@ -77,14 +77,12 @@ export function getRPathConfigEntry(term: boolean = false): string {
 
 export async function getRpath(
     quote = false,
-    overwriteConfig?: string,
     resource?: vscode.Uri
 ): Promise<string | undefined> {
     const configEntry = getRPathConfigEntry();
     const resolution = await resolveBackgroundR(
         getRPathResolverDependencies(resource),
-        configEntry,
-        overwriteConfig
+        configEntry
     );
     const rpath = formatRPath(resolution, quote, process.platform);
 
@@ -170,13 +168,6 @@ export function getCurrentWorkspaceFolder(resource?: vscode.Uri): vscode.Workspa
     return selectWorkspaceFolder(workspaceFolders, activeFileWorkspaceFolder, resourceWorkspaceFolder);
 }
 
-// Drop-in replacement for fs-extra.readFile (),
-// passes to guest service if the caller is a guest
-// This can be used wherever fs.readFile() is used,
-// particularly if a guest can access the function
-//
-// If it is a guest, the guest service requests the host
-// to read the file, and pass back its contents to the guest
 export function readContent(file: PathLike | number): Promise<Buffer> | undefined;
 export function readContent(file: PathLike | number, encoding: string): Promise<string> | undefined;
 export function readContent(file: PathLike | number, encoding?: string): Promise<string | Buffer> | undefined {
@@ -337,7 +328,7 @@ export function getRLibPaths(): string | undefined {
 //
 export async function executeRCommand(rCommand: string, cwd?: string | URL, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
     const resource = resourceFromCwd(cwd);
-    const rPath = await getRpath(false, undefined, resource);
+    const rPath = await getRpath(false, resource);
     if (!rPath) {
         return undefined;
     }
@@ -558,7 +549,7 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
         .then(async function (select) {
             if (select === 'Yes') {
                 const repo = await getCranUrl('', cwd);
-                const rPath = await getRpath(false, undefined, resource);
+                const rPath = await getRpath(false, resource);
                 if (!rPath) {
                     void vscode.window.showErrorMessage('R path not set', 'OK');
                     return;
@@ -614,7 +605,7 @@ export async function promptToInstallSessPackage(
     await vscode.window.showErrorMessage(installMsg, 'Yes', 'No')
         .then(async function (select) {
             if (select === 'Yes') {
-                const rPath = await getRpath(false, undefined, resource);
+                const rPath = await getRpath(false, resource);
                 if (!rPath) {
                     void vscode.window.showErrorMessage('R path not set', 'OK');
                     return;

@@ -24,8 +24,14 @@ export function getMigratedSetting<T>(
         [canonicalKey, configuration.get(canonicalKey)],
         [legacyKey, configuration.get(legacyKey)]
     );
+    const seen = new Set<string>();
     for (const [key, value] of candidates) {
-        if (value !== undefined && isConfigured(value)) {
+        if (value === undefined || seen.has(key)) {
+            continue;
+        }
+        // An explicit empty/automatic value still shadows lower scopes of its own key.
+        seen.add(key);
+        if (isConfigured(value)) {
             return { key, value };
         }
     }

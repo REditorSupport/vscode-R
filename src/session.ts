@@ -1964,9 +1964,3 @@ export async function connectToSession(): Promise<void> {
     void vscode.env.clipboard.writeText(command);
     void vscode.window.showInformationMessage(`R command copied to clipboard: ${command}`);
 }
-
-// Kept for backward compatibility - callers in rTerminal.ts use this
-export async function getGlobalSessionServer(): Promise<{ port: number, token: string }> {
-    await getGlobalPipePath();
-    return { port: 0, token: '' };
-}

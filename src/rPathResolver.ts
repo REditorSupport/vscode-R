@@ -129,35 +129,35 @@ export async function resolveSystemR(dependencies: SystemRResolverDependencies):
 
 export async function resolveBackgroundR(
     dependencies: RPathResolverDependencies,
-    legacySetting: string,
-    overwriteSetting?: string
+    legacySetting: string
 ): Promise<ExecutableResolution> {
-    const settings = overwriteSetting
-        ? [overwriteSetting, rExecutablePathSetting, legacySetting]
-        : [rExecutablePathSetting, legacySetting];
-    return resolveWithFallback(settings, dependencies);
+    return resolveMigratedExecutable(dependencies, rExecutablePathSetting, legacySetting)
+        ?? { path: await dependencies.getSystemR() };
 }
 
 export async function resolveConsoleR(
     dependencies: RPathResolverDependencies,
     legacySetting: string
 ): Promise<ExecutableResolution> {
+    return resolveMigratedExecutable(dependencies, rConsolePathSetting, legacySetting)
+        ?? resolveWithFallback([rExecutablePathSetting], dependencies);
+}
+
+function resolveMigratedExecutable(
+    dependencies: RPathResolverDependencies,
+    canonicalKey: string,
+    legacyKey: string
+): ConfiguredExecutableResolution | undefined {
     const configured = getMigratedSetting<string>(
         {
             get: dependencies.getSetting,
             inspect: dependencies.inspectSetting,
         },
-        rConsolePathSetting,
-        legacySetting,
+        canonicalKey,
+        legacyKey,
         value => Boolean(removeWrappingQuotes(value.trim()).value)
     );
-    if (configured) {
-        const resolution = resolveConfiguredExecutable(configured.key, dependencies, configured.value);
-        if (resolution) {
-            return resolution;
-        }
-    }
-    return resolveWithFallback([rExecutablePathSetting], dependencies);
+    return configured && resolveConfiguredExecutable(configured.key, dependencies, configured.value);
 }
 
 export function formatRPath(
