@@ -87,6 +87,7 @@
       {
         "id": "rd",
         "extensions": [
+          ".Rd",
           ".rd"
         ],
         "aliases": [
