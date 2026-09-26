@@ -19,7 +19,7 @@ suite('Plot backend setting migration', () => {
         } as unknown as vscode.WorkspaceConfiguration);
     }
 
-    const scopes = ['globalValue', 'workspaceValue', 'workspaceFolderValue'] as const;
+    const scopes = ['globalValue', 'workspaceValue'] as const;
     for (const canonicalScope of scopes) {
         for (const legacyScope of scopes) {
             test(`canonical ${canonicalScope} versus legacy ${legacyScope}`, () => {

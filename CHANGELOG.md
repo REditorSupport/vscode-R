@@ -45,7 +45,7 @@ detected.
 
 ### Configuration
 
-* Add `r.consoleArgs` and `r.consoleSendDelay` as canonical settings, with legacy `r.rterm.option` and `r.rtermSendDelay` deprecated and supported for backward compatibility. Resolve renamed console, executable-path, and plot-backend settings by workspace folder, workspace, then user scope, preferring the canonical name within each scope. Empty paths and automatic backend selection retain their fallback behavior.
+* Add `r.consoleArgs` and `r.consoleSendDelay` as canonical settings, with legacy `r.rterm.option` and `r.rtermSendDelay` deprecated and supported for backward compatibility. Resolve renamed console and executable-path settings by workspace folder (where supported), workspace, then user scope; plot-backend settings use workspace then user scope. Prefer the canonical name within each scope. Empty paths and automatic backend selection retain their fallback behavior.
 
 ### Styling
 
