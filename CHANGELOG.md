@@ -13,6 +13,8 @@ detected.
 
 ### Bug Fixes
 
+* fix(dataview): fit columns to the viewer width by default and preserve fit-width sizing when scrolling, resizing, or refreshing the viewer
+* fix(dataview): use supported grid and row-selection APIs in file-backed tables, initialize the grid after the document is ready, and preserve date and integer64 handling in both viewer modes
 * fix(console): use the workspace directory as terminal cwd when given a file URI
 * fix(console): preserve remote workspace configuration for R terminals created from the terminal profile
 
@@ -31,6 +33,8 @@ detected.
 
 ### Features
 
+* feat(dataview): upgrade AG Grid Community to 36.2.0, add searchable column pinning, inline filters and clear-all controls, row counts, saved view settings, full-value tooltips, and column sizing controls
+* feat(sess): migrate session watcher to WebSockets/JSON-RPC 2.0
 * feat(sess): migrate session watcher to Unix domain sockets / Windows named pipes with JSON Lines framing and JSON-RPC 2.0
 * feat: implement rstudioapi::showPrompt() and rstudioapi::askForPassword() for sess package
 * feat: evaluate params from YAML header in Rmd files before running code
