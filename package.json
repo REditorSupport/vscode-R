@@ -30,7 +30,6 @@
   },
   "activationEvents": [
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
-    "onCommand:r.runSelectionInActiveTerm",
     "onWebviewPanel:rhelp",
     "onLanguage:r",
     "onLanguage:rmd"
@@ -178,16 +177,6 @@
     ],
     "commands": [
       {
-        "command": "r.liveShare.toggle",
-        "title": "Toggle Live Share",
-        "category": "R"
-      },
-      {
-        "command": "r.liveShare.retry",
-        "title": "Retry Live Share",
-        "category": "R"
-      },
-      {
         "command": "r.workspaceViewer.refreshEntry",
         "title": "Manual Refresh",
         "icon": "$(refresh)",
@@ -249,7 +238,7 @@
         "category": "R"
       },
       {
-        "command": "editor.action.webvieweditor.showFind",
+        "command": "r.webview.find",
         "title": "R: Find in WebView",
         "icon": "$(search)",
         "category": "R"
@@ -761,12 +750,6 @@
         "icon": "$(zoom-out)"
       },
       {
-        "title": "Show Viewers",
-        "category": "R Plot",
-        "command": "r.plot.showViewers",
-        "icon": "$(versions)"
-      },
-      {
         "title": "Open Httpgd Url",
         "category": "R Plot",
         "command": "r.plot.openUrl",
@@ -856,6 +839,66 @@
     "menus": {
       "commandPalette": [
         {
+          "command": "r.plot.toggleStyle",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.toggleFullWindow",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.togglePreviewPlots",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.exportPlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.closePlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.hidePlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.resetPlots",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.prevPlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.nextPlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.firstPlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.lastPlot",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.zoomIn",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.zoomOut",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.openUrl",
+          "when": "false"
+        },
+        {
+          "command": "r.plot.openExternal",
+          "when": "false"
+        },
+        {
           "command": "r.workspaceViewer.view",
           "when": "false"
         },
@@ -942,10 +985,6 @@
         {
           "command": "r.helpPanel.openForPath",
           "when": "false"
-        },
-        {
-          "command": "r.liveShare.toggle",
-          "when": "false"
         }
       ],
       "editor/title/run": [
@@ -1001,12 +1040,12 @@
           "group": "navigation"
         },
         {
-          "command": "editor.action.webvieweditor.showFind",
+          "command": "r.webview.find",
           "when": "resourceScheme =~ /webview/ && r.browser.active",
           "group": "navigation"
         },
         {
-          "command": "editor.action.webvieweditor.showFind",
+          "command": "r.webview.find",
           "when": "resourceScheme =~ /webview/ && r.helpPanel.active",
           "group": "navigation"
         },
@@ -1202,22 +1241,18 @@
           "command": "r.helpPanel.summarizeTopics",
           "group": "inline@8",
           "when": "view == rHelpPages && viewItem =~ /_summarizeTopics_/"
-        },
-        {
-          "command": "r.liveShare.toggle",
-          "when": "view == rLiveShare"
         }
       ],
       "view/title": [
         {
           "command": "r.workspaceViewer.load",
           "group": "navigation@0",
-          "when": "r.WorkspaceViewer:show && view == workspaceViewer && !r.liveShare:isGuest"
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer"
         },
         {
           "command": "r.workspaceViewer.save",
           "group": "navigation@1",
-          "when": "r.WorkspaceViewer:show && view == workspaceViewer && !r.liveShare:isGuest"
+          "when": "r.WorkspaceViewer:show && view == workspaceViewer"
         },
         {
           "command": "r.workspaceViewer.clear",
@@ -1233,11 +1268,6 @@
           "command": "r.helpPanel.showQuickPick",
           "group": "navigation",
           "when": "view == rHelpPages"
-        },
-        {
-          "command": "r.liveShare.retry",
-          "group": "navigation@3",
-          "when": "view == rLiveShare && r.liveShare:aborted"
         }
       ],
       "explorer/context": [
@@ -1293,7 +1323,7 @@
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "markdownDescription": "Absolute or substituted path to the executable used to launch the interactive R console, or an executable name available on `PATH`. Alternative consoles such as arf (or radian) are supported. The supported substitutions are `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}`."
+          "markdownDescription": "Use an absolute or substituted path, or a bare executable name such as `R`, `arf`, or `radian` resolved from `PATH` to launch the interactive R console. The supported substitutions are `${userHome}`, `${workspaceFolder}`, `${fileWorkspaceFolder}`, and `${fileDirname}`."
         },
         "r.rpath.windows": {
           "type": "string",
@@ -1344,6 +1374,20 @@
             "--no-restore"
           ],
           "description": "R command line options.",
+          "markdownDeprecationMessage": "Deprecated. Use `#r.consoleArgs#` instead.",
+          "deprecationMessage": "Deprecated. Use r.consoleArgs instead.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "r.consoleArgs": {
+          "type": "array",
+          "default": [
+            "--no-save",
+            "--no-restore"
+          ],
+          "scope": "machine-overridable",
+          "description": "Arguments passed to the interactive R console.",
           "items": {
             "type": "string"
           }
@@ -1617,11 +1661,6 @@
           "default": true,
           "description": "Enable R session watcher. Required for workspace viewer and most features to work with an R session. Restart required to take effect."
         },
-        "r.session.useWebServer": {
-          "type": "boolean",
-          "default": false,
-          "markdownDescription": "Enable experimental use of web server in the R session to handle session requests from the extension. Requires `#r.sessionWatcher#` to be set to `true`. Requires the `httpuv` R package."
-        },
         "r.session.watchGlobalEnvironment": {
           "type": "boolean",
           "default": true,
@@ -1631,11 +1670,6 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Emulate the RStudio API for addin support and other {rstudioapi} calls. Requires `#r.sessionWatcher#` to be set to `true`."
-        },
-        "r.session.data.rowLimit": {
-          "type": "integer",
-          "default": 0,
-          "markdownDescription": "The maximum number of rows to be displayed in the data viewer. `0` means no limit. Changes the option `sess.row_limit` in R. Requires `#r.sessionWatcher#` to be set to `true`."
         },
         "r.session.data.pageSize": {
           "type": "integer",
@@ -1724,7 +1758,7 @@
             },
             "view": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by View()? \n\nChanges the option 'sess.dataview' in R.",
+              "description": "Which view column to show the WebView triggered by View()?",
               "enum": [
                 "Two",
                 "Active",
@@ -1741,7 +1775,7 @@
             },
             "helpPanel": {
               "type": "string",
-              "description": "Which view column to show the WebView triggered by the help panel? \n\nChanges the option 'sess.helpPanel' in R.",
+              "description": "Which view column to show the WebView triggered by the help panel?",
               "enum": [
                 "Two",
                 "Active",
@@ -1762,7 +1796,15 @@
         "r.rtermSendDelay": {
           "type": "integer",
           "default": 8,
-          "markdownDescription": "Delay in milliseconds before sending each line to rterm. Requires `#r.bracketedPaste#` to be `false`."
+          "markdownDescription": "Delay in milliseconds before sending each line to the R console. Requires `#r.bracketedPaste#` to be `false`.",
+          "markdownDeprecationMessage": "Deprecated. Use `#r.consoleSendDelay#` instead.",
+          "deprecationMessage": "Deprecated. Use r.consoleSendDelay instead."
+        },
+        "r.consoleSendDelay": {
+          "type": "integer",
+          "default": 8,
+          "scope": "machine-overridable",
+          "markdownDescription": "Delay in milliseconds before sending each line to the R console. Requires `#r.bracketedPaste#` to be `false`."
         },
         "r.workspaceViewer.removeHiddenItems": {
           "type": "boolean",
@@ -1774,29 +1816,9 @@
           "default": true,
           "description": "Prompt the user for confirmation when clearing the workspace."
         },
-        "r.liveShare.timeout": {
-          "type": "integer",
-          "default": 10000,
-          "description": "Time in milliseconds before aborting attempt to connect to Live Share API."
-        },
-        "r.liveShare.defaults.commandForward": {
-          "type": "boolean",
-          "default": false,
-          "description": "Default boolean value for guest command forwarding."
-        },
-        "r.liveShare.defaults.shareWorkspace": {
-          "type": "boolean",
-          "default": true,
-          "description": "Default boolean value for sharing the R workspace with guests."
-        },
-        "r.liveShare.defaults.shareBrowser": {
-          "type": "boolean",
-          "default": false,
-          "description": "Default boolean value for automatically sharing R browser ports with guests."
-        },
         "r.plot.devArgs": {
           "type": "object",
-          "markdownDescription": "Supplementary arguments for the rendering device (for example, `png()` or `svglite()`) used by the `standard` plot backend. This setting is ignored by the `httpgd` and `jgd` backends. Width and height are managed dynamically by the responsive viewer and will be overridden.\n\nChanges the option `sess.devArgs` in R.",
+          "markdownDescription": "Supplementary arguments for the rendering device (for example, `png()` or `svglite()`) used by the `standard` plot backend. This setting is ignored by the `httpgd` and `jgd` backends. Width and height are managed dynamically by the responsive viewer and will be overridden.",
           "default": {
             "width": 800,
             "height": 1200
@@ -1830,7 +1852,7 @@
         "r.plot.useHttpgd": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "Legacy compatibility setting for selecting the httpgd plot viewer. When `#r.plot.backend#` is `auto`, setting this to `true` selects the `httpgd` backend. An explicit `#r.plot.backend#` value takes precedence.\n\nRequires the `httpgd` R package version 1.2.0 or later.",
+          "markdownDescription": "Legacy compatibility setting for selecting the httpgd plot viewer. When `#r.plot.backend#` is `auto`, setting this to `true` selects the `httpgd` backend. Workspace settings take precedence over user settings. Within the same scope, an explicit `#r.plot.backend#` value takes precedence.\n\nRequires the `httpgd` R package version 1.2.0 or later.",
           "markdownDeprecationMessage": "Deprecated: use `#r.plot.backend#` instead. This setting is retained for compatibility with existing configurations but will be removed in a future release.",
           "deprecationMessage": "Deprecated: use r.plot.backend instead. This setting is retained for compatibility with existing configurations but will be removed in a future release."
         },
@@ -1849,7 +1871,7 @@
             "httpgd-based interactive plot viewer (requires `httpgd` R package)",
             "JGD-based interactive plot viewer (requires `jgd` R package)"
           ],
-          "markdownDescription": "The canonical setting for selecting the plot backend.\n\nWhen set to `auto`, the best available backend is used (JGD if installed, then httpgd, then standard). For compatibility, setting `#r.plot.useHttpgd#` to `true` selects httpgd while this setting remains `auto`; an explicit backend value takes precedence."
+          "markdownDescription": "The canonical setting for selecting the plot backend.\n\nWhen set to `auto`, the best available backend is used (JGD if installed, then httpgd, then standard). For backwards compatibility, setting `#r.plot.useHttpgd#` to `true` selects httpgd while this setting remains `auto`; workspace settings take precedence over user settings, with an explicit backend value preferred within the same scope."
         },
         "r.plot.jgd.historyLimit": {
           "type": "number",

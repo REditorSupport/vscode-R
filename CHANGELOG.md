@@ -13,6 +13,9 @@ detected.
 
 ### Bug Fixes
 
+* fix(console): use the workspace directory as terminal cwd when given a file URI
+* fix(console): preserve remote workspace configuration for R terminals created from the terminal profile
+
 * fix(sess): clean up failed runtime and server initialization and preserve the selected terminal during reconnect
 
 * fix(sess): share server startup across concurrent session clients and wait for startup during shutdown
@@ -24,12 +27,11 @@ detected.
 * fix(sess): reconnect managed R sessions after window reload and prioritize manual recovery of the selected R terminal
 
 * fix(rstudioapi): resolve emulation issues and viewer routing
-* fix(liveshare): resolve activation errors, file reading bugs, and add hooks for sess compatibility
 * fix(workspace): fix code submission delays when the workspace contains many or large objects
 
 ### Features
 
-* feat(sess): migrate session watcher to WebSockets/JSON-RPC 2.0
+* feat(sess): migrate session watcher to Unix domain sockets / Windows named pipes with JSON Lines framing and JSON-RPC 2.0
 * feat: implement rstudioapi::showPrompt() and rstudioapi::askForPassword() for sess package
 * feat: evaluate params from YAML header in Rmd files before running code
 * feat: check sess package version and prompt for update
@@ -46,9 +48,17 @@ detected.
 
 ### Other
 
+* Hide context-dependent plot commands from the Command Palette and remove the unused Show Plot Viewers command, while retaining viewer-local controls.
+
+* Remove Live Share integration, including its commands and settings. Remove other obsolete session settings that are no longer consumed.
+* Stop writing `~/.vscode-R/settings.json`; the current sess protocol no longer reads the propagated configuration. Remove the unused WebSocket server compatibility function, the unused `SESS_USE_HTTPGD` environment variable, and the path override argument left by the removed help-path setting.
 * Remove the unused `r.workspaceViewer.showObjectSize` setting and obsolete object-size tooltip support
 * Remove obsolete `r.session.objectLengthLimit`, `r.session.objectTimeout`, and `r.session.levelOfObjectDetail` settings following the switch to on-demand workspace inspection
 * Remove `r.helpPanel.rpath`, which was previously deprecated and no longer used by the extension
+
+### Configuration
+
+* Add `r.consoleArgs` and `r.consoleSendDelay` as canonical settings, with legacy `r.rterm.option` and `r.rtermSendDelay` deprecated and supported for backward compatibility. Resolve renamed console and executable-path settings by workspace folder (where supported), workspace, then user scope; plot-backend settings use workspace then user scope. Prefer the canonical name within each scope. Empty paths and automatic backend selection retain their fallback behavior.
 
 ### Styling
 

@@ -198,9 +198,6 @@ export class JgdViewer implements PlotViewer {
 
     async handleCommand(command: string, ...args: unknown[]): Promise<void> {
         switch (command) {
-            case 'showViewers':
-                this.show(true);
-                break;
             case 'nextPlot': {
                 const plot = this.history.navigateNext();
                 if (plot) {

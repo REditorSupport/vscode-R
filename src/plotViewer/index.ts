@@ -7,12 +7,19 @@ import { StandardPlotViewer } from './standardViewer';
 import { JgdManager } from './jgdViewer';
 import { extensionContext } from '../extension';
 import { config } from '../util';
+import { getMigratedSetting } from '../configuration';
 
 export function resolveBackend(): 'auto' | 'standard' | 'httpgd' | 'jgd' {
-    const explicit = config().get<string>('plot.backend', 'auto');
-    if (explicit !== 'auto') return explicit as 'standard' | 'httpgd' | 'jgd';
-    if (config().get<boolean>('plot.useHttpgd', false)) return 'httpgd';
-    return 'auto';
+    const selected = getMigratedSetting<string | boolean>(
+        config(),
+        'plot.backend',
+        'plot.useHttpgd',
+        value => value !== 'auto' && value !== false
+    )?.value;
+    if (selected === true) {
+        return 'httpgd';
+    }
+    return typeof selected === 'string' ? selected as 'standard' | 'httpgd' | 'jgd' : 'auto';
 }
 
 export function jgdEnabled(backend = resolveBackend()): boolean {
@@ -20,7 +27,6 @@ export function jgdEnabled(backend = resolveBackend()): boolean {
 }
 
 const commands = [
-    'showViewers',
     'openUrl',
     'openExternal',
     'showIndex',
@@ -121,13 +127,6 @@ export class CommonPlotManager implements PlotManager {
     }
 
     private async handleCommand(command: string, hostOrWebviewUri?: string | vscode.Uri, ...args: unknown[]): Promise<void> {
-        if (command === 'showViewers') {
-            for (const viewer of this.viewers) {
-                viewer.show(true);
-            }
-            return;
-        }
-
         if (command === 'openUrl') {
             await this.httpgdManager.openUrl();
             return;

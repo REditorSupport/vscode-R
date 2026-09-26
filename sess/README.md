@@ -102,7 +102,7 @@ R's interactive features to the client:
 |---|---|
 | `View()` | Data frames, matrices, Arrow tables and polars data frames open in a paged, sortable, filterable data viewer. Lists open as JSON; other objects as R code. |
 | `browseURL()`, `viewer`, `page_viewer` | URLs and local HTML files (e.g. htmlwidgets) open in the editor. |
-| `?topic`, `help.search()` | Help pages open in the editor's help panel. |
+| `?topic`, `help.search()` | Help pages open in the editor's help panel, in the column configured by `r.session.viewers.viewColumn.helpPanel`. |
 | Graphics device | Plots appear in the editor's plot viewer (see below). |
 | `rstudioapi` | Editor functions such as `getActiveDocumentContext()` and `insertText()` are emulated when `use_rstudioapi = TRUE`. |
 | Top-level task callback | The client is notified after each command so it can refresh the workspace view. |
@@ -133,7 +133,6 @@ In VS Code, this is controlled by the `r.plot.backend` setting.
 
 | Name | Type | Purpose |
 |---|---|---|
-| `sess.helpPanel` | R option | View column for help pages (default `"Two"`). |
 | `SESS_ENDPOINT` | env var | Socket/pipe path used by `connect()`. |
 | `SESS_RSTUDIOAPI` | env var | `TRUE`/`FALSE`; passed as `use_rstudioapi` by the extension's R profile. |
 | `SESS_PLOT_BACKEND` | env var | `auto`, `standard`, `httpgd` or `jgd`; sets `use_httpgd`/`use_jgd` in the extension's R profile. |
@@ -200,7 +199,7 @@ Sent with `notify_client()`.
 | `dataview` | `title`, `source`, `type`, and `view_id` (tables) or `file` (other objects) | `View()` is called. |
 | `plot_updated` | none | The standard device records a new or changed plot. |
 | `httpgd` | `url` | An httpgd device is opened. |
-| `help` | `requestPath`, `viewer` | A help page or help search is printed. |
+| `help` | `requestPath` | A help page or help search is printed. |
 | `browser` / `webview` / `page_viewer` | `url` | The corresponding R viewer option is invoked. |
 | `restart_r` | `command`, `clean` | `rstudioapi::restartSession()` is called. |
 | `rstudioapi/send_to_console` | `code`, `execute`, `focus`, `animate` | `rstudioapi::sendToConsole()` is called. |

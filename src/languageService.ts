@@ -65,7 +65,7 @@ export class LanguageService implements Disposable {
         const resourceConfig = config(resource);
         const debug = this.config.get<boolean>('lsp.debug');
         const useRenvLibPath = this.config.get<boolean>('useRenvLibPath') ?? false;
-        const rPath = await getRpath(false, undefined, resource) || ''; // TODO: Abort gracefully
+        const rPath = await getRpath(false, resource) || ''; // TODO: Abort gracefully
         if (debug) {
             console.log(`R path: ${rPath}`);
         }
