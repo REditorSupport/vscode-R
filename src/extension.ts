@@ -28,6 +28,7 @@ import { showRDebuggerCompatibilityWarningOnce } from './rDebuggerCompatibility'
 
 // global objects used in other files
 export const homeExtDir = (): string => util.getDir(path.join(os.homedir(), '.vscode-R'));
+// TODO(4.0): Migrate remaining extension temporary state out of ~/.vscode-R/tmp.
 export const tmpDir = (): string => util.getDir(path.join(homeExtDir(), 'tmp'));
 export let rWorkspace: workspaceViewer.WorkspaceDataProvider | undefined = undefined;
 export let globalRHelp: rHelp.RHelp | undefined = undefined;
@@ -56,6 +57,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // is used to export an interface to the help panel
     // this export is used e.g. by vscode-r-debugger to show the help panel from within debug sessions
     const rExtension = new apiImplementation.RExtensionImplementation();
+    rExtension.session = {
+        getConnectionInfo: session.getConnectionInfo,
+        activate: session.activateSessionById,
+    };
 
     // assign extension context to global variable
     extensionContext = context;
@@ -165,6 +170,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // keep track of terminals
     context.subscriptions.push(vscode.window.onDidCloseTerminal(rTerminal.deleteTerminal));
+    context.subscriptions.push(vscode.window.onDidOpenTerminal(terminal => {
+        void session.updateTerminalDiscovery(terminal).catch(error => {
+            console.warn('[session discovery] Failed to update terminal discovery file', error);
+        });
+    }));
     context.subscriptions.push(vscode.window.onDidChangeActiveTerminal(session.switchSessionByTerminal));
 
     // start language service

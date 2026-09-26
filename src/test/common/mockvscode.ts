@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import sinon = require('sinon');
 import path = require('path');
+import * as os from 'os';
 import * as ext from '../../extension';
 
 export function mockActiveTextEditor(document: vscode.TextDocument, sandbox: sinon.SinonSandbox) {
@@ -20,7 +21,7 @@ export function mockExtensionContext(extension_root: string, sandbox: sinon.Sino
             get: sinon.stub().callsFake((key: string, defaultValue?: unknown) => defaultValue),
             set: sinon.stub()
         },
-        globalStorageUri: sandbox.stub(),
+        globalStorageUri: vscode.Uri.file(path.join(os.tmpdir(), 'vscode-r-test-global-storage', String(process.pid))),
         logUri: sandbox.stub(),
         secrets: sandbox.stub(),
         storageUri: sandbox.stub(),

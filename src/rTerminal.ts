@@ -9,7 +9,15 @@ import { extensionContext, globalPlotManager } from './extension';
 import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
-import { cleanupSession, deferWorkspaceRefresh } from './session';
+import {
+    cleanupTerminalAssociation,
+    createSessionDiscoveryFile,
+    deferWorkspaceRefresh,
+    getGlobalPipePath,
+    isTerminalClosed,
+    removeTerminalDiscoveryFile,
+    updateTerminalSessionDiscoveryFile,
+} from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import * as fs from 'fs';
@@ -180,8 +188,6 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
-import { getGlobalPipePath, writeSessionFile } from './session';
-
 export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     const workspaceFolder = getCurrentWorkspaceFolder();
     const resource = workspaceFolder?.uri;
@@ -199,11 +205,15 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'profile.R'));
     if (config().get<boolean>('sessionWatcher')) {
         const pipePath = await getGlobalPipePath();
+        const discoveryFile = await createSessionDiscoveryFile(pipePath);
         const backend = resolveBackend();
         termOptions.env = {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
-            SESS_PIPE: pipePath,
+            // Remove inherited endpoint overrides so the per-terminal discovery file
+            // remains authoritative, including after a VS Code window reload.
+            SESS_ENDPOINT: null,
+            SESS_DISCOVERY_FILE: discoveryFile,
             SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
             SESS_USE_HTTPGD: backend === 'httpgd' ? 'TRUE' : 'FALSE',
             SESS_PLOT_BACKEND: backend,
@@ -220,22 +230,46 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
     const termOptions = await makeTerminalOptions();
     void util.promptToInstallSessPackage(termOptions.cwd);
     const termPath = termOptions.shellPath;
+    const discoveryFile = termOptions.env?.['SESS_DISCOVERY_FILE'];
+    const discardDiscoveryFile = async () => {
+        if (typeof discoveryFile === 'string') {
+            try {
+                await fs.promises.unlink(discoveryFile);
+            } catch (error) {
+                if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+                    return;
+                }
+                console.error('Failed to remove unused session discovery file', error);
+            }
+        }
+    };
     if(!termPath){
         void vscode.window.showErrorMessage('Could not find an R console executable. Please check the r.consolePath and r.executablePath settings.');
+        await discardDiscoveryFile();
         return false;
     } else if(!fs.existsSync(termPath)){
         void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check the r.consolePath setting.`);
+        await discardDiscoveryFile();
         return false;
     }
-    rTerm = vscode.window.createTerminal(termOptions);
-    rTerm.show(preserveshow);
-    
-    void rTerm.processId.then(async (pid: number | undefined) => {
-        if (pid) {
+    let createdTerminal: vscode.Terminal;
+    try {
+        createdTerminal = vscode.window.createTerminal(termOptions);
+    } catch (error) {
+        await discardDiscoveryFile();
+        throw error;
+    }
+    rTerm = createdTerminal;
+    createdTerminal.show(preserveshow);
+
+    void Promise.resolve(createdTerminal.processId).then(async (pid: number | undefined) => {
+        if (pid && typeof discoveryFile === 'string' && !isTerminalClosed(createdTerminal)) {
             const pipePath = await getGlobalPipePath();
-            await writeSessionFile(pid.toString(), pipePath);
+            if (!isTerminalClosed(createdTerminal)) {
+                await updateTerminalSessionDiscoveryFile(createdTerminal, discoveryFile, pipePath, pid);
+            }
         }
-    });
+    }).catch(error => console.error('Failed to update terminal session discovery file', error));
     
     return true;
 }
@@ -249,12 +283,22 @@ export async function restartRTerminal(): Promise<void>{
 }
 
 export function deleteTerminal(term: vscode.Terminal): void {
+    const exitReason = term.exitStatus?.reason;
+    if (exitReason === vscode.TerminalExitReason.User
+        || exitReason === vscode.TerminalExitReason.Process
+        || exitReason === vscode.TerminalExitReason.Extension) {
+        void removeTerminalDiscoveryFile(term).catch(error => {
+            console.error('Failed to remove terminal session discovery file', error);
+        });
+    }
+    // TODO: Prune orphaned extension-owned discovery files left by crashes, when
+    // safe lifecycle information is available without relying on local PID polling.
     if (isDeepStrictEqual(term, rTerm)) {
         rTerm = undefined;
         if (config().get<boolean>('sessionWatcher')) {
             void term.processId.then((v) => {
                 if (v) {
-                    void cleanupSession(v.toString());
+                    void cleanupTerminalAssociation(v.toString());
                 }
             });
         }

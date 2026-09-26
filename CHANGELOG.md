@@ -13,6 +13,16 @@ detected.
 
 ### Bug Fixes
 
+* fix(sess): clean up failed runtime and server initialization and preserve the selected terminal during reconnect
+
+* fix(sess): share server startup across concurrent session clients and wait for startup during shutdown
+
+* fix(sess): defer workspace and plot notifications until task callbacks return
+
+* fix(sess): refresh JGD renderer discovery on reconnect and identify managed terminals by discovery ownership
+
+* fix(sess): reconnect managed R sessions after window reload and prioritize manual recovery of the selected R terminal
+
 * fix(rstudioapi): resolve emulation issues and viewer routing
 * fix(liveshare): resolve activation errors, file reading bugs, and add hooks for sess compatibility
 * fix(workspace): fix code submission delays when the workspace contains many or large objects

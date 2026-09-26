@@ -5,16 +5,15 @@
 \title{Connect to the VS Code IPC server}
 \usage{
 connect(
-  pipe_path = NULL,
+  endpoint = NULL,
   use_rstudioapi = TRUE,
   use_httpgd = TRUE,
   use_jgd = FALSE
 )
 }
 \arguments{
-\item{pipe_path}{Character. Path to the named pipe / Unix domain socket.
-If NULL, uses the SESS_PIPE environment variable, then falls back to the
-session JSON file written by the extension.}
+\item{endpoint}{Character. Local named pipe / Unix domain socket endpoint.
+If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE.}
 
 \item{use_rstudioapi}{Logical. Enable rstudioapi emulation. Defaults to TRUE.}
 
@@ -24,4 +23,11 @@ session JSON file written by the extension.}
 }
 \description{
 Connect to the VS Code IPC server
+}
+\details{
+When SESS_DISCOVERY_FILE describes the connected endpoint, an
+unexpected disconnect waits for a replacement endpoint in that file and
+reconnects with the same runtime options and session identity. The optional
+discovery jgdSocket string updates JGD_SOCKET when use_jgd is TRUE; an empty
+string clears it, and an omitted field leaves it unchanged.
 }

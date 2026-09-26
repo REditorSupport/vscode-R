@@ -441,13 +441,60 @@ local({
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 0L)
 })
 
-# NDJSON framing round-trips correctly through a socket pair. Socket support is
-# environment-sensitive (some processx builds/platforms fail to accept or read
-# the loopback connection), so any infrastructure error becomes a silent skip
-# rather than a failure. A genuine framing/protocol bug yields wrong captured
-# values (asserted below), not a thrown error, so real failures still surface.
-# NB: exit_file() only halts at script top level, not inside local(), so we
-# skip with an early return() instead.
+# Workspace task callbacks defer the notification, then check runtime and
+# transport state before sending it.
+local({
+  if (!requireNamespace("processx", quietly = TRUE)) return(invisible(NULL))
+  cons <- tryCatch(processx::conn_create_pipepair(), error = function(e) NULL)
+  if (is.null(cons)) return(invisible(NULL))
+
+  .sess_env <- sess:::.sess_env
+  state <- sess:::.runtime_state()
+  old_con <- .sess_env$con
+  old_generation <- .sess_env$transport_generation
+  old_active <- state$active
+  on.exit({
+    .sess_env$con <- old_con
+    .sess_env$transport_generation <- old_generation
+    state$active <- old_active
+    try(close(cons[[1L]]), silent = TRUE)
+    try(close(cons[[2L]]), silent = TRUE)
+  }, add = TRUE)
+
+  .sess_env$con <- cons[[2L]]
+  .sess_env$transport_generation <- if (is.null(old_generation)) 1L else old_generation + 1L
+  generation <- .sess_env$transport_generation
+  state$active <- TRUE
+
+  scheduled <- list()
+  scheduler <- function(callback, delay) {
+    expect_equal(delay, 0)
+    scheduled[[length(scheduled) + 1L]] <<- callback
+  }
+  expect_true(sess:::.workspace_update_task_callback(schedule = scheduler))
+  expect_length(scheduled, 1L)
+  expect_false(identical(processx::poll(list(cons[[1L]]), 0L)[[1L]], "ready"))
+  scheduled[[1L]]()
+  sent <- jsonlite::fromJSON(processx::conn_read_chars(cons[[1L]]))
+  expect_equal(sent$method, "workspace_updated")
+
+  state$active <- FALSE
+  expect_false(sess:::.workspace_update_task_callback(schedule = scheduler))
+  state$active <- TRUE
+  expect_true(sess:::.workspace_update_task_callback(schedule = scheduler))
+  state$active <- FALSE
+  scheduled[[2L]]()
+  expect_false(identical(processx::poll(list(cons[[1L]]), 0L)[[1L]], "ready"))
+
+  state$active <- TRUE
+  expect_true(sess:::.workspace_update_task_callback(schedule = scheduler))
+  .sess_env$transport_generation <- generation + 1L
+  scheduled[[3L]]()
+  expect_false(identical(processx::poll(list(cons[[1L]]), 0L)[[1L]], "ready"))
+})
+
+# NDJSON framing round-trips through a Unix-domain socket. Windows uses named
+# pipes and is covered by the extension's IPC tests instead.
 local({
   if (!requireNamespace("processx", quietly = TRUE) ||
         .Platform$OS.type == "windows") {
@@ -462,19 +509,19 @@ local({
     unlink(pipe_path)
   }, add = TRUE)
 
-  res <- tryCatch({
+  res <- {
     cons$server <- processx::conn_create_unix_socket(pipe_path, encoding = "")
     cons$client <- processx::conn_connect_unix_socket(pipe_path, encoding = "")
 
     # Accept the incoming client on the server side
     processx::poll(list(cons$server), 1000L)
-    cons$conn <- processx::conn_accept_unix_socket(cons$server)
-    if (is.null(cons$conn)) stop("conn_accept_unix_socket returned NULL")
+    processx::conn_accept_unix_socket(cons$server)
+    cons$conn <- cons$server
 
     # Write a NDJSON line from client to server
     msg <- list(jsonrpc = "2.0", method = "ping", params = list(value = 42L))
     line <- paste0(jsonlite::toJSON(msg, auto_unbox = TRUE), "\n")
-    processx::conn_write(cons$client, line, sep = "")
+    processx::conn_write(cons$client, line)
 
     # Poll and read on server side
     ready <- processx::poll(list(cons$conn), 1000L)
@@ -482,10 +529,6 @@ local({
     parsed <- jsonlite::fromJSON(trimws(received), simplifyVector = FALSE)
     list(ready = ready[[1]], received = received,
          method = parsed$method, value = parsed$params$value)
-  }, error = function(e) NULL)
-
-  if (is.null(res)) {
-    return(invisible(NULL))
   }
 
   expect_equal(res$ready, "ready")
@@ -495,7 +538,7 @@ local({
 })
 
 # A peer disappearing while a request is waiting stops the runtime, and a new
-# connection can start a fresh runtime without duplicating callbacks.
+# discovery reconnect starts a fresh runtime without duplicating callbacks.
 local({
   .sess_env <- sess:::.sess_env
   if (!requireNamespace("processx", quietly = TRUE) || .Platform$OS.type == "windows") {
@@ -512,11 +555,28 @@ local({
   accept_peer <- function(server) {
     ready <- tryCatch(processx::poll(list(server), 1000L), error = function(e) NULL)
     if (is.null(ready) || !ready[[1]] %in% c("connect", "ready")) return(NULL)
-    tryCatch(processx::conn_accept_unix_socket(server), error = function(e) NULL)
+    tryCatch({
+      processx::conn_accept_unix_socket(server)
+      server
+    }, error = function(e) NULL)
   }
 
   first <- listener()
   if (is.null(first)) return(invisible(NULL))
+  discovery <- tempfile(fileext = ".json")
+  old_discovery <- Sys.getenv("SESS_DISCOVERY_FILE", unset = NA_character_)
+  Sys.setenv(SESS_DISCOVERY_FILE = discovery)
+  publish <- function(endpoint) {
+    writeLines(jsonlite::toJSON(list(version = 1L, endpoint = endpoint),
+                                auto_unbox = TRUE), discovery)
+  }
+  publish(first$path)
+  on.exit({
+    if (is.na(old_discovery)) Sys.unsetenv("SESS_DISCOVERY_FILE") else
+      Sys.setenv(SESS_DISCOVERY_FILE = old_discovery)
+    unlink(discovery)
+  }, add = TRUE)
+  identity <- sess:::.session_id()
   utils_ns <- asNamespace("utils")
   original_view <- get("View", utils_ns, inherits = FALSE)
   option_names <- c("browser", "viewer", "page_viewer", "help_type", "device")
@@ -540,11 +600,12 @@ local({
   }, add = TRUE)
 
   connected <- tryCatch({
-    sess::connect(first$path, use_rstudioapi = FALSE,
+    sess::connect(endpoint = first$path, use_rstudioapi = FALSE,
                   use_httpgd = FALSE, use_jgd = FALSE)
     first_peer <- accept_peer(first$server)
     !is.null(first_peer) && !is.null(.sess_env$con)
   }, error = function(e) FALSE)
+  expect_true(isTRUE(connected))
   if (!isTRUE(connected)) return(invisible(NULL))
 
   close(first_peer)
@@ -568,11 +629,17 @@ local({
   expect_equal(length(grep("^sess.plot$", getTaskCallbackNames())), 0L)
 
   second <- listener()
+  expect_false(is.null(second))
   if (is.null(second)) return(invisible(NULL))
-  sess::connect(second$path, use_rstudioapi = FALSE,
-                use_httpgd = FALSE, use_jgd = FALSE)
+  publish(second$path)
+  deadline <- Sys.time() + 5
+  while (is.null(.sess_env$con) && Sys.time() < deadline) later::run_now(0.1)
+  expect_false(is.null(.sess_env$con))
   second_peer <- accept_peer(second$server)
-  if (is.null(second_peer) || is.null(.sess_env$con)) return(invisible(NULL))
+  expect_false(is.null(second_peer))
+  expect_equal(sess:::.session_id(), identity)
+  expect_equal(.sess_env$reconnect$options,
+               list(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE))
   expect_true(isTRUE(sess:::.runtime_state()$active))
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 1L)
   sess:::.transport_disconnect()
@@ -600,10 +667,11 @@ local({
   }, add = TRUE)
 
   connected <- tryCatch({
-    sess::connect(path, use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+    sess::connect(endpoint = path, use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
     ready <- processx::poll(list(server), 1000L)
     if (ready[[1]] %in% c("connect", "ready")) {
-      peer <- processx::conn_accept_unix_socket(server)
+      processx::conn_accept_unix_socket(server)
+      peer <- server
     }
     !is.null(peer) && !is.null(.sess_env$con)
   }, error = function(e) FALSE)
