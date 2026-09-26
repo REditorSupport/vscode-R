@@ -13,6 +13,8 @@ detected.
 
 ### Bug Fixes
 
+* fix(sess): refresh JGD renderer discovery on reconnect and identify managed terminals by discovery ownership
+
 * fix(sess): reconnect managed R sessions after window reload and prioritize manual recovery of the selected R terminal
 
 * fix(rstudioapi): resolve emulation issues and viewer routing

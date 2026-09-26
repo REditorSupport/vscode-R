@@ -19,9 +19,16 @@ local({
     callbacks <<- callbacks[-1L]
     callback()
   }
+  original_jgd <- Sys.getenv("JGD_SOCKET", unset = NA_character_)
+  on.exit({
+    if (is.na(original_jgd)) Sys.unsetenv("JGD_SOCKET") else
+      Sys.setenv(JGD_SOCKET = original_jgd)
+  }, add = TRUE)
+  seen_jgd <- character()
   attempts <- list()
   succeed <- FALSE
   env$connect <- function(...) {
+    seen_jgd <<- c(seen_jgd, Sys.getenv("JGD_SOCKET", unset = "<unset>"))
     attempts[[length(attempts) + 1L]] <<- list(...)
     env$.sess_env$transport_generation <- env$.sess_env$transport_generation + 1L
     if (succeed) env$.sess_env$con <- "new connection"
@@ -64,4 +71,44 @@ local({
   expect_equal(length(attempts), 2L)
   expect_equal(env$.sess_env$con, "manual connection")
   expect_equal(length(callbacks), 0L)
+
+  # Renderer metadata must be installed before connect starts the runtime.
+  settings$options$use_jgd <- TRUE
+  for (socket in c("replacement-jgd", "")) {
+    env$.sess_env$con <- NULL
+    Sys.setenv(JGD_SOCKET = "dead-jgd")
+    writeLines(jsonlite::toJSON(list(version = 1L, endpoint = "new", jgdSocket = socket),
+                               auto_unbox = TRUE), path)
+    env$.schedule_reconnect(settings, schedule = schedule)
+    tick()
+    expect_equal(tail(seen_jgd, 1L), if (nzchar(socket)) socket else "<unset>")
+    expect_equal(length(callbacks), 0L)
+  }
+
+  # Clients publishing only the core discovery contract do not manage JGD.
+  env$.sess_env$con <- NULL
+  Sys.setenv(JGD_SOCKET = "external-jgd")
+  writeLines('{"version":1,"endpoint":"new"}', path)
+  env$.schedule_reconnect(settings, schedule = schedule)
+  tick()
+  expect_equal(tail(seen_jgd, 1L), "external-jgd")
+
+  # Invalid metadata, unchanged endpoints, and stale callbacks cannot mutate JGD.
+  env$.sess_env$con <- NULL
+  writeLines('{"version":1,"endpoint":"new","jgdSocket":123}', path)
+  env$.schedule_reconnect(settings, schedule = schedule)
+  count <- length(attempts)
+  tick()
+  expect_equal(length(attempts), count)
+  expect_equal(Sys.getenv("JGD_SOCKET"), "external-jgd")
+  writeLines('{"version":1,"endpoint":"old","jgdSocket":"unused"}', path)
+  tick()
+  expect_equal(Sys.getenv("JGD_SOCKET"), "external-jgd")
+  writeLines('{"version":1,"endpoint":"new","jgdSocket":"unused"}', path)
+  env$.sess_env$transport_generation <- env$.sess_env$transport_generation + 1L
+  tick()
+  expect_equal(Sys.getenv("JGD_SOCKET"), "external-jgd")
+  expect_equal(length(attempts), count)
+  expect_equal(length(callbacks), 0L)
+
 })

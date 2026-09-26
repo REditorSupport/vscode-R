@@ -88,7 +88,7 @@ suite('R Terminal', () => {
                 throw new Error('SESS_DISCOVERY_FILE should be a string path');
             }
             const discovery: unknown = await fs.readJson(discoveryFile);
-            assert.deepStrictEqual(discovery, { version: 1, endpoint: session.globalPipePath });
+            assert.deepStrictEqual(discovery, { version: 1, endpoint: session.globalPipePath, jgdSocket: '' });
         } finally {
             if (typeof discoveryFile === 'string') {
                 await fs.remove(discoveryFile);

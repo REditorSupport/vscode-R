@@ -402,7 +402,11 @@ suite('Session Communication', () => {
         const sessionFilePath = await session.createSessionDiscoveryFile(pipePath ?? '');
         assert.strictEqual(path.dirname(sessionFilePath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'sessions'));
         assert.match(path.basename(sessionFilePath), /^[a-f0-9]{32}\.json$/);
-        assert.deepStrictEqual(await fs.readJson(sessionFilePath), { version: 1, endpoint: pipePath ?? '' });
+        assert.deepStrictEqual(await fs.readJson(sessionFilePath), {
+            version: 1, endpoint: pipePath ?? '',
+            jgdSocket: plotViewer.jgdEnabled()
+                ? (extension.globalPlotManager as plotViewer.CommonPlotManager).getJgdEnvVars()['JGD_SOCKET'] : '',
+        });
         const sessionFileStat = await fs.stat(sessionFilePath);
         if (process.platform !== 'win32') {
             assert.strictEqual(sessionFileStat.mode & 0o777, 0o600, 'session handoff file should be owner-only');
@@ -419,7 +423,7 @@ suite('Session Communication', () => {
             creationOptions: { name: 'R Interactive' }, show: sandbox.spy(), sendText: sandbox.spy(),
         };
         const second = {
-            name: 'R Interactive', processId: Promise.resolve(45241),
+            name: 'Renamed R', processId: Promise.resolve(45241),
             creationOptions: { name: 'R Interactive' }, show: sandbox.spy(), sendText: sandbox.spy(),
         };
         sandbox.stub(vscode.window, 'terminals').value([first, second]);
@@ -427,6 +431,8 @@ suite('Session Communication', () => {
         sandbox.stub(util, 'config').returns({
             get: (key: string) => key === 'sessionWatcher' ? true : undefined,
         } as unknown as vscode.WorkspaceConfiguration);
+        const discoveryFile = await session.createSessionDiscoveryFile(endpoint);
+        await session.updateSessionDiscoveryFile(discoveryFile, endpoint, 45241);
         const client = net.createConnection(endpoint);
         try {
             await new Promise<void>((resolve, reject) => {
@@ -454,15 +460,16 @@ suite('Session Communication', () => {
             sinon.assert.calledOnce(first.show);
             sinon.assert.notCalled(first.sendText);
 
-            // Selecting an ordinary shell retains the existing focus behavior.
+            // The R Interactive name alone must not grant ownership of another terminal.
             first.show.resetHistory();
-            activeTerminal.value({ ...second, name: 'bash' });
+            activeTerminal.value({ ...second, name: 'R Interactive', processId: Promise.resolve(45242) });
             await session.activateRSession();
             sinon.assert.calledOnce(first.show);
             sinon.assert.calledOnce(second.sendText);
         } finally {
             client.destroy();
             await session.cleanupSession('manual-recovery-first');
+            await fs.remove(discoveryFile);
         }
     });
 
@@ -472,6 +479,7 @@ suite('Session Communication', () => {
         const terminalPid = 45231; // Deliberately distinct from any R process PID.
         await session.updateSessionDiscoveryFile(discoveryFile, oldEndpoint, terminalPid);
         const newEndpoint = `${oldEndpoint}.reload`;
+        const { jgdSocket } = await fs.readJson(discoveryFile) as { jgdSocket: string };
         const terminal = {
             name: 'R Interactive',
             processId: Promise.resolve(terminalPid),
@@ -485,6 +493,7 @@ suite('Session Communication', () => {
                 version: 1,
                 endpoint: newEndpoint,
                 terminalPid,
+                jgdSocket,
             });
 
             // Restored VS Code terminals may not expose creationOptions.env. The
@@ -502,12 +511,43 @@ suite('Session Communication', () => {
                 version: 1,
                 endpoint: newEndpoint,
                 terminalPid: wrapperTerminalPid,
+                jgdSocket,
             });
         } finally {
             await fs.remove(discoveryFile);
             if (wrapperDiscoveryFile) {
                 await fs.remove(wrapperDiscoveryFile);
             }
+        }
+    });
+
+    test('reload publishes the current JGD socket and explicitly clears a disabled renderer', async () => {
+        let backend = 'jgd';
+        let jgdSocket = 'old-jgd-socket';
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'plot.backend' ? backend : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(extension.globalPlotManager as plotViewer.CommonPlotManager, 'getJgdEnvVars')
+            .callsFake(() => ({ JGD_SOCKET: jgdSocket }));
+        const file = await session.createSessionDiscoveryFile('old-sess');
+        const terminal = {
+            name: 'Renamed R', processId: Promise.resolve(45244),
+            creationOptions: { name: 'R Interactive' },
+        } as unknown as vscode.Terminal;
+        try {
+            await session.updateSessionDiscoveryFile(file, 'old-sess', 45244);
+            jgdSocket = 'new-jgd-socket';
+            await session.refreshTerminalDiscoveryFiles('new-sess', [terminal]);
+            assert.deepStrictEqual(await fs.readJson(file), {
+                version: 1, endpoint: 'new-sess', terminalPid: 45244, jgdSocket,
+            });
+            backend = 'standard';
+            await session.refreshTerminalDiscoveryFiles('next-sess', [terminal]);
+            assert.deepStrictEqual(await fs.readJson(file), {
+                version: 1, endpoint: 'next-sess', terminalPid: 45244, jgdSocket: '',
+            });
+        } finally {
+            await fs.remove(file);
         }
     });
 

@@ -111,3 +111,40 @@ local({
     "has no endpoint"
   )
 })
+
+# Optional renderer fields extend version 1 without changing the core contract.
+local({
+  path <- tempfile(fileext = ".json")
+  on.exit(unlink(path), add = TRUE)
+  writeLines(paste0(
+    '{"version":1,"endpoint":"sess-endpoint",',
+    '"futureRenderer":{"endpoint":"future-socket","version":99},',
+    '"env":{"JGD_SOCKET":"must-not-be-applied"}}'
+  ), path)
+  expect_equal(sess:::.read_discovery_endpoint(path), "sess-endpoint")
+  original_jgd <- Sys.getenv("JGD_SOCKET", unset = NA_character_)
+  on.exit({
+    if (is.na(original_jgd)) Sys.unsetenv("JGD_SOCKET") else
+      Sys.setenv(JGD_SOCKET = original_jgd)
+  }, add = TRUE)
+  Sys.setenv(JGD_SOCKET = "external-socket")
+  sess:::.configure_discovery_jgd(sess:::.read_discovery(path), TRUE)
+  expect_equal(Sys.getenv("JGD_SOCKET"), "external-socket")
+
+  writeLines('{"version":1,"endpoint":"sess-endpoint","jgdSocket":"new-socket"}', path)
+  discovery <- sess:::.read_discovery(path)
+  expect_equal(discovery$jgdSocket, "new-socket")
+  sess:::.configure_discovery_jgd(discovery, FALSE)
+  expect_equal(Sys.getenv("JGD_SOCKET"), "external-socket")
+  sess:::.configure_discovery_jgd(discovery, TRUE)
+  expect_equal(Sys.getenv("JGD_SOCKET"), "new-socket")
+
+  writeLines('{"version":1,"endpoint":"sess-endpoint","jgdSocket":""}', path)
+  sess:::.configure_discovery_jgd(sess:::.read_discovery(path), TRUE)
+  expect_equal(Sys.getenv("JGD_SOCKET", unset = "<unset>"), "<unset>")
+
+  for (value in c('null', '123', 'true', '["socket"]', '{}')) {
+    writeLines(paste0('{"version":1,"endpoint":"sess-endpoint","jgdSocket":', value, '}'), path)
+    expect_warning(expect_null(sess:::.read_discovery(path, warn = TRUE)), "Invalid jgdSocket")
+  }
+})

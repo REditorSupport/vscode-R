@@ -276,6 +276,8 @@ interface SessionDiscoveryFile {
     version: 1;
     endpoint: string;
     terminalPid?: number;
+    // Empty means no JGD renderer; omission by other clients leaves JGD unmanaged.
+    jgdSocket?: string;
 }
 
 function getSessionDiscoveryDir(): string {
@@ -310,7 +312,7 @@ export async function removeTerminalDiscoveryFile(terminal: vscode.Terminal): Pr
 
     await queueTerminalDiscoveryOperation(terminal, async () => {
         let discoveryPath = terminalDiscoveryPath(terminal);
-        if (!discoveryPath && terminal.name === 'R Interactive') {
+        if (!discoveryPath) {
             const terminalPid = await terminal.processId;
             if (terminalPid !== undefined) {
                 discoveryPath = await findDiscoveryFileForTerminal(terminalPid);
@@ -335,7 +337,7 @@ async function writeSessionDiscoveryFile(filePath: string, endpoint: string, ter
     if (!isExtensionDiscoveryPath(filePath)) {
         throw new Error('Refusing to write session discovery data outside extension global storage');
     }
-    const data: SessionDiscoveryFile = { version: 1, endpoint };
+    const data: SessionDiscoveryFile = { version: 1, endpoint, jgdSocket: getSessionJgdSocket() };
     if (terminalPid !== undefined) {
         data.terminalPid = terminalPid;
     } else if (await fs.pathExists(filePath)) {
@@ -411,9 +413,6 @@ export async function refreshTerminalDiscoveryFiles(
             continue;
         }
         const envPath = terminalDiscoveryPath(term);
-        if (!envPath && term.name !== 'R Interactive') {
-            continue;
-        }
         const terminalPid = await term.processId;
         if (!terminalPid || isTerminalClosed(term)) {
             continue;
@@ -435,9 +434,6 @@ export async function updateTerminalDiscovery(terminal: vscode.Terminal): Promis
         return;
     }
     let discoveryPath = terminalDiscoveryPath(terminal);
-    if (!discoveryPath && terminal.name !== 'R Interactive') {
-        return;
-    }
     discoveryPath ??= await findDiscoveryFileForTerminal(terminalPid);
     if (discoveryPath && !isTerminalClosed(terminal)) {
         await updateTerminalSessionDiscoveryFile(terminal, discoveryPath, globalPipePath, terminalPid);
@@ -590,6 +586,13 @@ export async function getGlobalPipePath(): Promise<string> {
     });
 }
 
+// Keep managed discovery, the public API, and manual attach on the same renderer.
+function getSessionJgdSocket(): string {
+    return jgdEnabled()
+        ? (globalPlotManager as CommonPlotManager)?.getJgdEnvVars()?.['JGD_SOCKET'] ?? ''
+        : '';
+}
+
 /** Return the public connection contract for downstream session clients. */
 export async function getConnectionInfo(): Promise<RSessionConnectionInfo | undefined> {
     if (!enableSessionWatcher) {
@@ -598,9 +601,7 @@ export async function getConnectionInfo(): Promise<RSessionConnectionInfo | unde
 
     const endpoint = await getGlobalPipePath();
     const plotBackend = resolveBackend();
-    const jgdSocket = (plotBackend === 'jgd' || plotBackend === 'auto')
-        ? (globalPlotManager as CommonPlotManager)?.getJgdEnvVars()?.['JGD_SOCKET']
-        : undefined;
+    const jgdSocket = getSessionJgdSocket();
     return {
         protocolVersion: SESS_PROTOCOL_VERSION,
         endpoint,
@@ -623,15 +624,13 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, installSes
     const useHttpgd = backend === 'httpgd' || backend === 'auto' ? 'TRUE' : 'FALSE';
     const jgd = jgdEnabled(backend);
     const useJgd = jgd ? 'TRUE' : 'FALSE';
-    const jgdSocket = jgd
-        ? (globalPlotManager as CommonPlotManager)?.getJgdEnvVars()?.['JGD_SOCKET'] ?? ''
-        : '';
+    const jgdSocket = getSessionJgdSocket();
     return [
         'local({',
         `  endpoint <- ${asRStringLiteral(pipePath)}`,
         `  sess_src <- ${asRStringLiteral(sessPath)}`,
         `  install_sess_script <- ${asRStringLiteral(installSessScriptPath)}`,
-        ...(jgdSocket ? [`  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})`] : []),
+        jgdSocket ? `  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})` : '  Sys.unsetenv("JGD_SOCKET")',
         '  bundled_version <- tryCatch(read.dcf(file.path(sess_src, "DESCRIPTION"))[1, "Version"], error = function(e) NA_character_)',
         '  installed_version <- suppressWarnings(tryCatch(as.character(utils::packageVersion("sess")), error = function(e) NA_character_))',
         '  needs_install <- is.na(installed_version) || (!is.na(bundled_version) && utils::compareVersion(installed_version, bundled_version) < 0)',
@@ -708,8 +707,8 @@ export async function activateRSession(): Promise<void> {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[activateRSession]');
         const terminal = window.activeTerminal;
+        const pidArg = await terminal?.processId;
         if (terminal) {
-            const pidArg = await terminal.processId;
             if (pidArg) {
                 const session = terminalSessions.get(String(pidArg));
                 if (session) {
@@ -722,8 +721,9 @@ export async function activateRSession(): Promise<void> {
         }
 
         // Restore the selected managed terminal before focusing another session.
-        if (terminal && !isTerminalClosed(terminal) &&
-            (terminalDiscoveryPath(terminal) || terminal.name === 'R Interactive')) {
+        const discoveryPath = terminal && (terminalDiscoveryPath(terminal) ||
+            (pidArg ? await findDiscoveryFileForTerminal(pidArg) : undefined));
+        if (terminal && discoveryPath && !isTerminalClosed(terminal)) {
             const command = await getAttachSessionCommand();
             terminal.sendText(command, true);
             terminal.show();

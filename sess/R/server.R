@@ -7,7 +7,9 @@
 #' @param use_jgd Logical. Use jgd for plotting if available. Defaults to FALSE.
 #' @details When SESS_DISCOVERY_FILE describes the connected endpoint, an
 #'   unexpected disconnect waits for a replacement endpoint in that file and
-#'   reconnects with the same runtime options and session identity.
+#'   reconnects with the same runtime options and session identity. The optional
+#'   discovery jgdSocket string updates JGD_SOCKET when use_jgd is TRUE; an empty
+#'   string clears it, and an omitted field leaves it unchanged.
 #' @export
 connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
   # Invalidate poll callbacks and restore a previous runtime before reconnecting.
@@ -34,8 +36,9 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
   discovery_file <- Sys.getenv("SESS_DISCOVERY_FILE")
   # Only follow discovery if it describes this connection, including explicit
   # endpoints from the generated attach script. Never redirect an unrelated client.
-  if (nzchar(discovery_file) &&
-        identical(.read_discovery_endpoint(discovery_file), endpoint)) {
+  discovery <- if (nzchar(discovery_file)) .read_discovery(discovery_file) else NULL
+  if (!is.null(discovery) && identical(discovery$endpoint, endpoint)) {
+    .configure_discovery_jgd(discovery, use_jgd)
     .sess_env$reconnect <- list(
       path = discovery_file, endpoint = endpoint,
       options = list(use_rstudioapi = use_rstudioapi,
@@ -139,9 +142,15 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
 }
 
 .read_discovery_endpoint <- function(path, warn = FALSE) {
+  discovery <- .read_discovery(path, warn)
+  if (is.null(discovery)) return(if (warn) "" else NULL)
+  discovery$endpoint
+}
+
+.read_discovery <- function(path, warn = FALSE) {
   warn_problem <- function(message) {
     if (isTRUE(warn)) warning("[sess] ", message, call. = FALSE)
-    ""
+    NULL
   }
   is_endpoint <- function(value) {
     is.character(value) && length(value) == 1L && !is.na(value) && nzchar(value)
@@ -196,7 +205,14 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
         path
       )))
     }
-    value
+    if ("jgdSocket" %in% names(cfg) &&
+          !(is.character(cfg$jgdSocket) && length(cfg$jgdSocket) == 1L &&
+              !is.na(cfg$jgdSocket))) {
+      return(warn_problem(sprintf(
+        "Invalid jgdSocket in session discovery file '%s'; expected a string.", path
+      )))
+    }
+    cfg
   }, error = function(e) {
     warn_problem(sprintf(
       "Could not read session discovery file '%s': %s",
@@ -204,6 +220,17 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
       conditionMessage(e)
     ))
   })
+}
+
+# Discovery configures only the optional JGD renderer, never arbitrary R state.
+.configure_discovery_jgd <- function(discovery, use_jgd) {
+  if (!isTRUE(use_jgd) || is.null(discovery$jgdSocket)) return(invisible(NULL))
+  if (nzchar(discovery$jgdSocket)) {
+    Sys.setenv(JGD_SOCKET = discovery$jgdSocket)
+  } else {
+    Sys.unsetenv("JGD_SOCKET")
+  }
+  invisible(NULL)
 }
 
 .session_attach_metadata <- function() {
@@ -237,9 +264,13 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
     if (!identical(pid, Sys.getpid()) ||
           !identical(generation, .sess_env$transport_generation) ||
           !is.null(.sess_env$con)) return(invisible(NULL))
-    endpoint <- .read_discovery_endpoint(settings$path)
+    discovery <- .read_discovery(settings$path)
+    endpoint <- discovery$endpoint
     if (is.character(endpoint) && length(endpoint) == 1L && nzchar(endpoint) &&
           !identical(endpoint, settings$endpoint)) {
+      # Read endpoint and renderer from one snapshot, even if the file is
+      # replaced again while connect() runs.
+      .configure_discovery_jgd(discovery, settings$options$use_jgd)
       tryCatch(
         do.call(connect, c(list(endpoint = endpoint), settings$options)),
         error = function(e) message("[sess] Reconnection failed: ", conditionMessage(e))

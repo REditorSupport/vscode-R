@@ -67,6 +67,32 @@ pending retries. Each managed terminal has its own discovery file in extension
 storage; VS Code refreshes it after reload, using extension-private terminal PID
 metadata even when a wrapper's PID differs from R's. Unknown fields are ignored.
 
+### Discovery schema and extensions
+
+```json
+{"version":1,"endpoint":"/path/to/sess.sock","jgdSocket":"/path/to/jgd.sock"}
+```
+
+Only `version` and `endpoint` are required. Consumers must ignore unknown fields.
+New backends may add optional fields under version `1`: adding a field does not
+require a schema version bump. Removing or changing the meaning/type of existing
+fields, or making additional fields mandatory, is a breaking change and requires
+a new schema version. This discovery schema version is separate from the IPC
+`protocol_version`.
+
+The optional `jgdSocket` string describes the JGD renderer belonging to that
+endpoint. When `use_jgd = TRUE`, `sess` applies it before runtime initialization,
+including automatic reconnect: a nonempty string sets `JGD_SOCKET`, an empty
+string unsets it (renderer unavailable), and an omitted field leaves it untouched.
+A present value of another type is invalid. It does not enable JGD or override
+`use_jgd`; no arbitrary environment variables or R code are accepted. VS Code
+publishes endpoint and renderer together in one atomic file replacement, with
+an empty `jgdSocket` when its current backend does not provide JGD.
+
+Fields belonging to other backends remain optional and are interpreted only by
+implementations that support them. `terminalPid` is VS Code-private metadata for
+finding managed terminal discovery files; `sess` does not use it as identity.
+
 ## What `sess` changes in your R session
 
 Once connected, `sess` registers hooks (via `register_hooks()`) that redirect

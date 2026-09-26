@@ -27,5 +27,7 @@ Connect to the VS Code IPC server
 \details{
 When SESS_DISCOVERY_FILE describes the connected endpoint, an
 unexpected disconnect waits for a replacement endpoint in that file and
-reconnects with the same runtime options and session identity.
+reconnects with the same runtime options and session identity. The optional
+discovery jgdSocket string updates JGD_SOCKET when use_jgd is TRUE; an empty
+string clears it, and an omitted field leaves it unchanged.
 }
