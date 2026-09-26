@@ -41,7 +41,7 @@ export class RMarkdownKnitManager extends RMarkdownManager {
         if (!knitCommand) {
             return;
         }
-        this.rPath = await util.getRpath(false, undefined, vscode.Uri.file(docPath));
+        this.rPath = await util.getRpath(false, vscode.Uri.file(docPath));
 
         const lim = '<<<vsc>>>';
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'gms');

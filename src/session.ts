@@ -6,14 +6,14 @@ import * as os from 'os';
 import * as net from 'net';
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
-import { commands, Uri, ViewColumn, Webview, window, workspace, env } from 'vscode';
+import { commands, Uri, ViewColumn, Webview, window, env } from 'vscode';
 
 import { restartRTerminal } from './rTerminal';
 import { config, readContent, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
-import { extensionContext, homeExtDir, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
+import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import type { RSessionConnectionInfo } from './api';
 
@@ -229,12 +229,6 @@ export function deploySessionWatcher(extensionPath: string): void {
         console.error('Failed to initialize global session server', err);
     });
 
-    writeSettings();
-    workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('r')) {
-            writeSettings();
-        }
-    });
 }
 
 let pipeClient: IpcSocket | undefined;
@@ -848,11 +842,6 @@ export function removeSessionFiles(): void {
         removeDirectory(sessionDir);
     }
     console.info('[removeSessionFiles] Done');
-}
-
-function writeSettings() {
-    const settingPath = path.join(homeExtDir(), 'settings.json');
-    fs.writeFileSync(settingPath, JSON.stringify(config()));
 }
 
 async function updatePlot() {
@@ -2054,9 +2043,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             break;
         }
         case 'help': {
-            if (globalRHelp && params.requestPath) {
-                await globalRHelp.showHelpForPath(String(params.requestPath), params.viewer);
-            }
+            await showHelpNotification(params);
             break;
         }
         case 'httpgd': {
@@ -2126,6 +2113,17 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
         }
         default:
             console.error(`[startSessionWatcher] Unsupported notification method: ${method}`);
+    }
+}
+
+export async function showHelpNotification(params: Record<string, unknown>): Promise<void> {
+    if (!globalRHelp || !params.requestPath) {
+        return;
+    }
+
+    const viewer = config().get<Record<string, string>>('session.viewers.viewColumn')?.helpPanel ?? 'Two';
+    if (viewer !== 'Disable') {
+        await globalRHelp.showHelpForPath(String(params.requestPath), viewer);
     }
 }
 
@@ -2285,10 +2283,4 @@ export async function connectToSession(): Promise<void> {
     const command = await getAttachSessionCommand();
     void vscode.env.clipboard.writeText(command);
     void vscode.window.showInformationMessage(`R command copied to clipboard: ${command}`);
-}
-
-// Kept for backward compatibility - callers in rTerminal.ts use this
-export async function getGlobalSessionServer(): Promise<{ port: number, token: string }> {
-    await getGlobalPipePath();
-    return { port: 0, token: '' };
 }

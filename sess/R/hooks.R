@@ -145,8 +145,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
       pkgname <- basename(dirname(dirname(file)))
       requestPath <- paste0("/library/", pkgname, "/html/", basename(file), ".html")
       notify_client("help", list(
-        requestPath = requestPath,
-        viewer = getOption("sess.helpPanel", "Two")
+        requestPath = requestPath
       ))
     } else {
       utils:::print.help_files_with_topic(x, ...)
@@ -162,8 +161,7 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
     if (length(x) >= 1) {
       requestPath <- paste0("/doc/html/Search?pattern=", tools:::escapeAmpersand(x$pattern))
       notify_client("help", list(
-        requestPath = requestPath,
-        viewer = getOption("sess.helpPanel", "Two")
+        requestPath = requestPath
       ))
     } else {
       utils:::print.hsearch(x, ...)

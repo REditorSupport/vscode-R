@@ -1,6 +1,7 @@
 'use strict';
 
 import * as path from 'path';
+import { getMigratedSetting } from './configuration';
 import { isDeepStrictEqual } from 'util';
 
 import * as vscode from 'vscode';
@@ -18,12 +19,13 @@ import {
     removeTerminalDiscoveryFile,
     updateTerminalSessionDiscoveryFile,
 } from './session';
-import { config, delay, getRterm, getCurrentWorkspaceFolder } from './util';
+import { config, delay, getRterm, getCurrentWorkspaceFolder, getRPathConfigEntry } from './util';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
 export let rTerm: vscode.Terminal | undefined = undefined;
+let rTermResource: vscode.Uri | undefined;
 
 let lastParamsRmdPath: string | undefined;
 let lastParamsRmdVersion: number | undefined;
@@ -188,14 +190,23 @@ export async function runFromLineToEnd(): Promise<void>  {
     await runTextInTerm(text);
 }
 
-export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
-    const workspaceFolder = getCurrentWorkspaceFolder();
-    const resource = workspaceFolder?.uri;
-    const workspaceFolderPath = resource?.fsPath;
-    const currentConfig = config(resource);
-    const termPath = await getRterm(resource);
-    const shellArgs: string[] = currentConfig.get<string[]>('rterm.option')
-        ?.map(value => util.substituteVariables(value, resource)) || [];
+function getConsoleArgs(configuration: vscode.WorkspaceConfiguration): string[] {
+    return getMigratedSetting<string[]>(configuration, 'consoleArgs', 'rterm.option')?.value
+        ?? ['--no-save', '--no-restore'];
+}
+
+function getConsoleSendDelay(resource?: vscode.Uri): number {
+    return getMigratedSetting<number>(config(resource), 'consoleSendDelay', 'rtermSendDelay')?.value ?? 8;
+}
+
+export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode.TerminalOptions> {
+    const workspaceFolder = resource ? getCurrentWorkspaceFolder(resource) : getCurrentWorkspaceFolder();
+    const configResource = resource ?? workspaceFolder?.uri;
+    const workspaceFolderPath = workspaceFolder?.uri.fsPath;
+    const currentConfig = config(configResource);
+    const termPath = await getRterm(configResource);
+    const shellArgs = getConsoleArgs(currentConfig)
+        .map(value => util.substituteVariables(value, configResource));
     const termOptions: vscode.TerminalOptions = {
         name: 'R Interactive',
         shellPath: termPath,
@@ -215,7 +226,6 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
             SESS_ENDPOINT: null,
             SESS_DISCOVERY_FILE: discoveryFile,
             SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
-            SESS_USE_HTTPGD: backend === 'httpgd' ? 'TRUE' : 'FALSE',
             SESS_PLOT_BACKEND: backend,
         };
         if (jgdEnabled(backend)) {
@@ -226,8 +236,9 @@ export async function makeTerminalOptions(): Promise<vscode.TerminalOptions> {
     return termOptions;
 }
 
-export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
-    const termOptions = await makeTerminalOptions();
+export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri): Promise<boolean> {
+    resource = resource ?? getCurrentWorkspaceFolder()?.uri;
+    const termOptions = await makeTerminalOptions(resource);
     void util.promptToInstallSessPackage(termOptions.cwd);
     const termPath = termOptions.shellPath;
     const discoveryFile = termOptions.env?.['SESS_DISCOVERY_FILE'];
@@ -244,11 +255,10 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
         }
     };
     if(!termPath){
-        void vscode.window.showErrorMessage('Could not find an R console executable. Please check the r.consolePath and r.executablePath settings.');
         await discardDiscoveryFile();
         return false;
     } else if(!fs.existsSync(termPath)){
-        void vscode.window.showErrorMessage(`Cannot find R client at ${termPath}. Please check the r.consolePath setting.`);
+        void vscode.window.showErrorMessage(`Cannot find R console executable at ${termPath}. Please check r.consolePath, r.${getRPathConfigEntry(true)}, or r.executablePath.`);
         await discardDiscoveryFile();
         return false;
     }
@@ -260,6 +270,7 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
         throw error;
     }
     rTerm = createdTerminal;
+    rTermResource = resource;
     createdTerminal.show(preserveshow);
 
     void Promise.resolve(createdTerminal.processId).then(async (pid: number | undefined) => {
@@ -276,9 +287,10 @@ export async function createRTerm(preserveshow?: boolean): Promise<boolean> {
 
 export async function restartRTerminal(): Promise<void>{
     if (typeof rTerm !== 'undefined'){
+        const resource = rTermResource;
         rTerm.dispose();
         deleteTerminal(rTerm);
-        await createRTerm(true);
+        await createRTerm(true, resource);
     }
 }
 
@@ -295,6 +307,7 @@ export function deleteTerminal(term: vscode.Terminal): void {
     // safe lifecycle information is available without relying on local PID polling.
     if (isDeepStrictEqual(term, rTerm)) {
         rTerm = undefined;
+        rTermResource = undefined;
         if (config().get<boolean>('sessionWatcher')) {
             void term.processId.then((v) => {
                 if (v) {
@@ -303,6 +316,22 @@ export function deleteTerminal(term: vscode.Terminal): void {
             });
         }
     }
+}
+
+function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
+    if (term === rTerm && rTermResource) {
+        return rTermResource;
+    }
+
+    const creationOptions = term.creationOptions;
+    const cwd = creationOptions && 'cwd' in creationOptions ? creationOptions.cwd : undefined;
+    // Profile terminals store cwd as a path; retain the matching remote URI.
+    const cwdResource = typeof cwd === 'string'
+        ? vscode.workspace.workspaceFolders?.find(folder => folder.uri.fsPath === cwd)?.uri ?? vscode.Uri.file(cwd)
+        : cwd;
+    return cwdResource
+        ? getCurrentWorkspaceFolder(cwdResource)?.uri ?? cwdResource
+        : getCurrentWorkspaceFolder()?.uri;
 }
 
 export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
@@ -407,7 +436,8 @@ export async function runTextInTerm(text: string, execute: boolean = true): Prom
         text = `\x1b[200~${text}\x1b[201~`;
         term.sendText(text, execute);
     } else {
-        const rtermSendDelay: number = config().get('rtermSendDelay') || 8;
+        const resource = getTerminalResource(term);
+        const rtermSendDelay = getConsoleSendDelay(resource);
         const split = text.split('\n');
         const last_split = split.length - 1;
         for (const [count, line] of split.entries()) {
