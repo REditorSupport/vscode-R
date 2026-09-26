@@ -5,6 +5,7 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { CommonPlotManager } from '../../plotViewer';
 import { HttpgdViewer } from '../../plotViewer/httpgdViewer';
+import { JgdViewer } from '../../plotViewer/jgdViewer';
 import { mockExtensionContext } from '../common/mockvscode';
 
 interface MenuItem {
@@ -16,7 +17,7 @@ interface MenuItem {
 const extensionRoot = path.resolve(__dirname, '../../..');
 const manifest = JSON.parse(fs.readFileSync(path.join(extensionRoot, 'package.json'), 'utf8')) as {
     contributes: {
-        commands: { command: string }[];
+        commands: { command: string; title?: string; category?: string; icon?: string }[];
         menus: Record<string, MenuItem[]>;
     };
 };
@@ -26,9 +27,12 @@ const toolbarCommands = new Set(manifest.contributes.menus['editor/title']
     .filter((command): command is string => !!command?.startsWith('r.plot.')));
 
 suite('Contextual plot commands', () => {
-    test('all contributed plot commands are hidden from the Command Palette', () => {
+    test('contextual plot commands are hidden while Show Viewers remains discoverable', () => {
         assert.ok(plotCommands.length > 0);
         for (const { command } of plotCommands) {
+            if (command === 'r.plot.showViewers') {
+                continue;
+            }
             const entries = manifest.contributes.menus.commandPalette.filter(item => item.command === command);
             assert.ok(entries.length > 0, `${command} needs a Command Palette rule`);
             assert.ok(entries.every(item => item.when === 'false'), `${command} must remain contextual`);
@@ -36,10 +40,17 @@ suite('Contextual plot commands', () => {
         for (const command of toolbarCommands) {
             assert.ok(plotCommands.some(item => item.command === command), `${command} needs a contribution`);
         }
-        assert.ok(!plotCommands.some(item => item.command === 'r.plot.showViewers'));
+        const showViewers = plotCommands.find(item => item.command === 'r.plot.showViewers');
+        assert.deepStrictEqual(showViewers, {
+            title: 'Show Viewers',
+            category: 'R Plot',
+            command: 'r.plot.showViewers',
+            icon: '$(versions)'
+        });
+        assert.ok(!manifest.contributes.menus.commandPalette.some(item => item.command === 'r.plot.showViewers'));
     });
 
-    test('toolbar and webview commands remain registered and route to their httpgd viewer', () => {
+    test('plot commands remain registered and route to the appropriate viewers', () => {
         const sandbox = sinon.createSandbox();
         try {
             mockExtensionContext(extensionRoot, sandbox);
@@ -50,10 +61,14 @@ suite('Contextual plot commands', () => {
             sandbox.stub(manager.jgdManager, 'initialize');
             sandbox.stub(manager.jgdManager, 'start');
             sandbox.stub(manager.jgdManager, 'getEnvVars').returns({});
+            const showJgdViewer = sandbox.stub();
+            const jgdViewer = { show: showJgdViewer, handleCommand: sandbox.stub() } as unknown as JgdViewer;
+            sandbox.stub(manager.jgdManager, 'getViewer').returns(jgdViewer);
             const viewer = sandbox.createStubInstance(HttpgdViewer);
             Object.defineProperty(viewer, 'host', { value: 'localhost:1234' });
             viewer.getPanelPath.returns('/plot-viewer');
             manager.httpgdManager.viewers.push(viewer);
+            const showStandardViewer = sandbox.stub(manager.standardPlotViewer, 'show');
             const fallback = sandbox.stub(manager.standardPlotViewer, 'handleCommand');
             sandbox.stub(manager, 'activeViewer').get(() => manager.standardPlotViewer);
             const openUrl = sandbox.stub(manager.httpgdManager, 'openUrl').resolves();
@@ -80,8 +95,12 @@ suite('Contextual plot commands', () => {
                 assert.strictEqual(viewer.handleCommand.callCount, 1);
                 assert.deepStrictEqual(viewer.handleCommand.firstCall.args, [command, 'plot-id']);
             }
+            invoke('r.plot.showViewers');
+            assert.strictEqual(viewer.show.callCount, 1);
+            assert.deepStrictEqual(viewer.show.firstCall.args, [true]);
+            sinon.assert.calledOnceWithExactly(showJgdViewer, true);
+            sinon.assert.calledOnceWithExactly(showStandardViewer, true);
             sinon.assert.notCalled(fallback);
-            assert.ok(!register.getCalls().some(call => call.args[0] === 'r.plot.showViewers'));
         } finally {
             sandbox.restore();
         }

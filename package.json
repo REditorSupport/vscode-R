@@ -750,6 +750,12 @@
         "icon": "$(zoom-out)"
       },
       {
+        "title": "Show Viewers",
+        "category": "R Plot",
+        "command": "r.plot.showViewers",
+        "icon": "$(versions)"
+      },
+      {
         "title": "Open Httpgd Url",
         "category": "R Plot",
         "command": "r.plot.openUrl",
