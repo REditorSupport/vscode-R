@@ -384,10 +384,16 @@ get_column_def <- function(name, field, value) {
   col_def
 }
 
+dataview_is_arrow_lazy <- function(data) {
+  inherits(data, "Dataset") ||
+    inherits(data, "arrow_dplyr_query")
+}
+
 dataview_is_table <- function(data) {
   is.data.frame(data) ||
     is.matrix(data) ||
     inherits(data, "ArrowTabular") ||
+    dataview_is_arrow_lazy(data) ||
     inherits(data, "polars_data_frame")
 }
 
@@ -395,10 +401,331 @@ dataview_schema <- function(data) {
   if (inherits(data, "ArrowTabular")) {
     return(data$Slice(0L, 0L)$to_data_frame())
   }
+  if (inherits(data, "arrow_dplyr_query")) {
+    return(as.data.frame(utils::head(data, 0L)))
+  }
+  if (dataview_is_arrow_lazy(data)) {
+    return(data[integer(0), ]$to_data_frame())
+  }
   if (inherits(data, "polars_data_frame")) {
     return(as.data.frame(data$slice(0L, 0L)))
   }
   data[0, , drop = FALSE]
+}
+
+dataview_arrow_reader_state <- function() {
+  state <- new.env(parent = emptyenv())
+  state$reader <- NULL
+  state$batch <- NULL
+  state$batch_row <- 0L
+  state$next_row <- 1L
+  state$row_cache <- list()
+  state
+}
+
+dataview_arrow_reader_reset <- function(state) {
+  reader_state <- state$arrow_reader
+  if (!is.null(reader_state$reader)) {
+    try(reader_state$reader$Close(), silent = TRUE)
+  }
+  reader_state$reader <- dataview_arrow_reader_open(state$data)
+  reader_state$batch <- NULL
+  reader_state$batch_row <- 0L
+  reader_state$next_row <- 1L
+}
+
+dataview_arrow_reader_open <- function(data) {
+  if (inherits(data, "arrow_dplyr_query")) {
+    # Scanner$create(query) does not execute ordering or aggregation nodes.
+    return(getExportedValue("arrow", "as_record_batch_reader")(data))
+  }
+  Scanner <- getExportedValue("arrow", "Scanner")
+  Scanner$create(data, batch_size = dataview_arrow_cache_block_size)$ToRecordBatchReader()
+}
+
+dataview_arrow_reader_ensure_batch <- function(reader_state) {
+  if (is.null(reader_state$batch) ||
+        reader_state$batch_row >= nrow(reader_state$batch)) {
+    reader_state$batch <- reader_state$reader$read_next_batch()
+    reader_state$batch_row <- 0L
+  }
+  !is.null(reader_state$batch)
+}
+
+dataview_arrow_reader_take <- function(reader_state, n, collect = TRUE) {
+  pages <- list()
+  while (n > 0L) {
+    if (!dataview_arrow_reader_ensure_batch(reader_state)) {
+      break
+    }
+
+    take <- min(n, nrow(reader_state$batch) - reader_state$batch_row)
+    if (collect) {
+      pages[[length(pages) + 1L]] <-
+        reader_state$batch$Slice(reader_state$batch_row, take)$to_data_frame()
+    }
+    reader_state$batch_row <- reader_state$batch_row + take
+    reader_state$next_row <- reader_state$next_row + take
+    n <- n - take
+  }
+
+  if (!collect) {
+    return(invisible(NULL))
+  }
+  if (length(pages) == 1L) {
+    return(pages[[1L]])
+  }
+  do.call(rbind, pages)
+}
+
+dataview_arrow_reader_select <- function(reader_state, row_idx) {
+  pages <- list()
+  while (length(row_idx)) {
+    if (row_idx[[1L]] > reader_state$next_row) {
+      dataview_arrow_reader_take(
+        reader_state,
+        row_idx[[1L]] - reader_state$next_row,
+        collect = FALSE
+      )
+    }
+    if (!dataview_arrow_reader_ensure_batch(reader_state)) {
+      break
+    }
+
+    batch_last <- reader_state$next_row +
+      nrow(reader_state$batch) - reader_state$batch_row - 1L
+    selected <- row_idx[row_idx <= batch_last]
+    positions <- reader_state$batch_row +
+      selected - reader_state$next_row + 1L
+    pages[[length(pages) + 1L]] <-
+      reader_state$batch[positions, , drop = FALSE]$to_data_frame()
+
+    dataview_arrow_reader_take(
+      reader_state,
+      selected[[length(selected)]] - reader_state$next_row + 1L,
+      collect = FALSE
+    )
+    row_idx <- row_idx[row_idx > batch_last]
+  }
+
+  if (length(pages) == 1L) {
+    return(pages[[1L]])
+  }
+  do.call(rbind, pages)
+}
+
+dataview_arrow_cache_block_size <- 5000L
+dataview_arrow_cache_rows <- 20000L
+
+dataview_arrow_cache_get <- function(reader_state, row_idx) {
+  if (!length(row_idx)) {
+    return(NULL)
+  }
+
+  for (i in seq_along(reader_state$row_cache)) {
+    cached <- reader_state$row_cache[[i]]
+    if (min(row_idx) < cached$first_row || max(row_idx) > cached$last_row) {
+      next
+    }
+
+    cached_idx <- match(row_idx, cached$row_idx)
+    if (all(!is.na(cached_idx))) {
+      reader_state$row_cache <- c(
+        reader_state$row_cache[-i],
+        list(cached)
+      )
+      return(cached$data[cached_idx, , drop = FALSE])
+    }
+  }
+  NULL
+}
+
+dataview_arrow_cache_add <- function(reader_state, row_idx, data) {
+  reader_state$row_cache[[length(reader_state$row_cache) + 1L]] <- list(
+    first_row = min(row_idx),
+    last_row = max(row_idx),
+    row_idx = row_idx,
+    data = data
+  )
+
+  while (length(reader_state$row_cache) > 1L &&
+    sum(vapply(
+      reader_state$row_cache,
+      function(cached) length(cached$row_idx),
+      integer(1)
+    )) > dataview_arrow_cache_rows) {
+    reader_state$row_cache <- reader_state$row_cache[-1L]
+  }
+}
+
+dataview_arrow_cached_slice <- function(state, row_idx) {
+  if (!length(row_idx)) {
+    return(dataview_schema(state$data))
+  }
+
+  reader_state <- state$arrow_reader
+  missing <- rep(TRUE, length(row_idx))
+  pages <- list()
+  positions <- list()
+  touched <- integer()
+
+  for (i in rev(seq_along(reader_state$row_cache))) {
+    cached <- reader_state$row_cache[[i]]
+    remaining <- which(missing)
+    cached_idx <- match(row_idx[remaining], cached$row_idx)
+    matched <- !is.na(cached_idx)
+    if (!any(matched)) {
+      next
+    }
+
+    pages[[length(pages) + 1L]] <-
+      cached$data[cached_idx[matched], , drop = FALSE]
+    positions[[length(positions) + 1L]] <- remaining[matched]
+    missing[remaining[matched]] <- FALSE
+    touched <- c(i, touched)
+    if (!any(missing)) break
+  }
+  if (length(touched)) {
+    reader_state$row_cache <- c(
+      reader_state$row_cache[-touched], reader_state$row_cache[touched]
+    )
+  }
+
+  if (any(missing)) {
+    missing_idx <- row_idx[missing]
+    page <- dataview_arrow_slice(state, missing_idx)
+    pages[[length(pages) + 1L]] <- page
+    positions[[length(positions) + 1L]] <- which(missing)
+  }
+
+  if (length(pages) == 1L) {
+    return(pages[[1L]])
+  }
+
+  page <- do.call(rbind, pages)
+  page[order(unlist(positions)), , drop = FALSE]
+}
+
+dataview_arrow_block_slice <- function(state, row_idx) {
+  reader_state <- state$arrow_reader
+  pages <- list()
+  block_starts <- unique(
+    (row_idx - 1L) %/% dataview_arrow_cache_block_size *
+      dataview_arrow_cache_block_size + 1L
+  )
+
+  for (block_start in block_starts) {
+    block_end <- min(
+      state$total_rows,
+      block_start + dataview_arrow_cache_block_size - 1L
+    )
+    block_row_idx <- seq.int(block_start, block_end)
+    cached <- dataview_arrow_cache_get(reader_state, block_row_idx)
+
+    if (is.null(cached)) {
+      if (block_start < reader_state$next_row) {
+        # A backward miss must not rewind the reader used for forward scrolling.
+        cached <- dataview_slice(state$data, block_row_idx)
+      } else {
+        if (is.null(reader_state$reader)) {
+          dataview_arrow_reader_reset(state)
+        }
+        if (block_start > reader_state$next_row) {
+          dataview_arrow_reader_take(
+            reader_state,
+            block_start - reader_state$next_row,
+            collect = FALSE
+          )
+        }
+        cached <- dataview_arrow_reader_take(
+          reader_state,
+          block_end - block_start + 1L
+        )
+      }
+      dataview_arrow_cache_add(reader_state, block_row_idx, cached)
+    }
+
+    selected <- row_idx[row_idx >= block_start & row_idx <= block_end]
+    pages[[length(pages) + 1L]] <- cached[
+      selected - block_start + 1L,
+      ,
+      drop = FALSE
+    ]
+  }
+
+  if (length(pages) == 1L) {
+    return(pages[[1L]])
+  }
+  do.call(rbind, pages)
+}
+
+dataview_arrow_slice <- function(state, row_idx) {
+  if (!length(row_idx)) {
+    return(dataview_schema(state$data))
+  }
+  if (length(row_idx) > 1L && any(diff(row_idx) <= 0L)) {
+    page <- dataview_slice(state$data, row_idx)
+    dataview_arrow_cache_add(state$arrow_reader, row_idx, page)
+    return(page)
+  }
+
+  first_row <- row_idx[[1L]]
+  reader_state <- state$arrow_reader
+
+  if (length(row_idx) == 1L || all(diff(row_idx) == 1L)) {
+    return(dataview_arrow_block_slice(state, row_idx))
+  }
+
+  cached <- dataview_arrow_cache_get(reader_state, row_idx)
+  if (!is.null(cached)) {
+    return(cached)
+  }
+
+  if (first_row < reader_state$next_row) {
+    page <- dataview_slice(state$data, row_idx)
+    dataview_arrow_cache_add(reader_state, row_idx, page)
+    return(page)
+  }
+  if (is.null(reader_state$reader)) {
+    dataview_arrow_reader_reset(state)
+  }
+  if (first_row > reader_state$next_row) {
+    dataview_arrow_reader_take(
+      reader_state,
+      first_row - reader_state$next_row,
+      collect = FALSE
+    )
+  }
+
+  page <- dataview_arrow_reader_select(reader_state, row_idx)
+  dataview_arrow_cache_add(reader_state, row_idx, page)
+  page
+}
+
+dataview_arrow_query_slice <- function(state, display_idx) {
+  if (!length(display_idx)) {
+    return(dataview_schema(state$data))
+  }
+
+  # Cache by source row, so sorted and filtered views share the same bounded
+  # cache and can reuse rows across model changes and backward scrolling.
+  block_starts <- unique(
+    (display_idx - 1L) %/% dataview_arrow_cache_block_size *
+      dataview_arrow_cache_block_size + 1L
+  )
+  pages <- lapply(block_starts, function(block_start) {
+    block_end <- min(
+      length(state$query_indices), block_start + dataview_arrow_cache_block_size - 1L
+    )
+    block_display_idx <- seq.int(block_start, block_end)
+    page <- dataview_arrow_cached_slice(
+      state, state$query_indices[block_display_idx]
+    )
+    selected <- display_idx[display_idx >= block_start & display_idx <= block_end]
+    page[selected - block_start + 1L, , drop = FALSE]
+  })
+  if (length(pages) == 1L) return(pages[[1L]])
+  do.call(rbind, pages)
 }
 
 dataview_slice <- function(data, row_idx) {
@@ -407,6 +734,20 @@ dataview_slice <- function(data, row_idx) {
       return(data$Slice(0L, 0L)$to_data_frame())
     }
     return(data[row_idx, ]$to_data_frame())
+  }
+  if (dataview_is_arrow_lazy(data)) {
+    if (!length(row_idx)) {
+      return(dataview_schema(data))
+    }
+    if (inherits(data, "arrow_dplyr_query")) {
+      reader_state <- dataview_arrow_reader_state()
+      reader_state$reader <- dataview_arrow_reader_open(data)
+      on.exit(try(reader_state$reader$Close(), silent = TRUE), add = TRUE)
+      selected <- sort(unique(row_idx))
+      page <- dataview_arrow_reader_select(reader_state, selected)
+      return(page[match(row_idx, selected), , drop = FALSE])
+    }
+    return(data[row_idx, , drop = FALSE]$to_data_frame())
   }
   if (inherits(data, "polars_data_frame")) {
     if (!length(row_idx)) {
@@ -431,6 +772,10 @@ dataview_column <- function(data, position) {
   if (inherits(data, "ArrowTabular")) {
     return(as.vector(data[[position]]))
   }
+  if (dataview_is_arrow_lazy(data)) {
+    name <- names(data)[[position]]
+    return(as.data.frame(data[, name, drop = FALSE])[[name]])
+  }
   if (inherits(data, "polars_data_frame")) {
     return(as.data.frame(data[, position])[[1L]])
   }
@@ -442,11 +787,22 @@ dataview_column <- function(data, position) {
 
 dataview_to_state <- function(data) {
   if (!dataview_is_table(data)) {
-    stop("data must be a data frame, matrix, Arrow table, or Polars data frame")
+    stop("data must be a data frame, matrix, Arrow table/dataset/query, or Polars data frame")
   }
 
   n <- nrow(data)
+  if (inherits(data, "arrow_dplyr_query") && (length(n) != 1L || is.na(n))) {
+    # Aggregated/limited queries can report NA; count their executed output
+    # without collecting it into an R data frame.
+    reader <- dataview_arrow_reader_open(data)
+    on.exit(try(reader$Close(), silent = TRUE), add = TRUE)
+    n <- getExportedValue("arrow", "Scanner")$create(reader)$CountRows()
+  }
+  if (length(n) != 1L || is.na(n)) {
+    stop("unable to determine the number of rows in the Arrow query")
+  }
   colnames <- if (inherits(data, "ArrowTabular") ||
+                    dataview_is_arrow_lazy(data) ||
                     inherits(data, "polars_data_frame")) {
     names(data)
   } else {
@@ -487,7 +843,8 @@ dataview_to_state <- function(data) {
     ),
     total_rows = n,
     query_key = NULL,
-    query_indices = NULL
+    query_indices = NULL,
+    arrow_reader = if (dataview_is_arrow_lazy(data)) dataview_arrow_reader_state() else NULL
   )
 }
 
@@ -603,7 +960,11 @@ dataview_match_condition <- function(values, cond) {
     if (inherits(values, "Date")) {
       ds <- as.Date(values)
       d1 <- as.Date(if (is.null(cond$dateFrom)) cond$filter else cond$dateFrom)
-      d2 <- as.Date(if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo)
+      d2 <- if (cond_type == "inRange") {
+        as.Date(if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo)
+      } else {
+        NULL
+      }
     } else {
       ds <- as.POSIXct(values)
       tz <- attr(ds, "tzone", exact = TRUE) %||% ""
@@ -611,10 +972,14 @@ dataview_match_condition <- function(values, cond) {
         if (is.null(cond$dateFrom)) cond$filter else cond$dateFrom,
         tz = tz
       )
-      d2 <- as.POSIXct(
-        if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo,
-        tz = tz
-      )
+      d2 <- if (cond_type == "inRange") {
+        as.POSIXct(
+          if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo,
+          tz = tz
+        )
+      } else {
+        NULL
+      }
     }
     result <- switch(cond_type,
       equals = ds == d1,
@@ -806,8 +1171,20 @@ dataview_query_indices <- function(state, sort_model, filter_model) {
   dataview_apply_sort_model(state, sort_model, row_idx)
 }
 
-dataview_rows <- function(state, row_idx) {
-  page <- dataview_slice(state$data, row_idx)
+dataview_rows <- function(
+  state,
+  row_idx,
+  use_arrow_reader = FALSE,
+  use_arrow_query_cache = FALSE,
+  display_idx = row_idx
+) {
+  page <- if (use_arrow_reader) {
+    dataview_arrow_slice(state, row_idx)
+  } else if (use_arrow_query_cache) {
+    dataview_arrow_query_slice(state, display_idx)
+  } else {
+    dataview_slice(state$data, row_idx)
+  }
   if (is.matrix(page)) {
     page <- as.data.frame(page, optional = TRUE)
   }
@@ -885,7 +1262,15 @@ handle_dataview_page <- function(params) {
   }
 
   list(
-    rows = dataview_rows(state, page_idx),
+    rows = dataview_rows(
+      state,
+      page_idx,
+      use_arrow_reader = dataview_is_arrow_lazy(state$data) &&
+        is.null(state$query_indices),
+      use_arrow_query_cache = dataview_is_arrow_lazy(state$data) &&
+        !is.null(state$query_indices),
+      display_idx = display_idx
+    ),
     totalRows = total,
     totalUnfiltered = state$total_rows,
     lastRow = total
@@ -895,6 +1280,10 @@ handle_dataview_page <- function(params) {
 handle_dataview_dispose <- function(params) {
   view_id <- as.character(params$view_id %||% "")
   if (!is.null(.sess_env$dataviews) && !is.null(.sess_env$dataviews[[view_id]])) {
+    state <- .sess_env$dataviews[[view_id]]
+    if (!is.null(state$arrow_reader) && !is.null(state$arrow_reader$reader)) {
+      try(state$arrow_reader$reader$Close(), silent = TRUE)
+    }
     .sess_env$dataviews[[view_id]] <- NULL
   }
   TRUE

@@ -201,3 +201,289 @@ local({
     ), 2L, info = case_name)
   }
 })
+
+
+# A Dataset stand-in verifies row-fetch counts independently of Arrow.
+local({
+  row_takes <- 0L
+  subset_arrow_lazy <- function(x, i, j, ..., drop = FALSE) {
+    if (!missing(i) && length(i)) {
+      row_takes <<- row_takes + 1L
+    }
+    class_name <- class(x)[[1L]]
+    data <- structure(x, class = "data.frame")
+    if (missing(i)) {
+      return(structure(data[, j, drop = drop], class = c(class_name, "data.frame")))
+    }
+    page <- if (missing(j)) data[i, , drop = FALSE] else data[i, j, drop = drop]
+    list(to_data_frame = function() page)
+  }
+  registerS3method("[", "Dataset", subset_arrow_lazy)
+  on.exit({
+    rm(
+      list = "[.Dataset",
+      envir = get(".__S3MethodsTable__.", envir = asNamespace("base"))
+    )
+  }, add = TRUE)
+
+  for (class_name in "Dataset") {
+    data <- structure(
+      data.frame(
+        id = 1:5,
+        value = c("a", "b", "c", "d", "e"),
+        score = c(5, 4, 3, 2, 1)
+      ),
+      class = c(class_name, "data.frame")
+    )
+
+    expect_true(sess:::dataview_is_table(data), info = class_name)
+    state <- sess:::dataview_to_state(data)
+    expect_equal(state$total_rows, 5L, info = class_name)
+    expect_equal(
+      vapply(state$columns[-1L], function(x) as.character(x$headerName), ""),
+      names(data),
+      info = class_name
+    )
+
+    page <- sess:::dataview_rows(state, 2:3)
+    expect_equal(page[["1"]], 2:3, info = class_name)
+    expect_equal(page[["2"]], c("b", "c"), info = class_name)
+    expect_equal(page[["3"]], c(4, 3), info = class_name)
+
+    filtered <- sess:::dataview_query_indices(
+      state, NULL, list("2" = list(type = "equals", filter = "c"))
+    )
+    expect_equal(filtered, 3L, info = class_name)
+
+    sorted <- sess:::dataview_query_indices(
+      state, list(list(colId = "3", sort = "asc")), NULL
+    )
+    expect_equal(sorted, 5:1, info = class_name)
+  }
+
+  data <- structure(
+    data.frame(id = 1:6000, score = 6000:1),
+    class = c("Dataset", "data.frame")
+  )
+  state <- sess:::dataview_to_state(data)
+  # This data-frame stand-in has R row names; real Dataset objects do not.
+  state$row_index <- NULL
+  sort_model <- list(list(colId = "2", sort = "asc"))
+  state$query_key <- sess:::dataview_query_key(sort_model, NULL)
+  state$query_indices <- sess:::dataview_query_indices(state, sort_model, NULL)
+  row_takes <- 0L
+
+  page1 <- sess:::dataview_rows(
+    state,
+    state$query_indices[1:500],
+    use_arrow_query_cache = TRUE,
+    display_idx = 1:500
+  )
+  page2 <- sess:::dataview_rows(
+    state,
+    state$query_indices[501:1000],
+    use_arrow_query_cache = TRUE,
+    display_idx = 501:1000
+  )
+
+  expect_equal(row_takes, 1L)
+  expect_equal(page1[["0"]], 6000:5501)
+  expect_equal(page1[["2"]], 1:500)
+  expect_equal(page2[["0"]], 5500:5001)
+  expect_equal(page2[["2"]], 501:1000)
+
+  page11 <- sess:::dataview_rows(
+    state,
+    state$query_indices[5001:5500],
+    use_arrow_query_cache = TRUE,
+    display_idx = 5001:5500
+  )
+  expect_equal(row_takes, 2L)
+  expect_equal(page11[["0"]], 1000:501)
+  expect_equal(page11[["2"]], 5001:5500)
+
+  # Returning to an earlier sorted block does not rescan the source.
+  again <- sess:::dataview_rows(
+    state, state$query_indices[1:500], use_arrow_query_cache = TRUE, display_idx = 1:500
+  )
+  expect_equal(again, page1)
+  expect_equal(row_takes, 2L)
+
+  # Reordering cached source rows does not require another data fetch.
+  reversed <- sess:::dataview_arrow_cached_slice(state, 1:6000)
+  expect_equal(reversed$id, 1:6000)
+  expect_equal(row_takes, 2L)
+})
+
+
+# Real Arrow Dataset pages reuse one forward-only reader when Arrow is available.
+if (requireNamespace("arrow", quietly = TRUE)) {
+  local({
+    InMemoryDataset <- getExportedValue("arrow", "InMemoryDataset")
+    data <- InMemoryDataset$create(data.frame(id = 1:1200, value = sprintf("v%04d", 1:1200)))
+    state <- sess:::dataview_to_state(data)
+
+    page1 <- sess:::dataview_rows(state, 1:500, use_arrow_reader = TRUE)
+    reader <- state$arrow_reader$reader
+    page2 <- sess:::dataview_rows(state, 501:1000, use_arrow_reader = TRUE)
+
+    expect_identical(state$arrow_reader$reader, reader)
+    expect_equal(state$arrow_reader$next_row, 1201L)
+    expect_equal(page1[["1"]], 1:500)
+    expect_equal(page2[["1"]], 501:1000)
+
+    cached <- sess:::dataview_rows(state, 101:200, use_arrow_reader = TRUE)
+    expect_identical(state$arrow_reader$reader, reader)
+    expect_equal(state$arrow_reader$next_row, 1201L)
+    expect_equal(cached[["1"]], 101:200)
+
+    sess:::dataview_arrow_reader_reset(state)
+    state$arrow_reader$row_cache <- list()
+    filtered_idx <- seq.int(2L, 1000L, by = 2L)
+    filtered <- sess:::dataview_rows(state, filtered_idx, use_arrow_reader = TRUE)
+    expect_equal(state$arrow_reader$next_row, 1001L)
+    expect_equal(filtered[["1"]], filtered_idx)
+
+    filtered_reader <- state$arrow_reader$reader
+    filtered_next <- sess:::dataview_rows(
+      state, seq.int(1002L, 1200L, by = 2L), use_arrow_reader = TRUE
+    )
+    expect_identical(state$arrow_reader$reader, filtered_reader)
+    expect_equal(state$arrow_reader$next_row, 1201L)
+    expect_equal(filtered_next[["1"]], seq.int(1002L, 1200L, by = 2L))
+
+    state$arrow_reader$reader$Close()
+  })
+
+  local({
+    InMemoryDataset <- getExportedValue("arrow", "InMemoryDataset")
+    data <- InMemoryDataset$create(data.frame(id = 1:25000))
+    state <- sess:::dataview_to_state(data)
+
+    sess:::dataview_rows(state, 1:500, use_arrow_reader = TRUE)
+    sess:::dataview_rows(state, 5001:5500, use_arrow_reader = TRUE)
+    sess:::dataview_rows(state, 10001:10500, use_arrow_reader = TRUE)
+    sess:::dataview_rows(state, 15001:15500, use_arrow_reader = TRUE)
+
+    expect_equal(
+      vapply(state$arrow_reader$row_cache, function(x) x$first_row, integer(1)),
+      c(1L, 5001L, 10001L, 15001L)
+    )
+
+    reader <- state$arrow_reader$reader
+    next_row <- state$arrow_reader$next_row
+    sess:::dataview_rows(state, 1:500, use_arrow_reader = TRUE)
+    expect_identical(state$arrow_reader$reader, reader)
+    expect_equal(state$arrow_reader$next_row, next_row)
+
+    sess:::dataview_rows(state, 20001:20500, use_arrow_reader = TRUE)
+    expect_equal(
+      vapply(state$arrow_reader$row_cache, function(x) x$first_row, integer(1)),
+      c(10001L, 15001L, 1L, 20001L)
+    )
+
+    reader <- state$arrow_reader$reader
+    next_row <- state$arrow_reader$next_row
+    sess:::dataview_rows(state, 1:500, use_arrow_reader = TRUE)
+    expect_identical(state$arrow_reader$reader, reader)
+    expect_equal(state$arrow_reader$next_row, next_row)
+
+    sess:::dataview_rows(state, 5001:5500, use_arrow_reader = TRUE)
+    expect_identical(state$arrow_reader$reader, reader)
+    expect_equal(state$arrow_reader$next_row, next_row)
+
+    state$arrow_reader$reader$Close()
+  })
+
+  # Filtered and sorted display blocks reuse the source-row cache and preserve
+  # row order when pages cross blocks, change models, or partially hit the cache.
+  local({
+    sess_env <- sess:::.sess_env
+    original_views <- sess_env$dataviews
+    view_ids <- character()
+    on.exit({
+      for (view_id in view_ids) sess:::handle_dataview_dispose(list(view_id = view_id))
+      sess_env$dataviews <- original_views
+    }, add = TRUE)
+    df <- data.frame(
+      id = seq_len(50000L),
+      score = (seq_len(50000L) * 7919L) %% 50000L,
+      group = rep(c("a", "b"), 25000L),
+      rank = ordered(rep(c("low", "high", NA, "low"), 12500L), levels = c("low", "high"))
+    )
+    data <- getExportedValue("arrow", "InMemoryDataset")$create(df)
+    view_id <- sess:::dataview_register(data)$view_id
+    expected_id <- sess:::dataview_register(df)$view_id
+    view_ids <- c(view_id, expected_id)
+    compare_page <- function(start, model = list(), size = 500L) {
+      params <- c(list(startRow = start, endRow = start + size), model)
+      actual <- sess:::handle_dataview_page(c(list(view_id = view_id), params))
+      expected <- sess:::handle_dataview_page(c(list(view_id = expected_id), params))
+      expect_equal(actual, expected)
+      cached <- sess:::dataview_get_state(view_id)$arrow_reader$row_cache
+      expect_true(sum(vapply(cached, function(x) length(x$row_idx), integer(1))) <= 20000L)
+    }
+    filter <- list(filterModel = list("3" = list(type = "equals", filter = "b")))
+    sort <- list(sortModel = list(list(colId = "2", sort = "desc")))
+    compare_page(0L, filter)
+    reader_state <- sess:::dataview_get_state(view_id)$arrow_reader
+    reader <- reader_state$reader
+    position <- reader_state$next_row
+    expect_equal(position, 10001L)
+    compare_page(500L, filter)
+    expect_identical(reader_state$reader, reader)
+    expect_equal(reader_state$next_row, position)
+    compare_page(5000L, filter)
+    expect_identical(reader_state$reader, reader)
+    expect_equal(reader_state$next_row, 20001L)
+    compare_page(0L, filter)
+    expect_equal(reader_state$next_row, 20001L)
+
+    for (model in list(sort, c(filter, sort), list(), filter,
+                       list(sortModel = list(list(colId = "4", sort = "asc"))))) {
+      for (start in c(0L, 4990L, 10000L, 20000L, 5000L, 0L)) {
+        compare_page(start, model)
+      }
+    }
+    compare_page(0L, sort, size = 21000L)
+    compare_page(50000L)
+    compare_page(0L, list(filterModel = list("1" = list(type = "lessThan", filter = 0L))))
+  })
+
+  if (requireNamespace("dplyr", quietly = TRUE)) {
+    local({
+      sess_env <- sess:::.sess_env
+      original_views <- sess_env$dataviews
+      view_ids <- character()
+      on.exit({
+        for (view_id in view_ids) sess:::handle_dataview_dispose(list(view_id = view_id))
+        sess_env$dataviews <- original_views
+      }, add = TRUE)
+      data <- getExportedValue("arrow", "InMemoryDataset")$create(data.frame(
+        id = seq_len(12020L), group = rep(c("a", "b"), 6010L)
+      ))
+      query <- dplyr::arrange(data, dplyr::desc(id))
+      grouped <- dplyr::group_by(query, group)
+      aggregated <- dplyr::arrange(
+        dplyr::summarise(dplyr::group_by(data, group), total = sum(id)), group
+      )
+      for (data in list(query, grouped, aggregated)) {
+        view_id <- sess:::dataview_register(data)$view_id
+        expected_df <- as.data.frame(data)
+        expected_id <- sess:::dataview_register(expected_df)$view_id
+        view_ids <- c(view_ids, view_id, expected_id)
+        for (model in list(
+          list(), list(sortModel = list(list(colId = "1", sort = "asc"))),
+          list(filterModel = list("1" = list(type = "equals", filter = expected_df[[1L]][1L])))
+        )) {
+          for (start in c(0L, 5000L, 4990L, 0L, 12020L)) {
+            params <- c(list(startRow = start, endRow = start + 20L), model)
+            actual <- sess:::handle_dataview_page(c(list(view_id = view_id), params))
+            expected <- sess:::handle_dataview_page(c(list(view_id = expected_id), params))
+            expect_equal(actual, expected)
+          }
+        }
+      }
+    })
+  }
+}
