@@ -2037,10 +2037,11 @@
   "scripts": {
     "vscode:prepublish": "node esbuild.js --production",
     "changelog": "npx git-cliff v2.8.5.. -o",
-    "build": "node esbuild.js && Rscript -e \"remotes::install_local('sess', dependencies=TRUE, force=TRUE)\"",
+    "compile": "node esbuild.js",
+    "build": "npm run compile && Rscript -e \"remotes::install_local('sess', dependencies=TRUE, force=TRUE)\"",
     "watch": "node esbuild.js --watch",
     "clean": "rimraf out",
-    "pretest": "npm run clean && tsc -p ./",
+    "pretest": "npm run compile && npm run clean && tsc -p ./",
     "test": "vscode-test",
     "lint": "eslint src --ext ts && Rscript -e \"lintr::lint_package('sess')\""
   },

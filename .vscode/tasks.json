@@ -32,6 +32,11 @@
     },
     {
       "type": "npm",
+      "script": "compile",
+      "problemMatcher": []
+    },
+    {
+      "type": "npm",
       "script": "build",
       "problemMatcher": "$tsc"
     },
@@ -69,8 +74,7 @@
     {
       "type": "npm",
       "script": "pretest",
-      "problemMatcher": "$tsc-watch",
-      "isBackground": true,
+      "problemMatcher": "$tsc",
       "presentation": {
         "reveal": "never"
       },

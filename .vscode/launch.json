@@ -14,9 +14,10 @@
         "--disable-extension", "google.geminicodeassist"
       ],
       "outFiles": [
-        "${workspaceFolder}/out/src/**/*.js"
+        "${workspaceFolder}/dist/**/*.js"
       ],
       "sourceMaps": true,
+      "preLaunchTask": "npm: compile"
     },
     {
       "name": "Launch Extension (--disable-extensions)",
@@ -28,9 +29,10 @@
         "--disable-extensions"
       ],
       "outFiles": [
-        "${workspaceFolder}/out/src/**/*.js"
+        "${workspaceFolder}/dist/**/*.js"
       ],
       "sourceMaps": true,
+      "preLaunchTask": "npm: compile"
     },
     {
       "name": "Extension Tests",
@@ -42,7 +44,8 @@
         "--extensionTestsPath=${workspaceFolder}/out/test/suite/index"
       ],
       "outFiles": [
-        "${workspaceFolder}/out/test/**/*.js"
+        "${workspaceFolder}/dist/**/*.js",
+        "${workspaceFolder}/out/**/*.js"
       ],
       "preLaunchTask": "npm: pretest"
     }
