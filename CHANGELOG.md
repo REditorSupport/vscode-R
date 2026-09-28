@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.1 - 2026-09-28
+
+- Bump version of both the extension and `sess` to `3.0.1` so users who installed an earlier `3.0.0` pre-release build of `sess` (before its connection protocol was finalized) are prompted to reinstall `sess`. (#1794)
+
+**Full Changelog**: <https://github.com/REditorSupport/vscode-R/compare/v3.0.0...v3.0.1>
+
 ## 3.0.0 - 2026-09-27
 
 `v3.0.0` of the R Extension for VS Code is a major release. It introduces a
