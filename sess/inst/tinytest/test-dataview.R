@@ -420,6 +420,37 @@ if (requireNamespace("arrow", quietly = TRUE)) {
   })
 
   local({
+    sess_env <- sess:::.sess_env
+    original_views <- sess_env$dataviews
+    on.exit(sess_env$dataviews <- original_views, add = TRUE)
+
+    InMemoryDataset <- getExportedValue("arrow", "InMemoryDataset")
+    data <- InMemoryDataset$create(data.frame(
+      id = 1:12,
+      logical = rep(c(TRUE, FALSE, NA), 4L)
+    ))
+    view_id <- sess:::dataview_register(data)$view_id
+
+    true_page <- sess:::handle_dataview_page(list(
+      view_id = view_id, startRow = 0L, endRow = 20L,
+      filterModel = list("2" = list(type = "true"))
+    ))
+    expect_true(all(vapply(true_page$rows, function(row) isTRUE(row[["2"]]), logical(1))))
+
+    false_page <- sess:::handle_dataview_page(list(
+      view_id = view_id, startRow = 0L, endRow = 20L,
+      filterModel = list("2" = list(type = "false"))
+    ))
+    expect_true(all(vapply(false_page$rows, function(row) identical(row[["2"]], FALSE), logical(1))))
+
+    true_again <- sess:::handle_dataview_page(list(
+      view_id = view_id, startRow = 0L, endRow = 20L,
+      filterModel = list("2" = list(type = "true"))
+    ))
+    expect_true(all(vapply(true_again$rows, function(row) isTRUE(row[["2"]]), logical(1))))
+  })
+
+  local({
     InMemoryDataset <- getExportedValue("arrow", "InMemoryDataset")
     data <- InMemoryDataset$create(data.frame(id = 1:1200, value = sprintf("v%04d", 1:1200)))
     state <- sess:::dataview_to_state(data)

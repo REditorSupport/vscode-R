@@ -942,6 +942,10 @@ handle_dataview_page <- function(params) {
   if (!identical(query_key, state$query_key)) {
     state$query_key <- query_key
     state$query_indices <- dataview_query_indices(state, sort_model, filter_model)
+    if (dataview_is_arrow_lazy(state$data)) {
+      dataview_arrow_reader_reset(state)
+      state$arrow_reader$row_cache <- list()
+    }
     .sess_env$dataviews[[view_id]] <- state
   }
 
