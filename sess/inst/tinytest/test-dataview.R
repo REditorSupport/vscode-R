@@ -309,10 +309,20 @@ local({
   expect_equal(again, page1)
   expect_equal(row_takes, 2L)
 
-  # Reordering cached source rows does not require another data fetch.
+  # Fill the remaining sorted blocks, then reordering cached source rows
+  # does not require another data fetch.
+  for (start in c(1001L, 2001L, 3001L, 4001L)) {
+    sess:::dataview_rows(
+      state,
+      state$query_indices[start:(start + 999L)],
+      use_arrow_query_cache = TRUE,
+      display_idx = start:(start + 999L)
+    )
+  }
+  expect_equal(row_takes, 6L)
   reversed <- sess:::dataview_arrow_cached_slice(state, 1:6000)
   expect_equal(reversed$id, 1:6000)
-  expect_equal(row_takes, 2L)
+  expect_equal(row_takes, 6L)
 })
 
 
@@ -460,16 +470,17 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     page2 <- sess:::dataview_rows(state, 501:1000, use_arrow_reader = TRUE)
 
     expect_identical(state$arrow_reader$reader, reader)
-    expect_equal(state$arrow_reader$next_row, 1201L)
+    expect_equal(state$arrow_reader$next_row, 1001L)
     expect_equal(page1[["1"]], 1:500)
     expect_equal(page2[["1"]], 501:1000)
 
     cached <- sess:::dataview_rows(state, 101:200, use_arrow_reader = TRUE)
     expect_identical(state$arrow_reader$reader, reader)
-    expect_equal(state$arrow_reader$next_row, 1201L)
+    expect_equal(state$arrow_reader$next_row, 1001L)
     expect_equal(cached[["1"]], 101:200)
 
     sess:::dataview_arrow_reader_reset(state)
+    expect_null(state$arrow_reader$reader)
     state$arrow_reader$row_cache <- list()
     filtered_idx <- seq.int(2L, 1000L, by = 2L)
     filtered <- sess:::dataview_rows(state, filtered_idx, use_arrow_reader = TRUE)
@@ -511,7 +522,7 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     sess:::dataview_rows(state, 20001:20500, use_arrow_reader = TRUE)
     expect_equal(
       vapply(state$arrow_reader$row_cache, function(x) x$first_row, integer(1)),
-      c(10001L, 15001L, 1L, 20001L)
+      c(5001L, 10001L, 15001L, 1L, 20001L)
     )
 
     reader <- state$arrow_reader$reader
@@ -561,15 +572,15 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     reader_state <- sess:::dataview_get_state(view_id)$arrow_reader
     reader <- reader_state$reader
     position <- reader_state$next_row
-    expect_equal(position, 10001L)
+    expect_equal(position, 2001L)
     compare_page(500L, filter)
     expect_identical(reader_state$reader, reader)
     expect_equal(reader_state$next_row, position)
     compare_page(5000L, filter)
     expect_identical(reader_state$reader, reader)
-    expect_equal(reader_state$next_row, 20001L)
+    expect_equal(reader_state$next_row, 12001L)
     compare_page(0L, filter)
-    expect_equal(reader_state$next_row, 20001L)
+    expect_equal(reader_state$next_row, 12001L)
 
     for (model in list(sort, c(filter, sort), list(), filter,
                        list(sortModel = list(list(colId = "4", sort = "asc"))))) {

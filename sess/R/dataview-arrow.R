@@ -40,7 +40,7 @@ dataview_arrow_reader_reset <- function(state) {
   if (!is.null(reader_state$reader)) {
     try(reader_state$reader$Close(), silent = TRUE)
   }
-  reader_state$reader <- dataview_arrow_reader_open(state$data)
+  reader_state$reader <- NULL
   reader_state$batch <- NULL
   reader_state$batch_row <- 0L
   reader_state$next_row <- 1L
@@ -52,7 +52,7 @@ dataview_arrow_reader_open <- function(data) {
     return(getExportedValue("arrow", "as_record_batch_reader")(data))
   }
   Scanner <- getExportedValue("arrow", "Scanner")
-  Scanner$create(data, batch_size = dataview_arrow_cache_block_size)$ToRecordBatchReader()
+  Scanner$create(data, batch_size = dataview_arrow_reader_batch_size)$ToRecordBatchReader()
 }
 
 dataview_arrow_reader_ensure_batch <- function(reader_state) {
@@ -130,7 +130,8 @@ dataview_arrow_reader_select <- function(reader_state, row_idx) {
   do.call(rbind, pages)
 }
 
-dataview_arrow_cache_block_size <- 5000L
+dataview_arrow_reader_batch_size <- 5000L
+dataview_arrow_cache_block_size <- 1000L
 dataview_arrow_cache_rows <- 20000L
 
 dataview_arrow_cache_get <- function(reader_state, row_idx) {
@@ -244,7 +245,7 @@ dataview_arrow_block_slice <- function(state, row_idx) {
         cached <- dataview_slice(state$data, block_row_idx)
       } else {
         if (is.null(reader_state$reader)) {
-          dataview_arrow_reader_reset(state)
+          reader_state$reader <- dataview_arrow_reader_open(state$data)
         }
         if (block_start > reader_state$next_row) {
           dataview_arrow_reader_take(
@@ -303,7 +304,7 @@ dataview_arrow_slice <- function(state, row_idx) {
     return(page)
   }
   if (is.null(reader_state$reader)) {
-    dataview_arrow_reader_reset(state)
+    reader_state$reader <- dataview_arrow_reader_open(state$data)
   }
   if (first_row > reader_state$next_row) {
     dataview_arrow_reader_take(
