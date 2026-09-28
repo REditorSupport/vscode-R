@@ -16,6 +16,9 @@ dataview_arrow_nested_columns <- function(data) {
 }
 
 dataview_arrow_data_frame <- function(data) {
+  old_options <- options(arrow.int64_downcast = FALSE)
+  on.exit(options(old_options), add = TRUE)
+
   page <- as.data.frame(data, optional = TRUE)
   for (position in seq_len(ncol(page))) {
     if (inherits(page[[position]], "vctrs_list_of")) {
@@ -23,6 +26,23 @@ dataview_arrow_data_frame <- function(data) {
     }
   }
   page
+}
+
+dataview_arrow_bind_pages <- function(pages) {
+  if (length(pages) == 1L) {
+    return(pages[[1L]])
+  }
+
+  columns <- lapply(seq_len(ncol(pages[[1L]])), function(position) {
+    do.call(c, lapply(pages, function(page) page[[position]]))
+  })
+  names(columns) <- names(pages[[1L]])
+  n <- sum(vapply(pages, nrow, integer(1)))
+  structure(
+    columns,
+    class = "data.frame",
+    row.names = c(NA_integer_, -n)
+  )
 }
 
 dataview_arrow_reader_state <- function() {
@@ -106,7 +126,7 @@ dataview_arrow_reader_take <- function(reader_state, n, collect = TRUE) {
   if (length(pages) == 1L) {
     return(pages[[1L]])
   }
-  do.call(rbind, pages)
+  dataview_arrow_bind_pages(pages)
 }
 
 dataview_arrow_reader_select <- function(reader_state, row_idx) {
@@ -144,7 +164,7 @@ dataview_arrow_reader_select <- function(reader_state, row_idx) {
   if (length(pages) == 1L) {
     return(pages[[1L]])
   }
-  do.call(rbind, pages)
+  dataview_arrow_bind_pages(pages)
 }
 
 dataview_arrow_reader_batch_size <- 5000L
@@ -312,7 +332,7 @@ dataview_arrow_fragment_slice <- function(state, row_idx) {
   if (length(pages) == 1L) {
     return(pages[[1L]])
   }
-  page <- do.call(rbind, pages)
+  page <- dataview_arrow_bind_pages(pages)
   page[order(unlist(positions)), , drop = FALSE]
 }
 
@@ -402,7 +422,7 @@ dataview_arrow_cached_slice <- function(state, row_idx) {
     return(pages[[1L]])
   }
 
-  page <- do.call(rbind, pages)
+  page <- dataview_arrow_bind_pages(pages)
   page[order(unlist(positions)), , drop = FALSE]
 }
 
@@ -456,7 +476,7 @@ dataview_arrow_block_slice <- function(state, row_idx) {
   if (length(pages) == 1L) {
     return(pages[[1L]])
   }
-  do.call(rbind, pages)
+  dataview_arrow_bind_pages(pages)
 }
 
 dataview_arrow_slice <- function(state, row_idx) {
@@ -511,14 +531,18 @@ dataview_arrow_query_slice <- function(state, display_idx) {
   # continue through one forward reader; sorted/random blocks use fragment-local
   # row positions when the source is a multi-file FileSystemDataset.
   reader_state <- state$arrow_reader
+  block_size <- if (isTRUE(state$query_has_sort)) {
+    dataview_arrow_query_block_size
+  } else {
+    dataview_arrow_cache_block_size
+  }
   block_starts <- unique(
-    (display_idx - 1L) %/% dataview_arrow_query_block_size *
-      dataview_arrow_query_block_size + 1L
+    (display_idx - 1L) %/% block_size * block_size + 1L
   )
   pages <- lapply(block_starts, function(block_start) {
     block_end <- min(
       length(state$query_indices),
-      block_start + dataview_arrow_query_block_size - 1L
+      block_start + block_size - 1L
     )
     cached <- dataview_arrow_query_cache_get(
       reader_state, state$query_key, block_start
@@ -536,5 +560,5 @@ dataview_arrow_query_slice <- function(state, display_idx) {
     cached[selected - block_start + 1L, , drop = FALSE]
   })
   if (length(pages) == 1L) return(pages[[1L]])
-  do.call(rbind, pages)
+  dataview_arrow_bind_pages(pages)
 }

@@ -483,8 +483,15 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     df <- data.frame(
       id = seq_len(n),
       logical_col = rep(c(TRUE, FALSE, NA), length.out = n),
-      date_col = as.Date("2015-01-01") + rep(0:4, length.out = n)
+      date_col = as.Date("2015-01-01") + rep(0:4, length.out = n),
+      datetime_col = as.POSIXct("2015-01-01", tz = "Australia/Sydney") +
+        rep(0:4, length.out = n),
+      difftime_col = as.difftime(rep(0:4, length.out = n), units = "secs")
     )
+    if (requireNamespace("bit64", quietly = TRUE)) {
+      df$int64_col <- bit64::as.integer64("9007199254740993") +
+        bit64::as.integer64(seq_len(n))
+    }
     for (i in seq_len(10L)) {
       rows <- seq.int((i - 1L) * 30L + 1L, i * 30L)
       arrow::write_parquet(
@@ -502,6 +509,12 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     ))
     expect_equal(true_page$totalRows, sum(df$logical_col %in% TRUE))
     expect_true(all(true_page$rows[["2"]] %in% TRUE))
+    if ("int64_col" %in% names(df)) {
+      expect_equal(
+        true_page$rows[[as.character(match("int64_col", names(df)))]],
+        as.character(df$int64_col[df$logical_col %in% TRUE])
+      )
+    }
 
     false_page <- sess:::handle_dataview_page(list(
       view_id = view_id, startRow = 0L, endRow = n,
@@ -519,6 +532,16 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     ))
     expect_equal(date_page$totalRows, sum(df$date_col == target_date))
     expect_true(all(date_page$rows[["3"]] == target_date))
+    expect_true(all(grepl(
+      "^2015-01-03T",
+      date_page$rows[[as.character(match("datetime_col", names(df)))]]
+    )))
+    if ("int64_col" %in% names(df)) {
+      expect_equal(
+        date_page$rows[[as.character(match("int64_col", names(df)))]],
+        as.character(df$int64_col[df$date_col == target_date])
+      )
+    }
 
     reader_state <- sess:::dataview_get_state(view_id)$arrow_reader
     expect_false(is.null(reader_state$reader))
@@ -529,6 +552,12 @@ if (requireNamespace("arrow", quietly = TRUE)) {
       sortModel = list(list(colId = "1", sort = "desc"))
     ))
     expect_equal(sorted_page$rows[["1"]], rev(df$id))
+    if ("int64_col" %in% names(df)) {
+      expect_equal(
+        sorted_page$rows[[as.character(match("int64_col", names(df)))]],
+        rev(as.character(df$int64_col))
+      )
+    }
 
     reader_state <- sess:::dataview_get_state(view_id)$arrow_reader
     expect_null(reader_state$reader)
@@ -652,18 +681,18 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     reader_state <- sess:::dataview_get_state(view_id)$arrow_reader
     reader <- reader_state$reader
     expect_false(is.null(reader))
-    expect_equal(reader_state$next_row, 10001L)
+    expect_equal(reader_state$next_row, 2001L)
     expect_equal(length(reader_state$query_cache), 1L)
     compare_page(500L, filter)
     expect_identical(reader_state$reader, reader)
-    expect_equal(reader_state$next_row, 10001L)
+    expect_equal(reader_state$next_row, 2001L)
     expect_equal(length(reader_state$query_cache), 1L)
     compare_page(5000L, filter)
     expect_identical(reader_state$reader, reader)
-    expect_equal(reader_state$next_row, 20001L)
+    expect_equal(reader_state$next_row, 12001L)
     expect_equal(length(reader_state$query_cache), 2L)
     compare_page(0L, filter)
-    expect_equal(reader_state$next_row, 20001L)
+    expect_equal(reader_state$next_row, 12001L)
     expect_equal(length(reader_state$query_cache), 2L)
 
     for (model in list(sort, c(filter, sort), list(), filter,
