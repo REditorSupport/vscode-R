@@ -5,6 +5,16 @@ dataview_is_arrow_lazy <- function(data) {
     inherits(data, "arrow_dplyr_query")
 }
 
+dataview_arrow_nested_columns <- function(data) {
+  schema <- getExportedValue("arrow", "infer_schema")(data)
+  vapply(schema$fields, function(field) {
+    inherits(
+      field$type,
+      c("ListType", "LargeListType", "FixedSizeListType", "MapType", "StructType")
+    )
+  }, logical(1))
+}
+
 dataview_arrow_reader_state <- function() {
   state <- new.env(parent = emptyenv())
   state$reader <- NULL

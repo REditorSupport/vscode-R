@@ -319,6 +319,33 @@ local({
 # Real Arrow Dataset pages reuse one forward-only reader when Arrow is available.
 if (requireNamespace("arrow", quietly = TRUE)) {
   local({
+    schema <- getExportedValue("arrow", "schema")
+    Table <- getExportedValue("arrow", "Table")
+    InMemoryDataset <- getExportedValue("arrow", "InMemoryDataset")
+    int32 <- getExportedValue("arrow", "int32")
+    utf8 <- getExportedValue("arrow", "utf8")
+    list_of <- getExportedValue("arrow", "list_of")
+    fixed_size_list_of <- getExportedValue("arrow", "fixed_size_list_of")
+    map_of <- getExportedValue("arrow", "map_of")
+    struct <- getExportedValue("arrow", "struct")
+
+    data <- InMemoryDataset$create(Table$create(schema = schema(
+      list_col = list_of(int32()),
+      struct_col = struct(value = int32()),
+      map_col = map_of(utf8(), int32()),
+      fixed_list_col = fixed_size_list_of(int32(), 2L),
+      int_col = int32()
+    )))
+    state <- sess:::dataview_to_state(data)
+
+    for (position in 2:5) {
+      expect_false(state$columns[[position]]$filter)
+      expect_false(state$columns[[position]]$sortable)
+    }
+    expect_true(state$columns[[6L]]$sortable)
+  })
+
+  local({
     InMemoryDataset <- getExportedValue("arrow", "InMemoryDataset")
     data <- InMemoryDataset$create(data.frame(id = 1:1200, value = sprintf("v%04d", 1:1200)))
     state <- sess:::dataview_to_state(data)

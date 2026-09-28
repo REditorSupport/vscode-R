@@ -517,15 +517,23 @@ dataview_to_state <- function(data) {
       dataview_column(schema, position)
     })
   )
+  columns <- .mapply(
+    get_column_def,
+    list(headers, fields, cols),
+    NULL
+  )
+  if (inherits(data, "ArrowTabular") || dataview_is_arrow_lazy(data)) {
+    nested <- dataview_arrow_nested_columns(data)
+    for (position in which(nested)) {
+      columns[[position + 1L]]$filter <- jsonlite::unbox(FALSE)
+      columns[[position + 1L]]$sortable <- jsonlite::unbox(FALSE)
+    }
+  }
 
   list(
     data = data,
     row_index = row_index,
-    columns = .mapply(
-      get_column_def,
-      list(headers, fields, cols),
-      NULL
-    ),
+    columns = columns,
     total_rows = n,
     query_key = NULL,
     query_indices = NULL,
