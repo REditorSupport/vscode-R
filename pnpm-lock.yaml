@@ -120,6 +120,9 @@ importers:
       ovsx:
         specifier: ^0.10.8
         version: 0.10.12(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
+      rimraf:
+        specifier: 3.0.2
+        version: 3.0.2
       sinon:
         specifier: ^15.2.0
         version: 15.2.0
