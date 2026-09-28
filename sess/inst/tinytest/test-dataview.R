@@ -309,8 +309,7 @@ local({
   expect_equal(again, page1)
   expect_equal(row_takes, 2L)
 
-  # Fill the remaining sorted display blocks. Query pages are cached separately
-  # and do not populate the unfiltered source-row cache.
+  # The first 5,000 display rows were prefetched by the first query-cache miss.
   for (start in c(1001L, 2001L, 3001L, 4001L)) {
     sess:::dataview_rows(
       state,
@@ -319,7 +318,7 @@ local({
       display_idx = start:(start + 999L)
     )
   }
-  expect_equal(row_takes, 6L)
+  expect_equal(row_takes, 2L)
   expect_length(state$arrow_reader$row_cache, 0L)
   expect_equal(
     sum(vapply(state$arrow_reader$query_cache, function(x) nrow(x$data), integer(1))),
@@ -332,7 +331,7 @@ local({
     display_idx = 5001:5500
   )
   expect_equal(again11, page11)
-  expect_equal(row_takes, 6L)
+  expect_equal(row_takes, 2L)
 })
 
 
@@ -520,6 +519,21 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     ))
     expect_equal(date_page$totalRows, sum(df$date_col == target_date))
     expect_true(all(date_page$rows[["3"]] == target_date))
+
+    reader_state <- sess:::dataview_get_state(view_id)$arrow_reader
+    expect_false(is.null(reader_state$reader))
+    expect_null(reader_state$fragment_index)
+
+    sorted_page <- sess:::handle_dataview_page(list(
+      view_id = view_id, startRow = 0L, endRow = n,
+      sortModel = list(list(colId = "1", sort = "desc"))
+    ))
+    expect_equal(sorted_page$rows[["1"]], rev(df$id))
+
+    reader_state <- sess:::dataview_get_state(view_id)$arrow_reader
+    expect_null(reader_state$reader)
+    expect_equal(length(reader_state$fragment_index$datasets), 10L)
+    expect_equal(reader_state$fragment_index$ends, seq(30, n, by = 30))
   })
 
   local({
@@ -636,13 +650,20 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     sort <- list(sortModel = list(list(colId = "2", sort = "desc")))
     compare_page(0L, filter)
     reader_state <- sess:::dataview_get_state(view_id)$arrow_reader
-    expect_null(reader_state$reader)
+    reader <- reader_state$reader
+    expect_false(is.null(reader))
+    expect_equal(reader_state$next_row, 10001L)
     expect_equal(length(reader_state$query_cache), 1L)
     compare_page(500L, filter)
+    expect_identical(reader_state$reader, reader)
+    expect_equal(reader_state$next_row, 10001L)
     expect_equal(length(reader_state$query_cache), 1L)
     compare_page(5000L, filter)
+    expect_identical(reader_state$reader, reader)
+    expect_equal(reader_state$next_row, 20001L)
     expect_equal(length(reader_state$query_cache), 2L)
     compare_page(0L, filter)
+    expect_equal(reader_state$next_row, 20001L)
     expect_equal(length(reader_state$query_cache), 2L)
 
     for (model in list(sort, c(filter, sort), list(), filter,

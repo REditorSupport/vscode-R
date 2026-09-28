@@ -33,6 +33,7 @@ dataview_arrow_reader_state <- function() {
   state$next_row <- 1L
   state$row_cache <- list()
   state$query_cache <- list()
+  state$fragment_index <- NULL
   state
 }
 
@@ -148,6 +149,7 @@ dataview_arrow_reader_select <- function(reader_state, row_idx) {
 
 dataview_arrow_reader_batch_size <- 5000L
 dataview_arrow_cache_block_size <- 1000L
+dataview_arrow_query_block_size <- 5000L
 dataview_arrow_cache_rows <- 20000L
 
 dataview_arrow_cache_get <- function(reader_state, row_idx) {
@@ -226,6 +228,134 @@ dataview_arrow_query_cache_add <- function(
     )) > dataview_arrow_cache_rows) {
     reader_state$query_cache <- reader_state$query_cache[-1L]
   }
+}
+
+dataview_arrow_fragment_index <- function(state) {
+  reader_state <- state$arrow_reader
+  if (isFALSE(reader_state$fragment_index)) {
+    return(NULL)
+  }
+  if (!is.null(reader_state$fragment_index)) {
+    return(reader_state$fragment_index)
+  }
+
+  data <- state$data
+  if (!inherits(data, "FileSystemDataset") || length(data$files) < 2L) {
+    reader_state$fragment_index <- FALSE
+    return(NULL)
+  }
+
+  FileSystemDatasetFactory <- getExportedValue(
+    "arrow", "FileSystemDatasetFactory"
+  )
+  fragments <- lapply(data$files, function(path) {
+    tryCatch(
+      FileSystemDatasetFactory$create(
+        data$filesystem,
+        paths = path,
+        format = data$format
+      )$Finish(schema = data$schema),
+      error = function(e) NULL
+    )
+  })
+  if (any(vapply(fragments, is.null, logical(1)))) {
+    reader_state$fragment_index <- FALSE
+    return(NULL)
+  }
+
+  counts <- vapply(
+    fragments,
+    function(fragment) as.numeric(fragment$num_rows),
+    numeric(1)
+  )
+  if (any(!is.finite(counts)) || sum(counts) != state$total_rows) {
+    reader_state$fragment_index <- FALSE
+    return(NULL)
+  }
+
+  keep <- counts > 0
+  fragments <- fragments[keep]
+  counts <- counts[keep]
+  ends <- cumsum(counts)
+  starts <- c(1, head(ends, -1L) + 1)
+
+  reader_state$fragment_index <- list(
+    datasets = fragments,
+    starts = starts,
+    ends = ends
+  )
+  reader_state$fragment_index
+}
+
+dataview_arrow_fragment_slice <- function(state, row_idx) {
+  index <- dataview_arrow_fragment_index(state)
+  if (is.null(index) || !length(row_idx)) {
+    return(NULL)
+  }
+
+  fragment_pos <- findInterval(row_idx - 1, index$ends) + 1L
+  if (any(fragment_pos < 1L | fragment_pos > length(index$datasets))) {
+    return(NULL)
+  }
+
+  pages <- list()
+  positions <- list()
+  for (fragment in unique(fragment_pos)) {
+    position <- which(fragment_pos == fragment)
+    local_idx <- row_idx[position] - index$starts[[fragment]] + 1
+    pages[[length(pages) + 1L]] <- dataview_slice(
+      index$datasets[[fragment]], local_idx
+    )
+    positions[[length(positions) + 1L]] <- position
+  }
+
+  if (length(pages) == 1L) {
+    return(pages[[1L]])
+  }
+  page <- do.call(rbind, pages)
+  page[order(unlist(positions)), , drop = FALSE]
+}
+
+dataview_arrow_query_forward_slice <- function(state, row_idx) {
+  if (!length(row_idx) ||
+      (length(row_idx) > 1L && any(diff(row_idx) <= 0L))) {
+    return(NULL)
+  }
+
+  reader_state <- state$arrow_reader
+  first_row <- row_idx[[1L]]
+  if (first_row < reader_state$next_row) {
+    return(NULL)
+  }
+  if (is.null(reader_state$reader)) {
+    reader_state$reader <- dataview_arrow_reader_open(state$data)
+  }
+  if (first_row > reader_state$next_row) {
+    dataview_arrow_reader_take(
+      reader_state,
+      first_row - reader_state$next_row,
+      collect = FALSE
+    )
+  }
+  dataview_arrow_reader_select(reader_state, row_idx)
+}
+
+dataview_arrow_query_fetch <- function(state, row_idx) {
+  if (!length(row_idx)) {
+    return(dataview_schema(state$data))
+  }
+
+  if (!is.data.frame(state$data)) {
+    page <- dataview_arrow_query_forward_slice(state, row_idx)
+    if (!is.null(page)) {
+      return(page)
+    }
+    page <- dataview_arrow_fragment_slice(state, row_idx)
+    if (!is.null(page)) {
+      return(page)
+    }
+  }
+  dataview_slice(state$data, row_idx)
 }
 
 dataview_arrow_cached_slice <- function(state, row_idx) {
@@ -377,24 +507,26 @@ dataview_arrow_query_slice <- function(state, display_idx) {
     return(dataview_schema(state$data))
   }
 
-  # Filtered/sorted pages are cached by display block for the current query.
-  # Do not treat source scan positions as reusable cache identities.
+  # Prefetch larger display blocks for the current query. Filter-only blocks
+  # continue through one forward reader; sorted/random blocks use fragment-local
+  # row positions when the source is a multi-file FileSystemDataset.
   reader_state <- state$arrow_reader
   block_starts <- unique(
-    (display_idx - 1L) %/% dataview_arrow_cache_block_size *
-      dataview_arrow_cache_block_size + 1L
+    (display_idx - 1L) %/% dataview_arrow_query_block_size *
+      dataview_arrow_query_block_size + 1L
   )
   pages <- lapply(block_starts, function(block_start) {
     block_end <- min(
-      length(state$query_indices), block_start + dataview_arrow_cache_block_size - 1L
+      length(state$query_indices),
+      block_start + dataview_arrow_query_block_size - 1L
     )
     cached <- dataview_arrow_query_cache_get(
       reader_state, state$query_key, block_start
     )
     if (is.null(cached)) {
       block_display_idx <- seq.int(block_start, block_end)
-      cached <- dataview_slice(
-        state$data, state$query_indices[block_display_idx]
+      cached <- dataview_arrow_query_fetch(
+        state, state$query_indices[block_display_idx]
       )
       dataview_arrow_query_cache_add(
         reader_state, state$query_key, block_start, cached
