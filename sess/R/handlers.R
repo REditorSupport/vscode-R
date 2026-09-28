@@ -393,6 +393,11 @@ dataview_is_table <- function(data) {
 }
 
 dataview_schema <- function(data) {
+  if (inherits(data, "ArrowTabular") || dataview_is_arrow_lazy(data)) {
+    old_options <- options(arrow.int64_downcast = FALSE)
+    on.exit(options(old_options), add = TRUE)
+  }
+
   if (inherits(data, "ArrowTabular")) {
     return(data$Slice(0L, 0L)$to_data_frame())
   }
