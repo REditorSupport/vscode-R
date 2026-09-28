@@ -399,13 +399,13 @@ dataview_schema <- function(data) {
   }
 
   if (inherits(data, "ArrowTabular")) {
-    return(data$Slice(0L, 0L)$to_data_frame())
+    return(dataview_arrow_data_frame(data$Slice(0L, 0L)))
   }
   if (inherits(data, "arrow_dplyr_query")) {
-    return(as.data.frame(utils::head(data, 0L)))
+    return(dataview_arrow_data_frame(utils::head(data, 0L)))
   }
   if (dataview_is_arrow_lazy(data)) {
-    return(data[integer(0), ]$to_data_frame())
+    return(dataview_arrow_data_frame(data[integer(0), ]))
   }
   if (inherits(data, "polars_data_frame")) {
     return(as.data.frame(data$slice(0L, 0L)))
@@ -416,9 +416,9 @@ dataview_schema <- function(data) {
 dataview_slice <- function(data, row_idx) {
   if (inherits(data, "ArrowTabular")) {
     if (!length(row_idx)) {
-      return(data$Slice(0L, 0L)$to_data_frame())
+      return(dataview_arrow_data_frame(data$Slice(0L, 0L)))
     }
-    return(data[row_idx, ]$to_data_frame())
+    return(dataview_arrow_data_frame(data[row_idx, ]))
   }
   if (dataview_is_arrow_lazy(data)) {
     if (!length(row_idx)) {
@@ -432,7 +432,7 @@ dataview_slice <- function(data, row_idx) {
       page <- dataview_arrow_reader_select(reader_state, selected)
       return(page[match(row_idx, selected), , drop = FALSE])
     }
-    return(data[row_idx, , drop = FALSE]$to_data_frame())
+    return(dataview_arrow_data_frame(data[row_idx, , drop = FALSE]))
   }
   if (inherits(data, "polars_data_frame")) {
     if (!length(row_idx)) {

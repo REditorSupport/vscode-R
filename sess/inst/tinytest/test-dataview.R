@@ -319,6 +319,29 @@ local({
 # Real Arrow Dataset pages reuse one forward-only reader when Arrow is available.
 if (requireNamespace("arrow", quietly = TRUE)) {
   local({
+    Array <- getExportedValue("arrow", "Array")
+    Table <- getExportedValue("arrow", "Table")
+    int32 <- getExportedValue("arrow", "int32")
+    list_of <- getExportedValue("arrow", "list_of")
+
+    data <- Table$create(
+      list_col = Array$create(
+        list(c(1L, 2L), c(3L, 4L, 5L), integer()),
+        type = list_of(int32())
+      )
+    )
+    state <- sess:::dataview_to_state(data)
+    page <- sess:::dataview_rows(state, 1:3)
+
+    expect_true(is.list(page[["1"]]))
+    expect_false(inherits(page[["1"]], "vctrs_list_of"))
+    expect_equal(page[["1"]][[1L]], c(1L, 2L))
+    expect_silent(jsonlite::toJSON(
+      page, auto_unbox = TRUE, null = "null", force = TRUE, digits = NA
+    ))
+  })
+
+  local({
     schema <- getExportedValue("arrow", "schema")
     Table <- getExportedValue("arrow", "Table")
     InMemoryDataset <- getExportedValue("arrow", "InMemoryDataset")
@@ -366,6 +389,34 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     expect_silent(jsonlite::toJSON(
       page, auto_unbox = TRUE, null = "null", force = TRUE, digits = NA
     ))
+  })
+
+  local({
+    Array <- getExportedValue("arrow", "Array")
+    Table <- getExportedValue("arrow", "Table")
+    InMemoryDataset <- getExportedValue("arrow", "InMemoryDataset")
+    int32 <- getExportedValue("arrow", "int32")
+    list_of <- getExportedValue("arrow", "list_of")
+
+    data <- InMemoryDataset$create(Table$create(
+      id = 1:1200,
+      list_col = Array$create(
+        rep(list(c(1L, 2L), c(3L, 4L)), 600L),
+        type = list_of(int32())
+      )
+    ))
+    state <- sess:::dataview_to_state(data)
+    sess:::dataview_rows(state, 501:1000, use_arrow_reader = TRUE)
+
+    state$query_indices <- 1:100
+    page <- sess:::dataview_arrow_query_slice(state, 1:100)
+
+    expect_true(is.list(page[["list_col"]]))
+    expect_false(inherits(page[["list_col"]], "vctrs_list_of"))
+    expect_silent(jsonlite::toJSON(
+      page, auto_unbox = TRUE, null = "null", force = TRUE, digits = NA
+    ))
+    state$arrow_reader$reader$Close()
   })
 
   local({

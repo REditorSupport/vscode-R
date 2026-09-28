@@ -15,6 +15,16 @@ dataview_arrow_nested_columns <- function(data) {
   }, logical(1))
 }
 
+dataview_arrow_data_frame <- function(data) {
+  page <- as.data.frame(data, optional = TRUE)
+  for (position in seq_len(ncol(page))) {
+    if (inherits(page[[position]], "vctrs_list_of")) {
+      page[[position]] <- as.list(page[[position]])
+    }
+  }
+  page
+}
+
 dataview_arrow_reader_state <- function() {
   state <- new.env(parent = emptyenv())
   state$reader <- NULL
@@ -64,7 +74,9 @@ dataview_arrow_reader_take <- function(reader_state, n, collect = TRUE) {
     take <- min(n, nrow(reader_state$batch) - reader_state$batch_row)
     if (collect) {
       pages[[length(pages) + 1L]] <-
-        reader_state$batch$Slice(reader_state$batch_row, take)$to_data_frame()
+        dataview_arrow_data_frame(
+          reader_state$batch$Slice(reader_state$batch_row, take)
+        )
     }
     reader_state$batch_row <- reader_state$batch_row + take
     reader_state$next_row <- reader_state$next_row + take
@@ -100,7 +112,9 @@ dataview_arrow_reader_select <- function(reader_state, row_idx) {
     positions <- reader_state$batch_row +
       selected - reader_state$next_row + 1L
     pages[[length(pages) + 1L]] <-
-      reader_state$batch[positions, , drop = FALSE]$to_data_frame()
+      dataview_arrow_data_frame(
+        reader_state$batch[positions, , drop = FALSE]
+      )
 
     dataview_arrow_reader_take(
       reader_state,
