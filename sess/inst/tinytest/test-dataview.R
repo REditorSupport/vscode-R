@@ -346,6 +346,29 @@ if (requireNamespace("arrow", quietly = TRUE)) {
   })
 
   local({
+    Table <- getExportedValue("arrow", "Table")
+    StructArray <- getExportedValue("arrow", "StructArray")
+    InMemoryDataset <- getExportedValue("arrow", "InMemoryDataset")
+
+    data <- InMemoryDataset$create(Table$create(
+      id = 1:4,
+      struct_col = StructArray$create(data.frame(
+        value = 11:14,
+        label = c("a", "b", "c", "d")
+      ))
+    ))
+    state <- sess:::dataview_to_state(data)
+    page <- sess:::dataview_rows(state, 1:4, use_arrow_reader = TRUE)
+
+    expect_true(is.list(page[["2"]]))
+    expect_false(is.data.frame(page[["2"]]))
+    expect_equal(page[["2"]][[1L]], list(value = 11L, label = "a"))
+    expect_silent(jsonlite::toJSON(
+      page, auto_unbox = TRUE, null = "null", force = TRUE, digits = NA
+    ))
+  })
+
+  local({
     InMemoryDataset <- getExportedValue("arrow", "InMemoryDataset")
     data <- InMemoryDataset$create(data.frame(id = 1:1200, value = sprintf("v%04d", 1:1200)))
     state <- sess:::dataview_to_state(data)

@@ -599,6 +599,14 @@ dataview_format_column <- function(values) {
     formatted[is.na(values)] <- NA_character_
     return(formatted)
   }
+  if (is.data.frame(values)) {
+    return(lapply(seq_len(nrow(values)), function(row) {
+      lapply(as.list(values[row, , drop = FALSE]), function(value) {
+        value <- dataview_format_column(value)
+        if (length(value) == 1L) value[[1L]] else value
+      })
+    }))
+  }
   if (is.list(values) &&
         (!is.object(values) || inherits(values, "vctrs_list_of"))) {
     return(lapply(values, function(value) {
