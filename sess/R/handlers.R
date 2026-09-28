@@ -591,9 +591,10 @@ dataview_format_column <- function(values) {
     formatted[is.na(values)] <- NA_character_
     return(formatted)
   }
-  if (is.list(values) && !is.object(values)) {
+  if (is.list(values) &&
+        (!is.object(values) || inherits(values, "vctrs_list_of"))) {
     return(lapply(values, function(value) {
-      if (is.complex(value) || (is.list(value) && !is.object(value))) {
+      if (is.complex(value) || is.list(value)) {
         return(dataview_format_column(value))
       }
       value
