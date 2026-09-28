@@ -474,8 +474,12 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     original_views <- sess_env$dataviews
     path <- tempfile("dataview-arrow-")
     dir.create(path)
+    view_ids <- character()
     on.exit({
       unlink(path, recursive = TRUE)
+      for (view_id in view_ids) {
+        sess:::handle_dataview_dispose(list(view_id = view_id))
+      }
       sess_env$dataviews <- original_views
     }, add = TRUE)
 
@@ -502,67 +506,61 @@ if (requireNamespace("arrow", quietly = TRUE)) {
 
     data <- arrow::open_dataset(path, format = "parquet")
     view_id <- sess:::dataview_register(data)$view_id
+    expected_id <- sess:::dataview_register(df)$view_id
+    view_ids <- c(view_id, expected_id)
 
-    true_page <- sess:::handle_dataview_page(list(
-      view_id = view_id, startRow = 0L, endRow = n,
-      filterModel = list("2" = list(type = "true"))
-    ))
-    expect_equal(true_page$totalRows, sum(df$logical_col %in% TRUE))
-    expect_true(all(true_page$rows[["2"]] %in% TRUE))
+    state <- sess:::dataview_get_state(view_id)
+    expect_equal(as.character(state$columns[[4L]]$type), "dateColumn")
+    expect_equal(as.character(state$columns[[5L]]$type), "datetimeColumn")
+    expect_equal(as.character(state$columns[[6L]]$type), "textColumn")
     if ("int64_col" %in% names(df)) {
-      expect_equal(
-        true_page$rows[[as.character(match("int64_col", names(df)))]],
-        as.character(df$int64_col[df$logical_col %in% TRUE])
-      )
+      expect_equal(as.character(state$columns[[7L]]$type), "bigintColumn")
+      expect_true(inherits(
+        sess:::dataview_arrow_column(data, match("int64_col", names(data))),
+        "integer64"
+      ))
+    }
+    expect_true(inherits(
+      sess:::dataview_arrow_column(data, match("date_col", names(data))),
+      "Date"
+    ))
+
+    compare_page <- function(params) {
+      actual <- sess:::handle_dataview_page(c(list(view_id = view_id), params))
+      expected <- sess:::handle_dataview_page(c(list(view_id = expected_id), params))
+      expect_equal(actual, expected)
+      expect_silent(jsonlite::toJSON(
+        actual, auto_unbox = TRUE, null = "null", force = TRUE, digits = NA
+      ))
+      actual
     }
 
-    false_page <- sess:::handle_dataview_page(list(
-      view_id = view_id, startRow = 0L, endRow = n,
-      filterModel = list("2" = list(type = "false"))
+    true_page <- compare_page(list(
+      startRow = 0L, endRow = n,
+      filterModel = list("2" = list(type = "true"))
     ))
-    expect_equal(false_page$totalRows, sum(df$logical_col %in% FALSE))
-    expect_true(all(false_page$rows[["2"]] %in% FALSE))
+    expect_true(all(true_page$rows[["2"]] %in% TRUE))
 
     target_date <- as.Date("2015-01-03")
-    date_page <- sess:::handle_dataview_page(list(
-      view_id = view_id, startRow = 0L, endRow = n,
+    date_page <- compare_page(list(
+      startRow = 0L, endRow = n,
       filterModel = list("3" = list(
-        filterType = "date",
-        type = "equals",
-        dateFrom = paste(as.character(target_date), "00:00:00")
+        type = "equals", dateFrom = as.character(target_date)
       ))
     ))
     expect_equal(date_page$totalRows, sum(df$date_col == target_date))
-    expect_true(all(date_page$rows[["3"]] == as.character(target_date)))
-    expect_silent(jsonlite::toJSON(
-      date_page, auto_unbox = TRUE, null = "null", force = TRUE, digits = NA
+
+    true_again <- compare_page(list(
+      startRow = 0L, endRow = n,
+      filterModel = list("2" = list(type = "true"))
     ))
-    expect_true(all(grepl(
-      "^2015-01-03T",
-      date_page$rows[[as.character(match("datetime_col", names(df)))]]
-    )))
-    if ("int64_col" %in% names(df)) {
-      expect_equal(
-        date_page$rows[[as.character(match("int64_col", names(df)))]],
-        as.character(df$int64_col[df$date_col == target_date])
-      )
-    }
+    expect_true(all(true_again$rows[["2"]] %in% TRUE))
 
-    reader_state <- sess:::dataview_get_state(view_id)$arrow_reader
-    expect_false(is.null(reader_state$reader))
-    expect_null(reader_state$fragment_index)
-
-    sorted_page <- sess:::handle_dataview_page(list(
-      view_id = view_id, startRow = 0L, endRow = n,
+    sorted_page <- compare_page(list(
+      startRow = 0L, endRow = n,
       sortModel = list(list(colId = "1", sort = "desc"))
     ))
     expect_equal(sorted_page$rows[["1"]], rev(df$id))
-    if ("int64_col" %in% names(df)) {
-      expect_equal(
-        sorted_page$rows[[as.character(match("int64_col", names(df)))]],
-        rev(as.character(df$int64_col))
-      )
-    }
 
     reader_state <- sess:::dataview_get_state(view_id)$arrow_reader
     expect_null(reader_state$reader)

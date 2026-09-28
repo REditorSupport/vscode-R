@@ -20,6 +20,27 @@ dataview_arrow_data_frame <- function(data) {
   on.exit(options(old_options), add = TRUE)
 
   page <- as.data.frame(data, optional = TRUE)
+  schema <- tryCatch(
+    getExportedValue("arrow", "infer_schema")(data),
+    error = function(e) NULL
+  )
+  if (!is.null(schema) && inherits(data, "ArrowTabular")) {
+    for (position in seq_len(ncol(page))) {
+      type <- schema$fields[[position]]$type
+      if (inherits(
+        type,
+        c("Int64Type", "Date32Type", "Date64Type", "TimestampType", "DurationType")
+      )) {
+        values <- tryCatch(
+          as.vector(data[[position]]),
+          error = function(e) NULL
+        )
+        if (!is.null(values) && length(values) == nrow(page)) {
+          page[[position]] <- values
+        }
+      }
+    }
+  }
   for (position in seq_len(ncol(page))) {
     if (inherits(page[[position]], "vctrs_list_of")) {
       page[[position]] <- as.list(page[[position]])
@@ -28,13 +49,43 @@ dataview_arrow_data_frame <- function(data) {
   page
 }
 
+dataview_arrow_bind_column <- function(values) {
+  template <- values[[1L]]
+  if (inherits(template, "integer64")) {
+    value <- unlist(lapply(values, unclass), use.names = FALSE)
+    class(value) <- "integer64"
+    return(value)
+  }
+  if (inherits(template, "Date")) {
+    return(structure(
+      unlist(lapply(values, unclass), use.names = FALSE),
+      class = "Date"
+    ))
+  }
+  if (inherits(template, "POSIXct")) {
+    value <- structure(
+      unlist(lapply(values, unclass), use.names = FALSE),
+      class = class(template)
+    )
+    attr(value, "tzone") <- attr(template, "tzone", exact = TRUE)
+    return(value)
+  }
+  if (inherits(template, "difftime")) {
+    return(as.difftime(
+      unlist(lapply(values, unclass), use.names = FALSE),
+      units = attr(template, "units", exact = TRUE)
+    ))
+  }
+  do.call(c, values)
+}
+
 dataview_arrow_bind_pages <- function(pages) {
   if (length(pages) == 1L) {
     return(pages[[1L]])
   }
 
   columns <- lapply(seq_len(ncol(pages[[1L]])), function(position) {
-    do.call(c, lapply(pages, function(page) page[[position]]))
+    dataview_arrow_bind_column(lapply(pages, function(page) page[[position]]))
   })
   names(columns) <- names(pages[[1L]])
   n <- sum(vapply(pages, nrow, integer(1)))
