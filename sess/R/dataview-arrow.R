@@ -25,8 +25,9 @@ dataview_arrow_data_frame <- function(data) {
     error = function(e) NULL
   )
   if (!is.null(schema) && inherits(data, "ArrowTabular")) {
+    fields <- schema$fields
     for (position in seq_len(ncol(page))) {
-      type <- schema$fields[[position]]$type
+      type <- fields[[position]]$type
       if (inherits(
         type,
         c("Int64Type", "Date32Type", "Date64Type", "TimestampType", "DurationType")
@@ -51,6 +52,10 @@ dataview_arrow_data_frame <- function(data) {
 
 dataview_arrow_bind_column <- function(values) {
   template <- values[[1L]]
+  if (is.data.frame(template)) {
+    # Struct columns contain rows, not a list of fields to concatenate.
+    return(dataview_arrow_bind_pages(values))
+  }
   if (inherits(template, "integer64")) {
     value <- unlist(lapply(values, unclass), use.names = FALSE)
     class(value) <- "integer64"
@@ -144,12 +149,13 @@ dataview_arrow_column <- function(data, position) {
 }
 
 dataview_arrow_reader_ensure_batch <- function(reader_state) {
-  if (is.null(reader_state$batch) ||
-        reader_state$batch_row >= nrow(reader_state$batch)) {
+  while (is.null(reader_state$batch) ||
+           reader_state$batch_row >= nrow(reader_state$batch)) {
     reader_state$batch <- reader_state$reader$read_next_batch()
     reader_state$batch_row <- 0L
+    if (is.null(reader_state$batch)) return(FALSE)
   }
-  !is.null(reader_state$batch)
+  TRUE
 }
 
 dataview_arrow_reader_take <- function(reader_state, n, collect = TRUE) {
@@ -268,7 +274,7 @@ dataview_arrow_query_cache_get <- function(reader_state, query_key, block_start)
   for (i in rev(seq_along(reader_state$query_cache))) {
     cached <- reader_state$query_cache[[i]]
     if (!identical(cached$query_key, query_key) ||
-        cached$block_start != block_start) {
+          cached$block_start != block_start) {
       next
     }
     reader_state$query_cache <- c(
@@ -311,7 +317,8 @@ dataview_arrow_fragment_index <- function(state) {
   }
 
   data <- state$data
-  if (!inherits(data, "FileSystemDataset") || length(data$files) < 2L) {
+  files <- if (inherits(data, "FileSystemDataset")) data$files else character()
+  if (length(files) < 2L) {
     reader_state$fragment_index <- FALSE
     return(NULL)
   }
@@ -319,13 +326,22 @@ dataview_arrow_fragment_index <- function(state) {
   FileSystemDatasetFactory <- getExportedValue(
     "arrow", "FileSystemDatasetFactory"
   )
-  fragments <- lapply(data$files, function(path) {
+  filesystem <- data$filesystem
+  format <- data$format
+  schema <- data$schema
+  fields <- names(schema)
+  missing_columns <- vector("list", length(files))
+  fragments <- lapply(seq_along(files), function(i) {
     tryCatch(
-      FileSystemDatasetFactory$create(
-        data$filesystem,
-        paths = path,
-        format = data$format
-      )$Finish(schema = data$schema),
+      {
+        factory <- FileSystemDatasetFactory$create(
+          filesystem,
+          paths = files[[i]],
+          format = format
+        )
+        missing_columns[[i]] <<- setdiff(fields, names(factory$Inspect()))
+        factory$Finish(schema = schema)
+      },
       error = function(e) NULL
     )
   })
@@ -346,14 +362,29 @@ dataview_arrow_fragment_index <- function(state) {
 
   keep <- counts > 0
   fragments <- fragments[keep]
+  missing_columns <- missing_columns[keep]
   counts <- counts[keep]
   ends <- cumsum(counts)
-  starts <- c(1, head(ends, -1L) + 1)
+  starts <- if (length(counts)) c(1, head(ends, -1L) + 1) else numeric()
+
+  # R does not expose a Dataset's fragment partition expressions. A field
+  # absent from a physical file is either a partition constant or a null field
+  # introduced by schema unification. Sample those values from the ORIGINAL
+  # dataset, retaining directory/Hive partitioning and the declared field types.
+  # Only one row per nonempty file and the missing fields are materialized.
+  missing_names <- unique(unlist(missing_columns, use.names = FALSE))
+  partition_values <- if (length(missing_names)) {
+    dataview_slice(data$WithSchema(schema[missing_names]), starts)
+  } else {
+    NULL
+  }
 
   reader_state$fragment_index <- list(
     datasets = fragments,
     starts = starts,
-    ends = ends
+    ends = ends,
+    missing_columns = missing_columns,
+    partition_values = partition_values
   )
   reader_state$fragment_index
 }
@@ -369,33 +400,49 @@ dataview_arrow_fragment_slice <- function(state, row_idx) {
     return(NULL)
   }
 
-  pages <- list()
-  positions <- list()
-  for (fragment in unique(fragment_pos)) {
-    position <- which(fragment_pos == fragment)
-    local_idx <- row_idx[position] - index$starts[[fragment]] + 1
-    pages[[length(pages) + 1L]] <- dataview_slice(
-      index$datasets[[fragment]], local_idx
-    )
-    positions[[length(positions) + 1L]] <- position
+  # Use one Arrow scan over ONLY the selected files, in their source order.
+  # This avoids one scanner/conversion per file for widely scattered sorts.
+  fragments <- sort(unique(fragment_pos))
+  counts <- index$ends[fragments] - index$starts[fragments] + 1
+  starts <- c(1, head(cumsum(counts), -1L) + 1)
+  selected_idx <- row_idx - index$starts[fragment_pos] +
+    starts[match(fragment_pos, fragments)]
+  data <- if (length(fragments) == 1L) {
+    index$datasets[[fragments]]
+  } else {
+    getExportedValue("arrow", "open_dataset")(index$datasets[fragments])
   }
+  page <- dataview_slice(data, selected_idx)
 
-  if (length(pages) == 1L) {
-    return(pages[[1L]])
+  for (name in names(index$partition_values)) {
+    missing <- vapply(index$missing_columns, function(fields) name %in% fields, logical(1))
+    positions <- which(missing[fragment_pos])
+    if (is.data.frame(page[[name]])) {
+      page[[name]][positions, ] <-
+        index$partition_values[[name]][fragment_pos[positions], , drop = FALSE]
+    } else {
+      page[[name]][positions] <- index$partition_values[[name]][fragment_pos[positions]]
+    }
   }
-  page <- dataview_arrow_bind_pages(pages)
-  page[order(unlist(positions)), , drop = FALSE]
+  page
 }
 
 dataview_arrow_query_forward_slice <- function(state, row_idx) {
   if (!length(row_idx) ||
-      (length(row_idx) > 1L && any(diff(row_idx) <= 0L))) {
+        (length(row_idx) > 1L && any(diff(row_idx) <= 0L))) {
     return(NULL)
   }
 
   reader_state <- state$arrow_reader
   first_row <- row_idx[[1L]]
   if (first_row < reader_state$next_row) {
+    return(NULL)
+  }
+  if (inherits(state$data, "FileSystemDataset") &&
+        !isFALSE(reader_state$fragment_index) &&
+        tail(row_idx, 1L) - reader_state$next_row >
+          length(row_idx) + dataview_arrow_reader_batch_size) {
+    # A distant or sparse request should not consume all preceding files.
     return(NULL)
   }
   if (is.null(reader_state$reader)) {
@@ -429,54 +476,6 @@ dataview_arrow_query_fetch <- function(state, row_idx) {
   dataview_slice(state$data, row_idx)
 }
 
-dataview_arrow_cached_slice <- function(state, row_idx) {
-  if (!length(row_idx)) {
-    return(dataview_schema(state$data))
-  }
-
-  reader_state <- state$arrow_reader
-  missing <- rep(TRUE, length(row_idx))
-  pages <- list()
-  positions <- list()
-  touched <- integer()
-
-  for (i in rev(seq_along(reader_state$row_cache))) {
-    cached <- reader_state$row_cache[[i]]
-    remaining <- which(missing)
-    cached_idx <- match(row_idx[remaining], cached$row_idx)
-    matched <- !is.na(cached_idx)
-    if (!any(matched)) {
-      next
-    }
-
-    pages[[length(pages) + 1L]] <-
-      cached$data[cached_idx[matched], , drop = FALSE]
-    positions[[length(positions) + 1L]] <- remaining[matched]
-    missing[remaining[matched]] <- FALSE
-    touched <- c(i, touched)
-    if (!any(missing)) break
-  }
-  if (length(touched)) {
-    reader_state$row_cache <- c(
-      reader_state$row_cache[-touched], reader_state$row_cache[touched]
-    )
-  }
-
-  if (any(missing)) {
-    missing_idx <- row_idx[missing]
-    page <- dataview_arrow_slice(state, missing_idx)
-    pages[[length(pages) + 1L]] <- page
-    positions[[length(positions) + 1L]] <- which(missing)
-  }
-
-  if (length(pages) == 1L) {
-    return(pages[[1L]])
-  }
-
-  page <- dataview_arrow_bind_pages(pages)
-  page[order(unlist(positions)), , drop = FALSE]
-}
-
 dataview_arrow_block_slice <- function(state, row_idx) {
   reader_state <- state$arrow_reader
   pages <- list()
@@ -494,25 +493,7 @@ dataview_arrow_block_slice <- function(state, row_idx) {
     cached <- dataview_arrow_cache_get(reader_state, block_row_idx)
 
     if (is.null(cached)) {
-      if (block_start < reader_state$next_row) {
-        # A backward miss must not rewind the reader used for forward scrolling.
-        cached <- dataview_slice(state$data, block_row_idx)
-      } else {
-        if (is.null(reader_state$reader)) {
-          reader_state$reader <- dataview_arrow_reader_open(state$data)
-        }
-        if (block_start > reader_state$next_row) {
-          dataview_arrow_reader_take(
-            reader_state,
-            block_start - reader_state$next_row,
-            collect = FALSE
-          )
-        }
-        cached <- dataview_arrow_reader_take(
-          reader_state,
-          block_end - block_start + 1L
-        )
-      }
+      cached <- dataview_arrow_query_fetch(state, block_row_idx)
       dataview_arrow_cache_add(reader_state, block_row_idx, cached)
     }
 
@@ -534,13 +515,6 @@ dataview_arrow_slice <- function(state, row_idx) {
   if (!length(row_idx)) {
     return(dataview_schema(state$data))
   }
-  if (length(row_idx) > 1L && any(diff(row_idx) <= 0L)) {
-    page <- dataview_slice(state$data, row_idx)
-    dataview_arrow_cache_add(state$arrow_reader, row_idx, page)
-    return(page)
-  }
-
-  first_row <- row_idx[[1L]]
   reader_state <- state$arrow_reader
 
   if (length(row_idx) == 1L || all(diff(row_idx) == 1L)) {
@@ -552,23 +526,7 @@ dataview_arrow_slice <- function(state, row_idx) {
     return(cached)
   }
 
-  if (first_row < reader_state$next_row) {
-    page <- dataview_slice(state$data, row_idx)
-    dataview_arrow_cache_add(reader_state, row_idx, page)
-    return(page)
-  }
-  if (is.null(reader_state$reader)) {
-    reader_state$reader <- dataview_arrow_reader_open(state$data)
-  }
-  if (first_row > reader_state$next_row) {
-    dataview_arrow_reader_take(
-      reader_state,
-      first_row - reader_state$next_row,
-      collect = FALSE
-    )
-  }
-
-  page <- dataview_arrow_reader_select(reader_state, row_idx)
+  page <- dataview_arrow_query_fetch(state, row_idx)
   dataview_arrow_cache_add(reader_state, row_idx, page)
   page
 }

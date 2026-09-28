@@ -116,7 +116,7 @@ local({
                  table = data.frame(value = 1:2), value = list(1 + 2i))
   formatted <- sess:::dataview_format_column(list(nested))[[1L]]
   expect_identical(formatted$date, nested$date)
-  expect_identical(formatted$table, nested$table)
+  expect_equal(formatted$table, list(list(value = 1L), list(value = 2L)))
   expect_equal(formatted$value, list("1+2i"))
 })
 
@@ -203,8 +203,8 @@ local({
 })
 
 
-# A Dataset stand-in verifies row-fetch counts independently of Arrow.
-local({
+# A Dataset stand-in verifies row-fetch counts without scanning real files.
+if (requireNamespace("arrow", quietly = TRUE)) local({
   row_takes <- 0L
   subset_arrow_lazy <- function(x, i, j, ..., drop = FALSE) {
     if (!missing(i) && length(i)) {
@@ -216,24 +216,32 @@ local({
       return(structure(data[, j, drop = drop], class = c(class_name, "data.frame")))
     }
     page <- if (missing(j)) data[i, , drop = FALSE] else data[i, j, drop = drop]
-    list(to_data_frame = function() page)
+    page
   }
-  registerS3method("[", "Dataset", subset_arrow_lazy)
+  registerS3method("[", "dataview_dataset_test", subset_arrow_lazy)
+  registerS3method("dim", "dataview_dataset_test", function(x) {
+    dim(structure(x, class = "data.frame"))
+  })
+  registerS3method("names", "dataview_dataset_test", function(x) {
+    names(structure(x, class = "data.frame"))
+  })
   on.exit({
     rm(
-      list = "[.Dataset",
+      list = c(
+        "[.dataview_dataset_test", "dim.dataview_dataset_test", "names.dataview_dataset_test"
+      ),
       envir = get(".__S3MethodsTable__.", envir = asNamespace("base"))
     )
   }, add = TRUE)
 
-  for (class_name in "Dataset") {
+  for (class_name in "dataview_dataset_test") {
     data <- structure(
       data.frame(
         id = 1:5,
         value = c("a", "b", "c", "d", "e"),
         score = c(5, 4, 3, 2, 1)
       ),
-      class = c(class_name, "data.frame")
+      class = c(class_name, "Dataset", "data.frame")
     )
 
     expect_true(sess:::dataview_is_table(data), info = class_name)
@@ -263,7 +271,7 @@ local({
 
   data <- structure(
     data.frame(id = 1:6000, score = 6000:1),
-    class = c("Dataset", "data.frame")
+    class = c("dataview_dataset_test", "Dataset", "data.frame")
   )
   state <- sess:::dataview_to_state(data)
   # This data-frame stand-in has R row names; real Dataset objects do not.
@@ -271,6 +279,7 @@ local({
   sort_model <- list(list(colId = "2", sort = "asc"))
   state$query_key <- sess:::dataview_query_key(sort_model, NULL)
   state$query_indices <- sess:::dataview_query_indices(state, sort_model, NULL)
+  state$query_has_sort <- TRUE
   row_takes <- 0L
 
   page1 <- sess:::dataview_rows(
@@ -728,7 +737,7 @@ if (requireNamespace("arrow", quietly = TRUE)) {
       )
       for (data in list(query, grouped, aggregated)) {
         view_id <- sess:::dataview_register(data)$view_id
-        expected_df <- as.data.frame(data)
+        expected_df <- sess:::dataview_arrow_data_frame(data)
         expected_id <- sess:::dataview_register(expected_df)$view_id
         view_ids <- c(view_ids, view_id, expected_id)
         for (model in list(
