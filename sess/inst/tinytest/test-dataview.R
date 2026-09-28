@@ -527,11 +527,16 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     date_page <- sess:::handle_dataview_page(list(
       view_id = view_id, startRow = 0L, endRow = n,
       filterModel = list("3" = list(
-        type = "equals", dateFrom = as.character(target_date)
+        filterType = "date",
+        type = "equals",
+        dateFrom = paste(as.character(target_date), "00:00:00")
       ))
     ))
     expect_equal(date_page$totalRows, sum(df$date_col == target_date))
-    expect_true(all(date_page$rows[["3"]] == target_date))
+    expect_true(all(date_page$rows[["3"]] == as.character(target_date)))
+    expect_silent(jsonlite::toJSON(
+      date_page, auto_unbox = TRUE, null = "null", force = TRUE, digits = NA
+    ))
     expect_true(all(grepl(
       "^2015-01-03T",
       date_page$rows[[as.character(match("datetime_col", names(df)))]]

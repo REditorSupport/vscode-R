@@ -665,9 +665,11 @@ dataview_match_condition <- function(values, cond) {
                inherits(values, "POSIXlt")) {
     if (inherits(values, "Date")) {
       ds <- as.Date(values)
-      d1 <- as.Date(if (is.null(cond$dateFrom)) cond$filter else cond$dateFrom)
+      date_from <- if (is.null(cond$dateFrom)) cond$filter else cond$dateFrom
+      d1 <- as.Date(substr(as.character(date_from), 1L, 10L))
       d2 <- if (cond_type == "inRange") {
-        as.Date(if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo)
+        date_to <- if (is.null(cond$dateTo)) cond$filterTo else cond$dateTo
+        as.Date(substr(as.character(date_to), 1L, 10L))
       } else {
         NULL
       }
@@ -896,12 +898,29 @@ dataview_rows <- function(
   }
   if (is.data.frame(page)) {
     for (position in seq_len(ncol(page))) {
-      if (inherits(page[[position]], "POSIXct") ||
+      column_type <- as.character(state$columns[[position + 1L]]$type)
+      if (identical(column_type, "bigintColumn")) {
+        values <- page[[position]]
+        if (is.double(values) && !inherits(values, "integer64")) {
+          class(values) <- "integer64"
+        }
+        page[[position]] <- as.character(values)
+      } else if (identical(column_type, "dateColumn")) {
+        values <- page[[position]]
+        if (inherits(values, "Date")) {
+          page[[position]] <- format(values, "%Y-%m-%d")
+        } else if (is.numeric(values)) {
+          page[[position]] <- format(
+            as.Date(values, origin = "1970-01-01"),
+            "%Y-%m-%d"
+          )
+        } else {
+          page[[position]] <- as.character(values)
+        }
+      } else if (inherits(page[[position]], "POSIXct") ||
             inherits(page[[position]], "POSIXlt")) {
         page[[position]] <- format(page[[position]], "%Y-%m-%dT%H:%M:%S")
-      } else if (inherits(page[[position]], "integer64")) {
-        page[[position]] <- as.character(page[[position]])
-      } else if (state$columns[[position + 1L]]$type == "textColumn") {
+      } else if (identical(column_type, "textColumn")) {
         page[[position]] <- dataview_format_column(page[[position]])
       }
     }
