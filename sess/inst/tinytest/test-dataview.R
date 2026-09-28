@@ -309,8 +309,8 @@ local({
   expect_equal(again, page1)
   expect_equal(row_takes, 2L)
 
-  # Fill the remaining sorted blocks, then reordering cached source rows
-  # does not require another data fetch.
+  # Fill the remaining sorted display blocks. Query pages are cached separately
+  # and do not populate the unfiltered source-row cache.
   for (start in c(1001L, 2001L, 3001L, 4001L)) {
     sess:::dataview_rows(
       state,
@@ -320,8 +320,18 @@ local({
     )
   }
   expect_equal(row_takes, 6L)
-  reversed <- sess:::dataview_arrow_cached_slice(state, 1:6000)
-  expect_equal(reversed$id, 1:6000)
+  expect_length(state$arrow_reader$row_cache, 0L)
+  expect_equal(
+    sum(vapply(state$arrow_reader$query_cache, function(x) nrow(x$data), integer(1))),
+    6000L
+  )
+  again11 <- sess:::dataview_rows(
+    state,
+    state$query_indices[5001:5500],
+    use_arrow_query_cache = TRUE,
+    display_idx = 5001:5500
+  )
+  expect_equal(again11, page11)
   expect_equal(row_takes, 6L)
 })
 
@@ -445,19 +455,71 @@ if (requireNamespace("arrow", quietly = TRUE)) {
       view_id = view_id, startRow = 0L, endRow = 20L,
       filterModel = list("2" = list(type = "true"))
     ))
-    expect_true(all(vapply(true_page$rows, function(row) isTRUE(row[["2"]]), logical(1))))
+    expect_true(all(true_page$rows[["2"]] %in% TRUE))
 
     false_page <- sess:::handle_dataview_page(list(
       view_id = view_id, startRow = 0L, endRow = 20L,
       filterModel = list("2" = list(type = "false"))
     ))
-    expect_true(all(vapply(false_page$rows, function(row) identical(row[["2"]], FALSE), logical(1))))
+    expect_true(all(false_page$rows[["2"]] %in% FALSE))
 
     true_again <- sess:::handle_dataview_page(list(
       view_id = view_id, startRow = 0L, endRow = 20L,
       filterModel = list("2" = list(type = "true"))
     ))
-    expect_true(all(vapply(true_again$rows, function(row) isTRUE(row[["2"]]), logical(1))))
+    expect_true(all(true_again$rows[["2"]] %in% TRUE))
+  })
+
+  local({
+    sess_env <- sess:::.sess_env
+    original_views <- sess_env$dataviews
+    path <- tempfile("dataview-arrow-")
+    dir.create(path)
+    on.exit({
+      unlink(path, recursive = TRUE)
+      sess_env$dataviews <- original_views
+    }, add = TRUE)
+
+    n <- 300L
+    df <- data.frame(
+      id = seq_len(n),
+      logical_col = rep(c(TRUE, FALSE, NA), length.out = n),
+      date_col = as.Date("2015-01-01") + rep(0:4, length.out = n)
+    )
+    for (i in seq_len(10L)) {
+      rows <- seq.int((i - 1L) * 30L + 1L, i * 30L)
+      arrow::write_parquet(
+        df[rows, , drop = FALSE],
+        file.path(path, sprintf("part-%02d.parquet", i))
+      )
+    }
+
+    data <- arrow::open_dataset(path, format = "parquet")
+    view_id <- sess:::dataview_register(data)$view_id
+
+    true_page <- sess:::handle_dataview_page(list(
+      view_id = view_id, startRow = 0L, endRow = n,
+      filterModel = list("2" = list(type = "true"))
+    ))
+    expect_equal(true_page$totalRows, sum(df$logical_col %in% TRUE))
+    expect_true(all(true_page$rows[["2"]] %in% TRUE))
+
+    false_page <- sess:::handle_dataview_page(list(
+      view_id = view_id, startRow = 0L, endRow = n,
+      filterModel = list("2" = list(type = "false"))
+    ))
+    expect_equal(false_page$totalRows, sum(df$logical_col %in% FALSE))
+    expect_true(all(false_page$rows[["2"]] %in% FALSE))
+
+    target_date <- as.Date("2015-01-03")
+    date_page <- sess:::handle_dataview_page(list(
+      view_id = view_id, startRow = 0L, endRow = n,
+      filterModel = list("3" = list(
+        type = "equals", dateFrom = as.character(target_date)
+      ))
+    ))
+    expect_equal(date_page$totalRows, sum(df$date_col == target_date))
+    expect_true(all(date_page$rows[["3"]] == target_date))
   })
 
   local({
@@ -538,8 +600,8 @@ if (requireNamespace("arrow", quietly = TRUE)) {
     state$arrow_reader$reader$Close()
   })
 
-  # Filtered and sorted display blocks reuse the source-row cache and preserve
-  # row order when pages cross blocks, change models, or partially hit the cache.
+  # Filtered and sorted display blocks use a query-local display cache and
+  # preserve row order across page boundaries and model changes.
   local({
     sess_env <- sess:::.sess_env
     original_views <- sess_env$dataviews
@@ -563,24 +625,25 @@ if (requireNamespace("arrow", quietly = TRUE)) {
       actual <- sess:::handle_dataview_page(c(list(view_id = view_id), params))
       expected <- sess:::handle_dataview_page(c(list(view_id = expected_id), params))
       expect_equal(actual, expected)
-      cached <- sess:::dataview_get_state(view_id)$arrow_reader$row_cache
-      expect_true(sum(vapply(cached, function(x) length(x$row_idx), integer(1))) <= 20000L)
+      reader_state <- sess:::dataview_get_state(view_id)$arrow_reader
+      expect_true(sum(vapply(
+        reader_state$query_cache,
+        function(x) nrow(x$data),
+        integer(1)
+      )) <= 20000L)
     }
     filter <- list(filterModel = list("3" = list(type = "equals", filter = "b")))
     sort <- list(sortModel = list(list(colId = "2", sort = "desc")))
     compare_page(0L, filter)
     reader_state <- sess:::dataview_get_state(view_id)$arrow_reader
-    reader <- reader_state$reader
-    position <- reader_state$next_row
-    expect_equal(position, 2001L)
+    expect_null(reader_state$reader)
+    expect_equal(length(reader_state$query_cache), 1L)
     compare_page(500L, filter)
-    expect_identical(reader_state$reader, reader)
-    expect_equal(reader_state$next_row, position)
+    expect_equal(length(reader_state$query_cache), 1L)
     compare_page(5000L, filter)
-    expect_identical(reader_state$reader, reader)
-    expect_equal(reader_state$next_row, 12001L)
+    expect_equal(length(reader_state$query_cache), 2L)
     compare_page(0L, filter)
-    expect_equal(reader_state$next_row, 12001L)
+    expect_equal(length(reader_state$query_cache), 2L)
 
     for (model in list(sort, c(filter, sort), list(), filter,
                        list(sortModel = list(list(colId = "4", sort = "asc"))))) {

@@ -457,6 +457,9 @@ dataview_column <- function(data, position) {
   if (inherits(data, "ArrowTabular")) {
     return(as.vector(data[[position]]))
   }
+  if (inherits(data, "Dataset") && !is.data.frame(data)) {
+    return(dataview_arrow_column(data, position))
+  }
   if (dataview_is_arrow_lazy(data)) {
     name <- names(data)[[position]]
     return(as.data.frame(data[, name, drop = FALSE])[[name]])
@@ -945,6 +948,7 @@ handle_dataview_page <- function(params) {
     if (dataview_is_arrow_lazy(state$data)) {
       dataview_arrow_reader_reset(state)
       state$arrow_reader$row_cache <- list()
+      state$arrow_reader$query_cache <- list()
     }
     .sess_env$dataviews[[view_id]] <- state
   }

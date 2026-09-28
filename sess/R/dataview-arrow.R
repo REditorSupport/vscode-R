@@ -32,6 +32,7 @@ dataview_arrow_reader_state <- function() {
   state$batch_row <- 0L
   state$next_row <- 1L
   state$row_cache <- list()
+  state$query_cache <- list()
   state
 }
 
@@ -53,6 +54,21 @@ dataview_arrow_reader_open <- function(data) {
   }
   Scanner <- getExportedValue("arrow", "Scanner")
   Scanner$create(data, batch_size = dataview_arrow_reader_batch_size)$ToRecordBatchReader()
+}
+
+dataview_arrow_column <- function(data, position) {
+  old_options <- options(arrow.int64_downcast = FALSE)
+  on.exit(options(old_options), add = TRUE)
+
+  name <- names(data)[[position]]
+  Scanner <- getExportedValue("arrow", "Scanner")
+  reader <- Scanner$create(
+    data,
+    projection = name,
+    batch_size = dataview_arrow_reader_batch_size
+  )$ToRecordBatchReader()
+  on.exit(try(reader$Close(), silent = TRUE), add = TRUE)
+  dataview_arrow_data_frame(reader$read_table())[[name]]
 }
 
 dataview_arrow_reader_ensure_batch <- function(reader_state) {
@@ -172,6 +188,43 @@ dataview_arrow_cache_add <- function(reader_state, row_idx, data) {
       integer(1)
     )) > dataview_arrow_cache_rows) {
     reader_state$row_cache <- reader_state$row_cache[-1L]
+  }
+}
+
+dataview_arrow_query_cache_get <- function(reader_state, query_key, block_start) {
+  for (i in rev(seq_along(reader_state$query_cache))) {
+    cached <- reader_state$query_cache[[i]]
+    if (!identical(cached$query_key, query_key) ||
+        cached$block_start != block_start) {
+      next
+    }
+    reader_state$query_cache <- c(
+      reader_state$query_cache[-i],
+      list(cached)
+    )
+    return(cached$data)
+  }
+  NULL
+}
+
+dataview_arrow_query_cache_add <- function(
+  reader_state,
+  query_key,
+  block_start,
+  data
+) {
+  reader_state$query_cache[[length(reader_state$query_cache) + 1L]] <- list(
+    query_key = query_key,
+    block_start = block_start,
+    data = data
+  )
+  while (length(reader_state$query_cache) > 1L &&
+    sum(vapply(
+      reader_state$query_cache,
+      function(cached) nrow(cached$data),
+      integer(1)
+    )) > dataview_arrow_cache_rows) {
+    reader_state$query_cache <- reader_state$query_cache[-1L]
   }
 }
 
@@ -324,8 +377,9 @@ dataview_arrow_query_slice <- function(state, display_idx) {
     return(dataview_schema(state$data))
   }
 
-  # Cache by source row, so sorted and filtered views share the same bounded
-  # cache and can reuse rows across model changes and backward scrolling.
+  # Filtered/sorted pages are cached by display block for the current query.
+  # Do not treat source scan positions as reusable cache identities.
+  reader_state <- state$arrow_reader
   block_starts <- unique(
     (display_idx - 1L) %/% dataview_arrow_cache_block_size *
       dataview_arrow_cache_block_size + 1L
@@ -334,12 +388,20 @@ dataview_arrow_query_slice <- function(state, display_idx) {
     block_end <- min(
       length(state$query_indices), block_start + dataview_arrow_cache_block_size - 1L
     )
-    block_display_idx <- seq.int(block_start, block_end)
-    page <- dataview_arrow_cached_slice(
-      state, state$query_indices[block_display_idx]
+    cached <- dataview_arrow_query_cache_get(
+      reader_state, state$query_key, block_start
     )
+    if (is.null(cached)) {
+      block_display_idx <- seq.int(block_start, block_end)
+      cached <- dataview_slice(
+        state$data, state$query_indices[block_display_idx]
+      )
+      dataview_arrow_query_cache_add(
+        reader_state, state$query_key, block_start, cached
+      )
+    }
     selected <- display_idx[display_idx >= block_start & display_idx <= block_end]
-    page[selected - block_start + 1L, , drop = FALSE]
+    cached[selected - block_start + 1L, , drop = FALSE]
   })
   if (length(pages) == 1L) return(pages[[1L]])
   do.call(rbind, pages)
