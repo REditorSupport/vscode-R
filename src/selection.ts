@@ -114,44 +114,6 @@ function isQuote(c: string) {
 }
 
 /**
- * Finds an open quote from a prior line so selection can begin at its opening line.
- */
-function findOpenQuoteStartLine(
-    line: number,
-    getLine: (line: number) => string
-): number | undefined {
-    let quoteChar = '';
-    let quoteStartLine: number | undefined;
-
-    for (let currentLine = 0; currentLine < line; currentLine++) {
-        const text = getLine(currentLine);
-        for (let i = 0; i < text.length; i++) {
-            const char = text[i];
-            if (quoteChar === '') {
-                if (char === '#') {
-                    break;
-                }
-                if (isQuote(char)) {
-                    quoteChar = char;
-                    quoteStartLine = currentLine;
-                }
-            } else if (char === quoteChar) {
-                let backslashCount = 0;
-                for (let previous = i - 1; previous >= 0 && text[previous] === '\\'; previous--) {
-                    backslashCount++;
-                }
-                if (backslashCount % 2 === 0) {
-                    quoteChar = '';
-                    quoteStartLine = undefined;
-                }
-            }
-        }
-    }
-
-    return quoteStartLine;
-}
-
-/**
  * From a given position, return the 'next' character, its position in the document,
  * whether it is start/end of a code line (possibly broken over multiple text lines), and whether it is the
  * start/end of the file. Considers the start and end of each line to be special distinct characters.
@@ -248,11 +210,6 @@ export function extendSelection(line: number, getLine: (line: number) => string,
     startLine: number;
     endLine: number;
 } {
-    const quoteStartLine = findOpenQuoteStartLine(line, getLine);
-    if (quoteStartLine !== undefined) {
-        return extendSelection(quoteStartLine, getLine, lineCount);
-    }
-
     const lc = new LineCache(getLine, lineCount);
     const getLineFromCache = (x: number) => lc.getLineFromCache(x);
     const getEndsInOperatorFromCache = (x: number) => lc.getEndsInOperatorFromCache(x);
