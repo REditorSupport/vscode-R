@@ -574,7 +574,7 @@ suite('extendSelection Tests', () => {
     });
 
     test('Selecting multi-line string from its first line', () => {
-        const doc = ['x <- "', 'a', '"'];
+        const doc = ['x <- "', 'a', '"', 'y <- 1'];
         function f(i: number) { return doc[i]; }
         assert.deepStrictEqual(extendSelection(0, f, doc.length), { startLine: 0, endLine: 2 });
     });
