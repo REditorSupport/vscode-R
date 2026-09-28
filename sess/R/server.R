@@ -9,7 +9,8 @@
 #'   unexpected disconnect waits for a replacement endpoint in that file and
 #'   reconnects with the same runtime options and session identity. The optional
 #'   discovery jgdSocket string updates JGD_SOCKET when use_jgd is TRUE; an empty
-#'   string clears it, and an omitted field leaves it unchanged.
+#'   string clears it, and an omitted field leaves it unchanged. Set
+#'   `options(sess.quiet = TRUE)` to suppress the successful connection message.
 #' @export
 connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
   # Invalidate poll callbacks and restore a previous runtime before reconnecting.
@@ -54,10 +55,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
     }
   }
 
-  print_async_msg <- function(msg) {
-    prompt <- if (interactive()) getOption("prompt") else ""
-    cat(sprintf("\r%s\n\n%s", msg, prompt))
-  }
+  print_async_msg <- function(msg) cat(sprintf("\r%s\n\n", msg))
 
   do_connect <- function() {
     con <- tryCatch(
@@ -76,7 +74,9 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
 
     if (is.null(.sess_env$con)) return(FALSE)
 
-    print_async_msg("[sess] Connected to VS Code")
+    if (!isTRUE(getOption("sess.quiet"))) {
+      print_async_msg("[sess] Connected to VS Code")
+    }
 
     # Start the polling loop
     poll_connection(.sess_env$transport_generation)
