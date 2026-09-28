@@ -72,7 +72,7 @@ export class LanguageService implements Disposable {
         const use_stdio = this.config.get<boolean>('lsp.use_stdio');
         const env = Object.create(process.env) as NodeJS.ProcessEnv;
         env.VSCR_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
-        env.VSCR_LIB_PATHS = getRLibPaths();
+        env.VSCR_LIB_PATHS = getRLibPaths(resource);
         env.VSCR_USE_RENV_LIB_PATH = useRenvLibPath ? 'TRUE' : 'FALSE';
 
         const lang = this.config.get<string>('lsp.lang');

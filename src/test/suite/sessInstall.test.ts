@@ -79,6 +79,18 @@ suite('Sess Install Test Suite', () => {
         assert.strictEqual(showMessageStub.called, false);
     });
 
+    test('promptToInstallSessPackage checks the resource-scoped libraries', async () => {
+        const resource = vscode.Uri.file(path.join(path.sep, 'workspace', 'project'));
+        const configStub = sandbox.stub().returns({ get: () => true } as unknown as vscode.WorkspaceConfiguration);
+        const getVersionStub = sandbox.stub().resolves('0.1.0');
+        const readFileStub = sandbox.stub(util, 'readFileSyncSafe').returns('Package: sess\nVersion: 0.1.0\n');
+
+        await util.promptToInstallSessPackage(resource, configStub, getVersionStub, readFileStub);
+
+        assert.ok(configStub.calledWith(resource));
+        assert.ok(getVersionStub.calledWith('sess', resource));
+    });
+
     test('sess package version matches extension version', () => {
         const packageJsonPath = path.join(extension_root, 'package.json');
         const descriptionPath = path.join(extension_root, 'sess', 'DESCRIPTION');

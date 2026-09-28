@@ -214,24 +214,33 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
         cwd: workspaceFolderPath,
     };
     const newRprofile = extensionContext.asAbsolutePath(path.join('R', 'profile.R'));
-    if (config().get<boolean>('sessionWatcher')) {
-        const pipePath = await getGlobalPipePath();
-        const discoveryFile = await createSessionDiscoveryFile(pipePath);
-        const backend = resolveBackend();
+    const libPaths = util.getRLibPaths(configResource);
+    const sessionWatcher = currentConfig.get<boolean>('sessionWatcher');
+    if (sessionWatcher || libPaths) {
         termOptions.env = {
             R_PROFILE_USER_OLD: process.env.R_PROFILE_USER,
             R_PROFILE_USER: newRprofile,
+            VSCR_LIB_PATHS: libPaths,
+        };
+    }
+    if (sessionWatcher) {
+        const pipePath = await getGlobalPipePath();
+        const discoveryFile = await createSessionDiscoveryFile(pipePath);
+        const backend = resolveBackend();
+        const env = termOptions.env ?? {};
+        Object.assign(env, {
             // Remove inherited endpoint overrides so the per-terminal discovery file
             // remains authoritative, including after a VS Code window reload.
             SESS_ENDPOINT: null,
             SESS_DISCOVERY_FILE: discoveryFile,
-            SESS_RSTUDIOAPI: config().get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
+            SESS_RSTUDIOAPI: currentConfig.get<boolean>('session.emulateRStudioAPI') ? 'TRUE' : 'FALSE',
             SESS_PLOT_BACKEND: backend,
-        };
+        });
         if (jgdEnabled(backend)) {
             const jgdVars = (globalPlotManager as CommonPlotManager)?.getJgdEnvVars() ?? {};
-            Object.assign(termOptions.env, jgdVars);
+            Object.assign(env, jgdVars);
         }
+        termOptions.env = env;
     }
     return termOptions;
 }

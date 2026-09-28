@@ -124,6 +124,22 @@ suite('R Terminal', () => {
         }
     });
 
+    test('makeTerminalOptions exposes resource-scoped library paths', async () => {
+        const resource = vscode.Uri.file(path.join(path.sep, 'workspace', 'project'));
+        sandbox.stub(util, 'getCurrentWorkspaceFolder').returns({ uri: resource } as vscode.WorkspaceFolder);
+        sandbox.stub(util, 'config').returns(configuration({
+            libPaths: ['${workspaceFolder}/editor-library'],
+            sessionWatcher: false,
+        }));
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+
+        const options = await rTerminal.makeTerminalOptions(resource);
+
+        assert.strictEqual(options.env?.['VSCR_LIB_PATHS'], path.join(resource.fsPath, 'editor-library'));
+        assert.ok(options.env?.['R_PROFILE_USER']?.endsWith(path.join('R', 'profile.R')));
+        assert.strictEqual(options.env?.['SESS_DISCOVERY_FILE'], undefined);
+    });
+
     test('deleteTerminal removes only its discovery file after an explicit terminal close', async () => {
         const endpoint = await session.getGlobalPipePath();
         const discoveryFile = await session.createSessionDiscoveryFile(endpoint);

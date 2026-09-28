@@ -1,4 +1,4 @@
-import { Memento, window } from 'vscode';
+import { Memento, Uri, window } from 'vscode';
 import * as nodeFetch from 'node-fetch';
 import * as cp from 'child_process';
 
@@ -40,6 +40,7 @@ export class HelpProvider {
     }
 
     public launchRHelpServer(): ChildProcessWithPort{
+        const resource = this.cwd ? Uri.file(this.cwd) : undefined;
         const lim = '---vsc---';
         const portRegex = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
 
@@ -61,9 +62,9 @@ export class HelpProvider {
             cwd: this.cwd,
             env: {
                 ...process.env,
-                VSCR_LIB_PATHS: getRLibPaths(),
+                VSCR_LIB_PATHS: getRLibPaths(resource),
                 VSCR_LIM: lim,
-                VSCR_USE_RENV_LIB_PATH: config().get<boolean>('useRenvLibPath') ? 'TRUE' : 'FALSE'
+                VSCR_USE_RENV_LIB_PATH: config(resource).get<boolean>('useRenvLibPath') ? 'TRUE' : 'FALSE'
             },
         };
 
@@ -246,14 +247,15 @@ export class AliasProvider {
 
     // call R script `getAliases.R` and parse the output
     private async getAliasesFromR(): Promise<undefined | AllPackageAliases> {
+        const resource = this.cwd ? Uri.file(this.cwd) : undefined;
         const lim = '---vsc---';
         const options: cp.CommonOptions = {
             cwd: this.cwd,
             env: {
                 ...process.env,
-                VSCR_LIB_PATHS: getRLibPaths(),
+                VSCR_LIB_PATHS: getRLibPaths(resource),
                 VSCR_LIM: lim,
-                VSCR_USE_RENV_LIB_PATH: config().get<boolean>('useRenvLibPath') ? 'TRUE' : 'FALSE'
+                VSCR_USE_RENV_LIB_PATH: config(resource).get<boolean>('useRenvLibPath') ? 'TRUE' : 'FALSE'
             }
         };
 

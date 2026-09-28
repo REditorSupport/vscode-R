@@ -24,6 +24,12 @@ local({
     invisible()
 })
 
+add_lib_paths <- Sys.getenv("VSCR_LIB_PATHS")
+if (nzchar(add_lib_paths)) {
+    add_lib_paths <- strsplit(add_lib_paths, "\n", fixed = TRUE)[[1L]]
+    .libPaths(c(.libPaths(), add_lib_paths))
+}
+
 if (requireNamespace("sess", quietly = TRUE)) {
     local({
         plot_backend <- Sys.getenv("SESS_PLOT_BACKEND", "auto")

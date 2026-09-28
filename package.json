@@ -1405,7 +1405,7 @@
             "type": "string"
           },
           "default": [],
-          "markdownDescription": "Additional library paths to launch R background processes (R languageserver, help server, etc.). These paths will be appended to `.libPaths()` on process startup. It could be useful for projects with [renv](https://rstudio.github.io/renv/index.html) enabled."
+          "markdownDescription": "Additional library paths for R processes launched by the extension, including interactive terminals, the language server, and the help server. These paths are appended to `.libPaths()` after the project profile is loaded, preserving project library precedence. This can be useful for keeping editor integration packages outside projects managed by [renv](https://rstudio.github.io/renv/index.html)."
         },
         "r.useRenvLibPath": {
           "type": "boolean",

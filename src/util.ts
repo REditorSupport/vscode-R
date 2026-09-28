@@ -295,7 +295,7 @@ export async function getRVersion(cwd?: string | URL): Promise<string | undefine
     return await executeRCommand('cat(as.character(getRversion()))', cwd);
 }
 
-export async function getRPackageVersion(name: string, cwd?: string | URL): Promise<string | undefined> {
+export async function getRPackageVersion(name: string, cwd?: string | URL | vscode.Uri): Promise<string | undefined> {
     const result = await executeRCommand(`cat(if (requireNamespace('${name}', quietly = TRUE)) as.character(utils::packageVersion('${name}')) else '')`, cwd);
     return result || undefined;
 }
@@ -313,9 +313,9 @@ export function compareVersions(v1: string, v2: string): number {
     return 0;
 }
 
-export function getRLibPaths(): string | undefined {
-    return config().get<string[]>('libPaths')
-        ?.map(value => substituteVariables(value))
+export function getRLibPaths(resource?: vscode.Uri): string | undefined {
+    return config(resource).get<string[]>('libPaths')
+        ?.map(value => substituteVariables(value, resource))
         .join('\n');
 }
 
@@ -326,7 +326,7 @@ export function getRLibPaths(): string | undefined {
 // WARNING: Cannot handle double quotes in the R command! (e.g. `print("hello world")`)
 // Single quotes are ok.
 //
-export async function executeRCommand(rCommand: string, cwd?: string | URL, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
+export async function executeRCommand(rCommand: string, cwd?: string | URL | vscode.Uri, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
     const resource = resourceFromCwd(cwd);
     const rPath = await getRpath(false, resource);
     if (!rPath) {
@@ -334,7 +334,11 @@ export async function executeRCommand(rCommand: string, cwd?: string | URL, fall
     }
 
     const options: cp.CommonOptions = {
-        cwd: cwd,
+        cwd: cwd instanceof vscode.Uri ? cwd.fsPath : cwd,
+        env: {
+            ...process.env,
+            VSCR_LIB_PATHS: getRLibPaths(resource),
+        },
     };
 
     const lim = '---vsc---';
@@ -343,6 +347,7 @@ export async function executeRCommand(rCommand: string, cwd?: string | URL, fall
         '--no-echo',
         '--no-save',
         '--no-restore',
+        '-e', `local({ paths <- Sys.getenv('VSCR_LIB_PATHS'); if (nzchar(paths)) .libPaths(c(.libPaths(), strsplit(paths, '\\n', fixed = TRUE)[[1L]])) })`,
         '-e', `cat('${lim}')`,
         '-e', rCommand,
         '-e', `cat('${lim}')`
@@ -575,7 +580,7 @@ export async function promptToInstallSessPackage(
     _readFileSyncSafe = readFileSyncSafe
 ): Promise<void> {
     const resource = resourceFromCwd(cwd);
-    const activeConfig = _config();
+    const activeConfig = _config(resource);
     const sessionWatcher = activeConfig.get<boolean>('sessionWatcher');
     if (!sessionWatcher) {
         return;
@@ -587,7 +592,7 @@ export async function promptToInstallSessPackage(
     const match = descriptionContent?.match(/^Version:\s*(.+)$/m);
     const bundledVersion = match ? match[1] : undefined;
 
-    const installedVersion = await _getRPackageVersion('sess', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
+    const installedVersion = await _getRPackageVersion('sess', cwd);
 
     if (installedVersion && bundledVersion && compareVersions(installedVersion, bundledVersion) >= 0) {
         return; // Already up to date
