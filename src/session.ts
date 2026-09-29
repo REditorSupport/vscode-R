@@ -117,6 +117,7 @@ interface DataViewColumnDef {
 interface DataViewInitResult {
     columns: DataViewColumnDef[];
     totalRows: number;
+    columnProjection?: boolean;
 }
 
 interface DataViewPageResult {
@@ -134,6 +135,7 @@ interface DataViewRequestMessage {
     endRow?: number;
     sortModel?: unknown[];
     filterModel?: Record<string, unknown>;
+    fields?: string[];
 }
 
 const dynamicDataViewPanels = new Map<string, vscode.WebviewPanel>();
@@ -190,6 +192,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                         endRow: Number(msg.endRow ?? 0),
                         sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
                         filterModel: msg.filterModel ?? {},
+                        fields: Array.isArray(msg.fields) ? msg.fields : undefined,
                     },
                 }) as DataViewPageResult | undefined;
                 if (!result || !Array.isArray(result.rows) ||
@@ -1412,9 +1415,41 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         }
 
         const blockSize = ${pageSize > 0 ? pageSize : 500};
+        let cachedFieldsKey;
+        let projectionRefreshTimer;
+        function pageFields() {
+            if (!init.columnProjection) {
+                return undefined;
+            }
+            const displayed = gridApi?.getAllDisplayedColumns();
+            return (displayed
+                ? displayed.map(column => column.getColId())
+                : columns.filter(column => !column.hide).map(column => column.field)
+            ).sort();
+        }
+        function displayedColumnsChanged() {
+            updateFetchStatusPosition();
+            if (!init.columnProjection) {
+                return;
+            }
+            clearTimeout(projectionRefreshTimer);
+            // Column events can fire during grid setup or a batch of visibility
+            // changes. Refresh once, after the column model has settled.
+            projectionRefreshTimer = setTimeout(() => {
+                const key = JSON.stringify(pageFields());
+                if (gridApi && cachedFieldsKey !== undefined && key !== cachedFieldsKey) {
+                    cachedFieldsKey = key;
+                    gridApi.purgeInfiniteCache();
+                }
+            }, 0);
+        }
 
         const datasource = {
             getRows: async function(params) {
+                const fields = pageFields();
+                if (cachedFieldsKey === undefined) {
+                    cachedFieldsKey = JSON.stringify(fields);
+                }
                 beginFetch('Fetching rows from R session...');
                 try {
                     const result = await request('page', {
@@ -1422,7 +1457,13 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
                         endRow: params.endRow,
                         sortModel: params.sortModel,
                         filterModel: params.filterModel,
+                        fields,
                     });
+                    if (JSON.stringify(fields) !== JSON.stringify(pageFields())) {
+                        params.failCallback();
+                        finishFetch(true);
+                        return;
+                    }
                     filteredRows = result.totalRows;
                     totalRows = result.totalUnfiltered;
                     isFiltered = Object.keys(params.filterModel || {}).length > 0;
@@ -1450,7 +1491,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
             cacheBlockSize: blockSize,
             onPaginationChanged: updateScrollPosition,
             onGridSizeChanged: updateFetchStatusPosition,
-            onDisplayedColumnsChanged: updateFetchStatusPosition,
+            onDisplayedColumnsChanged: displayedColumnsChanged,
             onFirstDataRendered: function() {
                 updateFetchStatusPosition();
                 attachScrollbarPositionIndicator();

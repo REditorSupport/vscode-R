@@ -15,30 +15,27 @@ dataview_arrow_nested_columns <- function(data) {
   }, logical(1))
 }
 
-dataview_arrow_data_frame <- function(data) {
+dataview_arrow_conversion <- function(data) {
+  if (is.data.frame(data)) return(integer())
+  schema <- getExportedValue("arrow", "infer_schema")(data)
+  which(vapply(schema$fields, function(field) {
+    inherits(
+      field$type, c("Int64Type", "Date32Type", "Date64Type", "TimestampType", "DurationType")
+    )
+  }, logical(1)))
+}
+
+dataview_arrow_data_frame <- function(data, conversion = NULL) {
   old_options <- options(arrow.int64_downcast = FALSE)
   on.exit(options(old_options), add = TRUE)
 
   page <- as.data.frame(data, optional = TRUE)
-  schema <- tryCatch(
-    getExportedValue("arrow", "infer_schema")(data),
-    error = function(e) NULL
-  )
-  if (!is.null(schema) && inherits(data, "ArrowTabular")) {
-    fields <- schema$fields
-    for (position in seq_len(ncol(page))) {
-      type <- fields[[position]]$type
-      if (inherits(
-        type,
-        c("Int64Type", "Date32Type", "Date64Type", "TimestampType", "DurationType")
-      )) {
-        values <- tryCatch(
-          as.vector(data[[position]]),
-          error = function(e) NULL
-        )
-        if (!is.null(values) && length(values) == nrow(page)) {
-          page[[position]] <- values
-        }
+  if (inherits(data, "ArrowTabular")) {
+    if (is.null(conversion)) conversion <- dataview_arrow_conversion(data)
+    for (position in conversion) {
+      values <- tryCatch(as.vector(data[[position]]), error = function(e) NULL)
+      if (!is.null(values) && length(values) == nrow(page)) {
+        page[[position]] <- values
       }
     }
   }
@@ -101,7 +98,7 @@ dataview_arrow_bind_pages <- function(pages) {
   )
 }
 
-dataview_arrow_reader_state <- function() {
+dataview_arrow_reader_state <- function(data = NULL) {
   state <- new.env(parent = emptyenv())
   state$reader <- NULL
   state$batch <- NULL
@@ -110,7 +107,66 @@ dataview_arrow_reader_state <- function() {
   state$row_cache <- list()
   state$query_cache <- list()
   state$fragment_index <- NULL
+  state$source_conversion <- if (!is.null(data)) dataview_arrow_conversion(data) else NULL
+  state$conversion <- state$source_conversion
+  state$projection <- NULL
+  state$page_data <- NULL
   state
+}
+
+dataview_arrow_page_state <- function(state, fields = NULL) {
+  positions <- seq_len(length(state$columns) - 1L)
+  # Dataset projection preserves source row positions. Query projection can
+  # affect aggregation/grouping semantics, so queries retain their full schema.
+  if (inherits(state$data, "Dataset") && !is.data.frame(state$data) && !is.null(fields)) {
+    positions <- positions[as.character(positions) %in% unlist(fields, use.names = FALSE)]
+  }
+  reader_state <- state$arrow_reader
+  if (!identical(positions, reader_state$projection)) {
+    dataview_arrow_reader_reset(state)
+    reader_state$row_cache <- list()
+    reader_state$query_cache <- list()
+    reader_state$page_data <- if (length(positions) && length(positions) < ncol(state$data)) {
+      state$data$WithSchema(state$data$schema[names(state$data)[positions]])
+    } else {
+      state$data
+    }
+    reader_state$projection <- positions
+    conversion <- match(reader_state$source_conversion, positions, nomatch = 0L)
+    reader_state$conversion <- conversion[conversion > 0L]
+  }
+  state$arrow_source <- state$data
+  state$data <- reader_state$page_data
+  state$columns <- state$columns[c(1L, positions + 1L)]
+  state$column_fields <- as.character(positions)
+  state
+}
+
+dataview_arrow_query_columns <- function(state, sort_model, filter_model) {
+  positions <- integer()
+  for (field in names(filter_model)) {
+    pos <- dataview_field_position(field, length(state$columns))
+    if (!is.na(pos) && pos > 1L && !isFALSE(state$columns[[pos]]$filter)) {
+      positions <- c(positions, pos)
+    }
+  }
+  for (item in sort_model) {
+    pos <- dataview_field_position(as.character(item$colId %||% ""), length(state$columns))
+    if (!is.na(pos) && pos > 1L && !isFALSE(state$columns[[pos]]$sortable)) {
+      positions <- c(positions, pos)
+    }
+  }
+  positions <- unique(positions)
+  if (!length(positions)) return(list())
+  reader <- getExportedValue("arrow", "Scanner")$create(
+    state$data,
+    projection = names(state$data)[positions - 1L],
+    batch_size = dataview_arrow_reader_batch_size
+  )$ToRecordBatchReader()
+  on.exit(try(reader$Close(), silent = TRUE), add = TRUE)
+  conversion <- match(state$arrow_reader$source_conversion, positions - 1L, nomatch = 0L)
+  columns <- dataview_arrow_data_frame(reader$read_table(), conversion[conversion > 0L])
+  setNames(as.list(columns), as.character(positions))
 }
 
 dataview_arrow_reader_reset <- function(state) {
@@ -169,7 +225,7 @@ dataview_arrow_reader_take <- function(reader_state, n, collect = TRUE) {
     if (collect) {
       pages[[length(pages) + 1L]] <-
         dataview_arrow_data_frame(
-          reader_state$batch$Slice(reader_state$batch_row, take)
+          reader_state$batch$Slice(reader_state$batch_row, take), reader_state$conversion
         )
     }
     reader_state$batch_row <- reader_state$batch_row + take
@@ -207,7 +263,7 @@ dataview_arrow_reader_select <- function(reader_state, row_idx) {
       selected - reader_state$next_row + 1L
     pages[[length(pages) + 1L]] <-
       dataview_arrow_data_frame(
-        reader_state$batch[positions, , drop = FALSE]
+        reader_state$batch[positions, , drop = FALSE], reader_state$conversion
       )
 
     dataview_arrow_reader_take(
@@ -316,7 +372,7 @@ dataview_arrow_fragment_index <- function(state) {
     return(reader_state$fragment_index)
   }
 
-  data <- state$data
+  data <- state$arrow_source %||% state$data
   files <- if (inherits(data, "FileSystemDataset")) data$files else character()
   if (length(files) < 2L) {
     reader_state$fragment_index <- FALSE
@@ -412,9 +468,10 @@ dataview_arrow_fragment_slice <- function(state, row_idx) {
   } else {
     getExportedValue("arrow", "open_dataset")(index$datasets[fragments])
   }
-  page <- dataview_slice(data, selected_idx)
+  if (!is.null(state$column_fields)) data <- data$WithSchema(state$data$schema)
+  page <- dataview_slice(data, selected_idx, state$arrow_reader$conversion)
 
-  for (name in names(index$partition_values)) {
+  for (name in intersect(names(index$partition_values), names(page))) {
     missing <- vapply(index$missing_columns, function(fields) name %in% fields, logical(1))
     positions <- which(missing[fragment_pos])
     if (is.data.frame(page[[name]])) {
@@ -473,7 +530,7 @@ dataview_arrow_query_fetch <- function(state, row_idx) {
       return(page)
     }
   }
-  dataview_slice(state$data, row_idx)
+  dataview_slice(state$data, row_idx, state$arrow_reader$conversion)
 }
 
 dataview_arrow_block_slice <- function(state, row_idx) {

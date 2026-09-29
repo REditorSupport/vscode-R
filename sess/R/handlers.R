@@ -413,12 +413,12 @@ dataview_schema <- function(data) {
   data[0, , drop = FALSE]
 }
 
-dataview_slice <- function(data, row_idx) {
+dataview_slice <- function(data, row_idx, conversion = NULL) {
   if (inherits(data, "ArrowTabular")) {
     if (!length(row_idx)) {
       return(dataview_arrow_data_frame(data$Slice(0L, 0L)))
     }
-    return(dataview_arrow_data_frame(data[row_idx, ]))
+    return(dataview_arrow_data_frame(data[row_idx, ], conversion))
   }
   if (dataview_is_arrow_lazy(data)) {
     if (!length(row_idx)) {
@@ -426,13 +426,14 @@ dataview_slice <- function(data, row_idx) {
     }
     if (inherits(data, "arrow_dplyr_query")) {
       reader_state <- dataview_arrow_reader_state()
+      reader_state$conversion <- conversion
       reader_state$reader <- dataview_arrow_reader_open(data)
       on.exit(try(reader_state$reader$Close(), silent = TRUE), add = TRUE)
       selected <- sort(unique(row_idx))
       page <- dataview_arrow_reader_select(reader_state, selected)
       return(page[match(row_idx, selected), , drop = FALSE])
     }
-    return(dataview_arrow_data_frame(data[row_idx, , drop = FALSE]))
+    return(dataview_arrow_data_frame(data[row_idx, , drop = FALSE], conversion))
   }
   if (inherits(data, "polars_data_frame")) {
     if (!length(row_idx)) {
@@ -541,7 +542,7 @@ dataview_to_state <- function(data) {
     query_key = NULL,
     query_indices = NULL,
     query_has_sort = FALSE,
-    arrow_reader = if (dataview_is_arrow_lazy(data)) dataview_arrow_reader_state() else NULL
+    arrow_reader = if (dataview_is_arrow_lazy(data)) dataview_arrow_reader_state(data) else NULL
   )
 }
 
@@ -592,7 +593,8 @@ dataview_column_values <- function(state, position, row_idx = NULL) {
     return(if (is.null(row_idx)) state$row_index else state$row_index[row_idx])
   }
 
-  values <- dataview_column(state$data, position - 1L)
+  values <- state$query_columns[[as.character(position)]]
+  if (is.null(values)) values <- dataview_column(state$data, position - 1L)
   if (is.null(row_idx)) values else values[row_idx]
 }
 
@@ -872,6 +874,10 @@ dataview_query_indices <- function(state, sort_model, filter_model) {
     return(NULL)
   }
 
+  if (inherits(state$data, "Dataset") && !is.data.frame(state$data)) {
+    # Request-local only: share one projected scan across filtering and sorting.
+    state$query_columns <- dataview_arrow_query_columns(state, sort_model, filter_model)
+  }
   row_idx <- seq_len(state$total_rows)
   row_idx <- dataview_apply_filter_model(state, filter_model, row_idx)
   dataview_apply_sort_model(state, sort_model, row_idx)
@@ -884,7 +890,9 @@ dataview_rows <- function(
   use_arrow_query_cache = FALSE,
   display_idx = row_idx
 ) {
-  page <- if (use_arrow_reader) {
+  page <- if (identical(state$column_fields, character())) {
+    data.frame(row.names = seq_along(row_idx))
+  } else if (use_arrow_reader) {
     dataview_arrow_slice(state, row_idx)
   } else if (use_arrow_query_cache) {
     dataview_arrow_query_slice(state, display_idx)
@@ -913,7 +921,7 @@ dataview_rows <- function(
     ),
     page
   )
-  names(rows) <- as.character(seq_len(ncol(rows)) - 1L)
+  names(rows) <- c("0", state$column_fields %||% as.character(seq_len(ncol(page))))
   rownames(rows) <- NULL
   rows
 }
@@ -923,7 +931,8 @@ handle_dataview_init <- function(params) {
   state <- dataview_get_state(view_id)
   list(
     columns = dataview_columns(state),
-    totalRows = state$total_rows
+    totalRows = state$total_rows,
+    columnProjection = inherits(state$data, "Dataset") && !is.data.frame(state$data)
   )
 }
 
@@ -973,9 +982,14 @@ handle_dataview_page <- function(params) {
     }
   }
 
+  page_state <- if (dataview_is_arrow_lazy(state$data)) {
+    dataview_arrow_page_state(state, params$fields)
+  } else {
+    state
+  }
   list(
     rows = dataview_rows(
-      state,
+      page_state,
       page_idx,
       use_arrow_reader = dataview_is_arrow_lazy(state$data) &&
         is.null(state$query_indices),

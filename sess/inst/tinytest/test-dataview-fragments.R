@@ -14,6 +14,90 @@ local({
 })
 
 if (requireNamespace("arrow", quietly = TRUE)) local({
+  root <- tempfile("dataview-projection-")
+  dir.create(root)
+  view_ids <- character()
+  on.exit({
+    for (id in view_ids) sess:::handle_dataview_dispose(list(view_id = id))
+    unlink(root, recursive = TRUE)
+  }, add = TRUE)
+  for (year in 2024:2025) {
+    path <- file.path(root, paste0("year=", year))
+    dir.create(path)
+    ids <- (year - 2024L) * 6010L + seq_len(6010L)
+    df <- data.frame(
+      id = ids, score = -ids, flag = ids %% 2L == 0L,
+      date = as.Date("2020-01-01") + ids,
+      time = as.POSIXct("2020-01-01", tz = "Australia/Sydney") + ids
+    )
+    df$struct <- data.frame(value = ids, flag = df$flag)
+    if (requireNamespace("bit64", quietly = TRUE)) {
+      df$big <- bit64::as.integer64("9007199254740993") + bit64::as.integer64(ids)
+    }
+    arrow::write_parquet(df, file.path(path, "part.parquet"), chunk_size = 997L)
+  }
+  data <- arrow::open_dataset(root)
+  expected <- sess:::dataview_arrow_data_frame(data)
+  id <- sess:::dataview_register(data)$view_id
+  expected_id <- sess:::dataview_register(expected)$view_id
+  view_ids <- c(id, expected_id)
+  field <- function(name) as.character(match(name, names(data)))
+  model <- list(
+    sortModel = list(list(colId = field("score"), sort = "asc")),
+    filterModel = setNames(list(list(type = "true")), field("flag"))
+  )
+  expect_true(sess:::handle_dataview_init(list(view_id = id))$columnProjection)
+  expect_false(sess:::handle_dataview_init(list(view_id = expected_id))$columnProjection)
+
+  fragment_index <- NULL
+  # Begin with a narrow projection: the fragment index must still retain the
+  # full source schema so revealing more columns later can reuse that index.
+  projections <- list(
+    c("0", field("year"), field("id")),
+    c("0", field("date"), field("time")),
+    "0", character(),
+    c("0", field("struct")),
+    c("0", field("id"), field("big")),
+    NULL
+  )
+  for (fields in projections) {
+    for (start in c(0L, 4990L, 0L, 12020L)) {
+      params <- c(list(startRow = start, endRow = start + 30L), model)
+      reference <- sess:::handle_dataview_page(c(list(view_id = expected_id), params))
+      actual <- sess:::handle_dataview_page(c(list(view_id = id, fields = fields), params))
+      selected <- if (is.null(fields)) {
+        names(reference$rows)
+      } else {
+        names(reference$rows)[names(reference$rows) %in% c("0", fields)]
+      }
+      reference$rows <- reference$rows[, selected, drop = FALSE]
+      expect_equal(actual, reference)
+      reader <- sess:::dataview_get_state(id)$arrow_reader
+      expect_equal(reader$projection, which(as.character(seq_along(expected)) %in% selected))
+      if (is.null(fragment_index)) fragment_index <- reader$fragment_index
+      expect_identical(reader$fragment_index, fragment_index)
+      for (block in reader$query_cache) {
+        expect_equal(names(block$data), names(data)[reader$projection])
+      }
+    }
+  }
+  state <- sess:::dataview_get_state(id)
+  expect_identical(state$data, data)
+  expect_null(state$query_columns)
+
+  # The same key used by a filter and a sort is collected once, and another
+  # key joins the same projected scan; their original row ordering is retained.
+  columns <- sess:::dataview_arrow_query_columns(
+    state, list(list(colId = field("score"), sort = "asc")),
+    setNames(list(list(type = "lessThan", filter = -10L), list(type = "true")),
+             c(field("score"), field("flag")))
+  )
+  expect_equal(names(columns), as.character(match(c("score", "flag"), names(data)) + 1L))
+  expect_equal(columns[[1L]], expected$score)
+  expect_equal(columns[[2L]], expected$flag)
+})
+
+if (requireNamespace("arrow", quietly = TRUE)) local({
   root <- tempfile("dataview-fragments-")
   dir.create(root)
   view_ids <- character()
