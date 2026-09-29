@@ -115,12 +115,13 @@ dataview_arrow_reader_state <- function(data = NULL) {
 }
 
 dataview_arrow_page_state <- function(state, fields = NULL) {
-  positions <- seq_len(length(state$columns) - 1L)
+  positions <- if (inherits(state$data, "Dataset") && !is.data.frame(state$data)) {
+    dataview_page_positions(state, fields)
+  } else {
+    dataview_page_positions(state)
+  }
   # Dataset projection preserves source row positions. Query projection can
   # affect aggregation/grouping semantics, so queries retain their full schema.
-  if (inherits(state$data, "Dataset") && !is.data.frame(state$data) && !is.null(fields)) {
-    positions <- positions[as.character(positions) %in% unlist(fields, use.names = FALSE)]
-  }
   reader_state <- state$arrow_reader
   if (!identical(positions, reader_state$projection)) {
     dataview_arrow_reader_reset(state)
@@ -536,9 +537,8 @@ dataview_arrow_query_fetch <- function(state, row_idx) {
 dataview_arrow_block_slice <- function(state, row_idx) {
   reader_state <- state$arrow_reader
   pages <- list()
-  block_starts <- unique(
-    (row_idx - 1L) %/% dataview_arrow_cache_block_size *
-      dataview_arrow_cache_block_size + 1L
+  block_starts <- dataview_block_starts(
+    row_idx, dataview_arrow_cache_block_size
   )
 
   for (block_start in block_starts) {
@@ -602,9 +602,7 @@ dataview_arrow_query_slice <- function(state, display_idx) {
   } else {
     dataview_arrow_cache_block_size
   }
-  block_starts <- unique(
-    (display_idx - 1L) %/% block_size * block_size + 1L
-  )
+  block_starts <- dataview_block_starts(display_idx, block_size)
   pages <- lapply(block_starts, function(block_start) {
     block_end <- min(
       length(state$query_indices),

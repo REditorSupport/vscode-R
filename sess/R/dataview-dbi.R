@@ -4,6 +4,18 @@ dataview_is_dbi_lazy <- function(data) {
   inherits(data, "tbl_sql")
 }
 
+dataview_dbi_cache_block_size <- 1000L
+dataview_dbi_cache_blocks <- 4L
+
+dataview_dbi_cache_state <- function() {
+  state <- new.env(parent = emptyenv())
+  state$filter_key <- NULL
+  state$total <- NULL
+  state$query_key <- NULL
+  state$blocks <- list()
+  state
+}
+
 dataview_dbi_source <- function(data) {
   if (!requireNamespace("DBI", quietly = TRUE) ||
         !requireNamespace("dbplyr", quietly = TRUE)) {
@@ -86,7 +98,7 @@ dataview_dbi_to_state <- function(data) {
     query_key = NULL,
     query_indices = NULL,
     query_has_sort = FALSE,
-    dbi_cache = new.env(parent = emptyenv()),
+    dbi_cache = dataview_dbi_cache_state(),
     arrow_reader = NULL
   )
 }
@@ -239,15 +251,15 @@ dataview_dbi_projection <- function(state, positions) {
 }
 
 dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_model, fields = NULL) {
-  positions <- seq_along(state$column_names)
-  if (!is.null(fields)) positions <- positions[as.character(positions) %in% unlist(fields)]
+  positions <- dataview_page_positions(state, fields)
   projection <- paste(dataview_dbi_projection(state, positions), collapse = ", ")
   where <- dataview_dbi_filter_sql(state, filter_model)
   order <- dataview_dbi_order_sql(state, sort_model)
   from <- paste0(" from (", state$dbi$query_sql, ") as dataview_source")
-  query_key <- list(where, order, positions)
+  query_key <- list(filter = where, sort = order, projection = positions)
+  cache_state <- state$dbi_cache
 
-  if (!identical(state$dbi_cache$filter_key, where)) {
+  if (!identical(cache_state$filter_key, where)) {
     total <- if (!nzchar(where)) {
       state$total_rows
     } else {
@@ -257,47 +269,45 @@ dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_mode
       )[[1L]][[1L]]), .Machine$integer.max))
     }
     # Publish keys only after a successful query so a failed request can retry.
-    state$dbi_cache$total <- total
-    state$dbi_cache$filter_key <- where
+    cache_state$total <- total
+    cache_state$filter_key <- where
   }
-  total <- state$dbi_cache$total
-  end_row <- min(end_row, total)
-  row_idx <- if (start_row < end_row) seq.int(start_row + 1L, end_row) else integer()
+  total <- cache_state$total
+  row_idx <- dataview_page_indices(start_row, end_row, total)
   page <- state$dbi$schema[integer(), positions, drop = FALSE]
   if (!length(positions)) page <- data.frame(row.names = seq_along(row_idx))
-  if (!identical(state$dbi_cache$query_key, query_key)) {
-    state$dbi_cache$blocks <- list()
-    state$dbi_cache$query_key <- query_key
+
+  if (!identical(cache_state$query_key, query_key)) {
+    cache_state$blocks <- list()
+    cache_state$query_key <- query_key
   }
-  # Four 1,000-row blocks allow nearby backward scrolling without repeating SQL.
-  # Fetch each intersecting block: a request can cross a cache boundary.
-  block_size <- 1000L
+
   if (length(row_idx) && length(positions)) {
     pages <- list()
-    for (block_start in seq(
-      start_row %/% block_size * block_size,
-      (end_row - 1L) %/% block_size * block_size,
-      by = block_size
-    )) {
+    block_starts <- dataview_block_starts(row_idx, dataview_dbi_cache_block_size)
+    for (block_start in block_starts) {
+      block_end <- min(total, block_start + dataview_dbi_cache_block_size - 1L)
       key <- as.character(block_start)
-      block <- state$dbi_cache$blocks[[key]]
+      block <- cache_state$blocks[[key]]
       if (is.null(block)) {
         block <- DBI::dbGetQuery(state$dbi$con, paste0(
           "select ", projection, from, where, order,
-          " offset ", format(block_start, scientific = FALSE), " rows",
-          " fetch next ", min(block_size, total - block_start), " rows only"
+          " offset ", format(block_start - 1L, scientific = FALSE), " rows",
+          " fetch next ", block_end - block_start + 1L, " rows only"
         ))
       }
-      state$dbi_cache$blocks[[key]] <- NULL
-      state$dbi_cache$blocks[[key]] <- block
-      if (length(state$dbi_cache$blocks) > 4L) {
-        state$dbi_cache$blocks <- state$dbi_cache$blocks[-1L]
+      cache_state$blocks[[key]] <- NULL
+      cache_state$blocks[[key]] <- block
+      if (length(cache_state$blocks) > dataview_dbi_cache_blocks) {
+        cache_state$blocks <- cache_state$blocks[-1L]
       }
-      local_start <- max(start_row - block_start + 1L, 1L)
-      local_end <- min(nrow(block), end_row - block_start)
-      if (local_start <= local_end) {
-        pages[[length(pages) + 1L]] <- block[local_start:local_end, , drop = FALSE]
-      }
+
+      selected <- row_idx[row_idx >= block_start & row_idx <= block_end]
+      pages[[length(pages) + 1L]] <- block[
+        selected - block_start + 1L,
+        ,
+        drop = FALSE
+      ]
     }
     if (length(pages)) page <- do.call(rbind, pages)
   }
@@ -316,10 +326,11 @@ dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_mode
     }
   }
 
-  row_idx <- if (nrow(page)) seq.int(start_row + 1L, length.out = nrow(page)) else integer()
-  rows <- cbind(data.frame(row_idx, check.names = FALSE), page)
-  names(rows) <- c("0", as.character(positions))
-  rownames(rows) <- NULL
-
+  page_row_idx <- if (nrow(page)) {
+    seq.int(start_row + 1L, length.out = nrow(page))
+  } else {
+    integer()
+  }
+  rows <- dataview_bind_rows(page, page_row_idx, as.character(positions))
   list(rows = rows, totalRows = total, totalUnfiltered = state$total_rows, lastRow = total)
 }

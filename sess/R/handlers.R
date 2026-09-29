@@ -770,6 +770,37 @@ dataview_field_position <- function(field, column_count) {
   position
 }
 
+dataview_page_positions <- function(state, fields = NULL) {
+  positions <- seq_len(length(state$columns) - 1L)
+  if (!is.null(fields)) {
+    fields <- unlist(fields, use.names = FALSE)
+    positions <- positions[as.character(positions) %in% fields]
+  }
+  positions
+}
+
+dataview_page_indices <- function(start_row, end_row, total) {
+  end_row <- min(total, end_row)
+  if (start_row >= total || start_row >= end_row) {
+    return(integer())
+  }
+  seq.int(start_row + 1L, end_row)
+}
+
+dataview_block_starts <- function(row_idx, block_size) {
+  if (!length(row_idx)) {
+    return(integer())
+  }
+  unique((row_idx - 1L) %/% block_size * block_size + 1L)
+}
+
+dataview_bind_rows <- function(page, row_idx, fields) {
+  rows <- cbind(data.frame(row_idx, check.names = FALSE), page)
+  names(rows) <- c("0", fields)
+  rownames(rows) <- NULL
+  rows
+}
+
 dataview_apply_filter_model <- function(state, filter_model, row_idx) {
   if (is.null(filter_model) || !length(filter_model)) {
     return(row_idx)
@@ -916,16 +947,11 @@ dataview_rows <- function(
       }
     }
   }
-  rows <- cbind(
-    data.frame(
-      dataview_column_values(state, 1L, row_idx),
-      check.names = FALSE
-    ),
-    page
+  dataview_bind_rows(
+    page,
+    dataview_column_values(state, 1L, row_idx),
+    state$column_fields %||% as.character(seq_len(ncol(page)))
   )
-  names(rows) <- c("0", state$column_fields %||% as.character(seq_len(ncol(page))))
-  rownames(rows) <- NULL
-  rows
 }
 
 handle_dataview_init <- function(params) {
@@ -975,17 +1001,11 @@ handle_dataview_page <- function(params) {
   } else {
     length(state$query_indices)
   }
-  end_exclusive <- min(total, end_row)
-  if (start_row >= total || start_row >= end_exclusive) {
-    display_idx <- integer(0)
-    page_idx <- integer(0)
+  display_idx <- dataview_page_indices(start_row, end_row, total)
+  page_idx <- if (is.null(state$query_indices)) {
+    display_idx
   } else {
-    display_idx <- seq.int(start_row + 1L, end_exclusive)
-    page_idx <- if (is.null(state$query_indices)) {
-      display_idx
-    } else {
-      state$query_indices[display_idx]
-    }
+    state$query_indices[display_idx]
   }
 
   page_state <- if (dataview_is_arrow_lazy(state$data)) {
