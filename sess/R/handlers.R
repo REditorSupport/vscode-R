@@ -389,6 +389,7 @@ dataview_is_table <- function(data) {
     is.matrix(data) ||
     inherits(data, "ArrowTabular") ||
     dataview_is_arrow_lazy(data) ||
+    dataview_is_dbi_lazy(data) ||
     inherits(data, "polars_data_frame")
 }
 
@@ -475,6 +476,7 @@ dataview_column <- function(data, position) {
 }
 
 dataview_to_state <- function(data) {
+  if (dataview_is_dbi_lazy(data)) return(dataview_dbi_to_state(data))
   if (!dataview_is_table(data)) {
     stop("data must be a data frame, matrix, Arrow table/dataset/query, or Polars data frame")
   }
@@ -932,7 +934,8 @@ handle_dataview_init <- function(params) {
   list(
     columns = dataview_columns(state),
     totalRows = state$total_rows,
-    columnProjection = inherits(state$data, "Dataset") && !is.data.frame(state$data)
+    columnProjection = !is.null(state$dbi) ||
+      (inherits(state$data, "Dataset") && !is.data.frame(state$data))
   )
 }
 
@@ -951,6 +954,9 @@ handle_dataview_page <- function(params) {
 
   sort_model <- params$sortModel %||% list()
   filter_model <- params$filterModel %||% list()
+  if (!is.null(state$dbi)) {
+    return(dataview_dbi_page(state, start_row, end_row, sort_model, filter_model, params$fields))
+  }
   query_key <- dataview_query_key(sort_model, filter_model)
   if (!identical(query_key, state$query_key)) {
     state$query_key <- query_key

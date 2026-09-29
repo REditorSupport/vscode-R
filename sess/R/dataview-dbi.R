@@ -6,7 +6,7 @@ dataview_is_dbi_lazy <- function(data) {
 
 dataview_dbi_source <- function(data) {
   if (!requireNamespace("DBI", quietly = TRUE) ||
-      !requireNamespace("dbplyr", quietly = TRUE)) {
+        !requireNamespace("dbplyr", quietly = TRUE)) {
     stop("Viewing lazy database tables requires the optional 'DBI' and 'dbplyr' packages")
   }
 
@@ -14,14 +14,35 @@ dataview_dbi_source <- function(data) {
   if (!inherits(con, "DBIConnection") || !DBI::dbIsValid(con)) {
     stop("the lazy table does not have a valid DBI connection")
   }
+  if (!inherits(con, "Microsoft SQL Server") &&
+        !grepl("SQL Server", DBI::dbGetInfo(con)$dbms.name %||% "", fixed = TRUE)) {
+    stop("Lazy database viewing currently supports SQL Server connections")
+  }
 
-  query_sql <- as.character(dbplyr::sql_render(data))
+  # Render as a subquery so an unbounded arrange() does not produce an illegal
+  # ORDER BY inside the derived table used for counting and paging.
+  query_sql <- as.character(dbplyr::sql_render(data, subquery = TRUE))
   schema <- DBI::dbGetQuery(
     con,
     paste0("select top (0) * from (", query_sql, ") as dataview_source")
   )
 
-  list(con = con, query_sql = query_sql, schema = schema)
+  # Drivers can return SQL date/time columns as character. Ask the server once
+  # instead of inferring their type from R values (or parsing arbitrary text).
+  metadata <- tryCatch(DBI::dbGetQuery(con, paste0(
+    "select column_ordinal, system_type_name from ",
+    "sys.dm_exec_describe_first_result_set(",
+    DBI::dbQuoteLiteral(con, query_sql), ", NULL, 0) where is_hidden = 0"
+  )), error = function(e) NULL)
+  sql_types <- rep(NA_character_, ncol(schema))
+  if (!is.null(metadata)) {
+    positions <- match(seq_len(ncol(schema)), metadata$column_ordinal)
+    sql_types <- tolower(sub("\\(.*$", "", metadata$system_type_name[positions]))
+  }
+  if (all(is.na(sql_types))) {
+    warning("SQL Server result type metadata is unavailable; using the driver's R column types")
+  }
+  list(con = con, query_sql = query_sql, schema = schema, sql_types = sql_types)
 }
 
 dataview_dbi_to_state <- function(data) {
@@ -36,14 +57,24 @@ dataview_dbi_to_state <- function(data) {
   }
   total_rows <- as.integer(total_rows)
 
-  colnames <- trimws(names(source$schema))
-  headers <- c(" ", colnames)
+  colnames <- names(source$schema)
+  headers <- c(" ", trimws(colnames))
   fields <- as.character(seq_along(headers) - 1L)
   cols <- c(
     list(integer()),
     lapply(seq_len(ncol(source$schema)), function(position) source$schema[[position]])
   )
   columns <- .mapply(get_column_def, list(headers, fields, cols), NULL)
+  for (position in seq_along(colnames)) {
+    type <- source$sql_types[[position]]
+    if (type %in% c("date", "datetime", "datetime2", "smalldatetime", "datetimeoffset")) {
+      column <- columns[[position + 1L]]
+      column$type <- jsonlite::unbox(if (type == "date") "dateColumn" else "datetimeColumn")
+      column$filter <- jsonlite::unbox("agDateColumnFilter")
+      column$headerTooltip <- jsonlite::unbox(paste0(colnames[[position]], ", SQL type: ", type))
+      columns[[position + 1L]] <- column
+    }
+  }
 
   list(
     data = data,
@@ -72,9 +103,14 @@ dataview_dbi_literal <- function(state, value) {
   as.character(DBI::dbQuoteLiteral(state$dbi$con, value))
 }
 
-dataview_dbi_condition <- function(state, column, cond) {
+dataview_dbi_condition <- function(state, column, cond, position) {
   type <- as.character(cond$type %||% "")
   if (!nzchar(type)) return(NULL)
+  column_type <- as.character(state$columns[[position]]$type)
+  is_date <- column_type %in% c("dateColumn", "datetimeColumn")
+  if (is_date && type %in% c("blank", "notBlank")) {
+    return(paste0(column, if (type == "blank") " is null" else " is not null"))
+  }
   if (type == "blank") {
     return(paste0("(", column, " is null or cast(", column, " as nvarchar(max)) = '')"))
   }
@@ -88,6 +124,37 @@ dataview_dbi_condition <- function(state, column, cond) {
   if (!is.null(cond$dateFrom)) value <- cond$dateFrom
   value2 <- cond$filterTo
   if (!is.null(cond$dateTo)) value2 <- cond$dateTo
+
+  if (is_date && type %in% c(
+    "equals", "notEqual", "greaterThan", "greaterThanOrEqual",
+    "lessThan", "lessThanOrEqual", "inRange"
+  )) {
+    day_literal <- function(value) {
+      day <- suppressWarnings(as.Date(substr(as.character(value), 1L, 10L), "%Y-%m-%d"))
+      if (length(day) != 1L || is.na(day)) stop("Invalid database date filter")
+      paste0("convert(date, ", dataview_dbi_literal(state, format(day, "%Y%m%d")), ", 112)")
+    }
+    first <- day_literal(value)
+    next_day <- paste0("dateadd(day, 1, ", first, ")")
+    # Calendar-day filters include every time on that day. Keep the source
+    # column unwrapped so ordinary date/datetime indexes remain usable.
+    # datetimeoffset compares instants in SQL; filter its displayed local date.
+    if (identical(state$dbi$sql_types[[position - 1L]], "datetimeoffset")) {
+      column <- paste0("cast(", column, " as date)")
+    }
+    return(switch(type,
+      equals = paste0("(", column, " >= ", first, " and ", column, " < ", next_day, ")"),
+      notEqual = paste0("(", column, " < ", first, " or ", column, " >= ", next_day, ")"),
+      greaterThan = paste0(column, " >= ", next_day),
+      greaterThanOrEqual = paste0(column, " >= ", first),
+      lessThan = paste0(column, " < ", first),
+      lessThanOrEqual = paste0(column, " < ", next_day),
+      inRange = paste0(
+        column, " >= ", first, " and ", column,
+        " < dateadd(day, 1, ", day_literal(value2), ")"
+      )
+    ))
+  }
 
   if (type %in% c(
     "equals", "notEqual", "greaterThan", "greaterThanOrEqual",
@@ -125,6 +192,7 @@ dataview_dbi_filter_sql <- function(state, filter_model) {
     column <- dataview_dbi_identifier(state, col_id)
     if (is.null(column)) next
     model <- filter_model[[col_id]]
+    position <- dataview_field_position(col_id, length(state$columns))
     conditions <- model$conditions
     if (is.null(conditions) && !is.null(model$condition1)) {
       conditions <- Filter(Negate(is.null), list(model$condition1, model$condition2))
@@ -132,7 +200,7 @@ dataview_dbi_filter_sql <- function(state, filter_model) {
     if (is.null(conditions) || !length(conditions)) conditions <- list(model)
     parts <- Filter(Negate(is.null), lapply(
       conditions,
-      function(cond) dataview_dbi_condition(state, column, cond)
+      function(cond) dataview_dbi_condition(state, column, cond, position)
     ))
     if (!length(parts)) next
     operator <- if (identical(toupper(model$operator %||% "AND"), "OR")) " or " else " and "
@@ -149,23 +217,38 @@ dataview_dbi_order_sql <- function(state, sort_model) {
       column <- dataview_dbi_identifier(state, as.character(item$colId %||% ""))
       if (is.null(column)) next
       direction <- if (identical(as.character(item$sort), "desc")) " desc" else " asc"
-      order <- c(order, paste0(column, direction))
+      order <- c(order, paste0("dataview_source.", column, direction))
     }
   }
   if (!length(order)) return(" order by (select null)")
   paste0(" order by ", paste(order, collapse = ", "))
 }
 
-dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_model) {
+dataview_dbi_projection <- function(state, positions) {
+  vapply(positions, function(position) {
+    column <- dataview_dbi_identifier(state, as.character(position))
+    source <- paste0("dataview_source.", column)
+    if (state$dbi$sql_types[[position]] %in%
+          c("date", "datetime", "datetime2", "smalldatetime", "datetimeoffset", "time")) {
+      # Avoid driver-dependent parsing, timezone shifts and precision loss.
+      paste0("convert(varchar(48), ", source, ", 126) as ", column)
+    } else {
+      source
+    }
+  }, character(1))
+}
+
+dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_model, fields = NULL) {
+  positions <- seq_along(state$column_names)
+  if (!is.null(fields)) positions <- positions[as.character(positions) %in% unlist(fields)]
+  projection <- paste(dataview_dbi_projection(state, positions), collapse = ", ")
   where <- dataview_dbi_filter_sql(state, filter_model)
   order <- dataview_dbi_order_sql(state, sort_model)
   from <- paste0(" from (", state$dbi$query_sql, ") as dataview_source")
-  filter_key <- paste0(where, collapse = "")
-  query_key <- paste0(filter_key, "\n", order)
+  query_key <- list(where, order, positions)
 
-  if (!identical(state$dbi_cache$filter_key, filter_key)) {
-    state$dbi_cache$filter_key <- filter_key
-    state$dbi_cache$total <- if (!nzchar(where)) {
+  if (!identical(state$dbi_cache$filter_key, where)) {
+    total <- if (!nzchar(where)) {
       state$total_rows
     } else {
       as.integer(min(as.numeric(DBI::dbGetQuery(
@@ -173,54 +256,69 @@ dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_mode
         paste0("select count_big(*) as n", from, where)
       )[[1L]][[1L]]), .Machine$integer.max))
     }
+    # Publish keys only after a successful query so a failed request can retry.
+    state$dbi_cache$total <- total
+    state$dbi_cache$filter_key <- where
   }
   total <- state$dbi_cache$total
-
-  block_size <- 1000L
-  block_start <- (start_row %/% block_size) * block_size
-  if (!identical(state$dbi_cache$query_key, query_key) ||
-      !identical(state$dbi_cache$block_start, block_start)) {
+  end_row <- min(end_row, total)
+  row_idx <- if (start_row < end_row) seq.int(start_row + 1L, end_row) else integer()
+  page <- state$dbi$schema[integer(), positions, drop = FALSE]
+  if (!length(positions)) page <- data.frame(row.names = seq_along(row_idx))
+  if (!identical(state$dbi_cache$query_key, query_key)) {
+    state$dbi_cache$blocks <- list()
     state$dbi_cache$query_key <- query_key
-    state$dbi_cache$block_start <- block_start
-    n <- max(0L, min(block_size, total - block_start))
-    state$dbi_cache$page <- if (n == 0L) {
-      state$dbi$schema
-    } else {
-      DBI::dbGetQuery(
-        state$dbi$con,
-        paste0(
-          "select *", from, where, order,
-          " offset ", block_start, " rows",
-          " fetch next ", n, " rows only"
-        )
-      )
-    }
   }
-
-  local_start <- start_row - block_start + 1L
-  local_end <- min(nrow(state$dbi_cache$page), end_row - block_start)
-  page <- if (local_start <= local_end) {
-    state$dbi_cache$page[local_start:local_end, , drop = FALSE]
-  } else {
-    state$dbi$schema
-  }
-
-  if (nrow(page)) {
-    for (position in seq_len(ncol(page))) {
-      if (inherits(page[[position]], "POSIXct") ||
-            inherits(page[[position]], "POSIXlt")) {
-        page[[position]] <- format(page[[position]], "%Y-%m-%dT%H:%M:%S")
-      } else if (inherits(page[[position]], "integer64")) {
-        page[[position]] <- as.character(page[[position]])
-      } else if (state$columns[[position + 1L]]$type == "textColumn") {
-        page[[position]] <- dataview_format_column(page[[position]])
+  # Four 1,000-row blocks allow nearby backward scrolling without repeating SQL.
+  # Fetch each intersecting block: a request can cross a cache boundary.
+  block_size <- 1000L
+  if (length(row_idx) && length(positions)) {
+    pages <- list()
+    for (block_start in seq(
+      start_row %/% block_size * block_size,
+      (end_row - 1L) %/% block_size * block_size,
+      by = block_size
+    )) {
+      key <- as.character(block_start)
+      block <- state$dbi_cache$blocks[[key]]
+      if (is.null(block)) {
+        block <- DBI::dbGetQuery(state$dbi$con, paste0(
+          "select ", projection, from, where, order,
+          " offset ", format(block_start, scientific = FALSE), " rows",
+          " fetch next ", min(block_size, total - block_start), " rows only"
+        ))
       }
+      state$dbi_cache$blocks[[key]] <- NULL
+      state$dbi_cache$blocks[[key]] <- block
+      if (length(state$dbi_cache$blocks) > 4L) {
+        state$dbi_cache$blocks <- state$dbi_cache$blocks[-1L]
+      }
+      local_start <- max(start_row - block_start + 1L, 1L)
+      local_end <- min(nrow(block), end_row - block_start)
+      if (local_start <= local_end) {
+        pages[[length(pages) + 1L]] <- block[local_start:local_end, , drop = FALSE]
+      }
+    }
+    if (length(pages)) page <- do.call(rbind, pages)
+  }
+
+  for (position in seq_len(ncol(page))) {
+    if (inherits(page[[position]], "POSIXt")) {
+      page[[position]] <- sub(
+        "\\.?0+$", "", format(page[[position]], "%Y-%m-%dT%H:%M:%OS6")
+      )
+    } else if (inherits(page[[position]], "Date")) {
+      page[[position]] <- format(page[[position]], "%Y-%m-%d")
+    } else if (inherits(page[[position]], "integer64")) {
+      page[[position]] <- as.character(page[[position]])
+    } else if (state$columns[[positions[[position]] + 1L]]$type == "textColumn") {
+      page[[position]] <- dataview_format_column(page[[position]])
     }
   }
 
   row_idx <- if (nrow(page)) seq.int(start_row + 1L, length.out = nrow(page)) else integer()
   rows <- cbind(data.frame(row_idx, check.names = FALSE), page)
-  names(rows) <- as.character(seq_len(ncol(rows)) - 1L)
+  names(rows) <- c("0", as.character(positions))
   rownames(rows) <- NULL
 
   list(rows = rows, totalRows = total, totalUnfiltered = state$total_rows, lastRow = total)
