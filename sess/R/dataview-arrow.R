@@ -5,6 +5,12 @@ dataview_is_arrow_lazy <- function(data) {
     inherits(data, "arrow_dplyr_query")
 }
 
+dataview_arrow_require <- function() {
+  if (!requireNamespace("arrow", quietly = TRUE)) {
+    stop("Viewing Arrow datasets requires the optional 'arrow' package")
+  }
+}
+
 dataview_arrow_nested_columns <- function(data) {
   schema <- getExportedValue("arrow", "infer_schema")(data)
   vapply(schema$fields, function(field) {
@@ -99,6 +105,7 @@ dataview_arrow_bind_pages <- function(pages) {
 }
 
 dataview_arrow_reader_state <- function(data = NULL) {
+  dataview_arrow_require()
   state <- new.env(parent = emptyenv())
   state$reader <- NULL
   state$batch <- NULL

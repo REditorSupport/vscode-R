@@ -35,5 +35,8 @@ Suggests:
     httpgd,
     jgd,
     svglite,
-    tinytest
+    tinytest,
+    arrow,
+    DBI,
+    dbplyr
 Config/roxygen2/version: 8.1.0
