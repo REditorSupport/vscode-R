@@ -31,17 +31,17 @@ dataview_dbi_source <- function(data) {
     stop("Lazy database viewing currently supports SQL Server connections")
   }
 
-  # Render as a subquery so an unbounded arrange() does not produce an illegal
-  # ORDER BY inside the derived table used for counting and paging. A plain
-  # remote table may render as only its identifier, which still needs a SELECT
-  # before it can be wrapped as a derived table below.
-  query_sql <- as.character(dbplyr::sql_render(data, subquery = TRUE))
-  if (!grepl("^\\s*\\(*\\s*(select|with)\\b", query_sql, ignore.case = TRUE)) {
-    query_sql <- paste0("select * from ", query_sql)
-  }
+  # Keep dbplyr's table/query distinction until it has built the FROM source.
+  # subquery = TRUE also removes an unbounded ORDER BY that SQL Server would
+  # reject inside a derived table.
+  query_sql <- as.character(dbplyr::remote_query(data))
+  source_sql <- dbplyr::sql_render(data, subquery = TRUE)
+  from_sql <- as.character(
+    dbplyr::sql_query_wrap(con, source_sql, name = "dataview_source")
+  )
   schema <- DBI::dbGetQuery(
     con,
-    paste0("select top (0) * from (", query_sql, ") as dataview_source")
+    paste0("select top (0) * from ", from_sql)
   )
 
   # Drivers can return SQL date/time columns as character. Ask the server once
@@ -59,14 +59,20 @@ dataview_dbi_source <- function(data) {
   if (all(is.na(sql_types))) {
     warning("SQL Server result type metadata is unavailable; using the driver's R column types")
   }
-  list(con = con, query_sql = query_sql, schema = schema, sql_types = sql_types)
+  list(
+    con = con,
+    query_sql = query_sql,
+    from_sql = from_sql,
+    schema = schema,
+    sql_types = sql_types
+  )
 }
 
 dataview_dbi_to_state <- function(data) {
   source <- dataview_dbi_source(data)
   total_rows <- DBI::dbGetQuery(
     source$con,
-    paste0("select count_big(*) as n from (", source$query_sql, ") as dataview_source")
+    paste0("select count_big(*) as n from ", source$from_sql)
   )[[1L]][[1L]]
   total_rows <- as.numeric(total_rows)
   if (!is.finite(total_rows) || total_rows < 0 || total_rows > .Machine$integer.max) {
@@ -260,7 +266,7 @@ dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_mode
   projection <- paste(dataview_dbi_projection(state, positions), collapse = ", ")
   where <- dataview_dbi_filter_sql(state, filter_model)
   order <- dataview_dbi_order_sql(state, sort_model)
-  from <- paste0(" from (", state$dbi$query_sql, ") as dataview_source")
+  from <- paste0(" from ", state$dbi$from_sql)
   query_key <- list(filter = where, sort = order, projection = positions)
   cache_state <- state$dbi_cache
 

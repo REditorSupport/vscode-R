@@ -75,6 +75,8 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   expect_true(sess:::dataview_is_table(tbl))
   state <- sess:::dataview_to_state(tbl)
   expect_true(grepl("^select \\* from ", state$dbi$query_sql, ignore.case = TRUE))
+  expect_true(grepl("[fixture]", state$dbi$from_sql, fixed = TRUE))
+  expect_false(grepl("select", state$dbi$from_sql, ignore.case = TRUE))
   expect_equal(state$total_rows, nrow(fixture))
   expect_identical(state$column_names, names(fixture))
   expect_equal(as.character(state$columns[[3L]]$type), "dateColumn")
