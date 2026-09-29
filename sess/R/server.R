@@ -55,7 +55,14 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
     }
   }
 
-  print_async_msg <- function(msg) cat(sprintf("\r%s\n\n", msg))
+  # An automatic reconnect prints from later while the prompt is already shown,
+  # and the console does not redraw it. Startup and console calls to connect()
+  # are followed by the frontend's own prompt.
+  print_async_msg <- function(msg) {
+    redraw <- isTRUE(.sess_env$reconnecting) && interactive()
+    prompt <- if (redraw) getOption("prompt") else ""
+    cat(sprintf("\r%s\n\n%s", msg, prompt))
+  }
 
   do_connect <- function() {
     con <- tryCatch(
@@ -272,9 +279,13 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
       # Read endpoint and renderer from one snapshot, even if the file is
       # replaced again while connect() runs.
       .configure_discovery_jgd(discovery, settings$options$use_jgd)
+      .sess_env$reconnecting <- TRUE
       tryCatch(
         do.call(connect, c(list(endpoint = endpoint), settings$options)),
-        error = function(e) message("[sess] Reconnection failed: ", conditionMessage(e))
+        error = function(e) message("[sess] Reconnection failed: ", conditionMessage(e)),
+        finally = {
+          .sess_env$reconnecting <- NULL
+        }
       )
       if (!is.null(.sess_env$con)) {
         settings$endpoint <- endpoint
