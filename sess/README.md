@@ -137,6 +137,7 @@ In VS Code, this is controlled by the `r.plot.backend` setting.
 | `SESS_RSTUDIOAPI` | env var | `TRUE`/`FALSE`; passed as `use_rstudioapi` by the extension's R profile. |
 | `SESS_PLOT_BACKEND` | env var | `auto`, `standard`, `httpgd` or `jgd`; sets `use_httpgd`/`use_jgd` in the extension's R profile. |
 | `JGD_SOCKET` | env var | Socket used by the jgd device; set by the extension. |
+| `sess.quiet` | R option | Set to `TRUE` to suppress the successful connection message. Connection failures remain visible. |
 
 ## Protocol reference
 
