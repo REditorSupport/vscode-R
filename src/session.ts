@@ -194,7 +194,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                         filterModel: msg.filterModel ?? {},
                         fields: Array.isArray(msg.fields) ? msg.fields : undefined,
                     },
-                }) as DataViewPageResult | undefined;
+                }, 10000) as DataViewPageResult | undefined;
                 if (!result || !Array.isArray(result.rows) ||
                     typeof result.totalRows !== 'number' ||
                     typeof result.totalUnfiltered !== 'number') {
@@ -2166,7 +2166,7 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
     }
 }
 
-export async function sessionRequest(data: Record<string, unknown>): Promise<unknown> {
+export async function sessionRequest(data: Record<string, unknown>, timeout = 5000): Promise<unknown> {
     try {
         const socket = pipeClient;
         if (!socket || socket.destroyed) {
@@ -2195,7 +2195,7 @@ export async function sessionRequest(data: Record<string, unknown>): Promise<unk
                     pendingRequests.delete(id);
                     reject(new Error('Request timed out'));
                 }
-            }, 5000);
+            }, timeout);
         });
     } catch (error) {
         if (error instanceof Error) {
