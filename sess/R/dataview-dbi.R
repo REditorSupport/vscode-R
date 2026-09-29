@@ -250,14 +250,7 @@ dataview_dbi_order_sql <- function(state, sort_model) {
 dataview_dbi_projection <- function(state, positions) {
   vapply(positions, function(position) {
     column <- dataview_dbi_identifier(state, as.character(position))
-    source <- paste0("dataview_source.", column)
-    if (state$dbi$sql_types[[position]] %in%
-          c("date", "datetime", "datetime2", "smalldatetime", "datetimeoffset", "time")) {
-      # Avoid driver-dependent parsing, timezone shifts and precision loss.
-      paste0("convert(varchar(48), ", source, ", 126) as ", column)
-    } else {
-      source
-    }
+    paste0("dataview_source.", column)
   }, character(1))
 }
 

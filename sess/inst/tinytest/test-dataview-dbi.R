@@ -94,9 +94,8 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   expect_true(is.na(page$rows[["3"]][[2L]]))
   expect_identical(page$rows[["8"]][1:2], c(TRUE, FALSE))
   sql <- tail(calls, 1L)
-  expect_true(grepl(
-    "convert(varchar(48), dataview_source.[event], 126) as [event]", sql, fixed = TRUE
-  ))
+  expect_true(grepl("dataview_source.[event]", sql, fixed = TRUE))
+  expect_false(grepl("convert(varchar(48)", sql, fixed = TRUE))
   expect_true(grepl("order by dataview_source.[id] asc", sql, fixed = TRUE))
   expect_false(grepl("dataview_source.[note]", sql, fixed = TRUE))
   before <- length(calls)

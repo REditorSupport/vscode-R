@@ -153,6 +153,8 @@ function escapeHtml(text: string): string {
 }
 
 function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string): void {
+    const dataViewSession = activeSession;
+    let pendingPageRequests = 0;
     const postResponse = (requestId: number, ok: boolean, result?: unknown, error?: string) => {
         void panel.webview.postMessage({
             message: 'dataview/response',
@@ -184,24 +186,29 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
             }
 
             if (msg.action === 'page') {
-                const result = await sessionRequest({
-                    method: 'dataview_page',
-                    params: {
-                        view_id: viewId,
-                        startRow: Number(msg.startRow ?? 0),
-                        endRow: Number(msg.endRow ?? 0),
-                        sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
-                        filterModel: msg.filterModel ?? {},
-                        fields: Array.isArray(msg.fields) ? msg.fields : undefined,
-                    },
-                }, 10000) as DataViewPageResult | undefined;
-                if (!result || !Array.isArray(result.rows) ||
-                    typeof result.totalRows !== 'number' ||
-                    typeof result.totalUnfiltered !== 'number') {
-                    throw new Error('Invalid dataview_page response');
+                pendingPageRequests++;
+                try {
+                    const result = await sessionRequest({
+                        method: 'dataview_page',
+                        params: {
+                            view_id: viewId,
+                            startRow: Number(msg.startRow ?? 0),
+                            endRow: Number(msg.endRow ?? 0),
+                            sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
+                            filterModel: msg.filterModel ?? {},
+                            fields: Array.isArray(msg.fields) ? msg.fields : undefined,
+                        },
+                    }, 10000) as DataViewPageResult | undefined;
+                    if (!result || !Array.isArray(result.rows) ||
+                        typeof result.totalRows !== 'number' ||
+                        typeof result.totalUnfiltered !== 'number') {
+                        throw new Error('Invalid dataview_page response');
+                    }
+                    panel.title = baseTitle;
+                    postResponse(msg.requestId, true, result);
+                } finally {
+                    pendingPageRequests--;
                 }
-                panel.title = baseTitle;
-                postResponse(msg.requestId, true, result);
                 return;
             }
 
@@ -216,6 +223,15 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
             return;
         }
         dynamicDataViewPanels.delete(viewId);
+        if (pendingPageRequests > 0 && dataViewSession?.pid) {
+            for (const terminal of window.terminals) {
+                void terminal.processId.then(terminalPid => {
+                    if (terminalPid !== undefined && String(terminalPid) === dataViewSession.pid) {
+                        terminal.sendText('\x03', false);
+                    }
+                });
+            }
+        }
         void sessionRequest({
             method: 'dataview_dispose',
             params: { view_id: viewId },
