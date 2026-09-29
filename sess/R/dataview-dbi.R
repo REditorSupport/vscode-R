@@ -32,8 +32,13 @@ dataview_dbi_source <- function(data) {
   }
 
   # Render as a subquery so an unbounded arrange() does not produce an illegal
-  # ORDER BY inside the derived table used for counting and paging.
+  # ORDER BY inside the derived table used for counting and paging. A plain
+  # remote table may render as only its identifier, which still needs a SELECT
+  # before it can be wrapped as a derived table below.
   query_sql <- as.character(dbplyr::sql_render(data, subquery = TRUE))
+  if (!grepl("^\\s*\\(*\\s*(select|with)\\b", query_sql, ignore.case = TRUE)) {
+    query_sql <- paste0("select * from ", query_sql)
+  }
   schema <- DBI::dbGetQuery(
     con,
     paste0("select top (0) * from (", query_sql, ") as dataview_source")
