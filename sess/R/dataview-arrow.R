@@ -616,7 +616,7 @@ dataview_arrow_query_forward_slice <- function(state, row_idx) {
   }
   if (inherits(state$data, "FileSystemDataset") &&
         (!isFALSE(reader_state$fragment_index) ||
-          !isFALSE(reader_state$row_group_index)) &&
+           !isFALSE(reader_state$row_group_index)) &&
         tail(row_idx, 1L) - reader_state$next_row >
           length(row_idx) + dataview_arrow_reader_batch_size) {
     # A distant or sparse request should not consume all preceding data.

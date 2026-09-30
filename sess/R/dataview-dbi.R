@@ -55,8 +55,8 @@ dataview_dbi_source <- function(data) {
     if (is.symbol(expr)) {
       as.character(expr)
     } else if (is.call(expr) &&
-               identical(expr[[1L]], as.name("desc")) &&
-               is.symbol(expr[[2L]])) {
+                 identical(expr[[1L]], as.name("desc")) &&
+                 is.symbol(expr[[2L]])) {
       as.character(expr[[2L]])
     } else {
       NA_character_
@@ -138,7 +138,7 @@ dataview_dbi_cache_add <- function(cache_state, block_start, block) {
   cache_state$blocks[[key]] <- NULL
   cache_state$blocks[[key]] <- block
   while (length(cache_state$blocks) > 1L &&
-    sum(vapply(cache_state$blocks, nrow, integer(1))) > dataview_dbi_cache_rows) {
+           sum(vapply(cache_state$blocks, nrow, integer(1))) > dataview_dbi_cache_rows) {
     cache_state$blocks <- cache_state$blocks[-1L]
   }
 }
