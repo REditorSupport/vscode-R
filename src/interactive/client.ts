@@ -16,7 +16,7 @@ export class AgentClient extends EventEmitter {
 
     constructor(public manifest: SessionManifest, readonly clientId: string = randomUUID()) { super(); }
 
-    async connect(): Promise<void> {
+    async connect(options: { claim?: boolean; timeout?: number } = {}): Promise<void> {
         this.close();
         this.closing = false;
         const socket = net.createConnection(this.manifest.endpoint);
@@ -45,14 +45,18 @@ export class AgentClient extends EventEmitter {
             if (!this.closing) { this.emit('disconnect'); }
         });
         await new Promise<void>((resolve, reject) => {
-            const timer = setTimeout(() => { socket.destroy(); reject(new Error('Agent connection timed out')); }, 5000);
+            const timer = setTimeout(() => { socket.destroy(); reject(new Error('Agent connection timed out')); }, options.timeout ?? 5000);
             socket.once('connect', () => { clearTimeout(timer); resolve(); });
             socket.once('error', error => { clearTimeout(timer); reject(error); });
         });
-        this.manifest = await this.request<SessionManifest>('hello', {
+        const manifest = await this.request<SessionManifest>('hello', {
             protocol: AGENT_PROTOCOL, token: this.manifest.token, clientId: this.clientId,
-        });
-        this.control = await this.request<boolean>('claim');
+        }, options.timeout);
+        if (manifest.id !== this.manifest.id || manifest.generation !== this.manifest.generation) {
+            throw new Error('R session identity changed; refresh the session list before connecting');
+        }
+        this.manifest = manifest;
+        this.control = options.claim === false ? false : await this.request<boolean>('claim', {}, options.timeout);
         this.ready = true; this.emit('activity');
         this.heartbeat = setInterval(() => {
             void this.request<{ control: boolean; status: SessionManifest['status'] }>('heartbeat').then(value => {
@@ -96,4 +100,14 @@ export class AgentClient extends EventEmitter {
         this.pending.clear();
         this.socket?.destroy();
     }
+}
+
+/** Read live status without claiming control or subscribing to output. */
+export async function probeSession(manifest: SessionManifest, timeout = 1000): Promise<SessionManifest | undefined> {
+    const client = new AgentClient(manifest);
+    try {
+        await client.connect({ claim: false, timeout });
+        return client.manifest;
+    } catch { return undefined; }
+    finally { client.close(); }
 }

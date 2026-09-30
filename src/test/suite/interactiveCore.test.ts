@@ -2,14 +2,16 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as net from 'net';
 import { get } from 'http';
 import { gunzipSync } from 'zlib';
 import { SessionJournal, retainedAssetIds } from '../../interactive/journal';
 import { JsonLines } from '../../interactive/framing';
 import { AssetStore, exportedAssetName } from '../../interactive/assets';
 import { Transcript } from '../../interactive/transcript';
-import { submission, AgentSnapshot } from '../../interactive/protocol';
-import { defaultStorage, discoverSessions, installRuntime, prepareStorage, shellQuote } from '../../interactive/launcher';
+import { submission, AgentSnapshot, SessionManifest } from '../../interactive/protocol';
+import { probeSession } from '../../interactive/client';
+import { defaultStorage, discoverSessions, hasSessionEndpoint, installRuntime, prepareStorage, shellQuote } from '../../interactive/launcher';
 import { tablePage, TABLE_PAGE_SIZE } from '../../interactive/tablePaging';
 import { searchHistory } from '../../interactive/history';
 
@@ -113,6 +115,41 @@ suite('Interactive protocol and persistence', () => {
         for (const byte of bytes) { parser.push(Buffer.from([byte])); }
         assert.deepStrictEqual(received, [{ text: 'λ🙂' }, { text: 'next' }]);
         assert.throws(() => parser.push(Buffer.alloc(101, 97)), /size limit/);
+    });
+
+    test('session probes verify identity and live status without claiming control and bound unresponsive endpoints', async function () {
+        if (process.platform === 'win32') { this.skip(); }
+        const manifest: SessionManifest = { id: 'probe', generation: 'first', protocol: 1, label: 'Probe',
+            host: os.hostname(), directory, endpoint: path.join(directory, 'probe.sock'), token: 'test-token',
+            agentPid: process.pid, provider: 'r', created: Date.now(), status: 'idle', capabilities: {}, supervision: 'test' };
+        let reply = { ...manifest, status: 'busy' }, respond = true;
+        const requests: string[] = [];
+        const server = net.createServer(socket => {
+            socket.on('error', () => undefined);
+            const parser = new JsonLines(message => {
+                requests.push(String(message.method));
+                if (respond) { socket.write(JSON.stringify({ id: message.id, result: reply }) + '\n'); }
+            });
+            socket.on('data', (chunk: Buffer) => parser.push(chunk));
+        });
+        await new Promise<void>((resolve, reject) => {
+            server.once('error', reject); server.listen(manifest.endpoint, resolve);
+        });
+        try {
+            assert.ok(hasSessionEndpoint(manifest));
+            const current = await probeSession(manifest);
+            assert.strictEqual(current?.status, 'busy');
+            assert.deepStrictEqual(requests, ['hello'], 'Discovery must never claim control or execute code');
+            reply = { ...reply, generation: 'different' };
+            assert.strictEqual(await probeSession(manifest), undefined, 'A reused endpoint is not the original session');
+            respond = false;
+            assert.strictEqual(await probeSession(manifest, 50), undefined, 'A stale/non-agent listener cannot stall discovery');
+            assert.ok(!hasSessionEndpoint({ ...manifest, agentPid: -1 }));
+            const regularFile = path.join(directory, 'not-a-socket'); fs.writeFileSync(regularFile, '');
+            assert.ok(!hasSessionEndpoint({ ...manifest, endpoint: regularFile }));
+        } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
+        assert.ok(!hasSessionEndpoint(manifest));
+        assert.strictEqual(await probeSession(manifest), undefined);
     });
 
     test('admission survives reopening and never accepts changed code with a reused ID', () => {

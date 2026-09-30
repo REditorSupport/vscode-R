@@ -98,6 +98,22 @@ suite('Session Communication', () => {
         sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Active');
     });
 
+    test('attached session status uses one R prefix for short and full version strings', async () => {
+        const status = vscode.window.createStatusBarItem();
+        sandbox.stub(extension, 'sessionStatusBarItem').value(status);
+        const target = session.registerSessionTransport('status-version-test', os.hostname(), process.cwd(), () => Promise.resolve({}));
+        target.pid = '92026';
+        target.info.version = 'R version 4.6.1 (2026-06-24)';
+        try {
+            for (const version of ['4.6.1', 'R version 4.6.1 (2026-06-24)']) {
+                target.rVer = version;
+                await session.activateSession(target);
+                assert.strictEqual(status.text, 'R 4.6.1: 92026');
+                assert.ok(String(status.tooltip).includes(target.info.version));
+            }
+        } finally { session.unregisterSessionTransport(target); status.dispose(); }
+    });
+
     test('concurrent server initialization and public API calls share one endpoint', async () => {
         await session.shutdownSessionWatcher();
         sandbox.stub(extension, 'enableSessionWatcher').value(true);

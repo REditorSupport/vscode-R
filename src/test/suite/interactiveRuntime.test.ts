@@ -5,7 +5,7 @@ import * as path from 'path';
 import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { randomUUID } from 'crypto';
-import { arfRequest } from '../../interactive/arf';
+import { arfRequest, probeArfSession } from '../../interactive/arf';
 import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
 import { AgentConfig, SessionEvent, SessionManifest, ExecutionRecord } from '../../interactive/protocol';
@@ -376,6 +376,8 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
                 child.once('exit', () => reject(new Error('arf exited before readiness')));
             });
             await arfRequest(endpoint, 'evaluate', { code: 'kept_before_adoption <- 73', visible: true });
+            assert.ok(await probeArfSession({ pid: Number(child.pid), socket_path: endpoint }));
+            assert.strictEqual(await probeArfSession({ pid: Number(child.pid), socket_path: path.join(temporary, 'missing-arf.sock') }), undefined);
             const id = randomUUID();
             adopted = new SessionAgent({ id, generation: randomUUID(), label: 'Adopted arf', directory: root,
                 storage: path.join(root, id), rPath: 'R', library, resources,

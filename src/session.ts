@@ -1801,8 +1801,9 @@ export async function activateSession(session: Session): Promise<void> {
     workspaceData = session.workspaceData;
 
     if (sessionStatusBarItem) {
-        sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
-        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
+        const version = rVer.replace(/^R (?:version )?/, '').replace(/\s+\(.*/, '');
+        sessionStatusBarItem.text = `R ${version}: ${pid}`;
+        sessionStatusBarItem.tooltip = `${info.version || rVer}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
         sessionStatusBarItem.show();
     }
     await setContext('rSessionActive', true);

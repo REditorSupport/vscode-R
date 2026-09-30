@@ -64,3 +64,11 @@ export function discoverArf(): ArfSession[] {
     }
     return sessions;
 }
+
+/** Reading frontend metadata does not evaluate R or request execution permission. */
+export async function probeArfSession(session: ArfSession): Promise<ArfSession | undefined> {
+    try {
+        await arfRequest(session.socket_path, 'session', {}, 1000);
+        return session;
+    } catch { return undefined; }
+}

@@ -74,6 +74,29 @@ import { AssetStorageStats, exportedAssetName, readAsset } from '../../interacti
             sinon.assert.notCalled(created);
         } finally { picker.restore(); errors.restore(); created.restore(); }
     });
+    test('the status-bar picker excludes dead agents without deleting their retained history', async () => {
+        const stale = { ...manifests[0], id: randomUUID(), label: 'Stale session', endpoint: path.join(root, 'missing', 'control.sock') };
+        const storage = path.join(root, stale.id); fs.mkdirSync(storage);
+        const manifest = path.join(storage, 'manifest.json');
+        fs.writeFileSync(manifest, JSON.stringify(stale));
+        fs.writeFileSync(path.join(storage, 'retained-history'), 'keep this history');
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        try {
+            await vscode.commands.executeCommand('r.interactive.connect');
+            sinon.assert.calledOnce(picker);
+            const choices = await picker.firstCall.args[0] as (vscode.QuickPickItem & { manifest?: SessionManifest })[];
+            assert.ok(!choices.some(choice => choice.manifest?.id === stale.id), 'A saved idle status does not make a dead agent connectable');
+            for (const live of manifests) {
+                const choice = choices.find(choice => choice.manifest?.id === live.id); assert.ok(choice);
+                assert.ok(choice.description?.includes(`PID ${choice.manifest?.rPid ?? 'starting'}`), 'Identical session names must be distinguishable by PID');
+            }
+            assert.ok(choices.some(choice => choice.label.includes('New persistent R session')));
+            assert.strictEqual(fs.readFileSync(path.join(storage, 'retained-history'), 'utf8'), 'keep this history');
+            assert.ok(fs.existsSync(manifest));
+            sinon.assert.notCalled(errors);
+        } finally { picker.restore(); errors.restore(); fs.rmSync(storage, { recursive: true, force: true }); }
+    });
     test('opens native Interactive without Jupyter and executes through its R kernel', async () => {
         const created = sinon.spy(vscode.notebooks, 'createNotebookController');
         try {
@@ -113,6 +136,20 @@ import { AssetStorageStats, exportedAssetName, readAsset } from '../../interacti
             picker.restore(); errors.restore();
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         }
+    });
+    test('a session that disappears after selection reports a useful recovery message', async () => {
+        const stale = { ...manifests[0], id: randomUUID(), label: 'Closed session', endpoint: path.join(root, 'missing.sock') };
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: stale.label, manifest: stale } as vscode.QuickPickItem);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        const count = vscode.workspace.notebookDocuments.length;
+        try {
+            await vscode.commands.executeCommand('r.interactive.connect');
+            sinon.assert.calledOnce(errors);
+            assert.match(errors.firstCall.args[0], /Closed session.*no longer available/);
+            assert.match(errors.firstCall.args[0], /Refresh the session list/);
+            assert.ok(!errors.firstCall.args[0].includes('ENOENT'));
+            assert.strictEqual(vscode.workspace.notebookDocuments.length, count);
+        } finally { picker.restore(); errors.restore(); }
     });
     test('lints Interactive cells and clears diagnostics after an edit', async () => {
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);

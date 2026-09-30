@@ -2,11 +2,11 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { AgentClient } from './client';
+import { AgentClient, probeSession } from './client';
 import { AgentConfig, AgentSnapshot, DEFAULT_MAX_ASSET_BYTES, ExecutionRecord, SessionEvent, SessionManifest, SourceLocation, object, sessionLabel } from './protocol';
 import { AssetStore, AssetStorageStats, exportedAssetName, readAsset } from './assets';
-import { defaultStorage, discoverSessions, installRuntime, launchAgent, newIdentity } from './launcher';
-import { discoverArf, ArfSession } from './arf';
+import { defaultStorage, discoverSessions, hasSessionEndpoint, installRuntime, launchAgent, newIdentity } from './launcher';
+import { discoverArf, probeArfSession, ArfSession } from './arf';
 import { Transcript, TranscriptCell } from './transcript';
 import { DISPLAY_MIME, InteractiveSerializer } from './notebook';
 import { setInteractiveExecutor } from './executionTarget';
@@ -312,10 +312,13 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     }
 
     refresh(): void {
-        try { this.manifests = discoverSessions(this.root); }
+        try { this.manifests = discoverSessions(this.root).filter(hasSessionEndpoint); }
         catch (error) { this.manifests = []; this.report(error); }
-        const manifests = new Map(this.manifests.map(manifest => [manifest.id, manifest]));
-        for (const view of this.views.values()) { manifests.set(view.client.manifest.id, view.client.manifest); }
+        const manifests = new Map(this.manifests.map(manifest => [`${manifest.id}:${manifest.generation}`, manifest]));
+        for (const view of this.views.values()) {
+            const manifest = view.client.manifest;
+            manifests.set(`${manifest.id}:${manifest.generation}`, manifest);
+        }
         this.manifests = [...manifests.values()];
         this.changes.fire(undefined);
         this.updateStatus();
@@ -323,7 +326,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     getChildren(): SessionManifest[] { return this.manifests; }
     getTreeItem(manifest: SessionManifest): vscode.TreeItem {
         const item = new vscode.TreeItem(manifest.label);
-        item.id = manifest.id; item.description = `${manifest.status} · ${manifest.provider}`;
+        item.id = `${manifest.id}:${manifest.generation}`; item.description = `${manifest.status} · ${manifest.provider}`;
         item.contextValue = 'rInteractiveSession';
         const view = this.views.get(`${manifest.id}:${manifest.generation}`);
         if (view && !view.client.connected) { item.description = `disconnected · ${manifest.provider}`; }
@@ -369,13 +372,36 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private async pick(): Promise<void> {
         this.refresh();
-        const choices: (vscode.QuickPickItem & { manifest?: SessionManifest; arf?: ArfSession })[] =
-            this.manifests.map(manifest => ({ label: manifest.label, description: `${manifest.status} · ${manifest.directory}`, manifest }));
-        choices.push(...discoverArf().filter(arf => !this.manifests.some(item => item.rPid === arf.pid && item.status !== 'exited')).map(arf =>
-            ({ label: `arf ${arf.pid}`, description: `${arf.r_version ?? ''} · ${arf.cwd ?? ''}`, arf })));
-        const selected = await vscode.window.showQuickPick(choices, { title: 'Connect to a persistent R session' });
+        // Passing a promise keeps the picker responsive while local agents are checked.
+        const choices = async (): Promise<(vscode.QuickPickItem & { manifest?: SessionManifest; arf?: ArfSession; create?: boolean })[]> => {
+            const live: SessionManifest[] = [];
+            const candidates = this.manifests.filter(hasSessionEndpoint);
+            for (let i = 0; i < candidates.length; i += 8) {
+                const batch = await Promise.all(candidates.slice(i, i + 8).map(manifest => probeSession(manifest)));
+                for (const manifest of batch) {
+                    if (manifest && !['exited', 'stopping'].includes(manifest.status)) { live.push(manifest); }
+                }
+            }
+            const terminals: ArfSession[] = [];
+            const arfCandidates = discoverArf().filter(arf => fs.existsSync(arf.socket_path) && !live.some(item => item.rPid === arf.pid));
+            for (let i = 0; i < arfCandidates.length; i += 8) {
+                const batch = await Promise.all(arfCandidates.slice(i, i + 8).map(arf => probeArfSession(arf)));
+                for (const arf of batch) { if (arf) { terminals.push(arf); } }
+            }
+            return [
+                ...live.map(manifest => ({ label: manifest.label,
+                    description: `${manifest.status} · ${manifest.provider} · PID ${manifest.rPid ?? 'starting'}`,
+                    detail: `${manifest.directory} · ${manifest.id.slice(0, 8)}`, manifest })),
+                ...terminals.map(arf =>
+                    ({ label: `arf ${arf.pid}`, description: `${arf.r_version ?? ''} · ${arf.cwd ?? ''}`, arf })),
+                { label: '$(add) New persistent R session', create: true },
+            ];
+        };
+        const selected = await vscode.window.showQuickPick(choices(), { title: 'Connect to a persistent R session',
+            placeHolder: 'Select a running session or create a new one', matchOnDescription: true, matchOnDetail: true });
         if (selected?.manifest) { await this.open(selected.manifest); }
         else if (selected?.arf) { await this.create(selected.arf); }
+        else if (selected?.create) { await this.create(); }
     }
 
     async open(manifest: SessionManifest): Promise<void> {
@@ -397,7 +423,14 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const client = new AgentClient(manifest, this.clientId);
         const created: vscode.Disposable[] = [ { dispose: () => client.close() } ];
         try {
-            await client.connect();
+            try { await client.connect(); }
+            catch (error) {
+                if (['ENOENT', 'ECONNREFUSED'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+                    this.refresh();
+                    throw new Error(`Session “${manifest.label}” is no longer available. Refresh the session list or start a new session. Its saved history has not been removed.`, { cause: error });
+                }
+                throw error;
+            }
             const makeController = (type: string): vscode.NotebookController => {
                 const controller = vscode.notebooks.createNotebookController(`r-${manifest.id}-${manifest.generation}-${type}`, type, `R: ${manifest.label}`);
                 controller.supportedLanguages = ['r']; controller.supportsExecutionOrder = true;

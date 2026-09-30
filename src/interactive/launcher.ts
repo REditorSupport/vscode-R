@@ -60,6 +60,16 @@ export function discoverSessions(root: string): SessionManifest[] {
     return sessions.sort((a, b) => b.created - a.created);
 }
 
+/** Cheap rejection of stale registry entries; a socket still needs an authenticated probe. */
+export function hasSessionEndpoint(manifest: SessionManifest): boolean {
+    if (!Number.isSafeInteger(manifest.agentPid) || manifest.agentPid <= 0 ||
+        typeof manifest.endpoint !== 'string' || !path.isAbsolute(manifest.endpoint)) { return false; }
+    try {
+        process.kill(manifest.agentPid, 0);
+        return fs.statSync(manifest.endpoint).isSocket();
+    } catch { return false; }
+}
+
 /** Shell quoting is used only for tmux/system service launch commands, never for R code. */
 export function shellQuote(value: string): string { return `'${value.replace(/'/g, `'"'"'`)}'`; }
 
