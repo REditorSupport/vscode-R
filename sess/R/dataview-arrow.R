@@ -5,6 +5,11 @@ dataview_is_arrow_lazy <- function(data) {
     inherits(data, "arrow_dplyr_query")
 }
 
+dataview_arrow_reader_batch_size <- 5000L
+dataview_arrow_cache_block_size <- 1000L
+dataview_arrow_sort_block_size <- 5000L
+dataview_arrow_cache_rows <- 20000L
+
 dataview_arrow_require <- function() {
   if (!requireNamespace("arrow", quietly = TRUE)) {
     stop("Viewing Arrow datasets requires the optional 'arrow' package")
@@ -108,10 +113,13 @@ dataview_arrow_reader_state <- function(data = NULL) {
   dataview_arrow_require()
   state <- new.env(parent = emptyenv())
   state$reader <- NULL
+  # Current RecordBatch buffer from the forward Arrow reader.
   state$batch <- NULL
   state$batch_row <- 0L
   state$next_row <- 1L
+  # Source-row cache used by normal forward/backward scrolling.
   state$row_cache <- list()
+  # Display-row cache keyed by filter/sort query and display block.
   state$query_cache <- list()
   state$fragment_index <- NULL
   state$row_group_index <- NULL
@@ -120,6 +128,86 @@ dataview_arrow_reader_state <- function(data = NULL) {
   state$projection <- NULL
   state$page_data <- NULL
   state
+}
+
+dataview_arrow_cache_get <- function(reader_state, row_idx) {
+  # Reuse cached source rows for normal scrolling without rescanning Arrow.
+  if (!length(row_idx)) {
+    return(NULL)
+  }
+
+  for (i in seq_along(reader_state$row_cache)) {
+    cached <- reader_state$row_cache[[i]]
+    if (min(row_idx) < cached$first_row || max(row_idx) > cached$last_row) {
+      next
+    }
+
+    cached_idx <- match(row_idx, cached$row_idx)
+    if (all(!is.na(cached_idx))) {
+      reader_state$row_cache <- c(
+        reader_state$row_cache[-i],
+        list(cached)
+      )
+      return(cached$data[cached_idx, , drop = FALSE])
+    }
+  }
+  NULL
+}
+
+dataview_arrow_cache_add <- function(reader_state, row_idx, data) {
+  reader_state$row_cache[[length(reader_state$row_cache) + 1L]] <- list(
+    first_row = min(row_idx),
+    last_row = max(row_idx),
+    row_idx = row_idx,
+    data = data
+  )
+
+  while (length(reader_state$row_cache) > 1L &&
+    sum(vapply(
+      reader_state$row_cache,
+      function(cached) length(cached$row_idx),
+      integer(1)
+    )) > dataview_arrow_cache_rows) {
+    reader_state$row_cache <- reader_state$row_cache[-1L]
+  }
+}
+
+dataview_arrow_query_cache_get <- function(reader_state, query_key, block_start) {
+  # Reuse cached display blocks for the current filter/sort result.
+  for (i in rev(seq_along(reader_state$query_cache))) {
+    cached <- reader_state$query_cache[[i]]
+    if (!identical(cached$query_key, query_key) ||
+          cached$block_start != block_start) {
+      next
+    }
+    reader_state$query_cache <- c(
+      reader_state$query_cache[-i],
+      list(cached)
+    )
+    return(cached$data)
+  }
+  NULL
+}
+
+dataview_arrow_query_cache_add <- function(
+  reader_state,
+  query_key,
+  block_start,
+  data
+) {
+  reader_state$query_cache[[length(reader_state$query_cache) + 1L]] <- list(
+    query_key = query_key,
+    block_start = block_start,
+    data = data
+  )
+  while (length(reader_state$query_cache) > 1L &&
+    sum(vapply(
+      reader_state$query_cache,
+      function(cached) nrow(cached$data),
+      integer(1)
+    )) > dataview_arrow_cache_rows) {
+    reader_state$query_cache <- reader_state$query_cache[-1L]
+  }
 }
 
 dataview_arrow_page_state <- function(state, fields = NULL) {
@@ -300,89 +388,6 @@ dataview_arrow_reader_select <- function(reader_state, row_idx) {
   dataview_arrow_bind_pages(pages)
 }
 
-dataview_arrow_reader_batch_size <- 5000L
-dataview_arrow_cache_block_size <- 1000L
-dataview_arrow_query_block_size <- 5000L
-dataview_arrow_cache_rows <- 20000L
-
-dataview_arrow_cache_get <- function(reader_state, row_idx) {
-  if (!length(row_idx)) {
-    return(NULL)
-  }
-
-  for (i in seq_along(reader_state$row_cache)) {
-    cached <- reader_state$row_cache[[i]]
-    if (min(row_idx) < cached$first_row || max(row_idx) > cached$last_row) {
-      next
-    }
-
-    cached_idx <- match(row_idx, cached$row_idx)
-    if (all(!is.na(cached_idx))) {
-      reader_state$row_cache <- c(
-        reader_state$row_cache[-i],
-        list(cached)
-      )
-      return(cached$data[cached_idx, , drop = FALSE])
-    }
-  }
-  NULL
-}
-
-dataview_arrow_cache_add <- function(reader_state, row_idx, data) {
-  reader_state$row_cache[[length(reader_state$row_cache) + 1L]] <- list(
-    first_row = min(row_idx),
-    last_row = max(row_idx),
-    row_idx = row_idx,
-    data = data
-  )
-
-  while (length(reader_state$row_cache) > 1L &&
-    sum(vapply(
-      reader_state$row_cache,
-      function(cached) length(cached$row_idx),
-      integer(1)
-    )) > dataview_arrow_cache_rows) {
-    reader_state$row_cache <- reader_state$row_cache[-1L]
-  }
-}
-
-dataview_arrow_query_cache_get <- function(reader_state, query_key, block_start) {
-  for (i in rev(seq_along(reader_state$query_cache))) {
-    cached <- reader_state$query_cache[[i]]
-    if (!identical(cached$query_key, query_key) ||
-          cached$block_start != block_start) {
-      next
-    }
-    reader_state$query_cache <- c(
-      reader_state$query_cache[-i],
-      list(cached)
-    )
-    return(cached$data)
-  }
-  NULL
-}
-
-dataview_arrow_query_cache_add <- function(
-  reader_state,
-  query_key,
-  block_start,
-  data
-) {
-  reader_state$query_cache[[length(reader_state$query_cache) + 1L]] <- list(
-    query_key = query_key,
-    block_start = block_start,
-    data = data
-  )
-  while (length(reader_state$query_cache) > 1L &&
-    sum(vapply(
-      reader_state$query_cache,
-      function(cached) nrow(cached$data),
-      integer(1)
-    )) > dataview_arrow_cache_rows) {
-    reader_state$query_cache <- reader_state$query_cache[-1L]
-  }
-}
-
 dataview_arrow_fragment_index <- function(state) {
   reader_state <- state$arrow_reader
   if (isFALSE(reader_state$fragment_index)) {
@@ -466,6 +471,7 @@ dataview_arrow_fragment_index <- function(state) {
 }
 
 dataview_arrow_fragment_slice <- function(state, row_idx) {
+  # Read requested rows from only the dataset files that contain them.
   index <- dataview_arrow_fragment_index(state)
   if (is.null(index) || !length(row_idx)) {
     return(NULL)
@@ -559,6 +565,7 @@ dataview_arrow_row_group_index <- function(state) {
 }
 
 dataview_arrow_row_group_slice <- function(state, row_idx) {
+  # Read requested rows directly from the Parquet row groups that contain them.
   index <- dataview_arrow_row_group_index(state)
   if (is.null(index) || !length(row_idx)) return(NULL)
 
@@ -596,6 +603,7 @@ dataview_arrow_row_group_slice <- function(state, row_idx) {
 }
 
 dataview_arrow_query_forward_slice <- function(state, row_idx) {
+  # Reuse the forward reader when requested source rows can be reached efficiently.
   if (!length(row_idx) ||
         (length(row_idx) > 1L && any(diff(row_idx) <= 0L))) {
     return(NULL)
@@ -628,6 +636,7 @@ dataview_arrow_query_forward_slice <- function(state, row_idx) {
 }
 
 dataview_arrow_query_fetch <- function(state, row_idx) {
+  # Choose the cheapest Arrow path for fetching the requested source rows.
   if (!length(row_idx)) {
     return(dataview_schema(state$data))
   }
@@ -650,6 +659,7 @@ dataview_arrow_query_fetch <- function(state, row_idx) {
 }
 
 dataview_arrow_block_slice <- function(state, row_idx) {
+  # Fetch contiguous source rows in cache-sized blocks for normal scrolling.
   reader_state <- state$arrow_reader
   pages <- list()
   block_starts <- dataview_block_starts(
@@ -684,6 +694,7 @@ dataview_arrow_block_slice <- function(state, row_idx) {
 }
 
 dataview_arrow_slice <- function(state, row_idx) {
+  # Fetch source rows directly, using block caching for contiguous requests.
   if (!length(row_idx)) {
     return(dataview_schema(state$data))
   }
@@ -704,6 +715,7 @@ dataview_arrow_slice <- function(state, row_idx) {
 }
 
 dataview_arrow_query_slice <- function(state, display_idx) {
+  # Fetch filtered/sorted display rows using query-specific cached blocks.
   if (!length(display_idx)) {
     return(dataview_schema(state$data))
   }
@@ -712,7 +724,7 @@ dataview_arrow_query_slice <- function(state, display_idx) {
   # Parquet row groups when available.
   reader_state <- state$arrow_reader
   block_size <- if (isTRUE(state$query_has_sort)) {
-    dataview_arrow_query_block_size
+    dataview_arrow_sort_block_size
   } else {
     dataview_arrow_cache_block_size
   }

@@ -1036,6 +1036,9 @@ handle_dataview_dispose <- function(params) {
     if (!is.null(state$arrow_reader) && !is.null(state$arrow_reader$reader)) {
       try(state$arrow_reader$reader$Close(), silent = TRUE)
     }
+    if (!is.null(state$dbi_cache)) {
+      dataview_dbi_result_reset(state$dbi_cache)
+    }
     .sess_env$dataviews[[view_id]] <- NULL
   }
   TRUE
