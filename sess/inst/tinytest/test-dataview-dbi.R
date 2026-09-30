@@ -3,8 +3,9 @@
 if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietly = TRUE)) local({
   class_env <- environment()
   methods::setClass("dataview_dbi_test", contains = "DBIConnection", where = class_env)
-  registerS3method("dbplyr_edition", "dataview_dbi_test", function(con) 2L,
-    envir = asNamespace("dbplyr"))
+  registerS3method(
+    "dbplyr_edition", "dataview_dbi_test", function(con) 2L, envir = asNamespace("dbplyr")
+  )
   registered <- list()
   method <- function(name, signature, definition) {
     assign(name, getExportedValue("DBI", name), envir = class_env)
@@ -14,8 +15,10 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   on.exit({
     for (entry in registered) methods::removeMethod(entry[[1L]], entry[[2L]], where = class_env)
     methods::removeClass("dataview_dbi_test", where = class_env)
-    rm("dbplyr_edition.dataview_dbi_test",
-      envir = get(".__S3MethodsTable__.", envir = asNamespace("dbplyr")))
+    rm(
+      "dbplyr_edition.dataview_dbi_test",
+      envir = get(".__S3MethodsTable__.", envir = asNamespace("dbplyr"))
+    )
   }, add = TRUE)
   con <- methods::new("dataview_dbi_test")
   calls <- character()
@@ -55,6 +58,9 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   method("dbGetQuery", c("dataview_dbi_test", "character"), function(conn, statement, ...) {
     calls <<- c(calls, statement)
     if (isTRUE(fail)) stop("test database failure")
+    if (identical(fail, "interrupt")) {
+      stop(structure(list(message = "cancelled", call = NULL), class = c("interrupt", "condition")))
+    }
     if (grepl("select top (0)", statement, fixed = TRUE)) return(fixture[0L, , drop = FALSE])
     if (grepl("WHERE (0 = 1)", statement, fixed = TRUE)) return(fixture[0L, , drop = FALSE])
     if (grepl("sys.dm_exec_describe_first_result_set", statement, fixed = TRUE)) {
@@ -64,7 +70,7 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     if (grepl("select count_big(*)", statement, fixed = TRUE)) return(data.frame(n = nrow(fixture)))
     start <- as.integer(sub(".* offset ([0-9]+) rows.*", "\\1", statement))
     n <- as.integer(sub(".* fetch next ([0-9]+) rows only.*", "\\1", statement))
-    projection <- strsplit(statement, " from (", fixed = TRUE)[[1L]][[1L]]
+    projection <- strsplit(statement, " from ", fixed = TRUE)[[1L]][[1L]]
     positions <- which(vapply(names(fixture), function(name) {
       grepl(paste0("dataview_source.[", name, "]"), projection, fixed = TRUE)
     }, logical(1)))
@@ -74,7 +80,7 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   tbl <- dplyr::tbl(con, "fixture")
   expect_true(sess:::dataview_is_table(tbl))
   state <- sess:::dataview_to_state(tbl)
-  expect_true(grepl("^select \\* from ", state$dbi$query_sql, ignore.case = TRUE))
+  expect_true(grepl("^select \\*\\s+from ", state$dbi$query_sql, ignore.case = TRUE))
   expect_true(grepl("[fixture]", state$dbi$from_sql, fixed = TRUE))
   expect_false(grepl("select", state$dbi$from_sql, ignore.case = TRUE))
   expect_equal(state$total_rows, nrow(fixture))
@@ -95,7 +101,9 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   expect_identical(page$rows[["8"]][1:2], c(TRUE, FALSE))
   sql <- tail(calls, 1L)
   expect_true(grepl("dataview_source.[event]", sql, fixed = TRUE))
-  expect_false(grepl("convert(varchar(48)", sql, fixed = TRUE))
+  expect_true(grepl(
+    "convert(varchar(48), dataview_source.[event], 126) as [event]", sql, fixed = TRUE
+  ))
   expect_true(grepl("order by dataview_source.[id] asc", sql, fixed = TRUE))
   expect_false(grepl("dataview_source.[note]", sql, fixed = TRUE))
   before <- length(calls)
@@ -179,11 +187,50 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   expect_true(sess:::handle_dataview_dispose(list(view_id = view$view_id)))
   expect_true(DBI::dbIsValid(con)) # the viewer does not own the connection
 
+  # An interrupted page must reply, clear its busy notification, and allow the
+  # next RPC to run. The DBI connection belongs to the user and remains usable.
+  view <- sess:::dataview_register(tbl)
+  pipe <- processx::conn_create_pipepair()
+  old_con <- env$con
+  on.exit({
+    env$con <- old_con
+    lapply(pipe, close)
+  }, add = TRUE)
+  env$con <- pipe[[2L]]
+  fail <- "interrupt"
+  sess:::dispatch_message(as.character(jsonlite::toJSON(list(
+    jsonrpc = "2.0", id = "cancel", method = "dataview_page",
+    params = list(view_id = view$view_id, startRow = 0L, endRow = 2L, notify_busy = TRUE)
+  ), auto_unbox = TRUE)))
+  messages <- lapply(
+    strsplit(trimws(processx::conn_read_chars(pipe[[1L]])), "\n")[[1L]], jsonlite::fromJSON
+  )
+  expect_identical(messages[[1L]]$method, "dataview_busy")
+  expect_identical(messages[[1L]]$params$view_id, view$view_id)
+  expect_equal(messages[[2L]]$error$code, -32800L)
+  expect_identical(messages[[3L]]$method, "dataview_busy")
+  expect_null(messages[[3L]]$params$view_id)
+  fail <- FALSE
+  sess:::dispatch_message(as.character(jsonlite::toJSON(list(
+    jsonrpc = "2.0", id = "after-cancel", method = "dataview_page",
+    params = list(view_id = view$view_id, startRow = 0L, endRow = 2L)
+  ), auto_unbox = TRUE)))
+  reply <- jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]))
+  expect_identical(reply$id, "after-cancel")
+  expect_equal(nrow(reply$result$rows), 2L)
+  expect_true(DBI::dbIsValid(con))
+  env$con <- old_con
+
   # Metadata failure preserves genuine R Date/POSIXct classes without guessing text.
-  metadata_available <- FALSE
   fixture$event <- as.POSIXct(rep("2024-02-29 12:34:50", nrow(fixture)), tz = "Australia/Sydney")
   fixture$event[[1L]] <- fixture$event[[1L]] + 0.125
   fixture[[" day "]] <- as.Date(fixture[[" day "]])
+  metadata_available <- TRUE
+  native <- sess:::dataview_to_state(tbl)
+  expect_false(any(grepl(
+    "convert", sess:::dataview_dbi_projection(native, c(2L, 3L)), fixed = TRUE
+  )))
+  metadata_available <- FALSE
   expect_warning(state <- sess:::dataview_to_state(tbl), "metadata is unavailable")
   page <- fetch(fields = c("2", "3"))
   expect_identical(page$rows[["2"]][[1L]], "2024-02-29")

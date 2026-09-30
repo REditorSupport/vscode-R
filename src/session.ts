@@ -54,6 +54,7 @@ interface IpcSocket extends net.Socket {
 }
 
 export class Session {
+    public busyDataView: string | undefined;
     public sessionId: string;
     public host: string;
     public sessVersion: string;
@@ -139,6 +140,7 @@ interface DataViewRequestMessage {
 }
 
 const dynamicDataViewPanels = new Map<string, vscode.WebviewPanel>();
+const dynamicDataViewSessions = new WeakMap<vscode.WebviewPanel, Session>();
 let dynamicDataViewReloadRevision = 0;
 
 function escapeHtml(text: string): string {
@@ -152,10 +154,14 @@ function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, c => map[c]);
 }
 
-function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string): void {
-    const dataViewSession = activeSession;
-    let pendingPageRequests = 0;
+function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string, dataViewSession: Session): void {
+    const panelKey = `${dataViewSession.sessionId}:${viewId}`;
+    let disposed = false;
+    let pageQueue = Promise.resolve();
     const postResponse = (requestId: number, ok: boolean, result?: unknown, error?: string) => {
+        if (disposed) {
+            return;
+        }
         void panel.webview.postMessage({
             message: 'dataview/response',
             requestId,
@@ -170,13 +176,19 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
         if (msg.message !== 'dataview/request' || typeof msg.requestId !== 'number') {
             return;
         }
+        if (disposed) {
+            return;
+        }
 
         try {
             if (msg.action === 'init') {
                 const result = await sessionRequest({
                     method: 'dataview_init',
                     params: { view_id: viewId },
-                }) as DataViewInitResult | undefined;
+                }, 5000, dataViewSession.socket) as DataViewInitResult | undefined;
+                if (disposed) {
+                    return;
+                }
                 if (!result || !Array.isArray(result.columns) || typeof result.totalRows !== 'number') {
                     throw new Error('Invalid dataview_init response');
                 }
@@ -186,8 +198,16 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
             }
 
             if (msg.action === 'page') {
-                pendingPageRequests++;
+                // Send one page at a time, so closing can discard queued pages
+                // without leaving additional expensive reads in R's IPC queue.
+                const previous = pageQueue;
+                let release!: () => void;
+                pageQueue = new Promise<void>(resolve => { release = resolve; });
                 try {
+                    await previous;
+                    if (disposed) {
+                        return;
+                    }
                     const result = await sessionRequest({
                         method: 'dataview_page',
                         params: {
@@ -197,17 +217,21 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                             sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
                             filterModel: msg.filterModel ?? {},
                             fields: Array.isArray(msg.fields) ? msg.fields : undefined,
+                            notify_busy: true,
                         },
-                    }, 10000) as DataViewPageResult | undefined;
+                    }, 0, dataViewSession.socket) as DataViewPageResult | undefined;
                     if (!result || !Array.isArray(result.rows) ||
                         typeof result.totalRows !== 'number' ||
                         typeof result.totalUnfiltered !== 'number') {
                         throw new Error('Invalid dataview_page response');
                     }
+                    if (disposed) {
+                        return;
+                    }
                     panel.title = baseTitle;
                     postResponse(msg.requestId, true, result);
                 } finally {
-                    pendingPageRequests--;
+                    release();
                 }
                 return;
             }
@@ -219,24 +243,35 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
     });
 
     panel.onDidDispose(() => {
-        if (dynamicDataViewPanels.get(viewId) !== panel) {
+        disposed = true;
+        if (dynamicDataViewPanels.get(panelKey) !== panel) {
             return;
         }
-        dynamicDataViewPanels.delete(viewId);
-        if (pendingPageRequests > 0 && dataViewSession?.pid) {
-            for (const terminal of window.terminals) {
-                void terminal.processId.then(terminalPid => {
-                    if (terminalPid !== undefined && String(terminalPid) === dataViewSession.pid) {
-                        terminal.sendText('\x03', false);
-                    }
-                });
-            }
-        }
+        dynamicDataViewPanels.delete(panelKey);
+        void interruptDataView(dataViewSession, viewId);
         void sessionRequest({
             method: 'dataview_dispose',
             params: { view_id: viewId },
-        });
+        }, 0, dataViewSession.socket);
     });
+}
+
+async function interruptDataView(session: Session, viewId: string): Promise<void> {
+    const isReading = () => session.busyDataView === viewId && !session.socket.destroyed;
+    if (!isReading()) {
+        return;
+    }
+    for (const terminal of window.terminals) {
+        const terminalPid = await terminal.processId;
+        if (!isReading()) {
+            return;
+        }
+        if (terminalPid !== undefined &&
+            (terminalSessions.get(String(terminalPid)) === session || String(terminalPid) === session.pid)) {
+            terminal.sendText('\x03', false);
+            return;
+        }
+    }
 }
 
 export function deploySessionWatcher(extensionPath: string): void {
@@ -951,19 +986,21 @@ export function openExternalBrowser(): void {
     }
 }
 
-export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, viewId?: string): Promise<void> {
+export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, viewId?: string, dataViewSession = activeSession): Promise<void> {
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, viewId: ${String(viewId ?? '')}`);
 
     if (source === 'table') {
+        const panelKey = `${dataViewSession?.sessionId ?? ''}:${viewId ?? ''}`;
         if (viewId) {
-            const existing = dynamicDataViewPanels.get(viewId);
-            if (existing) {
+            const existing = dynamicDataViewPanels.get(panelKey);
+            if (existing && dynamicDataViewSessions.get(existing)?.socket === dataViewSession?.socket) {
                 existing.title = title;
                 existing.reveal(ViewColumn[viewer as keyof typeof ViewColumn], true);
                 const content = await getTableHtml(existing.webview, undefined, title);
                 existing.webview.html = `${content}\n<!-- dataview-reload:${++dynamicDataViewReloadRevision} -->`;
                 return;
             }
+            existing?.dispose();
         }
 
         const panel = window.createWebviewPanel('dataview', title,
@@ -978,9 +1015,10 @@ export async function showDataView(source: string, type: string, title: string, 
                 localResourceRoots: [Uri.file(resDir)],
             });
         panel.iconPath = new UriIcon('open-preview');
-        if (viewId) {
-            dynamicDataViewPanels.set(viewId, panel);
-            attachDynamicDataViewBridge(panel, viewId, title);
+        if (viewId && dataViewSession) {
+            dynamicDataViewPanels.set(panelKey, panel);
+            dynamicDataViewSessions.set(panel, dataViewSession);
+            attachDynamicDataViewBridge(panel, viewId, title, dataViewSession);
         }
         const content = await getTableHtml(panel.webview, file || undefined, title);
         panel.webview.html = content;
@@ -1853,10 +1891,10 @@ function isLocalHost(host: string): boolean {
     return host.length > 0 && host.toLocaleLowerCase() === os.hostname().toLocaleLowerCase();
 }
 
-async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
+async function findLocalTerminalPid(rPid: string, ownerPid?: string): Promise<string | undefined> {
     for (const terminal of window.terminals) {
         const terminalPid = await terminal.processId;
-        if (terminalPid !== undefined && String(terminalPid) === rPid) {
+        if (terminalPid !== undefined && (String(terminalPid) === rPid || String(terminalPid) === ownerPid)) {
             return String(terminalPid);
         }
     }
@@ -1884,6 +1922,17 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
     const params = (message.params as Record<string, unknown>) || {};
 
     switch (method) {
+        case 'dataview_busy': {
+            const session = sessions.get(socket._sessionId ?? '');
+            if (session) {
+                session.busyDataView = typeof params.view_id === 'string' ? params.view_id : undefined;
+                // A page may begin after its panel was closed while R was busy.
+                if (session.busyDataView && !dynamicDataViewPanels.has(`${session.sessionId}:${session.busyDataView}`)) {
+                    void interruptDataView(session, session.busyDataView);
+                }
+            }
+            break;
+        }
         case 'attach': {
             const protocolVersion = params.protocol_version;
             const sessionId = typeof params.session_id === 'string' ? params.session_id.trim() : '';
@@ -1918,7 +1967,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
 
             const rPid = params.pid === undefined || params.pid === null ? '' : String(params.pid);
             const terminalPid = rPid && isLocalHost(host)
-                ? await findLocalTerminalPid(rPid)
+                ? await findLocalTerminalPid(rPid, params.terminal_pid ? String(params.terminal_pid) : undefined)
                 : undefined;
             const selectedTerminal = window.activeTerminal;
             const selectedTerminalPid = terminalPid ? await selectedTerminal?.processId : undefined;
@@ -2039,6 +2088,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                         String(params.file ?? ''),
                         viewer,
                         params.view_id ? String(params.view_id) : undefined,
+                        sessions.get(socket._sessionId ?? ''),
                     );
                 }
             }
@@ -2182,9 +2232,8 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
     }
 }
 
-export async function sessionRequest(data: Record<string, unknown>, timeout = 5000): Promise<unknown> {
+export async function sessionRequest(data: Record<string, unknown>, timeout = 5000, socket = pipeClient): Promise<unknown> {
     try {
-        const socket = pipeClient;
         if (!socket || socket.destroyed) {
             throw new Error('IPC socket is not connected');
         }
@@ -2206,12 +2255,14 @@ export async function sessionRequest(data: Record<string, unknown>, timeout = 50
                 reject(e);
             }
 
-            setTimeout(() => {
-                if (pendingRequests.has(id)) {
-                    pendingRequests.delete(id);
-                    reject(new Error('Request timed out'));
-                }
-            }, timeout);
+            if (timeout > 0) {
+                setTimeout(() => {
+                    if (pendingRequests.has(id)) {
+                        pendingRequests.delete(id);
+                        reject(new Error('Request timed out'));
+                    }
+                }, timeout);
+            }
         });
     } catch (error) {
         if (error instanceof Error) {
