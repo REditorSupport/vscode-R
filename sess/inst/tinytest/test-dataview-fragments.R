@@ -182,6 +182,45 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
     sess:::dataview_arrow_reader_reset(state)
   }
 
+  # A single Parquet file uses row groups for distant/backward random access.
+  path <- file.path(root, "single.parquet")
+  ids <- seq_len(12020L)
+  df <- data.frame(
+    id = ids,
+    score = (ids * 7919L) %% 12020L,
+    flag = ids %% 2L == 0L
+  )
+  arrow::write_parquet(df, path, chunk_size = 997L)
+  data <- arrow::open_dataset(path)
+  expected <- sess:::dataview_arrow_data_frame(data)
+  state <- sess:::dataview_to_state(data)
+  sess:::dataview_arrow_slice(state, 1:30)
+  reader <- state$arrow_reader$reader
+  next_row <- state$arrow_reader$next_row
+  for (rows in list(11001:11030, 7001:7030, 1001:1030)) {
+    expect_equal(sess:::dataview_arrow_slice(state, rows)$id, expected$id[rows])
+    expect_identical(state$arrow_reader$reader, reader)
+  }
+  index <- state$arrow_reader$row_group_index
+  expect_equal(index$ends, c(seq(997, 11964, by = 997), 12020))
+  expect_equal(state$arrow_reader$next_row, next_row)
+  sess:::dataview_arrow_reader_reset(state)
+
+  id <- sess:::dataview_register(data)$view_id
+  expected_id <- sess:::dataview_register(df)$view_id
+  view_ids <- c(view_ids, id, expected_id)
+  filter <- list(filterModel = list("3" = list(type = "true")))
+  sort <- list(sortModel = list(list(colId = "2", sort = "desc")))
+  for (model in list(sort, filter, c(filter, sort))) {
+    for (start in c(0L, 4990L, 9000L, 0L)) {
+      params <- c(list(startRow = start, endRow = start + 30L), model)
+      expect_equal(
+        sess:::handle_dataview_page(c(list(view_id = id), params)),
+        sess:::handle_dataview_page(c(list(view_id = expected_id), params))
+      )
+    }
+  }
+
   # Multi-file structs also cross reader batches and query-cache boundaries.
   path <- file.path(root, "struct")
   dir.create(path)

@@ -114,6 +114,7 @@ dataview_arrow_reader_state <- function(data = NULL) {
   state$row_cache <- list()
   state$query_cache <- list()
   state$fragment_index <- NULL
+  state$row_group_index <- NULL
   state$source_conversion <- if (!is.null(data)) dataview_arrow_conversion(data) else NULL
   state$conversion <- state$source_conversion
   state$projection <- NULL
@@ -122,20 +123,21 @@ dataview_arrow_reader_state <- function(data = NULL) {
 }
 
 dataview_arrow_page_state <- function(state, fields = NULL) {
-  positions <- if (inherits(state$data, "Dataset") && !is.data.frame(state$data)) {
-    dataview_page_positions(state, fields)
-  } else {
-    dataview_page_positions(state)
-  }
-  # Dataset projection preserves source row positions. Query projection can
-  # affect aggregation/grouping semantics, so queries retain their full schema.
+  positions <- dataview_page_positions(state, fields)
   reader_state <- state$arrow_reader
   if (!identical(positions, reader_state$projection)) {
     dataview_arrow_reader_reset(state)
     reader_state$row_cache <- list()
     reader_state$query_cache <- list()
     reader_state$page_data <- if (length(positions) && length(positions) < ncol(state$data)) {
-      state$data$WithSchema(state$data$schema[names(state$data)[positions]])
+      if (inherits(state$data, "arrow_dplyr_query")) {
+        dplyr::select(
+          dplyr::ungroup(dplyr::collapse(state$data)),
+          dplyr::all_of(names(state$data)[positions])
+        )
+      } else {
+        state$data$WithSchema(state$data$schema[names(state$data)[positions]])
+      }
     } else {
       state$data
     }
@@ -166,11 +168,21 @@ dataview_arrow_query_columns <- function(state, sort_model, filter_model) {
   }
   positions <- unique(positions)
   if (!length(positions)) return(list())
-  reader <- getExportedValue("arrow", "Scanner")$create(
-    state$data,
-    projection = names(state$data)[positions - 1L],
-    batch_size = dataview_arrow_reader_batch_size
-  )$ToRecordBatchReader()
+  names <- names(state$data)[positions - 1L]
+  reader <- if (inherits(state$data, "arrow_dplyr_query")) {
+    dataview_arrow_reader_open(
+      dplyr::select(
+        dplyr::ungroup(dplyr::collapse(state$data)),
+        dplyr::all_of(names)
+      )
+    )
+  } else {
+    getExportedValue("arrow", "Scanner")$create(
+      state$data,
+      projection = names,
+      batch_size = dataview_arrow_reader_batch_size
+    )$ToRecordBatchReader()
+  }
   on.exit(try(reader$Close(), silent = TRUE), add = TRUE)
   conversion <- match(state$arrow_reader$source_conversion, positions - 1L, nomatch = 0L)
   columns <- dataview_arrow_data_frame(reader$read_table(), conversion[conversion > 0L])
@@ -492,6 +504,97 @@ dataview_arrow_fragment_slice <- function(state, row_idx) {
   page
 }
 
+dataview_arrow_row_group_index <- function(state) {
+  reader_state <- state$arrow_reader
+  if (isFALSE(reader_state$row_group_index)) return(NULL)
+  if (!is.null(reader_state$row_group_index)) return(reader_state$row_group_index)
+
+  data <- state$arrow_source %||% state$data
+  files <- if (inherits(data, "FileSystemDataset")) data$files else character()
+  if (length(files) != 1L || !identical(data$format$type, "parquet")) {
+    reader_state$row_group_index <- FALSE
+    return(NULL)
+  }
+
+  reader <- tryCatch(
+    getExportedValue("arrow", "ParquetFileReader")$create(
+      data$filesystem$OpenInputFile(files[[1L]])
+    ),
+    error = function(e) NULL
+  )
+  if (is.null(reader) || reader$num_row_groups < 2L) {
+    reader_state$row_group_index <- FALSE
+    return(NULL)
+  }
+
+  groups <- seq_len(reader$num_row_groups) - 1L
+  counts <- vapply(
+    groups,
+    function(group) as.numeric(reader$ReadRowGroup(group, integer())$num_rows),
+    numeric(1)
+  )
+  if (any(!is.finite(counts)) || sum(counts) != state$total_rows) {
+    reader_state$row_group_index <- FALSE
+    return(NULL)
+  }
+
+  ends <- cumsum(counts)
+  starts <- c(1, head(ends, -1L) + 1)
+  fields <- names(reader$GetSchema())
+  missing_names <- setdiff(names(data), fields)
+  partition_values <- if (length(missing_names)) {
+    dataview_slice(data$WithSchema(data$schema[missing_names]), 1L)
+  } else {
+    NULL
+  }
+
+  reader_state$row_group_index <- list(
+    reader = reader,
+    starts = starts,
+    ends = ends,
+    fields = fields,
+    partition_values = partition_values
+  )
+  reader_state$row_group_index
+}
+
+dataview_arrow_row_group_slice <- function(state, row_idx) {
+  index <- dataview_arrow_row_group_index(state)
+  if (is.null(index) || !length(row_idx)) return(NULL)
+
+  group_pos <- findInterval(row_idx - 1, index$ends) + 1L
+  if (any(group_pos < 1L | group_pos > length(index$ends))) return(NULL)
+
+  groups <- sort(unique(group_pos))
+  counts <- index$ends[groups] - index$starts[groups] + 1
+  starts <- c(1, head(cumsum(counts), -1L) + 1)
+  selected_idx <- row_idx - index$starts[group_pos] +
+    starts[match(group_pos, groups)]
+
+  fields <- names(state$data)
+  columns <- match(fields, index$fields)
+  present <- !is.na(columns)
+  page <- if (any(present)) {
+    dataview_arrow_data_frame(index$reader$ReadRowGroups(
+      groups - 1L, as.integer(columns[present] - 1L)
+    ))
+  } else {
+    data.frame(row.names = seq_len(sum(counts)))
+  }
+
+  for (name in fields[!present]) {
+    value <- index$partition_values[[name]]
+    if (is.null(value)) return(NULL)
+    page[[name]] <- if (is.data.frame(value)) {
+      value[rep(1L, nrow(page)), , drop = FALSE]
+    } else {
+      value[rep(1L, nrow(page))]
+    }
+  }
+  page <- page[, fields, drop = FALSE]
+  page[selected_idx, , drop = FALSE]
+}
+
 dataview_arrow_query_forward_slice <- function(state, row_idx) {
   if (!length(row_idx) ||
         (length(row_idx) > 1L && any(diff(row_idx) <= 0L))) {
@@ -504,10 +607,11 @@ dataview_arrow_query_forward_slice <- function(state, row_idx) {
     return(NULL)
   }
   if (inherits(state$data, "FileSystemDataset") &&
-        !isFALSE(reader_state$fragment_index) &&
+        (!isFALSE(reader_state$fragment_index) ||
+          !isFALSE(reader_state$row_group_index)) &&
         tail(row_idx, 1L) - reader_state$next_row >
           length(row_idx) + dataview_arrow_reader_batch_size) {
-    # A distant or sparse request should not consume all preceding files.
+    # A distant or sparse request should not consume all preceding data.
     return(NULL)
   }
   if (is.null(reader_state$reader)) {
@@ -534,6 +638,10 @@ dataview_arrow_query_fetch <- function(state, row_idx) {
       return(page)
     }
     page <- dataview_arrow_fragment_slice(state, row_idx)
+    if (!is.null(page)) {
+      return(page)
+    }
+    page <- dataview_arrow_row_group_slice(state, row_idx)
     if (!is.null(page)) {
       return(page)
     }
@@ -600,9 +708,8 @@ dataview_arrow_query_slice <- function(state, display_idx) {
     return(dataview_schema(state$data))
   }
 
-  # Prefetch larger display blocks for the current query. Filter-only blocks
-  # continue through one forward reader; sorted/random blocks use fragment-local
-  # row positions when the source is a multi-file FileSystemDataset.
+  # Prefetch larger display blocks; random Dataset pages use file fragments or
+  # Parquet row groups when available.
   reader_state <- state$arrow_reader
   block_size <- if (isTRUE(state$query_has_sort)) {
     dataview_arrow_query_block_size

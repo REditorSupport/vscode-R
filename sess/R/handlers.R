@@ -907,7 +907,7 @@ dataview_query_indices <- function(state, sort_model, filter_model) {
     return(NULL)
   }
 
-  if (inherits(state$data, "Dataset") && !is.data.frame(state$data)) {
+  if (dataview_is_arrow_lazy(state$data)) {
     # Request-local only: share one projected scan across filtering and sorting.
     state$query_columns <- dataview_arrow_query_columns(state, sort_model, filter_model)
   }
@@ -961,7 +961,7 @@ handle_dataview_init <- function(params) {
     columns = dataview_columns(state),
     totalRows = state$total_rows,
     columnProjection = !is.null(state$dbi) ||
-      (inherits(state$data, "Dataset") && !is.data.frame(state$data))
+      dataview_is_arrow_lazy(state$data)
   )
 }
 

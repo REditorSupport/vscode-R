@@ -731,6 +731,25 @@ if (requireNamespace("arrow", quietly = TRUE)) {
         id = seq_len(12020L), group = rep(c("a", "b"), 6010L)
       ))
       query <- dplyr::arrange(data, dplyr::desc(id))
+      score_data <- getExportedValue("arrow", "InMemoryDataset")$create(data.frame(
+        id = seq_len(12020L),
+        score = (seq_len(12020L) * 7919L) %% 12020L
+      ))
+      score_query <- dplyr::arrange(score_data, dplyr::desc(score))
+      score_view_id <- sess:::dataview_register(score_query)$view_id
+      score_expected_id <- sess:::dataview_register(
+        sess:::dataview_arrow_data_frame(score_query)
+      )$view_id
+      view_ids <- c(view_ids, score_view_id, score_expected_id)
+      for (direction in c("asc", "desc")) {
+        params <- list(
+          startRow = 0L, endRow = 30L,
+          sortModel = list(list(colId = "1", sort = direction))
+        )
+        actual <- sess:::handle_dataview_page(c(list(view_id = score_view_id), params))
+        expected <- sess:::handle_dataview_page(c(list(view_id = score_expected_id), params))
+        expect_equal(actual, expected)
+      }
       grouped <- dplyr::group_by(query, group)
       aggregated <- dplyr::arrange(
         dplyr::summarise(dplyr::group_by(data, group), total = sum(id)), group
@@ -740,9 +759,15 @@ if (requireNamespace("arrow", quietly = TRUE)) {
         expected_df <- sess:::dataview_arrow_data_frame(data)
         expected_id <- sess:::dataview_register(expected_df)$view_id
         view_ids <- c(view_ids, view_id, expected_id)
+        expect_true(sess:::handle_dataview_init(list(view_id = view_id))$columnProjection)
         for (model in list(
-          list(), list(sortModel = list(list(colId = "1", sort = "asc"))),
-          list(filterModel = list("1" = list(type = "equals", filter = expected_df[[1L]][1L])))
+          list(),
+          list(sortModel = list(list(colId = "1", sort = "asc"))),
+          list(filterModel = list("1" = list(type = "equals", filter = expected_df[[1L]][1L]))),
+          list(
+            filterModel = list("2" = list(type = "equals", filter = expected_df[[2L]][1L])),
+            sortModel = list(list(colId = "1", sort = "asc"))
+          )
         )) {
           for (start in c(0L, 5000L, 4990L, 0L, 12020L)) {
             params <- c(list(startRow = start, endRow = start + 20L), model)
@@ -751,6 +776,13 @@ if (requireNamespace("arrow", quietly = TRUE)) {
             expect_equal(actual, expected)
           }
         }
+
+        params <- list(startRow = 0L, endRow = 20L, fields = "2")
+        actual <- sess:::handle_dataview_page(c(list(view_id = view_id), params))
+        expected <- sess:::handle_dataview_page(c(list(view_id = expected_id), params))
+        expected$rows <- expected$rows[, c("0", "2"), drop = FALSE]
+        expect_equal(actual, expected)
+        expect_equal(sess:::dataview_get_state(view_id)$arrow_reader$projection, 2L)
       }
     })
   }
