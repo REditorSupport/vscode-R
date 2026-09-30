@@ -1,5 +1,3 @@
-# Lazy DBI table support for the data viewer
-
 dataview_is_dbi_lazy <- function(data) {
   inherits(data, "tbl_sql")
 }
@@ -31,10 +29,7 @@ dataview_dbi_source <- function(data) {
     stop("Lazy database viewing currently supports SQL Server connections")
   }
 
-  # Keep dbplyr's table/query distinction until it has built the FROM source.
-  # subquery = TRUE also removes an unbounded ORDER BY that SQL Server would
-  # reject inside a derived table.
-  query_sql <- as.character(dbplyr::remote_query(data))
+  # Render a source that is safe to wrap as a SQL Server derived table.
   source_sql <- dbplyr::sql_render(data, subquery = TRUE)
   from_sql <- as.character(
     dbplyr::sql_query_wrap(con, source_sql, name = "dataview_source")
@@ -43,29 +38,7 @@ dataview_dbi_source <- function(data) {
     con,
     paste0("select top (0) * from ", from_sql)
   )
-
-  # Drivers can return SQL date/time columns as character. Ask the server once
-  # instead of inferring their type from R values (or parsing arbitrary text).
-  metadata <- tryCatch(DBI::dbGetQuery(con, paste0(
-    "select column_ordinal, system_type_name from ",
-    "sys.dm_exec_describe_first_result_set(",
-    DBI::dbQuoteLiteral(con, query_sql), ", NULL, 0) where is_hidden = 0"
-  )), error = function(e) NULL)
-  sql_types <- rep(NA_character_, ncol(schema))
-  if (!is.null(metadata)) {
-    positions <- match(seq_len(ncol(schema)), metadata$column_ordinal)
-    sql_types <- tolower(sub("\\(.*$", "", metadata$system_type_name[positions]))
-  }
-  if (all(is.na(sql_types))) {
-    warning("SQL Server result type metadata is unavailable; using the driver's R column types")
-  }
-  list(
-    con = con,
-    query_sql = query_sql,
-    from_sql = from_sql,
-    schema = schema,
-    sql_types = sql_types
-  )
+  list(con = con, from_sql = from_sql, schema = schema)
 }
 
 dataview_dbi_to_state <- function(data) {
@@ -88,29 +61,13 @@ dataview_dbi_to_state <- function(data) {
     lapply(seq_len(ncol(source$schema)), function(position) source$schema[[position]])
   )
   columns <- .mapply(get_column_def, list(headers, fields, cols), NULL)
-  for (position in seq_along(colnames)) {
-    type <- source$sql_types[[position]]
-    if (type %in% c("date", "datetime", "datetime2", "smalldatetime", "datetimeoffset")) {
-      column <- columns[[position + 1L]]
-      column$type <- jsonlite::unbox(if (type == "date") "dateColumn" else "datetimeColumn")
-      column$filter <- jsonlite::unbox("agDateColumnFilter")
-      column$headerTooltip <- jsonlite::unbox(paste0(colnames[[position]], ", SQL type: ", type))
-      columns[[position + 1L]] <- column
-    }
-  }
 
   list(
-    data = data,
     dbi = source,
-    row_index = NULL,
     columns = columns,
     column_names = colnames,
     total_rows = total_rows,
-    query_key = NULL,
-    query_indices = NULL,
-    query_has_sort = FALSE,
-    dbi_cache = dataview_dbi_cache_state(),
-    arrow_reader = NULL
+    dbi_cache = dataview_dbi_cache_state()
   )
 }
 
@@ -161,10 +118,6 @@ dataview_dbi_condition <- function(state, column, cond, position) {
     next_day <- paste0("dateadd(day, 1, ", first, ")")
     # Calendar-day filters include every time on that day. Keep the source
     # column unwrapped so ordinary date/datetime indexes remain usable.
-    # datetimeoffset compares instants in SQL; filter its displayed local date.
-    if (identical(state$dbi$sql_types[[position - 1L]], "datetimeoffset")) {
-      column <- paste0("cast(", column, " as date)")
-    }
     return(switch(type,
       equals = paste0("(", column, " >= ", first, " and ", column, " < ", next_day, ")"),
       notEqual = paste0("(", column, " < ", first, " or ", column, " >= ", next_day, ")"),
@@ -247,16 +200,12 @@ dataview_dbi_order_sql <- function(state, sort_model) {
   paste0(" order by ", paste(order, collapse = ", "))
 }
 
-dataview_dbi_projection <- function(state, positions) {
-  vapply(positions, function(position) {
-    column <- dataview_dbi_identifier(state, as.character(position))
-    paste0("dataview_source.", column)
-  }, character(1))
-}
-
 dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_model, fields = NULL) {
   positions <- dataview_page_positions(state, fields)
-  projection <- paste(dataview_dbi_projection(state, positions), collapse = ", ")
+  projection <- paste(vapply(positions, function(position) {
+    column <- dataview_dbi_identifier(state, as.character(position))
+    paste0("dataview_source.", column)
+  }, character(1)), collapse = ", ")
   where <- dataview_dbi_filter_sql(state, filter_model)
   order <- dataview_dbi_order_sql(state, sort_model)
   from <- paste0(" from ", state$dbi$from_sql)

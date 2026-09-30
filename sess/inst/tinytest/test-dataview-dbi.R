@@ -23,11 +23,10 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   con <- methods::new("dataview_dbi_test")
   calls <- character()
   fail <- FALSE
-  metadata_available <- TRUE
   fixture <- data.frame(
     id = seq_len(6010L),
-    " day " = rep(c("2024-02-29", NA_character_), 3005L),
-    event = "2024-02-29T12:34:56.123",
+    " day " = rep(as.Date(c("2024-02-29", NA_character_)), 3005L),
+    event = rep(as.POSIXct("2024-02-29 12:34:56", tz = "UTC"), 6010L),
     precise = "2024-02-29T23:59:59.1234567",
     offset = "2024-02-29T12:34:56.1234567+11:00",
     clock = "12:34:56.1234567",
@@ -35,14 +34,10 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     flag = rep(c(TRUE, FALSE), 3005L),
     check.names = FALSE
   )
-  fixture$event[[2L]] <- NA_character_
-  types <- c(
-    "int", "date", "datetime", "datetime2(7)", "datetimeoffset(7)",
-    "time(7)", "nvarchar(100)", "bit"
-  )
+  fixture$event[[1L]] <- fixture$event[[1L]] + 0.125
+  fixture$event[[2L]] <- NA
   if (requireNamespace("bit64", quietly = TRUE)) {
     fixture$big <- bit64::as.integer64(rep("9007199254740993", nrow(fixture)))
-    types <- c(types, "bigint")
   }
   method("dbIsValid", "dataview_dbi_test", function(dbObj, ...) TRUE)
   method("dbGetInfo", "dataview_dbi_test", function(dbObj, ...) list(dbms.name = "SQL Server"))
@@ -63,10 +58,6 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     }
     if (grepl("select top (0)", statement, fixed = TRUE)) return(fixture[0L, , drop = FALSE])
     if (grepl("WHERE (0 = 1)", statement, fixed = TRUE)) return(fixture[0L, , drop = FALSE])
-    if (grepl("sys.dm_exec_describe_first_result_set", statement, fixed = TRUE)) {
-      if (!metadata_available) stop("metadata unavailable")
-      return(data.frame(column_ordinal = seq_along(types), system_type_name = types))
-    }
     if (grepl("select count_big(*)", statement, fixed = TRUE)) return(data.frame(n = nrow(fixture)))
     start <- as.integer(sub(".* offset ([0-9]+) rows.*", "\\1", statement))
     n <- as.integer(sub(".* fetch next ([0-9]+) rows only.*", "\\1", statement))
@@ -80,14 +71,13 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   tbl <- dplyr::tbl(con, "fixture")
   expect_true(sess:::dataview_is_table(tbl))
   state <- sess:::dataview_to_state(tbl)
-  expect_true(grepl("^select \\*\\s+from ", state$dbi$query_sql, ignore.case = TRUE))
   expect_true(grepl("[fixture]", state$dbi$from_sql, fixed = TRUE))
   expect_false(grepl("select", state$dbi$from_sql, ignore.case = TRUE))
   expect_equal(state$total_rows, nrow(fixture))
   expect_identical(state$column_names, names(fixture))
   expect_equal(as.character(state$columns[[3L]]$type), "dateColumn")
-  for (i in 4:6) expect_equal(as.character(state$columns[[i]]$type), "datetimeColumn")
-  expect_equal(as.character(state$columns[[8L]]$type), "textColumn")
+  expect_equal(as.character(state$columns[[4L]]$type), "datetimeColumn")
+  for (i in 5:8) expect_equal(as.character(state$columns[[i]]$type), "textColumn")
   expect_identical(sess:::dataview_dbi_identifier(state, "2"), "[ day ]")
   sort <- list(list(colId = "1", sort = "asc"))
   fetch <- function(start = 0L, end = 10L, fields = NULL, filters = list(), order = sort) {
@@ -95,6 +85,7 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   }
   page <- fetch(fields = c("2", "3", "4", "5", "6", "8"))
   expect_identical(names(page$rows), c("0", "2", "3", "4", "5", "6", "8"))
+  expect_identical(page$rows[["3"]][[1L]], "2024-02-29T12:34:56.125")
   expect_identical(page$rows[["4"]][[1L]], "2024-02-29T23:59:59.1234567")
   expect_identical(page$rows[["5"]][[1L]], "2024-02-29T12:34:56.1234567+11:00")
   expect_true(is.na(page$rows[["3"]][[2L]]))
@@ -161,7 +152,6 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   ))
   expect_identical(condition("blank"), " where ([event] is null)")
   expect_identical(condition("notBlank"), " where ([event] is not null)")
-  expect_true(grepl("cast([offset] as date)", condition("equals", "5"), fixed = TRUE))
   bad <- list("3" = list(type = "equals", dateFrom = "not a date"))
   expect_error(fetch(filters = bad), "Invalid database date filter")
   expect_identical(sess:::dataview_dbi_filter_sql(state, list(
@@ -219,14 +209,4 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   expect_true(DBI::dbIsValid(con))
   env$con <- old_con
 
-  # Metadata failure preserves genuine R Date/POSIXct classes without guessing text.
-  fixture$event <- as.POSIXct(rep("2024-02-29 12:34:50", nrow(fixture)), tz = "Australia/Sydney")
-  fixture$event[[1L]] <- fixture$event[[1L]] + 0.125
-  fixture[[" day "]] <- as.Date(fixture[[" day "]])
-  metadata_available <- FALSE
-  expect_warning(state <- sess:::dataview_to_state(tbl), "metadata is unavailable")
-  page <- fetch(fields = c("2", "3"))
-  expect_identical(page$rows[["2"]][[1L]], "2024-02-29")
-  expect_identical(page$rows[["3"]][[1L]], "2024-02-29T12:34:50.125")
-  expect_identical(page$rows[["3"]][[2L]], "2024-02-29T12:34:50")
 })
