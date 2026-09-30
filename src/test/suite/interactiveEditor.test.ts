@@ -63,6 +63,17 @@ import { AssetStorageStats, exportedAssetName, readAsset } from '../../interacti
             await new Promise(resolve => setTimeout(resolve, 50));
         }
     };
+    test('cancels Open Interactive Session from the command palette without opening a notebook or reporting an error', async () => {
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        const created = sinon.spy(vscode.notebooks, 'createNotebookController');
+        try {
+            await vscode.commands.executeCommand('r.interactive.open');
+            sinon.assert.notCalled(errors);
+            sinon.assert.calledOnce(picker);
+            sinon.assert.notCalled(created);
+        } finally { picker.restore(); errors.restore(); created.restore(); }
+    });
     test('opens native Interactive without Jupyter and executes through its R kernel', async () => {
         const created = sinon.spy(vscode.notebooks, 'createNotebookController');
         try {
@@ -82,6 +93,26 @@ import { AssetStorageStats, exportedAssetName, readAsset } from '../../interacti
         const items = notebook.cellAt(0).outputs.flatMap(output => output.items);
         assert.ok(items.some(item => Buffer.from(item.data).toString().includes('editor-stream')));
         assert.ok(items.some(item => item.mime === 'application/vnd.vscode-r.display+json'));
+    });
+    test('Open Interactive Session without arguments opens the chosen session even when another is active', async () => {
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: manifests[1].label, manifest: manifests[1] } as vscode.QuickPickItem);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        try {
+            await vscode.commands.executeCommand('r.interactive.open');
+            sinon.assert.notCalled(errors);
+            sinon.assert.calledOnce(picker);
+            const choices = await picker.firstCall.args[0] as (vscode.QuickPickItem & { manifest?: SessionManifest })[];
+            for (const manifest of manifests) { assert.ok(choices.some(choice => choice.manifest?.id === manifest.id)); }
+            assert.ok(vscode.workspace.notebookDocuments.some(document => document.metadata.rSessionId === manifests[1].id));
+            await vscode.commands.executeCommand('r.runSelection', 'cat("selected through Open Interactive Session")');
+            const second = vscode.workspace.notebookDocuments.find(document => document.metadata.rSessionId === manifests[1].id);
+            assert.ok(second);
+            await until(() => second.getCells().some(cell => cell.executionSummary?.success === true &&
+                cell.document.getText() === 'cat("selected through Open Interactive Session")'));
+        } finally {
+            picker.restore(); errors.restore();
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        }
     });
     test('lints Interactive cells and clears diagnostics after an edit', async () => {
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);

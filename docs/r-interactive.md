@@ -53,6 +53,7 @@ The agent itself also runs under the selected supervisor. Stopping your original
 
 ## Execution and editor behavior
 
+- **R: Open Interactive Session** opens the session picker when run from the Command Palette. Selecting a session in the tree opens that session directly. Cancelling the picker leaves existing sessions unchanged.
 - The status bar shows the selected session, activity, queued cell count, connection state, and observer status. Select it to switch sessions or answer a waiting R input prompt. Right-click a session in **Interactive Sessions** for actions on that specific session, including rename, interrupt, queued-work cancellation, detach, and restart.
 - **Search Interactive History** (`Ctrl+Alt+H`, or `Cmd+Alt+H` on macOS) searches admitted code in the session's durable history, including commands older than the restored window. Enter inserts a command into the input for editing and preserves any existing draft. Item buttons copy, run again, or navigate to the original source; the history button loads older matches. Disconnected and older agents use the locally restored history.
 - The cell menu provides **Insert Cell Code into Interactive Input**, **Copy Cell Code**, and **Go to Interactive Cell Source**. **Browse Interactive Plots** searches the plots in the restored transcript by their generating code and opens an enlarged view.

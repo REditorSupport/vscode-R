@@ -62,7 +62,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         };
         command('r.interactive.new', () => this.create());
         command('r.interactive.connect', () => this.pick());
-        command('r.interactive.open', value => this.open(value as SessionManifest));
+        command('r.interactive.open', value => value ? this.open(value as SessionManifest) : this.pick());
         command('r.interactive.refresh', () => this.refresh());
         command('r.interactive.interrupt', value => this.forView(value, view => view.client.request('interrupt')));
         command('r.interactive.input', value => this.forView(value, view => this.resumeInput(view)));

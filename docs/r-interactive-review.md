@@ -16,6 +16,7 @@ This iteration does not reproduce Positron's entire Data Explorer, column-summar
 
 ## Bugs and rough edges addressed
 
+- Open Interactive Session assumed every invocation included a session manifest from the tree and failed in the Command Palette. Argument-free invocations now show the session picker; editor regressions cover cancellation, selection while another session is active, and subsequent execution in the chosen session.
 - VS Code rejects output changes before a cell execution starts. Queued cells now wait for R's start event; cancelling a queued cell releases its execution handle. The user's data.table/diamonds script is a real editor regression test.
 - Dense ggplots saved complete SVG and JSON frames for every incremental drawing update, exhausting the quota and flooding cells with repeated errors. Updates are now combined over 200 ms, redundant JSON files are omitted, SVG/JSON assets use lossless gzip, and cleanup reclaims superseded assets while protecting retained outputs across generations. The default quota is 4 GiB, with cleanup at 80%, a manual cleanup command, live limit updates, and one retention warning per execution.
 - Large SVGs exceeded the 2 MiB asset RPC limit during export. SVG saving and portable notebook export now read and decode the local retained asset directly. HTML export copies only referenced assets and complete widget bundles, decoding generated gzip assets into ordinary files.
@@ -41,6 +42,7 @@ The baseline passed 291 VS Code tests before this iteration. The final local mat
 | --- | --- |
 | Full VS Code suite, minimum supported version 1.110.0, with tmux supervision enabled | 317 passed |
 | Full VS Code suite, version 1.119.0, with tmux supervision enabled | 317 passed |
+| Open-command follow-up: Interactive editor suite on 1.110.0 and 1.119.0 | 18 passed on each version |
 | Managed arf runtime matrix, also including existing arf adoption | 21 passed |
 | Standard graphics fallback runtime matrix | 16 passed; 5 JGD-only checks intentionally skipped |
 | Full sess tinytest suite, freshly built private package | 353 checks passed |
@@ -49,6 +51,8 @@ The baseline passed 291 VS Code tests before this iteration. The final local mat
 | TypeScript lint | 0 errors; 70 existing warnings, unchanged from the baseline |
 | R source and package lint | Passed with lint failures treated as errors |
 | Extension packaging | Local VSIX built successfully |
+
+The full-suite counts above are from the storage revision. The subsequent Open Interactive Session fix reproduced the exact missing-`id` error before the change, then passed the entire Interactive editor suite on both versions, including two new Command Palette regressions. TypeScript checking, lint, and packaging also passed. This extension-side fix applies after reloading VS Code and does not require restarting R.
 
 The tests cover virtual-cell/input diagnostics with disk lint caching enabled in the user profile, source-file diagnostics, execution through the native Interactive API, independent session targeting, draft retention, clearing during execution, output-only updates preserving edited code and execution summaries, durable reconnect, code deduplication, control leases, native input/debugger prompts, interrupt/stop, output limits, table paging, incremental/multiple-device graphics, idle/historical resizing, HTML dependencies, offline output, and export fallbacks. The process-persistence test exits the launcher, reconnects, and checks that R objects remain available.
 
