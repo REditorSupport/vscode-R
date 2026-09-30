@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import * as sinon from 'sinon';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { randomUUID } from 'crypto';
@@ -18,6 +19,7 @@ import { SessionManifest } from '../../interactive/protocol';
     let previousRProfile: string | undefined;
     let agents: SessionAgent[];
     let manifests: SessionManifest[];
+    let controller: vscode.NotebookController;
     suiteSetup(async () => {
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-interactive-editor-'));
         // Reproduce the user profile setting that makes lintr read virtual cell paths.
@@ -55,7 +57,12 @@ import { SessionManifest } from '../../interactive/protocol';
         }
     };
     test('opens native Interactive without Jupyter and executes through its R kernel', async () => {
-        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const created = sinon.spy(vscode.notebooks, 'createNotebookController');
+        try {
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+            const native = created.returnValues.find(value => value.notebookType === 'interactive');
+            assert.ok(native); controller = native;
+        } finally { created.restore(); }
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
         assert.ok(notebook, 'Session notebook was opened');
         assert.strictEqual(notebook.notebookType, 'interactive', 'Native Interactive API is available');
@@ -173,6 +180,95 @@ import { SessionManifest } from '../../interactive/protocol';
             await vscode.commands.executeCommand('r.interactive.takeControl', manifests[0]);
             client.close();
         }
+    });
+    test('queued cells wait for R to start before refreshing their output', async () => {
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        try {
+            const index = notebook.cellCount;
+            const edit = new vscode.WorkspaceEdit();
+            edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(index, [
+                new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'Sys.sleep(0.8); cat("first-complete")', 'r'),
+                new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'cat("queued-complete"); data.frame(x=1:3)', 'r'),
+            ])]);
+            await vscode.workspace.applyEdit(edit);
+            await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: index, end: index + 2 }], document: notebook.uri });
+            await until(() => notebook.cellAt(index + 1).executionSummary?.success === true);
+            assert.ok(notebook.cellAt(index + 1).outputs.some(output => output.items.some(item =>
+                Buffer.from(item.data).toString().includes('queued-complete'))));
+            sinon.assert.notCalled(errors);
+        } finally { errors.restore(); }
+    });
+    test('cancelling queued cells completes their notebook execution without a start event', async () => {
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        const client = new AgentClient(manifests[0]); await client.connect();
+        try {
+            const index = notebook.cellCount;
+            const edit = new vscode.WorkspaceEdit();
+            edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(index, [
+                new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'Sys.sleep(1); cat("running-complete")', 'r'),
+                new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'stop("cancelled code must not run")', 'r'),
+            ])]);
+            await vscode.workspace.applyEdit(edit);
+            await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: index, end: index + 2 }], document: notebook.uri });
+            const cancelled = notebook.cellAt(index + 1);
+            await until(() => !!cancelled.metadata.rExecutionId && manifests[0].status === 'busy');
+            // Let the normal output-refresh timer run while the second cell is queued.
+            await new Promise(resolve => setTimeout(resolve, 150));
+            await vscode.commands.executeCommand('r.interactive.cancelQueued', notebook.uri);
+            await until(() => notebook.cellAt(index).executionSummary?.success === true);
+            assert.strictEqual((await client.request<{ state: string }>('execution', { id: cancelled.metadata.rExecutionId })).state, 'cancelled');
+            assert.strictEqual(cancelled.executionSummary?.success, undefined);
+            assert.strictEqual(cancelled.outputs.length, 0);
+            // A fresh handle is only allowed once the pending execution has ended.
+            controller.createNotebookCellExecution(cancelled).end(undefined);
+            sinon.assert.notCalled(errors);
+        } finally { client.close(); errors.restore(); }
+    });
+    test('runs the diamonds data.table example through Send Selection without lifecycle errors', async function () {
+        const packages = await promisify(execFile)('Rscript', ['-e',
+            'cat(all(vapply(c("data.table", "ggplot2", "dplyr"), requireNamespace, logical(1), quietly=TRUE)))']);
+        if (packages.stdout.trim() !== 'TRUE') { this.skip(); }
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const code = String.raw`# R Script for Testing data.table with ggplot2 Diamonds Data
+# ============================================================
+
+library(data.table)
+library(ggplot2)
+library(dplyr)
+
+# Load diamonds dataset as data.table
+data(diamonds)
+diamonds_dt <- as.data.table(diamonds)
+
+cat("=== Data Overview ===\n")
+cat("Dimensions:", nrow(diamonds_dt), "rows x", ncol(diamonds_dt), "columns\n")
+cat("Column names:", colnames(diamonds_dt), "\n\n")
+
+# Test 1: Basic Data Inspection
+cat("=== Test 1: First few rows ===\n")
+print(head(diamonds_dt, 3))
+cat("\n")`;
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        try {
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+            const index = notebook.cellCount;
+            // Send a slow command first to exercise the queue through the source-editor path.
+            await vscode.commands.executeCommand('r.runSelection', 'Sys.sleep(0.8)');
+            await until(() => notebook.cellCount > index && manifests[0].status === 'busy');
+            await vscode.commands.executeCommand('r.runSelection', code);
+            await until(() => notebook.cellCount > index + 1 && notebook.cellAt(index + 1).executionSummary?.success === true);
+            const output = notebook.cellAt(index + 1).outputs.flatMap(item => item.items)
+                .map(item => Buffer.from(item.data).toString()).join('\n');
+            assert.match(output, /53940 rows x 10 columns/);
+            assert.match(output, /First few rows/);
+            assert.match(output, /0\.23/);
+            sinon.assert.notCalled(errors);
+        } finally { errors.restore(); }
     });
     test('clearing completed cells preserves drafts, running output, and durable history', async () => {
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);

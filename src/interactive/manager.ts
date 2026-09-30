@@ -24,7 +24,7 @@ interface InteractiveView {
     controller: vscode.NotebookController;
     controllers: vscode.NotebookController[];
     inputUri?: vscode.Uri;
-    executions: Map<string, vscode.NotebookCellExecution>;
+    executions: Map<string, { task: vscode.NotebookCellExecution; started: boolean }>;
     chain: Promise<void>;
     pending: Set<string>;
     timer?: NodeJS.Timeout;
@@ -446,7 +446,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     }
 
     private async restore(view: InteractiveView, snapshot: AgentSnapshot): Promise<void> {
-        for (const task of view.executions.values()) { task.end(undefined); }
+        for (const { task } of view.executions.values()) { task.end(undefined); }
         view.executions.clear();
         for (const cell of view.notebook.getCells()) { session.unbindSessionDocument(cell.document.uri); }
         view.client.manifest = snapshot.manifest;
@@ -508,12 +508,14 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             edit.set(view.notebook.uri, [vscode.NotebookEdit.updateCellMetadata(cell.index, { ...cell.metadata, rExecutionId: id })]);
             await vscode.workspace.applyEdit(edit);
             session.bindSessionDocument(cell.document.uri, view.target);
-            const task = view.controller.createNotebookCellExecution(cell); view.executions.set(id, task);
+            const task = view.controller.createNotebookCellExecution(cell);
+            view.executions.set(id, { task, started: false });
             try { await view.client.request('submit', { submission: { id, code, source } }); }
             catch (error) {
                 // Query by the same ID; never resubmit code after an ambiguous transport failure.
                 this.output.appendLine(`Submission ${id}: ${String(error)}`);
-                task.end(undefined); view.executions.delete(id); throw error;
+                if (view.executions.get(id)?.task === task) { task.end(undefined); view.executions.delete(id); }
+                throw error;
             }
         }
     }
@@ -560,15 +562,27 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (event.type === 'started') {
             let execution = view.executions.get(changed);
             if (!execution) {
-                try { execution = view.controller.createNotebookCellExecution(this.cell(view, changed)!); view.executions.set(changed, execution); }
+                try {
+                    execution = { task: view.controller.createNotebookCellExecution(this.cell(view, changed)!), started: false };
+                    view.executions.set(changed, execution);
+                }
                 catch { /* Restored/observed execution can still display its retained state. */ }
             }
-            if (execution) { execution.executionOrder = Number(event.data.order); execution.start(event.time); }
+            if (execution) {
+                execution.task.executionOrder = Number(event.data.order);
+                if (!execution.started) { execution.task.start(event.time); execution.started = true; }
+            }
         }
         if (event.type === 'finished' || event.type === 'uncertain') {
-            view.pending.delete(changed); await this.render(view, changed);
-            const task = view.executions.get(changed);
-            if (task) { task.end(event.data.state === 'success' ? true : event.data.state === 'error' ? false : undefined, event.time); view.executions.delete(changed); }
+            view.pending.delete(changed);
+            try { await this.render(view, changed); }
+            finally {
+                const execution = view.executions.get(changed);
+                if (execution) {
+                    execution.task.end(event.data.state === 'success' ? true : event.data.state === 'error' ? false : undefined, event.time);
+                    view.executions.delete(changed);
+                }
+            }
         } else {
             view.pending.add(changed);
             if (!view.timer) {
@@ -634,17 +648,29 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private async render(view: InteractiveView, id: string): Promise<void> {
         if (view.disposed || view.notebook.isClosed) { return; }
-        const data = view.model.cells.get(id), cell = this.cell(view, id);
-        if (!data || !cell) { return; }
-        const task = view.executions.get(id);
-        if (task) { await task.replaceOutput(await this.outputs(view, data)); }
+        const data = view.model.cells.get(id);
+        if (!data || !this.cell(view, id)) { return; }
+        // Admission can precede R's start event by an arbitrary queue/startup delay.
+        // Keep VS Code's execution pending; output mutation requires start().
+        if (data.record.state === 'queued' || (view.executions.get(id)?.started === false && !data.outputs.length)) { return; }
+        const outputs = await this.outputs(view, data);
+        // Asset reads can outlive detach or reconnection. Re-read the live handle.
+        if (view.disposed || view.notebook.isClosed) { return; }
+        const cell = this.cell(view, id);
+        if (!cell) { return; }
+        const execution = view.executions.get(id);
+        if (execution) {
+            // A dispatch failure may have diagnostics but no R start event.
+            if (!execution.started) { execution.task.start(data.record.started); execution.started = true; }
+            await execution.task.replaceOutput(outputs);
+        }
         else {
             // Updating a late plot must preserve the cell URI, edited code, selection, and diagnostics.
             const summary = cell.executionSummary;
             const update = view.controller.createNotebookCellExecution(cell);
             update.executionOrder = summary?.executionOrder;
             update.start(summary?.timing?.startTime);
-            try { await update.replaceOutput(await this.outputs(view, data)); }
+            try { await update.replaceOutput(outputs); }
             finally { update.end(summary?.success, summary?.timing?.endTime); }
         }
     }
@@ -809,7 +835,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private disposeView(view: InteractiveView): void {
         if (view.disposed) { return; }
         view.disposed = true; clearTimeout(view.timer); clearTimeout(view.reconnectTimer);
-        view.client.close(); for (const task of view.executions.values()) { task.end(undefined); }
+        view.client.close(); for (const { task } of view.executions.values()) { task.end(undefined); }
+        view.executions.clear();
         for (const controller of view.controllers) { controller.dispose(); }
         session.unregisterSessionTransport(view.target);
         this.views.delete(`${view.client.manifest.id}:${view.client.manifest.generation}`);
