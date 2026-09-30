@@ -8,6 +8,8 @@ import { AssetStore } from '../../interactive/assets';
 import { Transcript } from '../../interactive/transcript';
 import { submission, AgentSnapshot } from '../../interactive/protocol';
 import { defaultStorage, discoverSessions, installRuntime, prepareStorage, shellQuote } from '../../interactive/launcher';
+import { tablePage, TABLE_PAGE_SIZE } from '../../interactive/tablePaging';
+import { searchHistory } from '../../interactive/history';
 
 suite('Interactive storage', () => {
     let home: string;
@@ -166,5 +168,32 @@ suite('Interactive protocol and persistence', () => {
         assert.throws(() => submission({ id: '../escape', code: '1' }), /identifier/);
         assert.throws(() => submission({ id: 'id', code: '' }), /nonempty/);
         assert.strictEqual(shellQuote('a\'b $HOME `touch nope`'), '\'a\'"\'"\'b $HOME `touch nope`\'');
+    });
+
+    test('inline table pages visit every row once and stop at the final partial page', () => {
+        const rows: number[] = [];
+        for (let start = 0; start < 53; start += TABLE_PAGE_SIZE) {
+            const page = tablePage(53, start);
+            for (let row = page.start; row < page.end; row++) { rows.push(row); }
+        }
+        assert.deepStrictEqual(rows, Array.from({ length: 53 }, (_, i) => i));
+        assert.deepStrictEqual(tablePage(53, 1000), { start: 40, end: 53 });
+        assert.deepStrictEqual(tablePage(0, 20), { start: 0, end: 0 });
+        assert.deepStrictEqual(tablePage(53, NaN), { start: 0, end: 20 });
+    });
+
+    test('history searches older admitted code with stable paging and bounded responses', () => {
+        const journal = new SessionJournal(directory, 'history');
+        try {
+            for (let i = 0; i < 5; i++) { journal.accept({ id: `id${i}`, code: `plot(${i}) # λ` }); }
+            const page = searchHistory(journal.executions.values(), 'PLOT', undefined, 2);
+            assert.deepStrictEqual(page.executions.map(record => record.id), ['id4', 'id3']);
+            assert.ok(page.more);
+            assert.deepStrictEqual(searchHistory(journal.executions.values(), 'λ', page.executions[1].order).executions.map(record => record.id), ['id2', 'id1', 'id0']);
+            assert.strictEqual(searchHistory(journal.executions.values(), 'absent').executions.length, 0);
+            const huge = page.executions.map(record => ({ ...record, code: 'x'.repeat(1024 * 1024) }));
+            assert.ok(Buffer.byteLength(JSON.stringify(searchHistory(huge))) < 3 * 1024 * 1024);
+            assert.ok(searchHistory(huge).more);
+        } finally { journal.close(); }
     });
 });

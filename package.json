@@ -778,12 +778,14 @@
       {
         "command": "r.interactive.new",
         "title": "New Persistent Interactive Session",
-        "category": "R"
+        "category": "R",
+        "icon": "$(add)"
       },
       {
         "command": "r.interactive.connect",
         "title": "Connect Interactive to Session",
-        "category": "R"
+        "category": "R",
+        "icon": "$(plug)"
       },
       {
         "command": "r.interactive.open",
@@ -793,37 +795,44 @@
       {
         "command": "r.interactive.refresh",
         "title": "Refresh Interactive Sessions",
-        "category": "R"
+        "category": "R",
+        "icon": "$(refresh)"
       },
       {
         "command": "r.interactive.interrupt",
         "title": "Interrupt Interactive Session",
-        "category": "R"
+        "category": "R",
+        "icon": "$(debug-pause)"
       },
       {
         "command": "r.interactive.input",
         "title": "Reply to Interactive Input",
-        "category": "R"
+        "category": "R",
+        "icon": "$(comment)"
       },
       {
         "command": "r.interactive.detach",
         "title": "Detach Interactive Session",
-        "category": "R"
+        "category": "R",
+        "icon": "$(debug-disconnect)"
       },
       {
         "command": "r.interactive.stop",
         "title": "Stop Interactive Session",
-        "category": "R"
+        "category": "R",
+        "icon": "$(debug-stop)"
       },
       {
         "command": "r.interactive.restart",
         "title": "Restart Interactive Session",
-        "category": "R"
+        "category": "R",
+        "icon": "$(debug-restart)"
       },
       {
         "command": "r.interactive.takeControl",
         "title": "Take Control of Interactive Session",
-        "category": "R"
+        "category": "R",
+        "icon": "$(key)"
       },
       {
         "command": "r.interactive.useTerminal",
@@ -838,12 +847,62 @@
       {
         "command": "r.interactive.export",
         "title": "Export Interactive History",
-        "category": "R"
+        "category": "R",
+        "icon": "$(export)"
       },
       {
         "command": "r.interactive.clear",
-        "title": "Clear Interactive Window",
-        "category": "R"
+        "title": "Clear Completed Interactive Cells",
+        "category": "R",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "r.interactive.rename",
+        "category": "R",
+        "title": "Rename Interactive Session",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "r.interactive.history",
+        "category": "R",
+        "title": "Search Interactive History",
+        "icon": "$(history)"
+      },
+      {
+        "command": "r.interactive.plots",
+        "category": "R",
+        "title": "Browse Interactive Plots",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "r.interactive.cancelQueued",
+        "category": "R",
+        "title": "Cancel Queued Interactive Cells",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "r.interactive.info",
+        "category": "R",
+        "title": "Show Interactive Session Details",
+        "icon": "$(info)"
+      },
+      {
+        "command": "r.interactive.reuseCell",
+        "category": "R",
+        "title": "Insert Cell Code into Interactive Input",
+        "icon": "$(insert)"
+      },
+      {
+        "command": "r.interactive.copyCell",
+        "category": "R",
+        "title": "Copy Cell Code",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "r.interactive.source",
+        "category": "R",
+        "title": "Go to Interactive Cell Source",
+        "icon": "$(go-to-file)"
       }
     ],
     "keybindings": [
@@ -918,6 +977,12 @@
         "key": "Ctrl+shift+v",
         "mac": "cmd+shift+v",
         "when": "editorTextFocus && editorLangId == 'rmd'"
+      },
+      {
+        "command": "r.interactive.history",
+        "key": "ctrl+alt+h",
+        "mac": "cmd+alt+h",
+        "when": "r.interactive.active && (editorLangId == r || notebookEditorFocused)"
       }
     ],
     "menus": {
@@ -1068,6 +1133,18 @@
         },
         {
           "command": "r.helpPanel.openForPath",
+          "when": "false"
+        },
+        {
+          "command": "r.interactive.reuseCell",
+          "when": "false"
+        },
+        {
+          "command": "r.interactive.copyCell",
+          "when": "false"
+        },
+        {
+          "command": "r.interactive.source",
           "when": "false"
         }
       ],
@@ -1325,6 +1402,61 @@
           "command": "r.helpPanel.summarizeTopics",
           "group": "inline@8",
           "when": "view == rHelpPages && viewItem =~ /_summarizeTopics_/"
+        },
+        {
+          "command": "r.interactive.history",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "group": "session@0"
+        },
+        {
+          "command": "r.interactive.plots",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "group": "session@1"
+        },
+        {
+          "command": "r.interactive.cancelQueued",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "group": "session@2"
+        },
+        {
+          "command": "r.interactive.input",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "group": "session@3"
+        },
+        {
+          "command": "r.interactive.takeControl",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "group": "session@4"
+        },
+        {
+          "command": "r.interactive.rename",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "group": "session@5"
+        },
+        {
+          "command": "r.interactive.info",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "group": "session@6"
+        },
+        {
+          "command": "r.interactive.export",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "group": "session@7"
+        },
+        {
+          "command": "r.interactive.detach",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "group": "session@8"
+        },
+        {
+          "command": "r.interactive.restart",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "group": "session@9"
+        },
+        {
+          "command": "r.interactive.stop",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "group": "session@10"
         }
       ],
       "view/title": [
@@ -1398,6 +1530,50 @@
         {
           "group": "R",
           "command": "r.newFileDocument"
+        }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "r.interactive.history",
+          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive)",
+          "group": "navigation@10"
+        },
+        {
+          "command": "r.interactive.plots",
+          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive)",
+          "group": "navigation@11"
+        },
+        {
+          "command": "r.interactive.cancelQueued",
+          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive)",
+          "group": "navigation@12"
+        },
+        {
+          "command": "r.interactive.clear",
+          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive)",
+          "group": "navigation@13"
+        },
+        {
+          "command": "r.interactive.export",
+          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive)",
+          "group": "navigation@14"
+        }
+      ],
+      "notebook/cell/title": [
+        {
+          "command": "r.interactive.reuseCell",
+          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive) && notebookCellType == code",
+          "group": "rInteractive@0"
+        },
+        {
+          "command": "r.interactive.copyCell",
+          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive) && notebookCellType == code",
+          "group": "rInteractive@1"
+        },
+        {
+          "command": "r.interactive.source",
+          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive) && notebookCellType == code",
+          "group": "rInteractive@2"
         }
       ]
     },
@@ -2098,7 +2274,7 @@
         "r.interactive.restore": {
           "type": "boolean",
           "default": true,
-          "description": "Reconnect the workspace\u2019s Interactive sessions when VS Code reopens."
+          "description": "Reconnect the workspace’s Interactive sessions when VS Code reopens."
         },
         "r.interactive.historyLimit": {
           "type": "integer",
@@ -2190,7 +2366,7 @@
         ],
         "pattern": [
           {
-            "regexp": "^[-\u2500 ]*(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):?(\\d+)?\\):\\s(.*)",
+            "regexp": "^[-─ ]*(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):?(\\d+)?\\):\\s(.*)",
             "file": 2,
             "line": 3,
             "column": 4,

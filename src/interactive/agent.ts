@@ -11,10 +11,11 @@ import { SessionJournal, atomicJson } from './journal';
 import { AssetStore } from './assets';
 import { arfRequest } from './arf';
 import { AGENT_PROTOCOL, AgentConfig, AgentSnapshot, ExecutionRecord, SessionEvent,
-    SessionManifest, object, submission, identifier } from './protocol';
+    SessionManifest, object, submission, identifier, sessionLabel } from './protocol';
 import { JgdSocketServer, JgdMessage } from '../plotViewer/jgdSocketServer';
 import { PlotHistory } from '../plotViewer/jgdPlotHistory';
 import { plotToSvg } from './plotSvg';
+import { searchHistory } from './history';
 
 interface Client { socket: net.Socket; authenticated: boolean; subscribed: boolean; id: string }
 interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout; socket: net.Socket }
@@ -52,6 +53,8 @@ export class SessionAgent {
     private metricPending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
     private metricCounter = 0;
     private stopped = false;
+    private stopping = false;
+    private shutdownTimers: NodeJS.Timeout[] = [];
     private dispatching = false;
     private decoders = new Map<string, StringDecoder>();
     private externalOutput: Record<string, unknown>[] = [];
@@ -74,7 +77,8 @@ export class SessionAgent {
             endpoint: path.join(this.runtime, 'control.sock'), token: randomBytes(32).toString('hex'),
             agentPid: process.pid, provider: config.provider, created: Date.now(), status: 'starting',
             capabilities: { persistent: true, streaming: true, stdin: true, debugger: true,
-                tables: true, html: true, interrupt: process.platform !== 'win32', jgd: false },
+                tables: true, html: true, interrupt: process.platform !== 'win32', jgd: false,
+                history: true, rename: true, cancelQueued: true },
             supervision: config.supervision,
         };
         // A previous agent's accepted/running work must never be replayed automatically.
@@ -124,8 +128,13 @@ export class SessionAgent {
 
     private state(status: SessionManifest['status']): void {
         if (this.stopped) { return; }
+        if (this.stopping && status !== 'exited') { status = 'stopping'; }
         this.manifest.status = status;
-        if (status === 'exited') { this.metrics?.kill(); this.jgd.stop(); }
+        if (status === 'exited') {
+            this.shutdownTimers.forEach(clearTimeout); this.shutdownTimers = [];
+            this.cancelQueued(); this.input = undefined;
+            this.metrics?.kill(); this.jgd.stop();
+        }
         this.saveManifest();
         this.event('state', { status, rPid: this.manifest.rPid, rVersion: this.manifest.rVersion });
     }
@@ -187,7 +196,28 @@ export class SessionAgent {
                 break;
             case 'heartbeat':
                 if (this.lease?.client === client.id) { this.lease.until = Date.now() + 60000; }
-                result = { status: this.manifest.status, control: this.lease?.client === client.id };
+                result = { status: this.manifest.status, control: this.lease?.client === client.id, queued: this.queue.length };
+                break;
+            case 'history': {
+                const query = typeof params.query === 'string' ? params.query.slice(0, 1000) : '';
+                const before = params.before ?? Number.MAX_SAFE_INTEGER;
+                if (!Number.isSafeInteger(before) || Number(before) < 1) { throw new Error('Invalid history cursor'); }
+                result = searchHistory(this.journal.executions.values(), query, Number(before));
+                break;
+            }
+            case 'rename': {
+                this.requireControl(client);
+                const label = sessionLabel(params.label);
+                const config = { ...this.config, label };
+                atomicJson(path.join(config.storage, 'config.json'), config);
+                this.config = config; this.manifest.label = label; this.saveManifest();
+                this.event('session', { label });
+                result = label;
+                break;
+            }
+            case 'cancelQueued':
+                this.requireControl(client);
+                result = this.cancelQueued();
                 break;
             case 'snapshot': {
                 const recent = this.journal.recent(Math.max(1, Math.min(Number(params.limit) || 50, this.config.historyLimit)));
@@ -229,7 +259,7 @@ export class SessionAgent {
             }
             case 'submit': {
                 this.requireControl(client);
-                if (this.manifest.status === 'exited' || this.manifest.status === 'unknown') { throw new Error('R is not available'); }
+                if (this.stopping || this.manifest.status === 'exited' || this.manifest.status === 'unknown') { throw new Error('R is not available'); }
                 const accepted = this.journal.accept(submission(params.submission));
                 result = accepted.record;
                 if (!accepted.duplicate) {
@@ -308,7 +338,7 @@ export class SessionAgent {
                 break;
             case 'stop':
                 this.requireControl(client);
-                if (this.manifest.rPid && this.console && !this.console.destroyed) { process.kill(this.manifest.rPid, 'SIGTERM'); }
+                this.stopWorker();
                 break;
             case 'shutdown':
                 this.requireControl(client);
@@ -408,6 +438,7 @@ export class SessionAgent {
     }
 
     private nativeEvent(message: Record<string, unknown>): void {
+        if (this.stopped) { return; }
         const executionId = typeof message.executionId === 'string' && message.executionId ? message.executionId : undefined;
         switch (message.type) {
             case 'ready':
@@ -531,7 +562,17 @@ export class SessionAgent {
         } catch { /* A busy or disconnected process retains the last workspace snapshot. */ }
     }
 
+    private cancelQueued(): number {
+        const queued = this.queue.splice(0);
+        for (const id of queued) {
+            const record = this.journal.executions.get(id);
+            if (record?.state === 'queued') { this.finish(record, 'cancelled'); }
+        }
+        return queued.length;
+    }
+
     private finish(record: ExecutionRecord, state: ExecutionRecord['state']): void {
+        if (this.stopped) { return; }
         const final = { ...record, state, ended: Date.now() };
         this.journal.update(final);
         this.event('finished', { state, record: final }, record.id, true);
@@ -540,7 +581,7 @@ export class SessionAgent {
     }
 
     private async pump(): Promise<void> {
-        if (!this.nativeReady || this.dispatching || this.current || !this.queue.length ||
+        if (this.stopped || this.stopping || !this.nativeReady || this.dispatching || this.current || !this.queue.length ||
             this.manifest.status === 'exited' || this.manifest.status === 'unknown') { return; }
         const id = this.queue.shift()!;
         const record = this.journal.executions.get(id)!;
@@ -557,7 +598,7 @@ export class SessionAgent {
                 if (result.error && this.current === id) { throw new Error(String(result.error)); }
             }
         } catch (error) {
-            if (this.current !== id) { return; }
+            if (this.stopped || this.current !== id) { return; }
             this.event('condition', { kind: 'error', message: String(error) }, id);
             // Transport failures are ambiguous: never automatically retry submitted R code.
             this.journal.update({ ...this.journal.executions.get(id)!, state: 'unknown' });
@@ -587,8 +628,9 @@ export class SessionAgent {
             // --interactive intentionally reads the console rather than -f/-e input.
             this.worker.stdin!.write(`base::source(${rString(path.join(this.config.resources, 'interactive-worker.R'))}, local=new.env(parent=baseenv()))\n`);
         }
-        this.worker.on('error', error => { this.event('agentError', { message: error.message }); this.state('exited'); });
+        this.worker.on('error', error => { if (!this.stopped) { this.event('agentError', { message: error.message }); this.state('exited'); } });
         this.worker.on('exit', (code, signal) => {
+            if (this.stopped) { return; }
             this.event('exit', { code, signal });
             if (this.current) { this.finish(this.journal.executions.get(this.current)!, 'unknown'); }
             this.nativeReady = false; this.state('exited');
@@ -686,16 +728,19 @@ export class SessionAgent {
     }
 
     private plot(device: string, message: JgdMessage): void {
-        const frame = this.history.latestPlot(device);
+        // A historical resize is a complete frame for that plot, not the device's
+        // latest plot. Its context must not replace the live drawing context.
+        const replay = message.resizeReplay === true;
+        const frame = replay ? message.plot : this.history.latestPlot(device);
         if (!frame) { return; }
         const operations = (message.plot?.ops ?? []) as { op: string; ext?: { executionId?: string } }[];
-        if (message.newPage) { this.plotContexts.delete(device); }
-        let context = this.plotContexts.get(device) ?? frame.frameExt?.executionId;
+        if (message.newPage && !replay) { this.plotContexts.delete(device); }
+        let context = replay ? frame.frameExt?.executionId : this.plotContexts.get(device) ?? frame.frameExt?.executionId;
         let drawing = false;
         for (const operation of operations) {
             if (operation.op === 'beginGroup' && operation.ext?.executionId) {
                 context = operation.ext.executionId;
-                this.plotContexts.set(device, operation.ext.executionId);
+                if (!replay) { this.plotContexts.set(device, operation.ext.executionId); }
             } else if (!['clip', 'beginGroup', 'endGroup'].includes(operation.op)) { drawing = true; }
         }
         if (!drawing) { return; }
@@ -708,11 +753,31 @@ export class SessionAgent {
             width: frame.device.width, height: frame.device.height }, executionId);
     }
 
+    private stopWorker(): void {
+        if (this.stopping || this.manifest.status === 'exited') { return; }
+        this.stopping = true; this.cancelQueued(); this.state('stopping');
+        const worker = this.worker, console = this.console;
+        const pid = this.manifest.rPid ?? worker?.pid;
+        const alive = (): boolean => !this.stopped && (worker
+            ? worker.exitCode === null && worker.signalCode === null
+            : !!console && this.console === console && !console.destroyed);
+        const signal = (signal: NodeJS.Signals): void => {
+            if (!pid || !alive()) { return; }
+            try { process.kill(pid, signal); }
+            catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') { this.event('agentWarning', { message: String(error) }); } }
+        };
+        // Embedded frontends can defer SIGTERM while R is evaluating. Interrupt first,
+        // then bound shutdown; the Stop command has explicitly authorized process exit.
+        signal('SIGINT');
+        this.shutdownTimers.push(setTimeout(() => signal('SIGTERM'), 100), setTimeout(() => signal('SIGKILL'), 3000));
+    }
+
     close(): void {
         if (this.stopped) { return; }
         this.stopped = true;
+        this.shutdownTimers.forEach(clearTimeout); this.shutdownTimers = [];
         clearTimeout(this.externalTimer);
-        this.worker?.kill(); this.metrics?.kill();
+        this.worker?.kill('SIGKILL'); this.metrics?.kill();
         this.jgd.stop(); this.assets.close();
         this.console?.destroy(); this.sess?.destroy();
         for (const client of this.clients) { client.socket.destroy(); }

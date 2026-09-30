@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>R Interactive renderer regression checks</title>
+<style>
+:root { color-scheme: dark; --vscode-editor-background:#1e1e1e; --vscode-editor-foreground:#dedede; --vscode-font-family:system-ui; --vscode-panel-border:#444; --vscode-button-background:#176da6; --vscode-button-foreground:white; }
+body { max-width:920px; margin:32px auto; background:#1e1e1e; color:#dedede; font:14px system-ui; }
+section { margin:24px 0; padding:18px; border:1px solid #444; border-radius:5px; }
+#result { padding:12px; background:#173d29; }
+</style>
+<h1>R Interactive output</h1>
+<p id="result">Running renderer checks…</p>
+<section><h2>Data preview</h2><div id="table"></div></section>
+<section><h2>Plot export</h2><div id="plot"></div></section>
+<section><h2>Saved table</h2><div id="offline"></div></section>
+<section><h2>Saved plot</h2><div id="offline-plot"></div></section>
+<section><h2>Interactive HTML</h2><div id="html"></div></section>
+<script type="module">
+import { activate } from '/dist/interactive-renderer.js';
+let receive;
+const messages = [];
+const renderer = activate({ postMessage: message => messages.push(message), onDidReceiveMessage: handler => { receive = handler; return { dispose() {} }; } });
+let assertions = 0;
+const check = (value, message) => { if (!value) throw new Error(message); assertions++; };
+const rows = (start, count) => Array.from({ length: count }, (_, i) => ({ x: start+i+1, label: 'Row '+(start+i+1) }));
+const data = { kind:'table', displayId:'table', columns:[{ field:'x',headerName:'Number' },{ field:'label',headerName:'Label' }], rows:rows(0,20),totalRows:53 };
+const table = document.querySelector('#table');
+const render = (id, data, element) => renderer.renderOutputItem({ id, json:() => data },element);
+const reply = (request, extra) => receive({ ...request, ...extra });
+try {
+ render('table',data,table);
+ const previous = [...table.querySelectorAll('button')].find(button => button.textContent==='Previous page');
+ const next = [...table.querySelectorAll('button')].find(button => button.textContent==='Next page');
+ const status = () => table.querySelector('[data-status]').textContent;
+ check(previous.disabled, 'First page must disable Previous');
+ check(status()==='Rows 1–20 of 53', 'Preview must show actual row count');
+ next.click(); let request = messages.at(-1);
+ check(request.start===20, 'Next must begin at row 21, not row 101');
+ check(next.disabled && previous.disabled, 'Paging controls must wait for the response');
+ reply({ ...request, requestId:-1 },{ result:{ rows:rows(20,20),totalRows:53 } });
+ check(status()==='Loading rows…', 'Stale responses must be ignored');
+ reply(request,{ result:{ rows:rows(20,20),totalRows:53 } });
+ check(status()==='Rows 21–40 of 53','Second page must be contiguous');
+ next.click(); request=messages.at(-1); reply(request,{ result:{ rows:rows(40,13),totalRows:53 } });
+ check(status()==='Rows 41–53 of 53' && next.disabled,'Last page must stop at actual total');
+ previous.click(); request=messages.at(-1); reply(request,{ error:'R is busy; retry when idle.' });
+ check(!previous.disabled && next.disabled,'Failed pages must retain the previous position');
+ previous.click(); request=messages.at(-1); check(request.start===20,'Retry must request the same page');
+ reply(request,{ result:{ rows:rows(20,20),totalRows:53 } });
+ check(status()==='Rows 21–40 of 53','Paging must recover after an error');
+ render('offline',{ ...data,connected:false },document.querySelector('#offline'));
+ check([...document.querySelectorAll('#offline button')].every(button=>button.disabled),'Offline controls must not appear usable');
+ const svg='<svg xmlns="http://www.w3.org/2000/svg" width="640" height="180"><rect width="640" height="180" fill="#fff"/><path d="M40 130 L160 70 L280 90 L400 30 L590 55" stroke="#167daa" stroke-width="4" fill="none"/><text x="40" y="165" font-family="sans-serif" fill="#333">R plot · retained SVG</text></svg>';
+ render('plot',{ kind:'plot',displayId:'plot',svgData:btoa(String.fromCharCode(...new TextEncoder().encode(svg))) },document.querySelector('#plot'));
+ const png=[...document.querySelectorAll('#plot button')].find(button=>button.textContent==='Save PNG');
+ check(png.disabled,'PNG export must wait until the image has loaded');
+ await new Promise((resolve,reject) => { const img=document.querySelector('#plot img'); img.addEventListener('load',resolve,{once:true}); img.addEventListener('error',reject,{once:true}); setTimeout(()=>reject(new Error('Plot load timed out')),5000); });
+ png.click(); check(messages.at(-1).image?.startsWith('data:image/png;base64,'),'PNG export must contain an image');
+ render('offline-plot',{ kind:'plot',connected:false,svgData:btoa(String.fromCharCode(...new TextEncoder().encode(svg))) },document.querySelector('#offline-plot'));
+ await new Promise((resolve,reject) => { const img=document.querySelector('#offline-plot img'); img.addEventListener('load',resolve,{once:true}); img.addEventListener('error',reject,{once:true}); setTimeout(()=>reject(new Error('Saved plot load timed out')),5000); });
+ check([...document.querySelectorAll('#offline-plot button')].every(button=>button.disabled),'Saved plot controls must remain disabled after the image loads');
+ render('html',{ kind:'htmlText',text:'<button onclick="this.textContent=\'Widget works\'">Try widget</button>' },document.querySelector('#html'));
+ check(document.querySelector('#html iframe').getAttribute('sandbox')==='allow-scripts allow-forms allow-downloads','HTML must retain sandboxing');
+ document.querySelector('#result').textContent=`${assertions} renderer assertions passed`;
+ document.body.dataset.result='passed';
+} catch(error) {
+ document.querySelector('#result').textContent=String(error);
+ document.querySelector('#result').style.background='#641e1e';
+ document.body.dataset.result='failed';
+ throw error;
+}
+</script>
+</html>

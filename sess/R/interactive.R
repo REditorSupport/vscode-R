@@ -123,6 +123,9 @@ run_worker <- function(config) {
   while (!isTRUE(.sess_env$interactive_stop)) {
     tryCatch({
       later::run_now(0.05)
+      # Service native R input handlers too (notably idle JGD resize requests).
+      # later's callback loop alone does not dispatch these socket handlers.
+      Sys.sleep(0.001)
       queue <- .sess_env$interactive_queue
       if (length(queue)) {
         request <- queue[[1L]]

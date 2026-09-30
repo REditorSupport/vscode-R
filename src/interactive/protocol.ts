@@ -23,7 +23,7 @@ export interface SessionManifest extends SessionIdentity {
     rVersion?: string;
     provider: ProviderKind;
     created: number;
-    status: 'starting' | 'idle' | 'busy' | 'input' | 'exited' | 'unknown';
+    status: 'starting' | 'idle' | 'busy' | 'input' | 'stopping' | 'exited' | 'unknown';
     capabilities: Record<string, boolean>;
     supervision: string;
     assetBase?: string;
@@ -94,6 +94,14 @@ export interface Request {
     id: number;
     method: string;
     params: Record<string, unknown>;
+}
+
+export function sessionLabel(value: unknown): string {
+    const label = typeof value === 'string' ? value.trim() : '';
+    if (!label || label.length > 80 || [...label].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) {
+        throw new Error('Use a session name of 1–80 characters without control characters');
+    }
+    return label;
 }
 
 export function object(value: unknown): Record<string, unknown> {

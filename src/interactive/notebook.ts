@@ -65,6 +65,7 @@ export class InteractiveSerializer implements vscode.NotebookSerializer {
                         const display = JSON.parse(Buffer.from(bytes).toString('utf8')) as Record<string, unknown>;
                         // Forwarding URLs contain transient credentials. Retain asset identities only.
                         delete display.url;
+                        display.connected = false;
                         bytes = Buffer.from(JSON.stringify(display));
                     }
                     return { mime: item.mime, data: Buffer.from(bytes).toString('base64') };

@@ -10,6 +10,7 @@ import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
 import { AgentConfig, SessionEvent, SessionManifest, ExecutionRecord } from '../../interactive/protocol';
 import { defaultStorage, installRuntime } from '../../interactive/launcher';
+import { HistoryPage } from '../../interactive/history';
 
 const run = promisify(execFile);
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
@@ -76,6 +77,62 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         assert.strictEqual((await finished(id)).state, 'success');
         assert.match(text(id), /early λ🙂/); assert.match(text(id), /42/);
         const next = await submit('answer + 1'); await finished(next); assert.match(text(next), /43/);
+    });
+
+    test('searches durable history beyond the reconnect window without executing code', async () => {
+        const first = await submit('history_value <- 17 # older_unique_marker'); await finished(first);
+        await finished(await submit('history_value <- history_value + 1'));
+        assert.strictEqual((await client.snapshot(1)).executions.length, 1);
+        const result = await client.request<HistoryPage>('history', { query: 'OLDER_UNIQUE_MARKER' });
+        assert.strictEqual(result.executions[0].id, first);
+        assert.strictEqual((await client.snapshot()).executions.length, 2);
+        await assert.rejects(client.request('history', { before: -1 }), /cursor/);
+    });
+
+    test('renames persist across reconnect and observer actions cannot mutate the session', async () => {
+        const observer = new AgentClient(manifest); await observer.connect();
+        try {
+            assert.strictEqual(observer.control, false);
+            await assert.rejects(observer.request('rename', { label: 'wrong' }), /observing/);
+            await assert.rejects(observer.request('cancelQueued'), /observing/);
+            await assert.rejects(client.request('rename', { label: '\n' }), /session name/);
+            assert.strictEqual(await client.request('rename', { label: ' Analysis λ ' }), 'Analysis λ');
+            const saved = JSON.parse(fs.readFileSync(path.join(root, manifest.id, 'config.json'), 'utf8')) as AgentConfig;
+            assert.strictEqual(saved.label, 'Analysis λ');
+            observer.close(); await observer.connect();
+            assert.strictEqual(observer.manifest.label, 'Analysis λ');
+            assert.strictEqual(observer.control, false);
+            await finished(await submit('cat(6 * 7)'));
+        } finally { observer.close(); }
+    });
+
+    test('cancels queued work without interrupting the running cell', async () => {
+        const running = await submit('Sys.sleep(0.4); cat("running-finished")');
+        await until(() => events.some(event => event.type === 'started' && event.executionId === running));
+        const queued = await submit('stop("must not execute")');
+        assert.strictEqual(await client.request('cancelQueued'), 1);
+        assert.strictEqual((await client.request<ExecutionRecord>('execution', { id: queued })).state, 'cancelled');
+        assert.strictEqual((await finished(running)).state, 'success');
+    });
+
+    test('R process exit finishes queued cells instead of leaving them pending forever', async () => {
+        const running = await submit('Sys.sleep(30)');
+        await until(() => events.some(event => event.type === 'started' && event.executionId === running));
+        const queued = await submit('stop("must not execute")');
+        await client.request('stop');
+        await until(() => events.some(event => event.type === 'state' && event.data.status === 'exited'));
+        assert.strictEqual((await client.request<ExecutionRecord>('execution', { id: queued })).state, 'cancelled');
+        assert.ok(events.some(event => event.type === 'finished' && event.executionId === queued));
+    });
+
+    test('closing a busy agent prevents late callbacks from writing its closed journal', async () => {
+        const id = await submit('Sys.sleep(30)');
+        await until(() => events.some(event => event.type === 'started' && event.executionId === id));
+        agent.close();
+        const file = path.join(root, manifest.id, manifest.generation, 'executions', `${id}.json`);
+        const saved = fs.readFileSync(file, 'utf8');
+        await delay(200);
+        assert.strictEqual(fs.readFileSync(file, 'utf8'), saved);
     });
 
     test('reconnects after output produced without any editor and deduplicates submission', async () => {
@@ -183,6 +240,27 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         await finished(second);
         await until(() => new Set(events.filter(event => event.executionId === second && event.data.kind === 'plot').map(event => event.data.device)).size === 2);
         assert.strictEqual((await client.request<ExecutionRecord>('execution', { id: second })).state, 'success');
+    });
+
+    test('resizes idle and historical plots without changing their execution ownership', async function () {
+        if (!client.manifest.capabilities.jgd) { this.skip(); }
+        const id = await submit('plot(1:3)'); await finished(id);
+        await until(() => events.some(event => event.executionId === id && event.data.kind === 'plot'));
+        const first = events.find(event => event.executionId === id && event.data.kind === 'plot');
+        assert.ok(first);
+        await client.request('resize', { device: first.data.device, plot: first.data.plot, width: 500, height: 350 });
+        await until(() => events.some(event => event.executionId === id && event.data.kind === 'plot' && event.data.width === 500));
+        const second = await submit('plot(3:1)'); await finished(second);
+        await until(() => events.some(event => event.executionId === second && event.data.kind === 'plot'));
+        const previous = events.filter(event => event.executionId === second && event.data.kind === 'plot').at(-1);
+        assert.ok(previous);
+        const after = events.at(-1)?.seq ?? 0;
+        await client.request('resize', { device: first.data.device, plot: first.data.plot, width: 600, height: 400 });
+        await until(() => events.some(event => event.seq > after && event.executionId === id && event.data.kind === 'plot' && event.data.width === 600));
+        assert.ok(!events.some(event => event.seq > after && event.executionId === second && event.data.width === 600));
+        const updated = events.filter(event => event.executionId === id && event.data.kind === 'plot').at(-1);
+        assert.strictEqual(updated?.data.displayId, first.data.displayId);
+        assert.notStrictEqual(updated?.data.svg, previous.data.svg);
     });
 
     test('standalone agent survives its launcher process exiting', async () => {

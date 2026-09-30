@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { AgentClient } from './client';
-import { AgentConfig, AgentSnapshot, SessionEvent, SessionManifest, SourceLocation, object } from './protocol';
+import { AgentConfig, AgentSnapshot, ExecutionRecord, SessionEvent, SessionManifest, SourceLocation, object, sessionLabel } from './protocol';
 import { defaultStorage, discoverSessions, installRuntime, launchAgent, newIdentity } from './launcher';
 import { discoverArf, ArfSession } from './arf';
 import { Transcript, TranscriptCell } from './transcript';
@@ -13,6 +13,8 @@ import * as session from '../session';
 import * as util from '../util';
 import { escapeXml } from './plotSvg';
 import { ensureWorkspaceViewer } from '../extension';
+import { tablePage } from './tablePaging';
+import { HistoryPage, searchHistory } from './history';
 
 interface InteractiveView {
     client: AgentClient;
@@ -30,6 +32,7 @@ interface InteractiveView {
     disposed: boolean;
     prompts: Set<number>;
     base: string;
+    hidden: Set<string>;
 }
 
 export class InteractiveManager implements vscode.Disposable, vscode.TreeDataProvider<SessionManifest> {
@@ -47,6 +50,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private root: string;
     private closed = false;
     private clientId: string;
+    private status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 20);
 
     constructor(private context: vscode.ExtensionContext) {
         this.root = util.config().get<string>('interactive.storagePath') || defaultStorage();
@@ -59,36 +63,49 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         command('r.interactive.connect', () => this.pick());
         command('r.interactive.open', value => this.open(value as SessionManifest));
         command('r.interactive.refresh', () => this.refresh());
-        command('r.interactive.interrupt', () => this.active?.client.request('interrupt'));
-        command('r.interactive.input', () => this.active && this.resumeInput(this.active));
-        command('r.interactive.detach', () => this.detach());
-        command('r.interactive.stop', () => this.stop());
-        command('r.interactive.restart', () => this.restart());
-        command('r.interactive.takeControl', async () => {
-            if (this.active) { this.active.client.control = await this.active.client.request<boolean>('claim', { force: true }); }
-        });
+        command('r.interactive.interrupt', value => this.forView(value, view => view.client.request('interrupt')));
+        command('r.interactive.input', value => this.forView(value, view => this.resumeInput(view)));
+        command('r.interactive.detach', value => this.forView(value, view => this.detach(view)));
+        command('r.interactive.stop', value => this.forView(value, view => this.stop(view)));
+        command('r.interactive.restart', value => this.forView(value, view => this.restart(view)));
+        command('r.interactive.takeControl', value => this.forView(value, async view => {
+            view.client.control = await view.client.request<boolean>('claim', { force: true }); this.updateStatus();
+        }));
+        command('r.interactive.rename', (value, label) => this.forView(value, view => this.rename(view, typeof label === 'string' ? label : undefined)));
+        command('r.interactive.history', value => this.forView(value, view => this.history(view)));
+        command('r.interactive.plots', value => this.forView(value, view => this.plots(view)));
+        command('r.interactive.cancelQueued', value => this.forView(value, view => this.cancelQueued(view)));
+        command('r.interactive.reuseCell', value => this.forView(value, view => this.insertCode(view, (value as vscode.NotebookCell).document.getText())));
+        command('r.interactive.copyCell', value => vscode.env.clipboard.writeText((value as vscode.NotebookCell).document.getText()));
+        command('r.interactive.source', value => this.source((value as vscode.NotebookCell).metadata.rSource as SourceLocation | undefined));
+        command('r.interactive.info', value => this.forView(value, view => {
+            const manifest = view.client.manifest;
+            this.output.appendLine(JSON.stringify({ name: manifest.label, status: manifest.status, provider: manifest.provider,
+                rVersion: manifest.rVersion, rPath: manifest.rPath, pid: manifest.rPid, workingDirectory: view.target.workingDir,
+                supervision: manifest.supervision, connected: view.client.connected, control: view.client.control }, null, 2));
+            this.output.show(true);
+        }));
         command('r.interactive.useTerminal', () => { this.routing = false; });
         command('r.interactive.bindDocument', () => {
             const document = vscode.window.activeTextEditor?.document;
             if (document && this.active) { session.bindSessionDocument(document.uri, this.active.target); }
         });
-        command('r.interactive.export', () => this.exportHistory());
-        command('r.interactive.clear', async () => {
-            if (!this.active) { return; }
-            const edit = new vscode.WorkspaceEdit();
-            edit.set(this.active.notebook.uri, [vscode.NotebookEdit.deleteCells(new vscode.NotebookRange(0, this.active.notebook.cellCount))]);
-            await vscode.workspace.applyEdit(edit);
-        });
+        command('r.interactive.export', value => this.forView(value, view => this.exportHistory(view)));
+        command('r.interactive.clear', value => this.forView(value, view => this.clearCompleted(view)));
+        this.status.name = 'R Interactive session'; this.status.command = 'r.interactive.connect';
+        this.disposables.push(this.status);
         this.disposables.push(vscode.window.registerTreeDataProvider('rInteractiveSessions', this),
             vscode.workspace.registerNotebookSerializer('r-interactive', this.serializer, { transientOutputs: false }),
             this.messages.onDidReceiveMessage(event => { void this.rendererMessage(event.editor, event.message as Record<string, unknown>); }),
             vscode.window.onDidChangeActiveNotebookEditor(editor => {
                 const view = [...this.views.values()].find(item => item.notebook === editor?.notebook);
+                void vscode.commands.executeCommand('setContext', 'r.interactive.notebook', !!view);
                 if (view) { void this.activate(view); }
             }),
             vscode.window.onDidChangeActiveTextEditor(editor => {
                 const view = [...this.views.values()].find(item => item.inputUri?.toString() === editor?.document.uri.toString());
                 if (view) { void this.activate(view); }
+                else { this.updateStatus(); }
             }),
             vscode.workspace.onDidCloseNotebookDocument(document => {
                 const view = [...this.views.values()].find(item => item.notebook === document);
@@ -117,15 +134,182 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         this.output.appendLine(message); void vscode.window.showErrorMessage(`R Interactive: ${message}`);
     }
 
+    private async forView(value: unknown, action: (view: InteractiveView) => unknown): Promise<unknown> {
+        let view = this.active;
+        if (value && typeof value === 'object') {
+            const target = value as Partial<SessionManifest> & { notebook?: vscode.NotebookDocument; notebookUri?: vscode.Uri; uri?: vscode.Uri };
+            if (typeof target.id === 'string' && typeof target.generation === 'string') {
+                const key = `${target.id}:${target.generation}`;
+                if (!this.views.has(key)) { await this.open(target as SessionManifest); }
+                view = this.views.get(key);
+            } else {
+                const uri = value instanceof vscode.Uri ? value : target.notebook?.uri ?? target.notebookUri ?? target.uri;
+                view = uri && [...this.views.values()].find(item => item.notebook.uri.toString() === uri.toString());
+            }
+            if (!view) { throw new Error('This notebook is not connected to an R Interactive session'); }
+        }
+        if (!view || view.disposed) { return; }
+        return action(view);
+    }
+
+    private updateStatus(): void {
+        const document = vscode.window.activeTextEditor?.document;
+        const target = document && session.boundSessionForDocument(document.uri);
+        const view = (target && [...this.views.values()].find(item => item.target === target)) || this.active;
+        if (!view || view.disposed) { this.status.hide(); return; }
+        const manifest = view.client.manifest;
+        const queued = [...view.model.cells.values()].filter(cell => cell.record.state === 'queued').length;
+        const state = !view.client.connected ? 'Disconnected' : manifest.status === 'input' ? 'Waiting for input' : manifest.status;
+        const icon = !view.client.connected ? 'debug-disconnect' : manifest.status === 'busy' ? 'sync~spin' : manifest.status === 'input' ? 'question' : 'terminal';
+        this.status.text = `$(${icon}) R: ${manifest.label} · ${state}${queued ? ` · ${queued} queued` : ''}${view.client.connected && !view.client.control ? ' · observing' : ''}`;
+        this.status.tooltip = `${manifest.rVersion ?? 'R'} · ${manifest.provider}\n${view.target.workingDir}\n${view.client.control ? 'This window controls the session' : 'Use Take Control to submit code'}\nSelect to ${manifest.status === 'input' ? 'reply to R input' : 'switch sessions'}`;
+        this.status.command = manifest.status === 'input'
+            ? { command: 'r.interactive.input', title: 'Reply to R input', arguments: [manifest] } : 'r.interactive.connect';
+        this.status.show();
+    }
+
+    private async rename(view: InteractiveView, supplied?: string): Promise<void> {
+        if (!view.client.manifest.capabilities.rename) { throw new Error('Renaming requires a session started with the current extension build'); }
+        const label = supplied ?? await vscode.window.showInputBox({ title: 'Rename R session', value: view.client.manifest.label,
+            validateInput: value => { try { sessionLabel(value); return undefined; } catch (error) { return String(error); } } });
+        if (label === undefined) { return; }
+        view.client.manifest.label = await view.client.request<string>('rename', { label });
+        for (const controller of view.controllers) { controller.label = `R: ${view.client.manifest.label}`; }
+        this.refresh();
+    }
+
+    private async cancelQueued(view: InteractiveView): Promise<void> {
+        if (view.client.manifest.capabilities.cancelQueued) { await view.client.request('cancelQueued'); }
+        else {
+            for (const cell of view.model.cells.values()) {
+                if (cell.record.state === 'queued') { await view.client.request('cancel', { id: cell.record.id }); }
+            }
+        }
+    }
+
+    private async clearCompleted(view: InteractiveView): Promise<void> {
+        view.chain = view.chain.then(async () => {
+            if (view.disposed) { return; }
+            const edits: vscode.NotebookEdit[] = [];
+            for (const cell of view.notebook.getCells().slice().reverse()) {
+                const id = cell.metadata.rExecutionId as string | undefined;
+                const record = id && view.model.cells.get(id)?.record;
+                if (record && !['queued', 'running', 'unknown'].includes(record.state)) {
+                    view.hidden.add(record.id);
+                    edits.push(vscode.NotebookEdit.deleteCells(new vscode.NotebookRange(cell.index, cell.index + 1)));
+                }
+            }
+            const edit = new vscode.WorkspaceEdit(); edit.set(view.notebook.uri, edits);
+            await vscode.workspace.applyEdit(edit);
+        });
+        await view.chain;
+    }
+
+    private async insertCode(view: InteractiveView, code: string): Promise<void> {
+        await vscode.window.showNotebookDocument(view.notebook, { preserveFocus: false });
+        const edit = new vscode.WorkspaceEdit();
+        if (view.inputUri) {
+            const document = await vscode.workspace.openTextDocument(view.inputUri);
+            const current = document.getText();
+            edit.insert(document.uri, document.positionAt(current.length), `${current && !current.endsWith('\n') ? '\n' : ''}${code}`);
+        } else {
+            edit.set(view.notebook.uri, [vscode.NotebookEdit.insertCells(view.notebook.cellCount,
+                [new vscode.NotebookCellData(vscode.NotebookCellKind.Code, code, 'r')])]);
+        }
+        await vscode.workspace.applyEdit(edit);
+        if (view.inputUri) { await vscode.commands.executeCommand('interactive.input.focus'); }
+    }
+
+    private async source(source?: SourceLocation): Promise<void> {
+        if (!source) { void vscode.window.showInformationMessage('This code was entered directly in the Interactive window.'); return; }
+        const document = await vscode.workspace.openTextDocument(vscode.Uri.parse(source.uri));
+        const line = Math.min(source.line, document.lineCount - 1);
+        await vscode.window.showTextDocument(document, { selection: new vscode.Range(line, 0, line, 0) });
+    }
+
+    private history(view: InteractiveView): void {
+        type Item = vscode.QuickPickItem & { record: ExecutionRecord };
+        const picker = vscode.window.createQuickPick<Item>();
+        const older = { iconPath: new vscode.ThemeIcon('history'), tooltip: 'Load older matching commands' };
+        const copy = { iconPath: new vscode.ThemeIcon('copy'), tooltip: 'Copy code' };
+        const run = { iconPath: new vscode.ThemeIcon('play'), tooltip: 'Run again in this session' };
+        const source = { iconPath: new vscode.ThemeIcon('go-to-file'), tooltip: 'Go to source' };
+        picker.title = `R history: ${view.client.manifest.label}`;
+        picker.placeholder = 'Search code; Enter inserts it into the input for editing';
+        picker.matchOnDescription = true; picker.matchOnDetail = true;
+        let version = 0, closed = false, timer: NodeJS.Timeout | undefined;
+        const load = async (more = false, request = ++version): Promise<void> => {
+            picker.busy = true;
+            try {
+                const before = more ? picker.items.at(-1)?.record.order : undefined;
+                const page = view.client.connected && view.client.manifest.capabilities.history
+                    ? await view.client.request<HistoryPage>('history', { query: picker.value, before })
+                    : searchHistory([...view.model.cells.values()].map(cell => cell.record), picker.value, before);
+                if (closed || request !== version) { return; }
+                const items = page.executions.map(record => ({ record, alwaysShow: true,
+                    label: `#${record.order} ${record.code.split('\n')[0].slice(0, 100)}`,
+                    description: `${record.state} · ${new Date(record.accepted).toLocaleString()}`,
+                    detail: record.code.slice(0, 600), buttons: record.source ? [copy, run, source] : [copy, run] }));
+                picker.items = more ? [...picker.items, ...items] : items;
+                picker.buttons = page.more ? [older] : [];
+            } catch (error) {
+                if (!closed && request === version) { picker.placeholder = String(error); }
+            } finally { if (!closed && request === version) { picker.busy = false; } }
+        };
+        const listeners: vscode.Disposable[] = [
+            picker.onDidChangeValue(() => { clearTimeout(timer); const request = ++version; timer = setTimeout(() => { void load(false, request); }, 150); }),
+            picker.onDidTriggerButton(() => { void load(true); }),
+            picker.onDidAccept(() => { const item = picker.selectedItems[0]; if (item) { picker.hide(); void this.insertCode(view, item.record.code).catch(error => this.report(error)); } }),
+            picker.onDidTriggerItemButton(event => {
+                const record = event.item.record;
+                if (event.button === copy) { void vscode.env.clipboard.writeText(record.code); }
+                else { picker.hide(); void (event.button === run ? this.submit(view, record.code, record.source) : this.source(record.source)).catch(error => this.report(error)); }
+            }),
+            picker.onDidHide(() => { closed = true; clearTimeout(timer); listeners.forEach(listener => { listener.dispose(); }); picker.dispose(); }),
+        ];
+        picker.show(); void load();
+    }
+
+    private async plots(view: InteractiveView): Promise<void> {
+        const items = [...view.model.cells.values()].reverse().flatMap(cell => cell.outputs.filter(output =>
+            output.type === 'display' && ['plot', 'image'].includes(String(output.data.kind))).map((output, index) => ({
+            label: `#${cell.record.order} · Plot ${index + 1}`, description: cell.record.code.split('\n')[0].slice(0, 120),
+            detail: new Date(cell.record.accepted).toLocaleString(), data: output.data,
+        })));
+        if (!items.length) { void vscode.window.showInformationMessage('This session has no plots in its restored history.'); return; }
+        const selected = await vscode.window.showQuickPick(items, { title: `Plots: ${view.client.manifest.label}`, matchOnDescription: true });
+        if (selected) { await this.openOutput(view, selected.data); }
+    }
+
+    private async openOutput(view: InteractiveView, data: Record<string, unknown>): Promise<void> {
+        let url = data.svg || data.asset ? view.base + String(data.svg ?? data.asset).split('/').map(encodeURIComponent).join('/') : String(data.url ?? '');
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) { url = (await vscode.env.asExternalUri(vscode.Uri.parse(url))).toString(true); }
+        if (data.kind === 'image' && !url) { url = `data:${String(data.mime)};base64,${String(data.data)}`; }
+        const html = data.kind === 'mime' && data.mime === 'text/html';
+        if (!url && !html) { return; }
+        const panel = vscode.window.createWebviewPanel('rInteractiveOutput', `R: ${view.client.manifest.label}`, vscode.ViewColumn.Beside, { enableScripts: true });
+        panel.webview.html = `<!doctype html><html><body style="margin:0">${['plot', 'image'].includes(String(data.kind))
+            ? `<img alt="R plot" src="${escapeXml(url)}" style="display:block;max-width:100%;height:auto;margin:auto">`
+            : `<iframe sandbox="allow-scripts allow-forms allow-downloads" ${html ? `srcdoc="${escapeXml(String(data.text))}"` : `src="${escapeXml(url)}"`} style="position:fixed;inset:0;width:100%;height:100%;border:0"></iframe>`}</body></html>`;
+    }
+
     refresh(): void {
         try { this.manifests = discoverSessions(this.root); }
         catch (error) { this.manifests = []; this.report(error); }
+        const manifests = new Map(this.manifests.map(manifest => [manifest.id, manifest]));
+        for (const view of this.views.values()) { manifests.set(view.client.manifest.id, view.client.manifest); }
+        this.manifests = [...manifests.values()];
         this.changes.fire(undefined);
+        this.updateStatus();
     }
     getChildren(): SessionManifest[] { return this.manifests; }
     getTreeItem(manifest: SessionManifest): vscode.TreeItem {
         const item = new vscode.TreeItem(manifest.label);
         item.id = manifest.id; item.description = `${manifest.status} · ${manifest.provider}`;
+        item.contextValue = 'rInteractiveSession';
+        const view = this.views.get(`${manifest.id}:${manifest.generation}`);
+        if (view && !view.client.connected) { item.description = `disconnected · ${manifest.provider}`; }
+        else if (view && !view.client.control) { item.description += ' · observing'; }
         item.tooltip = `${manifest.directory}\n${manifest.rVersion ?? 'Starting R'}\nPID ${manifest.rPid ?? '—'} · ${manifest.supervision}`;
         item.iconPath = new vscode.ThemeIcon(manifest.status === 'busy' ? 'sync~spin' : manifest.status === 'exited' ? 'circle-outline' : 'terminal');
         item.command = { command: 'r.interactive.open', title: 'Open R Interactive', arguments: [manifest] };
@@ -238,7 +422,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             session.bindSessionDocument(vscode.Uri.from({ scheme: 'vscode-notebook-cell', path: notebook.uri.path }), target);
             const view: InteractiveView = { client, target, model: new Transcript(manifest.generation), notebook, controller,
                 controllers: [native, fallback], inputUri, executions: new Map(), chain: Promise.resolve(),
-                pending: new Set(), disposed: false, prompts: new Set(), base: '' };
+                pending: new Set(), disposed: false, prompts: new Set(), base: '', hidden: new Set() };
             this.views.set(key, view);
             if (inputUri) {
                 session.bindSessionDocument(inputUri, target);
@@ -248,7 +432,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             client.on('event', (event: SessionEvent) => {
                 view.chain = view.chain.then(() => this.event(view, event)).catch(error => this.report(error));
             });
-            client.on('disconnect', () => this.reconnect(view, 1000));
+            client.on('activity', () => this.updateStatus());
+            client.on('disconnect', () => { this.updateStatus(); this.changes.fire(undefined); this.reconnect(view, 1000); });
             if (!await client.subscribe(view.model.seq)) { await this.restore(view, await client.snapshot()); await client.subscribe(view.model.seq); }
             await this.activate(view);
             await this.context.workspaceState.update('r.interactive.sessions', [...new Set([...this.views.values()].map(item => item.client.manifest.id))]);
@@ -270,7 +455,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         view.model.restore(snapshot);
         if (snapshot.workspace) { view.target.workspaceData = snapshot.workspace as unknown as session.WorkspaceData; }
         const cells: vscode.NotebookCellData[] = [];
-        for (const cell of view.model.cells.values()) { cells.push(await this.cellData(view, cell)); }
+        for (const cell of view.model.cells.values()) { if (!view.hidden.has(cell.record.id)) { cells.push(await this.cellData(view, cell)); } }
         if (view.notebook.notebookType === 'r-interactive') { cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', 'r')); }
         const edit = new vscode.WorkspaceEdit();
         edit.set(view.notebook.uri, [vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(0, view.notebook.cellCount), cells),
@@ -286,6 +471,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         await vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', true);
         await session.activateSession(view.target);
         await vscode.commands.executeCommand('setContext', 'r.interactive.active', true);
+        await vscode.commands.executeCommand('setContext', 'r.interactive.notebook', vscode.window.activeNotebookEditor?.notebook === view.notebook);
+        this.updateStatus();
     }
 
     private cell(view: InteractiveView, id: string): vscode.NotebookCell | undefined {
@@ -334,9 +521,14 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private async event(view: InteractiveView, event: SessionEvent): Promise<void> {
         if (view.disposed || event.generation !== view.model.generation || event.seq <= view.model.seq) { return; }
         const changed = view.model.apply(event);
+        this.updateStatus();
         if (event.type === 'state') {
             view.client.manifest.status = event.data.status as SessionManifest['status'];
             view.target.pid = String(event.data.rPid ?? ''); view.target.rVer = String(event.data.rVersion ?? '');
+            this.refresh();
+        } else if (event.type === 'session' && typeof event.data.label === 'string') {
+            view.client.manifest.label = event.data.label;
+            for (const controller of view.controllers) { controller.label = `R: ${event.data.label}`; }
             this.refresh();
         } else if (event.type === 'workspace') {
             view.target.workspaceData = event.data as unknown as session.WorkspaceData;
@@ -359,7 +551,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         } else if (event.type === 'agentError' || event.type === 'agentWarning') {
             this.output.appendLine(String(event.data.message));
         }
-        if (!changed) { return; }
+        if (!changed || view.hidden.has(changed)) { return; }
         if (!this.cell(view, changed)) {
             const data = await this.cellData(view, view.model.cells.get(changed)!);
             const edit = new vscode.WorkspaceEdit(); edit.set(view.notebook.uri, [vscode.NotebookEdit.insertCells(view.notebook.cellCount, [data])]);
@@ -417,7 +609,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             } else if (data.kind === 'mime' && data.mime !== 'text/html') {
                 items = [vscode.NotebookCellOutputItem.text(String(data.text), String(data.mime))];
             } else {
-                const display: Record<string, unknown> = { ...data };
+                const display: Record<string, unknown> = { ...data, connected: view.client.connected };
                 if (data.svg || data.asset) { display.url = view.base + String(data.svg ?? data.asset).split('/').map(encodeURIComponent).join('/'); }
                 else if (typeof data.url === 'string' && /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(data.url)) {
                     display.url = (await vscode.env.asExternalUri(vscode.Uri.parse(data.url))).toString(true);
@@ -447,11 +639,13 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const task = view.executions.get(id);
         if (task) { await task.replaceOutput(await this.outputs(view, data)); }
         else {
-            const edit = new vscode.WorkspaceEdit(); edit.set(view.notebook.uri, [vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(cell.index, cell.index + 1), [await this.cellData(view, data)])]);
-            session.unbindSessionDocument(cell.document.uri);
-            await vscode.workspace.applyEdit(edit);
-            const replacement = this.cell(view, id);
-            if (replacement) { session.bindSessionDocument(replacement.document.uri, view.target); }
+            // Updating a late plot must preserve the cell URI, edited code, selection, and diagnostics.
+            const summary = cell.executionSummary;
+            const update = view.controller.createNotebookCellExecution(cell);
+            update.executionOrder = summary?.executionOrder;
+            update.start(summary?.timing?.startTime);
+            try { await update.replaceOutput(await this.outputs(view, data)); }
+            finally { update.end(summary?.success, summary?.timing?.endTime); }
         }
     }
 
@@ -491,10 +685,12 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 case 'table':
                     if (data.kind !== 'table') { return; }
                     await session.showDataView('table', 'json', `${view.client.manifest.label}: table`, '', 'Beside', String(data.viewId), view.target); break;
-                case 'page':
+                case 'page': {
                     if (data.kind !== 'table') { return; }
+                    const page = tablePage(Number(data.totalRows), Number(message.start));
                     result = await view.client.request('inspect', { method: 'dataview_page', params: { view_id: data.viewId,
-                        startRow: Math.max(0, Number(message.start) || 0), endRow: Math.max(0, Number(message.start) || 0) + 100, sortModel: [], filterModel: {} } }); break;
+                        startRow: page.start, endRow: page.end, sortModel: [], filterModel: {} } }); break;
+                }
                 case 'resize':
                     if (data.kind !== 'plot') { return; }
                     await view.client.request('resize', { device: data.device, plot: data.plot, width: message.width, height: message.height }); break;
@@ -511,19 +707,11 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                     await vscode.workspace.fs.writeFile(file, bytes); break;
                 }
                 case 'plot': case 'open': {
-                    let url = data.svg || data.asset ? view.base + String(data.svg ?? data.asset) : String(data.url ?? '');
-                    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) {
-                        url = (await vscode.env.asExternalUri(vscode.Uri.parse(url))).toString(true);
-                    }
-                    const html = data.kind === 'mime' && data.mime === 'text/html';
-                    if (!url && !html) { return; }
-                    const panel = vscode.window.createWebviewPanel('rInteractiveOutput', `R: ${view.client.manifest.label}`, vscode.ViewColumn.Beside, { enableScripts: true });
-                    panel.webview.html = `<!doctype html><html><body style="margin:0"><iframe sandbox="allow-scripts allow-forms allow-downloads" ${html ? `srcdoc="${escapeXml(String(data.text))}"` : `src="${escapeXml(url)}"`} style="position:fixed;inset:0;width:100%;height:100%;border:0"></iframe></body></html>`;
-                    break;
+                    await this.openOutput(view, data); break;
                 }
             }
-            await this.messages.postMessage({ outputId: message.outputId, action: message.action, result }, editor);
-        } catch (error) { await this.messages.postMessage({ outputId: message.outputId, error: String(error) }, editor); }
+            await this.messages.postMessage({ outputId: message.outputId, action: message.action, requestId: message.requestId, result }, editor);
+        } catch (error) { await this.messages.postMessage({ outputId: message.outputId, action: message.action, requestId: message.requestId, error: String(error) }, editor); }
     }
 
     private reconnect(view: InteractiveView, delay: number): void {
@@ -552,19 +740,17 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         }, delay);
     }
 
-    private async detach(): Promise<void> {
-        const view = this.active; if (!view) { return; }
-        await view.client.request('detach'); this.disposeView(view);
+    private async detach(view: InteractiveView): Promise<void> {
+        try { if (view.client.connected) { await view.client.request('detach'); } }
+        finally { this.disposeView(view); }
     }
 
-    private async stop(): Promise<void> {
-        const view = this.active; if (!view) { return; }
+    private async stop(view: InteractiveView): Promise<void> {
         const answer = await vscode.window.showWarningMessage(`Stop R session “${view.client.manifest.label}”? Its in-memory objects will be lost.`, { modal: true }, 'Stop Session');
         if (answer === 'Stop Session') { await view.client.request('stop'); }
     }
 
-    private async restart(): Promise<void> {
-        const view = this.active; if (!view) { return; }
+    private async restart(view: InteractiveView): Promise<void> {
         if (view.client.manifest.provider === 'arf-existing') { throw new Error('Restart adopted arf from its tmux terminal, then reconnect to the new process'); }
         const answer = await vscode.window.showWarningMessage('Restart R with a new environment? The old transcript will remain available.', { modal: true }, 'Restart Session');
         if (answer !== 'Restart Session') { return; }
@@ -585,8 +771,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         await this.open(await launchAgent(config, runtime.agent, util.config().get<string>('interactive.nodePath', 'node')));
     }
 
-    private async exportHistory(): Promise<void> {
-        const view = this.active; if (!view) { return; }
+    private async exportHistory(view: InteractiveView): Promise<void> {
         const file = await vscode.window.showSaveDialog({ filters: { 'R Interactive notebook': ['rnb'], 'Jupyter notebook': ['ipynb'], 'R script': ['R'], 'HTML report': ['html'] } });
         if (!file) { return; }
         const cells = [...view.model.cells.values()];
@@ -630,6 +815,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         this.views.delete(`${view.client.manifest.id}:${view.client.manifest.generation}`);
         if (this.active === view) {
             this.active = undefined; this.routing = false;
+            this.status.hide();
             void vscode.commands.executeCommand('setContext', 'r.interactive.active', false);
             void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', util.config().get<boolean>('sessionWatcher', false));
         }

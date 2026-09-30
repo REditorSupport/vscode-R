@@ -10,11 +10,14 @@ export class AgentClient extends EventEmitter {
     private pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
     private heartbeat?: NodeJS.Timeout;
     private closing = false;
+    private ready = false;
     control = false;
+    get connected(): boolean { return this.ready && this.socket !== undefined && !this.socket.destroyed; }
 
     constructor(public manifest: SessionManifest, readonly clientId: string = randomUUID()) { super(); }
 
     async connect(): Promise<void> {
+        this.close();
         this.closing = false;
         const socket = net.createConnection(this.manifest.endpoint);
         this.socket = socket;
@@ -32,6 +35,8 @@ export class AgentClient extends EventEmitter {
         });
         socket.on('error', () => { /* close rejects every outstanding request. */ });
         socket.on('close', () => {
+            if (this.socket !== socket) { return; }
+            this.ready = false; this.control = false;
             clearInterval(this.heartbeat);
             for (const pending of this.pending.values()) {
                 clearTimeout(pending.timer); pending.reject(new Error('Session agent disconnected'));
@@ -48,8 +53,11 @@ export class AgentClient extends EventEmitter {
             protocol: AGENT_PROTOCOL, token: this.manifest.token, clientId: this.clientId,
         });
         this.control = await this.request<boolean>('claim');
+        this.ready = true; this.emit('activity');
         this.heartbeat = setInterval(() => {
-            void this.request<{ control: boolean }>('heartbeat').then(value => { this.control = value.control; }).catch(() => socket.destroy());
+            void this.request<{ control: boolean; status: SessionManifest['status'] }>('heartbeat').then(value => {
+                this.control = value.control; this.manifest.status = value.status; this.emit('activity');
+            }).catch(() => socket.destroy());
         }, 20000);
         this.heartbeat.unref();
     }
@@ -82,7 +90,10 @@ export class AgentClient extends EventEmitter {
 
     close(): void {
         this.closing = true;
+        this.ready = false; this.control = false;
         clearInterval(this.heartbeat);
+        for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error('Session agent disconnected')); }
+        this.pending.clear();
         this.socket?.destroy();
     }
 }

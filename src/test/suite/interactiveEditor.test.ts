@@ -14,6 +14,7 @@ import { SessionManifest } from '../../interactive/protocol';
 (process.platform === 'win32' ? suite.skip : suite)('Interactive VS Code integration', function () {
     this.timeout(60000);
     let root: string;
+    const sourceDirectories: string[] = [];
     let previousRProfile: string | undefined;
     let agents: SessionAgent[];
     let manifests: SessionManifest[];
@@ -44,6 +45,7 @@ import { SessionManifest } from '../../interactive/protocol';
         agents?.forEach(agent => agent.close());
         await new Promise(resolve => setTimeout(resolve, 200));
         fs.rmSync(root, { recursive: true, force: true });
+        sourceDirectories.forEach(directory => fs.rmSync(directory, { recursive: true, force: true }));
     });
     const until = async (predicate: () => boolean): Promise<void> => {
         const deadline = Date.now() + 20000;
@@ -120,7 +122,78 @@ import { SessionManifest } from '../../interactive/protocol';
             await vscode.workspace.applyEdit(fix);
             await until(() => vscode.languages.getDiagnostics(document.uri).length === 0);
             await document.save();
-        } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+        } finally { sourceDirectories.push(directory); }
+    });
+    test('reuses cell code in the input without executing it or replacing a draft', async () => {
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const input = vscode.workspace.textDocuments.find(doc => doc.uri.scheme === 'vscode-interactive-input' && doc.languageId === 'r');
+        assert.ok(input);
+        const draft = new vscode.WorkspaceEdit(); draft.insert(input.uri, new vscode.Position(0, 0), '# keep my draft');
+        await vscode.workspace.applyEdit(draft);
+        const client = new AgentClient(manifests[0]); await client.connect();
+        try {
+            const count = (await client.snapshot()).executions.length;
+            await vscode.commands.executeCommand('r.interactive.reuseCell', notebook.cellAt(0));
+            assert.ok(input.getText().startsWith('# keep my draft\n'));
+            assert.ok(input.getText().includes('editor_value <- 42'));
+            assert.strictEqual((await client.snapshot()).executions.length, count);
+        } finally {
+            client.close();
+            const reset = new vscode.WorkspaceEdit(); reset.delete(input.uri, new vscode.Range(0, 0, input.lineCount, 0));
+            await vscode.workspace.applyEdit(reset);
+        }
+    });
+    test('late plot updates preserve the cell document, edited code, and execution summary', async function () {
+        if (!manifests[0].capabilities.jgd) { this.skip(); }
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const cell = notebook.cellAt(0);
+        const plot = (): Record<string, unknown> | undefined => cell.outputs.flatMap(output => output.items)
+            .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>)
+            .find(data => data.kind === 'plot');
+        await until(() => !!plot());
+        const initial = plot();
+        assert.ok(initial);
+        const uri = cell.document.uri.toString(), summary = cell.executionSummary;
+        const code = cell.document.getText() + '\n# unsubmitted edit';
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(cell.document.uri, new vscode.Range(0, 0, cell.document.lineCount, 0), code);
+        await vscode.workspace.applyEdit(edit);
+        const client = new AgentClient(manifests[0]); await client.connect();
+        try {
+            await client.request('claim', { force: true });
+            await client.request('resize', { device: initial.device, plot: initial.plot, width: 500, height: 350 });
+            await until(() => plot()?.svg !== initial.svg);
+            assert.strictEqual(notebook.cellAt(0).document.uri.toString(), uri);
+            assert.strictEqual(notebook.cellAt(0).document.getText(), code);
+            await until(() => cell.executionSummary?.success === true);
+            assert.deepStrictEqual(cell.executionSummary, summary);
+        } finally {
+            await vscode.commands.executeCommand('r.interactive.takeControl', manifests[0]);
+            client.close();
+        }
+    });
+    test('clearing completed cells preserves drafts, running output, and durable history', async () => {
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const index = notebook.cellCount;
+        const edit = new vscode.WorkspaceEdit();
+        edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(index, [
+            new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'Sys.sleep(2); cat("retained-after-clear")', 'r'),
+            new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '# unfinished draft', 'r'),
+        ])]);
+        await vscode.workspace.applyEdit(edit);
+        await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: index, end: index + 1 }], document: notebook.uri });
+        await until(() => manifests[0].status === 'busy');
+        await vscode.commands.executeCommand('r.interactive.clear', notebook.uri);
+        assert.ok(notebook.getCells().some(cell => cell.document.getText() === '# unfinished draft'));
+        assert.ok(!notebook.getCells().some(cell => cell.document.getText().includes('editor_value <- 42')));
+        await until(() => notebook.getCells().some(cell => cell.outputs.some(output => output.items.some(item =>
+            Buffer.from(item.data).toString().includes('retained-after-clear')))));
+        const client = new AgentClient(manifests[0]); await client.connect();
+        try { assert.ok((await client.snapshot()).executions.some(record => record.code.includes('editor_value <- 42'))); }
+        finally { client.close(); }
     });
     test('keeps independent notebooks and reconnects to the original R environment', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
@@ -135,6 +208,17 @@ import { SessionManifest } from '../../interactive/protocol';
             assert.ok(snapshot.executions.some(record => record.code.includes('editor_value')));
             assert.ok(snapshot.workspace?.globalenv);
         } finally { client.close(); }
+    });
+    test('session actions target their tree entry even when another session is active', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
+        const secondName = manifests[1].label;
+        await vscode.commands.executeCommand('r.interactive.rename', manifests[0], 'Renamed first session');
+        assert.strictEqual(manifests[0].label, 'Renamed first session');
+        assert.strictEqual(manifests[1].label, secondName);
+        await vscode.commands.executeCommand('r.interactive.detach', manifests[0]);
+        const second = new AgentClient(manifests[1]); await second.connect();
+        try { assert.strictEqual(second.control, false, 'The second session must remain controlled by its original window'); }
+        finally { second.close(); }
     });
     test('exports portable notebook output without transient connection URLs', () => {
         const cell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'plot(1:3)', 'r');
@@ -151,6 +235,7 @@ import { SessionManifest } from '../../interactive/protocol';
         assert.ok(custom);
         const output = JSON.parse(Buffer.from(custom.data).toString()) as Record<string, unknown>;
         assert.strictEqual(output.url, undefined); assert.strictEqual(output.svgData, 'c3Zn');
+        assert.strictEqual(output.connected, false);
         const ipynb = JSON.parse(Buffer.from(serializer.exportIpynb(data)).toString()) as {
             nbformat: number; cells: { outputs: { output_type: string; data?: Record<string, unknown>; text?: string }[] }[];
         };
