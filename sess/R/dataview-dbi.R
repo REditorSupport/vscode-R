@@ -38,7 +38,27 @@ dataview_dbi_source <- function(data) {
     con,
     paste0("select top (0) * from ", from_sql)
   )
-  list(con = con, from_sql = from_sql, schema = schema)
+  page_from_sql <- from_sql
+  order_column <- NULL
+  if (length(dbplyr::op_sort(data))) {
+    order_column <- ".dataview_order"
+    while (order_column %in% names(schema)) order_column <- paste0(order_column, "_")
+    ordered_data <- dplyr::mutate(
+      dplyr::ungroup(data),
+      !!order_column := dplyr::row_number()
+    )
+    page_sql <- dbplyr::sql_render(ordered_data, subquery = TRUE)
+    page_from_sql <- as.character(
+      dbplyr::sql_query_wrap(con, page_sql, name = "dataview_source")
+    )
+  }
+  list(
+    con = con,
+    from_sql = from_sql,
+    page_from_sql = page_from_sql,
+    order_column = order_column,
+    schema = schema
+  )
 }
 
 dataview_dbi_to_state <- function(data) {
@@ -196,6 +216,10 @@ dataview_dbi_order_sql <- function(state, sort_model) {
       order <- c(order, paste0("dataview_source.", column, direction))
     }
   }
+  if (!is.null(state$dbi$order_column)) {
+    column <- as.character(DBI::dbQuoteIdentifier(state$dbi$con, state$dbi$order_column))
+    order <- c(order, paste0("dataview_source.", column))
+  }
   if (!length(order)) return(" order by (select null)")
   paste0(" order by ", paste(order, collapse = ", "))
 }
@@ -208,7 +232,8 @@ dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_mode
   }, character(1)), collapse = ", ")
   where <- dataview_dbi_filter_sql(state, filter_model)
   order <- dataview_dbi_order_sql(state, sort_model)
-  from <- paste0(" from ", state$dbi$from_sql)
+  count_from <- paste0(" from ", state$dbi$from_sql)
+  page_from <- paste0(" from ", state$dbi$page_from_sql)
   query_key <- list(filter = where, sort = order, projection = positions)
   cache_state <- state$dbi_cache
 
@@ -218,7 +243,7 @@ dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_mode
     } else {
       as.integer(min(as.numeric(DBI::dbGetQuery(
         state$dbi$con,
-        paste0("select count_big(*) as n", from, where)
+        paste0("select count_big(*) as n", count_from, where)
       )[[1L]][[1L]]), .Machine$integer.max))
     }
     # Publish keys only after a successful query so a failed request can retry.
@@ -244,7 +269,7 @@ dataview_dbi_page <- function(state, start_row, end_row, sort_model, filter_mode
       block <- cache_state$blocks[[key]]
       if (is.null(block)) {
         block <- DBI::dbGetQuery(state$dbi$con, paste0(
-          "select ", projection, from, where, order,
+          "select ", projection, page_from, where, order,
           " offset ", format(block_start - 1L, scientific = FALSE), " rows",
           " fetch next ", block_end - block_start + 1L, " rows only"
         ))

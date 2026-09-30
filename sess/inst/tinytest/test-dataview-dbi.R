@@ -158,6 +158,43 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     "7" = list(type = "equals", filter = "O'Brien")
   )), " where ([note] = 'O''Brien')")
 
+  arranged <- dplyr::arrange(tbl, dplyr::desc(id))
+  arranged_state <- sess:::dataview_to_state(arranged)
+  expect_true(grepl(
+    "ROW_NUMBER() OVER (ORDER BY [id] DESC)", arranged_state$dbi$page_from_sql, fixed = TRUE
+  ))
+  expect_false(grepl("PARTITION BY", arranged_state$dbi$page_from_sql, fixed = TRUE))
+  expect_identical(
+    sess:::dataview_dbi_order_sql(arranged_state, list()),
+    " order by dataview_source.[.dataview_order]"
+  )
+  expect_identical(
+    sess:::dataview_dbi_order_sql(arranged_state, sort),
+    " order by dataview_source.[id] asc, dataview_source.[.dataview_order]"
+  )
+
+  filtered_arranged <- tbl |>
+    dplyr::filter(flag) |>
+    dplyr::arrange(dplyr::desc(id))
+  filtered_arranged_state <- sess:::dataview_to_state(filtered_arranged)
+  expect_true(grepl("WHERE [flag]", filtered_arranged_state$dbi$page_from_sql, fixed = TRUE))
+  expect_true(grepl(
+    "ROW_NUMBER() OVER (ORDER BY [id] DESC)",
+    filtered_arranged_state$dbi$page_from_sql,
+    fixed = TRUE
+  ))
+
+  grouped_arranged <- tbl |>
+    dplyr::group_by(flag) |>
+    dplyr::arrange(dplyr::desc(id), .by_group = TRUE)
+  grouped_arranged_state <- sess:::dataview_to_state(grouped_arranged)
+  expect_true(grepl(
+    "ROW_NUMBER() OVER (ORDER BY [flag], [id] DESC)",
+    grouped_arranged_state$dbi$page_from_sql,
+    fixed = TRUE
+  ))
+  expect_false(grepl("PARTITION BY", grouped_arranged_state$dbi$page_from_sql, fixed = TRUE))
+
   # Exercise handler routing and JSON serialization, including nulls and exact bigint.
   env <- sess:::.sess_env
   old <- env$dataviews
