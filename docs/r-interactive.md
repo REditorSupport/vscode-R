@@ -77,7 +77,7 @@ External terminal output observed through the arf console bridge is retained in 
 | Console, warnings, errors | Incremental output with per-execution limits and explicit truncation notices |
 | Base/grid/ggplot graphics | JGD frames retained by the agent and rendered as scalable SVG; independent font metrics work without a connected editor |
 | Incremental graphics | Recorded execution markers associate updates with their producing cell, including extensions of an existing plot |
-| Plot controls | Open a larger view, request an R-side resize while idle, save SVG, or export PNG |
+| Plot controls | Compact icons with labels for opening and resizing; one **Save…** menu for SVG and PNG |
 | Static fallback | Captured plots when JGD/systemfonts are unavailable or `plotBackend` is `standard` |
 | Data frames and matrices | Contiguous 20-row preview pages with exact counts, disabled boundary/loading controls, retry after busy errors, and an expanded data viewer with sorting/filtering; requests remain bound to their originating session |
 | HTML widgets and HTML tags | Sandboxed browser output with copied local dependencies; dependencies remain after the R temporary source is gone |
@@ -85,6 +85,8 @@ External terminal output observed through the arf console bridge is retained in 
 | Live applications | Forwarded loopback URLs opened in a viewer; applications such as Shiny still need their own running server and may occupy the R process |
 
 JGD graphics and browser widgets have different interaction models: a static R plot can resize and export, while plotly/leaflet-style interaction comes from the widget's JavaScript. Arbitrary widget behavior that requires browser permissions or unavailable external network resources remains subject to the sandbox and server configuration.
+
+Table paging uses arrow icons with tooltips and accessible names. **Data viewer**, **Open plot**, and **Fit R device** retain short labels alongside their icons. **Save…** lists formats with a brief description; PNG becomes available after the image loads. Open the menu with Enter, Space, or an arrow key; navigate with Up/Down or Home/End, choose with Enter/Space, and dismiss with Escape or an outside click. Tab continues to the next control. The menu expands within the cell, stays within narrow outputs, and follows the editor's theme.
 
 ## Persistence, storage, and export
 
@@ -136,7 +138,7 @@ VSCR_TEST_TMUX=1 npm run test:interactive
 npx vscode-test --run out/test/suite/interactiveEditor.test.js
 ```
 
-After compiling, serve the repository on localhost and open `src/test/browser/interactiveRenderer.html` to run the browser renderer regression harness. It checks contiguous paging, stale responses, retry behavior, offline controls, Unicode SVG, PNG export, and sandboxed HTML. See [the Positron comparison and review](r-interactive-review.md) for the feature priorities and verification results.
+After compiling, serve the repository on localhost and open `src/test/browser/interactiveRenderer.html` to run the browser renderer regression harness. It checks contiguous paging, stale responses, retry behavior, offline controls, Unicode SVG, SVG/PNG export, menu navigation and disposal, image failures, and sandboxed HTML. Use `?theme=light&width=narrow` or `?theme=contrast` for layout/theme checks; verify native Tab/Shift+Tab and Enter/Space manually. See [the Positron comparison and review](r-interactive-review.md) for the feature priorities and verification results.
 
 The tmux test must run on a host with tmux. Linux CI exercises a real tmux-supervised agent. Runtime tests cover output while disconnected, deduplicated execution, large Unicode writes, control leases, queues, native input, interruption, browser continuation, tables, incremental plots, HTML, detached launch, and adoption of an existing arf process. Tests build the bundled package into isolated libraries.
 

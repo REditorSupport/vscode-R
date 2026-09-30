@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 
 import { TABLE_PAGE_SIZE, tablePage } from './tablePaging';
+import { saveMenu, toolbarButton as button, toolbarStyle } from './rendererToolbar';
 
 interface OutputItem { id: string; json(): Record<string, unknown> }
 interface RendererContext {
@@ -13,14 +14,10 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
         element: HTMLElement; data: Record<string, unknown>; page: number;
         request?: { id: number; start: number };
         previous?: HTMLButtonElement; next?: HTMLButtonElement;
+        dispose?(): void;
     }
     const outputs = new Map<string, OutputState>();
     let requestId = 0;
-    const button = (label: string, action: () => void): HTMLButtonElement => {
-        const element = document.createElement('button'); element.textContent = label;
-        element.style.cssText = 'margin:4px 6px 4px 0;padding:3px 8px;color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;cursor:pointer;border-radius:3px';
-        element.onclick = action; return element;
-    };
     const send = (item: OutputItem, data: Record<string, unknown>, action: string, extra: Record<string, unknown> = {}): void => {
         context.postMessage({ outputId: item.id, displayId: data.displayId, action, ...extra });
     };
@@ -78,15 +75,17 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
     });
     return {
         renderOutputItem(item, element) {
+            outputs.get(item.id)?.dispose?.();
             const data = item.json(); element.replaceChildren();
             element.classList.add('r-interactive-output');
             element.style.cssText = 'color:var(--vscode-editor-foreground);font-family:var(--vscode-font-family)';
             const style = document.createElement('style');
-            style.textContent = '.r-interactive-output button:disabled{opacity:.45;cursor:default!important}.r-interactive-output button:focus-visible{outline:2px solid var(--vscode-focusBorder,#007acc);outline-offset:2px}';
+            style.textContent = toolbarStyle;
             element.append(style);
             const state: OutputState = { element, data, page: 0 }; outputs.set(item.id, state);
-            const toolbar = document.createElement('div');
-            const status = document.createElement('span'); status.dataset.status = ''; status.style.opacity = '0.7';
+            const toolbar = document.createElement('div'); toolbar.className = 'r-interactive-toolbar';
+            toolbar.setAttribute('role', 'group'); toolbar.setAttribute('aria-label', 'Output actions');
+            const status = document.createElement('span'); status.dataset.status = '';
             status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
             if (data.kind === 'table') {
                 const table = document.createElement('div'); table.dataset.table = '';
@@ -97,23 +96,33 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                     updatePaging(state);
                     send(item, data, 'page', { start: state.request.start, requestId: state.request.id });
                 };
-                state.previous = button('Previous page', () => page(state.page - TABLE_PAGE_SIZE));
-                state.next = button('Next page', () => page(state.page + TABLE_PAGE_SIZE));
-                toolbar.append(button('Open data viewer', () => send(item, data, 'table')),
+                state.previous = button('Previous page', 'previous', () => page(state.page - TABLE_PAGE_SIZE), '');
+                state.next = button('Next page', 'next', () => page(state.page + TABLE_PAGE_SIZE), '');
+                toolbar.append(button('Open data viewer', 'table', () => send(item, data, 'table'), 'Data viewer'),
                     state.previous, state.next);
             } else if (data.kind === 'plot') {
                 const image = document.createElement('img'); image.crossOrigin = 'anonymous'; image.src = data.url ? String(data.url) : `data:image/svg+xml;base64,${String(data.svgData ?? '')}`; image.alt = 'R plot';
                 image.style.cssText = 'display:block;max-width:100%;height:auto'; element.append(image);
-                const savePng = button('Save PNG', () => {
+                let pngReady = false;
+                const savePng = (): void => {
                     const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
                     const ctx = canvas.getContext('2d');
-                    if (ctx) { ctx.drawImage(image, 0, 0); try { send(item, data, 'savePng', { image: canvas.toDataURL('image/png') }); } catch { status.textContent = 'Open the plot to export this image.'; } }
-                });
-                savePng.disabled = true;
-                image.onload = () => { savePng.disabled = data.connected === false; };
-                image.onerror = () => { status.textContent = 'Could not load this plot. Reconnect to the session and try again.'; };
-                toolbar.append(button('Open plot', () => send(item, data, 'plot')), button('Save SVG', () => send(item, data, 'save')),
-                    savePng, button('Fit R device', () => send(item, data, 'resize', { width: Math.round(element.clientWidth), height: 600 })));
+                    try {
+                        if (!ctx) { throw new Error('Canvas unavailable'); }
+                        ctx.drawImage(image, 0, 0); send(item, data, 'savePng', { image: canvas.toDataURL('image/png') });
+                    } catch { status.textContent = 'Open the plot to export this image.'; }
+                };
+                // Add new export formats here; menu interaction and accessibility are shared.
+                element.append(toolbar);
+                const menu = saveMenu(element, [
+                    { id: 'svg', label: 'SVG (.svg)', description: 'Scalable vector image', run: () => send(item, data, 'save'), enabled: () => data.connected !== false },
+                    { id: 'png', label: 'PNG (.png)', description: 'Raster image', run: savePng, enabled: () => pngReady && data.connected !== false },
+                ]);
+                image.onload = () => { pngReady = true; menu.refresh(); };
+                image.onerror = () => { pngReady = false; menu.refresh(); status.textContent = 'Could not load this plot. Reconnect to the session and try again.'; };
+                state.dispose = () => { menu.dispose(); image.onload = null; image.onerror = null; };
+                toolbar.append(button('Open plot', 'open', () => send(item, data, 'plot')), menu.button,
+                    button('Fit R device to cell width', 'fit', () => send(item, data, 'resize', { width: Math.round(element.clientWidth), height: 600 }), 'Fit R device'));
             } else if (data.kind === 'html' || data.kind === 'htmlText') {
                 const iframe = document.createElement('iframe');
                 iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-downloads');
@@ -124,20 +133,24 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                 }
                 else { iframe.srcdoc = String(data.text); }
                 element.append(iframe);
-                toolbar.append(button('Open viewer', () => send(item, data, 'open')));
+                toolbar.append(button('Open viewer', 'open', () => send(item, data, 'open')));
             } else if (data.kind === 'url') {
                 const label = document.createElement('span'); label.textContent = String(data.url); element.append(label);
-                toolbar.append(button('Open application', () => send(item, data, 'open')));
+                toolbar.append(button('Open application', 'open', () => send(item, data, 'open')));
             } else {
                 const pre = document.createElement('pre'); pre.textContent = JSON.stringify(data, null, 2); element.append(pre);
             }
-            toolbar.append(status); element.append(toolbar);
+            toolbar.append(status);
+            if (!toolbar.parentElement) { element.append(toolbar); }
             if (data.kind === 'table') { updatePaging(state); }
             if (data.connected === false) {
                 toolbar.querySelectorAll('button').forEach(control => { control.disabled = true; });
                 status.textContent = `${status.textContent ? status.textContent + ' · ' : ''}Reconnect to use these controls`;
             }
         },
-        disposeOutputItem(id) { if (id) { outputs.delete(id); } else { outputs.clear(); } },
+        disposeOutputItem(id) {
+            if (id) { outputs.get(id)?.dispose?.(); outputs.delete(id); }
+            else { outputs.forEach(state => state.dispose?.()); outputs.clear(); }
+        },
     };
 }

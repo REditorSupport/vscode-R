@@ -5,8 +5,12 @@
 <style>
 :root { color-scheme: dark; --vscode-editor-background:#1e1e1e; --vscode-editor-foreground:#dedede; --vscode-font-family:system-ui; --vscode-panel-border:#444; --vscode-button-background:#176da6; --vscode-button-foreground:white; }
 body { max-width:920px; margin:32px auto; background:#1e1e1e; color:#dedede; font:14px system-ui; }
+body.light { --vscode-editor-background:#fff; --vscode-editor-foreground:#252525; --vscode-panel-border:#ccc; background:#fff; color:#252525; color-scheme:light; }
+body.contrast { --vscode-editor-background:#000; --vscode-editor-foreground:#fff; --vscode-panel-border:#fff; --vscode-focusBorder:#f38518; --vscode-toolbar-hoverBackground:#333; background:#000; color:#fff; }
+body.narrow { max-width:320px; }
 section { margin:24px 0; padding:18px; border:1px solid #444; border-radius:5px; }
 #result { padding:12px; background:#173d29; }
+body.light #result { background:#dcf0e4; }
 </style>
 <h1>R Interactive output</h1>
 <p id="result">Running renderer checks…</p>
@@ -17,6 +21,10 @@ section { margin:24px 0; padding:18px; border:1px solid #444; border-radius:5px;
 <section><h2>Interactive HTML</h2><div id="html"></div></section>
 <script type="module">
 import { activate } from '/dist/interactive-renderer.js';
+const params = new URLSearchParams(location.search);
+document.body.classList.toggle('light', params.get('theme')==='light');
+document.body.classList.toggle('contrast', params.get('theme')==='contrast');
+document.body.classList.toggle('narrow', params.get('width')==='narrow');
 let receive;
 const messages = [];
 const renderer = activate({ postMessage: message => messages.push(message), onDidReceiveMessage: handler => { receive = handler; return { dispose() {} }; } });
@@ -27,10 +35,20 @@ const data = { kind:'table', displayId:'table', columns:[{ field:'x',headerName:
 const table = document.querySelector('#table');
 const render = (id, data, element) => renderer.renderOutputItem({ id, json:() => data },element);
 const reply = (request, extra) => receive({ ...request, ...extra });
+const control = (parent, label) => parent.querySelector(`button[aria-label="${label}"]`);
+const key = (target, value) => target.dispatchEvent(new KeyboardEvent('keydown',{ key:value,bubbles:true,cancelable:true }));
+const loaded = img => new Promise((resolve,reject) => {
+ const timeout = setTimeout(()=>reject(new Error('Plot load timed out')),5000);
+ img.addEventListener('load',()=>{ clearTimeout(timeout); resolve(); },{ once:true });
+ img.addEventListener('error',()=>{ clearTimeout(timeout); reject(new Error('Plot load failed')); },{ once:true });
+});
 try {
  render('table',data,table);
- const previous = [...table.querySelectorAll('button')].find(button => button.textContent==='Previous page');
- const next = [...table.querySelectorAll('button')].find(button => button.textContent==='Next page');
+ const previous = control(table,'Previous page');
+ const next = control(table,'Next page');
+ check(next.title==='Next page' && !next.textContent && next.querySelector('svg[aria-hidden=true]'),'Paging icons must have accessible names and tooltips');
+ control(table,'Open data viewer').click();
+ check(messages.at(-1).action==='table','Data viewer must still open from its labelled icon button');
  const status = () => table.querySelector('[data-status]').textContent;
  check(previous.disabled, 'First page must disable Previous');
  check(status()==='Rows 1–20 of 53', 'Preview must show actual row count');
@@ -51,16 +69,68 @@ try {
  render('offline',{ ...data,connected:false },document.querySelector('#offline'));
  check([...document.querySelectorAll('#offline button')].every(button=>button.disabled),'Offline controls must not appear usable');
  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="640" height="180"><rect width="640" height="180" fill="#fff"/><path d="M40 130 L160 70 L280 90 L400 30 L590 55" stroke="#167daa" stroke-width="4" fill="none"/><text x="40" y="165" font-family="sans-serif" fill="#333">R plot · retained SVG</text></svg>';
- render('plot',{ kind:'plot',displayId:'plot',svgData:btoa(String.fromCharCode(...new TextEncoder().encode(svg))) },document.querySelector('#plot'));
- const png=[...document.querySelectorAll('#plot button')].find(button=>button.textContent==='Save PNG');
+ const plot=document.querySelector('#plot');
+ const plotData={ kind:'plot',displayId:'plot',svgData:btoa(String.fromCharCode(...new TextEncoder().encode(svg))) };
+ render('plot',plotData,plot);
+ const menu=plot.querySelector('[role=menu]');
+ const save=control(plot,'Save plot as');
+ const svgItem=plot.querySelector('[data-format=svg]');
+ const png=plot.querySelector('[data-format=png]');
+ const fit=control(plot,'Fit R device to cell width');
+ check(menu.hidden && save.getAttribute('aria-expanded')==='false' && save.getAttribute('aria-controls')===menu.id,'Save menu must start closed and be associated with its trigger');
  check(png.disabled,'PNG export must wait until the image has loaded');
- await new Promise((resolve,reject) => { const img=document.querySelector('#plot img'); img.addEventListener('load',resolve,{once:true}); img.addEventListener('error',reject,{once:true}); setTimeout(()=>reject(new Error('Plot load timed out')),5000); });
- png.click(); check(messages.at(-1).image?.startsWith('data:image/png;base64,'),'PNG export must contain an image');
- render('offline-plot',{ kind:'plot',connected:false,svgData:btoa(String.fromCharCode(...new TextEncoder().encode(svg))) },document.querySelector('#offline-plot'));
- await new Promise((resolve,reject) => { const img=document.querySelector('#offline-plot img'); img.addEventListener('load',resolve,{once:true}); img.addEventListener('error',reject,{once:true}); setTimeout(()=>reject(new Error('Saved plot load timed out')),5000); });
+ const initialHeight=plot.getBoundingClientRect().height;
+ save.click();
+ check(!menu.hidden && save.getAttribute('aria-expanded')==='true' && document.activeElement===svgItem,'Opening Save must focus the first available format');
+ check(plot.getBoundingClientRect().height>initialHeight && menu.getBoundingClientRect().bottom<=plot.getBoundingClientRect().bottom,'The menu must expand the measured output height instead of being clipped');
+ check(menu.getBoundingClientRect().right<=plot.getBoundingClientRect().right,'Save formats must fit a narrow cell');
+ key(svgItem,'ArrowDown'); check(document.activeElement===svgItem,'Navigation must skip unavailable PNG');
+ svgItem.click();
+ check(menu.hidden && document.activeElement===save && messages.at(-1).action==='save','SVG must dispatch the existing save action and return focus');
+ await loaded(plot.querySelector('img'));
+ check(!png.disabled,'PNG becomes available once the image is ready');
+ key(save,'ArrowUp'); check(document.activeElement===png,'Arrow Up on Save must open at the last format');
+ key(png,'ArrowDown'); check(document.activeElement===svgItem,'Arrow navigation must wrap');
+ key(svgItem,'End'); check(document.activeElement===png,'End must focus the last format');
+ key(png,'Home'); check(document.activeElement===svgItem,'Home must focus the first format');
+ key(svgItem,'Escape'); check(menu.hidden && document.activeElement===save,'Escape must dismiss the menu and restore focus');
+ save.click(); png.click();
+ check(messages.at(-1).action==='savePng' && messages.at(-1).image?.startsWith('data:image/png;base64,'),'PNG export must contain an image');
+ save.click(); fit.focus(); check(menu.hidden,'Moving focus outside Save must dismiss its menu');
+ save.click(); document.body.dispatchEvent(new PointerEvent('pointerdown',{ bubbles:true }));
+ check(menu.hidden,'Clicking outside must dismiss the menu');
+ save.click(); save.click(); check(menu.hidden,'Clicking Save a second time must dismiss the menu');
+ control(plot,'Open plot').click(); check(messages.at(-1).action==='plot','Open plot must preserve its action');
+ fit.click(); check(messages.at(-1).action==='resize' && messages.at(-1).width===plot.clientWidth,'Fit must use the current cell width');
+ render('offline-plot',{ ...plotData,connected:false },document.querySelector('#offline-plot'));
+ await loaded(document.querySelector('#offline-plot img'));
  check([...document.querySelectorAll('#offline-plot button')].every(button=>button.disabled),'Saved plot controls must remain disabled after the image loads');
+ const temporary=document.createElement('div'); document.body.append(temporary);
+ render('temporary',plotData,temporary);
+ save.click(); control(temporary,'Save plot as').click();
+ check(menu.hidden && !temporary.querySelector('[role=menu]').hidden,'Opening another output menu must dismiss the first');
+ const oldMenu=temporary.querySelector('[role=menu]'); const oldTrigger=control(temporary,'Save plot as');
+ render('temporary',plotData,temporary);
+ key(oldTrigger,'ArrowDown');
+ check(oldMenu.hidden,'Rerender must close the old menu and remove its trigger listener');
+ control(temporary,'Save plot as').click();
+ renderer.disposeOutputItem('temporary');
+ check(temporary.querySelector('[role=menu]').hidden,'Disposing an output must close its menu');
+ temporary.remove();
+ const broken=document.createElement('div'); document.body.append(broken);
+ render('broken',{ kind:'plot',svgData:'invalid' },broken);
+ await new Promise(resolve=>broken.querySelector('img').addEventListener('error',resolve,{ once:true }));
+ control(broken,'Save plot as').click();
+ check(broken.querySelector('[data-format=png]').disabled && broken.querySelector('[data-status]').textContent.includes('Could not load'),'Failed images must keep PNG unavailable and explain the problem');
+ renderer.disposeOutputItem('broken'); broken.remove();
  render('html',{ kind:'htmlText',text:'<button onclick="this.textContent=\'Widget works\'">Try widget</button>' },document.querySelector('#html'));
  check(document.querySelector('#html iframe').getAttribute('sandbox')==='allow-scripts allow-forms allow-downloads','HTML must retain sandboxing');
+ save.click(); renderer.disposeOutputItem();
+ check(menu.hidden,'Disposing all outputs must close open menus');
+ // Restore usable examples for manual pointer, Tab/Shift+Tab, and visual checks.
+ render('plot',plotData,plot);
+ render('table',data,table);
+ document.querySelector('#result').scrollIntoView();
  document.querySelector('#result').textContent=`${assertions} renderer assertions passed`;
  document.body.dataset.result='passed';
 } catch(error) {
