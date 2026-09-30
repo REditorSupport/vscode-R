@@ -7,6 +7,12 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   registerS3method(
     "dbplyr_edition", "dataview_dbi_test", function(con) 2L, envir = asNamespace("dbplyr")
   )
+  # Bracket quoting needs SQL Server's table-path parser, not the ANSI parser.
+  registerS3method(
+    "table_path_components", "dataview_dbi_test",
+    getS3method("table_path_components", "Microsoft SQL Server", envir = asNamespace("dbplyr")),
+    envir = asNamespace("dbplyr")
+  )
   registered <- list()
   method <- function(name, signature, definition) {
     assign(name, getExportedValue("DBI", name), envir = class_env)
@@ -18,7 +24,7 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     methods::removeClass("dataview_dbi_test_result", where = class_env)
     methods::removeClass("dataview_dbi_test", where = class_env)
     rm(
-      "dbplyr_edition.dataview_dbi_test",
+      list = c("dbplyr_edition.dataview_dbi_test", "table_path_components.dataview_dbi_test"),
       envir = get(".__S3MethodsTable__.", envir = asNamespace("dbplyr"))
     )
   }, add = TRUE)
@@ -214,6 +220,11 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     )
   )
   bad <- list("3" = list(type = "equals", dateFrom = "not a date"))
+  # Malformed strings can fail in as.POSIXct() before the viewer's NA check.
+  before <- length(calls)
+  expect_error(fetch(filters = bad))
+  expect_equal(length(calls), before)
+  bad[["3"]]$dateFrom <- NA_character_
   expect_error(fetch(filters = bad), "Invalid database date filter")
   expect_identical(sess:::dataview_dbi_filter_sql(state, list(
     "7" = list(type = "equals", filter = "O'Brien")
@@ -225,7 +236,9 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     "7" = list(type = "contains", filter = "TEXT")
   )), " where (charindex('text', lower(cast([note] as nvarchar(max)))) > 0)")
 
-  arranged <- dplyr::arrange(tbl, dplyr::desc(id))
+  # Use the bare desc(column) expression recognized for source-sort deduplication.
+  desc <- dplyr::desc
+  arranged <- dplyr::arrange(tbl, desc(id))
   expect_silent(arranged_state <- sess:::dataview_to_state(arranged))
   expect_false(grepl("ORDER BY", arranged_state$dbi$from_sql, fixed = TRUE))
   expect_identical(arranged_state$dbi$source_order, "[id] DESC")
@@ -255,7 +268,7 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
     dplyr::arrange(dplyr::desc(id))
   expect_silent(filtered_arranged_state <- sess:::dataview_to_state(filtered_arranged))
   expect_false(grepl("ORDER BY", filtered_arranged_state$dbi$from_sql, fixed = TRUE))
-  expect_true(grepl("WHERE [flag]", filtered_arranged_state$dbi$from_sql, fixed = TRUE))
+  expect_true(grepl("WHERE [(]?[[]flag[]]", filtered_arranged_state$dbi$from_sql))
   expect_identical(filtered_arranged_state$dbi$source_order, "[id] DESC")
 
   # arrange() can be inherited through later filter/select operations.
@@ -274,7 +287,7 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   expect_identical(grouped_arranged_state$dbi$source_order, c("[flag]", "[id] DESC"))
   expect_identical(
     sess:::dataview_dbi_order_sql(
-      grouped_arranged_state, list(list(colId = "2", sort = "asc"))
+      grouped_arranged_state, list(list(colId = "8", sort = "asc"))
     ),
     paste0(
       " order by case when dataview_source.[flag] is null then 1 else 0 end, ",

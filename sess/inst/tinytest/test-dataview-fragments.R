@@ -174,10 +174,13 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
     sess:::dataview_arrow_slice(state, 1:30)
     reader <- state$arrow_reader$reader
     next_row <- state$arrow_reader$next_row
-    for (rows in list(59001:59030, 45001:45030, 1001:1030)) {
+    for (rows in list(59001:59030, 45001:45030)) {
       expect_equal(sess:::dataview_arrow_slice(state, rows)$id, expected$id[rows])
       expect_identical(state$arrow_reader$reader, reader)
+      expect_equal(state$arrow_reader$next_row, next_row)
     }
+    expect_equal(sess:::dataview_arrow_slice(state, 1001:1030)$id, expected$id[1001:1030])
+    expect_identical(state$arrow_reader$reader, reader)
     expect_equal(state$arrow_reader$next_row, next_row + 1000L)
     sess:::dataview_arrow_reader_reset(state)
   }
@@ -197,13 +200,16 @@ if (requireNamespace("arrow", quietly = TRUE)) local({
   sess:::dataview_arrow_slice(state, 1:30)
   reader <- state$arrow_reader$reader
   next_row <- state$arrow_reader$next_row
-  for (rows in list(11001:11030, 7001:7030, 1001:1030)) {
+  for (rows in list(11001:11030, 7001:7030)) {
     expect_equal(sess:::dataview_arrow_slice(state, rows)$id, expected$id[rows])
     expect_identical(state$arrow_reader$reader, reader)
+    expect_equal(state$arrow_reader$next_row, next_row)
   }
   index <- state$arrow_reader$row_group_index
   expect_equal(index$ends, c(seq(997, 11964, by = 997), 12020))
-  expect_equal(state$arrow_reader$next_row, next_row)
+  expect_equal(sess:::dataview_arrow_slice(state, 1001:1030)$id, expected$id[1001:1030])
+  expect_identical(state$arrow_reader$reader, reader)
+  expect_equal(state$arrow_reader$next_row, next_row + 1000L)
   sess:::dataview_arrow_reader_reset(state)
 
   id <- sess:::dataview_register(data)$view_id
