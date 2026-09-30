@@ -884,12 +884,23 @@ handle_dataview_page <- function(params) {
     }
   }
 
-  list(
+  result <- list(
     rows = dataview_rows(state, page_idx),
     totalRows = total,
     totalUnfiltered = state$total_rows,
     lastRow = total
   )
+  if (isTRUE(params$formatNumbers)) {
+    # Format only the requested page, using the session's digits, scipen and OutDec.
+    # Keep raw rows unchanged for sorting, filtering and full-precision inspection.
+    numeric_fields <- vapply(state$columns, function(column) {
+      column$type == "numericColumn" && column$field != "0"
+    }, logical(1))
+    result$formattedColumns <- lapply(result$rows[numeric_fields], function(values) {
+      I(format(values, trim = TRUE, justify = "none"))
+    })
+  }
+  result
 }
 
 handle_dataview_dispose <- function(params) {

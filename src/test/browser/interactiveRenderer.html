@@ -14,6 +14,7 @@ body.light #result { background:#dcf0e4; }
 </style>
 <h1>R Interactive output</h1>
 <p id="result">Running renderer checks…</p>
+<section><h2>Numeric precision</h2><div id="numeric"></div></section>
 <section><h2>Data preview</h2><div id="table"></div></section>
 <section><h2>Plot export</h2><div id="plot"></div></section>
 <section><h2>Saved table</h2><div id="offline"></div></section>
@@ -43,6 +44,33 @@ const loaded = img => new Promise((resolve,reject) => {
  img.addEventListener('error',()=>{ clearTimeout(timeout); reject(new Error('Plot load failed')); },{ once:true });
 });
 try {
+ const numeric = document.querySelector('#numeric');
+ const numericData = { kind:'table', columns:[{ field:'0',headerName:'Row' },{ field:'1',headerName:'price_per_carat' },{ field:'2',headerName:'Integer64 ID' }],
+   rows:[{ '0':1,'1':326/0.23,'2':'9007199254740993' },{ '0':2,'1':326/0.21,'2':'9007199254740994' },{ '0':3,'1':1400,'2':'9007199254740995' }],
+   formattedColumns:{ '1':['1417.391','1552.381','1400.000'] },totalRows:3 };
+ const numericBefore = JSON.stringify(numericData);
+ const cell = (row, column) => numeric.querySelectorAll('tr')[row+1].children[column];
+ render('numeric',numericData,numeric);
+ check(cell(0,1).textContent==='1417.391' && cell(2,1).textContent==='1400.000','R numeric labels must retain column-wide decimals');
+ check(cell(0,1).title===String(326/0.23),'Rounded numbers must expose full precision on hover');
+ check(cell(0,2).textContent==='9007199254740993','Integer64 text must remain exact');
+ check(JSON.stringify(numericData)===numericBefore,'Rendering must not mutate the source values');
+ render('numeric',{ ...numericData,formattedColumns:undefined,connected:false },numeric);
+ check(cell(0,1).textContent==='1417.391' && cell(1,1).textContent==='1552.381','Saved legacy output must use compact default precision');
+ render('numeric',{ ...numericData,rows:[{ '0':1,'1':1.54e-100,'2':'001.234567890123' }],formattedColumns:undefined },numeric);
+ check(cell(0,1).textContent==='1.54e-100' && cell(0,2).textContent==='001.234567890123','Fallback must preserve tiny magnitudes and numeric-looking strings');
+ render('numeric',{ ...numericData,rows:[{ '1':null },{ '1':null },{ '1':null },{ '1':null }],formattedColumns:{ '1':['NA','NaN','Inf','-Inf'] } },numeric);
+ check([0,1,2,3].map(row=>cell(row,1).textContent).join(',')==='NA,NaN,Inf,-Inf','R labels must distinguish missing and non-finite values');
+ render('numeric',{ ...numericData,rows:[{ '1':1.23456789 }],formattedColumns:{ '1':['1,235'] } },numeric);
+ check(cell(0,1).textContent==='1,235','R locale and digits settings must be used verbatim');
+ render('numeric',{ ...numericData,totalRows:21,rows:Array.from({ length:20 },()=>numericData.rows[0]),formattedColumns:{ '1':Array(20).fill('1417.391') } },numeric);
+ control(numeric,'Next page').click();
+ reply(messages.at(-1),{ result:{ rows:[{ '1':1.23456789 }],formattedColumns:{ '1':['1.235'] },totalRows:21 } });
+ check(cell(0,1).textContent==='1.235','Paging must replace formatting with labels for the new rows');
+ control(numeric,'Previous page').click();
+ reply(messages.at(-1),{ result:{ rows:[{ '1':9.87654321 }],totalRows:21 } });
+ check(cell(0,1).textContent==='9.876543','Legacy page replies must clear previous labels and use the fallback');
+ render('numeric',numericData,numeric);
  render('table',data,table);
  const previous = control(table,'Previous page');
  const next = control(table,'Next page');

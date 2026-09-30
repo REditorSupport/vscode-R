@@ -345,6 +345,33 @@ cat("\n")`;
             sinon.assert.notCalled(errors);
         } finally { errors.restore(); }
     });
+    test('exports R-formatted numeric labels to HTML and retains raw numbers in saved notebooks', async () => {
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        const saved = sinon.stub(vscode.window, 'showSaveDialog');
+        try {
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+            const index = notebook.cellCount;
+            await vscode.commands.executeCommand('r.runSelection', 'options(digits=7, scipen=0); data.frame(price_per_carat=c(326/0.23, 326/0.21, 1400))');
+            await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true);
+            const htmlFile = path.join(root, 'numeric.html'); saved.resolves(vscode.Uri.file(htmlFile));
+            await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
+            const html = fs.readFileSync(htmlFile, 'utf8');
+            assert.ok(html.includes('<td>1417.391</td>') && html.includes('<td>1400.000</td>'));
+            const notebookFile = path.join(root, 'numeric.rnb'); saved.resolves(vscode.Uri.file(notebookFile));
+            await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
+            const report = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(notebookFile));
+            const table = report.cells.at(-1)?.outputs?.flatMap(output => output.items)
+                .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>)
+                .find(data => data.kind === 'table');
+            assert.ok(table);
+            assert.deepStrictEqual(table.formattedColumns, { '1': ['1417.391', '1552.381', '1400.000'] });
+            assert.ok(Math.abs((table.rows as Record<string, number>[])[0]['1'] - 326 / 0.23) < 1e-10);
+            assert.strictEqual(table.connected, false);
+            sinon.assert.notCalled(errors);
+        } finally { errors.restore(); saved.restore(); }
+    });
     test('exports large compressed plots to portable notebooks and ordinary SVG report assets', async function () {
         if (!manifests[0].capabilities.jgd) { this.skip(); }
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);

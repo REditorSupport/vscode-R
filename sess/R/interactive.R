@@ -247,9 +247,11 @@ interactive_execute <- function(id, code, source = NULL) {
     metadata <- handle_dataview_init(list(view_id = registration$view_id))
     preview <- handle_dataview_page(list(view_id = registration$view_id,
                                          startRow = 0L, endRow = 20L,
+                                         formatNumbers = TRUE,
                                          sortModel = list(), filterModel = list()))
     .interactive_event("display", list(kind = "table", viewId = registration$view_id,
                                        columns = metadata$columns, rows = preview$rows,
+                                       formattedColumns = preview$formattedColumns,
                                        totalRows = metadata$totalRows))
     return(TRUE)
   }

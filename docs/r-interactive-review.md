@@ -45,11 +45,11 @@ The baseline passed 291 VS Code tests before this iteration. The final local mat
 | Validation | Result |
 | --- | --- |
 | Full VS Code suite, minimum supported version 1.110.0, with tmux supervision enabled | 325 passed |
-| Full VS Code suite, version 1.119.0, with tmux supervision enabled | 325 passed |
-| Managed arf runtime matrix, also including existing arf adoption | 21 passed |
+| Full VS Code suite, version 1.119.0, with tmux supervision enabled | 327 passed |
+| Managed arf runtime matrix, also including existing arf adoption | 22 passed |
 | Standard graphics fallback runtime matrix | 16 passed; 5 JGD-only checks intentionally skipped |
-| Full sess tinytest suite, freshly built private package | 353 checks passed |
-| Browser renderer harness: dark, narrow light, and high-contrast colors | 39 assertions passed in each layout; native keyboard and visual checks passed |
+| Full sess tinytest suite, freshly built private package | 430 checks passed |
+| Browser renderer harness: dark, narrow light, and high-contrast colors | 49 assertions passed in each layout; visual checks passed (native keyboard checks from the toolbar follow-up) |
 | TypeScript checking and production bundles | Passed |
 | TypeScript lint | 0 errors; 70 existing warnings, unchanged from the baseline |
 | R source and package lint | Passed with lint failures treated as errors |
@@ -60,6 +60,8 @@ The full-suite counts above include the Open Interactive Session and session-pic
 The toolbar follow-up also passed the full 1.119.0 suite (323 tests), TypeScript checking, and lint with no new warnings. Browser checks cover icon names/tooltips, original viewer/resize/export messages, PNG load gating, arrow/Home/End navigation, Escape and outside dismissal, single-menu focus, output replacement/disposal, and menu bounds/height. Native Enter and Tab/Shift+Tab were exercised in the browser; the theme checks use the renderer harness rather than a remote notebook.
 
 Session-control follow-up: the full suites on 1.110.0 and 1.119.0 each passed 325 tests. Two editor regressions cover the native toolbar argument shape, action-picker targeting with another session active, cancelled Restart/Stop confirmations, and rejection of unrelated notebooks. The initial regression reproduced “This notebook is not connected to an R Interactive session” before the routing fix. An isolated VS Code 1.110 development window with two disposable R sessions confirmed toolbar visibility with input focus, overflow at narrow widths, picker contents, and successful rename through the toolbar. VS Code's test host suppresses modal dialogs; confirmation cancellation and restart execution are covered by the integration suite.
+
+Numeric-display follow-up: the full 1.119.0 suite passed 327 tests, the arf runtime suite passed 22, and the full private sess suite passed 430 checks. Regressions cover default and custom R print options, decimal marks, tiny/non-finite values, singleton/empty/sorted/filtered pages, raw numeric precision, unchanged data.table input, exact integer64 strings, saved notebooks, HTML export, and legacy agents without display labels. Browser checks passed 49 assertions in each of the three layouts, including full-value tooltips and stale-label removal on page replies. TypeScript checking, production bundles, and R lint passed; TypeScript lint retained its 70 existing warnings with no errors. The minimum-version and standard-graphics runs above are from the preceding session-control/graphics validations.
 
 The tests cover virtual-cell/input diagnostics with disk lint caching enabled in the user profile, source-file diagnostics, execution through the native Interactive API, independent session targeting, draft retention, clearing during execution, output-only updates preserving edited code and execution summaries, durable reconnect, code deduplication, control leases, native input/debugger prompts, interrupt/stop, output limits, table paging, incremental/multiple-device graphics, idle/historical resizing, HTML dependencies, offline output, and export fallbacks. The process-persistence test exits the launcher, reconnects, and checks that R objects remain available.
 

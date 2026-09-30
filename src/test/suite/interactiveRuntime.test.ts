@@ -188,6 +188,34 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         if (plot) { assert.match(Buffer.from(await client.request<string>('asset', { id: plot.data.svg }), 'base64').toString(), /<svg/); }
     });
 
+    test('retains R numeric formatting in previews and pages while preserving raw precision', async () => {
+        const id = await submit('options(digits=7, scipen=0, OutDec="."); numeric_table <- data.frame(price_per_carat=rep(c(326/0.23, 326/0.21, 1400), 8)); numeric_table');
+        assert.strictEqual((await finished(id)).state, 'success');
+        const table = events.find(event => event.executionId === id && event.type === 'display' && event.data.kind === 'table');
+        assert.ok(table);
+        const labels = table.data.formattedColumns as Record<string, string[]>;
+        assert.deepStrictEqual(labels['1'].slice(0, 3), ['1417.391', '1552.381', '1400.000']);
+        assert.strictEqual(labels['1'].length, 20);
+        const first = (table.data.rows as Record<string, number>[])[0]['1'];
+        assert.ok(Math.abs(first - 326 / 0.23) < 1e-10);
+        const page = await client.request<{ rows: Record<string, number>[]; formattedColumns: Record<string, string[]> }>('inspect', {
+            method: 'dataview_page', params: { view_id: table.data.viewId, startRow: 20, endRow: 24, formatNumbers: true },
+        });
+        assert.deepStrictEqual(page.formattedColumns['1'], ['1400.000', '1417.391', '1552.381', '1400.000']);
+        assert.strictEqual(page.rows[1]['1'], first);
+        await finished(await submit('options(digits=4, scipen=999, OutDec=",")'));
+        const localized = await client.request<{ formattedColumns: Record<string, string[]> }>('inspect', {
+            method: 'dataview_page', params: { view_id: table.data.viewId, startRow: 1, endRow: 2, formatNumbers: true },
+        });
+        assert.deepStrictEqual(localized.formattedColumns['1'], ['1552']);
+        const formatted = await submit('data.frame(value = 1.23456789)'); await finished(formatted);
+        const display = events.find(event => event.executionId === formatted && event.data.kind === 'table');
+        assert.ok(display);
+        assert.deepStrictEqual(display.data.formattedColumns, { '1': ['1,235'] });
+        const saved = (await client.snapshot()).events.find(event => event.seq === table.seq);
+        assert.deepStrictEqual(saved?.data.formattedColumns, labels);
+    });
+
     test('browser prompts remain usable through the native console', async () => {
         const id = await submit('browser(); 99');
         await until(() => events.some(event => event.executionId === id && event.type === 'input'));

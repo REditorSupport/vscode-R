@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 
 import { TABLE_PAGE_SIZE, tablePage } from './tablePaging';
+import { tableDisplayValue } from './tableFormatting';
 import { saveMenu, toolbarButton as button, toolbarStyle } from './rendererToolbar';
 
 interface OutputItem { id: string; json(): Record<string, unknown> }
@@ -32,11 +33,12 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
             th.style.cssText = 'text-align:left;padding:5px 14px;border-bottom:1px solid var(--vscode-panel-border);position:sticky;top:0;background:var(--vscode-editor-background)'; head.append(th);
         }
         table.append(head);
-        for (const row of (data.rows ?? []) as Record<string, unknown>[]) {
+        for (const [rowIndex, row] of ((data.rows ?? []) as Record<string, unknown>[]).entries()) {
             const tr = document.createElement('tr');
             for (const column of columns) {
                 const td = document.createElement('td'); const value = row[column.field];
-                td.textContent = value === null ? 'NA' : String(value ?? '');
+                td.textContent = tableDisplayValue(data, row, column.field, rowIndex);
+                if (typeof value === 'number' && td.textContent !== String(value)) { td.title = String(value); }
                 td.style.cssText = 'padding:4px 14px;border-bottom:1px solid var(--vscode-panel-border);white-space:pre'; tr.append(td);
             }
             table.append(tr);
@@ -65,7 +67,7 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                 return;
             }
             output.page = start;
-            output.data = { ...output.data, ...(message.result as object) };
+            output.data = { ...output.data, formattedColumns: undefined, ...(message.result as object) };
             const table = output.element.querySelector<HTMLElement>('[data-table]');
             if (table) { drawTable(table, output.data); }
             updatePaging(output);

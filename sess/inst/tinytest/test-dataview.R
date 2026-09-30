@@ -151,6 +151,92 @@ local({
   }
 })
 
+# Inline numeric labels honor R print options without changing the raw RPC values.
+local({
+  .sess_env <- sess:::.sess_env
+  orig_dataviews <- .sess_env$dataviews
+  orig_con <- .sess_env$con
+  orig_options <- options(digits = 7, scipen = 0, OutDec = ".")
+  pipe <- processx::conn_create_pipepair()
+  on.exit({
+    .sess_env$dataviews <- orig_dataviews
+    .sess_env$con <- orig_con
+    options(orig_options)
+    lapply(pipe, close)
+  }, add = TRUE)
+  .sess_env$con <- pipe[[2L]]
+
+  request <- function(view_id, ...) {
+    sess:::dispatch_message(as.character(jsonlite::toJSON(
+      list(jsonrpc = "2.0", id = "formatted", method = "dataview_page",
+           params = c(list(view_id = view_id, formatNumbers = TRUE), list(...))),
+      auto_unbox = TRUE, digits = NA
+    )))
+    response <- jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]),
+                                   simplifyVector = FALSE)
+    expect_null(response$error)
+    response$result
+  }
+
+  values <- c(326 / 0.23, 326 / 0.21, 1400)
+  df <- data.frame(value = values, tiny = c(1.54e-100, 2.54e-100, 0),
+                   text = c("001.234567890123", "<script>", "9007199254740993"))
+  cases <- list(frame = df, matrix = as.matrix(df[1:2]))
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    cases$table <- data.table::as.data.table(df)
+  }
+  for (case in cases) {
+    original <- serialize(case, NULL)
+    view_id <- sess:::dataview_register(case)$view_id
+    page <- request(view_id)
+    expect_equal(unlist(page$formattedColumns[["1"]]), c("1417.391", "1552.381", "1400.000"))
+    expect_equal(unlist(page$formattedColumns[["2"]]), format(df$tiny, trim = TRUE))
+    expect_equal(vapply(page$rows, `[[`, numeric(1), "1"), values, tolerance = 1e-14)
+    expect_null(page$formattedColumns[["0"]])
+    expect_null(page$formattedColumns[["3"]])
+
+    single <- request(view_id, startRow = 1L, endRow = 2L)
+    expect_equal(single$formattedColumns[["1"]], list("1552.381"))
+    expect_length(request(view_id, startRow = 3L)$formattedColumns[["1"]], 0L)
+    raw <- sess:::handle_dataview_page(list(view_id = view_id))
+    expect_null(raw$formattedColumns)
+    expect_identical(raw$rows[["1"]], values)
+
+    sorted <- request(view_id, sortModel = list(list(colId = "1", sort = "asc")))
+    expect_equal(unlist(sorted$formattedColumns[["1"]]), c("1400.000", "1417.391", "1552.381"))
+    filtered <- request(view_id, filterModel = list("1" = list(type = "equals", filter = 1400)))
+    expect_length(filtered$rows, 1L)
+    expect_equal(filtered$formattedColumns[["1"]], list("1400"))
+    expect_identical(serialize(case, NULL), original)
+  }
+
+  view_id <- sess:::dataview_register(df)$view_id
+  for (settings in list(list(digits = 4), list(digits = 12),
+                        list(scipen = 999), list(scipen = -9, OutDec = ","))) {
+    options(settings)
+    page <- request(view_id)
+    expect_equal(unlist(page$formattedColumns[["1"]]), format(values, trim = TRUE))
+    expect_equal(unlist(page$formattedColumns[["2"]]), format(df$tiny, trim = TRUE))
+    expect_equal(vapply(page$rows, `[[`, numeric(1), "1"), values, tolerance = 1e-14)
+    options(digits = 7, scipen = 0, OutDec = ".")
+  }
+
+  special <- data.frame(value = c(NA_real_, NaN, Inf, -Inf), integer = c(1L, NA, 2L, 3L))
+  if (requireNamespace("bit64", quietly = TRUE)) {
+    special$integer64 <- bit64::as.integer64(c("9007199254740993", NA, "1", "2"))
+  }
+  view_id <- sess:::dataview_register(special)$view_id
+  page <- request(view_id)
+  expect_equal(unlist(page$formattedColumns[["1"]]), c("NA", "NaN", "Inf", "-Inf"))
+  expect_equal(unlist(page$formattedColumns[["2"]]), c("1", "NA", "2", "3"))
+  expect_null(page$formattedColumns[["3"]])
+  if ("integer64" %in% names(special)) {
+    expect_equal(page$rows[[1L]][["3"]], "9007199254740993")
+  }
+  empty <- sess:::dataview_register(df[0, ])$view_id
+  expect_length(request(empty)$formattedColumns[["1"]], 0L)
+})
+
 # S3 and S4 numeric subclasses supply their own display and text-filter values.
 local({
   registerS3method("[", "dataview_test", function(x, ...) {

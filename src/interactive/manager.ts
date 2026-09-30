@@ -15,6 +15,7 @@ import * as util from '../util';
 import { escapeXml } from './plotSvg';
 import { ensureWorkspaceViewer } from '../extension';
 import { tablePage } from './tablePaging';
+import { tableDisplayValue } from './tableFormatting';
 import { HistoryPage, searchHistory } from './history';
 
 interface InteractiveView {
@@ -801,7 +802,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                     if (data.kind !== 'table') { return; }
                     const page = tablePage(Number(data.totalRows), Number(message.start));
                     result = await view.client.request('inspect', { method: 'dataview_page', params: { view_id: data.viewId,
-                        startRow: page.start, endRow: page.end, sortModel: [], filterModel: {} } }); break;
+                        startRow: page.start, endRow: page.end, sortModel: [], filterModel: {}, formatNumbers: true } }); break;
                 }
                 case 'resize':
                     if (data.kind !== 'plot') { return; }
@@ -908,7 +909,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                     } else if (data.kind === 'table') {
                         const columns = data.columns as { field: string; headerName: string }[];
                         const rows = data.rows as Record<string, unknown>[];
-                        sections.push(`<table><tr>${columns.map(column => `<th>${escapeXml(column.headerName)}</th>`).join('')}</tr>${rows.map(row => `<tr>${columns.map(column => `<td>${escapeXml(row[column.field] ?? 'NA')}</td>`).join('')}</tr>`).join('')}</table><p>${String(data.totalRows)} rows (preview)</p>`);
+                        sections.push(`<table><tr>${columns.map(column => `<th>${escapeXml(column.headerName)}</th>`).join('')}</tr>${rows.map((row, rowIndex) => `<tr>${columns.map(column => `<td>${escapeXml(tableDisplayValue(data, row, column.field, rowIndex))}</td>`).join('')}</tr>`).join('')}</table><p>${String(data.totalRows)} rows (preview)</p>`);
                     } else if (data.kind === 'mime' && data.mime === 'text/html') {
                         sections.push(`<iframe sandbox="allow-scripts" srcdoc="${escapeXml(String(data.text))}" style="width:100%;height:500px;border:0"></iframe>`);
                     } else { sections.push(`<pre>${escapeXml(data.text ?? data.message ?? JSON.stringify(data, null, 2))}</pre>`); }
