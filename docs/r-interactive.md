@@ -53,6 +53,10 @@ The agent itself also runs under the selected supervisor. Stopping your original
 
 ## Execution and editor behavior
 
+- The status bar shows the selected session, activity, queued cell count, connection state, and observer status. Select it to switch sessions or answer a waiting R input prompt. Right-click a session in **Interactive Sessions** for actions on that specific session, including rename, interrupt, queued-work cancellation, detach, and restart.
+- **Search Interactive History** (`Ctrl+Alt+H`, or `Cmd+Alt+H` on macOS) searches admitted code in the session's durable history, including commands older than the restored window. Enter inserts a command into the input for editing and preserves any existing draft. Item buttons copy, run again, or navigate to the original source; the history button loads older matches. Disconnected and older agents use the locally restored history.
+- The cell menu provides **Insert Cell Code into Interactive Input**, **Copy Cell Code**, and **Go to Interactive Cell Source**. **Browse Interactive Plots** searches the plots in the restored transcript by their generating code and opens an enlarged view.
+- **Cancel Queued Interactive Cells** leaves the running cell alone. **Clear Completed Interactive Cells** hides finished cells while preserving drafts, running/queued/uncertain work, and durable history. Hidden cells stay hidden during reconnect to the same view; reopening a detached view restores the history. R process exit automatically cancels undispatched cells.
 - The native VS Code Interactive window provides an R input editor and execution history, without requiring Jupyter. If that window cannot be opened, a native `r-interactive` notebook is used.
 - Selecting an Interactive session makes existing Run Selection/Line, source, and other R execution commands target it when `executionTarget` is `auto`. **Use Terminal for R Execution** restores terminal routing. Set `executionTarget` to `terminal` to keep terminal routing by default.
 - **Bind Document to Interactive Session** pins a source document to the selected session. Notebook cells and Interactive input are bound automatically. Switching tabs does not redirect an already-bound document's requests.
@@ -74,7 +78,7 @@ External terminal output observed through the arf console bridge is retained in 
 | Incremental graphics | Recorded execution markers associate updates with their producing cell, including extensions of an existing plot |
 | Plot controls | Open a larger view, request an R-side resize while idle, save SVG, or export PNG |
 | Static fallback | Captured plots when JGD/systemfonts are unavailable or `plotBackend` is `standard` |
-| Data frames and matrices | Inline preview, paging, and an expanded data viewer with sorting/filtering; requests remain bound to their originating session |
+| Data frames and matrices | Contiguous 20-row preview pages with exact counts, disabled boundary/loading controls, retry after busy errors, and an expanded data viewer with sorting/filtering; requests remain bound to their originating session |
 | HTML widgets and HTML tags | Sandboxed browser output with copied local dependencies; dependencies remain after the R temporary source is gone |
 | Explicit MIME | `sess::display(x, mime = "text/markdown")`, HTML, and text formats |
 | Live applications | Forwarded loopback URLs opened in a viewer; applications such as Shiny still need their own running server and may occupy the R process |
@@ -104,6 +108,10 @@ Admission and completion records are flushed to disk. Ordinary output is buffere
 
 A saved `.rnb` contains no agent authentication token or forwarded asset URL. Table previews and static plot fallbacks can be read offline. Full interactive widgets and live table handles require reconnection to the originating session; use HTML export when sharing self-contained widget dependencies. IPYNB export retains standard MIME fallbacks; live session handles remain specific to R Interactive.
 
+Saved output disables controls that need an agent and explains how to reconnect. PNG export waits for the plot image to finish loading. Late plot updates preserve the cell's identity and any unsubmitted code edits. Fit R device works while plain R is idle and keeps historical plots associated with their original cells.
+
+New agent capabilities such as persistent rename and full-history search require a session started with this build. Existing agents keep running; history search falls back to the restored transcript. Renaming updates the session list, status bar, and kernel label; an already-open native tab may retain its original title until reopened.
+
 Output journals default to 128 MiB, per-execution output to 4 MiB, and assets to 512 MiB per session. Recent-window replay is also bounded. Truncation is explicit; admission records remain for deduplication. Asset quota exhaustion rejects new assets rather than deleting dependencies referenced by earlier outputs. Export and remove an unused **stopped** session's storage directory to reclaim its disk space, or adjust the limits. Do not delete live session storage.
 
 ## Development and validation
@@ -117,6 +125,8 @@ VSCR_TEST_TMUX=1 npm run test:interactive
 npx vscode-test --run out/test/suite/interactiveEditor.test.js
 ```
 
+After compiling, serve the repository on localhost and open `src/test/browser/interactiveRenderer.html` to run the browser renderer regression harness. It checks contiguous paging, stale responses, retry behavior, offline controls, Unicode SVG, PNG export, and sandboxed HTML. See [the Positron comparison and review](r-interactive-review.md) for the feature priorities and verification results.
+
 The tmux test must run on a host with tmux. Linux CI exercises a real tmux-supervised agent. Runtime tests cover output while disconnected, deduplicated execution, large Unicode writes, control leases, queues, native input, interruption, browser continuation, tables, incremental plots, HTML, detached launch, and adoption of an existing arf process. Tests build the bundled package into isolated libraries.
 
-The local validation host was macOS with R 4.6.1, arf 0.5.1, JGD 0.2.0, and VS Code 1.119.0. A browser smoke check also exercises SVG rendering, table previews, sandboxed HTML interaction, and canvas PNG export. Remote SSH latency, server-specific systemd policies, the minimum VS Code version, and Linux tmux are covered by the implementation/CI path but were not manually exercised on a remote server in this workspace.
+The local validation host was macOS with R 4.6.1, arf 0.5.1, JGD 0.2.0, and tmux 3.5a. The complete extension suite passed on VS Code 1.110.0 and 1.119.0. A browser check also exercises SVG rendering, table paging, sandboxed HTML interaction, offline controls, and canvas PNG export. Actual Remote SSH transport, Linux execution, and server-specific systemd policies were not exercised on a remote server. See [the review](r-interactive-review.md#validation) for the exact matrix and limitations.
