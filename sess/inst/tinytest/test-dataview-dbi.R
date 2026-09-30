@@ -101,9 +101,7 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   expect_identical(page$rows[["8"]][1:2], c(TRUE, FALSE))
   sql <- tail(calls, 1L)
   expect_true(grepl("dataview_source.[event]", sql, fixed = TRUE))
-  expect_true(grepl(
-    "convert(varchar(48), dataview_source.[event], 126) as [event]", sql, fixed = TRUE
-  ))
+  expect_false(grepl("convert(varchar(48)", sql, fixed = TRUE))
   expect_true(grepl("order by dataview_source.[id] asc", sql, fixed = TRUE))
   expect_false(grepl("dataview_source.[note]", sql, fixed = TRUE))
   before <- length(calls)
@@ -225,11 +223,6 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("dbplyr", quietl
   fixture$event <- as.POSIXct(rep("2024-02-29 12:34:50", nrow(fixture)), tz = "Australia/Sydney")
   fixture$event[[1L]] <- fixture$event[[1L]] + 0.125
   fixture[[" day "]] <- as.Date(fixture[[" day "]])
-  metadata_available <- TRUE
-  native <- sess:::dataview_to_state(tbl)
-  expect_false(any(grepl(
-    "convert", sess:::dataview_dbi_projection(native, c(2L, 3L)), fixed = TRUE
-  )))
   metadata_available <- FALSE
   expect_warning(state <- sess:::dataview_to_state(tbl), "metadata is unavailable")
   page <- fetch(fields = c("2", "3"))

@@ -250,15 +250,7 @@ dataview_dbi_order_sql <- function(state, sort_model) {
 dataview_dbi_projection <- function(state, positions) {
   vapply(positions, function(position) {
     column <- dataview_dbi_identifier(state, as.character(position))
-    source <- paste0("dataview_source.", column)
-    if (is.character(state$dbi$schema[[position]]) &&
-          state$dbi$sql_types[[position]] %in%
-            c("date", "datetime", "datetime2", "smalldatetime", "datetimeoffset", "time")) {
-      # Some drivers expose temporal values as locale-dependent text. Normalise
-      # those on the server, retaining fractional seconds and timezone offsets.
-      return(paste0("convert(varchar(48), ", source, ", 126) as ", column))
-    }
-    source
+    paste0("dataview_source.", column)
   }, character(1))
 }
 
