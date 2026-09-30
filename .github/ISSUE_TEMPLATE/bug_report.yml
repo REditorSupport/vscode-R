@@ -62,61 +62,21 @@ body:
     validations:
       required: true
 
-  - type: input
-    id: extension_version
-    attributes:
-      label: vscode-R version
-      description: Find this in the Extensions view.
-    validations:
-      required: true
-
-  - type: input
-    id: vscode_version
-    attributes:
-      label: VS Code version
-      description: Include whether you are using VS Code, VSCodium, or another distribution.
-      placeholder: "Copy the version from Help: About."
-    validations:
-      required: true
-
-  - type: input
-    id: os
-    attributes:
-      label: Operating system
-      description: Include the operating system version and architecture when relevant.
-      placeholder: Windows, macOS, or Linux, including version and architecture
-    validations:
-      required: true
-
-  - type: input
-    id: r_version
-    attributes:
-      label: R version
-      description: Enter N/A if the problem does not involve an R installation.
-      placeholder: Output of R.version.string
-    validations:
-      required: true
-
-  - type: dropdown
+  - type: textarea
     id: environment
     attributes:
-      label: VS Code environment
-      options:
-        - Local
-        - WSL
-        - Remote - SSH
-        - Dev Container
-        - GitHub Codespaces
-        - Other
+      label: Environment
+      description: Include the versions and environment below. Enter N/A for R if the problem does not involve an R installation. For language or encoding issues, include the output of Sys.getlocale(). Remove usernames, private paths, and other sensitive information.
+      placeholder: |
+        vscode-R version:
+        VS Code version/distribution:
+        OS/version:
+        R version (or N/A):
+        Environment (Local / WSL / SSH / Dev Container / Codespaces / Other):
+        R console (if relevant):
+        R locale (if relevant; output of Sys.getlocale()):
     validations:
       required: true
-
-  - type: input
-    id: console
-    attributes:
-      label: R console
-      description: If relevant, specify the console used by vscode-R.
-      placeholder: R, radian, arf, etc.
 
   - type: textarea
     id: package_versions
@@ -130,8 +90,8 @@ body:
   - type: textarea
     id: settings
     attributes:
-      label: Relevant settings
-      description: Include only settings related to the problem. Remove usernames, tokens, private paths, and other sensitive information.
+      label: Relevant VS Code settings
+      description: Copy only settings related to the problem from your user or workspace settings.json. Remove usernames, tokens, private paths, and other sensitive information.
       render: jsonc
 
   - type: textarea
