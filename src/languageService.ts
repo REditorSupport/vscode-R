@@ -10,6 +10,7 @@ import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, Outpu
 import { config, DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables } from './util';
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
+import { boundSessionForDocument, Session } from './session';
 
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
@@ -58,21 +59,23 @@ export class LanguageService implements Disposable {
 
     private async createClient(selector: DocumentFilter[],
         cwd: string, workspaceFolder: WorkspaceFolder | undefined, outputChannel: OutputChannel,
-        resource?: Uri): Promise<LanguageClient> {
+        resource?: Uri, target?: Session): Promise<LanguageClient> {
 
         let client: LanguageClient;
 
         const resourceConfig = config(resource);
         const debug = this.config.get<boolean>('lsp.debug');
         const useRenvLibPath = this.config.get<boolean>('useRenvLibPath') ?? false;
-        const rPath = await getRpath(false, resource) || ''; // TODO: Abort gracefully
+        const rPath = target?.rPath || await getRpath(false, resource) || ''; // TODO: Abort gracefully
         if (debug) {
             console.log(`R path: ${rPath}`);
         }
         const use_stdio = this.config.get<boolean>('lsp.use_stdio');
         const env = Object.create(process.env) as NodeJS.ProcessEnv;
         env.VSCR_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
-        env.VSCR_LIB_PATHS = getRLibPaths();
+        env.VSCR_LSP_VIRTUAL_DOCUMENTS = selector.every(filter =>
+            'scheme' in filter && (filter.scheme === 'vscode-notebook-cell' || filter.scheme === 'vscode-interactive-input')) ? 'TRUE' : 'FALSE';
+        env.VSCR_LIB_PATHS = target?.libraryPaths?.join('\n') ?? getRLibPaths();
         env.VSCR_USE_RENV_LIB_PATH = useRenvLibPath ? 'TRUE' : 'FALSE';
 
         const lang = this.config.get<string>('lsp.lang');
@@ -142,7 +145,7 @@ export class LanguageService implements Disposable {
             },
             middleware: {
                 handleDiagnostics: (uri, diagnostics, next) => {
-                    const supportedSchemes = ['file', 'untitled', 'vscode-notebook-cell'];
+                    const supportedSchemes = ['file', 'untitled', 'vscode-notebook-cell', 'vscode-interactive-input'];
                     
                     // Drop diagnostics for unsupported schemes (like git://)
                     if (!supportedSchemes.includes(uri.scheme)) {
@@ -208,9 +211,10 @@ export class LanguageService implements Disposable {
         }
     }
 
-    private startMultiLanguageService(): void {
+    private startMultiLanguageService(virtualOnly = false): void {
         const didOpenTextDocument = async (document: TextDocument) => {
-            if (document.uri.scheme !== 'file' && document.uri.scheme !== 'untitled' && document.uri.scheme !== 'vscode-notebook-cell') {
+            if (virtualOnly && !['vscode-notebook-cell', 'vscode-interactive-input'].includes(document.uri.scheme)) { return; }
+            if (!['file', 'untitled', 'vscode-notebook-cell', 'vscode-interactive-input'].includes(document.uri.scheme)) {
                 return;
             }
 
@@ -218,7 +222,18 @@ export class LanguageService implements Disposable {
                 return;
             }
 
-            const folder = workspace.getWorkspaceFolder(document.uri);
+            const target = boundSessionForDocument(document.uri);
+            const folder = workspace.getWorkspaceFolder(target ? Uri.file(target.workingDir) : document.uri);
+
+            if (document.uri.scheme === 'vscode-interactive-input') {
+                const key = document.uri.toString();
+                if (!this.checkClient(key)) {
+                    const selector = [{ scheme: 'vscode-interactive-input', language: 'r', pattern: document.uri.fsPath }];
+                    const client = await this.createClient(selector, target?.workingDir ?? folder?.uri.fsPath ?? os.homedir(), folder, this.outputChannel, folder?.uri, target);
+                    this.clients.set(key, client); this.initSet.delete(key);
+                }
+                return;
+            }
 
             // Each notebook uses a server started from parent folder
             if (document.uri.scheme === 'vscode-notebook-cell') {
@@ -229,7 +244,7 @@ export class LanguageService implements Disposable {
                         { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}` },
                     ];
                     const client = await this.createClient(documentSelector,
-                        dirname(document.uri.fsPath), folder, this.outputChannel, folder?.uri ?? document.uri);
+                        target?.workingDir ?? folder?.uri.fsPath ?? dirname(document.uri.fsPath), folder, this.outputChannel, folder?.uri ?? document.uri, target);
                     this.clients.set(key, client);
                     this.initSet.delete(key);
                 }
@@ -348,13 +363,13 @@ export class LanguageService implements Disposable {
                 { scheme: 'file', language: 'rmd' },
                 { scheme: 'untitled', language: 'r' },
                 { scheme: 'untitled', language: 'rmd' },
-                { scheme: 'vscode-notebook-cell', language: 'r' },
             ];
 
             const workspaceFolder = workspace.workspaceFolders?.[0];
             const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : os.homedir();
             const client = await this.createClient(documentSelector, cwd, undefined, this.outputChannel, workspaceFolder?.uri);
             this.clients.set('global', client);
+            this.startMultiLanguageService(true);
         }
     }
 

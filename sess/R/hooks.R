@@ -59,6 +59,10 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
     # make sure title is computed.
     force(title)
 
+    if (isTRUE(.sess_env$interactive_connected) && .interactive_rich_value(x)) {
+      return(invisible(NULL))
+    }
+
     if (dataview_is_table(x)) {
       title_key <- paste(as.character(title), collapse = "\n")
       dataview_registry <- .sess_env$dataview_registry

@@ -29,4 +29,10 @@ port <- Sys.getenv("VSCR_LSP_PORT")
 debug <- if (nzchar(debug)) as.logical(debug) else FALSE
 port <- if (nzchar(port)) as.integer(port) else NULL
 
+if (identical(Sys.getenv("VSCR_LSP_VIRTUAL_DOCUMENTS"), "TRUE")) {
+    # lintr's disk cache reads the source filename, but virtual cells have no
+    # corresponding R file. Keep diagnostics enabled and lint their live text.
+    options(languageserver.lint_cache = FALSE)
+}
+
 languageserver::run(port = port, debug = debug)

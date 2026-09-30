@@ -35,6 +35,14 @@ jobs:
       - name: Run sess tests
         run: tinytest::test_package("sess")
         shell: Rscript {0}
+      - name: Test persistent tmux sessions (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tmux
+          npm run compile
+          npx tsc
+          VSCR_TEST_TMUX=1 npx mocha out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000
       - name: Run tests (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test

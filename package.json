@@ -32,7 +32,8 @@
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
     "onWebviewPanel:rhelp",
     "onLanguage:r",
-    "onLanguage:rmd"
+    "onLanguage:rmd",
+    "onNotebook:r-interactive"
   ],
   "main": "./dist/extension",
   "contributes": {
@@ -56,6 +57,12 @@
     },
     "views": {
       "workspaceViewer": [
+        {
+          "id": "rInteractiveSessions",
+          "name": "Interactive Sessions",
+          "icon": "./images/Rlogo.svg",
+          "contextualTitle": "R"
+        },
         {
           "id": "workspaceViewer",
           "name": "Workspace",
@@ -767,6 +774,76 @@
         "category": "R Plot",
         "command": "r.plot.openExternal",
         "icon": "$(link-external)"
+      },
+      {
+        "command": "r.interactive.new",
+        "title": "New Persistent Interactive Session",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.connect",
+        "title": "Connect Interactive to Session",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.open",
+        "title": "Open Interactive Session",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.refresh",
+        "title": "Refresh Interactive Sessions",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.interrupt",
+        "title": "Interrupt Interactive Session",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.input",
+        "title": "Reply to Interactive Input",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.detach",
+        "title": "Detach Interactive Session",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.stop",
+        "title": "Stop Interactive Session",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.restart",
+        "title": "Restart Interactive Session",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.takeControl",
+        "title": "Take Control of Interactive Session",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.useTerminal",
+        "title": "Use Terminal for R Execution",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.bindDocument",
+        "title": "Bind Document to Interactive Session",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.export",
+        "title": "Export Interactive History",
+        "category": "R"
+      },
+      {
+        "command": "r.interactive.clear",
+        "title": "Clear Interactive Window",
+        "category": "R"
       }
     ],
     "keybindings": [
@@ -1275,6 +1352,21 @@
           "command": "r.helpPanel.showQuickPick",
           "group": "navigation",
           "when": "view == rHelpPages"
+        },
+        {
+          "command": "r.interactive.new",
+          "when": "view == rInteractiveSessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "r.interactive.connect",
+          "when": "view == rInteractiveSessions",
+          "group": "navigation@2"
+        },
+        {
+          "command": "r.interactive.refresh",
+          "when": "view == rInteractiveSessions",
+          "group": "navigation@3"
         }
       ],
       "explorer/context": [
@@ -1956,6 +2048,84 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Path to a custom CSS file to be used when `#r.plot.defaults.colorTheme#` is `vscode`. Replaces the default CSS overwrites!"
+        },
+        "r.interactive.executionTarget": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "terminal",
+            "interactive"
+          ],
+          "default": "auto",
+          "description": "Execution target for R source commands. Auto uses Interactive after selecting a session; Use Terminal for R Execution switches back."
+        },
+        "r.interactive.supervision": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "tmux",
+            "systemd",
+            "detached"
+          ],
+          "default": "auto",
+          "description": "Independent session supervision. Auto uses tmux on Linux and a detached process on macOS. Detached processes survive editor exit, but host logout policies may stop them."
+        },
+        "r.interactive.nodePath": {
+          "type": "string",
+          "default": "node",
+          "description": "Standalone Node.js 18+ executable on the R host, used for persistent session agents."
+        },
+        "r.interactive.arfPath": {
+          "type": "string",
+          "default": "arf",
+          "description": "arf executable for managed headless Interactive sessions."
+        },
+        "r.interactive.storagePath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute, writable path on the R host for persistent Interactive sessions. Empty uses $XDG_STATE_HOME/vscode-r/interactive when set, otherwise ~/Library/Application Support/vscode-r/interactive on macOS or ~/.local/state/vscode-r/interactive on Linux. Existing macOS registries at the Linux-style path are reused. Reload VS Code after changing this setting."
+        },
+        "r.interactive.plotBackend": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "jgd",
+            "standard"
+          ],
+          "default": "auto",
+          "description": "Interactive graphics provider. JGD uses a separate systemfonts R process for font metrics while the editor is disconnected."
+        },
+        "r.interactive.restore": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reconnect the workspace\u2019s Interactive sessions when VS Code reopens."
+        },
+        "r.interactive.historyLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 100,
+          "description": "Recent executions and plots restored in an Interactive window."
+        },
+        "r.interactive.maxOutputBytes": {
+          "type": "integer",
+          "minimum": 65536,
+          "maximum": 67108864,
+          "default": 4194304,
+          "description": "Maximum retained text output per execution. Excess output is drained and reported as truncated."
+        },
+        "r.interactive.maxJournalBytes": {
+          "type": "integer",
+          "minimum": 8388608,
+          "maximum": 1073741824,
+          "default": 134217728,
+          "description": "Maximum retained output journal size per R generation. Execution identity records are retained separately."
+        },
+        "r.interactive.maxAssetBytes": {
+          "type": "number",
+          "default": 536870912,
+          "minimum": 1048576,
+          "description": "Maximum disk space for retained plots and HTML assets per Interactive session. New assets are rejected with a visible message when full."
         }
       }
     },
@@ -2020,7 +2190,7 @@
         ],
         "pattern": [
           {
-            "regexp": "^[-─ ]*(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):?(\\d+)?\\):\\s(.*)",
+            "regexp": "^[-\u2500 ]*(Failure|Error)\\s\\((.*\\.[Rr]):(\\d+):?(\\d+)?\\):\\s(.*)",
             "file": 2,
             "line": 3,
             "column": 4,
@@ -2031,6 +2201,28 @@
             "message": 1
           }
         ]
+      }
+    ],
+    "notebooks": [
+      {
+        "type": "r-interactive",
+        "displayName": "R Interactive",
+        "selector": [
+          {
+            "filenamePattern": "*.rnb"
+          }
+        ]
+      }
+    ],
+    "notebookRenderer": [
+      {
+        "id": "r-interactive-renderer",
+        "displayName": "R rich outputs",
+        "entrypoint": "./dist/interactive-renderer.js",
+        "mimeTypes": [
+          "application/vnd.vscode-r.display+json"
+        ],
+        "requiresMessaging": "always"
       }
     ]
   },
@@ -2043,7 +2235,8 @@
     "clean": "rimraf out",
     "pretest": "npm run compile && npm run clean && tsc -p ./",
     "test": "vscode-test",
-    "lint": "eslint src --ext ts && Rscript -e \"lintr::lint_package('sess')\""
+    "lint": "eslint src --ext ts && Rscript -e \"lintr::lint_package('sess')\"",
+    "test:interactive": "npm run compile && tsc && mocha out/test/suite/interactiveCore.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000"
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.35",
@@ -2088,5 +2281,19 @@
   },
   "extensionDependencies": [
     "REditorSupport.r-syntax"
-  ]
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "R execution and persistent session connections require a trusted workspace.",
+      "restrictedConfigurations": [
+        "r.interactive.nodePath",
+        "r.interactive.arfPath",
+        "r.interactive.storagePath"
+      ]
+    }
+  }
 }

@@ -246,6 +246,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
   if (is.null(host) || is.na(host)) host <- ""
   list(
     protocol_version = 1L,
+    interactive_token = .sess_env$interactive_token,
     sess_version = as.character(utils::packageVersion("sess")),
     session_id = .session_id(),
     host = unname(host),
@@ -426,6 +427,15 @@ dispatch_message <- function(line) {
   } else if (has_method && has_id) {
     # Request from vscode → R must reply
     handlers <- list(
+      "interactive_execute" = function(p) {
+        if (!isTRUE(.sess_env$interactive_worker)) stop("Not a managed worker")
+        .sess_env$interactive_queue <- c(.sess_env$interactive_queue, list(p))
+        TRUE
+      },
+      "interactive_stop" = function(p) {
+        .sess_env$interactive_stop <- TRUE
+        TRUE
+      },
       "workspace" = function(p) get_workspace_data(),
       "workspace_children" = function(p) get_workspace_children(p$name, p$path, p$start),
       "hover" = function(p) handle_hover(p$expr),

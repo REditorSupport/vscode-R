@@ -128,3 +128,7 @@ Call `View(x)` to open a table. The viewer loads rows on demand and applies colu
 * If you find a problem or have a feature request with the extension, please [find out](https://github.com/REditorSupport/vscode-R/issues) if there is a current issue you may upvote or otherwise [file an issue](https://github.com/REditorSupport/vscode-R/issues/new/choose).
 
 * Contributions are always welcome! Please see the [contributing guide](https://github.com/REditorSupport/vscode-R/wiki/Contributing) for more details.
+
+## Persistent R Interactive
+
+Use native VS Code Interactive windows with independent plain-R or arf sessions, including adoption of existing tmux/arf processes over Remote SSH. See the [setup and usage guide](docs/r-interactive.md) for session switching, persistence, rich outputs, and platform requirements.

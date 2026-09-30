@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window, ThemeIcon } from 'vscode';
 import { runTextInTerm } from './rTerminal';
-import { workspaceData, workingDir, WorkspaceData, GlobalEnv, globalPipePath, sessionRequest } from './session';
+import { workspaceData, workingDir, WorkspaceData, GlobalEnv, globalPipePath, sessionRequest, activeSession } from './session';
 import { config } from './util';
 import { extensionContext, globalRHelp } from './extension';
 import { PackageNode } from './helpViewer/treeView';
@@ -232,7 +232,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     }
 
     private async requestGlobalEnvChildren(element: GlobalEnvItem, start: number): Promise<WorkspaceChildPage> {
-        if (globalPipePath && element.rootName) {
+        if ((globalPipePath || activeSession?.requester) && element.rootName) {
             try {
                 const response = await sessionRequest({
                     method: 'workspace_children',

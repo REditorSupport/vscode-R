@@ -31,6 +31,8 @@ suite('Workspace Viewer', () => {
 
     test('has 3 nodes', async () => {
         mockExtensionContext(extension_root, sandbox);
+        sandbox.stub(vscode.commands, 'registerCommand').returns(new vscode.Disposable(() => undefined));
+        sandbox.stub(vscode.window, 'registerTreeDataProvider').returns(new vscode.Disposable(() => undefined));
         mockWorkspaceData(sandbox);
         workspaceViewer = new workspace.WorkspaceDataProvider();
         workspaceViewer.refresh();

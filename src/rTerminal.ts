@@ -21,6 +21,7 @@ import {
 } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder, getRPathConfigEntry } from './util';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
+import { tryInteractiveExecution } from './interactive/executionTarget';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
@@ -96,6 +97,7 @@ export async function runSource(echo: boolean): Promise<void>  {
     if (!wad) {
         return;
     }
+    if (await tryInteractiveExecution(wad.getText(), wad.uri, { uri: wad.uri.toString(), line: 0, version: wad.version })) { return; }
     const isSaved = await util.saveDocument(wad);
     if (!isSaved) {
         return;
@@ -426,6 +428,10 @@ export async function runChunksInTerm(chunks: vscode.Range[]): Promise<void> {
 }
 
 export async function runTextInTerm(text: string, execute: boolean = true): Promise<void> {
+    const document = vscode.window.activeTextEditor?.document;
+    if (execute && await tryInteractiveExecution(text, document?.uri, document ? {
+        uri: document.uri.toString(), line: vscode.window.activeTextEditor?.selection?.start.line ?? 0, version: document.version,
+    } : undefined)) { return; }
     deferWorkspaceRefresh();
     const term = await chooseTerminal();
     if (term === undefined) {

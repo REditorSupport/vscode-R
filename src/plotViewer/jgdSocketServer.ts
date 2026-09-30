@@ -261,6 +261,8 @@ export class JgdSocketServer {
                         void this.measureTextFn(msg).then((response: unknown) => {
                             const resp = JSON.stringify(response) + '\n';
                             session.socket.write(resp);
+                        }).catch((error: unknown) => {
+                            console.warn('jgd font measurement failed:', error);
                         });
                     }
                     break;

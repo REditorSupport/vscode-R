@@ -32,8 +32,12 @@ Imports:
     rstudioapi
 Suggests:
     bit64,
+    htmltools,
+    htmlwidgets,
+    systemfonts,
     httpgd,
     jgd,
     svglite,
     tinytest
+SystemRequirements: C compiler (native Interactive console requires Unix)
 Config/roxygen2/version: 8.1.0

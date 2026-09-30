@@ -24,6 +24,7 @@ import { PlotManager } from './plotViewer/types';
 import * as languageService from './languageService';
 import { RTaskProvider } from './tasks';
 import { showRDebuggerCompatibilityWarningOnce } from './rDebuggerCompatibility';
+import { InteractiveManager } from './interactive/manager';
 
 
 // global objects used in other files
@@ -224,6 +225,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // initialize the package/help related functions
     globalRHelp = await rHelp.initializeHelp(context, rExtension);
+    context.subscriptions.push(new InteractiveManager(context));
 
     // register codelens and completion providers for r markdown and r files
     vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());
@@ -260,14 +262,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // only shows view when session watcher is enabled
         rWorkspace = new workspaceViewer.WorkspaceDataProvider();
 
-        // if session watcher is active, register dyamic completion provider
-        const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
-        vscode.languages.registerCompletionItemProvider(['r', 'rmd'], new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
+
+    const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
+    context.subscriptions.push(vscode.languages.registerCompletionItemProvider(
+        ['r', 'rmd'], new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters));
 
     void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
 
     return rExtension;
+}
+
+export function ensureWorkspaceViewer(): void {
+    rWorkspace ??= new workspaceViewer.WorkspaceDataProvider();
 }
 
 export async function deactivate(): Promise<void> {

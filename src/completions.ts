@@ -26,7 +26,8 @@ const roxygenTagCompletionItems = [
 
 export class HoverProvider implements vscode.HoverProvider {
     async provideHover(document: vscode.TextDocument, position: vscode.Position): Promise<vscode.Hover | null> {
-        if(!session.workspaceData?.globalenv){
+        const target = session.sessionForDocument(document.uri);
+        if(!target?.workspaceData?.globalenv){
             return null;
         }
 
@@ -41,14 +42,14 @@ export class HoverProvider implements vscode.HoverProvider {
         let hoverRange = document.getWordRangeAtPosition(position);
         let hoverText = null;
 
-        if (session.globalPipePath) {
+        if (session.globalPipePath || target.requester) {
             const exprRegex = /([a-zA-Z0-9._$@ ])+(?<![@$])/;
             hoverRange = document.getWordRangeAtPosition(position, exprRegex)?.with({ end: hoverRange?.end });
             const expr = document.getText(hoverRange);
             const response = await session.sessionRequest({
                 method: 'hover',
                 params: { expr: expr }
-            }) as { str: string };
+            }, target) as { str: string };
 
             if (response) {
                 hoverText = response.str;
@@ -56,7 +57,7 @@ export class HoverProvider implements vscode.HoverProvider {
 
         } else {
             const symbol = document.getText(hoverRange);
-            const str = session.activeSession?.workspaceData.globalenv[symbol]?.str;
+            const str = target.workspaceData.globalenv[symbol]?.str;
 
             if (str) {
                 hoverText = str;
@@ -131,7 +132,7 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
         completionContext: vscode.CompletionContext
     ): Promise<vscode.CompletionItem[]> {
         const items: vscode.CompletionItem[] = [];
-        const activeSession = session.activeSession;
+        const activeSession = session.sessionForDocument(document.uri);
         if (token.isCancellationRequested || !activeSession?.workspaceData?.globalenv) {
             return items;
         }
@@ -162,14 +163,14 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             });
         } else if(trigger === '$' || trigger === '@') {
             const symbolPosition = new vscode.Position(position.line, position.character - 1);
-            if (session.globalPipePath) {
+            if (session.globalPipePath || activeSession.requester) {
                 const re = /([a-zA-Z0-9._$@ ])+(?<![@$])/;
                 const exprRange = document.getWordRangeAtPosition(symbolPosition, re)?.with({ end: symbolPosition });
                 const expr = document.getText(exprRange);
                 const response = await session.sessionRequest({
                     method: 'completion',
                     params: { expr: expr, trigger: trigger }
-                }) as RObjectElement[];
+                }, activeSession) as RObjectElement[];
 
                 if (response) {
                     items.push(...getCompletionItemsFromElements(response, '[session]'));

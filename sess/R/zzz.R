@@ -1,3 +1,6 @@
+#' @useDynLib sess, .registration = TRUE
+NULL
+
 .sess_env <- new.env(parent = emptyenv())
 # Unique for this R process and retained if the IPC connection is re-established.
 .sess_env$session_pid <- Sys.getpid()
@@ -13,4 +16,8 @@
     .sess_env$session_id <- basename(tempfile("sess-session-"))
   }
   .sess_env$session_id
+}
+
+.onUnload <- function(libpath) {
+  .Call("sess_bridge_stop", PACKAGE = "sess")
 }

@@ -54,6 +54,9 @@ interface IpcSocket extends net.Socket {
 }
 
 export class Session {
+    public rPath?: string;
+    public libraryPaths?: string[];
+    public requester?: (data: Record<string, unknown>) => Promise<unknown>;
     public sessionId: string;
     public host: string;
     public sessVersion: string;
@@ -96,6 +99,37 @@ export let workspaceFile: string;
 const SESS_PROTOCOL_VERSION = 1;
 
 const sessions = new Map<string, Session>();
+const documentSessions = new Map<string, Session>();
+
+export function sessionForDocument(uri: Uri): Session | undefined {
+    return boundSessionForDocument(uri) ?? activeSession;
+}
+
+export function boundSessionForDocument(uri: Uri): Session | undefined {
+    return documentSessions.get(uri.toString()) ?? (uri.scheme === 'vscode-notebook-cell'
+        ? documentSessions.get(Uri.from({ scheme: uri.scheme, path: uri.path }).toString()) : undefined);
+}
+
+export function bindSessionDocument(uri: Uri, session: Session): void {
+    documentSessions.set(uri.toString(), session);
+}
+
+export function unbindSessionDocument(uri: Uri): void { documentSessions.delete(uri.toString()); }
+
+export function unregisterSessionTransport(target: Session): void {
+    for (const [uri, owner] of documentSessions) { if (owner === target) { documentSessions.delete(uri); } }
+    sessions.delete(target.sessionId);
+    if (activeSession === target) { activeSession = undefined; resetStatusBar(); }
+}
+
+export function registerSessionTransport(id: string, host: string, directory: string,
+    requester: (data: Record<string, unknown>) => Promise<unknown>): Session {
+    const target = sessions.get(id) ?? new Session(id, host, '', '', new net.Socket());
+    target.requester = requester;
+    target.workingDir = directory;
+    sessions.set(id, target);
+    return target;
+}
 const terminalSessions = new Map<string, Session>();
 export let activeSession: Session | undefined;
 let activeBrowserUri: Uri | undefined;
@@ -150,7 +184,8 @@ function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, c => map[c]);
 }
 
-function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string): void {
+function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string, owner: Session | undefined): void {
+    const panelKey = `${owner?.sessionId ?? ''}:${viewId}`;
     const postResponse = (requestId: number, ok: boolean, result?: unknown, error?: string) => {
         void panel.webview.postMessage({
             message: 'dataview/response',
@@ -172,7 +207,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                 const result = await sessionRequest({
                     method: 'dataview_init',
                     params: { view_id: viewId },
-                }) as DataViewInitResult | undefined;
+                }, owner) as DataViewInitResult | undefined;
                 if (!result || !Array.isArray(result.columns) || typeof result.totalRows !== 'number') {
                     throw new Error('Invalid dataview_init response');
                 }
@@ -191,7 +226,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                         sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
                         filterModel: msg.filterModel ?? {},
                     },
-                }) as DataViewPageResult | undefined;
+                }, owner) as DataViewPageResult | undefined;
                 if (!result || !Array.isArray(result.rows) ||
                     typeof result.totalRows !== 'number' ||
                     typeof result.totalUnfiltered !== 'number') {
@@ -209,14 +244,16 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
     });
 
     panel.onDidDispose(() => {
-        if (dynamicDataViewPanels.get(viewId) !== panel) {
+        if (dynamicDataViewPanels.get(panelKey) !== panel) {
             return;
         }
-        dynamicDataViewPanels.delete(viewId);
+        dynamicDataViewPanels.delete(panelKey);
+        // Interactive transcripts retain this handle after the expanded viewer closes.
+        if (owner?.requester) { return; }
         void sessionRequest({
             method: 'dataview_dispose',
             params: { view_id: viewId },
-        });
+        }, owner);
     });
 }
 
@@ -886,9 +923,9 @@ async function runWorkspaceRefresh(): Promise<void> {
 
 export async function updateWorkspace() {
     const requestedSession = activeSession;
-    if (!globalPipePath || !requestedSession) {return;}
+    if ((!globalPipePath && !requestedSession?.requester) || !requestedSession) {return;}
     try {
-        const response = await sessionRequest({ method: 'workspace' });
+        const response = await sessionRequest({ method: 'workspace' }, requestedSession);
         if (response && activeSession === requestedSession) {
             workspaceData = response as WorkspaceData;
             requestedSession.workspaceData = workspaceData;
@@ -932,12 +969,13 @@ export function openExternalBrowser(): void {
     }
 }
 
-export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, viewId?: string): Promise<void> {
+export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, viewId?: string, owner = activeSession): Promise<void> {
+    resDir ??= path.join(extensionContext.extensionPath, 'dist', 'resources');
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, viewId: ${String(viewId ?? '')}`);
 
     if (source === 'table') {
         if (viewId) {
-            const existing = dynamicDataViewPanels.get(viewId);
+            const existing = dynamicDataViewPanels.get(`${owner?.sessionId ?? ''}:${viewId}`);
             if (existing) {
                 existing.title = title;
                 existing.reveal(ViewColumn[viewer as keyof typeof ViewColumn], true);
@@ -960,8 +998,8 @@ export async function showDataView(source: string, type: string, title: string, 
             });
         panel.iconPath = new UriIcon('open-preview');
         if (viewId) {
-            dynamicDataViewPanels.set(viewId, panel);
-            attachDynamicDataViewBridge(panel, viewId, title);
+            dynamicDataViewPanels.set(`${owner?.sessionId ?? ''}:${viewId}`, panel);
+            attachDynamicDataViewBridge(panel, viewId, title, owner);
         }
         const content = await getTableHtml(panel.webview, file || undefined, title);
         panel.webview.html = content;
@@ -1754,7 +1792,7 @@ import * as rstudioapi from './rstudioapi';
 export async function activateSession(session: Session): Promise<void> {
     activeSession = session;
     pipeClient = session.socket;
-    globalPipePath = session.pipePath;
+    if (!session.requester) { globalPipePath = session.pipePath; }
     pid = session.pid;
     rVer = session.rVer;
     info = session.info;
@@ -1774,11 +1812,12 @@ export async function activateSession(session: Session): Promise<void> {
 
 /** Activate a connected session by its stable protocol identity. */
 export async function activateSessionById(sessionId: string): Promise<boolean> {
-    if (!enableSessionWatcher || typeof sessionId !== 'string' || !sessionId.trim()) {
+    if (typeof sessionId !== 'string' || !sessionId.trim()) {
         return false;
     }
     const target = sessions.get(sessionId);
-    if (!target || !isCurrentSocket(target.socket) || target.socket.destroyed || !target.socket.writable) {
+    if (!enableSessionWatcher && !target?.requester) { return false; }
+    if (!target || (!target.requester && (!isCurrentSocket(target.socket) || target.socket.destroyed || !target.socket.writable))) {
         return false;
     }
     await activateSession(target);
@@ -2015,7 +2054,11 @@ export async function showHelpNotification(params: Record<string, unknown>): Pro
     }
 }
 
-async function handleRequest(message: Record<string, unknown>, socket: IpcSocket) {
+export async function handleEditorRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
+    return handleRequest({ method, params });
+}
+
+async function handleRequest(message: Record<string, unknown>, socket?: IpcSocket) {
     if (message.method) {
         const method = String(message.method);
         const params = (message.params as Record<string, unknown>) || {};
@@ -2082,6 +2125,10 @@ async function handleRequest(message: Record<string, unknown>, socket: IpcSocket
             error = { code: -32603, message: String(e) };
         }
 
+        if (!socket) {
+            if (error) { throw new Error(JSON.stringify(error)); }
+            return result;
+        }
         sendToSocket(socket, {
             jsonrpc: '2.0',
             id: message.id,
@@ -2125,9 +2172,10 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
     }
 }
 
-export async function sessionRequest(data: Record<string, unknown>): Promise<unknown> {
+export async function sessionRequest(data: Record<string, unknown>, target = activeSession): Promise<unknown> {
     try {
-        const socket = pipeClient;
+        if (target?.requester) { return await target.requester(data); }
+        const socket = target?.socket ?? pipeClient;
         if (!socket || socket.destroyed) {
             throw new Error('IPC socket is not connected');
         }
