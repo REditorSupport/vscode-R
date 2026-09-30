@@ -442,6 +442,48 @@ cat("\n")`;
             assert.ok(snapshot.workspace?.globalenv);
         } finally { client.close(); }
     });
+    test('native toolbar actions target their notebook while another session is active', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
+        // VS Code serializes the notebook toolbar's editor to { notebookUri }.
+        const target = { notebookEditor: { notebookUri: notebook.uri }, source: 'notebookToolbar', ui: true };
+        const originalName = manifests[0].label;
+        const otherName = manifests[1].label;
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        const confirm = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'Rename…', command: 'r.interactive.rename' } as vscode.QuickPickItem);
+        const input = sinon.stub(vscode.window, 'showInputBox').resolves('Toolbar target');
+        try {
+            await vscode.commands.executeCommand('r.interactive.sessionActions', target);
+            sinon.assert.notCalled(errors);
+            assert.strictEqual(picker.firstCall.args[1]?.title, `Session: ${originalName}`);
+            assert.strictEqual(input.firstCall.args[0]?.value, originalName);
+            assert.strictEqual(manifests[0].label, 'Toolbar target');
+            assert.strictEqual(manifests[1].label, otherName);
+            await vscode.commands.executeCommand('r.interactive.restart', target);
+            assert.match(confirm.lastCall.args[0], /Toolbar target/);
+            await vscode.commands.executeCommand('r.interactive.stop', target);
+            assert.match(confirm.lastCall.args[0], /Toolbar target/);
+            assert.strictEqual(manifests[0].status, 'idle', 'Cancelling a confirmation must leave R alive');
+            assert.strictEqual(manifests[1].status, 'idle');
+            sinon.assert.notCalled(errors);
+            await vscode.commands.executeCommand('r.interactive.rename', target, originalName);
+        } finally { errors.restore(); confirm.restore(); picker.restore(); input.restore(); }
+    });
+    test('toolbar actions never fall back to another session for an unrelated notebook', async () => {
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        const confirm = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        try {
+            await vscode.commands.executeCommand('r.interactive.stop', {
+                notebookEditor: { notebookUri: vscode.Uri.parse('untitled:unrelated.interactive') }, source: 'notebookToolbar', ui: true,
+            });
+            sinon.assert.calledOnce(errors);
+            assert.match(errors.firstCall.args[0], /not connected to an R Interactive session/);
+            sinon.assert.notCalled(confirm);
+        } finally { errors.restore(); confirm.restore(); }
+    });
     test('session actions target their tree entry even when another session is active', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
         const secondName = manifests[1].label;

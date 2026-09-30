@@ -69,6 +69,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         command('r.interactive.detach', value => this.forView(value, view => this.detach(view)));
         command('r.interactive.stop', value => this.forView(value, view => this.stop(view)));
         command('r.interactive.restart', value => this.forView(value, view => this.restart(view)));
+        command('r.interactive.sessionActions', value => this.forView(value, view => this.sessionActions(view)));
         command('r.interactive.takeControl', value => this.forView(value, async view => {
             view.client.control = await view.client.request<boolean>('claim', { force: true }); this.updateStatus();
         }));
@@ -152,13 +153,17 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private async forView(value: unknown, action: (view: InteractiveView) => unknown): Promise<unknown> {
         let view = this.active;
         if (value && typeof value === 'object') {
-            const target = value as Partial<SessionManifest> & { notebook?: vscode.NotebookDocument; notebookUri?: vscode.Uri; uri?: vscode.Uri };
+            const target = value as Partial<SessionManifest> & {
+                notebook?: vscode.NotebookDocument; notebookUri?: vscode.Uri; uri?: vscode.Uri;
+                notebookEditor?: { notebookUri?: vscode.Uri };
+            };
             if (typeof target.id === 'string' && typeof target.generation === 'string') {
                 const key = `${target.id}:${target.generation}`;
                 if (!this.views.has(key)) { await this.open(target as SessionManifest); }
                 view = this.views.get(key);
             } else {
-                const uri = value instanceof vscode.Uri ? value : target.notebook?.uri ?? target.notebookUri ?? target.uri;
+                // Native notebook/Interactive toolbars serialize their editor under notebookEditor.
+                const uri = value instanceof vscode.Uri ? value : target.notebookEditor?.notebookUri ?? target.notebook?.uri ?? target.notebookUri ?? target.uri;
                 view = uri && [...this.views.values()].find(item => item.notebook.uri.toString() === uri.toString());
             }
             if (!view) { throw new Error('This notebook is not connected to an R Interactive session'); }
@@ -191,6 +196,32 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         view.client.manifest.label = await view.client.request<string>('rename', { label });
         for (const controller of view.controllers) { controller.label = `R: ${view.client.manifest.label}`; }
         this.refresh();
+    }
+
+    private async sessionActions(view: InteractiveView): Promise<void> {
+        const actions = [
+            { label: '$(plug) Switch Session…', command: 'r.interactive.connect' },
+            { label: '$(add) New Session…', command: 'r.interactive.new' },
+            { label: 'Session', kind: vscode.QuickPickItemKind.Separator },
+            { label: '$(edit) Rename…', command: 'r.interactive.rename' },
+            { label: '$(info) Session Details', command: 'r.interactive.info' },
+            { label: 'Execution', kind: vscode.QuickPickItemKind.Separator },
+            { label: '$(close-all) Cancel Queued Cells', command: 'r.interactive.cancelQueued' },
+            { label: '$(comment) Reply to R Input…', command: 'r.interactive.input' },
+            { label: '$(key) Take Control', command: 'r.interactive.takeControl' },
+            { label: 'Output', kind: vscode.QuickPickItemKind.Separator },
+            { label: '$(graph) Browse Plots…', command: 'r.interactive.plots' },
+            { label: '$(export) Export History…', command: 'r.interactive.export' },
+            { label: '$(discard) Clean Up Assets', command: 'r.interactive.cleanAssets' },
+            { label: 'Lifecycle', kind: vscode.QuickPickItemKind.Separator },
+            { label: '$(debug-disconnect) Disconnect', description: 'Keep R running', command: 'r.interactive.detach' },
+            { label: '$(debug-stop) Stop Session', description: 'End R and discard its in-memory objects', command: 'r.interactive.stop' },
+        ];
+        const selected = await vscode.window.showQuickPick(actions, {
+            title: `Session: ${view.client.manifest.label}`, placeHolder: 'Choose a session action', matchOnDescription: true,
+        });
+        // Keep the original notebook as the target even if focus changes while the picker is open.
+        if (selected?.command && !view.disposed) { await vscode.commands.executeCommand(selected.command, view.notebook.uri); }
     }
 
     private async cancelQueued(view: InteractiveView): Promise<void> {
@@ -833,7 +864,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private async restart(view: InteractiveView): Promise<void> {
         if (view.client.manifest.provider === 'arf-existing') { throw new Error('Restart adopted arf from its tmux terminal, then reconnect to the new process'); }
-        const answer = await vscode.window.showWarningMessage('Restart R with a new environment? The old transcript will remain available.', { modal: true }, 'Restart Session');
+        const answer = await vscode.window.showWarningMessage(`Restart R session “${view.client.manifest.label}”? Its in-memory objects will be lost. The old transcript will remain available.`, { modal: true }, 'Restart Session');
         if (answer !== 'Restart Session') { return; }
         const storage = path.join(this.root, view.client.manifest.id);
         const config = JSON.parse(fs.readFileSync(path.join(storage, 'config.json'), 'utf8')) as AgentConfig;

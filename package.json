@@ -826,7 +826,8 @@
         "command": "r.interactive.restart",
         "title": "Restart Interactive Session",
         "category": "R",
-        "icon": "$(debug-restart)"
+        "icon": "$(debug-restart)",
+        "shortTitle": "Restart"
       },
       {
         "command": "r.interactive.takeControl",
@@ -854,7 +855,8 @@
         "command": "r.interactive.clear",
         "title": "Clear Completed Interactive Cells",
         "category": "R",
-        "icon": "$(clear-all)"
+        "icon": "$(clear-all)",
+        "shortTitle": "Clear Completed"
       },
       {
         "command": "r.interactive.rename",
@@ -866,7 +868,8 @@
         "command": "r.interactive.history",
         "category": "R",
         "title": "Search Interactive History",
-        "icon": "$(history)"
+        "icon": "$(history)",
+        "shortTitle": "History"
       },
       {
         "command": "r.interactive.plots",
@@ -909,6 +912,13 @@
         "category": "R",
         "title": "Go to Interactive Cell Source",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "r.interactive.sessionActions",
+        "title": "Manage Interactive Session",
+        "shortTitle": "Session…",
+        "category": "R",
+        "icon": "$(settings-gear)"
       }
     ],
     "keybindings": [
@@ -1545,45 +1555,79 @@
       ],
       "notebook/toolbar": [
         {
+          "command": "r.interactive.restart",
+          "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "group": "navigation/session@1"
+        },
+        {
+          "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "group": "navigation/session@2",
+          "command": "r.interactive.sessionActions"
+        },
+        {
           "command": "r.interactive.history",
-          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive)",
-          "group": "navigation@10"
-        },
-        {
-          "command": "r.interactive.plots",
-          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive)",
-          "group": "navigation@11"
-        },
-        {
-          "command": "r.interactive.cancelQueued",
-          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive)",
-          "group": "navigation@12"
+          "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "group": "navigation/transcript@1"
         },
         {
           "command": "r.interactive.clear",
-          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive)",
-          "group": "navigation@13"
-        },
-        {
-          "command": "r.interactive.export",
-          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive)",
-          "group": "navigation@14"
+          "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "group": "navigation/transcript@2"
         }
       ],
       "notebook/cell/title": [
         {
           "command": "r.interactive.reuseCell",
-          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive) && notebookCellType == code",
+          "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
           "group": "rInteractive@0"
         },
         {
           "command": "r.interactive.copyCell",
-          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive) && notebookCellType == code",
+          "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
           "group": "rInteractive@1"
         },
         {
           "command": "r.interactive.source",
-          "when": "r.interactive.notebook && (notebookType == interactive || notebookType == r-interactive) && notebookCellType == code",
+          "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
+          "group": "rInteractive@2"
+        }
+      ],
+      "interactive/toolbar": [
+        {
+          "command": "r.interactive.restart",
+          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "group": "navigation/session@1"
+        },
+        {
+          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "group": "navigation/session@2",
+          "command": "r.interactive.sessionActions"
+        },
+        {
+          "command": "r.interactive.history",
+          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "group": "navigation/transcript@1"
+        },
+        {
+          "command": "r.interactive.clear",
+          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "group": "navigation/transcript@2"
+        }
+      ],
+      "interactive/cell/title": [
+        {
+          "command": "r.interactive.reuseCell",
+          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
+          "group": "rInteractive@0"
+        },
+        {
+          "command": "r.interactive.copyCell",
+          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
+          "group": "rInteractive@1"
+        },
+        {
+          "command": "r.interactive.source",
+          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
           "group": "rInteractive@2"
         }
       ]
