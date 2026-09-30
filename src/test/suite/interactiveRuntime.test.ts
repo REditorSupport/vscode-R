@@ -11,6 +11,7 @@ import { AgentClient } from '../../interactive/client';
 import { AgentConfig, SessionEvent, SessionManifest, ExecutionRecord } from '../../interactive/protocol';
 import { defaultStorage, installRuntime } from '../../interactive/launcher';
 import { HistoryPage } from '../../interactive/history';
+import { AssetStorageStats, readAsset } from '../../interactive/assets';
 
 const run = promisify(execFile);
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
@@ -242,6 +243,21 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         assert.strictEqual((await client.request<ExecutionRecord>('execution', { id: second })).state, 'success');
     });
 
+    test('execution markers remain balanced across base and grid pages with warnings treated as errors', async function () {
+        if (!client.manifest.capabilities.jgd) { this.skip(); }
+        const id = await submit(`local({
+  previous <- options(warn = 2); on.exit(options(previous))
+  plot(1:3); plot(3:1)
+  grid::grid.newpage(); grid::grid.rect()
+  selected <- dev.cur(); png(tempfile(fileext = ".png")); plot(1); dev.off()
+  dev.set(selected); abline(h = 0.5)
+})`);
+        assert.strictEqual((await finished(id)).state, 'success', JSON.stringify(events.filter(event => event.type === 'condition')));
+        await delay(300);
+        assert.ok(events.some(event => event.executionId === id && event.data.kind === 'plot'));
+        assert.ok(!events.some(event => event.executionId === id && event.type === 'condition'));
+    });
+
     test('resizes idle and historical plots without changing their execution ownership', async function () {
         if (!client.manifest.capabilities.jgd) { this.skip(); }
         const id = await submit('plot(1:3)'); await finished(id);
@@ -261,6 +277,56 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         const updated = events.filter(event => event.executionId === id && event.data.kind === 'plot').at(-1);
         assert.strictEqual(updated?.data.displayId, first.data.displayId);
         assert.notStrictEqual(updated?.data.svg, previous.data.svg);
+    });
+
+    test('retains the full faceted diamonds plot without accumulating drawing snapshots', async function () {
+        if (!client.manifest.capabilities.jgd) { this.skip(); }
+        const probe = await run('Rscript', ['-e', 'cat(requireNamespace("ggplot2", quietly=TRUE))']);
+        if (probe.stdout.trim() !== 'TRUE') { this.skip(); }
+        await client.request('assetStorage', { limitBytes: 64 * 1024 * 1024 });
+        const id = await submit(`library(ggplot2)
+ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
+  geom_point(alpha = 0.3, size = 1) + facet_wrap(~color) + theme_minimal() +
+  labs(title = "Diamond Price vs Carat Weight by Cut", x = "Carat Weight",
+       y = "Price ($)", color = "Cut Quality")`);
+        assert.strictEqual((await finished(id)).state, 'success');
+        await delay(400);
+        const plots = events.filter(event => event.executionId === id && event.data.kind === 'plot');
+        assert.ok(plots.length > 0 && plots.length < 40, `Expected coalesced frames, received ${plots.length}`);
+        assert.ok(!events.some(event => event.executionId === id && event.type === 'truncated'), JSON.stringify(events.filter(event => event.type === 'truncated')));
+        assert.ok(!events.some(event => event.executionId === id && event.type === 'condition' && String(event.data.message).includes('unclosed group')),
+            'Execution markers must close before a new JGD page');
+        const last = plots.at(-1); assert.ok(last);
+        const file = path.join(root, manifest.id, 'assets', String(last.data.svg));
+        const svg = readAsset(path.dirname(file), path.basename(file)).toString('utf8');
+        assert.match(svg, /Diamond Price vs Carat Weight by Cut/);
+        assert.ok((svg.match(/<circle /g) ?? []).length >= 53940, 'The retained plot must include all data points');
+        const stats = await client.request<AssetStorageStats>('assetStorage', { compact: true });
+        assert.strictEqual(stats.usedBytes, fs.statSync(file).size);
+        assert.ok(stats.usedBytes < Buffer.byteLength(svg) / 4, 'Dense SVGs should compress substantially');
+        assert.ok(!fs.readdirSync(path.dirname(file)).some(name => /\.json(?:\.gz)?$/.test(name)));
+        console.log(`      diamonds: ${plots.length} snapshots, ${Buffer.byteLength(svg)} raw bytes, ${stats.usedBytes} retained bytes, ${stats.reclaimedBytes} bytes reclaimed`);
+    });
+
+    test('reports a full asset store once per cell and accepts a larger live limit', async function () {
+        if (!client.manifest.capabilities.jgd) { this.skip(); }
+        await client.request('assetStorage', { limitBytes: 1024 * 1024 });
+        const id = await submit('set.seed(42); for (i in 1:8) plot(runif(15000), runif(15000))'); await finished(id); await delay(400);
+        const warnings = events.filter(event => event.executionId === id && event.type === 'truncated' && String(event.data.message).includes('asset storage limit'));
+        assert.strictEqual(warnings.length, 1);
+        assert.ok((await client.request<AssetStorageStats>('assetStorage')).usedBytes <= 1024 * 1024);
+        const observer = new AgentClient(manifest); await observer.connect();
+        try {
+            await assert.rejects(observer.request('assetStorage', { compact: true }), /observing/);
+            await assert.rejects(observer.request('assetStorage', { limitBytes: 64 * 1024 * 1024 }), /observing/);
+        } finally { observer.close(); }
+        await client.request('assetStorage', { limitBytes: 64 * 1024 * 1024 });
+        const next = await submit('plot(seq_len(12000)); cat("still running")'); await finished(next); await delay(400);
+        assert.ok(events.some(event => event.executionId === next && event.data.kind === 'plot'));
+        assert.ok(!events.some(event => event.executionId === next && event.type === 'truncated'));
+        assert.match(text(next), /still running/);
+        const config = JSON.parse(fs.readFileSync(path.join(root, manifest.id, 'config.json'), 'utf8')) as AgentConfig;
+        assert.strictEqual(config.maxAssetBytes, 64 * 1024 * 1024);
     });
 
     test('standalone agent survives its launcher process exiting', async () => {

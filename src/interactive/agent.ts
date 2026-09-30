@@ -7,13 +7,13 @@ import { randomBytes, randomUUID } from 'crypto';
 import { promisify } from 'util';
 import { StringDecoder } from 'string_decoder';
 import { JsonLines } from './framing';
-import { SessionJournal, atomicJson } from './journal';
+import { SessionJournal, atomicJson, retainedAssetIds } from './journal';
 import { AssetStore } from './assets';
 import { arfRequest } from './arf';
 import { AGENT_PROTOCOL, AgentConfig, AgentSnapshot, ExecutionRecord, SessionEvent,
     SessionManifest, object, submission, identifier, sessionLabel } from './protocol';
 import { JgdSocketServer, JgdMessage } from '../plotViewer/jgdSocketServer';
-import { PlotHistory } from '../plotViewer/jgdPlotHistory';
+import { PlotHistory, PlotFrame } from '../plotViewer/jgdPlotHistory';
 import { plotToSvg } from './plotSvg';
 import { searchHistory } from './history';
 
@@ -60,6 +60,9 @@ export class SessionAgent {
     private externalOutput: Record<string, unknown>[] = [];
     private externalBytes = 0;
     private externalTimer?: NodeJS.Timeout;
+    private pendingPlots = new Map<string, { frame: PlotFrame; count: number; device: string; plot: number; executionId?: string }>();
+    private plotTimer?: NodeJS.Timeout;
+    private retentionWarnings = new Set<string>();
 
     constructor(private config: AgentConfig) {
         identifier(config.id); identifier(config.generation);
@@ -68,7 +71,7 @@ export class SessionAgent {
         this.bootstrap = path.join(this.runtime, 'bootstrap.json');
         fs.mkdirSync(config.storage, { recursive: true, mode: 0o700 });
         this.journal = new SessionJournal(path.join(config.storage, config.generation), config.generation, config.maxJournalBytes);
-        this.assets = new AssetStore(path.join(config.storage, 'assets'), config.maxAssetBytes);
+        this.assets = new AssetStore(path.join(config.storage, 'assets'), config.maxAssetBytes, () => retainedAssetIds(config.storage));
         this.history = new PlotHistory(config.historyLimit);
         this.jgd = new JgdSocketServer(this.history);
         this.manifest = {
@@ -78,7 +81,7 @@ export class SessionAgent {
             agentPid: process.pid, provider: config.provider, created: Date.now(), status: 'starting',
             capabilities: { persistent: true, streaming: true, stdin: true, debugger: true,
                 tables: true, html: true, interrupt: process.platform !== 'win32', jgd: false,
-                history: true, rename: true, cancelQueued: true },
+                history: true, rename: true, cancelQueued: true, assetStorage: true },
             supervision: config.supervision,
         };
         // A previous agent's accepted/running work must never be replayed automatically.
@@ -309,11 +312,19 @@ export class SessionAgent {
                 result = await this.sessRequest(String(params.method), object(params.params ?? {}), 5000);
                 break;
             case 'asset': {
-                const file = this.assets.resolve(String(params.id));
-                if (fs.statSync(file).size > 2 * 1024 * 1024) { throw new Error('Use the asset URL for large files'); }
-                result = fs.readFileSync(file).toString('base64');
+                result = this.assets.read(String(params.id), 2 * 1024 * 1024).toString('base64');
                 break;
             }
+            case 'assetStorage':
+                if (params.limitBytes !== undefined) {
+                    this.requireControl(client);
+                    this.assets.setLimit(Number(params.limitBytes));
+                    this.config.maxAssetBytes = this.assets.stats().limitBytes;
+                    atomicJson(path.join(this.config.storage, 'config.json'), this.config);
+                }
+                if (params.compact === true) { this.requireControl(client); result = this.assets.compact(); }
+                else { result = this.assets.stats(); }
+                break;
             case 'resize':
                 this.requireControl(client);
                 if (this.current) { throw new Error('R is busy; the retained plot can be scaled locally'); }
@@ -573,6 +584,7 @@ export class SessionAgent {
 
     private finish(record: ExecutionRecord, state: ExecutionRecord['state']): void {
         if (this.stopped) { return; }
+        this.flushPlots(record.id);
         const final = { ...record, state, ended: Date.now() };
         this.journal.update(final);
         this.event('finished', { state, record: final }, record.id, true);
@@ -706,7 +718,7 @@ export class SessionAgent {
             this.jgd.setMeasureText(request => this.measure(request));
             this.jgd.setOnFrame((device, message) => {
                 try { this.plot(device, message); }
-                catch (error) { this.event('truncated', { message: `Plot could not be retained: ${String(error)}` }); }
+                catch (error) { this.retentionWarning(error, this.current); }
             });
             await new Promise<void>(resolve => { this.jgd.onReady(resolve); this.jgd.start(); });
             this.manifest.capabilities.jgd = true;
@@ -737,20 +749,45 @@ export class SessionAgent {
         if (message.newPage && !replay) { this.plotContexts.delete(device); }
         let context = replay ? frame.frameExt?.executionId : this.plotContexts.get(device) ?? frame.frameExt?.executionId;
         let drawing = false;
+        let drawingContext = context;
         for (const operation of operations) {
             if (operation.op === 'beginGroup' && operation.ext?.executionId) {
                 context = operation.ext.executionId;
                 if (!replay) { this.plotContexts.set(device, operation.ext.executionId); }
-            } else if (!['clip', 'beginGroup', 'endGroup'].includes(operation.op)) { drawing = true; }
+            } else if (!['clip', 'beginGroup', 'endGroup'].includes(operation.op)) { drawing = true; drawingContext = context; }
         }
         if (!drawing) { return; }
-        const executionId = typeof context === 'string' && context ? context : undefined;
+        const executionId = typeof drawingContext === 'string' && drawingContext ? drawingContext : undefined;
         const plot = frame.rIndex ?? message.plotNumber ?? 0;
         const displayId = `plot-${executionId ?? 'session'}-${device}-${plot}`;
-        const svg = this.assets.put(plotToSvg(frame), '.svg');
-        const asset = this.assets.put(JSON.stringify(frame), '.json');
-        this.display({ kind: 'plot', displayId, svg, asset, device, plot,
-            width: frame.device.width, height: frame.device.height }, executionId);
+        // JGD may emit hundreds of incremental frames for one ggplot. Keep only
+        // the latest pending frame, preserving its operation boundary if another
+        // cell later appends to the same device before this batch is flushed.
+        this.pendingPlots.set(displayId, { frame: { ...frame }, count: frame.ops.length, device, plot, executionId });
+        if (!this.plotTimer) { this.plotTimer = setTimeout(() => this.flushPlots(), 200); }
+    }
+
+    private flushPlots(executionId?: string): void {
+        if (this.stopped) { return; }
+        if (!executionId) { clearTimeout(this.plotTimer); this.plotTimer = undefined; }
+        for (const [displayId, pending] of this.pendingPlots) {
+            if (executionId && pending.executionId !== executionId) { continue; }
+            this.pendingPlots.delete(displayId);
+            try {
+                const { frame, count, device, plot } = pending;
+                const svg = this.assets.put(plotToSvg({ ...frame, ops: frame.ops.slice(0, count) }), '.svg');
+                this.display({ kind: 'plot', displayId, svg, device, plot,
+                    width: frame.device.width, height: frame.device.height }, pending.executionId);
+            } catch (error) { this.retentionWarning(error, pending.executionId); }
+        }
+    }
+
+    private retentionWarning(error: unknown, executionId?: string): void {
+        const key = executionId ?? 'session';
+        if (this.retentionWarnings.has(key)) { return; }
+        this.retentionWarnings.add(key);
+        if (this.retentionWarnings.size > 1000) { this.retentionWarnings.delete(this.retentionWarnings.values().next().value as string); }
+        this.event('truncated', { message: `Plot could not be retained: ${String(error)}` }, executionId);
     }
 
     private stopWorker(): void {
@@ -777,6 +814,7 @@ export class SessionAgent {
         this.stopped = true;
         this.shutdownTimers.forEach(clearTimeout); this.shutdownTimers = [];
         clearTimeout(this.externalTimer);
+        clearTimeout(this.plotTimer); this.pendingPlots.clear();
         this.worker?.kill('SIGKILL'); this.metrics?.kill();
         this.jgd.stop(); this.assets.close();
         this.console?.destroy(); this.sess?.destroy();

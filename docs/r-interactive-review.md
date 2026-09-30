@@ -16,10 +16,15 @@ This iteration does not reproduce Positron's entire Data Explorer, column-summar
 
 ## Bugs and rough edges addressed
 
+- VS Code rejects output changes before a cell execution starts. Queued cells now wait for R's start event; cancelling a queued cell releases its execution handle. The user's data.table/diamonds script is a real editor regression test.
+- Dense ggplots saved complete SVG and JSON frames for every incremental drawing update, exhausting the quota and flooding cells with repeated errors. Updates are now combined over 200 ms, redundant JSON files are omitted, SVG/JSON assets use lossless gzip, and cleanup reclaims superseded assets while protecting retained outputs across generations. The default quota is 4 GiB, with cleanup at 80%, a manual cleanup command, live limit updates, and one retention warning per execution.
+- Large SVGs exceeded the 2 MiB asset RPC limit during export. SVG saving and portable notebook export now read and decode the local retained asset directly. HTML export copies only referenced assets and complete widget bundles, decoding generated gzip assets into ordinary files.
+- JGD execution markers remained open when base/grid plotting started a new page, producing spurious unclosed-group warnings. Page hooks close and reopen the marker at the correct boundary, preserve drawing attribution, and avoid marking non-JGD devices. Tests cover `warn = 2`, multiple devices, incremental drawing, and historical resizing.
+- Restart previously launched the new agent with the previous private R library and resources. It now prepares the current runtime before stopping R and starts the new generation with that runtime and the current asset quota.
 - The first inline table preview had 20 rows, but Next requested row 101, skipping 80 rows. Pagination now advances by 20, reports exact final-page bounds, prevents overlapping clicks, ignores stale replies, and retains the previous page when R is busy.
 - Queued cells stayed pending after the R process died. The agent now records them as cancelled and notifies connected views.
 - Busy arf sessions could defer termination, and late exit callbacks could write to a closed journal. Stop now interrupts evaluation, cancels queued work, and bounds termination; callbacks stop touching storage after the agent closes.
-- Clearing the window deleted running cells and drafts, allowing later events to recreate cells unpredictably. Clearing now hides completed cells and retains the active work and durable history.
+- Clearing the window deleted running cells and drafts, allowing later events to recreate cells unpredictably. Clearing now hides completed cells and retains the active work and durable history. Adjacent deletions are combined to avoid unnecessary notebook layout churn.
 - Session operations could target the last active session instead of a clicked session or notebook. Commands now resolve explicit targets, with a multi-session regression test.
 - Late output replaced whole cell documents, disrupting diagnostics, edits, and selection. Output updates now keep cell identity and code intact.
 - Plain R's idle callback loop did not service JGD's native socket handlers, so Fit R device appeared to do nothing. The worker now services those handlers. Historical resize replies use the requested plot's frame and execution identity instead of the newest plot on that device.
@@ -30,22 +35,24 @@ This iteration does not reproduce Positron's entire Data Explorer, column-summar
 
 ## Validation
 
-The baseline passed 291 VS Code tests before this iteration. The final local matrix ran on macOS arm64 with R 4.6.1, Node 26.10.0, arf 0.5.1, JGD 0.2.0, and tmux 3.5a. Runtime tests install the bundled sess package into private temporary libraries; they do not replace the user's installed package. tmux was built into a temporary prefix and used a private socket directory.
+The baseline passed 291 VS Code tests before this iteration. The final local matrix, updated on 2026-10-01, ran on macOS arm64 with R 4.6.1, Node 26.10.0, arf 0.5.1, JGD 0.2.0, and tmux 3.5a. Runtime tests install the bundled sess package into private temporary libraries; they do not replace the user's installed package. tmux was built into a temporary prefix and used a private socket directory.
 
 | Validation | Result |
 | --- | --- |
-| Full VS Code suite, minimum supported version 1.110.0 | 303 passed |
-| Full VS Code suite, version 1.119.0, with tmux supervision enabled | 303 passed |
-| Managed arf runtime matrix, also including existing arf adoption | 18 passed |
-| Standard graphics fallback runtime matrix | 16 passed; 2 JGD-only checks intentionally skipped |
+| Full VS Code suite, minimum supported version 1.110.0, with tmux supervision enabled | 317 passed |
+| Full VS Code suite, version 1.119.0, with tmux supervision enabled | 317 passed |
+| Managed arf runtime matrix, also including existing arf adoption | 21 passed |
+| Standard graphics fallback runtime matrix | 16 passed; 5 JGD-only checks intentionally skipped |
 | Full sess tinytest suite, freshly built private package | 353 checks passed |
-| Browser renderer harness and actual sandboxed widget interaction | 15 assertions passed; widget responded to a click |
+| Prior browser renderer validation (renderer unchanged in storage follow-up) | 15 assertions passed; widget responded to a click |
 | TypeScript checking and production bundles | Passed |
 | TypeScript lint | 0 errors; 70 existing warnings, unchanged from the baseline |
 | R source and package lint | Passed with lint failures treated as errors |
 | Extension packaging | Local VSIX built successfully |
 
 The tests cover virtual-cell/input diagnostics with disk lint caching enabled in the user profile, source-file diagnostics, execution through the native Interactive API, independent session targeting, draft retention, clearing during execution, output-only updates preserving edited code and execution summaries, durable reconnect, code deduplication, control leases, native input/debugger prompts, interrupt/stop, output limits, table paging, incremental/multiple-device graphics, idle/historical resizing, HTML dependencies, offline output, and export fallbacks. The process-persistence test exits the launcher, reconnects, and checks that R objects remain available.
+
+Storage regressions additionally verify compressed disk accounting, bounded decompression, gzip HTTP headers and decoded responses, ordinary SVG/JSON export, complete widget dependencies, preservation across journal generations, fail-closed cleanup for corrupt journals, quota recovery, editor setting updates, and runtime upgrades on restart. The exact faceted diamonds example retains all 53,940 points: its final SVG is 13,037,207 bytes before compression and 522,416 bytes with standalone Node's gzip (501,009 bytes with the tested VS Code runtime). Runs produced two or three coalesced snapshots, with one remaining after cleanup and no quota or unclosed-group warnings. A separate 1 MiB quota test fills the store, reports exactly one retention warning per execution, raises the quota, and successfully plots again in the same R process.
 
 Actual Remote SSH transport, Linux runtime behavior, and systemd user-service policies were not exercised on a remote host. The Linux CI workflow includes a real tmux supervision test but has not been run for this local branch. No remote latency or throughput benchmark is claimed. Existing session agents keep their original runtime until explicitly restarted; restarting loses their in-memory R objects, so new capabilities can also be tried in a new session while older work remains alive.
 

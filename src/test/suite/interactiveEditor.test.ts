@@ -10,18 +10,22 @@ import { randomUUID } from 'crypto';
 import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
 import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook';
-import { SessionManifest } from '../../interactive/protocol';
+import { AgentConfig, SessionManifest, DEFAULT_MAX_ASSET_BYTES } from '../../interactive/protocol';
+import { AssetStorageStats, exportedAssetName, readAsset } from '../../interactive/assets';
 
 (process.platform === 'win32' ? suite.skip : suite)('Interactive VS Code integration', function () {
     this.timeout(60000);
     let root: string;
     const sourceDirectories: string[] = [];
     let previousRProfile: string | undefined;
+    let previousStorage: string | undefined;
     let agents: SessionAgent[];
     let manifests: SessionManifest[];
     let controller: vscode.NotebookController;
     suiteSetup(async () => {
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-interactive-editor-'));
+        previousStorage = vscode.workspace.getConfiguration('r').inspect<string>('interactive.storagePath')?.globalValue;
+        await vscode.workspace.getConfiguration('r').update('interactive.storagePath', root, vscode.ConfigurationTarget.Global);
         // Reproduce the user profile setting that makes lintr read virtual cell paths.
         fs.writeFileSync(path.join(root, '.Rprofile'), 'options(languageserver.lint_cache = TRUE)\n');
         previousRProfile = process.env.R_PROFILE_USER;
@@ -33,17 +37,20 @@ import { SessionManifest } from '../../interactive/protocol';
         agents = []; manifests = [];
         for (let i = 0; i < 2; i++) {
             const id = randomUUID();
-            const agent = new SessionAgent({ id, generation: randomUUID(), label: `Editor test ${i}`,
+            const config: AgentConfig = { id, generation: randomUUID(), label: `Editor test ${i}`,
                 directory: root, storage: path.join(root, id), library: path.join(root, 'library'),
-                rPath: 'R', resources: path.join(process.cwd(), 'R'), provider: 'r', supervision: 'test',
-                plotBackend: 'auto', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
+                rPath: 'R', resources: path.join(process.cwd(), 'R'), provider: 'r', supervision: 'detached',
+                plotBackend: 'auto', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
+            const agent = new SessionAgent(config);
             agents.push(agent); manifests.push(await agent.start());
+            fs.writeFileSync(path.join(config.storage, 'config.json'), JSON.stringify(config));
         }
     });
     suiteTeardown(async () => {
         if (previousRProfile === undefined) { delete process.env.R_PROFILE_USER; }
         else { process.env.R_PROFILE_USER = previousRProfile; }
         await vscode.commands.executeCommand('r.interactive.detach');
+        await vscode.workspace.getConfiguration('r').update('interactive.storagePath', previousStorage, vscode.ConfigurationTarget.Global);
         agents?.forEach(agent => agent.close());
         await new Promise(resolve => setTimeout(resolve, 200));
         fs.rmSync(root, { recursive: true, force: true });
@@ -270,6 +277,68 @@ cat("\n")`;
             sinon.assert.notCalled(errors);
         } finally { errors.restore(); }
     });
+    test('exports large compressed plots to portable notebooks and ordinary SVG report assets', async function () {
+        if (!manifests[0].capabilities.jgd) { this.skip(); }
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        const saved = sinon.stub(vscode.window, 'showSaveDialog');
+        const info = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+        try {
+            const index = notebook.cellCount;
+            await vscode.commands.executeCommand('r.runSelection', 'plot(seq_len(22000), main="Large portable plot")');
+            await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true);
+            const plot = (): Record<string, unknown> | undefined => notebook.cellAt(index).outputs.flatMap(output => output.items)
+                .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>)
+                .find(data => data.kind === 'plot');
+            await until(() => !!plot());
+            const display = plot(); assert.ok(display);
+            const id = String(display.svg), assetRoot = path.join(root, manifests[0].id, 'assets');
+            const svg = readAsset(assetRoot, id).toString();
+            assert.ok(Buffer.byteLength(svg) > 2 * 1024 * 1024, 'Exercise plots too large for the asset RPC');
+            assert.ok(id.endsWith('.svg.gz'));
+            for (const extension of ['rnb', 'ipynb', 'html']) {
+                const file = path.join(root, `report.${extension}`);
+                saved.resolves(vscode.Uri.file(file));
+                await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
+                sinon.assert.notCalled(errors);
+                if (extension === 'html') {
+                    assert.strictEqual(fs.readFileSync(path.join(file + '.assets', exportedAssetName(id)), 'utf8'), svg);
+                    assert.ok(fs.readFileSync(file, 'utf8').includes(exportedAssetName(id)));
+                } else if (extension === 'rnb') {
+                    const report = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(file));
+                    assert.ok(report.cells.some(cell => cell.outputs?.some(output => output.items.some(item =>
+                        item.mime === 'image/svg+xml' && Buffer.from(item.data).toString() === svg))));
+                } else {
+                    const report = JSON.parse(fs.readFileSync(file, 'utf8')) as { cells: { outputs: { data?: Record<string, string> }[] }[] };
+                    assert.ok(report.cells.some(cell => cell.outputs.some(output => output.data?.['image/svg+xml'] === svg)));
+                }
+            }
+            await vscode.commands.executeCommand('r.interactive.cleanAssets', notebook.uri);
+            assert.ok(info.calledOnce);
+            assert.strictEqual(readAsset(assetRoot, id).toString(), svg);
+            sinon.assert.notCalled(errors);
+        } finally { errors.restore(); saved.restore(); info.restore(); }
+    });
+    test('applies asset quota settings to connected sessions without restarting R', async () => {
+        const configuration = vscode.workspace.getConfiguration('r');
+        const previous = configuration.inspect<number>('interactive.maxAssetBytes')?.globalValue;
+        const client = new AgentClient(manifests[0]); await client.connect();
+        try {
+            await configuration.update('interactive.maxAssetBytes', 64 * 1024 * 1024, vscode.ConfigurationTarget.Global);
+            let stats: AssetStorageStats | undefined;
+            const deadline = Date.now() + 10000;
+            do {
+                stats = await client.request<AssetStorageStats>('assetStorage');
+                if (stats.limitBytes === 64 * 1024 * 1024) { break; }
+                await new Promise(resolve => setTimeout(resolve, 50));
+            } while (Date.now() < deadline);
+            assert.strictEqual(stats.limitBytes, 64 * 1024 * 1024);
+        } finally {
+            await configuration.update('interactive.maxAssetBytes', previous, vscode.ConfigurationTarget.Global);
+            client.close();
+        }
+    });
     test('clearing completed cells preserves drafts, running output, and durable history', async () => {
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
         assert.ok(notebook);
@@ -315,6 +384,48 @@ cat("\n")`;
         const second = new AgentClient(manifests[1]); await second.connect();
         try { assert.strictEqual(second.control, false, 'The second session must remain controlled by its original window'); }
         finally { second.close(); }
+    });
+    test('restart upgrades the private R runtime and asset quota while preserving the session identity', async () => {
+        const original = manifests[1];
+        const confirmation = sinon.stub(vscode.window, 'showWarningMessage').resolves('Restart Session' as unknown as vscode.MessageItem);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        let client: AgentClient | undefined;
+        try {
+            await vscode.commands.executeCommand('r.interactive.restart', original);
+            sinon.assert.notCalled(errors);
+            const config = JSON.parse(fs.readFileSync(path.join(root, original.id, 'config.json'), 'utf8')) as AgentConfig;
+            assert.notStrictEqual(config.generation, original.generation);
+            assert.notStrictEqual(config.library, path.join(root, 'library'));
+            assert.notStrictEqual(config.resources, path.join(process.cwd(), 'R'));
+            assert.strictEqual(config.maxAssetBytes, DEFAULT_MAX_ASSET_BYTES);
+            assert.ok(fs.existsSync(path.join(config.library, 'sess')));
+            const current = JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest;
+            assert.strictEqual(current.id, original.id);
+            client = new AgentClient(current); await client.connect();
+            await client.request('claim', { force: true });
+            const id = randomUUID();
+            await client.request('submit', { submission: { id, code: 'cat("restarted with new runtime")' } });
+            let complete = false;
+            const deadline = Date.now() + 10000;
+            while (!complete && Date.now() < deadline) {
+                complete = (await client.request<{ state: string }>('execution', { id })).state === 'success';
+                if (!complete) { await new Promise(resolve => setTimeout(resolve, 50)); }
+            }
+            assert.ok(complete);
+        } finally {
+            confirmation.restore(); errors.restore();
+            if (client) {
+                await client.request('stop');
+                let exited = false;
+                const deadline = Date.now() + 10000;
+                while (!exited && Date.now() < deadline) {
+                    exited = (await client.request<{ status: string }>('heartbeat')).status === 'exited';
+                    if (!exited) { await new Promise(resolve => setTimeout(resolve, 50)); }
+                }
+                if (exited) { await client.request('shutdown'); }
+                client.close();
+            }
+        }
     });
     test('exports portable notebook output without transient connection URLs', () => {
         const cell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'plot(1:3)', 'r');

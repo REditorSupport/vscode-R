@@ -8,7 +8,7 @@
   invisible(NULL)
 }
 
-.interactive_plot_context <- function() {
+.interactive_plot_context <- function(open_group = TRUE) {
   if (requireNamespace("jgd", quietly = TRUE) &&
         "jgd" %in% names(grDevices::dev.list())) {
     id <- .sess_env$interactive_id
@@ -16,22 +16,37 @@
       list(executionId = if (is.null(id)) "" else id,
            vscodeRExecutionId = if (is.null(id)) "" else id), auto_unbox = TRUE
     ))
-    try(jgd::jgd_frame_ext(context), silent = TRUE)
     if (!is.null(id)) {
+      if (!identical(names(grDevices::dev.cur()), "jgd")) return(invisible(NULL))
+      try(jgd::jgd_frame_ext(context), silent = TRUE)
       device <- as.integer(grDevices::dev.cur())
-      if (!device %in% .sess_env$interactive_plot_groups) {
+      if (open_group && !device %in% .sess_env$interactive_plot_groups) {
         try(jgd::jgd_begin_group(context), silent = TRUE)
         .sess_env$interactive_plot_groups <- c(.sess_env$interactive_plot_groups, device)
       }
     } else {
       selected <- grDevices::dev.cur()
-      for (device in intersect(.sess_env$interactive_plot_groups, grDevices::dev.list())) {
+      if (identical(names(selected), "jgd")) try(jgd::jgd_frame_ext(context), silent = TRUE)
+      devices <- grDevices::dev.list()
+      for (device in intersect(.sess_env$interactive_plot_groups,
+                               devices[names(devices) == "jgd"])) {
         grDevices::dev.set(device)
         try(jgd::jgd_end_group(), silent = TRUE)
+        try(jgd::jgd_frame_ext(context), silent = TRUE)
       }
       if (selected %in% grDevices::dev.list()) grDevices::dev.set(selected)
       .sess_env$interactive_plot_groups <- integer()
     }
+  }
+}
+
+.interactive_plot_new_page <- function() {
+  device <- as.integer(grDevices::dev.cur())
+  if (identical(names(grDevices::dev.cur()), "jgd") &&
+        device %in% .sess_env$interactive_plot_groups) {
+    # Close our execution marker before JGD resets its groups at a page boundary.
+    try(jgd::jgd_end_group(), silent = TRUE)
+    .sess_env$interactive_plot_groups <- setdiff(.sess_env$interactive_plot_groups, device)
   }
 }
 
@@ -69,18 +84,21 @@ interactive_start <- function(config, mirror = TRUE) {
       invisible(result)
     }, ns = "grDevices")
   }
-  if (isTRUE(.sess_env$interactive_static)) {
-    for (spec in list(c("graphics", "plot.new"), c("grid", "grid.newpage"))) {
-      original <- get(spec[[2L]], envir = asNamespace(spec[[1L]]))
-      wrapped <- local({
-        draw <- original
-        function(...) {
+  for (spec in list(c("graphics", "plot.new"), c("grid", "grid.newpage"))) {
+    original <- get(spec[[2L]], envir = asNamespace(spec[[1L]]))
+    wrapped <- local({
+      draw <- original
+      function(...) {
+        if (isTRUE(.sess_env$interactive_static)) {
           .interactive_capture_plot()
-          draw(...)
+        } else {
+          .interactive_plot_new_page()
+          on.exit(.interactive_plot_context(), add = TRUE)
         }
-      })
-      .runtime_rebind(spec[[2L]], wrapped, ns = spec[[1L]])
-    }
+        draw(...)
+      }
+    })
+    .runtime_rebind(spec[[2L]], wrapped, ns = spec[[1L]])
   }
   device <- getOption("device")
   if (is.function(device)) {
@@ -88,7 +106,7 @@ interactive_start <- function(config, mirror = TRUE) {
       original <- device
       function(...) {
         original(...)
-        .interactive_plot_context()
+        .interactive_plot_context(open_group = FALSE)
       }
     }))
   }

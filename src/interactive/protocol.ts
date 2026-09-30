@@ -2,6 +2,7 @@
 export const AGENT_PROTOCOL = 1;
 export const MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
 export const MAX_CODE_BYTES = 1024 * 1024;
+export const DEFAULT_MAX_ASSET_BYTES = 4 * 1024 * 1024 * 1024;
 
 export type ProviderKind = 'r' | 'arf' | 'arf-existing';
 export type ExecutionState = 'queued' | 'running' | 'success' | 'error' | 'interrupted' | 'cancelled' | 'unknown';

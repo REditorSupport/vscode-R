@@ -15,6 +15,30 @@ export function atomicJson(file: string, value: unknown): void {
     fs.renameSync(temporary, file);
 }
 
+/** Latest display versions in every retained generation; HTML roots protect all dependencies. */
+export function retainedAssetIds(storage: string): Set<string> {
+    const retained = new Set<string>();
+    for (const generation of fs.readdirSync(storage, { withFileTypes: true })) {
+        if (!generation.isDirectory() || generation.name === 'assets') { continue; }
+        const directory = path.join(storage, generation.name);
+        const displays = new Map<string, Record<string, unknown>>();
+        for (const name of fs.readdirSync(directory).filter(name => /^events-\d{6}\.jsonl$/.test(name)).sort()) {
+            const text = fs.readFileSync(path.join(directory, name), 'utf8');
+            for (const line of text.slice(0, text.lastIndexOf('\n') + 1).split('\n')) {
+                if (!line) { continue; }
+                const event = JSON.parse(line) as SessionEvent;
+                if (event.type === 'display' && typeof event.data.displayId === 'string') {
+                    displays.set(`${event.executionId ?? ''}:${event.data.displayId}`, event.data);
+                }
+            }
+        }
+        for (const display of displays.values()) {
+            for (const key of ['svg', 'asset']) { if (typeof display[key] === 'string') { retained.add(display[key]); } }
+        }
+    }
+    return retained;
+}
+
 /** Durable admission ledger plus a bounded, segmented output journal. */
 export class SessionJournal {
     readonly executions = new Map<string, ExecutionRecord>();

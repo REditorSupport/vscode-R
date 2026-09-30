@@ -3,7 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { AgentClient } from './client';
-import { AgentConfig, AgentSnapshot, ExecutionRecord, SessionEvent, SessionManifest, SourceLocation, object, sessionLabel } from './protocol';
+import { AgentConfig, AgentSnapshot, DEFAULT_MAX_ASSET_BYTES, ExecutionRecord, SessionEvent, SessionManifest, SourceLocation, object, sessionLabel } from './protocol';
+import { AssetStore, AssetStorageStats, exportedAssetName, readAsset } from './assets';
 import { defaultStorage, discoverSessions, installRuntime, launchAgent, newIdentity } from './launcher';
 import { discoverArf, ArfSession } from './arf';
 import { Transcript, TranscriptCell } from './transcript';
@@ -92,6 +93,11 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         });
         command('r.interactive.export', value => this.forView(value, view => this.exportHistory(view)));
         command('r.interactive.clear', value => this.forView(value, view => this.clearCompleted(view)));
+        command('r.interactive.cleanAssets', value => this.forView(value, async view => {
+            if (!view.client.manifest.capabilities.assetStorage) { throw new Error('Asset cleanup requires a session started with the current extension build'); }
+            const stats = await view.client.request<AssetStorageStats>('assetStorage', { compact: true });
+            void vscode.window.showInformationMessage(`R Interactive: reclaimed ${(stats.reclaimedBytes / 1024 / 1024).toFixed(1)} MiB. Retained assets use ${(stats.usedBytes / 1024 / 1024).toFixed(1)} MiB of ${(stats.limitBytes / 1024 / 1024 / 1024).toFixed(2)} GiB.`);
+        }));
         this.status.name = 'R Interactive session'; this.status.command = 'r.interactive.connect';
         this.disposables.push(this.status);
         this.disposables.push(vscode.window.registerTreeDataProvider('rInteractiveSessions', this),
@@ -110,6 +116,15 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             vscode.workspace.onDidCloseNotebookDocument(document => {
                 const view = [...this.views.values()].find(item => item.notebook === document);
                 if (view) { this.disposeView(view); }
+            }),
+            vscode.workspace.onDidChangeConfiguration(event => {
+                if (!event.affectsConfiguration('r.interactive.maxAssetBytes')) { return; }
+                const limitBytes = util.config().get<number>('interactive.maxAssetBytes', DEFAULT_MAX_ASSET_BYTES);
+                for (const view of this.views.values()) {
+                    if (view.client.connected && view.client.control && view.client.manifest.capabilities.assetStorage) {
+                        void view.client.request('assetStorage', { limitBytes }).catch(error => this.report(error));
+                    }
+                }
             }));
         setInteractiveExecutor(async (code, resource, source) => {
             const mode = util.config(resource).get<string>('interactive.executionTarget', 'auto');
@@ -196,7 +211,10 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 const record = id && view.model.cells.get(id)?.record;
                 if (record && !['queued', 'running', 'unknown'].includes(record.state)) {
                     view.hidden.add(record.id);
-                    edits.push(vscode.NotebookEdit.deleteCells(new vscode.NotebookRange(cell.index, cell.index + 1)));
+                    const adjacent = edits.at(-1);
+                    if (adjacent?.range.start === cell.index + 1) {
+                        edits[edits.length - 1] = vscode.NotebookEdit.deleteCells(new vscode.NotebookRange(cell.index, adjacent.range.end));
+                    } else { edits.push(vscode.NotebookEdit.deleteCells(new vscode.NotebookRange(cell.index, cell.index + 1))); }
                 }
             }
             const edit = new vscode.WorkspaceEdit(); edit.set(view.notebook.uri, edits);
@@ -341,7 +359,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 plotBackend: util.config().get<AgentConfig['plotBackend']>('interactive.plotBackend', 'auto'),
                 historyLimit: util.config().get<number>('interactive.historyLimit', 100),
                 maxOutputBytes: util.config().get<number>('interactive.maxOutputBytes', 4 * 1024 * 1024),
-                maxAssetBytes: util.config().get<number>('interactive.maxAssetBytes', 512 * 1024 * 1024),
+                maxAssetBytes: util.config().get<number>('interactive.maxAssetBytes', DEFAULT_MAX_ASSET_BYTES),
                 maxJournalBytes: util.config().get<number>('interactive.maxJournalBytes', 128 * 1024 * 1024) };
             progress.report({ message: 'Launching the independent session agent' });
             const manifest = await launchAgent(config, runtime.agent, util.config().get<string>('interactive.nodePath', 'node'));
@@ -595,17 +613,17 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         }
     }
 
-    private async cellData(view: InteractiveView, cell: TranscriptCell): Promise<vscode.NotebookCellData> {
+    private async cellData(view: InteractiveView, cell: TranscriptCell, portable = false): Promise<vscode.NotebookCellData> {
         const data = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, cell.record.code, 'r');
         data.metadata = { rExecutionId: cell.record.id, rSource: cell.record.source, rState: cell.record.state };
         data.executionSummary = { executionOrder: cell.record.order,
             success: cell.record.state === 'success' ? true : cell.record.state === 'error' ? false : undefined,
             timing: cell.record.started && cell.record.ended ? { startTime: cell.record.started, endTime: cell.record.ended } : undefined };
-        data.outputs = await this.outputs(view, cell);
+        data.outputs = await this.outputs(view, cell, portable);
         return data;
     }
 
-    private async outputs(view: InteractiveView, cell: TranscriptCell): Promise<vscode.NotebookCellOutput[]> {
+    private async outputs(view: InteractiveView, cell: TranscriptCell, portable = false): Promise<vscode.NotebookCellOutput[]> {
         const outputs: vscode.NotebookCellOutput[] = [];
         for (const output of cell.outputs) {
             const data = output.data;
@@ -617,7 +635,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                     : [vscode.NotebookCellOutputItem.stderr(`${String(data.kind)}: ${String(data.message)}\n`)];
             } else if (output.type === 'truncated') { items = [vscode.NotebookCellOutputItem.text(String(data.message))]; }
             else if (data.kind === 'image' && typeof data.asset === 'string') {
-                items = [new vscode.NotebookCellOutputItem(Buffer.from(await view.client.request<string>('asset', { id: data.asset }), 'base64'), String(data.mime))];
+                items = [new vscode.NotebookCellOutputItem(readAsset(path.join(this.root, view.client.manifest.id, 'assets'), data.asset), String(data.mime))];
             } else if (data.kind === 'image') {
                 items = [new vscode.NotebookCellOutputItem(Buffer.from(String(data.data), 'base64'), String(data.mime))];
             } else if (data.kind === 'mime' && data.mime !== 'text/html') {
@@ -633,12 +651,16 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                     vscode.NotebookCellOutputItem.text(data.kind === 'table' ? `${String(data.totalRows)} rows\n${JSON.stringify(data.rows, null, 2)}` : `R ${String(data.kind)} output`)];
                 if (typeof data.svg === 'string') {
                     try {
-                        const svg = await view.client.request<string>('asset', { id: data.svg });
+                        const svg = portable ? readAsset(path.join(this.root, view.client.manifest.id, 'assets'), data.svg).toString('base64')
+                            : await view.client.request<string>('asset', { id: data.svg });
                         display.svgData = svg;
                         items[0] = vscode.NotebookCellOutputItem.json(display, DISPLAY_MIME);
                         items.push(new vscode.NotebookCellOutputItem(Buffer.from(svg, 'base64'), 'image/svg+xml'));
                     }
-                    catch { /* The renderer can load a larger SVG directly from its asset URL. */ }
+                    catch (error) {
+                        if (portable) { throw error; }
+                        // The live renderer can load a larger SVG directly from its asset URL.
+                    }
                 }
             }
             outputs.push(new vscode.NotebookCellOutput(items, { rDisplayId: data.displayId }));
@@ -729,7 +751,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                     if (png) {
                         if (typeof message.image !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(message.image) || message.image.length > 32 * 1024 * 1024) { throw new Error('Invalid PNG export'); }
                         bytes = Buffer.from(message.image.slice('data:image/png;base64,'.length), 'base64');
-                    } else { bytes = Buffer.from(await view.client.request<string>('asset', { id: data.svg }), 'base64'); }
+                    } else { bytes = readAsset(path.join(this.root, view.client.manifest.id, 'assets'), String(data.svg)); }
                     await vscode.workspace.fs.writeFile(file, bytes); break;
                 }
                 case 'plot': case 'open': {
@@ -780,10 +802,13 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (view.client.manifest.provider === 'arf-existing') { throw new Error('Restart adopted arf from its tmux terminal, then reconnect to the new process'); }
         const answer = await vscode.window.showWarningMessage('Restart R with a new environment? The old transcript will remain available.', { modal: true }, 'Restart Session');
         if (answer !== 'Restart Session') { return; }
-        await view.client.request('stop');
         const storage = path.join(this.root, view.client.manifest.id);
         const config = JSON.parse(fs.readFileSync(path.join(storage, 'config.json'), 'utf8')) as AgentConfig;
+        const runtime = await installRuntime(this.context.extensionPath, this.root, config.rPath, text => this.output.append(text));
+        config.library = runtime.library; config.resources = runtime.resources;
+        config.maxAssetBytes = util.config().get<number>('interactive.maxAssetBytes', DEFAULT_MAX_ASSET_BYTES);
         config.generation = randomUUID();
+        await view.client.request('stop');
         // Wait for the old runtime to finish updating its manifest before publishing its successor.
         for (let i = 0; i < 100; i++) {
             const state = await view.client.request<{ status: string }>('heartbeat');
@@ -793,7 +818,6 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         }
         await view.client.request('shutdown');
         this.disposeView(view);
-        const runtime = await installRuntime(this.context.extensionPath, this.root, config.rPath, text => this.output.append(text));
         await this.open(await launchAgent(config, runtime.agent, util.config().get<string>('interactive.nodePath', 'node')));
     }
 
@@ -807,13 +831,15 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (/\.html?$/i.test(file.path)) {
             const sections: string[] = [];
             const assetFolder = `${file.fsPath}.assets`;
-            fs.cpSync(path.join(this.root, view.client.manifest.id, 'assets'), assetFolder, { recursive: true });
+            const assets = new AssetStore(path.join(this.root, view.client.manifest.id, 'assets'));
+            assets.exportTo(assetFolder, cells.flatMap(cell => cell.outputs.flatMap(output =>
+                [output.data.svg, output.data.asset].filter((id): id is string => typeof id === 'string'))));
             for (const cell of cells) {
                 sections.push(`<section><pre><code>${escapeXml(cell.record.code)}</code></pre>`);
                 for (const output of cell.outputs) {
                     const data = output.data;
                     if (data.svg || data.asset) {
-                        const url = `${encodeURIComponent(path.basename(assetFolder))}/${String(data.svg ?? data.asset)}`;
+                        const url = `${encodeURIComponent(path.basename(assetFolder))}/${exportedAssetName(String(data.svg ?? data.asset))}`;
                         sections.push(data.svg || data.kind === 'image' ? `<img src="${escapeXml(url)}" style="max-width:100%">` : `<iframe sandbox="allow-scripts" src="${escapeXml(url)}" style="width:100%;height:500px;border:0"></iframe>`);
                     } else if (data.kind === 'table') {
                         const columns = data.columns as { field: string; headerName: string }[];
@@ -827,7 +853,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             }
             await vscode.workspace.fs.writeFile(file, Buffer.from(`<!doctype html><meta charset="utf-8"><title>R Interactive</title><style>body{max-width:1100px;margin:30px auto;font:14px system-ui}pre{white-space:pre-wrap;background:#f5f5f5;padding:16px}section{margin-bottom:32px}</style>${sections.join('\n')}`)); return;
         }
-        const notebook = new vscode.NotebookData(await Promise.all(cells.map(cell => this.cellData(view, cell))));
+        const notebook = new vscode.NotebookData(await Promise.all(cells.map(cell => this.cellData(view, cell, true))));
         notebook.metadata = { rSessionId: view.client.manifest.id, rGeneration: view.client.manifest.generation };
         await vscode.workspace.fs.writeFile(file, file.path.endsWith('.ipynb') ? this.serializer.exportIpynb(notebook) : this.serializer.serializeNotebook(notebook));
     }

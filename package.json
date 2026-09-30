@@ -887,6 +887,12 @@
         "icon": "$(info)"
       },
       {
+        "command": "r.interactive.cleanAssets",
+        "category": "R",
+        "title": "Clean Up Interactive Assets",
+        "icon": "$(discard)"
+      },
+      {
         "command": "r.interactive.reuseCell",
         "category": "R",
         "title": "Insert Cell Code into Interactive Input",
@@ -1402,6 +1408,11 @@
           "command": "r.helpPanel.summarizeTopics",
           "group": "inline@8",
           "when": "view == rHelpPages && viewItem =~ /_summarizeTopics_/"
+        },
+        {
+          "command": "r.interactive.cleanAssets",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "group": "maintenance@1"
         },
         {
           "command": "r.interactive.history",
@@ -2298,10 +2309,10 @@
           "description": "Maximum retained output journal size per R generation. Execution identity records are retained separately."
         },
         "r.interactive.maxAssetBytes": {
-          "type": "number",
-          "default": 536870912,
+          "type": "integer",
+          "default": 4294967296,
           "minimum": 1048576,
-          "description": "Maximum disk space for retained plots and HTML assets per Interactive session. New assets are rejected with a visible message when full."
+          "description": "Hard disk-space limit for plots and HTML assets per Interactive session (4 GiB by default). Automatic cleanup starts at 80% and removes superseded or unreferenced assets while preserving current retained outputs and widget dependencies. Changes apply to connected sessions that support asset management."
         }
       }
     },

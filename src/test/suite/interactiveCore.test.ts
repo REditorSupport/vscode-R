@@ -2,9 +2,11 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { SessionJournal } from '../../interactive/journal';
+import { get } from 'http';
+import { gunzipSync } from 'zlib';
+import { SessionJournal, retainedAssetIds } from '../../interactive/journal';
 import { JsonLines } from '../../interactive/framing';
-import { AssetStore } from '../../interactive/assets';
+import { AssetStore, exportedAssetName } from '../../interactive/assets';
 import { Transcript } from '../../interactive/transcript';
 import { submission, AgentSnapshot } from '../../interactive/protocol';
 import { defaultStorage, discoverSessions, installRuntime, prepareStorage, shellQuote } from '../../interactive/launcher';
@@ -168,6 +170,126 @@ suite('Interactive protocol and persistence', () => {
         assert.throws(() => submission({ id: '../escape', code: '1' }), /identifier/);
         assert.throws(() => submission({ id: 'id', code: '' }), /nonempty/);
         assert.strictEqual(shellQuote('a\'b $HOME `touch nope`'), '\'a\'"\'"\'b $HOME `touch nope`\'');
+    });
+
+    test('asset cleanup preserves latest displays across generations and entire HTML bundles', () => {
+        const storage = path.join(directory, 'session');
+        const assets = new AssetStore(path.join(storage, 'assets'), undefined, () => retainedAssetIds(storage));
+        const first = new SessionJournal(path.join(storage, 'first'), 'first');
+        const second = new SessionJournal(path.join(storage, 'second'), 'second');
+        try {
+            const old = assets.put('old SVG', '.svg'), latest = assets.put('latest SVG', '.svg');
+            first.append('display', { displayId: 'plot', svg: old }, 'cell');
+            first.append('display', { displayId: 'plot', svg: latest }, 'cell');
+            second.append('display', { displayId: 'plot', svg: old }, 'cell');
+            const bundle = path.join(directory, 'bundle'); fs.mkdirSync(bundle);
+            fs.writeFileSync(path.join(bundle, 'index.html'), '<script src="widget.js"></script>');
+            fs.writeFileSync(path.join(bundle, 'widget.js'), 'window.answer = 42;');
+            const html = assets.importHtml(path.join(bundle, 'index.html'));
+            second.append('display', { displayId: 'widget', asset: html }, 'cell');
+            const orphan = assets.put('unused frame JSON', '.json');
+            assert.ok(assets.compact().reclaimedBytes > 0);
+            assert.throws(() => assets.resolve(orphan));
+            assert.strictEqual(fs.readFileSync(assets.resolve(old), 'utf8'), 'old SVG');
+            assert.strictEqual(fs.readFileSync(assets.resolve(html.replace('index.html', 'widget.js')), 'utf8'), 'window.answer = 42;');
+            second.append('display', { displayId: 'plot', svg: latest }, 'cell');
+            assets.compact();
+            assert.throws(() => assets.resolve(old));
+            assert.strictEqual(fs.readFileSync(assets.resolve(latest), 'utf8'), 'latest SVG');
+            fs.appendFileSync(path.join(storage, 'second', 'events-000000.jsonl'), '{invalid}\n');
+            assert.throws(() => assets.compact());
+            assert.ok(fs.existsSync(assets.resolve(latest)), 'Corrupt journals must prevent deletion');
+        } finally { first.close(); second.close(); }
+    });
+
+    test('asset quota reclaims superseded versions and counts only successful writes', () => {
+        let retained = new Set<string>();
+        const assets = new AssetStore(path.join(directory, 'assets'), 60, () => retained);
+        for (let i = 0; i < 100; i++) {
+            const id = assets.put(String(i).padStart(20, '0'), '.svg');
+            retained = new Set([id]);
+            assert.ok(assets.stats().usedBytes <= 60);
+        }
+        assets.compact();
+        assert.strictEqual(assets.stats().usedBytes, 20);
+        assert.throws(() => assets.put('x'.repeat(100), '.svg'), /limit reached/);
+        assert.strictEqual(assets.stats().usedBytes, 20);
+        assert.throws(() => assets.put('failed write', '.' + 'x'.repeat(300)));
+        assert.strictEqual(assets.stats().usedBytes, 20);
+    });
+
+    test('compresses SVG and JSON losslessly, enforces decoded bounds, and charges physical bytes', () => {
+        let retained = new Set<string>();
+        const assets = new AssetStore(path.join(directory, 'assets'), 4096, () => retained);
+        for (const extension of ['.svg', '.json']) {
+            const content = extension === '.svg' ? `<svg>${'<text>λ🙂</text>'.repeat(10000)}</svg>`
+                : JSON.stringify({ ops: Array(10000).fill({ op: 'circle', x: 42, y: 17 }) });
+            const id = assets.put(content, extension);
+            assert.ok(id.endsWith(extension + '.gz'));
+            assert.strictEqual(assets.read(id).toString(), content);
+            assert.throws(() => assets.read(id, 1024), /larger than|large files|buffer too large/i);
+            assert.strictEqual(assets.put(content, extension), id, 'Identical content is deduplicated');
+            retained = new Set([id]);
+            assets.compact();
+            assert.strictEqual(assets.stats().usedBytes, fs.statSync(assets.resolve(id)).size);
+            assert.ok(assets.stats().usedBytes < 4096);
+        }
+        // Existing raw SVG assets continue to work alongside compressed files.
+        const legacy = 'a'.repeat(64) + '.svg';
+        fs.writeFileSync(path.join(assets.directory, legacy), '<svg>legacy</svg>');
+        assert.strictEqual(assets.read(legacy).toString(), '<svg>legacy</svg>');
+        assert.strictEqual(exportedAssetName(legacy), legacy);
+        assert.strictEqual(exportedAssetName('widget/library.json.gz'), 'widget/library.json.gz');
+    });
+
+    test('serves compressed assets with their original MIME type and gzip encoding', async () => {
+        const assets = new AssetStore(path.join(directory, 'assets'));
+        await assets.start();
+        try {
+            for (const [extension, mime] of [['.svg', 'image/svg+xml'], ['.json', 'application/json']]) {
+                const content = extension === '.svg' ? `<svg>${'<!-- λ🙂 -->'.repeat(2000)}</svg>` : JSON.stringify(Array(2000).fill('λ🙂'));
+                const id = assets.put(content, extension);
+                await new Promise<void>((resolve, reject) => {
+                    get(assets.base + id, response => {
+                        const chunks: Buffer[] = [];
+                        response.on('data', (chunk: Uint8Array) => chunks.push(Buffer.from(chunk)));
+                        response.on('error', reject);
+                        response.on('end', () => {
+                            try {
+                                assert.strictEqual(response.statusCode, 200);
+                                assert.strictEqual(response.headers['content-type'], mime);
+                                assert.strictEqual(response.headers['content-encoding'], 'gzip');
+                                assert.strictEqual(gunzipSync(Buffer.concat(chunks)).toString(), content);
+                                resolve();
+                            } catch (error) { reject(error); }
+                        });
+                    }).on('error', reject);
+                });
+                const response = await fetch(assets.base + id);
+                assert.strictEqual(await response.text(), content, 'Fetch clients decode the HTTP representation');
+            }
+        } finally { assets.close(); }
+    });
+
+    test('exports only selected assets as ordinary files and keeps widget dependency bundles intact', () => {
+        const assets = new AssetStore(path.join(directory, 'assets'));
+        const svg = `<svg>${'<!-- plot -->'.repeat(2000)}</svg>`;
+        const id = assets.put(svg, '.svg');
+        const json = assets.put(JSON.stringify(Array(2000).fill({ op: 'circle' })), '.json');
+        const unused = assets.put('unused', '.svg');
+        const widget = path.join(directory, 'widget'); fs.mkdirSync(widget);
+        fs.writeFileSync(path.join(widget, 'index.html'), '<script src="widget.js"></script>');
+        fs.writeFileSync(path.join(widget, 'widget.js'), 'window.answer = 42');
+        const html = assets.importHtml(path.join(widget, 'index.html'));
+        const destination = path.join(directory, 'report.assets');
+        assets.exportTo(destination, [id, json, html]);
+        assert.strictEqual(fs.readFileSync(path.join(destination, exportedAssetName(id)), 'utf8'), svg);
+        assert.strictEqual((JSON.parse(fs.readFileSync(path.join(destination, exportedAssetName(json)), 'utf8')) as unknown[]).length, 2000);
+        assert.strictEqual(fs.readFileSync(path.join(destination, html.replace('index.html', 'widget.js')), 'utf8'), 'window.answer = 42');
+        assert.ok(!fs.existsSync(path.join(destination, unused)));
+        assert.ok(!fs.existsSync(path.join(destination, id)));
+        assert.throws(() => assets.exportTo(assets.directory, [id]), /outside/);
+        assert.throws(() => assets.exportTo(path.join(assets.directory, 'export'), [id]), /outside/);
     });
 
     test('inline table pages visit every row once and stop at the final partial page', () => {
