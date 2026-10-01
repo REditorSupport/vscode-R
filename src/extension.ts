@@ -84,15 +84,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.thead': () => rTerminal.runSelectionOrWord(['t', 'head']),
         'r.names': () => rTerminal.runSelectionOrWord(['names']),
         'r.view': () => rTerminal.runSelectionOrWord(['View']),
-        'r.runSource': () => { void rTerminal.runSource(false); },
-        'r.runSelection':  (code?: string) => { code ? void rTerminal.runTextInTerm(code) : void rTerminal.runSelection(); },
+        'r.runSource': () => rTerminal.runSource(false),
+        'r.runSelection': (code?: string) => code ? rTerminal.runTextInTerm(code) : rTerminal.runSelection(),
         'r.runFromLineToEnd': rTerminal.runFromLineToEnd,
         'r.runFromBeginningToLine': rTerminal.runFromBeginningToLine,
         'r.runSelectionRetainCursor': rTerminal.runSelectionRetainCursor,
         'r.runCommandWithSelectionOrWord': rTerminal.runCommandWithSelectionOrWord,
         'r.runCommandWithEditorPath': rTerminal.runCommandWithEditorPath,
         'r.runCommand': rTerminal.runCommand,
-        'r.runSourcewithEcho': () => { void rTerminal.runSource(true); },
+        'r.runSourcewithEcho': () => rTerminal.runSource(true),
 
         // chunk related
         'r.selectCurrentChunk': rmarkdown.selectCurrentChunk,

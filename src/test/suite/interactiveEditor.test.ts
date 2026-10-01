@@ -345,6 +345,117 @@ cat("\n")`;
             sinon.assert.notCalled(errors);
         } finally { errors.restore(); }
     });
+    test('Run Selection with no target offers live sessions and cancellation preserves the document and cursor', async () => {
+        const document = await vscode.workspace.openTextDocument({ language: 'r', content: 'choice_cancelled <- 1\n2' });
+        const editor = await vscode.window.showTextDocument(document);
+        editor.selection = new vscode.Selection(0, 0, 0, 0);
+        await vscode.commands.executeCommand('r.interactive.useTerminal');
+        const terminals = sinon.stub(vscode.window, 'terminals').value([]);
+        const active = sinon.stub(vscode.window, 'activeTerminal').value(undefined);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+        const create = sinon.spy(vscode.window, 'createTerminal');
+        try {
+            await vscode.commands.executeCommand('r.runSelection');
+            sinon.assert.calledOnce(picker); sinon.assert.notCalled(create);
+            assert.strictEqual(picker.firstCall.args[1]?.title, 'Run R code');
+            const choices = await picker.firstCall.args[0] as (vscode.QuickPickItem & { manifest?: SessionManifest; create?: boolean; terminal?: boolean })[];
+            assert.ok(choices.some(item => item.create)); assert.ok(choices.some(item => item.terminal));
+            for (const manifest of manifests) { assert.ok(choices.some(item => item.manifest?.id === manifest.id)); }
+            assert.strictEqual(document.getText(), 'choice_cancelled <- 1\n2');
+            assert.strictEqual(editor.selection.active.line, 0);
+            assert.strictEqual(editor.selection.active.character, 0);
+        } finally { terminals.restore(); active.restore(); picker.restore(); create.restore(); }
+    });
+
+    test('Run Selection connects the chosen existing session and submits the captured code once', async () => {
+        await vscode.commands.executeCommand('r.interactive.useTerminal');
+        const terminals = sinon.stub(vscode.window, 'terminals').value([]);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: manifests[1].label, manifest: manifests[1] } as vscode.QuickPickItem);
+        try {
+            await vscode.commands.executeCommand('r.runSelection', 'chosen_target_value <- 42');
+            await vscode.commands.executeCommand('r.runSelection', 'chosen_target_value + 1');
+            sinon.assert.calledOnce(picker);
+            const client = new AgentClient(manifests[1]); await client.connect();
+            try {
+                const snapshot = await client.snapshot();
+                assert.strictEqual(snapshot.executions.filter(record => record.code === 'chosen_target_value <- 42').length, 1);
+                assert.ok(snapshot.executions.some(record => record.code === 'chosen_target_value + 1'));
+            } finally { client.close(); }
+        } finally { terminals.restore(); picker.restore(); await vscode.commands.executeCommand('r.interactive.open', manifests[0]); }
+    });
+
+    test('concurrent submissions share the target chooser and create only one R terminal', async () => {
+        await vscode.commands.executeCommand('r.interactive.useTerminal');
+        const terminals = sinon.stub(vscode.window, 'terminals').value([]);
+        const active = sinon.stub(vscode.window, 'activeTerminal').value(undefined);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').callsFake(async () => {
+            await new Promise(resolve => setTimeout(resolve, 20));
+            return { label: 'Create R terminal', terminal: true } as vscode.QuickPickItem;
+        });
+        const sendText = sinon.spy();
+        const terminal = { name: 'R Interactive', processId: Promise.resolve(undefined), show: () => undefined, sendText, dispose: () => undefined } as unknown as vscode.Terminal;
+        const create = sinon.stub(vscode.window, 'createTerminal').returns(terminal);
+        const configuration = vscode.workspace.getConfiguration('r');
+        const watcher = configuration.inspect<boolean>('sessionWatcher')?.globalValue;
+        await configuration.update('sessionWatcher', false, vscode.ConfigurationTarget.Global);
+        try {
+            await Promise.all([
+                vscode.commands.executeCommand('r.runSelection', 'terminal_choice_one <- 1\nterminal_choice_one + 1'),
+                vscode.commands.executeCommand('r.runSelection', 'terminal_choice_two <- 2\nterminal_choice_two + 1'),
+            ]);
+            sinon.assert.calledOnce(picker); sinon.assert.calledOnce(create);
+            assert.deepStrictEqual(sendText.args.map(args => args[0] as string), [
+                'terminal_choice_one <- 1', 'terminal_choice_one + 1', 'terminal_choice_two <- 2', 'terminal_choice_two + 1',
+            ]);
+        } finally {
+            terminals.restore(); active.restore(); picker.restore(); create.restore();
+            await configuration.update('sessionWatcher', watcher, vscode.ConfigurationTarget.Global);
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        }
+    });
+
+    test('Run Selection can create a persistent Interactive session and ordinary R exit leaves a restored notice', async () => {
+        await vscode.commands.executeCommand('r.interactive.useTerminal');
+        const terminals = sinon.stub(vscode.window, 'terminals').value([]);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').callsFake((_items, options) => Promise.resolve(
+            options?.title === 'Run R code' ? { label: 'New R Interactive window', create: true } : { label: 'Plain R', value: 'r' }
+        ) as ReturnType<typeof vscode.window.showQuickPick>);
+        const input = sinon.stub(vscode.window, 'showInputBox').resolves('Created by Run Selection');
+        let client: AgentClient | undefined;
+        let notebook: vscode.NotebookDocument | undefined;
+        try {
+            await vscode.commands.executeCommand('r.runSelection', 'created_target_value <- 123');
+            notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId && !manifests.some(item => item.id === doc.metadata.rSessionId));
+            assert.ok(notebook);
+            const manifest = JSON.parse(fs.readFileSync(path.join(root, String(notebook.metadata.rSessionId), 'manifest.json'), 'utf8')) as SessionManifest;
+            client = new AgentClient(manifest); await client.connect();
+            const snapshot = await client.snapshot();
+            assert.strictEqual(snapshot.executions.filter(record => record.code === 'created_target_value <- 123').length, 1);
+            await until(() => notebook?.getCells().some(cell => cell.executionSummary?.success === true) ?? false);
+            await vscode.commands.executeCommand('r.runSelection', 'q("no")');
+            await until(() => notebook?.getCells().some(cell => cell.metadata.rNoticeKind === 'stopped') ?? false);
+            const uri = notebook.uri;
+            await vscode.commands.executeCommand('r.interactive.detach', uri);
+            await vscode.commands.executeCommand('r.interactive.open', manifest);
+            assert.strictEqual(notebook.getCells().filter(cell => cell.metadata.rNoticeKind === 'stopped').length, 1);
+            assert.ok(notebook.getCells().some(cell => cell.document.getText().includes('R session stopped')));
+            assert.ok(notebook.getCells().some(cell => cell.document.getText().includes('The transcript is retained.')),
+                'Notice body must keep breakable spaces so it wraps in narrow windows');
+        } finally {
+            terminals.restore(); picker.restore(); input.restore();
+            if (notebook) { await vscode.commands.executeCommand('r.interactive.detach', notebook.uri); }
+            if (client) {
+                await client.request('claim', { force: true });
+                await client.request('stop');
+                for (let i = 0; i < 100 && (await client.request<{ status: string }>('heartbeat')).status !== 'exited'; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+                await client.request('shutdown'); client.close();
+            }
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        }
+    });
+
     test('exports R-formatted numeric labels to HTML and retains raw numbers in saved notebooks', async () => {
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
         assert.ok(notebook);
@@ -522,14 +633,45 @@ cat("\n")`;
         try { assert.strictEqual(second.control, false, 'The second session must remain controlled by its original window'); }
         finally { second.close(); }
     });
+    test('Stop Session adds one notice to its own notebook and source execution can choose a live replacement', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const confirmation = sinon.stub(vscode.window, 'showWarningMessage').resolves('Stop Session' as unknown as vscode.MessageItem);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: manifests[1].label, manifest: manifests[1] } as vscode.QuickPickItem);
+        try {
+            await vscode.commands.executeCommand('r.interactive.stop', notebook.uri);
+            await until(() => notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'stopped'));
+            await vscode.commands.executeCommand('r.interactive.stop', notebook.uri);
+            assert.strictEqual(notebook.getCells().filter(cell => cell.metadata.rNoticeKind === 'stopped').length, 1);
+            assert.notStrictEqual(manifests[1].status, 'exited');
+            await vscode.commands.executeCommand('r.runSelection', 'replacement_target_value <- 7');
+            sinon.assert.calledOnce(picker);
+            const choices = await picker.firstCall.args[0] as (vscode.QuickPickItem & { manifest?: SessionManifest })[];
+            assert.ok(!choices.some(item => item.manifest?.id === manifests[0].id));
+            const client = new AgentClient(manifests[1]); await client.connect();
+            try { assert.ok((await client.snapshot()).executions.some(record => record.code === 'replacement_target_value <- 7')); }
+            finally { client.close(); }
+        } finally { confirmation.restore(); picker.restore(); }
+    });
+
     test('restart upgrades the private R runtime and asset quota while preserving the session identity', async () => {
         const original = manifests[1];
+        const oldNotebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === original.id);
+        let sawRestarting = false;
+        const change = vscode.workspace.onDidChangeNotebookDocument(event => {
+            if (event.notebook === oldNotebook && event.notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'restarting')) { sawRestarting = true; }
+        });
         const confirmation = sinon.stub(vscode.window, 'showWarningMessage').resolves('Restart Session' as unknown as vscode.MessageItem);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         let client: AgentClient | undefined;
         try {
             await vscode.commands.executeCommand('r.interactive.restart', original);
             sinon.assert.notCalled(errors);
+            assert.ok(sawRestarting);
+            assert.ok(oldNotebook?.getCells().some(cell => cell.metadata.rNoticeKind === 'restarted'));
+            const newNotebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === original.id && doc.metadata.rGeneration !== original.generation);
+            assert.ok(newNotebook?.getCells().some(cell => cell.metadata.rNoticeKind === 'ready'));
             const config = JSON.parse(fs.readFileSync(path.join(root, original.id, 'config.json'), 'utf8')) as AgentConfig;
             assert.notStrictEqual(config.generation, original.generation);
             assert.notStrictEqual(config.library, path.join(root, 'library'));
@@ -550,7 +692,7 @@ cat("\n")`;
             }
             assert.ok(complete);
         } finally {
-            confirmation.restore(); errors.restore();
+            confirmation.restore(); errors.restore(); change.dispose();
             if (client) {
                 await client.request('stop');
                 let exited = false;

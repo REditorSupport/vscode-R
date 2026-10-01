@@ -2288,7 +2288,7 @@
             "interactive"
           ],
           "default": "auto",
-          "description": "Execution target for R source commands. Auto uses Interactive after selecting a session; Use Terminal for R Execution switches back."
+          "description": "Execution target for R source commands. Auto uses the selected Interactive session or R terminal and offers a target chooser when none is available. Use Terminal for R Execution switches back to terminal routing."
         },
         "r.interactive.supervision": {
           "type": "string",

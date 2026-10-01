@@ -2,7 +2,7 @@
 
 import { TABLE_PAGE_SIZE, tablePage } from './tablePaging';
 import { tableDisplayValue } from './tableFormatting';
-import { saveMenu, toolbarButton as button, toolbarStyle } from './rendererToolbar';
+import { toolbarButton as button, toolbarStyle } from './rendererToolbar';
 
 interface OutputItem { id: string; json(): Record<string, unknown> }
 interface RendererContext {
@@ -15,6 +15,7 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
         element: HTMLElement; data: Record<string, unknown>; page: number;
         request?: { id: number; start: number };
         previous?: HTMLButtonElement; next?: HTMLButtonElement;
+        saveRequest?: number; saveButton?: HTMLButtonElement; savePlot?(format: string): void;
         dispose?(): void;
     }
     const outputs = new Map<string, OutputState>();
@@ -71,6 +72,15 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
             const table = output.element.querySelector<HTMLElement>('[data-table]');
             if (table) { drawTable(table, output.data); }
             updatePaging(output);
+        } else if (message.action === 'saveAs') {
+            if (message.requestId !== output.saveRequest || output.saveRequest === undefined) { return; }
+            output.saveRequest = undefined;
+            if (output.saveButton) {
+                output.saveButton.disabled = output.data.connected === false;
+                output.saveButton.focus({ preventScroll: true });
+            }
+            if (message.error && status) { status.textContent = String(message.error); }
+            else if (typeof message.result === 'string') { output.savePlot?.(message.result); }
         } else if (message.error && status) {
             status.textContent = String(message.error);
         }
@@ -114,16 +124,21 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                         ctx.drawImage(image, 0, 0); send(item, data, 'savePng', { image: canvas.toDataURL('image/png') });
                     } catch { status.textContent = 'Open the plot to export this image.'; }
                 };
-                // Add new export formats here; menu interaction and accessibility are shared.
-                element.append(toolbar);
-                const menu = saveMenu(element, [
-                    { id: 'svg', label: 'SVG (.svg)', description: 'Scalable vector image', run: () => send(item, data, 'save'), enabled: () => data.connected !== false },
-                    { id: 'png', label: 'PNG (.png)', description: 'Raster image', run: savePng, enabled: () => pngReady && data.connected !== false },
-                ]);
-                image.onload = () => { pngReady = true; menu.refresh(); };
-                image.onerror = () => { pngReady = false; menu.refresh(); status.textContent = 'Could not load this plot. Reconnect to the session and try again.'; };
-                state.dispose = () => { menu.dispose(); image.onload = null; image.onerror = null; };
-                toolbar.append(button('Open plot', 'open', () => send(item, data, 'plot')), menu.button,
+                // The host's native picker does not resize or scroll the notebook output.
+                const save = button('Save plot as', 'save', () => {
+                    state.saveRequest = ++requestId; save.disabled = true;
+                    send(item, data, 'saveAs', { requestId: state.saveRequest, pngReady });
+                }, 'Save…');
+                save.setAttribute('aria-haspopup', 'dialog'); state.saveButton = save;
+                state.savePlot = format => {
+                    if (data.connected === false) { return; }
+                    if (format === 'svg') { send(item, data, 'save'); }
+                    else if (format === 'png' && pngReady) { savePng(); }
+                };
+                image.onload = () => { pngReady = true; };
+                image.onerror = () => { pngReady = false; status.textContent = 'Could not load this plot. Reconnect to the session and try again.'; };
+                state.dispose = () => { save.onclick = null; image.onload = null; image.onerror = null; };
+                toolbar.append(button('Open plot', 'open', () => send(item, data, 'plot')), save,
                     button('Fit R device to cell width', 'fit', () => send(item, data, 'resize', { width: Math.round(element.clientWidth), height: 600 }), 'Fit R device'));
             } else if (data.kind === 'html' || data.kind === 'htmlText') {
                 const iframe = document.createElement('iframe');

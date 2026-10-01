@@ -35,13 +35,17 @@ interface InteractiveView {
     prompts: Set<number>;
     base: string;
     hidden: Set<string>;
+    restarting?: boolean;
 }
+
+interface SessionChoice extends vscode.QuickPickItem { manifest?: SessionManifest; arf?: ArfSession; create?: boolean; terminal?: boolean }
 
 export class InteractiveManager implements vscode.Disposable, vscode.TreeDataProvider<SessionManifest> {
     private views = new Map<string, InteractiveView>();
     private opening = new Map<string, Promise<void>>();
     private active?: InteractiveView;
     private routing = false;
+    private targetSelection?: Promise<InteractiveView | 'createTerminal' | undefined>;
     private manifests: SessionManifest[] = [];
     private changes = new vscode.EventEmitter<SessionManifest | undefined>();
     readonly onDidChangeTreeData = this.changes.event;
@@ -61,7 +65,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             this.disposables.push(vscode.commands.registerCommand(name, (...args: unknown[]) =>
                 Promise.resolve().then(() => handler(...args)).catch((error: unknown) => this.report(error))));
         };
-        command('r.interactive.new', () => this.create());
+        command('r.interactive.new', async () => { await this.create(); });
         command('r.interactive.connect', () => this.pick());
         command('r.interactive.open', value => value ? this.open(value as SessionManifest) : this.pick());
         command('r.interactive.refresh', () => this.refresh());
@@ -128,13 +132,25 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                     }
                 }
             }));
-        setInteractiveExecutor(async (code, resource, source) => {
+        setInteractiveExecutor(async (code, resource, source, offerTarget) => {
             const mode = util.config(resource).get<string>('interactive.executionTarget', 'auto');
-            if (mode === 'terminal' || (!this.routing && mode !== 'interactive')) { return false; }
-            const bound = resource && session.boundSessionForDocument(resource);
-            const view = bound ? [...this.views.values()].find(item => item.target === bound) : this.active;
-            if (!view) { throw new Error('Connect to an R Interactive session first'); }
-            await this.submit(view, code, source); return true;
+            if (mode === 'terminal' || (!this.routing && mode !== 'interactive' && !offerTarget)) { return false; }
+            try {
+                const bound = resource && session.boundSessionForDocument(resource);
+                let view = this.routing || mode === 'interactive'
+                    ? bound ? [...this.views.values()].find(item => item.target === bound) : this.active : undefined;
+                if (!view || view.disposed || !view.client.connected || ['exited', 'stopping'].includes(view.client.manifest.status)) {
+                    // Share one chooser when several Run Selection commands arrive during startup.
+                    const pending = this.targetSelection ??= this.chooseExecutionTarget(resource);
+                    let chosen: Awaited<typeof pending>;
+                    try { chosen = await pending; } finally { if (this.targetSelection === pending) { this.targetSelection = undefined; } }
+                    if (!chosen) { return 'cancelled'; }
+                    if (chosen === 'createTerminal') { this.routing = false; return chosen; }
+                    view = chosen;
+                    if (bound && resource) { session.bindSessionDocument(resource, view.target); }
+                }
+                await this.submit(view, code, source); return 'executed';
+            } catch (error) { this.report(error); return 'cancelled'; }
         });
         this.refresh();
         if (util.config().get<boolean>('interactive.restore', true)) {
@@ -369,9 +385,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         return item;
     }
 
-    private async create(adopt?: ArfSession): Promise<void> {
+    private async create(adopt?: ArfSession, resource = vscode.window.activeTextEditor?.document.uri): Promise<InteractiveView | undefined> {
         if (!vscode.workspace.isTrusted) { throw new Error('Trust this workspace before starting or controlling R'); }
-        const resource = vscode.window.activeTextEditor?.document.uri;
         const rPath = await util.getRpath(false, resource);
         if (!rPath) { throw new Error('Configure an R executable before starting Interactive'); }
         const provider = adopt ? 'arf-existing' : await vscode.window.showQuickPick([
@@ -383,7 +398,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const directory = adopt?.cwd ?? vscode.workspace.getWorkspaceFolder(resource ?? vscode.Uri.file(this.root))?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.env.HOME ?? process.cwd();
         const label = await vscode.window.showInputBox({ title: 'Session name', value: adopt ? `arf ${adopt.pid}` : path.basename(directory) });
         if (!label) { return; }
-        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Starting persistent R Interactive' }, async progress => {
+        return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Starting persistent R Interactive' }, async progress => {
             progress.report({ message: 'Preparing the private R runtime' });
             const runtime = await installRuntime(this.context.extensionPath, this.root, rPath, text => this.output.append(text));
             const identity = newIdentity();
@@ -399,37 +414,56 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             progress.report({ message: 'Launching the independent session agent' });
             const manifest = await launchAgent(config, runtime.agent, util.config().get<string>('interactive.nodePath', 'node'));
             this.refresh(); await this.open(manifest);
+            return this.views.get(`${manifest.id}:${manifest.generation}`);
         });
     }
 
-    private async pick(): Promise<void> {
+    private async sessionChoices(): Promise<SessionChoice[]> {
         this.refresh();
+        const live: SessionManifest[] = [];
+        const candidates = this.manifests.filter(hasSessionEndpoint);
+        for (let i = 0; i < candidates.length; i += 8) {
+            const batch = await Promise.all(candidates.slice(i, i + 8).map(manifest => probeSession(manifest)));
+            for (const manifest of batch) {
+                if (manifest && !['exited', 'stopping'].includes(manifest.status)) { live.push(manifest); }
+            }
+        }
+        const terminals: ArfSession[] = [];
+        const arfCandidates = discoverArf().filter(arf => fs.existsSync(arf.socket_path) && !live.some(item => item.rPid === arf.pid));
+        for (let i = 0; i < arfCandidates.length; i += 8) {
+            const batch = await Promise.all(arfCandidates.slice(i, i + 8).map(arf => probeArfSession(arf)));
+            for (const arf of batch) { if (arf) { terminals.push(arf); } }
+        }
+        return [
+            ...live.map(manifest => ({ label: manifest.label,
+                description: `${manifest.status} · ${manifest.provider} · PID ${manifest.rPid ?? 'starting'}`,
+                detail: `${manifest.directory} · ${manifest.id.slice(0, 8)}`, manifest })),
+            ...terminals.map(arf =>
+                ({ label: `arf ${arf.pid}`, description: `${arf.r_version ?? ''} · ${arf.cwd ?? ''}`, arf })),
+            { label: '$(add) New persistent R session', create: true },
+        ];
+    }
+
+    private async chooseExecutionTarget(resource?: vscode.Uri): Promise<InteractiveView | 'createTerminal' | undefined> {
+        const choices = this.sessionChoices().then(items => [
+            { label: '$(add) New R Interactive window', description: 'Start a persistent R session', create: true },
+            ...(util.config(resource).get<string>('interactive.executionTarget') === 'interactive' ? []
+                : [{ label: '$(terminal) Create R terminal', description: 'Run R in the Terminal pane', terminal: true }]),
+            ...items.filter(item => !item.create),
+        ] as SessionChoice[]);
+        const selected = await vscode.window.showQuickPick(choices, { title: 'Run R code',
+            placeHolder: 'Choose where to run the selected code', matchOnDescription: true, matchOnDetail: true });
+        if (selected?.terminal) { return 'createTerminal'; }
+        if (selected?.create || selected?.arf) { return this.create(selected.arf, resource); }
+        if (selected?.manifest) {
+            await this.open(selected.manifest);
+            return this.views.get(`${selected.manifest.id}:${selected.manifest.generation}`);
+        }
+    }
+
+    private async pick(): Promise<void> {
         // Passing a promise keeps the picker responsive while local agents are checked.
-        const choices = async (): Promise<(vscode.QuickPickItem & { manifest?: SessionManifest; arf?: ArfSession; create?: boolean })[]> => {
-            const live: SessionManifest[] = [];
-            const candidates = this.manifests.filter(hasSessionEndpoint);
-            for (let i = 0; i < candidates.length; i += 8) {
-                const batch = await Promise.all(candidates.slice(i, i + 8).map(manifest => probeSession(manifest)));
-                for (const manifest of batch) {
-                    if (manifest && !['exited', 'stopping'].includes(manifest.status)) { live.push(manifest); }
-                }
-            }
-            const terminals: ArfSession[] = [];
-            const arfCandidates = discoverArf().filter(arf => fs.existsSync(arf.socket_path) && !live.some(item => item.rPid === arf.pid));
-            for (let i = 0; i < arfCandidates.length; i += 8) {
-                const batch = await Promise.all(arfCandidates.slice(i, i + 8).map(arf => probeArfSession(arf)));
-                for (const arf of batch) { if (arf) { terminals.push(arf); } }
-            }
-            return [
-                ...live.map(manifest => ({ label: manifest.label,
-                    description: `${manifest.status} · ${manifest.provider} · PID ${manifest.rPid ?? 'starting'}`,
-                    detail: `${manifest.directory} · ${manifest.id.slice(0, 8)}`, manifest })),
-                ...terminals.map(arf =>
-                    ({ label: `arf ${arf.pid}`, description: `${arf.r_version ?? ''} · ${arf.cwd ?? ''}`, arf })),
-                { label: '$(add) New persistent R session', create: true },
-            ];
-        };
-        const selected = await vscode.window.showQuickPick(choices(), { title: 'Connect to a persistent R session',
+        const selected = await vscode.window.showQuickPick(this.sessionChoices(), { title: 'Connect to a persistent R session',
             placeHolder: 'Select a running session or create a new one', matchOnDescription: true, matchOnDetail: true });
         if (selected?.manifest) { await this.open(selected.manifest); }
         else if (selected?.arf) { await this.create(selected.arf); }
@@ -449,9 +483,10 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (!vscode.workspace.isTrusted) { throw new Error('Trust this workspace before connecting to R'); }
         const key = `${manifest.id}:${manifest.generation}`;
         const previous = this.views.get(key);
-        if (previous && !previous.notebook.isClosed) {
+        if (previous && !previous.notebook.isClosed && previous.client.connected) {
             await vscode.window.showNotebookDocument(previous.notebook, { preserveFocus: true }); await this.activate(previous); return;
         }
+        if (previous) { this.disposeView(previous); }
         const client = new AgentClient(manifest, this.clientId);
         const created: vscode.Disposable[] = [ { dispose: () => client.close() } ];
         try {
@@ -529,6 +564,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     }
 
     private async restore(view: InteractiveView, snapshot: AgentSnapshot): Promise<void> {
+        const previousNotice = view.notebook.getCells().find(cell => cell.metadata.rSessionNotice === snapshot.manifest.generation);
         for (const { task } of view.executions.values()) { task.end(undefined); }
         view.executions.clear();
         for (const cell of view.notebook.getCells()) { session.unbindSessionDocument(cell.document.uri); }
@@ -539,6 +575,11 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (snapshot.workspace) { view.target.workspaceData = snapshot.workspace as unknown as session.WorkspaceData; }
         const cells: vscode.NotebookCellData[] = [];
         for (const cell of view.model.cells.values()) { if (!view.hidden.has(cell.record.id)) { cells.push(await this.cellData(view, cell)); } }
+        if (snapshot.manifest.status === 'exited') { cells.push(this.noticeData(view, 'stopped')); }
+        else if (previousNotice) {
+            const notice = new vscode.NotebookCellData(vscode.NotebookCellKind.Markup, previousNotice.document.getText(), 'markdown');
+            notice.metadata = previousNotice.metadata; cells.push(notice);
+        }
         if (view.notebook.notebookType === 'r-interactive') { cells.push(new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '', 'r')); }
         const edit = new vscode.WorkspaceEdit();
         edit.set(view.notebook.uri, [vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(0, view.notebook.cellCount), cells),
@@ -576,6 +617,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private async executeCells(view: InteractiveView, cells: readonly vscode.NotebookCell[]): Promise<void> {
         if (!view || view.disposed) { return; }
+        if (['exited', 'stopping'].includes(view.client.manifest.status)) { throw new Error('This R session has stopped. Restart it or choose another session to run code.'); }
         if (!view.client.control) { throw new Error('Take control of this session before executing'); }
         for (const cell of cells) {
             const code = cell.document.getText(); if (!code.trim()) { continue; }
@@ -611,6 +653,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             view.client.manifest.status = event.data.status as SessionManifest['status'];
             view.target.pid = String(event.data.rPid ?? ''); view.target.rVer = String(event.data.rVersion ?? '');
             this.refresh();
+            if (event.data.status === 'exited' && !view.restarting) { await this.sessionNotice(view, 'stopped'); }
         } else if (event.type === 'session' && typeof event.data.label === 'string') {
             view.client.manifest.label = event.data.label;
             for (const controller of view.controllers) { controller.label = `R: ${event.data.label}`; }
@@ -807,6 +850,15 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 case 'resize':
                     if (data.kind !== 'plot') { return; }
                     await view.client.request('resize', { device: data.device, plot: data.plot, width: message.width, height: message.height }); break;
+                case 'saveAs': {
+                    if (data.kind !== 'plot') { return; }
+                    const formats = [
+                        { label: 'SVG (.svg)', description: 'Scalable vector image', format: 'svg' },
+                        ...(message.pngReady === true ? [{ label: 'PNG (.png)', description: 'Raster image', format: 'png' }] : []),
+                    ];
+                    result = (await vscode.window.showQuickPick(formats, { title: 'Save R plot as',
+                        placeHolder: 'Choose an image format' }))?.format; break;
+                }
                 case 'save': case 'savePng': {
                     if (data.kind !== 'plot') { return; }
                     const png = message.action === 'savePng';
@@ -863,6 +915,39 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (answer === 'Stop Session') { await view.client.request('stop'); }
     }
 
+    private noticeData(view: InteractiveView, state: 'stopped' | 'restarting' | 'restarted' | 'ready' | 'restartFailed'): vscode.NotebookCellData {
+        const messages = {
+            stopped: ['R session stopped', 'This R process has ended. The transcript is retained. Restart the session or choose another execution target to continue.'],
+            restarting: ['Restarting R session…', 'The previous R process is stopping. A new Interactive window will open when its replacement is ready.'],
+            restarted: ['R session restarted', 'This transcript belongs to the previous R process. Continue in the new Interactive window.'],
+            ready: ['R session restarted', 'This is a fresh R process. Objects from the previous process are no longer available.'],
+            restartFailed: ['R session restart did not complete', 'The previous transcript is retained. Check the R Interactive output channel and session list before trying again.'],
+        };
+        const [title, body] = messages[state];
+        // appendText escapes spaces as NBSP; use it only for the untrusted session name.
+        const markdown = new vscode.MarkdownString().appendMarkdown(`**${title}**\n\n`)
+            .appendText(view.client.manifest.label).appendMarkdown(` — ${body}`);
+        const data = new vscode.NotebookCellData(vscode.NotebookCellKind.Markup, markdown.value, 'markdown');
+        data.metadata = { rSessionNotice: view.model.generation, rNoticeKind: state };
+        return data;
+    }
+
+    private async sessionNotice(view: InteractiveView, state: Parameters<InteractiveManager['noticeData']>[1]): Promise<void> {
+        if (view.notebook.isClosed) { return; }
+        const previous = view.notebook.getCells().find(cell => cell.metadata.rSessionNotice === view.model.generation);
+        const data = this.noticeData(view, state);
+        const edit = new vscode.WorkspaceEdit();
+        edit.set(view.notebook.uri, [previous
+            ? vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(previous.index, previous.index + 1), [data])
+            : vscode.NotebookEdit.insertCells(view.notebook.cellCount, [data])]);
+        await vscode.workspace.applyEdit(edit);
+    }
+
+    private queueNotice(view: InteractiveView, state: Parameters<InteractiveManager['noticeData']>[1]): Promise<void> {
+        view.chain = view.chain.then(() => this.sessionNotice(view, state));
+        return view.chain;
+    }
+
     private async restart(view: InteractiveView): Promise<void> {
         if (view.client.manifest.provider === 'arf-existing') { throw new Error('Restart adopted arf from its tmux terminal, then reconnect to the new process'); }
         const answer = await vscode.window.showWarningMessage(`Restart R session “${view.client.manifest.label}”? Its in-memory objects will be lost. The old transcript will remain available.`, { modal: true }, 'Restart Session');
@@ -873,17 +958,28 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         config.library = runtime.library; config.resources = runtime.resources;
         config.maxAssetBytes = util.config().get<number>('interactive.maxAssetBytes', DEFAULT_MAX_ASSET_BYTES);
         config.generation = randomUUID();
-        await view.client.request('stop');
-        // Wait for the old runtime to finish updating its manifest before publishing its successor.
-        for (let i = 0; i < 100; i++) {
-            const state = await view.client.request<{ status: string }>('heartbeat');
-            if (state.status === 'exited') { break; }
-            if (i === 99) { throw new Error('The previous R process has not exited'); }
-            await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        await view.client.request('shutdown');
-        this.disposeView(view);
-        await this.open(await launchAgent(config, runtime.agent, util.config().get<string>('interactive.nodePath', 'node')));
+        view.restarting = true;
+        await this.queueNotice(view, 'restarting');
+        try {
+            await view.client.request('stop');
+            // Wait for the old runtime to publish its final state before its successor.
+            for (let i = 0; i < 100; i++) {
+                const state = await view.client.request<{ status: string }>('heartbeat');
+                if (state.status === 'exited') { break; }
+                if (i === 99) { throw new Error('The previous R process has not exited'); }
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            await view.client.request('shutdown');
+            await view.chain;
+            this.disposeView(view);
+            const manifest = await launchAgent(config, runtime.agent, util.config().get<string>('interactive.nodePath', 'node'));
+            await this.open(manifest);
+            await this.queueNotice(view, 'restarted');
+            const next = this.views.get(`${manifest.id}:${manifest.generation}`);
+            if (next) { await this.queueNotice(next, 'ready'); }
+        } catch (error) {
+            await this.queueNotice(view, 'restartFailed'); throw error;
+        } finally { view.restarting = false; }
     }
 
     private async exportHistory(view: InteractiveView): Promise<void> {
