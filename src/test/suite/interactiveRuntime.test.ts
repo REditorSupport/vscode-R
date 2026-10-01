@@ -12,6 +12,7 @@ import { AgentConfig, SessionEvent, SessionManifest, ExecutionRecord } from '../
 import { defaultStorage, installRuntime } from '../../interactive/launcher';
 import { HistoryPage } from '../../interactive/history';
 import { AssetStorageStats, readAsset } from '../../interactive/assets';
+import { assertSvgTextVisible } from '../svgAssertions';
 
 const run = promisify(execFile);
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
@@ -327,6 +328,49 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         const updated = events.filter(event => event.executionId === id && event.data.kind === 'plot').at(-1);
         assert.strictEqual(updated?.data.displayId, first.data.displayId);
         assert.notStrictEqual(updated?.data.svg, previous.data.svg);
+    });
+
+    test('retains titles and axes in all base-graphics panels, including resized plots', async function () {
+        if (!client.manifest.capabilities.jgd) { this.skip(); }
+        const id = await submit(`set.seed(42)
+par(mfrow = c(2, 2), mar = c(3, 3, 2, 2))
+for (i in 1:4) {
+  plot(rnorm(100))
+  title(main = paste("Plot", i))
+}`);
+        assert.strictEqual((await finished(id)).state, 'success');
+        await until(() => events.some(event => event.executionId === id && event.data.kind === 'plot'));
+        const checkPlot = async (): Promise<SessionEvent> => {
+            const plot = events.filter(event => event.executionId === id && event.data.kind === 'plot').at(-1);
+            assert.ok(plot);
+            const svg = Buffer.from(await client.request<string>('asset', { id: plot.data.svg }), 'base64').toString();
+            for (let panel = 1; panel <= 4; panel++) { assertSvgTextVisible(svg, `Plot ${panel}`); }
+            for (const tick of ['20', '40', '60', '80', '100']) { assertSvgTextVisible(svg, tick, 4); }
+            return plot;
+        };
+        const plot = await checkPlot();
+        await client.request('resize', { device: plot.data.device, plot: plot.data.plot, width: 1000, height: 800 });
+        await until(() => events.some(event => event.executionId === id && event.data.kind === 'plot' && event.data.width === 1000));
+        await checkPlot();
+    });
+
+    test('keeps axis titles visible in mfcol and layout panels drawn by separate cells', async function () {
+        if (!client.manifest.capabilities.jgd) { this.skip(); }
+        for (const layout of ['par(mfcol = c(2, 2))', 'layout(matrix(1:4, 2, 2))']) {
+            await finished(await submit(`${layout}; par(mar = c(5, 5, 3, 2))`));
+            let id = '';
+            for (let panel = 1; panel <= 4; panel++) {
+                id = await submit(`plot(1:10, main = "Panel ${panel}", xlab = "X label ${panel}", ylab = "Y label ${panel}")`);
+                assert.strictEqual((await finished(id)).state, 'success');
+            }
+            await until(() => events.some(event => event.executionId === id && event.data.kind === 'plot'));
+            const plot = events.filter(event => event.executionId === id && event.data.kind === 'plot').at(-1);
+            assert.ok(plot);
+            const svg = Buffer.from(await client.request<string>('asset', { id: plot.data.svg }), 'base64').toString();
+            for (let panel = 1; panel <= 4; panel++) {
+                for (const label of [`Panel ${panel}`, `X label ${panel}`, `Y label ${panel}`]) { assertSvgTextVisible(svg, label); }
+            }
+        }
     });
 
     test('retains the full faceted diamonds plot without accumulating drawing snapshots', async function () {

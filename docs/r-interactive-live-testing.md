@@ -68,6 +68,16 @@ The Node regressions include a real standalone subprocess with PATH containing n
 
 CI also exposed a Windows-only path assertion and two missing-diagnostics failures on Ubuntu. The Workspace dialog test now compares native URIs and filesystem paths. The Ubuntu failure was reproduced locally with a canonical temporary directory: languageserver resolved an opaque cell URI's empty path against its temporary working directory and excluded it from diagnostics. Virtual clients without an opened project now use an explicit session-directory root, with recursive indexing disabled for that synthetic workspace. The editor tests canonicalize their temporary root so this regression is covered on both macOS and Linux; both previously failing diagnostics tests pass in the full run. CI preserves extension-host and language-server logs when tests fail.
 
+## Base-graphics multiple-panel follow-up
+
+The four-panel `par(mfrow = c(2, 2), mar = c(3, 3, 2, 2))` example reproduced the reported missing titles and axes. JGD retained every text operation, but the SVG writer kept the plot-region clip outside the next execution group. Later requests to expand that clip could not reveal the panel's title or tick labels.
+
+Clipping now lives inside each group as replaceable drawing state. Nested groups inherit and restore that state without splitting opacity groups. The captured SVG was rasterized before and after the change and compared with ordinary R PNG output; all four panel titles and tick labels now appear. With the original three-line margins, R itself clips the default axis titles. A second check with larger margins verifies visible x/y titles in all panels.
+
+Regression tests inspect the clipping ancestors of text, since merely finding title strings in an SVG did not catch this bug. Real plain-R and arf tests cover `mfrow`, `mfcol`, `layout()`, panels created by separate cells, and resizing. Existing persistent agents retain their old SVG writer; start a new session after installing the updated extension, or explicitly restart a session after preserving any needed R objects. Previously retained SVG assets remain unchanged.
+
+The full VS Code **1.140.0** suite passed **389 tests** with tmux enabled. The separate arf run passed **26 runtime tests** plus **3 SVG clipping tests**. TypeScript and lint pass, with the same 70 existing lint warnings.
+
 ## Native UI coverage
 
 | Area | Checks completed |
@@ -90,11 +100,11 @@ CI also exposed a Windows-only path assertion and two missing-diagnostics failur
 
 | Check | Result |
 | --- | --- |
-| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 384 passed |
+| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 389 passed |
 | Earlier full extension suite, VS Code 1.110.0, tmux enabled | 347 passed |
 | Earlier Interactive-only verification on 1.110.0 after trace/lint adjustments | 84 passed |
 | Full extension suite, VS Code 1.119.0, tmux enabled | 348 passed before the final new-session focus adjustment |
-| arf runtime matrix, including existing arf adoption | 24 passed |
+| arf runtime matrix, including existing arf adoption | 26 passed |
 | Standard-graphics runtime matrix | 19 passed; 5 JGD-only cases skipped |
 | Fresh private sess package, full tinytest suite | 430 checks passed |
 | Browser renderer, dark / narrow light / high contrast | 46 assertions passed in each layout |

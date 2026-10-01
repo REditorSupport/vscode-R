@@ -28,9 +28,14 @@ export function plotToSvg(plot: PlotFrame): string {
     const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${n(plot.device.width)}" height="${n(plot.device.height)}" viewBox="0 0 ${n(plot.device.width)} ${n(plot.device.height)}">`];
     parts.push(`<rect width="100%" height="100%" fill="${color(plot.device.bg)}"/>`);
     let clip = 0;
-    const groups: string[] = [];
-    const closeClips = (): void => {
-        while (groups[groups.length - 1] === 'clip') { groups.pop(); parts.push('</g>'); }
+    let currentClip: number | undefined;
+    let clipOpen = false;
+    const groups: (number | undefined)[] = [];
+    const closeClip = (): void => {
+        if (clipOpen) { parts.push('</g>'); clipOpen = false; }
+    };
+    const openClip = (): void => {
+        if (currentClip !== undefined) { parts.push(`<g clip-path="url(#c${currentClip})">`); clipOpen = true; }
     };
     for (const op of plot.ops as Operation[]) {
         const gc = op.gc ?? {};
@@ -39,9 +44,9 @@ export function plotToSvg(plot: PlotFrame): string {
         const paint = ` fill="${color(gc.fill)}"${stroke}`;
         switch (op.op) {
             case 'clip':
-                closeClips(); clip++;
-                parts.push(`<defs><clipPath id="c${clip}"><rect x="${Math.min(n(op.x0), n(op.x1))}" y="${Math.min(n(op.y0), n(op.y1))}" width="${Math.abs(n(op.x1) - n(op.x0))}" height="${Math.abs(n(op.y1) - n(op.y0))}"/></clipPath></defs><g clip-path="url(#c${clip})">`);
-                groups.push('clip'); break;
+                closeClip(); currentClip = ++clip;
+                parts.push(`<defs><clipPath id="c${clip}"><rect x="${Math.min(n(op.x0), n(op.x1))}" y="${Math.min(n(op.y0), n(op.y1))}" width="${Math.abs(n(op.x1) - n(op.x0))}" height="${Math.abs(n(op.y1) - n(op.y0))}"/></clipPath></defs>`);
+                openClip(); break;
             case 'line':
                 parts.push(`<line x1="${n(op.x1)}" y1="${n(op.y1)}" x2="${n(op.x2)}" y2="${n(op.y2)}"${stroke}/>`); break;
             case 'rect':
@@ -75,15 +80,21 @@ export function plotToSvg(plot: PlotFrame): string {
                 break;
             }
             case 'beginGroup':
+                // A clip is replaceable drawing state, not a permanent mask on
+                // the group. Move it inside so later clips can expand beyond it
+                // (e.g. from a base-graphics panel to its axes and title).
+                closeClip(); groups.push(currentClip);
                 parts.push(`<g opacity="${Math.max(0, Math.min(1, n(op.ext?.opacity ?? 1)))}">`);
-                groups.push('group'); break;
+                openClip(); break;
             case 'endGroup':
-                closeClips();
-                if (groups.pop()) { parts.push('</g>'); }
+                if (!groups.length) { break; }
+                closeClip(); parts.push('</g>');
+                currentClip = groups.pop(); openClip();
                 break;
         }
     }
-    while (groups.pop()) { parts.push('</g>'); }
+    closeClip();
+    while (groups.length) { groups.pop(); parts.push('</g>'); }
     parts.push('</svg>');
     return parts.join('');
 }

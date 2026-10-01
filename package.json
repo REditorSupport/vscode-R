@@ -2498,7 +2498,7 @@
     "pretest": "npm run compile && npm run clean && tsc -p ./",
     "test": "vscode-test",
     "lint": "eslint src --ext ts && Rscript -e \"lintr::lint_package('sess')\"",
-    "test:interactive": "npm run compile && tsc && mocha out/test/suite/arfExecutable.test.js out/test/suite/nodeExecutable.test.js out/test/suite/interactiveCore.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000"
+    "test:interactive": "npm run compile && tsc && mocha out/test/suite/arfExecutable.test.js out/test/suite/nodeExecutable.test.js out/test/suite/plotSvg.test.js out/test/suite/interactiveCore.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000"
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.35",
