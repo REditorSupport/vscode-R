@@ -50,6 +50,14 @@ Session age advanced from **<1m** to **1m** and onward without executing R. A re
 
 The full suite passes **369 tests**, including tmux coverage. Added regressions cover age boundaries and persisted exit time, late diagnostics after clearing input, per-session signatures, hover/hints while R is busy, source-local signature precedence, named/default arguments, strings/comments/raw strings, nested calls, and quoted names. The language-server middleware now falls back on empty signature results, since VS Code otherwise accepts those results and does not try another provider. Production and TypeScript builds pass; lint reports **0 errors / 70 existing warnings**.
 
+## Optional arf follow-up
+
+On VS Code **1.140.0**, a new disposable profile deliberately pointed `r.interactive.arfPath` at a nonexistent file. The provider picker showed **Plain R** and **Configure arf…**. The setup action opened the exact setting without creating a session. Plain R then started as PID **35989** and returned `42` from the Interactive input.
+
+Setting a valid executable path containing spaces immediately restored **Headless arf** in the picker. The new arf session (PID **37115**) stored `keep_me <- 73`. Removing only the disposable executable symlink made restart refuse to stop R. A live check exposed a status bug while the nonmodal warning remained open; the warning now returns immediately, leaving the session **idle** and usable. After reloading the fixed extension, the same PID still returned `73` with the warning undismissed. Repairing the setting with `${userHome}/.cargo/bin/arf` successfully restarted in the same window as PID **39766**, retained the previous output and restart boundary, and executed in a fresh environment. Both private sessions were stopped and the test app closed.
+
+The full suite passes **377 tests** with tmux enabled, plus **24** real arf runtime tests, including adoption with an invalid configured arf executable. Regressions cover absent executables, executable permissions, directories, symlinks, PATH lookup, relative/quoted paths and spaces, setup/cancellation without runtime installation, removal during session naming, Plain R startup without arf, and preserving the live process/transcript when restart preflight fails with an undismissed warning. Production and TypeScript builds pass; lint has **0 errors / 70 existing warnings**. Remote SSH transport was not exercised in this local pass; executable resolution runs on the extension host.
+
 ## Native UI coverage
 
 | Area | Checks completed |

@@ -495,7 +495,7 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             const id = randomUUID();
             adopted = new SessionAgent({ id, generation: randomUUID(), label: 'Adopted arf', directory: root,
                 storage: path.join(root, id), rPath: 'R', library, resources,
-                provider: 'arf-existing', arfEndpoint: endpoint, supervision: 'test', plotBackend: 'standard',
+                provider: 'arf-existing', arfEndpoint: endpoint, arfPath: path.join(root, 'missing-arf'), supervision: 'test', plotBackend: 'standard',
                 historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
             const adoptedManifest = await adopted.start();
             connection = new AgentClient(adoptedManifest); await connection.connect();

@@ -85,6 +85,61 @@ import type { WorkspaceData } from '../../session';
         manager.dispose(); context.subscriptions.splice(context.subscriptions.indexOf(manager), 1);
         context.subscriptions.push(new Manager(context));
     }
+    test('missing arf offers Plain R and setup, with no failed session or runtime installation', async () => {
+        const config = vscode.workspace.getConfiguration('r');
+        const previous = config.inspect<string>('interactive.arfPath')?.globalValue;
+        const missing = path.join(root, 'missing-arf');
+        await config.update('interactive.arfPath', missing, vscode.ConfigurationTarget.Global);
+        const entries = fs.readdirSync(root);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+        const input = sinon.stub(vscode.window, 'showInputBox').resolves(undefined);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        const commands = sinon.stub(vscode.commands, 'executeCommand').callThrough();
+        commands.withArgs('workbench.action.openSettings', 'r.interactive.arfPath').resolves();
+        try {
+            await vscode.commands.executeCommand('r.interactive.new');
+            const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & { value: string })[];
+            assert.deepStrictEqual(choices.map(item => item.value), ['r', 'configure']);
+            assert.match(choices[0].description ?? '', /no arf required/);
+            assert.ok(choices[1].detail?.includes(missing));
+            picker.resolves(choices[1]);
+            await vscode.commands.executeCommand('r.interactive.new');
+            sinon.assert.calledOnce(commands.withArgs('workbench.action.openSettings', 'r.interactive.arfPath'));
+            sinon.assert.notCalled(input); sinon.assert.notCalled(errors);
+            assert.deepStrictEqual(fs.readdirSync(root), entries);
+        } finally {
+            commands.restore(); picker.restore(); input.restore(); errors.restore();
+            await config.update('interactive.arfPath', previous, vscode.ConfigurationTarget.Global);
+        }
+    });
+    test('usable custom arf is offered, but removal while naming a session prevents launch', async () => {
+        const config = vscode.workspace.getConfiguration('r');
+        const previous = config.inspect<string>('interactive.arfPath')?.globalValue;
+        const executable = path.join(root, 'custom arf');
+        fs.writeFileSync(executable, '#!/bin/sh\nexit 1\n', { mode: 0o700 });
+        await config.update('interactive.arfPath', `"${executable}"`, vscode.ConfigurationTarget.Global);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+        const input = sinon.stub(vscode.window, 'showInputBox').callsFake(() => {
+            fs.unlinkSync(executable); return Promise.resolve('Removed arf');
+        });
+        const warning = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        try {
+            await vscode.commands.executeCommand('r.interactive.new');
+            const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & { value: string })[];
+            assert.deepStrictEqual(choices.map(item => item.value), ['r', 'arf']);
+            assert.strictEqual(choices[1].detail, executable);
+            picker.resolves(choices[1]);
+            await vscode.commands.executeCommand('r.interactive.new');
+            sinon.assert.calledOnce(warning); sinon.assert.notCalled(errors);
+            assert.match(warning.firstCall.args[0], /Cannot start Headless arf/);
+            assert.ok(!fs.existsSync(path.join(root, 'runtimes')), 'No runtime or agent should be created');
+        } finally {
+            picker.restore(); input.restore(); warning.restore(); errors.restore();
+            fs.rmSync(executable, { force: true });
+            await config.update('interactive.arfPath', previous, vscode.ConfigurationTarget.Global);
+        }
+    });
     test('cancels Open Interactive Session from the command palette without opening a notebook or reporting an error', async () => {
         const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
@@ -825,6 +880,8 @@ cat("\n")`;
     });
 
     test('New Persistent Interactive Session focuses its own input and preserves the previous session draft', async () => {
+        const settings = vscode.workspace.getConfiguration('r');
+        const previousArf = settings.inspect<string>('interactive.arfPath')?.globalValue;
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         const original = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
         assert.ok(original);
@@ -845,6 +902,7 @@ cat("\n")`;
         let notebook: vscode.NotebookDocument | undefined;
         let client: AgentClient | undefined;
         try {
+            await settings.update('interactive.arfPath', path.join(root, 'missing-arf'), vscode.ConfigurationTarget.Global);
             await vscode.commands.executeCommand('r.interactive.new');
             notebook = vscode.workspace.notebookDocuments.find(doc => !before.has(doc.uri.toString()) && doc.metadata.rSessionId);
             assert.ok(notebook);
@@ -865,6 +923,7 @@ cat("\n")`;
             assert.ok(!original.getCells().some(cell => cell.document.getText() === code));
         } finally {
             picker.restore(); name.restore();
+            await settings.update('interactive.arfPath', previousArf, vscode.ConfigurationTarget.Global);
             if (notebook) { await vscode.commands.executeCommand('r.interactive.detach', notebook.uri); }
             if (client) {
                 await client.request('claim', { force: true });
@@ -1223,6 +1282,32 @@ cat("\n")`;
             assert.strictEqual(notebook.cellCount, oldCount);
             assert.strictEqual(notebook.metadata.rGeneration, original.generation);
             confirmation.resolves('Restart Session' as unknown as vscode.MessageItem);
+            // Exercise a missing arf launch configuration against a real live R
+            // process: failed preflight must never reach Stop or change its journal.
+            const launchFile = path.join(root, original.id, 'config.json');
+            const savedLaunch = fs.readFileSync(launchFile, 'utf8');
+            const arfSetting = vscode.workspace.getConfiguration('r').inspect<string>('interactive.arfPath')?.globalValue;
+            try {
+                const missingArf = path.join(root, 'removed-arf');
+                fs.writeFileSync(launchFile, JSON.stringify({ ...JSON.parse(savedLaunch) as AgentConfig, provider: 'arf', arfPath: missingArf }));
+                await vscode.workspace.getConfiguration('r').update('interactive.arfPath', missingArf, vscode.ConfigurationTarget.Global);
+                confirmation.callsFake(message => message.startsWith('Restart R session')
+                    ? Promise.resolve('Restart Session' as unknown as vscode.MessageItem) : new Promise(() => { /* Leave the nonmodal warning open. */ }));
+                await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+                assert.ok(confirmation.args.some(args => args[0].includes('The current R session has not been stopped.')));
+                const stillRunning = JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest;
+                assert.strictEqual(stillRunning.rPid, original.rPid);
+                assert.strictEqual(stillRunning.status, 'idle');
+                assert.strictEqual(notebook.metadata.rGeneration, original.generation);
+                assert.strictEqual(notebook.cellCount, oldCount);
+                assert.ok(restartController.label.endsWith(' · idle'), 'An undismissed setup warning must not keep R in Restarting');
+                assert.ok(original.rPid); process.kill(original.rPid, 0);
+                sinon.assert.notCalled(errors);
+            } finally {
+                fs.writeFileSync(launchFile, savedLaunch);
+                await vscode.workspace.getConfiguration('r').update('interactive.arfPath', arfSetting, vscode.ConfigurationTarget.Global);
+                confirmation.resolves('Restart Session' as unknown as vscode.MessageItem);
+            }
             // A launch failure after stopping R must retain the window and permit retry.
             await vscode.workspace.getConfiguration('r').update('interactive.nodePath', path.join(root, 'missing-node'), vscode.ConfigurationTarget.Global);
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);

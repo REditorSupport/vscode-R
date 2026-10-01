@@ -12,7 +12,7 @@ The remote host needs:
 - Standalone Node.js 18 or newer, available to the remote extension host. The agent uses this executable rather than VS Code's Electron process.
 - `tmux` for the default Linux supervisor. `systemd --user` and detached processes are optional alternatives.
 - R packages `processx`, `later`, `jsonlite`, and `rstudioapi`. Install `languageserver` for language features, `jgd` and `systemfonts` for JGD graphics, `svglite` for the static fallback, and `htmlwidgets`/`htmltools` for HTML output.
-- `arf` for either arf provider. The provider contract was exercised with arf 0.5.1.
+- `arf` is optional. Creating a headless arf session requires an executable on the R host; plain R requires no arf installation. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract was exercised with arf 0.5.1.
 
 For example, run in the R installation used on the server:
 
@@ -50,6 +50,10 @@ Use the paths appropriate for your server. Linux `auto` selects tmux and reports
 The agent itself also runs under the selected supervisor. Stopping your original tmux/arf process ends its R session. Stopping the agent interrupts editor integration; it is not a checkpoint of the R heap. If an adopted arf outlives a failed agent, `sess::interactive_stop()` restores its terminal callbacks so that it can be adopted again.
 
 **R: New Persistent Interactive Session** creates either a plain background R process or a headless arf process. This is useful when you do not need a visible terminal. Multiple sessions execute concurrently; a single R session processes submitted cells serially.
+
+The provider picker always offers **Plain R**. **Headless arf** appears only when `r.interactive.arfPath` resolves to an executable file on this host (the remote server with Remote SSH). Otherwise, **Configure arf…** opens its setting without creating a session. Install arf separately and configure its path, or choose Plain R with the same persistence and multi-session controls. The setting accepts names on PATH, absolute or workspace-relative paths, `~/`, `${userHome}`, and `${workspaceFolder}`. Configured paths containing spaces do not need quotes. Changing the setting takes effect the next time the picker opens; shell aliases are not executables.
+
+New arf sessions save their resolved absolute executable path, so a later PATH change does not break restart. Restart checks that saved path, then the current setting if the executable moved, before stopping R. If neither is usable, it explains how to configure arf and leaves the current session running.
 
 ## Execution and editor behavior
 

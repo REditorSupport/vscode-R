@@ -7,6 +7,7 @@ import { AgentConfig, AgentSnapshot, DEFAULT_MAX_ASSET_BYTES, ExecutionRecord, S
 import { AssetStore, AssetStorageStats, exportedAssetName, readAsset } from './assets';
 import { defaultStorage, discoverSessions, hasSessionEndpoint, installRuntime, launchAgent, newIdentity } from './launcher';
 import { discoverArf, probeArfSession, ArfSession } from './arf';
+import { resolveArfExecutable } from './arfExecutable';
 import { Transcript, TranscriptCell } from './transcript';
 import { DISPLAY_MIME, InteractiveSerializer } from './notebook';
 import { setInteractiveExecutor } from './executionTarget';
@@ -504,24 +505,31 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private async create(adopt?: ArfSession, resource = vscode.window.activeTextEditor?.document.uri): Promise<InteractiveView | undefined> {
         if (!vscode.workspace.isTrusted) { throw new Error('Trust this workspace before starting or controlling R'); }
-        const rPath = await util.getRpath(false, resource);
-        if (!rPath) { throw new Error('Configure an R executable before starting Interactive'); }
+        const directory = adopt?.cwd ?? vscode.workspace.getWorkspaceFolder(resource ?? vscode.Uri.file(this.root))?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.env.HOME ?? process.cwd();
+        const arfCommand = this.arfCommand(resource);
+        let arfPath = adopt ? undefined : resolveArfExecutable(arfCommand, directory);
         const provider = adopt ? 'arf-existing' : await vscode.window.showQuickPick([
-            { label: 'Plain R', description: 'Standard R with native console streaming', value: 'r' as const },
-            { label: 'Headless arf', description: 'An independent arf session', value: 'arf' as const },
+            { label: 'Plain R', description: 'Persistent R session · no arf required', value: 'r' as const },
+            ...(arfPath ? [{ label: 'Headless arf', description: 'An independent arf session', detail: arfPath, value: 'arf' as const }]
+                : [{ label: '$(gear) Configure arf…', description: 'Optional · executable unavailable',
+                    detail: `Use Plain R, or install arf on this host and set its path. Checked: ${arfCommand}`, value: 'configure' as const }]),
         ], { title: 'R Interactive session provider' });
         if (!provider) { return; }
         const kind = typeof provider === 'string' ? provider : provider.value;
-        const directory = adopt?.cwd ?? vscode.workspace.getWorkspaceFolder(resource ?? vscode.Uri.file(this.root))?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.env.HOME ?? process.cwd();
+        if (kind === 'configure') { await this.configureArf(); return; }
+        const rPath = await util.getRpath(false, resource);
+        if (!rPath) { throw new Error('Configure an R executable before starting Interactive'); }
         const label = await vscode.window.showInputBox({ title: 'Session name', value: adopt ? `arf ${adopt.pid}` : path.basename(directory) });
         if (!label) { return; }
+        if (kind === 'arf' && !(arfPath = this.checkArfExecutable(arfPath ?? arfCommand, directory))) { return; }
         return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Starting persistent R Interactive' }, async progress => {
             progress.report({ message: 'Preparing the private R runtime' });
             const runtime = await installRuntime(this.context.extensionPath, this.root, rPath, text => this.output.append(text));
+            if (kind === 'arf' && !(arfPath = this.checkArfExecutable(arfPath ?? arfCommand, directory))) { return; }
             const identity = newIdentity();
             const config: AgentConfig = { ...identity, label, directory, storage: path.join(this.root, identity.id),
                 rPath, library: runtime.library, resources: runtime.resources, provider: kind,
-                arfPath: util.config().get<string>('interactive.arfPath', 'arf'), arfEndpoint: adopt?.socket_path,
+                arfPath, arfEndpoint: adopt?.socket_path,
                 supervision: util.config().get<string>('interactive.supervision', 'auto'),
                 plotBackend: util.config().get<AgentConfig['plotBackend']>('interactive.plotBackend', 'auto'),
                 historyLimit: util.config().get<number>('interactive.historyLimit', 100),
@@ -533,6 +541,27 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             this.refresh(); await this.open(manifest);
             return this.views.get(`${manifest.id}:${manifest.generation}`);
         });
+    }
+
+    private arfCommand(resource?: vscode.Uri): string {
+        return util.substituteVariables(util.config(resource).get<string>('interactive.arfPath', 'arf'), resource).trim() || 'arf';
+    }
+
+    private async configureArf(): Promise<void> {
+        await vscode.commands.executeCommand('workbench.action.openSettings', 'r.interactive.arfPath');
+    }
+
+    private checkArfExecutable(command: string, directory: string, restarting = false): string | undefined {
+        const executable = resolveArfExecutable(command, directory);
+        if (executable) { return executable; }
+        // A nonmodal setup notification must not keep the view in Restarting or
+        // hold the source execution target chooser until the user dismisses it.
+        void Promise.resolve(vscode.window.showWarningMessage(
+            `Cannot ${restarting ? 'restart' : 'start'} Headless arf: “${command}” was not found or is not executable on this host. ` +
+            'Install arf or set r.interactive.arfPath to its executable. Plain R sessions do not require arf.' +
+            (restarting ? ' The current R session has not been stopped.' : ''), 'Configure arf')).then(async action => {
+            if (action === 'Configure arf') { await this.configureArf(); }
+        }).catch(error => this.report(error));
     }
 
     private async sessionChoices(): Promise<SessionChoice[]> {
@@ -1236,12 +1265,21 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             if (answer !== 'Restart Session' || view.disposed) { return; }
             const storage = path.join(this.root, view.client.manifest.id);
             const config = JSON.parse(fs.readFileSync(path.join(storage, 'config.json'), 'utf8')) as AgentConfig;
+            if (config.provider === 'arf') {
+                // Preserve the original binary across PATH changes after a reload, but
+                // allow a repaired setting to replace a removed/moved executable.
+                const command = resolveArfExecutable(config.arfPath ?? 'arf', config.directory)
+                    ?? this.arfCommand(vscode.Uri.file(config.directory));
+                config.arfPath = this.checkArfExecutable(command, config.directory, true);
+                if (!config.arfPath) { return; }
+            }
             const runtime = await installRuntime(this.context.extensionPath, this.root, config.rPath, text => this.output.append(text));
             config.library = runtime.library; config.resources = runtime.resources;
             config.maxAssetBytes = util.config().get<number>('interactive.maxAssetBytes', DEFAULT_MAX_ASSET_BYTES);
             config.previousGenerations = [...view.history.map(model => model.generation), generation];
             config.generation = randomUUID();
             if (view.disposed) { return; }
+            if (config.provider === 'arf' && !this.checkArfExecutable(config.arfPath ?? 'arf', config.directory, true)) { return; }
             clearTimeout(view.reconnectTimer);
             announced = true;
             await this.queueNotice(view, 'restarting');

@@ -2340,7 +2340,7 @@
         "r.interactive.arfPath": {
           "type": "string",
           "default": "arf",
-          "description": "arf executable for managed headless Interactive sessions."
+          "description": "Optional arf executable for managed headless Interactive sessions, resolved on the R host. Use an executable name on PATH or a path (supports ~ and ${userHome}/${workspaceFolder}). Plain R sessions do not require arf; if unavailable, the provider picker offers configuration instead of launching arf."
         },
         "r.interactive.storagePath": {
           "type": "string",
@@ -2498,7 +2498,7 @@
     "pretest": "npm run compile && npm run clean && tsc -p ./",
     "test": "vscode-test",
     "lint": "eslint src --ext ts && Rscript -e \"lintr::lint_package('sess')\"",
-    "test:interactive": "npm run compile && tsc && mocha out/test/suite/interactiveCore.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000"
+    "test:interactive": "npm run compile && tsc && mocha out/test/suite/arfExecutable.test.js out/test/suite/interactiveCore.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000"
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.35",
