@@ -58,6 +58,8 @@ Setting a valid executable path containing spaces immediately restored **Headles
 
 The full suite passes **377 tests** with tmux enabled, plus **24** real arf runtime tests, including adoption with an invalid configured arf executable. Regressions cover absent executables, executable permissions, directories, symlinks, PATH lookup, relative/quoted paths and spaces, setup/cancellation without runtime installation, removal during session naming, Plain R startup without arf, and preserving the live process/transcript when restart preflight fails with an undismissed warning. Production and TypeScript builds pass; lint has **0 errors / 70 existing warnings**. Remote SSH transport was not exercised in this local pass; executable resolution runs on the extension host.
 
+A subsequent picker polish uses only **R** and **arf**, each with its executable path on a second line. Native verification on **1.140.0** showed `/usr/local/bin/R` and `/Users/ken/.cargo/bin/arf` with matching row heights and no inline descriptions. The **46** Interactive editor tests pass, including missing-arf setup and both session-creation entry points. Production and TypeScript builds pass; changed-file lint reports no errors and two existing warnings.
+
 ## Native UI coverage
 
 | Area | Checks completed |

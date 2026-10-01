@@ -506,19 +506,19 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private async create(adopt?: ArfSession, resource = vscode.window.activeTextEditor?.document.uri): Promise<InteractiveView | undefined> {
         if (!vscode.workspace.isTrusted) { throw new Error('Trust this workspace before starting or controlling R'); }
         const directory = adopt?.cwd ?? vscode.workspace.getWorkspaceFolder(resource ?? vscode.Uri.file(this.root))?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.env.HOME ?? process.cwd();
+        const rPath = await util.getRpath(false, resource);
+        if (!rPath) { throw new Error('Configure an R executable before starting Interactive'); }
         const arfCommand = this.arfCommand(resource);
         let arfPath = adopt ? undefined : resolveArfExecutable(arfCommand, directory);
         const provider = adopt ? 'arf-existing' : await vscode.window.showQuickPick([
-            { label: 'Plain R', description: 'Persistent R session · no arf required', value: 'r' as const },
-            ...(arfPath ? [{ label: 'Headless arf', description: 'An independent arf session', detail: arfPath, value: 'arf' as const }]
+            { label: 'R', detail: rPath, value: 'r' as const },
+            ...(arfPath ? [{ label: 'arf', detail: arfPath, value: 'arf' as const }]
                 : [{ label: '$(gear) Configure arf…', description: 'Optional · executable unavailable',
-                    detail: `Use Plain R, or install arf on this host and set its path. Checked: ${arfCommand}`, value: 'configure' as const }]),
+                    detail: `Use R, or install arf on this host and set its path. Checked: ${arfCommand}`, value: 'configure' as const }]),
         ], { title: 'R Interactive session provider' });
         if (!provider) { return; }
         const kind = typeof provider === 'string' ? provider : provider.value;
         if (kind === 'configure') { await this.configureArf(); return; }
-        const rPath = await util.getRpath(false, resource);
-        if (!rPath) { throw new Error('Configure an R executable before starting Interactive'); }
         const label = await vscode.window.showInputBox({ title: 'Session name', value: adopt ? `arf ${adopt.pid}` : path.basename(directory) });
         if (!label) { return; }
         if (kind === 'arf' && !(arfPath = this.checkArfExecutable(arfPath ?? arfCommand, directory))) { return; }

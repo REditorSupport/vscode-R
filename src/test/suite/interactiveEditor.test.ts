@@ -85,7 +85,7 @@ import type { WorkspaceData } from '../../session';
         manager.dispose(); context.subscriptions.splice(context.subscriptions.indexOf(manager), 1);
         context.subscriptions.push(new Manager(context));
     }
-    test('missing arf offers Plain R and setup, with no failed session or runtime installation', async () => {
+    test('missing arf offers R and setup, with no failed session or runtime installation', async () => {
         const config = vscode.workspace.getConfiguration('r');
         const previous = config.inspect<string>('interactive.arfPath')?.globalValue;
         const missing = path.join(root, 'missing-arf');
@@ -100,7 +100,9 @@ import type { WorkspaceData } from '../../session';
             await vscode.commands.executeCommand('r.interactive.new');
             const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & { value: string })[];
             assert.deepStrictEqual(choices.map(item => item.value), ['r', 'configure']);
-            assert.match(choices[0].description ?? '', /no arf required/);
+            assert.strictEqual(choices[0].label, 'R');
+            assert.strictEqual(choices[0].description, undefined);
+            assert.ok(choices[0].detail && fs.existsSync(choices[0].detail));
             assert.ok(choices[1].detail?.includes(missing));
             picker.resolves(choices[1]);
             await vscode.commands.executeCommand('r.interactive.new');
@@ -128,6 +130,8 @@ import type { WorkspaceData } from '../../session';
             await vscode.commands.executeCommand('r.interactive.new');
             const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & { value: string })[];
             assert.deepStrictEqual(choices.map(item => item.value), ['r', 'arf']);
+            assert.deepStrictEqual(choices.map(item => item.label), ['R', 'arf']);
+            assert.ok(choices.every(item => item.description === undefined));
             assert.strictEqual(choices[1].detail, executable);
             picker.resolves(choices[1]);
             await vscode.commands.executeCommand('r.interactive.new');
@@ -841,7 +845,7 @@ cat("\n")`;
         await vscode.commands.executeCommand('r.interactive.useTerminal');
         const terminals = sinon.stub(vscode.window, 'terminals').value([]);
         const picker = sinon.stub(vscode.window, 'showQuickPick').callsFake((_items, options) => Promise.resolve(
-            options?.title === 'Run R code' ? { label: 'New R Interactive window', create: true } : { label: 'Plain R', value: 'r' }
+            options?.title === 'Run R code' ? { label: 'New R Interactive window', create: true } : { label: 'R', value: 'r' }
         ) as ReturnType<typeof vscode.window.showQuickPick>);
         const input = sinon.stub(vscode.window, 'showInputBox').resolves('Created by Run Selection');
         let client: AgentClient | undefined;
@@ -897,7 +901,7 @@ cat("\n")`;
         await vscode.workspace.applyEdit(draft);
         const before = new Set(vscode.workspace.notebookDocuments.map(doc => doc.uri.toString()));
         const inputsBefore = new Set(vscode.workspace.textDocuments.map(doc => doc.uri.toString()));
-        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'Plain R', value: 'r' } as vscode.QuickPickItem);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'R', value: 'r' } as vscode.QuickPickItem);
         const name = sinon.stub(vscode.window, 'showInputBox').resolves('New session focus');
         let notebook: vscode.NotebookDocument | undefined;
         let client: AgentClient | undefined;
