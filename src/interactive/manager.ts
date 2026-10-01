@@ -17,7 +17,7 @@ import * as util from '../util';
 import { escapeXml } from './plotSvg';
 import { ensureWorkspaceViewer } from '../extension';
 import { tablePage } from './tablePaging';
-import { tableColumnAlignment, tableDisplayValue } from './tableFormatting';
+import { tableColumnAlignment, tableDisplayValue, tableSnapshotSummary } from './tableFormatting';
 import { HistoryPage, searchHistory } from './history';
 import { readExecutionRecords, readPreviousJournal } from './journal';
 import { sessionAge, sessionPresentation } from './sessionPresentation';
@@ -1144,7 +1144,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             switch (message.action) {
                 case 'table':
                     if (data.kind !== 'table') { return; }
-                    await session.showDataView('table', 'json', `${view.client.manifest.label}: table`, '', 'Beside', String(data.viewId), view.target); break;
+                    await session.showDataView('table', 'json', `${view.client.manifest.label}: ${data.fullViewId ? 'full table' : 'table'}`, '', 'Beside', String(data.fullViewId ?? data.viewId), view.target); break;
                 case 'page': {
                     if (data.kind !== 'table') { return; }
                     const page = tablePage(Number(data.totalRows), Number(message.start));
@@ -1471,7 +1471,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                         }
                         const columns = data.columns as { field: string; headerName: string; type?: unknown }[];
                         const rows = data.rows as Record<string, unknown>[];
-                        sections.push(`<table><tr>${columns.map(column => `<th style="text-align:${tableColumnAlignment(data, column)}">${escapeXml(column.headerName)}</th>`).join('')}</tr>${rows.map((row, rowIndex) => `<tr>${columns.map(column => `<td style="text-align:${tableColumnAlignment(data, column)}">${escapeXml(tableDisplayValue(data, row, column.field, rowIndex))}</td>`).join('')}</tr>`).join('')}</table><p>${String(data.totalRows)} rows (preview)</p>`);
+                        sections.push(`<table><tr>${columns.map(column => `<th style="text-align:${tableColumnAlignment(data, column)}">${escapeXml(column.headerName)}</th>`).join('')}</tr>${rows.map((row, rowIndex) => `<tr>${columns.map(column => `<td style="text-align:${tableColumnAlignment(data, column)}">${escapeXml(tableDisplayValue(data, row, column.field, rowIndex))}</td>`).join('')}</tr>`).join('')}</table><p>${tableSnapshotSummary(data) || `${String(data.totalRows)} rows (preview)`}</p>`);
                     } else if (data.kind === 'mime' && data.mime === 'text/html') {
                         sections.push(`<iframe sandbox="allow-scripts" srcdoc="${escapeXml(String(data.text))}" style="width:100%;height:500px;border:0"></iframe>`);
                     } else { sections.push(`<pre>${escapeXml(data.text ?? data.message ?? JSON.stringify(data, null, 2))}</pre>`); }

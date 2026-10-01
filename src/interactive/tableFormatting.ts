@@ -1,3 +1,11 @@
+/** Saved previews must distinguish their retained rows from the full dataset. */
+export function tableSnapshotSummary(data: Record<string, unknown>): string {
+    const rows = Number(data.totalRows);
+    const source = Number(data.sourceRows);
+    return Number.isSafeInteger(rows) && Number.isSafeInteger(source) && source > rows
+        ? `Snapshot: first ${rows.toLocaleString('en-US')} of ${source.toLocaleString('en-US')} rows` : '';
+}
+
 export function tableColumnAlignment(data: Record<string, unknown>, column: { field: string; type?: unknown }): 'left' | 'right' {
     const types = Array.isArray(column.type) ? column.type : [column.type];
     if (types.some(type => type === 'numericColumn' || type === 'bigintColumn')) { return 'right'; }

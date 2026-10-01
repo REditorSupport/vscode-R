@@ -25,6 +25,8 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
 }
 
 .workspace_update_task_callback <- function(..., schedule = later::later) {
+  # An attached arf terminal can edit the same object outside Interactive cells.
+  .sess_env$dataview_revision <- (.sess_env$dataview_revision %||% 0) + 1
   .defer_runtime_notification("workspace_updated", schedule)
 }
 

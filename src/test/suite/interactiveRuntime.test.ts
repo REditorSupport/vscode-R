@@ -208,6 +208,53 @@ stopifnot(identical(actual, expected))`);
         assert.strictEqual((await finished(current)).state, 'success');
     });
 
+    test('huge tables keep bounded snapshots and page the full data without materializing it', async () => {
+        const id = await submit(`n <- 832976871L
+huge <- structure(rep(list(seq_len(n)), 23L), names=paste0("x", 1:23),
+                  class="data.frame", row.names=c(NA_integer_, -n))
+huge`);
+        assert.strictEqual((await finished(id)).state, 'success');
+        const table = events.find(event => event.executionId === id && event.data.kind === 'table'); assert.ok(table);
+        assert.strictEqual(table.data.totalRows, 1000);
+        assert.strictEqual(table.data.sourceRows, 832976871);
+        assert.notStrictEqual(table.data.fullViewId, table.data.viewId);
+        assert.match(String(table.data.printedText), /first 1,000 of 832,976,871/);
+        const last = await client.request<{ rows: Record<string, number>[]; totalRows: number }>('inspect', { method: 'dataview_page', params: {
+            view_id: table.data.fullViewId, startRow: 832976870, endRow: 832976871,
+        } });
+        assert.strictEqual(last.totalRows, 832976871);
+        assert.strictEqual(last.rows[0]['23'], 832976871);
+        client.close(); await client.connect(); await client.subscribe(0);
+        const restored = (await client.snapshot()).events.find(event => event.seq === table.seq);
+        assert.strictEqual(restored?.data.fullViewId, table.data.fullViewId);
+        assert.strictEqual(restored?.data.sourceRows, table.data.sourceRows);
+    });
+
+    test('large data.table snapshots stay stable while full-view queries refresh after reference edits', async function () {
+        if (!(await run('Rscript', ['-e', 'cat(requireNamespace("data.table", quietly=TRUE))'])).stdout.includes('TRUE')) { this.skip(); }
+        const id = await submit('dt <- data.table::data.table(id=1:2000, value=1:2000); dt');
+        assert.strictEqual((await finished(id)).state, 'success');
+        const table = events.find(event => event.executionId === id && event.data.kind === 'table'); assert.ok(table);
+        const query = { method: 'dataview_page', params: { view_id: table.data.fullViewId,
+            startRow: 0, endRow: 2, sortModel: [{ colId: '2', sort: 'desc' }] } };
+        const before = await client.request<{ rows: Record<string, number>[] }>('inspect', query);
+        assert.deepStrictEqual(before.rows.map(row => row['2']), [2000, 1999]);
+        await finished(await submit('data.table::set(dt, j="value", value=-seq_len(2000L)); stop("after mutation")'));
+        const after = await client.request<{ rows: Record<string, number>[] }>('inspect', query);
+        assert.deepStrictEqual(after.rows.map(row => row['2']), [-1, -2]);
+        await finished(await submit('data.table::setnames(dt, "value", "changed")'));
+        await assert.rejects(client.request('inspect', query), /Reopen Data viewer/);
+        await client.request('inspect', { method: 'dataview_init', params: { view_id: table.data.fullViewId } });
+        const refreshed = await client.request<{ rows: Record<string, number>[] }>('inspect', query);
+        assert.deepStrictEqual(refreshed.rows.map(row => row['2']), [-1, -2]);
+        const saved = await client.request<{ rows: Record<string, number>[]; totalRows: number }>('inspect', { method: 'dataview_page', params: {
+            view_id: table.data.viewId, startRow: 980, endRow: 1020,
+        } });
+        assert.strictEqual(saved.totalRows, 1000);
+        assert.strictEqual(saved.rows.length, 20);
+        assert.strictEqual(saved.rows[19]['2'], 1000);
+    });
+
     test('data.table reference assignments stay quiet while explicit results and display remain visible', async function () {
         if (!(await run('Rscript', ['-e', 'cat(requireNamespace("data.table", quietly=TRUE))'])).stdout.includes('TRUE')) { this.skip(); }
         const setup = await submit('dt <- data.table::data.table(x=1:3)'); await finished(setup);

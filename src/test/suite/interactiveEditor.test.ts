@@ -1063,6 +1063,38 @@ cat("\n")`;
             sinon.assert.notCalled(errors);
         } finally { errors.restore(); saved.restore(); format.restore(); }
     });
+    test('large native cells export their snapshot scope and open the full data viewer', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id); assert.ok(notebook);
+        const index = notebook.cellCount;
+        await vscode.commands.executeCommand('r.runSelection', 'data.frame(id=seq_len(832976871L))');
+        await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true);
+        const custom = notebook.cellAt(index).outputs.flatMap(output => output.items).find(item => item.mime === DISPLAY_MIME); assert.ok(custom);
+        const table = JSON.parse(Buffer.from(custom.data).toString()) as Record<string, unknown>;
+        assert.strictEqual(table.totalRows, 1000);
+        assert.strictEqual(table.sourceRows, 832976871);
+        assert.ok(table.fullViewId && table.fullViewId !== table.viewId);
+        const file = path.join(root, 'large-preview.html');
+        const saved = sinon.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file(file));
+        const format = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'HTML report', format: 'html' } as vscode.QuickPickItem);
+        const panels = sinon.spy(vscode.window, 'createWebviewPanel');
+        try {
+            await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
+            assert.ok(fs.readFileSync(file, 'utf8').includes('Snapshot: first 1,000 of 832,976,871 rows'));
+            const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+                rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
+            };
+            const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
+            await manager.rendererMessage(editor, { displayId: table.displayId, generation: table.generation, action: 'table' });
+            sinon.assert.calledOnce(panels);
+            assert.match(panels.firstCall.args[1], /full table$/);
+            assert.strictEqual(notebook.cellCount, index + 1, 'Opening the full viewer must not execute another cell');
+        } finally {
+            for (const panel of panels.returnValues) { panel.dispose(); }
+            saved.restore(); format.restore(); panels.restore();
+        }
+    });
+
     test('groups two four-panel plot pages and exports every page without transient URLs', async function () {
         if (!manifests[0].capabilities.jgd) { this.skip(); }
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);

@@ -68,7 +68,7 @@ The earlier [public-example report](r-interactive-public-examples.md) records th
 
 ## Practical limits
 
-- Historical live table data remains in R memory for the life of the process. Correct data.table snapshots require copies; repeated full-dataset displays can therefore consume substantial memory. Use `head()`, summaries, or explicit `print()` for large repeated inspections. Closing an expanded viewer must not invalidate a table still referenced by the transcript. Automatic table-memory eviction is not implemented.
+- The subsequent [large-table review](r-interactive-large-tables.md) replaces full data.table copies with bounded cell snapshots and uncopied full-data handles. Distinct original objects remain retained while referenced by historical handles; automatic table-memory eviction is not implemented. Closing an expanded viewer must not invalidate a table still referenced by the transcript.
 - This host has no XQuartz/Cairo SVG support; ordinary `grDevices::svg()` also fails here. The file-output fixture uses `svglite::svglite()` and verifies the written SVG/PDF. Explicit file devices intentionally do not add an inline plot.
 - Actual Remote SSH transport, remote latency, logout policy and systemd user services were not exercised on a remote server. Linux CI and local process tests cover the launcher logic, not a particular server configuration.
 - These workflows are representative coverage, not a claim that every R package, native graphics device, custom class printer or reference-backed object is supported. Custom user printers can still have their own side effects. Persistent sessions do not survive R termination or host reboot.

@@ -1482,6 +1482,12 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         const columns = Array.isArray(init.columns) ? init.columns : [];
         filteredRows = init.totalRows;
         totalRows = init.totalRows;
+        if (init.live) {
+            const info = document.createElement('span');
+            info.textContent = 'Full data';
+            info.title = 'This view retains the full object without a copy. Reference edits may appear here. Reopen from the cell to refresh after edits. Sorting and filtering scan the full data.';
+            document.querySelector('#viewerToolbar').append(info);
+        }
         const bigintFields = prepareViewerColumns(columns);
         updateViewerRowCount(filteredRows, totalRows);
         const rowIndexColumn = columns.find(column => column.field === '0');

@@ -192,6 +192,9 @@ interactive_execute <- function(id, code, source = NULL) {
   .sess_env$interactive_plot_groups <- integer()
   .Call("sess_bridge_context", id, PACKAGE = "sess")
   on.exit({
+    # Live full-table viewers must discard cached filter/sort indices after code
+    # may have edited their data by reference (including failed executions).
+    .sess_env$dataview_revision <- (.sess_env$dataview_revision %||% 0) + 1
     .sess_env$interactive_id <- NULL
     .interactive_plot_context()
     .Call("sess_bridge_context", "", PACKAGE = "sess")
@@ -326,22 +329,60 @@ interactive_execute <- function(id, code, source = NULL) {
   }, error = function(e) list(printError = conditionMessage(e)))
 }
 
+.interactive_table_snapshot <- function(value) {
+  source_rows <- nrow(value)
+  # Bound work before copying or invoking a class printer. Bounding the printed
+  # bytes afterwards does not prevent a printer from scanning billions of rows.
+  limit <- max(1L, min(1000L, floor(100000 / max(1L, ncol(value)))))
+  truncated <- source_rows > limit
+  # Row subsetting already allocates independent data.table columns. Calling
+  # copy() afterwards also duplicates attributes and objects inside list cells.
+  snapshot <- dataview_slice(value, seq_len(min(source_rows, limit)))
+  if (is.data.frame(snapshot)) {
+    for (position in seq_len(ncol(snapshot))) {
+      column <- snapshot[[position]]
+      if (is.list(column) && is.null(dim(column)) && !inherits(column, "POSIXlt")) {
+        snapshot[[position]] <- lapply(column, dataview_cell_preview)
+      } else if (is.character(column)) {
+        snapshot[[position]] <- dataview_preview_text(column)
+      }
+    }
+  } else if (is.character(snapshot)) {
+    snapshot[] <- dataview_preview_text(snapshot)
+  }
+  list(value = snapshot, source_rows = source_rows, truncated = truncated)
+}
+
 .interactive_rich_value <- function(value) {
   if (dataview_is_table(value)) {
-    # A transcript is a record of this result, including pages opened later.
-    # Unlike ordinary data frames, data.table mutates shared columns by reference.
-    if (inherits(value, "data.table")) value <- data.table::copy(value)
-    registration <- dataview_register(value)
+    snapshot <- .interactive_table_snapshot(value)
+    registration <- dataview_register(snapshot$value)
     metadata <- handle_dataview_init(list(view_id = registration$view_id))
     preview <- handle_dataview_page(list(view_id = registration$view_id,
                                          startRow = 0L, endRow = 20L,
                                          formatNumbers = TRUE,
                                          sortModel = list(), filterModel = list()))
+    printed <- .interactive_table_text(snapshot$value)
+    full_view <- NULL
+    if (snapshot$truncated) {
+      # Retain the full object without copying it. The cell remains a snapshot;
+      # the expanded viewer can reflect later reference edits to this object.
+      full_view <- dataview_register(value, live = TRUE)$view_id
+      if (!is.null(printed$printedText)) {
+        note <-
+          sprintf("\n[Snapshot: first %s of %s rows. Open Data viewer for the full table.]\n",
+                  format(metadata$totalRows, big.mark = ",", scientific = FALSE, trim = TRUE),
+                  format(snapshot$source_rows, big.mark = ",", scientific = FALSE, trim = TRUE))
+        printed$printedText <- paste0(printed$printedText, note)
+      }
+    }
     .interactive_event("display", c(list(kind = "table", viewId = registration$view_id,
+                                         fullViewId = full_view,
+                                         sourceRows = snapshot$source_rows,
                                          columns = metadata$columns, rows = preview$rows,
                                          formattedColumns = preview$formattedColumns,
                                          totalRows = metadata$totalRows),
-                                    .interactive_table_text(value)))
+                                    printed))
     return(TRUE)
   }
   if (inherits(value, "htmlwidget") && requireNamespace("htmlwidgets", quietly = TRUE)) {

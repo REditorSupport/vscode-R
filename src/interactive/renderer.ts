@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { TABLE_PAGE_SIZE, tablePage } from './tablePaging';
-import { tableColumnAlignment, tableDisplayValue } from './tableFormatting';
+import { tableColumnAlignment, tableDisplayValue, tableSnapshotSummary } from './tableFormatting';
 import { toolbarButton as button, toolbarStyle } from './rendererToolbar';
 
 interface OutputItem { id: string; json(): Record<string, unknown> }
@@ -70,9 +70,10 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
         if (state.next) { state.next.disabled = unavailable || !!state.request || state.page + shown >= count || shown === 0; }
         const status = state.element.querySelector('[data-status]');
         if (status) {
+            const snapshot = tableSnapshotSummary(state.data);
             status.textContent = state.data.tableView === 'text' ? 'Printed R output' : state.request ? 'Loading rows…' : shown
-                ? `Rows ${state.page + 1}–${state.page + shown} of ${count}` : `${count} rows`;
-            status.textContent = [status.textContent, connectionHint(state.data)].filter(Boolean).join(' · ');
+                ? `Rows ${state.page + 1}–${state.page + shown}${snapshot ? '' : ` of ${count}`}` : `${count} rows`;
+            status.textContent = [status.textContent, snapshot, connectionHint(state.data)].filter(Boolean).join(' · ');
         }
     };
     context.onDidReceiveMessage(message => {
@@ -140,6 +141,9 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                 state.previous = button('Previous page', 'previous', () => page(state.page - TABLE_PAGE_SIZE), '');
                 state.next = button('Next page', 'next', () => page(state.page + TABLE_PAGE_SIZE), '');
                 const open = button('Open data viewer', 'table', () => send(item, data, 'table'), 'Data viewer');
+                if (data.fullViewId) {
+                    open.title = 'Open the full table without copying it. Reference edits may appear here; reopen to refresh. Sorting and filtering scan the full data.';
+                }
                 open.disabled = !live;
                 const hasText = typeof data.printedText === 'string';
                 state.data.tableView = hasText ? choice?.tableView ?? data.tableView ?? 'table' : 'table';

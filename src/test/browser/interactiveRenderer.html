@@ -15,6 +15,7 @@ body.light #result { background:#dcf0e4; }
 <h1>R Interactive output</h1>
 <p id="result">Running renderer checks…</p>
 <section><h2>Numeric precision</h2><div id="numeric"></div></section>
+<section><h2>Large dataset preview</h2><div id="large"></div></section>
 <section><h2>Data preview</h2><div id="table"></div></section>
 <section><h2>Plot export</h2><div id="plot"></div></section>
 <section><h2>Saved table</h2><div id="offline"></div></section>
@@ -103,6 +104,19 @@ try {
  render('legacy',{ ...data,displayId:'legacy',tableView:'text' },printedHost);
  check(!printedHost.querySelector('[data-table]').hidden && control(printedHost,'Show R printed output').disabled && control(printedHost,'Show R printed output').title.includes('current extension'),'Legacy tables must explain unavailable printed snapshots');
  printedHost.remove();
+ const largeHost = document.createElement('div'); document.body.append(largeHost);
+ const largeData = { ...printedData,displayId:'large-table',totalRows:40,sourceRows:832976871,fullViewId:'full-table' };
+ render('large',largeData,largeHost);
+ check(largeHost.querySelector('[data-status]').textContent==='Rows 1–20 · Snapshot: first 40 of 832,976,871 rows','Large tables must distinguish the snapshot from the full row count');
+ check(control(largeHost,'Open data viewer').title.includes('without copying') && control(largeHost,'Open data viewer').title.includes('Reference edits'),'Full-table controls must explain live reference semantics');
+ control(largeHost,'Next page').click();
+ reply(messages.at(-1),{ result:{ rows:rows(20,20),totalRows:40 } });
+ check(control(largeHost,'Next page').disabled && largeHost.querySelector('[data-status]').textContent.includes('832,976,871'),'Inline paging must stop at the snapshot boundary and preserve the source count');
+ control(largeHost,'Show R printed output').click();
+ check(largeHost.querySelector('[data-status]').textContent.includes('Printed R output · Snapshot:'),'Text mode must retain the snapshot label');
+ render('large-offline',{ ...largeData,connected:false },largeHost);
+ check(largeHost.querySelector('[data-status]').textContent.includes('832,976,871') && control(largeHost,'Open data viewer').disabled,'Saved large previews must retain their scope without offering unavailable full data');
+ renderer.disposeOutputItem('large-offline'); largeHost.remove();
  const previous = control(table,'Previous page');
  const next = control(table,'Next page');
  check(next.title==='Next page' && !next.textContent && next.querySelector('svg[aria-hidden=true]'),'Paging icons must have accessible names and tooltips');
@@ -229,6 +243,7 @@ try {
  // Restore usable examples for manual pointer, Tab/Shift+Tab, and visual checks.
  render('plot',galleryData,plot);
  render('table',printedData,table);
+ render('large-demo',{ ...largeData,displayId:'large-demo',totalRows:1000 },document.querySelector('#large'));
  document.querySelector('#result').scrollIntoView();
  document.querySelector('#result').textContent=`${assertions} renderer assertions passed`;
  document.body.dataset.result='passed';
