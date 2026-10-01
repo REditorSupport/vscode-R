@@ -44,6 +44,8 @@ This iteration does not reproduce Positron's entire Data Explorer, column-summar
 
 ## Validation
 
+The [2026-10-01 live-testing report](r-interactive-live-testing.md) records the subsequent native pass, new widget/diagnostic/export/error-trace fixes, and the updated 347-test matrix. Its coverage table distinguishes native UI observations from automated checks and untested remote behavior.
+
 The baseline passed 291 VS Code tests before this iteration. The final local matrix, updated on 2026-10-01, ran on macOS arm64 with R 4.6.1, Node 26.10.0, arf 0.5.1, JGD 0.2.0, and tmux 3.5a. Runtime tests install the bundled sess package into private temporary libraries; they do not replace the user's installed package. tmux was built into a temporary prefix and used a private socket directory.
 
 | Validation | Result |

@@ -183,13 +183,44 @@ interactive_execute <- function(id, code, source = NULL) {
   .interactive_event("started")
   .interactive_plot_context()
   state <- "success"
+  trace_state <- new.env(parent = emptyenv())
+  trace_state$depth <- 0L
   diagnostic <- function(cnd, kind) {
-    trace <- as.list(vapply(sys.calls(), function(x) paste(deparse(x), collapse = " "), ""))
+    # Keep calls made by the submitted expression, not the worker, arf transport,
+    # evaluation wrappers, or the condition handlers themselves.
+    calls <- sys.calls()
+    frames <- seq_along(calls)
+    frames <- frames[frames > trace_state$depth]
+    # R includes two frames for our eval call, one without a function identity.
+    # Match only this exact leading wrapper, not user functions named `eval`.
+    wrapper <- quote(withVisible(eval(expr, envir = .GlobalEnv)))
+    if (length(frames) >= 3L && identical(calls[[frames[[1L]]]], wrapper)) {
+      frames <- frames[-seq_len(3L)]
+    }
+    handlers <- list(on_error, on_warning, on_message, diagnostic,
+                     base::.handleSimpleError, base::.signalSimpleWarning,
+                     base::signalCondition)
+    internal <- vapply(frames, function(frame) {
+      any(vapply(handlers, function(fun) identical(sys.function(frame), fun), FALSE))
+    }, FALSE)
+    if (any(internal)) frames <- frames[seq_len(which(internal)[[1L]] - 1L)]
+    trace <- as.list(vapply(calls[frames], function(x) paste(deparse(x), collapse = " "), ""))
     .interactive_event("condition", list(kind = kind, message = conditionMessage(cnd),
                                          call = paste(deparse(conditionCall(cnd)), collapse = "\n"),
                                          trace = trace))
   }
-  tryCatch(withCallingHandlers({
+  on_warning <- function(cnd) {
+    if (getOption("warn") >= 2) return()
+    diagnostic(cnd, "warning")
+    invokeRestart("muffleWarning")
+  }
+  on_message <- function(cnd) {
+    diagnostic(cnd, "message")
+    invokeRestart("muffleMessage")
+  }
+  on_error <- function(cnd) diagnostic(cnd, "error")
+  evaluate <- function() {
+    trace_state$depth <- sys.nframe()
     filename <- if (is.null(source$uri)) "<R Interactive>" else source$uri
     text <- strsplit(code, "\n", fixed = TRUE)[[1L]]
     expressions <- parse(text = code, srcfile = srcfilecopy(filename, text), keep.source = TRUE)
@@ -202,20 +233,17 @@ interactive_execute <- function(id, code, source = NULL) {
       }
       .interactive_capture_plot()
     }
-  }, warning = function(cnd) {
-    if (getOption("warn") >= 2) return()
-    diagnostic(cnd, "warning")
-    invokeRestart("muffleWarning")
-  }, message = function(cnd) {
-    diagnostic(cnd, "message")
-    invokeRestart("muffleMessage")
-  }, error = function(cnd) diagnostic(cnd, "error")),
-  error = function(cnd) {
-    state <<- "error"
-  },
-  interrupt = function(cnd) {
-    state <<- "interrupted"
-  })
+  }
+  tryCatch(
+    withCallingHandlers(evaluate(),
+                        warning = on_warning, message = on_message, error = on_error),
+    error = function(cnd) {
+      state <<- "error"
+    },
+    interrupt = function(cnd) {
+      state <<- "interrupted"
+    }
+  )
   .interactive_capture_plot()
   .interactive_event("finished", list(state = state))
   invisible(NULL)

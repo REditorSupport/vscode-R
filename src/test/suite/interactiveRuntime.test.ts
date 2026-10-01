@@ -188,6 +188,28 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         if (plot) { assert.match(Buffer.from(await client.request<string>('asset', { id: plot.data.svg }), 'base64').toString(), /<svg/); }
     });
 
+    test('condition traces retain user calls without worker or transport scaffolding', async () => {
+        const id = await submit('live_outer <- function() live_inner(); live_inner <- function() stop("nested failure"); live_outer()');
+        assert.strictEqual((await finished(id)).state, 'error');
+        const condition = events.find(event => event.executionId === id && event.type === 'condition');
+        assert.ok(condition);
+        const trace = condition.data.trace as string[];
+        assert.deepStrictEqual(trace, ['live_outer()', 'live_inner()', 'stop("nested failure")']);
+        for (const code of ['warning("test warning")', 'message("test message")', '1 +']) {
+            const other = await submit(code); await finished(other);
+            const result = events.find(event => event.executionId === other && event.type === 'condition');
+            assert.ok(result);
+            assert.ok((result.data.trace as string[]).length < 5);
+            assert.doesNotMatch(JSON.stringify(result.data.trace), /interactive_execute|tryCatch|diagnostic|\.handleSimpleError/);
+        }
+        const shadow = await submit('local({ eval <- function() stop("user eval"); eval() })');
+        await finished(shadow);
+        const shadowCondition = events.find(event => event.executionId === shadow && event.type === 'condition');
+        assert.ok(shadowCondition);
+        const shadowTrace = shadowCondition.data.trace as string[];
+        assert.ok(shadowTrace.includes('eval()'), 'Keep user functions even when their name matches an evaluation helper');
+    });
+
     test('retains R numeric formatting in previews and pages while preserving raw precision', async () => {
         const id = await submit('options(digits=7, scipen=0, OutDec="."); numeric_table <- data.frame(price_per_carat=rep(c(326/0.23, 326/0.21, 1400), 8)); numeric_table');
         assert.strictEqual((await finished(id)).state, 'success');
