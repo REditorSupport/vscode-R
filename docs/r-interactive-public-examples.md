@@ -38,7 +38,23 @@ Seven retained JGD SVGs were rasterized and compared visually against independen
 
 The corrected plots preserve the expected geometry, labels, panel arrangement, and legends. Regression tests cover narrow rasters, multiple font resolutions, per-device metrics, and real R font widths. Antialiasing, font engines, and colour management still produce minor differences from native PNG output; comparisons do not claim pixel identity.
 
-Exported DT and Plotly bundles were served through the actual agent asset service and exercised inside the same iframe sandbox as Interactive. DT filtered 150 iris rows to 50 versicolor rows, sorted sepal length numerically, and paged to rows 11–20. Plotly zoom narrowed the axes from A–T to F–O, reset restored the full range, and a tile tooltip displayed `x: K`, `y: var11`, `Value: 2.71`. No browser warning/error logs were recorded during these interactions. The exported widgets remained usable after their R sessions had stopped.
+Exported DT and Plotly bundles were served through the actual agent asset service and exercised inside the same iframe sandbox as Interactive. DT filtered 150 iris rows to 50 versicolor rows, sorted sepal length numerically, and paged to rows 11–20. Plotly zoom narrowed the axes from A–T to F–O, reset restored the full range, and a tile tooltip displayed `x: K`, `y: var11`, `Value: 2.71`. No browser warning/error logs were observed. The exported widgets remained usable after their R sessions had stopped.
+
+## Final regression results
+
+| Check | Result |
+| --- | --- |
+| Full extension suite, VS Code 1.140.0, tmux enabled | 396 passed |
+| arf runtime and library suite | 30 passed |
+| Standard graphics runtime and library suite | 21 passed, 9 optional/JGD cases skipped |
+| Public examples across three configurations | 30 passed |
+| Bundled sess package | 430 checks passed |
+| TypeScript, production build, and R lint | Passed |
+| TypeScript lint | No errors; 70 existing warnings |
+
+One initial full-suite renv install exceeded the 20-second cell deadline. The isolated test and full rerun both completed in about three seconds; package-install checks now allow 60 seconds for slower runners. No fixture packages were installed in the user's library.
+
+## Limits
 
 JGD's metrics request does not include DPI. The server uses the default 96 DPI until the first frame reports the device resolution, then tracks it per connection. Custom devices requesting metrics before their first frame remain subject to that protocol limitation. This pass did not exercise actual Remote SSH transport, network-dependent widgets, or every R graphics extension.
 

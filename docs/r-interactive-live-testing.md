@@ -107,7 +107,7 @@ The subsequent [public-example and library validation](r-interactive-public-exam
 | Earlier Interactive-only verification on 1.110.0 after trace/lint adjustments | 84 passed |
 | Full extension suite, VS Code 1.119.0, tmux enabled | 348 passed before the final new-session focus adjustment |
 | arf runtime and library matrix, including existing arf adoption and renv | 30 passed |
-| Standard-graphics runtime matrix | 19 passed; 5 JGD-only cases skipped |
+| Standard-graphics runtime and library matrix | 21 passed; 9 optional/JGD cases skipped |
 | Fresh private sess package, full tinytest suite | 430 checks passed |
 | Browser renderer, dark / narrow light / high contrast | 46 assertions passed in each layout |
 | TypeScript and production bundles | Passed |
