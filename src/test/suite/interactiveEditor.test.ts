@@ -1004,7 +1004,7 @@ cat("\n")`;
             const htmlFile = path.join(root, 'numeric.html'); saved.resolves(vscode.Uri.file(htmlFile));
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
             const html = fs.readFileSync(htmlFile, 'utf8');
-            assert.ok(html.includes('<td>1417.391</td>') && html.includes('<td>1400.000</td>'));
+            assert.ok(html.includes('<td style="text-align:right">1417.391</td>') && html.includes('<td style="text-align:right">1400.000</td>'));
             const notebookFile = path.join(root, 'numeric.rnb'); saved.resolves(vscode.Uri.file(notebookFile));
             format.resolves({ label: 'R Interactive notebook', format: 'rnb' } as vscode.QuickPickItem);
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
@@ -1016,9 +1016,102 @@ cat("\n")`;
             assert.deepStrictEqual(table.formattedColumns, { '1': ['1417.391', '1552.381', '1400.000'] });
             assert.ok(Math.abs((table.rows as Record<string, number>[])[0]['1'] - 326 / 0.23) < 1e-10);
             assert.strictEqual(table.connected, false);
+            assert.match(String(table.printedText), /price_per_carat/);
+            const plain = report.cells.at(-1)?.outputs?.flatMap(output => output.items).find(item => item.mime === 'text/plain');
+            assert.ok(plain); assert.strictEqual(Buffer.from(plain.data).toString(), table.printedText);
+            const context = bundleContext();
+            const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+                rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
+            };
+            const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
+            const before = notebook.cellCount;
+            await manager.rendererMessage(editor, { displayId: table.displayId, generation: table.generation, action: 'tableView', mode: 'text' });
+            assert.strictEqual(notebook.cellCount, before, 'Selecting a view must not execute another cell');
+            saved.resolves(vscode.Uri.file(htmlFile));
+            format.resolves({ label: 'HTML report', format: 'html' } as vscode.QuickPickItem);
+            await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
+            assert.ok(fs.readFileSync(htmlFile, 'utf8').includes(`<pre>${String(table.printedText)}</pre>`));
+            saved.resolves(vscode.Uri.file(notebookFile));
+            format.resolves({ label: 'R Interactive notebook', format: 'rnb' } as vscode.QuickPickItem);
+            await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
+            const updated = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(notebookFile));
+            const custom = updated.cells.at(-1)?.outputs?.flatMap(output => output.items).find(item => item.mime === DISPLAY_MIME); assert.ok(custom);
+            assert.strictEqual((JSON.parse(Buffer.from(custom.data).toString()) as Record<string, unknown>).tableView, 'text');
             sinon.assert.notCalled(errors);
         } finally { errors.restore(); saved.restore(); format.restore(); }
     });
+    test('groups two four-panel plot pages and exports every page without transient URLs', async function () {
+        if (!manifests[0].capabilities.jgd) { this.skip(); }
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        const saved = sinon.stub(vscode.window, 'showSaveDialog');
+        const format = sinon.stub(vscode.window, 'showQuickPick');
+        try {
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+            const index = notebook.cellCount;
+            await vscode.commands.executeCommand('r.runSelection', `par(mfrow=c(2,2), mar=c(3,3,2,2))
+for (i in 1:8) { plot(rnorm(100)); title(main=paste("Plot", i)) }
+par(mfrow=c(1,1))`);
+            const displays = (): Record<string, unknown>[] => notebook.cellAt(index).outputs.flatMap(output => output.items)
+                .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>);
+            await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true &&
+                displays().some(display => Array.isArray(display.pages) && display.pages.length === 2));
+            assert.strictEqual(displays().filter(display => display.kind === 'plot').length, 1);
+            const gallery = displays().find(display => display.kind === 'plot'); assert.ok(gallery);
+            const pages = gallery.pages as Record<string, unknown>[];
+            const context = bundleContext();
+            const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+                rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
+            };
+            const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
+            const message = { displayId: gallery.displayId, generation: gallery.generation, action: 'plotPage', selectedPlot: pages[0].displayId };
+            await manager.rendererMessage(editor, message);
+            const preferenceKey = `${manifests[0].id}:${String(gallery.generation)}:${String(gallery.displayId)}`;
+            const preferences = (): Map<string, { selectedPlot: string }> => new Map(context.workspaceState.get('r.interactive.outputViews', []));
+            assert.strictEqual(preferences().get(preferenceKey)?.selectedPlot, pages[0].displayId);
+            await manager.rendererMessage(editor, { ...message, selectedPlot: 'another-cells-plot' });
+            assert.strictEqual(preferences().get(preferenceKey)?.selectedPlot, pages[0].displayId, 'A plot preference cannot target another cell');
+            const executionId: unknown = notebook.cellAt(index).metadata.rExecutionId;
+            await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+            const restored = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id); assert.ok(restored);
+            const restoredCell = (): vscode.NotebookCell | undefined => restored.getCells().find(cell => cell.metadata.rExecutionId === executionId);
+            await until(() => !!restoredCell()?.outputs.some(output => output.items.some(item => item.mime === DISPLAY_MIME)));
+            const restoredGallery = restoredCell()?.outputs.flatMap(output => output.items).find(item => item.mime === DISPLAY_MIME); assert.ok(restoredGallery);
+            assert.strictEqual((JSON.parse(Buffer.from(restoredGallery.data).toString()) as Record<string, unknown>).selectedPlot, pages[0].displayId);
+            for (const extension of ['rnb', 'ipynb', 'html']) {
+                const file = path.join(root, `gallery.${extension}`); saved.resolves(vscode.Uri.file(file));
+                format.resolves({ label: extension, format: extension } as vscode.QuickPickItem);
+                await vscode.commands.executeCommand('r.interactive.export', restored.uri);
+                if (extension === 'rnb') {
+                    const report = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(file));
+                    const gallery = report.cells.at(-1)?.outputs?.flatMap(output => output.items)
+                        .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>).find(item => item.kind === 'plot');
+                    assert.ok(gallery); assert.strictEqual(gallery.connected, false);
+                    assert.strictEqual(gallery.selectedPlot, message.selectedPlot);
+                    const pages = gallery.pages as Record<string, unknown>[]; assert.strictEqual(pages.length, 2);
+                    for (const [pageIndex, page] of pages.entries()) {
+                        assert.strictEqual(page.url, undefined); assert.strictEqual(page.connected, false);
+                        const svg = Buffer.from(String(page.svgData), 'base64').toString();
+                        for (let panel = 1; panel <= 4; panel++) { assert.ok(svg.includes(`Plot ${pageIndex * 4 + panel}`)); }
+                    }
+                } else if (extension === 'ipynb') {
+                    const report = JSON.parse(fs.readFileSync(file, 'utf8')) as { cells: { outputs: { data?: Record<string, string> }[] }[] };
+                    const last = report.cells.at(-1); assert.ok(last);
+                    const plots = last.outputs.filter(output => output.data?.['image/svg+xml']);
+                    assert.strictEqual(plots.length, 2);
+                    assert.match(String(plots[0].data?.['image/svg+xml']), /Plot 1/);
+                    assert.match(String(plots[1].data?.['image/svg+xml']), /Plot 8/);
+                } else {
+                    const html = fs.readFileSync(file, 'utf8').split('<section>').at(-1) ?? '';
+                    assert.strictEqual((html.match(/<img /g) ?? []).length, 2);
+                }
+            }
+            sinon.assert.notCalled(errors);
+        } finally { errors.restore(); saved.restore(); format.restore(); }
+    });
+
     test('exports large compressed plots to portable notebooks and ordinary SVG report assets', async function () {
         if (!manifests[0].capabilities.jgd) { this.skip(); }
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
@@ -1236,6 +1329,9 @@ cat("\n")`;
         try {
             await vscode.commands.executeCommand('r.interactive.stop', notebook.uri);
             await until(() => notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'stopped'));
+            const displays = (): Record<string, unknown>[] => notebook.getCells().flatMap(cell => cell.outputs).flatMap(output => output.items)
+                .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>);
+            await until(() => displays().length > 0 && displays().every(data => data.running === false));
             const ended = manifests[0].ended;
             assert.ok(typeof ended === 'number' && ended >= manifests[0].created);
             assert.strictEqual((JSON.parse(fs.readFileSync(path.join(root, manifests[0].id, 'manifest.json'), 'utf8')) as SessionManifest).ended, ended);

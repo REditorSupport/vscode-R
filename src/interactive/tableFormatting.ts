@@ -1,3 +1,11 @@
+export function tableColumnAlignment(data: Record<string, unknown>, column: { field: string; type?: unknown }): 'left' | 'right' {
+    const types = Array.isArray(column.type) ? column.type : [column.type];
+    if (types.some(type => type === 'numericColumn' || type === 'bigintColumn')) { return 'right'; }
+    if (column.type !== undefined) { return 'left'; }
+    const values = ((data.rows ?? []) as Record<string, unknown>[]).map(row => row[column.field]).filter(value => value !== null && value !== undefined);
+    return values.length && values.every(value => typeof value === 'number') ? 'right' : 'left';
+}
+
 /** Display labels are separate from the numeric values used by the data viewer. */
 export function tableDisplayValue(data: Record<string, unknown>, row: Record<string, unknown>, field: string, rowIndex: number): string {
     const columns = data.formattedColumns as Record<string, unknown> | undefined;

@@ -4,6 +4,7 @@ const paths = {
     previous: 'M10 3 5 8l5 5',
     next: 'm6 3 5 5-5 5',
     table: 'M2 2h12v12H2ZM2 6h12M6 2v12',
+    text: 'M2 3h12M2 6h9M2 9h12M2 12h9',
     open: 'M9 2h5v5M14 2 7 9M6 3H2v11h11v-4',
     save: 'M8 2v8M4 6l4 4 4-4M2 10v4h12v-4',
     fit: 'M2 2v12M14 2v12M3 8h10M6 5 3 8l3 3M10 5l3 3-3 3',
@@ -29,6 +30,7 @@ export function toolbarButton(label: string, glyph: Icon, action: () => void, te
 }
 
 export const toolbarStyle = `
+.r-interactive-output [hidden]{display:none!important}
 .r-interactive-output .r-interactive-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:6px;padding:2px 0;font-size:12px}
 .r-interactive-output button{font:inherit}
 .r-interactive-output .r-interactive-button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:28px;min-height:28px;padding:3px 6px;color:inherit;background:transparent;border:1px solid transparent;border-radius:4px;cursor:pointer}

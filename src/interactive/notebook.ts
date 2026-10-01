@@ -18,20 +18,32 @@ export class InteractiveSerializer implements vscode.NotebookSerializer {
             source: cell.value, metadata: {},
             ...(cell.kind === vscode.NotebookCellKind.Code ? {
                 execution_count: cell.executionSummary?.executionOrder ?? null,
-                outputs: (cell.outputs ?? []).map(output => {
+                outputs: (cell.outputs ?? []).flatMap((output): Record<string, unknown>[] => {
                     const stream = output.items.find(item => /vnd\.code\.notebook\.(stdout|stderr)$/.test(item.mime));
-                    if (stream) { return { output_type: 'stream', name: stream.mime.endsWith('stderr') ? 'stderr' : 'stdout', text: Buffer.from(stream.data).toString() }; }
+                    if (stream) { return [{ output_type: 'stream', name: stream.mime.endsWith('stderr') ? 'stderr' : 'stdout', text: Buffer.from(stream.data).toString() }]; }
                     const error = output.items.find(item => item.mime === 'application/vnd.code.notebook.error');
                     if (error) {
                         const value = JSON.parse(Buffer.from(error.data).toString()) as { name: string; message: string; stack?: string };
-                        return { output_type: 'error', ename: value.name, evalue: value.message, traceback: (value.stack ?? '').split('\n') };
+                        return [{ output_type: 'error', ename: value.name, evalue: value.message, traceback: (value.stack ?? '').split('\n') }];
+                    }
+                    const custom = output.items.find(item => item.mime === DISPLAY_MIME);
+                    const display = custom && JSON.parse(Buffer.from(custom.data).toString()) as Record<string, unknown> | undefined;
+                    if (display?.kind === 'plot' && Array.isArray(display.pages)) {
+                        return (display.pages as Record<string, unknown>[]).map((page, index) => {
+                            const mime: Record<string, string> = { 'text/plain': `R plot ${index + 1} of ${(display.pages as unknown[]).length}` };
+                            if (typeof page.svgData === 'string') { mime['image/svg+xml'] = Buffer.from(page.svgData, 'base64').toString('utf8'); }
+                            else if (typeof page.imageData === 'string' && typeof page.mime === 'string') {
+                                mime[page.mime] = page.mime === 'image/svg+xml' ? Buffer.from(page.imageData, 'base64').toString('utf8') : page.imageData;
+                            }
+                            return { output_type: 'display_data', data: mime, metadata: {} };
+                        });
                     }
                     const mime: Record<string, string> = {};
                     for (const item of output.items) {
                         if (item.mime === DISPLAY_MIME) { continue; }
                         mime[item.mime] = Buffer.from(item.data).toString(/^image\/(png|jpeg|gif)$/.test(item.mime) ? 'base64' : 'utf8');
                     }
-                    return { output_type: 'display_data', data: mime, metadata: {} };
+                    return [{ output_type: 'display_data', data: mime, metadata: {} }];
                 }),
             } : {}),
         }));
@@ -64,8 +76,9 @@ export class InteractiveSerializer implements vscode.NotebookSerializer {
                     if (item.mime === DISPLAY_MIME) {
                         const display = JSON.parse(Buffer.from(bytes).toString('utf8')) as Record<string, unknown>;
                         // Forwarding URLs contain transient credentials. Retain asset identities only.
-                        delete display.url;
-                        display.connected = false;
+                        for (const page of [display, ...(Array.isArray(display.pages) ? display.pages as Record<string, unknown>[] : [])]) {
+                            delete page.url; page.connected = false;
+                        }
                         bytes = Buffer.from(JSON.stringify(display));
                     }
                     return { mime: item.mime, data: Buffer.from(bytes).toString('base64') };

@@ -16,7 +16,7 @@ import * as util from '../util';
 import { escapeXml } from './plotSvg';
 import { ensureWorkspaceViewer } from '../extension';
 import { tablePage } from './tablePaging';
-import { tableDisplayValue } from './tableFormatting';
+import { tableColumnAlignment, tableDisplayValue } from './tableFormatting';
 import { HistoryPage, searchHistory } from './history';
 import { readExecutionRecords, readPreviousJournal } from './journal';
 import { sessionAge, sessionPresentation } from './sessionPresentation';
@@ -64,6 +64,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private closed = false;
     private clientId: string;
     private savedConnections: Map<string, SavedConnection>;
+    private outputViews: Map<string, { tableView?: string; selectedPlot?: string }>;
     private status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 20);
 
     constructor(private context: vscode.ExtensionContext) {
@@ -74,6 +75,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const saved = context.workspaceState.get<SavedConnection[]>('r.interactive.connections') ??
             context.workspaceState.get<string[]>('r.interactive.sessions', []).map(id => ({ id }));
         this.savedConnections = new Map(saved.map(connection => [connection.id, connection]));
+        this.outputViews = new Map(context.workspaceState.get('r.interactive.outputViews', []));
         const command = (name: string, handler: (...args: unknown[]) => unknown): void => {
             this.disposables.push(vscode.commands.registerCommand(name, (...args: unknown[]) =>
                 Promise.resolve().then(() => handler(...args)).catch((error: unknown) => this.report(error))));
@@ -170,6 +172,15 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 if (view) { this.disposeView(view); }
             }),
             vscode.workspace.onDidChangeConfiguration(event => {
+                if (event.affectsConfiguration('r.interactive.tableView')) {
+                    for (const view of this.views.values()) {
+                        view.chain = view.chain.then(async () => {
+                            for (const cell of this.transcriptCells(view)) {
+                                if (cell.outputs.some(output => output.data.kind === 'table')) { await this.render(view, cell.record.id); }
+                            }
+                        }).catch(error => this.report(error));
+                    }
+                }
                 if (!event.affectsConfiguration('r.interactive.maxAssetBytes')) { return; }
                 const limitBytes = util.config().get<number>('interactive.maxAssetBytes', DEFAULT_MAX_ASSET_BYTES);
                 for (const view of this.views.values()) {
@@ -882,7 +893,12 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             view.client.manifest.ended = typeof event.data.ended === 'number' ? event.data.ended : undefined;
             view.target.pid = String(event.data.rPid ?? ''); view.target.rVer = String(event.data.rVersion ?? '');
             this.refresh();
-            if (event.data.status === 'exited' && !view.restarting) { await this.sessionNotice(view, 'stopped'); }
+            if (event.data.status === 'exited' && !view.restarting) {
+                await this.sessionNotice(view, 'stopped');
+                for (const cell of this.transcriptCells(view)) {
+                    if (cell.outputs.some(output => output.type === 'display')) { await this.render(view, cell.record.id); }
+                }
+            }
         } else if (event.type === 'session' && typeof event.data.label === 'string') {
             view.client.manifest.label = event.data.label;
             this.refresh();
@@ -960,6 +976,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private async outputs(view: InteractiveView, cell: TranscriptCell, portable = false): Promise<vscode.NotebookCellOutput[]> {
         const outputs: vscode.NotebookCellOutput[] = [];
+        const plots: { output: vscode.NotebookCellOutput; data: Record<string, unknown> }[] = [];
         for (const output of cell.outputs) {
             const data = output.data;
             let items: vscode.NotebookCellOutputItem[];
@@ -977,22 +994,21 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                     items = [vscode.NotebookCellOutputItem.stderr(`${String(data.kind)}: ${String(data.message)}\n`)];
                 }
             } else if (output.type === 'truncated') { items = [vscode.NotebookCellOutputItem.text(String(data.message))]; }
-            else if (data.kind === 'image' && typeof data.asset === 'string') {
-                items = [new vscode.NotebookCellOutputItem(readAsset(path.join(this.root, view.client.manifest.id, 'assets'), data.asset), String(data.mime))];
-            } else if (data.kind === 'image') {
-                items = [new vscode.NotebookCellOutputItem(Buffer.from(String(data.data), 'base64'), String(data.mime))];
-            } else if (data.kind === 'mime' && data.mime !== 'text/html') {
+            else if (data.kind === 'mime' && data.mime !== 'text/html') {
                 items = [vscode.NotebookCellOutputItem.text(String(data.text), String(data.mime))];
             } else {
                 const display: Record<string, unknown> = { ...data, generation: cell.generation,
-                    archived: cell.generation !== view.model.generation, connected: view.client.connected };
+                    archived: cell.generation !== view.model.generation, connected: view.client.connected,
+                    running: !['exited', 'stopping'].includes(view.client.manifest.status) };
+                const preference = this.outputViews.get(`${view.client.manifest.id}:${cell.generation}:${String(data.displayId)}`);
+                if (data.kind === 'table') { display.tableView = preference?.tableView ?? util.config().get('interactive.tableView', 'table'); }
                 if (data.svg || data.asset) { display.url = view.base + String(data.svg ?? data.asset).split('/').map(encodeURIComponent).join('/'); }
                 else if (typeof data.url === 'string' && /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(data.url)) {
                     display.url = (await vscode.env.asExternalUri(vscode.Uri.parse(data.url))).toString(true);
                 }
                 if (data.kind === 'mime' && data.mime === 'text/html') { display.kind = 'htmlText'; }
                 items = [vscode.NotebookCellOutputItem.json(display, DISPLAY_MIME),
-                    vscode.NotebookCellOutputItem.text(data.kind === 'table' ? `${String(data.totalRows)} rows\n${JSON.stringify(data.rows, null, 2)}` : `R ${String(data.kind)} output`)];
+                    vscode.NotebookCellOutputItem.text(data.kind === 'table' ? String(data.printedText ?? `${String(data.totalRows)} rows\n${JSON.stringify(data.rows, null, 2)}`) : `R ${String(data.kind)} output`)];
                 if (typeof data.svg === 'string') {
                     try {
                         const svg = portable ? readAsset(path.join(this.root, view.client.manifest.id, 'assets'), data.svg).toString('base64')
@@ -1006,8 +1022,36 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                         // The live renderer can load a larger SVG directly from its asset URL.
                     }
                 }
+                if (data.kind === 'image') {
+                    const bytes = typeof data.asset === 'string'
+                        ? readAsset(path.join(this.root, view.client.manifest.id, 'assets'), data.asset)
+                        : Buffer.from(String(data.data), 'base64');
+                    display.kind = 'plot'; display.imageData = bytes.toString('base64');
+                    display.resizable = false;
+                    items[0] = vscode.NotebookCellOutputItem.json(display, DISPLAY_MIME);
+                    items.push(new vscode.NotebookCellOutputItem(bytes, String(data.mime)));
+                }
+                if (data.kind === 'plot' || data.kind === 'image') {
+                    const plotOutput = new vscode.NotebookCellOutput(items, { rDisplayId: data.displayId });
+                    plots.push({ output: plotOutput, data: display }); outputs.push(plotOutput); continue;
+                }
             }
             outputs.push(new vscode.NotebookCellOutput(items, { rDisplayId: data.displayId }));
+        }
+        if (plots.length > 1) {
+            const first = plots[0];
+            const key = `${view.client.manifest.id}:${cell.generation}:${String(first.data.displayId)}`;
+            const gallery = { kind: 'plot', displayId: first.data.displayId, generation: cell.generation,
+                connected: view.client.connected, archived: cell.generation !== view.model.generation,
+                running: !['exited', 'stopping'].includes(view.client.manifest.status),
+                pages: plots.map(plot => plot.data), selectedPlot: this.outputViews.get(key)?.selectedPlot };
+            // Keep the gallery at the first plot's position. Other output retains
+            // its order, and the journal keeps each page as an independent asset.
+            const grouped = new vscode.NotebookCellOutput([vscode.NotebookCellOutputItem.json(gallery, DISPLAY_MIME),
+                vscode.NotebookCellOutputItem.text(`${plots.length} R plot pages`),
+                ...first.output.items.filter(item => item.mime.startsWith('image/'))], first.output.metadata);
+            const plotOutputs = new Set(plots.map(plot => plot.output));
+            return outputs.flatMap(output => output === first.output ? [grouped] : plotOutputs.has(output) ? [] : [output]);
         }
         return outputs;
     }
@@ -1074,9 +1118,22 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const cells = this.transcriptCells(view).filter(cell => message.generation ? cell.generation === message.generation : cell.generation === view.model.generation);
         const owner = cells.find(cell => cell.outputs.some(item => item.type === 'display' && item.data.displayId === message.displayId));
         const output = owner?.outputs.find(item => item.type === 'display' && item.data.displayId === message.displayId);
-        if (!output) { return; }
+        if (!owner || !output) { return; }
         const data = output.data;
         try {
+            if ((message.action === 'tableView' && data.kind === 'table' && ['table', 'text'].includes(String(message.mode))) ||
+                (message.action === 'plotPage' && ['plot', 'image'].includes(String(data.kind)) && owner?.outputs.some(item => item.type === 'display' &&
+                    ['plot', 'image'].includes(String(item.data.kind)) && item.data.displayId === message.selectedPlot))) {
+                const key = `${view.client.manifest.id}:${owner.generation}:${String(data.displayId)}`;
+                const preference = message.action === 'tableView' ? { tableView: String(message.mode) } : { selectedPlot: String(message.selectedPlot) };
+                this.outputViews.delete(key); this.outputViews.set(key, preference);
+                while (this.outputViews.size > 1000) { this.outputViews.delete(this.outputViews.keys().next().value as string); }
+                await this.context.workspaceState.update('r.interactive.outputViews', [...this.outputViews]);
+                return;
+            }
+            if (['table', 'page', 'resize'].includes(String(message.action)) && ['exited', 'stopping'].includes(view.client.manifest.status)) {
+                throw new Error('R has stopped. Start a new session and run the code again to use live controls.');
+            }
             if (['table', 'page', 'resize'].includes(String(message.action)) && (view.restarting || owner?.generation !== view.model.generation)) {
                 throw new Error('This output belongs to a previous R process. Run its code again to use live controls.');
             }
@@ -1095,19 +1152,22 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                     if (data.kind !== 'plot') { return; }
                     await view.client.request('resize', { device: data.device, plot: data.plot, width: message.width, height: message.height }); break;
                 case 'saveAs': {
-                    if (data.kind !== 'plot') { return; }
+                    if (!['plot', 'image'].includes(String(data.kind))) { return; }
                     const formats = [
-                        { label: 'SVG (.svg)', description: 'Scalable vector image', format: 'svg' },
+                        ...(data.kind === 'plot' || data.mime === 'image/svg+xml' ? [{ label: 'SVG (.svg)', description: 'Scalable vector image', format: 'svg' }] : []),
                         ...(message.pngReady === true ? [{ label: 'PNG (.png)', description: 'Raster image', format: 'png' }] : []),
                     ];
                     result = (await vscode.window.showQuickPick(formats, { title: 'Save R plot as',
                         placeHolder: 'Choose an image format' }))?.format; break;
                 }
                 case 'save': case 'savePng': {
-                    if (data.kind !== 'plot') { return; }
+                    if (!['plot', 'image'].includes(String(data.kind))) { return; }
                     const png = message.action === 'savePng';
+                    if (!png && data.kind === 'image' && data.mime !== 'image/svg+xml') { return; }
+                    const pages = owner?.outputs.filter(item => item.type === 'display' && ['plot', 'image'].includes(String(item.data.kind))) ?? [];
+                    const pageSuffix = pages.length > 1 ? `-${pages.indexOf(output) + 1}` : '';
                     const file = await vscode.window.showSaveDialog({
-                        defaultUri: this.defaultExportUri(view, `plot-${owner?.record.order ?? 1}.${png ? 'png' : 'svg'}`),
+                        defaultUri: this.defaultExportUri(view, `plot-${owner?.record.order ?? 1}${pageSuffix}.${png ? 'png' : 'svg'}`),
                         filters: png ? { PNG: ['png'] } : { SVG: ['svg'] },
                     });
                     if (!file) { return; }
@@ -1115,7 +1175,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                     if (png) {
                         if (typeof message.image !== 'string' || !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(message.image) || message.image.length > 32 * 1024 * 1024) { throw new Error('Invalid PNG export'); }
                         bytes = Buffer.from(message.image.slice('data:image/png;base64,'.length), 'base64');
-                    } else { bytes = readAsset(path.join(this.root, view.client.manifest.id, 'assets'), String(data.svg)); }
+                    } else if (data.svg || data.asset) { bytes = readAsset(path.join(this.root, view.client.manifest.id, 'assets'), String(data.svg ?? data.asset)); }
+                    else { bytes = Buffer.from(String(data.data), 'base64'); }
                     await vscode.workspace.fs.writeFile(file, bytes); break;
                 }
                 case 'plot': case 'open': {
@@ -1396,9 +1457,13 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                         const url = `${encodeURIComponent(path.basename(assetFolder))}/${exportedAssetName(String(data.svg ?? data.asset))}`;
                         sections.push(data.svg || data.kind === 'image' ? `<img src="${escapeXml(url)}" style="max-width:100%">` : `<iframe sandbox="allow-scripts" src="${escapeXml(url)}" style="width:100%;height:500px;border:0"></iframe>`);
                     } else if (data.kind === 'table') {
-                        const columns = data.columns as { field: string; headerName: string }[];
+                        const preference = this.outputViews.get(`${view.client.manifest.id}:${cell.generation}:${String(data.displayId)}`);
+                        if ((preference?.tableView ?? util.config().get('interactive.tableView', 'table')) === 'text' && typeof data.printedText === 'string') {
+                            sections.push(`<pre>${escapeXml(data.printedText)}</pre>`); continue;
+                        }
+                        const columns = data.columns as { field: string; headerName: string; type?: unknown }[];
                         const rows = data.rows as Record<string, unknown>[];
-                        sections.push(`<table><tr>${columns.map(column => `<th>${escapeXml(column.headerName)}</th>`).join('')}</tr>${rows.map((row, rowIndex) => `<tr>${columns.map(column => `<td>${escapeXml(tableDisplayValue(data, row, column.field, rowIndex))}</td>`).join('')}</tr>`).join('')}</table><p>${String(data.totalRows)} rows (preview)</p>`);
+                        sections.push(`<table><tr>${columns.map(column => `<th style="text-align:${tableColumnAlignment(data, column)}">${escapeXml(column.headerName)}</th>`).join('')}</tr>${rows.map((row, rowIndex) => `<tr>${columns.map(column => `<td style="text-align:${tableColumnAlignment(data, column)}">${escapeXml(tableDisplayValue(data, row, column.field, rowIndex))}</td>`).join('')}</tr>`).join('')}</table><p>${String(data.totalRows)} rows (preview)</p>`);
                     } else if (data.kind === 'mime' && data.mime === 'text/html') {
                         sections.push(`<iframe sandbox="allow-scripts" srcdoc="${escapeXml(String(data.text))}" style="width:100%;height:500px;border:0"></iframe>`);
                     } else { sections.push(`<pre>${escapeXml(data.text ?? data.message ?? JSON.stringify(data, null, 2))}</pre>`); }

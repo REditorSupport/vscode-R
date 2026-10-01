@@ -2357,6 +2357,13 @@
           "default": "auto",
           "description": "Interactive graphics provider. JGD uses a separate systemfonts R process for font metrics while the editor is disconnected."
         },
+        "r.interactive.tableView": {
+          "type": "string",
+          "enum": ["table", "text"],
+          "enumDescriptions": ["Show a paged table preview.", "Show the table's ordinary R printout."],
+          "default": "table",
+          "description": "Default presentation for Interactive table outputs. Each output can switch between table and printed views without rerunning R. Printed snapshots require a session started with the current extension build."
+        },
         "r.interactive.restore": {
           "type": "boolean",
           "default": true,

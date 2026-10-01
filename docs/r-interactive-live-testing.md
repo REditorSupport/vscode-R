@@ -78,6 +78,18 @@ Regression tests inspect the clipping ancestors of text, since merely finding ti
 
 The full VS Code **1.140.0** suite passed **389 tests** with tmux enabled. The separate arf run passed **26 runtime tests** plus **3 SVG clipping tests**. TypeScript and lint pass, with the same 70 existing lint warnings.
 
+## Paged plot and printed-table follow-up
+
+The eight-plot `mfrow = c(2, 2)` example now produces one viewer containing two pages, with one toolbar. The gallery keeps the selected page across updates and reconnection; Open, Save and Fit target that page. RNB exports retain offline pagination and embedded assets without forwarding credentials. IPYNB and HTML exports retain both pages. The journal still stores each plot independently.
+
+Table headers and values now share numeric/text alignment. Each table can switch between its paged preview and the original class-specific R printout, and `r.interactive.tableView` sets the default. The snapshot uses the actual printer and print options at execution time, is capped at 256 KiB, and stays usable after mutation, stop or restart. A failed custom printer leaves the table preview available. Tests cover UTF-8 truncation, silent printers, sink cleanup, and old snapshots without text.
+
+Live testing in VS Code **1.140.0** used a fresh profile, workspace and plain-R session. Sending the user's two examples together produced one table and one two-page plot gallery. Both pages had their four panel titles and axes. Switching to Text showed data.table's `<int>`, `<char>`, and `<num>` labels. Saving page 1 produced an SVG containing exactly Plot 1–4 and a suggested filename ending in `-1-1.svg`. A real **Developer: Reload Window** retained R's PID, Text view, and the selected first page. Changing the default to text affected a newly executed table; changing it back updated that table while preserving the earlier explicit Text choice. Plot navigation and table switching remained available after stopping the disposable R process.
+
+This pass also fixed cached-image save readiness and toolbar styles overriding hidden paging controls. It found and fixed live table/resize controls remaining enabled after R stopped: stop now refreshes output availability, while local view switching, pagination, and plot export remain usable.
+
+Validation: **398 full extension tests**, **31 arf runtime/library tests**, **22 standard-graphics tests** (9 JGD/optional skips), **438 sess checks**, and **70 renderer assertions** in dark, narrow light, and high-contrast layouts. TypeScript and R lint pass with the same 70 existing TypeScript warnings. Printed snapshots require a newly started session; plot grouping and alignment also apply to retained output from older sessions.
+
 ## Native UI coverage
 
 The subsequent [public-example and library validation](r-interactive-public-examples.md) exercises normal and renv package installation, ten public analysis/plotting examples across three runtime configurations, and sandboxed DT/Plotly browser interaction. It fixes private-library precedence, arf startup parsing with renv banners, stretched SVG rasters, and point-to-pixel font sizing. The full local suite now passes **396 tests** on VS Code **1.140.0** with tmux enabled, plus **30 tests** in the combined arf runtime/library suite. One initial renv install exceeded the 20-second cell deadline; the isolated run and full rerun completed in about three seconds, and installation checks now allow 60 seconds for slower runners.

@@ -173,6 +173,29 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         const next = await submit('kept'); await finished(next); assert.match(text(next), /17/);
     });
 
+    test('retains class-specific R printing beside rich tables without rerunning code', async function () {
+        const probe = await run('Rscript', ['-e', 'cat(requireNamespace("data.table", quietly=TRUE))']);
+        if (!probe.stdout.includes('TRUE')) { this.skip(); }
+        const id = await submit(`library(data.table)
+options(digits=4)
+dt <- data.table(x=1:5, y=letters[1:5], z=c(1/3, pi, 0.00123, 12345, NA_real_))
+expected_print <- paste0(paste(capture.output(print(dt)), collapse="\\n"), "\\n")
+dt`);
+        assert.strictEqual((await finished(id)).state, 'success');
+        const table = events.find(event => event.executionId === id && event.data.kind === 'table');
+        assert.ok(table);
+        const printed = String(table.data.printedText);
+        assert.match(printed, /<int>.*<char>.*<num>/);
+        assert.ok(!text(id).includes('<int>'), 'The snapshot must not leak a second table into stdout');
+        const expected = await submit('cat(expected_print)'); await finished(expected);
+        assert.strictEqual(printed, text(expected));
+        const explicit = await submit('print(dt)'); await finished(explicit);
+        assert.strictEqual(text(explicit), printed);
+        assert.ok(!events.some(event => event.executionId === explicit && event.data.kind === 'table'));
+        await finished(await submit('dt[, z := 99]; options(digits=7)'));
+        assert.strictEqual((await client.snapshot()).events.find(event => event.seq === table.seq)?.data.printedText, printed);
+    });
+
     test('retains rich tables, plot assets, and structured errors', async () => {
         const id = await submit('plot(1:3); data.frame(x=1:3, label=c("a", "b", "c")); stop("expected error")');
         assert.strictEqual((await finished(id)).state, 'error');

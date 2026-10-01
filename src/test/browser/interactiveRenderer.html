@@ -40,13 +40,14 @@ const render = (id, data, element) => renderer.renderOutputItem({ id, json:() =>
 const reply = (request, extra) => receive({ ...request, ...extra });
 const control = (parent, label) => parent.querySelector(`button[aria-label="${label}"]`);
 const loaded = img => new Promise((resolve,reject) => {
+ if (img.complete && img.naturalWidth) { resolve(); return; }
  const timeout = setTimeout(()=>reject(new Error('Plot load timed out')),5000);
  img.addEventListener('load',()=>{ clearTimeout(timeout); resolve(); },{ once:true });
  img.addEventListener('error',()=>{ clearTimeout(timeout); reject(new Error('Plot load failed')); },{ once:true });
 });
 try {
  const numeric = document.querySelector('#numeric');
- const numericData = { kind:'table', columns:[{ field:'0',headerName:'Row' },{ field:'1',headerName:'price_per_carat' },{ field:'2',headerName:'Integer64 ID' }],
+ const numericData = { kind:'table', columns:[{ field:'0',headerName:'Row' },{ field:'1',headerName:'price_per_carat' },{ field:'2',headerName:'Integer64 ID',type:'bigintColumn' }],
    rows:[{ '0':1,'1':326/0.23,'2':'9007199254740993' },{ '0':2,'1':326/0.21,'2':'9007199254740994' },{ '0':3,'1':1400,'2':'9007199254740995' }],
    formattedColumns:{ '1':['1417.391','1552.381','1400.000'] },totalRows:3 };
  const numericBefore = JSON.stringify(numericData);
@@ -55,6 +56,7 @@ try {
  check(cell(0,1).textContent==='1417.391' && cell(2,1).textContent==='1400.000','R numeric labels must retain column-wide decimals');
  check(cell(0,1).title===String(326/0.23),'Rounded numbers must expose full precision on hover');
  check(cell(0,2).textContent==='9007199254740993','Integer64 text must remain exact');
+ check([...numeric.querySelectorAll('th')].every(th=>th.style.textAlign==='right') && [...numeric.querySelectorAll('td')].every(td=>td.style.textAlign==='right'),'Numeric and bigint headers must align with their values');
  check(JSON.stringify(numericData)===numericBefore,'Rendering must not mutate the source values');
  render('numeric',{ ...numericData,formattedColumns:undefined,connected:false },numeric);
  check(cell(0,1).textContent==='1417.391' && cell(1,1).textContent==='1552.381','Saved legacy output must use compact default precision');
@@ -73,6 +75,29 @@ try {
  check(cell(0,1).textContent==='9.876543','Legacy page replies must clear previous labels and use the fallback');
  render('numeric',numericData,numeric);
  render('table',data,table);
+ check(table.querySelectorAll('th')[1].style.textAlign==='left' && table.querySelectorAll('td')[1].style.textAlign==='left','Text headers must align with text values');
+ const printedData = { ...data,displayId:'printed-table',printedText:'       x      y          z\n   <int> <char>      <num>\n1:     1      a  0.1234567\n' };
+ const printedHost = document.createElement('div'); document.body.append(printedHost);
+ render('printed',printedData,printedHost);
+ control(printedHost,'Show R printed output').click();
+ check(printedHost.querySelector('[data-printed]').textContent===printedData.printedText && !printedHost.querySelector('[data-printed]').hidden,'Text view must preserve exact whitespace and R class labels');
+ check(printedHost.querySelector('[data-table]').hidden && getComputedStyle(control(printedHost,'Next page')).display==='none','Printed output must hide the rich table and row pager');
+ check(messages.at(-1).action==='tableView' && messages.at(-1).mode==='text','View selection must only persist a preference');
+ render('printed-replaced',{ ...printedData,connected:false },printedHost);
+ check(!printedHost.querySelector('[data-printed]').hidden,'Selection must survive output-ID changes and disconnection');
+ control(printedHost,'Show table preview').click();
+ check(!printedHost.querySelector('[data-table]').hidden && control(printedHost,'Next page').disabled,'Offline toggle must work without enabling live row queries');
+ render('printed-archived',{ ...printedData,archived:true },printedHost);
+ control(printedHost,'Show R printed output').click();
+ check(!printedHost.querySelector('[data-printed]').hidden && control(printedHost,'Open data viewer').disabled,'Archived tables must retain local text switching');
+ render('printed-stopped',{ ...printedData,running:false },printedHost);
+ control(printedHost,'Show table preview').click();
+ check(!printedHost.querySelector('[data-table]').hidden && control(printedHost,'Next page').disabled && control(printedHost,'Open data viewer').disabled,'Stopped tables must allow local view changes while disabling live handles');
+ render('printed-default',{ ...printedData,displayId:'default-text',tableView:'text' },printedHost);
+ check(!printedHost.querySelector('[data-printed]').hidden,'The configured text default must be respected');
+ render('legacy',{ ...data,displayId:'legacy',tableView:'text' },printedHost);
+ check(!printedHost.querySelector('[data-table]').hidden && control(printedHost,'Show R printed output').disabled && control(printedHost,'Show R printed output').title.includes('current extension'),'Legacy tables must explain unavailable printed snapshots');
+ printedHost.remove();
  const previous = control(table,'Previous page');
  const next = control(table,'Next page');
  check(next.title==='Next page' && !next.textContent && next.querySelector('svg[aria-hidden=true]'),'Paging icons must have accessible names and tooltips');
@@ -106,9 +131,10 @@ try {
  check(save.getAttribute('aria-haspopup')==='dialog' && save.title==='Save plot as','Save must describe the native format picker accessibly');
  const initialHeight=plot.getBoundingClientRect().height;
  const initialScroll=window.scrollY;
+ const initialReady=plot.querySelector('img').complete && plot.querySelector('img').naturalWidth>0;
  save.click();
  let saveRequest=messages.at(-1);
- check(saveRequest.action==='saveAs' && !saveRequest.pngReady,'Save must request native formats without offering PNG before image load');
+ check(saveRequest.action==='saveAs' && saveRequest.pngReady===initialReady,'Save must request native formats and offer PNG only when the image is loaded');
  check(save.disabled && !plot.querySelector('[role=menu]'),'Only one native picker may be pending per output');
  check(plot.getBoundingClientRect().height===initialHeight && window.scrollY===initialScroll,'Opening Save must preserve output height and scroll position');
  reply(saveRequest,{ result:'svg' });
@@ -144,6 +170,38 @@ try {
  render('archived-table',{ ...data,generation:'old-process',connected:true,archived:true },archivedTable);
  check([...archivedTable.querySelectorAll('button')].every(button=>button.disabled),'Archived table handles must not query the replacement R process');
  check(archivedTable.querySelector('[data-status]').textContent.includes('Previous R process'),'Archived output must explain why live controls are disabled');
+ const gallery = document.createElement('div'); document.body.append(gallery);
+ const secondSvg = svg.replace('retained SVG','second page');
+ const pages = [{ ...plotData,displayId:'page1' },{ ...plotData,displayId:'page2',svgData:btoa(String.fromCharCode(...new TextEncoder().encode(secondSvg))) }];
+ const galleryData = { kind:'plot',displayId:'page1',generation:'gallery-generation',pages };
+ render('gallery',galleryData,gallery); await loaded(gallery.querySelector('img'));
+ check(gallery.querySelectorAll('img').length===1 && gallery.querySelectorAll('.r-interactive-toolbar').length===1,'Multiple plots must share one image viewport and toolbar');
+ check(gallery.querySelector('[data-plot-page]').textContent==='Plot 2 of 2' && control(gallery,'Next plot').disabled,'New plot galleries must show the latest page');
+ const galleryHeight=gallery.getBoundingClientRect().height;
+ control(gallery,'Previous plot').click();
+ check(messages.at(-1).action==='plotPage' && messages.at(-1).selectedPlot==='page1','Navigation must persist the selected page');
+ check(control(gallery,'Previous plot').disabled && !control(gallery,'Next plot').disabled,'Plot boundaries must disable the corresponding arrow');
+ check(gallery.getBoundingClientRect().height===galleryHeight,'Changing same-sized pages must not collapse the output while loading');
+ await loaded(gallery.querySelector('img'));
+ control(gallery,'Open plot').click(); check(messages.at(-1).displayId==='page1','Open must target the selected page');
+ control(gallery,'Fit R device to cell width').click(); check(messages.at(-1).displayId==='page1' && messages.at(-1).generation==='gallery-generation','Fit must target the selected page and process');
+ control(gallery,'Save plot as').click(); const gallerySave=messages.at(-1);
+ check(gallerySave.displayId==='page1' && control(gallery,'Next plot').disabled,'Pending Save must freeze navigation to preserve image identity');
+ reply(gallerySave,{ result:'png' });
+ check(messages.at(-1).action==='savePng' && messages.at(-1).displayId==='page1' && !control(gallery,'Next plot').disabled,'Save must export the selected page and restore navigation');
+ render('gallery-updated',{ ...galleryData,pages:[...pages,{ ...plotData,displayId:'page3' }] },gallery);
+ await loaded(gallery.querySelector('img'));
+ check(gallery.querySelector('[data-plot-page]').textContent==='Plot 1 of 3','New frames must not reset a user-selected page');
+ render('gallery-offline',{ ...galleryData,connected:false },gallery); await loaded(gallery.querySelector('img'));
+ control(gallery,'Next plot').click(); await loaded(gallery.querySelector('img'));
+ check(gallery.querySelector('[data-plot-page]').textContent==='Plot 2 of 2' && control(gallery,'Save plot as').disabled,'Saved galleries must remain locally pageable');
+ render('gallery-stopped',{ ...galleryData,running:false },gallery);
+ control(gallery,'Previous plot').click();
+ check(gallery.querySelector('[data-plot-page]').textContent==='Plot 1 of 2' && control(gallery,'Fit R device to cell width').disabled && !control(gallery,'Save plot as').disabled,'Stopped galleries must support navigation and export but not device resize');
+ render('static-image',{ kind:'plot',displayId:'static-image',mime:'image/svg+xml',imageData:plotData.svgData,resizable:false },gallery);
+ await loaded(gallery.querySelector('img'));
+ check(getComputedStyle(control(gallery,'Fit R device to cell width')).display==='none' && !control(gallery,'Save plot as').disabled,'Standard graphics images must be viewable and exportable without offering resize');
+ renderer.disposeOutputItem('static-image'); gallery.remove();
  const temporary=document.createElement('div'); document.body.append(temporary);
  render('temporary',plotData,temporary);
  const oldTrigger=control(temporary,'Save plot as'); oldTrigger.click(); const oldRequest=messages.at(-1);
@@ -164,8 +222,8 @@ try {
  check(document.querySelector('#html iframe').getAttribute('sandbox')==='allow-scripts allow-forms allow-downloads','HTML must retain sandboxing');
  renderer.disposeOutputItem();
  // Restore usable examples for manual pointer, Tab/Shift+Tab, and visual checks.
- render('plot',plotData,plot);
- render('table',data,table);
+ render('plot',galleryData,plot);
+ render('table',printedData,table);
  document.querySelector('#result').scrollIntoView();
  document.querySelector('#result').textContent=`${assertions} renderer assertions passed`;
  document.body.dataset.result='passed';

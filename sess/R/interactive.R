@@ -269,6 +269,24 @@ interactive_execute <- function(id, code, source = NULL) {
   }
 }
 
+.interactive_table_text <- function(value) {
+  file <- tempfile("table-print-")
+  on.exit(unlink(file))
+  tryCatch({
+    # Use the class printer and current R options. A file bounds the amount we
+    # retain in memory even when a custom printer produces a very large table.
+    utils::capture.output(print(value), file = file)
+    limit <- 256L * 1024L
+    text <- readChar(file, nchars = limit, useBytes = TRUE)
+    if (!length(text)) text <- ""
+    text <- iconv(text, to = "UTF-8", sub = "")
+    if (file.info(file)$size > limit) {
+      text <- paste0(text, "\n[Printed preview truncated at 256 KiB]\n")
+    }
+    list(printedText = text)
+  }, error = function(e) list(printError = conditionMessage(e)))
+}
+
 .interactive_rich_value <- function(value) {
   if (dataview_is_table(value)) {
     registration <- dataview_register(value)
@@ -277,10 +295,11 @@ interactive_execute <- function(id, code, source = NULL) {
                                          startRow = 0L, endRow = 20L,
                                          formatNumbers = TRUE,
                                          sortModel = list(), filterModel = list()))
-    .interactive_event("display", list(kind = "table", viewId = registration$view_id,
-                                       columns = metadata$columns, rows = preview$rows,
-                                       formattedColumns = preview$formattedColumns,
-                                       totalRows = metadata$totalRows))
+    .interactive_event("display", c(list(kind = "table", viewId = registration$view_id,
+                                         columns = metadata$columns, rows = preview$rows,
+                                         formattedColumns = preview$formattedColumns,
+                                         totalRows = metadata$totalRows),
+                                    .interactive_table_text(value)))
     return(TRUE)
   }
   if (inherits(value, "htmlwidget") && requireNamespace("htmlwidgets", quietly = TRUE)) {
