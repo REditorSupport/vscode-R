@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { plotToSvg } from '../../interactive/plotSvg';
 import { assertSvgTextVisible } from '../svgAssertions';
 
-suite('Interactive SVG clipping', () => {
+suite('Interactive SVG rendering', () => {
     const small = { op: 'clip', x0: 50, y0: 50, x1: 150, y1: 150 };
     const large = { op: 'clip', x0: 0, y0: 0, x1: 200, y1: 200 };
     const title = (str: string) => ({ op: 'text', x: 100, y: 20, str, gc: { col: 'black' } });
@@ -37,5 +37,23 @@ suite('Interactive SVG clipping', () => {
         assert.throws(() => assertSvgTextVisible(svg, 'Still clipped'), /is hidden by clip/);
         assertSvgTextVisible(svg, 'Visible in unfinished group');
         assert.strictEqual((svg.match(/<g\b/g) ?? []).length, (svg.match(/<\/g>/g) ?? []).length);
+    });
+
+    test('raster images fill their R device rectangle instead of preserving pixel aspect ratio', () => {
+        const svg = render([{ op: 'raster', x: 10, y: 180, w: 25, h: 150, data: 'data:image/png;base64,AAAA' }]);
+        const $ = cheerio.load(svg, { xmlMode: true });
+        assert.strictEqual($('image').attr('width'), '25');
+        assert.strictEqual($('image').attr('height'), '150');
+        assert.strictEqual($('image').attr('preserveAspectRatio'), 'none');
+    });
+
+    test('R point sizes are converted to device pixels for each plot DPI', () => {
+        for (const dpi of [72, 96, 144]) {
+            const svg = plotToSvg({ version: 1, sessionId: 'test',
+                device: { width: 200, height: 200, dpi, bg: 'white' },
+                ops: [{ ...title('Twelve points'), gc: { col: 'black', font: { size: 12 } } }] });
+            const $ = cheerio.load(svg, { xmlMode: true });
+            assert.strictEqual(Number($('text').attr('font-size')), dpi / 6);
+        }
     });
 });

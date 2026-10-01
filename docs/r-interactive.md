@@ -27,6 +27,12 @@ If a configured Node path is missing or unusable, set **R › Interactive: Node 
 
 The extension compiles its bundled `sess` into a private, content-addressed library. It does not replace your installed `sess` package. A compiler or package dependency failure appears in the **R Interactive** output channel.
 
+That private library is used only to load the bridge; it is not added to your session's `.libPaths()` or `R_LIBS`. Package installation follows ordinary R behavior: `install.packages()` defaults to the first library in `.libPaths()`, usually your user library. Startup files can customize that order, and an explicit `lib=` still takes precedence. The extension does not force a user-library destination over a project library.
+
+Start the session in the renv project directory to load its `.Rprofile` normally. An activated renv project keeps its project library, installation destination, and package isolation; the private `sess` is not added to `renv::snapshot()` lockfiles. IDE support namespaces and the plot device load explicitly, preferring available project versions of their dependencies and using normal host libraries as a fallback. This does not make unrelated packages from those host libraries visible to the project. Install analysis packages in the project as usual, and record them with renv. As in any R process, an already-loaded dependency keeps its loaded version until restart.
+
+Sessions created by older extension builds retain their original library order. Start a new session after updating to use this behavior. Restarting also applies it, but clears in-memory R objects; switching directories in an existing R session does not itself activate a different renv project.
+
 Typical remote settings:
 
 ```json

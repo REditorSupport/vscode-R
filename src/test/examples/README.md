@@ -1,0 +1,19 @@
+# Public R examples
+
+`public.json` records public source URLs, the exercised code, adaptations, and expected rich-output types. Examples use built-in datasets and do not download data or install packages. The runner creates a disposable session and private bridge runtime, verifies execution and output types, saves events/assets, exports widget bundles, and renders independent ordinary-R PNG references for visual comparison. It closes its session afterward.
+
+From the repository root, install the normal Interactive test dependencies plus `ggplot2`, `dplyr`, `DT`, and `plotly` into a test library, then run:
+
+```sh
+R_LIBS=/path/to/test-library npm run test:interactive:examples
+```
+
+`VSCR_EXAMPLE_OUTPUT` selects the result directory (otherwise a new temporary directory is printed). Use a fresh directory for each run. Set `VSCR_TEST_PROVIDER=arf` and optionally `ARF_PATH` for arf, or `VSCR_TEST_STATIC=1` for standard graphics. JGD runs need `jgd` and `systemfonts`; the standard backend uses `svglite`, falling back to PNG.
+
+Each case writes `code.R`, `events.json`, and `outputs.json`, plus the retained SVG/image and reference PNGs when it produces a plot. `results.json` records timing, output types, conditions, and exported widget locations. Compare the final retained plot to the last reference PNG when the example creates intermediate pages. Rendering libraries and antialiasing can differ, so this is a visual comparison, not a pixel-equality assertion. Font/layout references use the default JGD resolution of 96 DPI; the standard SVG backend uses point units.
+
+For widgets, serve the exported bundle with `AssetStore` and embed it in an iframe with `sandbox="allow-scripts allow-forms allow-downloads"`, matching the Interactive renderer. Verify DT search/sort/paging and Plotly hover/zoom/reset in a browser. An execution success alone does not verify browser interaction.
+
+The separate `interactiveLibraries.test.ts` suite requires `renv`. It installs tiny local fixture packages only in temporary libraries and tests ordinary startup paths, default installation, renv isolation, snapshot, and offline restore with both session providers. CI installs renv before this suite.
+
+See [the validation report](../../../docs/r-interactive-public-examples.md) for the recorded results and limits.

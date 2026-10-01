@@ -23,6 +23,8 @@ export function escapeXml(value: unknown): string {
 /** JGD's portable retained representation, also used when no browser is attached. */
 export function plotToSvg(plot: PlotFrame): string {
     const n = (value: unknown): number => typeof value === 'number' && Number.isFinite(value) ? value : 0;
+    // JGD coordinates are device pixels, but font sizes are R points (1/72 in).
+    const fontScale = (n(plot.device.dpi) > 0 ? n(plot.device.dpi) : 96) / 72;
     const color = (value: unknown): string => escapeXml(typeof value === 'string' &&
         !/[<>]|url\s*\(/i.test(value) ? value : 'none');
     const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${n(plot.device.width)}" height="${n(plot.device.height)}" viewBox="0 0 ${n(plot.device.width)} ${n(plot.device.height)}">`];
@@ -69,14 +71,14 @@ export function plotToSvg(plot: PlotFrame): string {
                 const font = gc.font ?? {};
                 const face = font.face ?? 1;
                 const anchor = op.hadj === 0.5 ? 'middle' : op.hadj === 1 ? 'end' : 'start';
-                parts.push(`<text transform="translate(${n(op.x)} ${n(op.y)}) rotate(${-n(op.rot)})" text-anchor="${anchor}" font-family="${escapeXml(font.family || 'sans-serif')}" font-size="${n(font.size ?? 12)}" font-weight="${face === 2 || face === 4 ? 'bold' : 'normal'}" font-style="${face === 3 || face === 4 ? 'italic' : 'normal'}" fill="${color(gc.col)}">${escapeXml(op.str)}</text>`);
+                parts.push(`<text transform="translate(${n(op.x)} ${n(op.y)}) rotate(${-n(op.rot)})" text-anchor="${anchor}" font-family="${escapeXml(font.family || 'sans-serif')}" font-size="${n(font.size ?? 12) * fontScale}" font-weight="${face === 2 || face === 4 ? 'bold' : 'normal'}" font-style="${face === 3 || face === 4 ? 'italic' : 'normal'}" fill="${color(gc.col)}">${escapeXml(op.str)}</text>`);
                 break;
             }
             case 'raster': {
                 if (!/^data:image\/(png|jpeg);base64,[a-zA-Z0-9+/=\s]+$/.test(op.data)) { break; }
                 const w = Math.abs(n(op.w)), h = Math.abs(n(op.h));
                 const x = n(op.x) + Math.min(0, n(op.w)), y = n(op.y) - h;
-                parts.push(`<image x="${x}" y="${y}" width="${w}" height="${h}" transform="rotate(${-n(op.rot)} ${x + w / 2} ${y + h / 2})" href="${escapeXml(op.data)}"/>`);
+                parts.push(`<image x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="none" transform="rotate(${-n(op.rot)} ${x + w / 2} ${y + h / 2})" href="${escapeXml(op.data)}"/>`);
                 break;
             }
             case 'beginGroup':

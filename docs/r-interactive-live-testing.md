@@ -80,6 +80,8 @@ The full VS Code **1.140.0** suite passed **389 tests** with tmux enabled. The s
 
 ## Native UI coverage
 
+The subsequent [public-example and library validation](r-interactive-public-examples.md) exercises normal and renv package installation, ten public analysis/plotting examples across three runtime configurations, and sandboxed DT/Plotly browser interaction. It fixes private-library precedence, arf startup parsing with renv banners, stretched SVG rasters, and point-to-pixel font sizing. The full local suite now passes **396 tests** on VS Code **1.140.0** with tmux enabled, plus **30 tests** in the combined arf runtime/library suite. One initial renv install exceeded the 20-second cell deadline; the isolated run and full rerun completed in about three seconds, and installation checks now allow 60 seconds for slower runners.
+
 | Area | Checks completed |
 | --- | --- |
 | Creation and routing | Fresh-window Cmd+Enter target chooser; create plain R; execute captured code once; create arf; independent environments; switch through tabs and the status bar; source-document binding to arf while plain R was last active. The bound source printed arf's PID 96790. Follow-up created a legacy R terminal through the chooser and visually verified `Legacy terminal verified: 42` in its Accessible View; the selected source text remained intact. |
@@ -100,11 +102,11 @@ The full VS Code **1.140.0** suite passed **389 tests** with tmux enabled. The s
 
 | Check | Result |
 | --- | --- |
-| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 389 passed |
+| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 396 passed |
 | Earlier full extension suite, VS Code 1.110.0, tmux enabled | 347 passed |
 | Earlier Interactive-only verification on 1.110.0 after trace/lint adjustments | 84 passed |
 | Full extension suite, VS Code 1.119.0, tmux enabled | 348 passed before the final new-session focus adjustment |
-| arf runtime matrix, including existing arf adoption | 26 passed |
+| arf runtime and library matrix, including existing arf adoption and renv | 30 passed |
 | Standard-graphics runtime matrix | 19 passed; 5 JGD-only cases skipped |
 | Fresh private sess package, full tinytest suite | 430 checks passed |
 | Browser renderer, dark / narrow light / high contrast | 46 assertions passed in each layout |

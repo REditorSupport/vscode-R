@@ -402,6 +402,28 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
         console.log(`      diamonds: ${plots.length} snapshots, ${Buffer.byteLength(svg)} raw bytes, ${stats.usedBytes} retained bytes, ${stats.reclaimedBytes} bytes reclaimed`);
     });
 
+    test('retains a narrow raster colour bar at its requested width and height', async function () {
+        if (!client.manifest.capabilities.jgd) { this.skip(); }
+        const id = await submit('plot.new(); rasterImage(as.raster(matrix(rainbow(100), ncol=1)), 0.4, 0.1, 0.6, 0.9)');
+        assert.strictEqual((await finished(id)).state, 'success');
+        await until(() => events.some(event => event.executionId === id && event.data.kind === 'plot'));
+        const plot = events.filter(event => event.executionId === id && event.data.kind === 'plot').at(-1);
+        assert.ok(plot);
+        const svg = Buffer.from(await client.request<string>('asset', { id: plot.data.svg }), 'base64').toString();
+        assert.match(svg, /<image [^>]*width="\d{2,}[^"]*"[^>]*preserveAspectRatio="none"/);
+    });
+
+    test('measures and renders twelve-point text at the default 96 DPI', async function () {
+        if (!client.manifest.capabilities.jgd) { this.skip(); }
+        const id = await submit('par(family="mono"); plot.new(); w <- strwidth("0123456789", units="inches"); stopifnot(w > 0.9, w < 1.1); text(0.5, 0.5, "Twelve points")');
+        assert.strictEqual((await finished(id)).state, 'success');
+        await until(() => events.some(event => event.executionId === id && event.data.kind === 'plot'));
+        const plot = events.filter(event => event.executionId === id && event.data.kind === 'plot').at(-1);
+        assert.ok(plot);
+        const svg = Buffer.from(await client.request<string>('asset', { id: plot.data.svg }), 'base64').toString();
+        assert.match(svg, /font-size="16"[^>]*>Twelve points<\/text>/);
+    });
+
     test('reports a full asset store once per cell and accepts a larger live limit', async function () {
         if (!client.manifest.capabilities.jgd) { this.skip(); }
         await client.request('assetStorage', { limitBytes: 1024 * 1024 });

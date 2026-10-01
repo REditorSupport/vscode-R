@@ -33,12 +33,13 @@ interface RSession {
     lastResizeW: number;
     lastResizeH: number;
     lastResizeHadPlotIndex: boolean;
+    dpi: number;
 }
 
 const isWindows = process.platform === 'win32';
 
 export interface JgdMeasureText {
-    (request: JgdMessage): Promise<unknown>;
+    (request: JgdMessage, dpi: number): Promise<unknown>;
 }
 
 export interface JgdGetDimensions {
@@ -171,9 +172,11 @@ export class JgdSocketServer {
 
     private handleConnection(socket: net.Socket) {
         const sessionId = `session-${++this.sessionCounter}`;
+        // Metrics requests omit DPI. Use JGD's default until a frame announces
+        // the device's resolution, then keep it specific to this connection.
         const session: RSession = {
             id: sessionId, socket, buffer: '', welcomeSent: false,
-            lastResizeW: 0, lastResizeH: 0, lastResizeHadPlotIndex: false
+            lastResizeW: 0, lastResizeH: 0, lastResizeHadPlotIndex: false, dpi: 96
         };
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange();
@@ -227,6 +230,7 @@ export class JgdSocketServer {
                 case 'frame': {
                     const plot = msg.plot;
                     if (plot) {
+                        if (Number.isFinite(plot.device?.dpi) && plot.device.dpi > 0) { session.dpi = plot.device.dpi; }
                         plot.sessionId = session.id;
                         plot.frameExt = msg.ext ?? null;
 
@@ -258,7 +262,7 @@ export class JgdSocketServer {
 
                 case 'metrics_request':
                     if (this.measureTextFn) {
-                        void this.measureTextFn(msg).then((response: unknown) => {
+                        void this.measureTextFn(msg, session.dpi).then((response: unknown) => {
                             const resp = JSON.stringify(response) + '\n';
                             session.socket.write(resp);
                         }).catch((error: unknown) => {

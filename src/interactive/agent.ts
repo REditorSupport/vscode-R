@@ -48,6 +48,7 @@ export class SessionAgent {
     private arfEndpoint?: string;
     private runtime: string;
     private bootstrap: string;
+    private supportLibraries: string[] = [];
     private jgd: JgdSocketServer;
     private history: PlotHistory;
     private metricPending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
@@ -93,6 +94,8 @@ export class SessionAgent {
     }
 
     async start(): Promise<SessionManifest> {
+        const libraries = await run(this.config.rPath, ['--vanilla', '--slave', '-e', 'cat(.libPaths(), sep="\\n")'], { timeout: 15000 });
+        this.supportLibraries = libraries.stdout.trim().split(/\r?\n/).filter(Boolean);
         await this.assets.start();
         this.manifest.assetBase = this.assets.base;
         await this.listen(this.manifest.endpoint, socket => this.connectClient(socket));
@@ -625,7 +628,7 @@ export class SessionAgent {
     }
 
     private async launch(): Promise<void> {
-        const env = { ...process.env, R_LIBS: [this.config.library, process.env.R_LIBS].filter(Boolean).join(path.delimiter),
+        const env = { ...process.env,
             SESS_ENDPOINT: path.join(this.runtime, 'sess.sock'), JGD_SOCKET: this.jgd.getSocketPath() };
         if (this.config.provider === 'arf-existing') {
             this.arfEndpoint = this.config.arfEndpoint;
@@ -634,12 +637,12 @@ export class SessionAgent {
         }
         const command = this.config.provider === 'r' ? this.config.rPath : this.config.arfPath ?? 'arf';
         const args = this.config.provider === 'r'
-            ? ['--quiet', '--no-save', '--no-restore', '--interactive', '--args', this.config.library, this.bootstrap]
+            ? ['--quiet', '--no-save', '--no-restore', '--interactive']
             : ['headless', '--json'];
         this.worker = spawn(command, args, { cwd: this.config.directory, env, stdio: ['pipe', 'pipe', 'pipe'] });
         if (this.config.provider === 'r') {
             // --interactive intentionally reads the console rather than -f/-e input.
-            this.worker.stdin!.write(`base::source(${rString(path.join(this.config.resources, 'interactive-worker.R'))}, local=new.env(parent=baseenv()))\n`);
+            this.worker.stdin!.write(this.bootstrapCode(true) + '\n');
         }
         this.worker.on('error', error => { if (!this.stopped) { this.event('agentError', { message: error.message }); this.state('exited'); } });
         this.worker.on('exit', (code, signal) => {
@@ -653,17 +656,25 @@ export class SessionAgent {
         const stderrDecoder = new StringDecoder('utf8');
         this.worker.stdout!.on('data', (chunk: Buffer) => {
             if (this.config.provider === 'arf' && !this.arfEndpoint) {
-                readiness += chunk.toString('utf8');
-                const newline = readiness.indexOf('\n');
-                if (newline >= 0) {
+                readiness += stdoutDecoder.write(chunk);
+                let newline: number;
+                while (!this.arfEndpoint && (newline = readiness.indexOf('\n')) >= 0) {
+                    const line = readiness.slice(0, newline);
+                    readiness = readiness.slice(newline + 1);
+                    let info: Record<string, unknown> | undefined;
                     try {
-                        const info = object(JSON.parse(readiness.slice(0, newline)));
-                        if (typeof info.socket_path !== 'string') { throw new Error('arf did not publish its endpoint'); }
+                        info = object(JSON.parse(line));
+                    } catch { /* R profiles (including renv) can print before arf's readiness record. */ }
+                    if (typeof info?.socket_path === 'string') {
                         this.arfEndpoint = info.socket_path;
                         void this.bootstrapArf().catch(error => {
                             this.event('agentError', { message: String(error) }); this.state('unknown');
                         });
-                    } catch (error) { this.event('agentError', { message: String(error) }); }
+                    } else { this.stream(line + '\n', 'stdout'); }
+                }
+                if (this.arfEndpoint || readiness.length > 65536) {
+                    if (readiness) { this.stream(readiness, 'stdout'); }
+                    readiness = '';
                 }
             } else if (!this.nativeReady || this.config.provider === 'r') {
                 this.stream(stdoutDecoder.write(chunk), 'stdout', this.current);
@@ -674,22 +685,17 @@ export class SessionAgent {
         });
     }
 
+    private bootstrapCode(worker: boolean): string {
+        return `base::source(${rString(path.join(this.config.resources, 'interactive-worker.R'))}, local=base::new.env(parent=base::baseenv()))$value(` +
+            `${rString(this.config.library)}, ${rString(this.bootstrap)}, c(${this.supportLibraries.map(rString).join(',')}), worker=${worker ? 'TRUE' : 'FALSE'})`;
+    }
+
     private async bootstrapArf(): Promise<void> {
         this.dispatching = true;
         try {
             const metadata = object(await arfRequest(this.arfEndpoint!, 'session'));
             this.event('provider', { provider: this.config.provider, policy: metadata.ipc_policy });
-            const code = `local({
-            if ("sess" %in% loadedNamespaces() && normalizePath(getNamespaceInfo("sess", "path")) != normalizePath(${rString(path.join(this.config.library, 'sess'))})) {
-                ns <- asNamespace("sess")
-                if (exists("interactive_stop", ns, inherits=FALSE)) get("interactive_stop", ns)()
-                else if (exists(".transport_disconnect", ns, inherits=FALSE)) get(".transport_disconnect", ns)(silent=TRUE)
-                if ("package:sess" %in% search()) detach("package:sess", unload=FALSE)
-                unloadNamespace("sess")
-            }
-            .libPaths(c(${rString(this.config.library)}, .libPaths()))
-            sess::interactive_start(${rString(this.bootstrap)}, mirror=TRUE)
-        })`;
+            const code = this.bootstrapCode(false);
             const result = object(await arfRequest(this.arfEndpoint!, 'evaluate', { code, visible: true }, 0));
             if (result.error) { throw new Error(String(result.error)); }
         } finally { this.dispatching = false; void this.pump(); }
@@ -716,7 +722,7 @@ export class SessionAgent {
             this.metrics.stderr!.on('data', (chunk: Buffer) => process.stderr.write(chunk));
             this.metrics.on('error', error => process.stderr.write(error.message + '\n'));
             this.jgd.setGetDimensions(() => ({ width: 800, height: 600 }));
-            this.jgd.setMeasureText(request => this.measure(request));
+            this.jgd.setMeasureText((request, dpi) => this.measure(request, dpi));
             this.jgd.setOnFrame((device, message) => {
                 try { this.plot(device, message); }
                 catch (error) { this.retentionWarning(error, this.current); }
@@ -729,14 +735,14 @@ export class SessionAgent {
         }
     }
 
-    private measure(request: JgdMessage): Promise<unknown> {
+    private measure(request: JgdMessage, dpi: number): Promise<unknown> {
         return new Promise((resolve, reject) => {
             const id = this.metricCounter++;
             const timer = setTimeout(() => { this.metricPending.delete(id); reject(new Error('Font metrics timed out')); }, 2000);
             this.metricPending.set(id, { resolve: value => {
                 resolve({ ...object(value), id: request.id });
             }, reject, timer });
-            this.metrics?.stdin?.write(JSON.stringify({ ...request, id }) + '\n');
+            this.metrics?.stdin?.write(JSON.stringify({ ...request, id, dpi }) + '\n');
         });
     }
 
