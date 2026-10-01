@@ -275,7 +275,10 @@ interactive_execute <- function(id, code, source = NULL) {
   tryCatch({
     # Use the class printer and current R options. A file bounds the amount we
     # retain in memory even when a custom printer produces a very large table.
-    utils::capture.output(print(value), file = file)
+    # Binary output keeps notebook newlines portable on Windows too.
+    connection <- file(file, open = "wb")
+    tryCatch(utils::capture.output(print(value), file = connection),
+             finally = close(connection))
     limit <- 256L * 1024L
     text <- readChar(file, nchars = limit, useBytes = TRUE)
     if (!length(text)) text <- ""
