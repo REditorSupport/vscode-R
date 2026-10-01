@@ -329,6 +329,28 @@ import type { InteractiveManager } from '../../interactive/manager';
         await vscode.workspace.applyEdit(fix);
         await until(() => vscode.languages.getDiagnostics(document.uri).length === 0);
     });
+    test('namespace linters work on virtual cells and diagnostics keep their cell identity', async () => {
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const index = notebook.cellCount;
+        const edit = new vscode.WorkspaceEdit();
+        edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(index, [
+            new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'base::sum(1:3)\nnamespace_value<-1\n', 'r'),
+            new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'base::sum(1:3)\n', 'r'),
+        ])]);
+        await vscode.workspace.applyEdit(edit);
+        const bad = notebook.cellAt(index).document, good = notebook.cellAt(index + 1).document;
+        await until(() => vscode.languages.getDiagnostics(bad.uri).length > 0);
+        const diagnostics = vscode.languages.getDiagnostics(bad.uri);
+        assert.ok(!diagnostics.some(item => item.message.includes('Failed to run diagnostics')), JSON.stringify(diagnostics));
+        assert.ok(diagnostics.some(item => item.message.includes('spaces around') && item.range.start.line === 1));
+        assert.deepStrictEqual(vscode.languages.getDiagnostics(good.uri), []);
+        const fix = new vscode.WorkspaceEdit();
+        fix.replace(bad.uri, new vscode.Range(0, 0, bad.lineCount, 0), 'base::sum(1:3)\nnamespace_value <- 1\n');
+        await vscode.workspace.applyEdit(fix);
+        await until(() => vscode.languages.getDiagnostics(bad.uri).length === 0);
+    });
+
     test('lints the Interactive input before execution', async () => {
         const document = vscode.workspace.textDocuments.find(doc => doc.uri.scheme === 'vscode-interactive-input' && doc.languageId === 'r');
         assert.ok(document);
@@ -616,11 +638,33 @@ cat("\n")`;
         }
     });
 
+    test('history export chooses one format before saving and supports cancelling either step', async () => {
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+        const save = sinon.stub(vscode.window, 'showSaveDialog').resolves(undefined);
+        try {
+            await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
+            sinon.assert.notCalled(save);
+            const choices = picker.firstCall.args[0] as (vscode.QuickPickItem & { format: string })[];
+            assert.deepStrictEqual(choices.map(choice => choice.format), ['rnb', 'ipynb', 'R', 'html']);
+            for (const choice of choices) {
+                picker.resolves(choice);
+                await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
+                const options = save.lastCall.args[0];
+                assert.deepStrictEqual(options?.filters, { [choice.label]: [choice.format] });
+                assert.strictEqual(options?.defaultUri?.fsPath, path.join(root, `${manifests[0].label}-history.${choice.format}`));
+            }
+            assert.strictEqual(save.callCount, 4);
+        } finally { picker.restore(); save.restore(); }
+    });
+
     test('exports R-formatted numeric labels to HTML and retains raw numbers in saved notebooks', async () => {
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
         assert.ok(notebook);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         const saved = sinon.stub(vscode.window, 'showSaveDialog');
+        const format = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'HTML report', format: 'html' } as vscode.QuickPickItem);
         try {
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
             const index = notebook.cellCount;
@@ -631,6 +675,7 @@ cat("\n")`;
             const html = fs.readFileSync(htmlFile, 'utf8');
             assert.ok(html.includes('<td>1417.391</td>') && html.includes('<td>1400.000</td>'));
             const notebookFile = path.join(root, 'numeric.rnb'); saved.resolves(vscode.Uri.file(notebookFile));
+            format.resolves({ label: 'R Interactive notebook', format: 'rnb' } as vscode.QuickPickItem);
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
             const report = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(notebookFile));
             const table = report.cells.at(-1)?.outputs?.flatMap(output => output.items)
@@ -641,7 +686,7 @@ cat("\n")`;
             assert.ok(Math.abs((table.rows as Record<string, number>[])[0]['1'] - 326 / 0.23) < 1e-10);
             assert.strictEqual(table.connected, false);
             sinon.assert.notCalled(errors);
-        } finally { errors.restore(); saved.restore(); }
+        } finally { errors.restore(); saved.restore(); format.restore(); }
     });
     test('exports large compressed plots to portable notebooks and ordinary SVG report assets', async function () {
         if (!manifests[0].capabilities.jgd) { this.skip(); }
@@ -649,6 +694,7 @@ cat("\n")`;
         assert.ok(notebook);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         const saved = sinon.stub(vscode.window, 'showSaveDialog');
+        const format = sinon.stub(vscode.window, 'showQuickPick');
         const info = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
         try {
             const index = notebook.cellCount;
@@ -666,6 +712,7 @@ cat("\n")`;
             for (const extension of ['rnb', 'ipynb', 'html']) {
                 const file = path.join(root, `report.${extension}`);
                 saved.resolves(vscode.Uri.file(file));
+                format.resolves({ label: extension, format: extension } as vscode.QuickPickItem);
                 await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
                 sinon.assert.notCalled(errors);
                 if (extension === 'html') {
@@ -684,7 +731,7 @@ cat("\n")`;
             assert.ok(info.calledOnce);
             assert.strictEqual(readAsset(assetRoot, id).toString(), svg);
             sinon.assert.notCalled(errors);
-        } finally { errors.restore(); saved.restore(); info.restore(); }
+        } finally { errors.restore(); saved.restore(); format.restore(); info.restore(); }
     });
     test('applies asset quota settings to connected sessions without restarting R', async () => {
         const configuration = vscode.workspace.getConfiguration('r');
@@ -931,8 +978,9 @@ cat("\n")`;
             for (const format of ['rnb', 'ipynb', 'R', 'html']) {
                 const destination = vscode.Uri.file(path.join(root, `restarted.${format}`));
                 const save = sinon.stub(vscode.window, 'showSaveDialog').resolves(destination);
+                const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: format, format } as vscode.QuickPickItem);
                 try { await vscode.commands.executeCommand('r.interactive.export', notebook.uri); }
-                finally { save.restore(); }
+                finally { save.restore(); picker.restore(); }
                 const content = fs.readFileSync(destination.fsPath, 'utf8');
                 assert.ok(content.includes('before_restart') && content.includes('after_restart') && content.includes('third process'));
                 assert.strictEqual((content.match(/R session restarted/g) ?? []).length, 2);

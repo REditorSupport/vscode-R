@@ -212,7 +212,9 @@ export class AssetStore {
                     'X-Content-Type-Options': 'nosniff',
                     'Cache-Control': 'private, max-age=31536000, immutable',
                     'Access-Control-Allow-Origin': '*',
-                    'Content-Security-Policy': 'default-src \'self\' data: blob: https:; script-src \'self\' \'unsafe-inline\' \'unsafe-eval\' https:; style-src \'self\' \'unsafe-inline\' https:; connect-src \'self\' https: wss:; object-src \'none\'; base-uri \'none\'; frame-ancestors *',
+                    // CSP's wildcard does not include VS Code's custom desktop schemes.
+                    // Both the notebook webview and its top-level editor are ancestors.
+                    'Content-Security-Policy': 'default-src \'self\' data: blob: https:; script-src \'self\' \'unsafe-inline\' \'unsafe-eval\' https:; style-src \'self\' \'unsafe-inline\' https:; connect-src \'self\' https: wss:; object-src \'none\'; base-uri \'none\'; frame-ancestors * vscode-webview: vscode-file:',
                 });
                 if (request.method === 'HEAD') { response.end(); }
                 else { fs.createReadStream(file).on('error', () => response.destroy()).pipe(response); }

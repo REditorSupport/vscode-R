@@ -62,6 +62,8 @@ export class LanguageService implements Disposable {
         resource?: Uri, target?: Session): Promise<LanguageClient> {
 
         let client: LanguageClient;
+        const pathlessNotebook = selector.some(filter => 'scheme' in filter && filter.scheme === 'vscode-notebook-cell'
+            && typeof filter.pattern === 'string' && !fs.existsSync(filter.pattern));
 
         const resourceConfig = config(resource);
         const debug = this.config.get<boolean>('lsp.debug');
@@ -133,8 +135,17 @@ export class LanguageService implements Disposable {
             uriConverters: {
                 // VS Code by default %-encodes even the colon after the drive letter
                 // NodeJS handles it much better
-                code2Protocol: uri => new URL(uri.toString(true)).toString(),
-                protocol2Code: str => Uri.parse(str)
+                // languageserver interprets vscode-notebook-cell paths as real files.
+                // Unsaved Interactive notebooks have no such file; namespace linters
+                // call normalizePath even with lint_cache disabled. Use an opaque
+                // scheme so the server lints the text like an unsaved input document.
+                // Preserve the full path/fragment and translate every result back.
+                code2Protocol: uri => new URL((uri.scheme === 'vscode-notebook-cell' && pathlessNotebook
+                    ? uri.with({ scheme: 'vscode-r-cell' }) : uri).toString(true)).toString(),
+                protocol2Code: str => {
+                    const uri = Uri.parse(str);
+                    return uri.scheme === 'vscode-r-cell' ? uri.with({ scheme: 'vscode-notebook-cell' }) : uri;
+                }
             },
             workspaceFolder: workspaceFolder,
             outputChannel: outputChannel,

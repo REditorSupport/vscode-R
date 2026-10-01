@@ -403,10 +403,17 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (data.kind === 'image' && !url) { url = `data:${String(data.mime)};base64,${String(data.data)}`; }
         const html = data.kind === 'mime' && data.mime === 'text/html';
         if (!url && !html) { return; }
-        const panel = vscode.window.createWebviewPanel('rInteractiveOutput', `R: ${view.client.manifest.label}`, vscode.ViewColumn.Beside, { enableScripts: true });
+        const kind = ['plot', 'image'].includes(String(data.kind)) ? 'Plot' : 'Viewer';
+        const panel = vscode.window.createWebviewPanel('rInteractiveOutput', `${kind}: ${view.client.manifest.label}`, vscode.ViewColumn.Beside, { enableScripts: true });
         panel.webview.html = `<!doctype html><html><body style="margin:0">${['plot', 'image'].includes(String(data.kind))
             ? `<img alt="R plot" src="${escapeXml(url)}" style="display:block;max-width:100%;height:auto;margin:auto">`
             : `<iframe sandbox="allow-scripts allow-forms allow-downloads" ${html ? `srcdoc="${escapeXml(String(data.text))}"` : `src="${escapeXml(url)}"`} style="position:fixed;inset:0;width:100%;height:100%;border:0"></iframe>`}</body></html>`;
+    }
+
+    private defaultExportUri(view: InteractiveView, suffix: string): vscode.Uri {
+        // eslint-disable-next-line no-control-regex -- export names must exclude control characters
+        const name = view.client.manifest.label.replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').replace(/[. ]+$/, '') || 'R';
+        return vscode.Uri.file(path.join(view.target.workingDir, `${name}-${suffix}`));
     }
 
     refresh(): void {
@@ -989,7 +996,10 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 case 'save': case 'savePng': {
                     if (data.kind !== 'plot') { return; }
                     const png = message.action === 'savePng';
-                    const file = await vscode.window.showSaveDialog({ filters: png ? { PNG: ['png'] } : { SVG: ['svg'] } });
+                    const file = await vscode.window.showSaveDialog({
+                        defaultUri: this.defaultExportUri(view, `plot-${owner?.record.order ?? 1}.${png ? 'png' : 'svg'}`),
+                        filters: png ? { PNG: ['png'] } : { SVG: ['svg'] },
+                    });
                     if (!file) { return; }
                     let bytes: Buffer;
                     if (png) {
@@ -1165,17 +1175,27 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     }
 
     private async exportHistory(view: InteractiveView): Promise<void> {
-        const file = await vscode.window.showSaveDialog({ filters: { 'R Interactive notebook': ['rnb'], 'Jupyter notebook': ['ipynb'], 'R script': ['R'], 'HTML report': ['html'] } });
+        // macOS uses only the first save-dialog filter and otherwise appends .rnb
+        // even when the user types another supported suffix. Choose the format first.
+        const selected = await vscode.window.showQuickPick([
+            { label: 'R Interactive notebook (.rnb)', description: 'Reopen cells and retained output in VS Code', format: 'rnb' },
+            { label: 'Jupyter notebook (.ipynb)', description: 'Portable notebook with standard output formats', format: 'ipynb' },
+            { label: 'R script (.R)', description: 'Code and session boundaries', format: 'R' },
+            { label: 'HTML report (.html)', description: 'Share output and interactive widgets in a browser', format: 'html' },
+        ], { title: `Export history: ${view.client.manifest.label}`, placeHolder: 'Choose an export format' });
+        if (!selected) { return; }
+        const file = await vscode.window.showSaveDialog({ defaultUri: this.defaultExportUri(view, `history.${selected.format}`),
+            filters: { [selected.label]: [selected.format] } });
         if (!file) { return; }
         const entries = [...view.history, view.model].flatMap<TranscriptCell | string>(model =>
             [...model.cells.values(), ...(model === view.model ? [] : [model.generation])]);
         const cells = entries.filter((entry): entry is TranscriptCell => typeof entry !== 'string');
-        if (/\.r$/i.test(file.path)) {
+        if (selected.format === 'R') {
             await vscode.workspace.fs.writeFile(file, Buffer.from(entries.map(entry => typeof entry === 'string'
                 ? '# R session restarted — fresh R process; previous objects are unavailable.'
                 : `# %% ${entry.record.order}: ${entry.record.state}\n${entry.record.code}`).join('\n\n'))); return;
         }
-        if (/\.html?$/i.test(file.path)) {
+        if (selected.format === 'html') {
             const sections: string[] = [];
             const assetFolder = `${file.fsPath}.assets`;
             const assets = new AssetStore(path.join(this.root, view.client.manifest.id, 'assets'));
@@ -1210,7 +1230,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         }
         const notebook = new vscode.NotebookData(exported);
         notebook.metadata = { rSessionId: view.client.manifest.id, rGeneration: view.client.manifest.generation };
-        await vscode.workspace.fs.writeFile(file, file.path.endsWith('.ipynb') ? this.serializer.exportIpynb(notebook) : this.serializer.serializeNotebook(notebook));
+        await vscode.workspace.fs.writeFile(file, selected.format === 'ipynb' ? this.serializer.exportIpynb(notebook) : this.serializer.serializeNotebook(notebook));
     }
 
     private disposeView(view: InteractiveView, forget = true): void {

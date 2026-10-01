@@ -377,6 +377,22 @@ suite('Interactive protocol and persistence', () => {
         } finally { assets.close(); }
     });
 
+    test('HTML assets allow the native VS Code frame ancestors and retain their sandbox policy', async () => {
+        const assets = new AssetStore(path.join(directory, 'assets'));
+        await assets.start();
+        try {
+            const id = assets.put('<button>Interactive widget</button>', '.html');
+            const response = await fetch(assets.base + id);
+            assert.strictEqual(response.status, 200);
+            assert.strictEqual(response.headers.get('content-type'), 'text/html');
+            const policy = response.headers.get('content-security-policy') ?? '';
+            assert.match(policy, /frame-ancestors \* vscode-webview: vscode-file:/);
+            assert.ok(policy.includes('object-src \'none\''));
+            assert.ok(policy.includes('base-uri \'none\''));
+            assert.strictEqual((await fetch(assets.base.replace(/\/[a-f0-9]+\/$/, '/missing/') + id)).status, 404);
+        } finally { assets.close(); }
+    });
+
     test('exports only selected assets as ordinary files and keeps widget dependency bundles intact', () => {
         const assets = new AssetStore(path.join(directory, 'assets'));
         const svg = `<svg>${'<!-- plot -->'.repeat(2000)}</svg>`;
