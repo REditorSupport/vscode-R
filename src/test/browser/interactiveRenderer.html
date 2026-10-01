@@ -19,6 +19,8 @@ body.light #result { background:#dcf0e4; }
 <section><h2>Plot export</h2><div id="plot"></div></section>
 <section><h2>Saved table</h2><div id="offline"></div></section>
 <section><h2>Saved plot</h2><div id="offline-plot"></div></section>
+<section><h2>Plot from before restart</h2><div id="archived-plot"></div></section>
+<section><h2>Table from before restart</h2><div id="archived-table"></div></section>
 <section><h2>Interactive HTML</h2><div id="html"></div></section>
 <script type="module">
 import { activate } from '/dist/interactive-renderer.js';
@@ -129,6 +131,19 @@ try {
  render('offline-plot',{ ...plotData,connected:false },document.querySelector('#offline-plot'));
  await loaded(document.querySelector('#offline-plot img'));
  check([...document.querySelectorAll('#offline-plot button')].every(button=>button.disabled),'Saved plot controls must remain disabled after the image loads');
+ const archivedPlot=document.querySelector('#archived-plot');
+ render('archived-plot',{ ...plotData,generation:'old-process',connected:true,archived:true },archivedPlot);
+ await loaded(archivedPlot.querySelector('img'));
+ check(control(archivedPlot,'Fit R device to cell width').disabled,'Archived plots must not resize a device in the replacement R process');
+ check(!control(archivedPlot,'Open plot').disabled && !control(archivedPlot,'Save plot as').disabled,'Archived plots must remain viewable and exportable');
+ control(archivedPlot,'Save plot as').click();
+ check(messages.at(-1).generation==='old-process','Output actions must carry their process identity');
+ reply(messages.at(-1),{ result:'svg' });
+ check(messages.at(-1).action==='save' && messages.at(-1).generation==='old-process','Archived exports must keep the original plot identity');
+ const archivedTable=document.querySelector('#archived-table');
+ render('archived-table',{ ...data,generation:'old-process',connected:true,archived:true },archivedTable);
+ check([...archivedTable.querySelectorAll('button')].every(button=>button.disabled),'Archived table handles must not query the replacement R process');
+ check(archivedTable.querySelector('[data-status]').textContent.includes('Previous R process'),'Archived output must explain why live controls are disabled');
  const temporary=document.createElement('div'); document.body.append(temporary);
  render('temporary',plotData,temporary);
  const oldTrigger=control(temporary,'Save plot as'); oldTrigger.click(); const oldRequest=messages.at(-1);

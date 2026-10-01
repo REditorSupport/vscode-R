@@ -6,12 +6,14 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { createRequire } from 'module';
 import { randomUUID } from 'crypto';
 import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
 import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook';
 import { AgentConfig, SessionManifest, DEFAULT_MAX_ASSET_BYTES } from '../../interactive/protocol';
 import { AssetStorageStats, exportedAssetName, readAsset } from '../../interactive/assets';
+import type { InteractiveManager } from '../../interactive/manager';
 
 (process.platform === 'win32' ? suite.skip : suite)('Interactive VS Code integration', function () {
     this.timeout(60000);
@@ -19,6 +21,7 @@ import { AssetStorageStats, exportedAssetName, readAsset } from '../../interacti
     const sourceDirectories: string[] = [];
     let previousRProfile: string | undefined;
     let previousStorage: string | undefined;
+    let previousConnections: unknown;
     let agents: SessionAgent[];
     let manifests: SessionManifest[];
     let controller: vscode.NotebookController;
@@ -34,6 +37,12 @@ import { AssetStorageStats, exportedAssetName, readAsset } from '../../interacti
         fs.cpSync(path.join(process.cwd(), 'sess'), path.join(root, 'sess'), { recursive: true });
         await promisify(execFile)('R', ['CMD', 'INSTALL', '--clean', `--library=${path.join(root, 'library')}`, path.join(root, 'sess')]);
         await vscode.extensions.getExtension('REditorSupport.r')?.activate();
+        // Startup restoration may activate R before this suite configures its private
+        // registry. Recreate only the manager, just as a host reload would do.
+        const context = bundleContext();
+        previousConnections = context.workspaceState.get('r.interactive.connections');
+        await context.workspaceState.update('r.interactive.connections', []);
+        recreateManager(context);
         agents = []; manifests = [];
         for (let i = 0; i < 2; i++) {
             const id = randomUUID();
@@ -51,6 +60,7 @@ import { AssetStorageStats, exportedAssetName, readAsset } from '../../interacti
         else { process.env.R_PROFILE_USER = previousRProfile; }
         await vscode.commands.executeCommand('r.interactive.detach');
         await vscode.workspace.getConfiguration('r').update('interactive.storagePath', previousStorage, vscode.ConfigurationTarget.Global);
+        await bundleContext().workspaceState.update('r.interactive.connections', previousConnections);
         agents?.forEach(agent => agent.close());
         await new Promise(resolve => setTimeout(resolve, 200));
         fs.rmSync(root, { recursive: true, force: true });
@@ -63,6 +73,16 @@ import { AssetStorageStats, exportedAssetName, readAsset } from '../../interacti
             await new Promise(resolve => setTimeout(resolve, 50));
         }
     };
+    function bundleContext(): vscode.ExtensionContext {
+        return (createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as { extensionContext: vscode.ExtensionContext }).extensionContext;
+    }
+    function recreateManager(context: vscode.ExtensionContext): void {
+        const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        assert.ok(manager);
+        const Manager = (Object.getPrototypeOf(manager) as { constructor: typeof InteractiveManager }).constructor;
+        manager.dispose(); context.subscriptions.splice(context.subscriptions.indexOf(manager), 1);
+        context.subscriptions.push(new Manager(context));
+    }
     test('cancels Open Interactive Session from the command palette without opening a notebook or reporting an error', async () => {
         const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
@@ -134,6 +154,77 @@ import { AssetStorageStats, exportedAssetName, readAsset } from '../../interacti
                 cell.document.getText() === 'cat("selected through Open Interactive Session")'));
         } finally {
             picker.restore(); errors.restore();
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        }
+    });
+
+    test('the kernel button shows session identity, process details and live activity', async () => {
+        const manifest = manifests[0];
+        await vscode.commands.executeCommand('r.interactive.open', manifest);
+        await until(() => controller.label === `R: ${manifest.label} · plain · idle`);
+        assert.ok(controller.description?.includes(`PID: ${manifest.rPid ?? ''}`));
+        assert.ok(controller.description?.includes(manifest.directory));
+        assert.ok(controller.description?.includes(manifest.rVersion ?? 'R version'));
+        await vscode.commands.executeCommand('r.runSelection', 'Sys.sleep(0.4)');
+        await until(() => controller.label.endsWith(' · busy'));
+        assert.ok(controller.description?.includes('State: busy'));
+        await until(() => controller.label.endsWith(' · idle'));
+    });
+    test('restores multiple native tabs without metadata and keeps R alive across manager disposal', async () => {
+        // Load the activated bundle's context/constructor, so execution routing and
+        // command registration use the same module instances as the real extension.
+        const context = bundleContext();
+        const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        assert.ok(manager);
+        const Manager = (Object.getPrototypeOf(manager) as { constructor: typeof InteractiveManager }).constructor;
+        for (const manifest of manifests) { await vscode.commands.executeCommand('r.interactive.open', manifest); }
+        const notebooks = manifests.map(manifest => {
+            const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifest.id);
+            assert.ok(notebook); return notebook;
+        });
+        const originalUris = notebooks.map(notebook => notebook.uri.toString());
+        const groupCount = vscode.window.tabGroups.all.length;
+        const saved = context.workspaceState.get<{ id: string; notebookUri: string }[]>('r.interactive.connections', []);
+        for (let i = 0; i < manifests.length; i++) {
+            assert.strictEqual(saved.find(item => item.id === manifests[i].id)?.notebookUri, originalUris[i]);
+        }
+        await vscode.commands.executeCommand('r.runSelection', 'survives_editor_reload <- 73');
+        await until(() => notebooks[1].getCells().some(cell => cell.document.getText() === 'survives_editor_reload <- 73' && cell.executionSummary?.success));
+        manager.dispose();
+        context.subscriptions.splice(context.subscriptions.indexOf(manager), 1);
+        assert.deepStrictEqual(context.workspaceState.get('r.interactive.connections'), saved, 'Shutdown must retain saved connections');
+        // Native VS Code reload restores the tabs/URIs, but drops their metadata.
+        const reset = new vscode.WorkspaceEdit();
+        for (const notebook of notebooks) {
+            reset.set(notebook.uri, [vscode.NotebookEdit.updateNotebookMetadata({ rSessionId: null, rGeneration: null })]);
+        }
+        await vscode.workspace.applyEdit(reset);
+        await until(() => notebooks.every(notebook => !notebook.metadata.rSessionId));
+        const created = sinon.spy(vscode.notebooks, 'createNotebookController');
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        try {
+            context.subscriptions.push(new Manager(context));
+            await until(() => notebooks.every((notebook, i) => notebook.metadata.rSessionId === manifests[i].id));
+            const native = created.returnValues.find(item => item.notebookType === 'interactive' && item.id.includes(manifests[0].id));
+            assert.ok(native); controller = native;
+            await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
+            // Execute in that native input explicitly: preserved source/input focus
+            // can legitimately remain bound to another session after a background open.
+            const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebooks[1].uri);
+            const input = await vscode.workspace.openTextDocument(result.inputUri);
+            const code = new vscode.WorkspaceEdit();
+            code.replace(input.uri, new vscode.Range(0, 0, input.lineCount, 0), 'stopifnot(survives_editor_reload == 73)');
+            await vscode.workspace.applyEdit(code);
+            await vscode.commands.executeCommand('interactive.execute', notebooks[1].uri);
+            await until(() => notebooks[1].getCells().some(cell => cell.document.getText() === 'stopifnot(survives_editor_reload == 73)' && cell.executionSummary?.success));
+            assert.strictEqual(vscode.window.tabGroups.all.length, groupCount, 'Restoration must reuse existing editor groups');
+            for (let i = 0; i < manifests.length; i++) {
+                const matching = vscode.workspace.notebookDocuments.filter(doc => doc.metadata.rSessionId === manifests[i].id);
+                assert.deepStrictEqual(matching.map(doc => doc.uri.toString()), [originalUris[i]]);
+            }
+            sinon.assert.notCalled(errors);
+        } finally {
+            created.restore(); errors.restore();
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         }
     });
@@ -655,45 +746,148 @@ cat("\n")`;
         } finally { confirmation.restore(); picker.restore(); }
     });
 
-    test('restart upgrades the private R runtime and asset quota while preserving the session identity', async () => {
+    test('restart keeps the window, drafts, transcript, bindings and kernel through multiple R processes', async () => {
         const original = manifests[1];
-        const oldNotebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === original.id);
+        await vscode.commands.executeCommand('r.interactive.detach', original);
+        const created = sinon.spy(vscode.notebooks, 'createNotebookController');
+        let restartController: vscode.NotebookController;
+        try {
+            await vscode.commands.executeCommand('r.interactive.open', original);
+            const native = created.returnValues.find(value => value.notebookType === 'interactive');
+            assert.ok(native); restartController = native;
+        } finally { created.restore(); }
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === original.id);
+        assert.ok(notebook);
+        const beforeCode = 'before_restart <- 42; cat("before restart"); data.frame(x=1:50); plot(1:3)';
+        await vscode.commands.executeCommand('r.runSelection', beforeCode);
+        await until(() => notebook.getCells().some(cell => cell.document.getText() === beforeCode && cell.executionSummary?.success === true));
+        const oldCell = notebook.getCells().find(cell => cell.document.getText() === beforeCode);
+        assert.ok(oldCell);
+        const displays = (cell: vscode.NotebookCell): Record<string, unknown>[] => cell.outputs.flatMap(output => output.items)
+            .filter(item => item.mime === DISPLAY_MIME).map(item => JSON.parse(Buffer.from(item.data).toString()) as Record<string, unknown>);
+        await until(() => displays(oldCell).some(data => data.kind === 'plot'));
+        const oldUri = oldCell.document.uri.toString();
+        const oldId = oldCell.metadata.rExecutionId as string;
+        const oldCount = notebook.cellCount;
+        const windowCount = vscode.workspace.notebookDocuments.length;
+        const input = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open',
+            { preserveFocus: true }, notebook.uri, `REditorSupport.r/r-${original.id}-${original.generation}-interactive`);
+        const draft = await vscode.workspace.openTextDocument(input.inputUri);
+        const edit = new vscode.WorkspaceEdit();
+        edit.insert(draft.uri, new vscode.Position(0, 0), 'unsent_draft <- 99');
+        edit.insert(oldCell.document.uri, oldCell.document.positionAt(oldCell.document.getText().length), '\n# edited after execution');
+        await vscode.workspace.applyEdit(edit);
+        const source = await vscode.workspace.openTextDocument({ language: 'r', content: 'cat("bound source")' });
+        await vscode.window.showTextDocument(source);
+        await vscode.commands.executeCommand('r.interactive.bindDocument');
         let sawRestarting = false;
         const change = vscode.workspace.onDidChangeNotebookDocument(event => {
-            if (event.notebook === oldNotebook && event.notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'restarting')) { sawRestarting = true; }
+            if (event.notebook === notebook && event.notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'restarting')) { sawRestarting = true; }
         });
         const confirmation = sinon.stub(vscode.window, 'showWarningMessage').resolves('Restart Session' as unknown as vscode.MessageItem);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        const kernels = sinon.spy(vscode.notebooks, 'createNotebookController');
         let client: AgentClient | undefined;
+        const nodePath = vscode.workspace.getConfiguration('r').inspect<string>('interactive.nodePath')?.globalValue;
         try {
-            await vscode.commands.executeCommand('r.interactive.restart', original);
-            sinon.assert.notCalled(errors);
+            // A cancelled restart must leave the process and transcript alone.
+            confirmation.resolves(undefined);
+            await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            assert.strictEqual(notebook.cellCount, oldCount);
+            assert.strictEqual(notebook.metadata.rGeneration, original.generation);
+            confirmation.resolves('Restart Session' as unknown as vscode.MessageItem);
+            // A launch failure after stopping R must retain the window and permit retry.
+            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', path.join(root, 'missing-node'), vscode.ConfigurationTarget.Global);
+            await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            sinon.assert.calledOnce(errors);
+            assert.ok(notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'restartFailed'));
+            assert.strictEqual(oldCell.document.uri.toString(), oldUri);
+            assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
+            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', nodePath, vscode.ConfigurationTarget.Global);
+            confirmation.resetHistory(); errors.resetHistory();
+            await Promise.all([
+                vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
+                vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
+            ]);
+            sinon.assert.calledOnce(confirmation);
+            sinon.assert.notCalled(errors); sinon.assert.notCalled(kernels);
             assert.ok(sawRestarting);
-            assert.ok(oldNotebook?.getCells().some(cell => cell.metadata.rNoticeKind === 'restarted'));
-            const newNotebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === original.id && doc.metadata.rGeneration !== original.generation);
-            assert.ok(newNotebook?.getCells().some(cell => cell.metadata.rNoticeKind === 'ready'));
+            assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
+            assert.strictEqual(notebook.cellCount, oldCount + 1);
+            assert.strictEqual(notebook.cellAt(oldCell.index), oldCell, 'Existing cells must keep their identity');
+            assert.strictEqual(oldCell.document.uri.toString(), oldUri);
+            assert.ok(oldCell.document.getText().endsWith('# edited after execution'));
+            assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
+            assert.ok(displays(oldCell).every(data => data.archived === true && data.generation === original.generation));
+            const boundary = notebook.getCells().find(cell => cell.metadata.rNoticeKind === 'restarted');
+            assert.ok(boundary && boundary.index > oldCell.index);
+            assert.match(boundary.document.getText(), /Continue here in a fresh R process/);
             const config = JSON.parse(fs.readFileSync(path.join(root, original.id, 'config.json'), 'utf8')) as AgentConfig;
             assert.notStrictEqual(config.generation, original.generation);
+            assert.strictEqual(notebook.metadata.rGeneration, config.generation);
+            assert.deepStrictEqual(config.previousGenerations, [original.generation]);
             assert.notStrictEqual(config.library, path.join(root, 'library'));
             assert.notStrictEqual(config.resources, path.join(process.cwd(), 'R'));
             assert.strictEqual(config.maxAssetBytes, DEFAULT_MAX_ASSET_BYTES);
             assert.ok(fs.existsSync(path.join(config.library, 'sess')));
-            const current = JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest;
-            assert.strictEqual(current.id, original.id);
-            client = new AgentClient(current); await client.connect();
-            await client.request('claim', { force: true });
-            const id = randomUUID();
-            await client.request('submit', { submission: { id, code: 'cat("restarted with new runtime")' } });
-            let complete = false;
-            const deadline = Date.now() + 10000;
-            while (!complete && Date.now() < deadline) {
-                complete = (await client.request<{ state: string }>('execution', { id })).state === 'success';
-                if (!complete) { await new Promise(resolve => setTimeout(resolve, 50)); }
+            const current = (): SessionManifest => JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest;
+            client = new AgentClient(current()); await client.connect({ claim: false });
+            assert.notStrictEqual(current().rPid, original.rPid);
+            assert.ok(restartController.description?.includes(`PID: ${current().rPid ?? ''}`));
+            assert.ok(restartController.label.endsWith(' · idle'));
+            const afterCode = 'stopifnot(!exists("before_restart")); after_restart <- 7; cat("fresh process")';
+            await vscode.commands.executeCommand('r.runSelection', afterCode);
+            await until(() => notebook.getCells().some(cell => cell.document.getText() === afterCode && cell.executionSummary?.success === true));
+            const index = notebook.cellCount;
+            await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: oldCell.index, end: oldCell.index + 1 }], document: notebook.uri });
+            await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true);
+            assert.notStrictEqual(notebook.cellAt(index).metadata.rExecutionId, oldId, 'Reruns get fresh execution IDs');
+            assert.strictEqual(oldCell.document.uri.toString(), oldUri);
+            assert.ok((await client.snapshot()).executions.some(record => record.code === afterCode));
+            // Source routing remains bound even when another window becomes active.
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+            await vscode.window.showTextDocument(source);
+            await vscode.commands.executeCommand('r.runSelection');
+            await until(() => notebook.getCells().some(cell => cell.document.getText() === source.getText().trim() && cell.executionSummary?.success === true));
+            client.close();
+            await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
+            assert.strictEqual(notebook.getCells().filter(cell => cell.metadata.rNoticeKind === 'restarted').length, 2);
+            assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
+            client = new AgentClient(current()); await client.connect({ claim: false });
+            await vscode.commands.executeCommand('r.interactive.open', current());
+            const finalCode = 'stopifnot(!exists("after_restart")); cat("third process")';
+            await vscode.commands.executeCommand('r.runSelection', finalCode);
+            await until(() => notebook.getCells().some(cell => cell.document.getText() === finalCode && cell.executionSummary?.success === true));
+            for (const format of ['rnb', 'ipynb', 'R', 'html']) {
+                const destination = vscode.Uri.file(path.join(root, `restarted.${format}`));
+                const save = sinon.stub(vscode.window, 'showSaveDialog').resolves(destination);
+                try { await vscode.commands.executeCommand('r.interactive.export', notebook.uri); }
+                finally { save.restore(); }
+                const content = fs.readFileSync(destination.fsPath, 'utf8');
+                assert.ok(content.includes('before_restart') && content.includes('after_restart') && content.includes('third process'));
+                assert.strictEqual((content.match(/R session restarted/g) ?? []).length, 2);
             }
-            assert.ok(complete);
+            // Disconnect/reopen reconstructs all three generations from disk in this notebook.
+            await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
+            await vscode.commands.executeCommand('r.interactive.open', current());
+            assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
+            assert.strictEqual(notebook.getCells().filter(cell => cell.metadata.rNoticeKind === 'restarted').length, 2);
+            assert.ok(notebook.getCells().some(cell => cell.metadata.rExecutionId === oldId));
+            assert.ok(notebook.getCells().some(cell => cell.document.getText() === finalCode));
+            assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
+            await vscode.commands.executeCommand('r.interactive.clear', notebook.uri);
+            assert.ok(!notebook.getCells().some(cell => cell.metadata.rExecutionId === oldId));
+            sinon.assert.notCalled(errors);
         } finally {
-            confirmation.restore(); errors.restore(); change.dispose();
+            confirmation.restore(); errors.restore(); kernels.restore(); change.dispose();
+            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', nodePath, vscode.ConfigurationTarget.Global);
+            if (!client?.connected) {
+                client = new AgentClient(JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest);
+                try { await client.connect(); } catch { client.close(); client = undefined; }
+            }
             if (client) {
+                await client.request('claim', { force: true });
                 await client.request('stop');
                 let exited = false;
                 const deadline = Date.now() + 10000;

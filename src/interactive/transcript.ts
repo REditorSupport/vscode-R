@@ -1,7 +1,7 @@
 import { AgentSnapshot, ExecutionRecord, SessionEvent } from './protocol';
 
 export interface TranscriptOutput { type: 'stream' | 'condition' | 'display' | 'truncated'; data: Record<string, unknown> }
-export interface TranscriptCell { record: ExecutionRecord; outputs: TranscriptOutput[] }
+export interface TranscriptCell { generation: string; record: ExecutionRecord; outputs: TranscriptOutput[] }
 
 /** Pure replay model: notebook indices and socket incarnations are never execution identity. */
 export class Transcript {
@@ -12,7 +12,7 @@ export class Transcript {
 
     restore(snapshot: AgentSnapshot): void {
         this.cells.clear();
-        for (const record of snapshot.executions) { this.cells.set(record.id, { record, outputs: [] }); }
+        for (const record of snapshot.executions) { this.cells.set(record.id, { generation: this.generation, record, outputs: [] }); }
         for (const event of snapshot.events) { this.apply(event, true); }
         for (const id of snapshot.truncated ?? []) {
             this.cells.get(id)?.outputs.unshift({ type: 'truncated', data: { message: 'Earlier output is outside the retained history or reconnect window.' } });
@@ -26,7 +26,7 @@ export class Transcript {
         const id = event.executionId;
         if (!id) { return; }
         if (event.type === 'accepted' && !this.cells.has(id)) {
-            this.cells.set(id, { record: event.data.record as ExecutionRecord, outputs: [] });
+            this.cells.set(id, { generation: this.generation, record: event.data.record as ExecutionRecord, outputs: [] });
         }
         const cell = this.cells.get(id);
         if (!cell) { return; }

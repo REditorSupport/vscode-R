@@ -73,6 +73,16 @@ export function hasSessionEndpoint(manifest: SessionManifest): boolean {
 /** Shell quoting is used only for tmux/system service launch commands, never for R code. */
 export function shellQuote(value: string): string { return `'${value.replace(/'/g, `'"'"'`)}'`; }
 
+/** Debugger auto-attach must not make the persistent agent part of the editor's debug session. */
+export function agentEnvironment(environment = process.env): NodeJS.ProcessEnv {
+    const result = { ...environment };
+    if (result.VSCODE_INSPECTOR_OPTIONS) {
+        delete result.NODE_OPTIONS;
+        delete result.VSCODE_INSPECTOR_OPTIONS;
+    }
+    return result;
+}
+
 export async function installRuntime(extensionPath: string, root: string, rPath: string,
     log: (text: string) => void): Promise<{ library: string; resources: string; agent: string }> {
     prepareStorage(root);
@@ -129,7 +139,8 @@ export async function launchAgent(config: AgentConfig, agent: string, node: stri
     ensureStorageDirectory(config.storage, path.dirname(config.storage));
     const file = path.join(config.storage, 'config.json');
     if (process.platform === 'win32') { throw new Error('Persistent Interactive native console support currently requires Linux or macOS'); }
-    const nodeVersion = await run(node, ['--version']);
+    const env = agentEnvironment();
+    const nodeVersion = await run(node, ['--version'], { env });
     if (Number(nodeVersion.stdout.trim().replace(/^v/, '').split('.')[0]) < 18) {
         throw new Error('The session agent requires a standalone Node.js 18 or newer runtime');
     }
@@ -137,16 +148,23 @@ export async function launchAgent(config: AgentConfig, agent: string, node: stri
     atomicJson(file, config);
     if (config.supervision === 'tmux') {
         await run('tmux', ['new-session', '-d', '-s', `vscode-r-${config.id.slice(0, 8)}-${config.generation.slice(0, 8)}`,
-            `exec ${[node, agent, file].map(shellQuote).join(' ')} >>${shellQuote(path.join(config.storage, 'agent.log'))} 2>&1`]);
+            `exec ${[node, agent, file].map(shellQuote).join(' ')} >>${shellQuote(path.join(config.storage, 'agent.log'))} 2>&1`], { env });
     } else if (config.supervision === 'systemd') {
-        await run('systemd-run', ['--user', '--collect', '--unit', `vscode-r-${config.id}-${config.generation}`, '--', node, agent, file]);
+        await run('systemd-run', ['--user', '--collect', '--unit', `vscode-r-${config.id}-${config.generation}`, '--', node, agent, file], { env });
     } else if (config.supervision === 'detached') {
-        const log = fs.openSync(path.join(config.storage, 'agent.log'), 'a', 0o600);
-        try {
-            const child = spawn(node, [agent, file], { detached: true, stdio: ['ignore', log, log] });
-            await new Promise<void>((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
+        // setsid/unref alone leaves the agent in the extension host's process tree.
+        // Wait for a short-lived launcher to exit so tree-based editor/debugger cleanup
+        // cannot reach the agent. The agent owns its log and has no inherited IPC or stdio.
+        const bootstrap = `
+            const fs = require('fs');
+            const log = fs.openSync(${JSON.stringify(path.join(config.storage, 'agent.log'))}, 'a', 0o600);
+            const child = require('child_process').spawn(process.execPath, process.argv.slice(1),
+                { detached: true, stdio: ['ignore', log, log] });
+            child.once('error', error => { console.error(error); process.exitCode = 1; });
             child.unref();
-        } finally { fs.closeSync(log); }
+            fs.closeSync(log);
+        `;
+        await run(node, ['-e', bootstrap, agent, file], { env });
     } else { throw new Error('Unknown session supervisor'); }
     const deadline = Date.now() + 30000;
     while (Date.now() < deadline) {

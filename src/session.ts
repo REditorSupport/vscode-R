@@ -122,6 +122,13 @@ export function unregisterSessionTransport(target: Session): void {
     if (activeSession === target) { activeSession = undefined; resetStatusBar(); }
 }
 
+/** Move document routing to a new process; existing data viewers keep their old owner. */
+export function replaceSessionTransport(previous: Session, next: Session): void {
+    for (const [uri, owner] of documentSessions) { if (owner === previous) { documentSessions.set(uri, next); } }
+    sessions.delete(previous.sessionId);
+    if (activeSession === previous) { activeSession = next; }
+}
+
 export function registerSessionTransport(id: string, host: string, directory: string,
     requester: (data: Record<string, unknown>) => Promise<unknown>): Session {
     const target = sessions.get(id) ?? new Session(id, host, '', '', new net.Socket());

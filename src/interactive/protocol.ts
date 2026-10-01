@@ -74,6 +74,8 @@ export interface AgentSnapshot {
 }
 
 export interface AgentConfig extends SessionIdentity {
+    /** Completed processes whose transcripts precede this generation in the same window. */
+    previousGenerations?: string[];
     label: string;
     directory: string;
     storage: string;

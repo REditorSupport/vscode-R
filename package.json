@@ -33,7 +33,9 @@
     "onWebviewPanel:rhelp",
     "onLanguage:r",
     "onLanguage:rmd",
-    "onNotebook:r-interactive"
+    "onNotebook:r-interactive",
+    "onNotebook:interactive",
+    "onStartupFinished"
   ],
   "main": "./dist/extension",
   "contributes": {

@@ -387,6 +387,70 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
         } finally { independent.close(); }
     });
 
+    test('detached session leaves the live editor process tree and retains objects after its termination', async () => {
+        const id = randomUUID();
+        const config: AgentConfig = { id, generation: randomUUID(), label: 'Editor termination test', directory: root,
+            storage: path.join(root, id), rPath: 'R', library, resources,
+            provider: process.env.VSCR_TEST_PROVIDER === 'arf' ? 'arf' : 'r', arfPath: process.env.ARF_PATH ?? 'arf',
+            supervision: 'detached', plotBackend: 'standard', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
+        const script = `const {launchAgent} = require(${JSON.stringify(require.resolve('../../interactive/launcher'))});
+            process.env.VSCODE_INSPECTOR_OPTIONS = '{}';
+            process.env.NODE_OPTIONS = '--require /missing/vscode-debug-bootloader.js';
+            launchAgent(${JSON.stringify(config)}, ${JSON.stringify(agentBundle)}, 'node')
+                .then(value => { console.log(JSON.stringify(value)); setInterval(() => {}, 1000); })
+                .catch(error => { console.error(error); process.exitCode = 1; });`;
+        const parent = spawn('node', ['-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
+        let independent: AgentClient | undefined;
+        try {
+            const value = await new Promise<SessionManifest>((resolve, reject) => {
+                let output = ''; let errors = '';
+                parent.stdout.on('data', (chunk: Buffer) => {
+                    output += chunk.toString();
+                    if (output.includes('\n')) { resolve(JSON.parse(output.split('\n')[0]) as SessionManifest); }
+                });
+                parent.stderr.on('data', (chunk: Buffer) => { errors += chunk.toString(); });
+                parent.once('error', reject);
+                parent.once('exit', () => reject(new Error(`Launcher exited before readiness: ${errors}`)));
+            });
+            independent = new AgentClient(value); await independent.connect();
+            const before = randomUUID();
+            await independent.request('submit', { submission: { id: before, code: 'persisted <- 42' } });
+            const complete = async (execution: string): Promise<void> => {
+                assert.ok(independent);
+                for (let i = 0; i < 200; i++) {
+                    if ((await independent.request<ExecutionRecord>('execution', { id: execution })).state === 'success') { return; }
+                    await delay(25);
+                }
+                assert.fail('Persistent execution did not complete');
+            };
+            await complete(before);
+            const originalPid = (await independent.snapshot()).manifest.rPid;
+            assert.ok(originalPid);
+            // Check every ancestor, while the editor is still alive. A direct detached
+            // child survives ordinary exit but remains vulnerable to recursive cleanup.
+            let ancestor = value.agentPid;
+            for (let i = 0; ancestor > 1 && i < 50; i++) {
+                assert.notStrictEqual(ancestor, parent.pid, 'Agent must not remain in the editor process tree');
+                ancestor = Number((await run('ps', ['-p', String(ancestor), '-o', 'ppid='])).stdout.trim());
+            }
+            independent.close();
+            await new Promise<void>(resolve => { parent.once('exit', () => resolve()); parent.kill('SIGKILL'); });
+            independent = new AgentClient(value); await independent.connect();
+            assert.strictEqual(independent.manifest.rPid, originalPid);
+            const after = randomUUID();
+            await independent.request('submit', { submission: { id: after, code: 'stopifnot(persisted == 42); persisted <- persisted + 1' } });
+            await complete(after);
+        } finally {
+            parent.kill();
+            if (independent) {
+                if (!independent.connected) { await independent.connect(); }
+                await independent.request('stop');
+                for (let i = 0; i < 200 && (await independent.snapshot()).manifest.status !== 'exited'; i++) { await delay(25); }
+                await independent.request('shutdown'); independent.close();
+            }
+        }
+    });
+
     test('adopts an existing arf process without losing its objects', async function () {
         const arf = process.env.ARF_PATH ?? 'arf';
         try { await run(arf, ['--version']); } catch { this.skip(); }

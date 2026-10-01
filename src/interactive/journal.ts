@@ -1,7 +1,46 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { createHash } from 'crypto';
-import { ExecutionRecord, SessionEvent, Submission, identifier } from './protocol';
+import { AgentSnapshot, ExecutionRecord, SessionEvent, Submission, identifier } from './protocol';
+
+/** Read a completed process without opening a writer or repairing its journal. */
+export function readPreviousJournal(storage: string, generation: string, limit: number): Pick<AgentSnapshot, 'executions' | 'events' | 'seq' | 'truncated'> {
+    const directory = path.join(storage, identifier(generation));
+    const executions: ExecutionRecord[] = [];
+    let bytes = 0;
+    for (const record of readExecutionRecords(directory).slice(-Math.max(1, limit)).reverse()) {
+        bytes += Buffer.byteLength(JSON.stringify(record));
+        if (bytes > 1400 * 1024) { break; }
+        executions.unshift(record);
+    }
+    const ids = new Set(executions.map(record => record.id));
+    const events: SessionEvent[] = [];
+    let seq = 0;
+    // Bound restoration as with a live snapshot; full output stays on disk.
+    for (const name of fs.readdirSync(directory).filter(name => /^events-\d{6}\.jsonl$/.test(name)).sort().reverse()) {
+        const text = fs.readFileSync(path.join(directory, name), 'utf8');
+        for (const line of text.slice(0, text.lastIndexOf('\n') + 1).split('\n').reverse()) {
+            if (!line) { continue; }
+            const event = JSON.parse(line) as SessionEvent;
+            if (event.generation !== generation) { throw new Error('Journal generation mismatch'); }
+            seq = Math.max(seq, event.seq);
+            if (!event.executionId || !ids.has(event.executionId)) { continue; }
+            bytes += Buffer.byteLength(line);
+            if (bytes <= 3 * 1024 * 1024) { events.push(event); }
+        }
+    }
+    events.reverse();
+    return { executions, events, seq,
+        truncated: executions.filter(record => !events.some(event => event.type === 'accepted' && event.executionId === record.id)).map(record => record.id) };
+}
+
+export function readExecutionRecords(directory: string): ExecutionRecord[] {
+    return fs.readdirSync(path.join(directory, 'executions')).filter(name => name.endsWith('.json')).map(name => {
+        const record = JSON.parse(fs.readFileSync(path.join(directory, 'executions', name), 'utf8')) as ExecutionRecord;
+        identifier(record.id);
+        return record;
+    }).sort((a, b) => a.order - b.order);
+}
 
 export function atomicJson(file: string, value: unknown): void {
     const temporary = `${file}.${process.pid}.tmp`;

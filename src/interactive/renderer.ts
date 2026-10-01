@@ -21,7 +21,7 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
     const outputs = new Map<string, OutputState>();
     let requestId = 0;
     const send = (item: OutputItem, data: Record<string, unknown>, action: string, extra: Record<string, unknown> = {}): void => {
-        context.postMessage({ outputId: item.id, displayId: data.displayId, action, ...extra });
+        context.postMessage({ outputId: item.id, displayId: data.displayId, generation: data.generation, action, ...extra });
     };
     const drawTable = (parent: HTMLElement, data: Record<string, unknown>): void => {
         parent.replaceChildren();
@@ -160,6 +160,12 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
             toolbar.append(status);
             if (!toolbar.parentElement) { element.append(toolbar); }
             if (data.kind === 'table') { updatePaging(state); }
+            if (data.archived === true && ['table', 'plot'].includes(String(data.kind))) {
+                toolbar.querySelectorAll('button').forEach(control => {
+                    if (data.kind === 'table' || control.title === 'Fit R device to cell width') { control.disabled = true; }
+                });
+                status.textContent = `${status.textContent ? status.textContent + ' · ' : ''}Previous R process · run the code again for live controls`;
+            }
             if (data.connected === false) {
                 toolbar.querySelectorAll('button').forEach(control => { control.disabled = true; });
                 status.textContent = `${status.textContent ? status.textContent + ' · ' : ''}Reconnect to use these controls`;

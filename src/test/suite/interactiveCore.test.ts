@@ -5,17 +5,48 @@ import * as path from 'path';
 import * as net from 'net';
 import { get } from 'http';
 import { gunzipSync } from 'zlib';
-import { SessionJournal, retainedAssetIds } from '../../interactive/journal';
+import { SessionJournal, retainedAssetIds, readPreviousJournal } from '../../interactive/journal';
 import { JsonLines } from '../../interactive/framing';
 import { AssetStore, exportedAssetName } from '../../interactive/assets';
 import { Transcript } from '../../interactive/transcript';
 import { submission, AgentSnapshot, SessionManifest } from '../../interactive/protocol';
 import { probeSession } from '../../interactive/client';
-import { defaultStorage, discoverSessions, hasSessionEndpoint, installRuntime, prepareStorage, shellQuote } from '../../interactive/launcher';
+import { agentEnvironment, defaultStorage, discoverSessions, hasSessionEndpoint, installRuntime, prepareStorage, shellQuote } from '../../interactive/launcher';
 import { tablePage, TABLE_PAGE_SIZE } from '../../interactive/tablePaging';
 import { searchHistory } from '../../interactive/history';
+import { sessionPresentation } from '../../interactive/sessionPresentation';
+
+suite('Interactive session button', () => {
+    const manifest = { id: 'session-12345678', label: 'Analysis', status: 'idle', provider: 'r', rPid: 123,
+        rVersion: 'R version 4.6.1', directory: '/work/project', host: 'linux-host', supervision: 'tmux',
+        rPath: '/usr/bin/R', token: 'private-token', endpoint: '/private/control.sock' } as SessionManifest;
+
+    test('shows provider and live state with useful process details but no credentials', () => {
+        const presentation = sessionPresentation(manifest, true, true);
+        assert.strictEqual(presentation.label, 'R: Analysis · plain · idle');
+        for (const text of ['PID: 123', 'R version 4.6.1', '/work/project', 'linux-host', 'tmux', '/usr/bin/R']) {
+            assert.ok(presentation.description.includes(text));
+        }
+        assert.ok(!JSON.stringify(presentation).includes(manifest.token));
+        assert.ok(!JSON.stringify(presentation).includes(manifest.endpoint));
+    });
+
+    test('distinguishes restart, disconnect, input, observer, and stopped states', () => {
+        assert.match(sessionPresentation(manifest, false, false, true).label, /restarting$/);
+        assert.match(sessionPresentation(manifest, false, false).label, /disconnected$/);
+        assert.match(sessionPresentation({ ...manifest, provider: 'arf', status: 'input' }, true, false).label, /arf · waiting for input · observing$/);
+        assert.match(sessionPresentation({ ...manifest, provider: 'arf-existing', status: 'exited' }, true, true).label, /arf \(attached\) · stopped$/);
+        assert.match(sessionPresentation({ ...manifest, rPid: 456 }, true, true).description, /PID: 456/);
+    });
+});
 
 suite('Interactive storage', () => {
+    test('removes editor debugger injection while preserving ordinary runtime configuration', () => {
+        const environment = { PATH: '/usr/bin', R_HOME: '/R', NODE_OPTIONS: '--require debugger/bootloader.js', VSCODE_INSPECTOR_OPTIONS: '{}' };
+        assert.deepStrictEqual(agentEnvironment(environment), { PATH: '/usr/bin', R_HOME: '/R' });
+        assert.strictEqual(environment.VSCODE_INSPECTOR_OPTIONS, '{}');
+        assert.deepStrictEqual(agentEnvironment({ NODE_OPTIONS: '--max-old-space-size=2048' }), { NODE_OPTIONS: '--max-old-space-size=2048' });
+    });
     let home: string;
     setup(() => { home = fs.mkdtempSync(path.join(os.tmpdir(), 'r-interactive-storage-')); });
     teardown(() => fs.rmSync(home, { recursive: true, force: true }));
@@ -183,6 +214,29 @@ suite('Interactive protocol and persistence', () => {
         model.restore(snapshot);
         assert.strictEqual(model.cells.get('one')?.outputs.length, 1);
         journal.close();
+    });
+
+    test('restores completed generations without changing their journals or replaying a torn append', () => {
+        const storage = path.join(directory, 'retained');
+        const generation = 'previous';
+        const journal = new SessionJournal(path.join(storage, generation), generation);
+        for (const id of ['one', 'two']) {
+            const record = journal.accept({ id, code: `print('${id}')` }).record;
+            journal.append('accepted', { record }, id);
+            journal.append('stream', { text: id, channel: 'stdout' }, id);
+            journal.update({ ...record, state: 'success' });
+        }
+        journal.close();
+        const file = path.join(storage, generation, 'events-000000.jsonl');
+        fs.appendFileSync(file, '{"partial":');
+        const before = fs.readFileSync(file);
+        const snapshot = readPreviousJournal(storage, generation, 1);
+        assert.deepStrictEqual(snapshot.executions.map(record => record.id), ['two']);
+        assert.deepStrictEqual(snapshot.events.map(event => event.type), ['accepted', 'stream']);
+        assert.strictEqual(snapshot.seq, 4);
+        assert.deepStrictEqual(snapshot.truncated, []);
+        assert.deepStrictEqual(fs.readFileSync(file), before);
+        assert.throws(() => readPreviousJournal(storage, '../escape', 1), /Invalid identifier/);
     });
 
     test('asset paths cannot escape storage and HTML bundles retain local dependencies', () => {

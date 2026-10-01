@@ -77,6 +77,23 @@ suite('Session Communication', () => {
         sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Active');
     });
 
+    test('replacing an Interactive process moves document bindings while old viewers keep the old requester', async () => {
+        const previous = session.registerSessionTransport('restart-old', 'host', '/project', () => Promise.resolve('old'));
+        const next = session.registerSessionTransport('restart-new', 'host', '/project', () => Promise.resolve('new'));
+        const source = vscode.Uri.file('/project/restart.R');
+        const input = vscode.Uri.from({ scheme: 'vscode-interactive-input', path: '/restart' });
+        try {
+            session.bindSessionDocument(source, previous); session.bindSessionDocument(input, previous);
+            session.replaceSessionTransport(previous, next);
+            assert.strictEqual(session.boundSessionForDocument(source), next);
+            assert.strictEqual(session.boundSessionForDocument(input), next);
+            assert.strictEqual(await previous.requester?.({}), 'old');
+            assert.strictEqual(await next.requester?.({}), 'new');
+            session.unregisterSessionTransport(previous);
+            assert.strictEqual(session.boundSessionForDocument(source), next);
+        } finally { session.unregisterSessionTransport(previous); session.unregisterSessionTransport(next); }
+    });
+
     test('help notification does not open when help panel is disabled', async () => {
         const showHelpForPath = await showHelpWith({ helpPanel: 'Disable' });
 
