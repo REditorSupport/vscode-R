@@ -14,7 +14,9 @@ function(library, config, support_libraries = character(), worker = TRUE) {
     }
     support_paths <- unique(c(.libPaths(), support_libraries))
     # sess uses qualified calls rather than namespace imports for these packages.
-    for (package in c("jsonlite", "later", "processx", "rstudioapi")) {
+    # processx also calls ps lazily from .onLoad on Linux, before it can finish
+    # loading in an isolated renv project.
+    for (package in c("jsonlite", "later", "ps", "processx", "rstudioapi")) {
         loadNamespace(package, lib.loc = support_paths)
     }
     loadNamespace("sess", lib.loc = c(library, support_paths))

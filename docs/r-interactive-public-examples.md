@@ -10,6 +10,8 @@ Real R and arf tests verify startup `.libPaths()` and all three `R_LIBS*` variab
 
 The arf test also exercises profile output before the headless JSON readiness record. The launcher now consumes ordinary text and unrelated JSON lines while waiting for the actual socket record, allowing renv startup banners without a startup failure.
 
+Linux CI additionally exposed `processx` loading `ps` lazily during namespace startup. The bridge now explicitly preloads that dependency too. The isolated-project regression checks a real `ps` call and verifies it does not enter the project lockfile.
+
 ## Public examples
 
 All ten examples completed through plain R + JGD, arf + JGD, and plain R + standard graphics: **30 successful executions**. Checks compare the complete set of display types, so unexpected copies of previous plots are failures as well as missing output. Source and adaptation details are retained in [the runnable fixtures](../src/test/examples/public.json).

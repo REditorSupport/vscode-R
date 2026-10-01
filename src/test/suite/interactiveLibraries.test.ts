@@ -86,12 +86,15 @@ stopifnot(file.exists(file.path(startup_library_paths[[1L]], "vscrlibprobe", "DE
 plot(1:3, main = "Libraries preserved")`);
             assert.ok(events.some(event => event.data.kind === 'plot' || event.data.kind === 'image'));
             if (renv) {
+                // The bridge must be able to use dependencies loaded lazily by
+                // processx on Linux without exposing the whole host library.
+                await execute('stopifnot(ps::ps_pid() == Sys.getpid(), identical(.libPaths(), startup_library_paths))');
                 // Record the local fixture's source so this also tests a real
                 // offline restore, rather than forcing an unreproducible lockfile.
                 await execute(`renv::install(${rString(probe)}, rebuild = TRUE, prompt = FALSE)
 renv::snapshot(type = "all", prompt = FALSE)
 packages <- names(renv::lockfile_read("renv.lock")$Packages)
-stopifnot("vscrlibprobe" %in% packages, !"sess" %in% packages, !"vscrglobalprobe" %in% packages)
+stopifnot("vscrlibprobe" %in% packages, !"sess" %in% packages, !"ps" %in% packages, !"vscrglobalprobe" %in% packages)
 unloadNamespace("vscrlibprobe")
 unlink(file.path(.libPaths()[[1L]], "vscrlibprobe"), recursive = TRUE)
 renv::restore(prompt = FALSE)
