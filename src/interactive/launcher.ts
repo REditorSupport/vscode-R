@@ -7,6 +7,7 @@ import { promisify } from 'util';
 import { AgentConfig, SessionManifest, identifier } from './protocol';
 import { atomicJson } from './journal';
 import { resolveNodeExecutable } from './nodeExecutable';
+import { prepareSupervisor } from './supervisor';
 
 const run = promisify(execFile);
 
@@ -152,20 +153,32 @@ export async function prepareNodeRuntime(command: string, directory: string): Pr
     return node;
 }
 
-export async function launchAgent(config: AgentConfig, agent: string, node: string): Promise<SessionManifest> {
-    if (process.platform === 'win32') { throw new Error('Persistent Interactive native console support currently requires Linux or macOS'); }
+export async function launchAgent(config: AgentConfig, agent: string, node: string,
+    log: (text: string) => void = () => undefined): Promise<SessionManifest> {
+    const supervisor = prepareSupervisor(config.supervision, config.directory);
     node = await prepareNodeRuntime(node, config.directory);
     ensureStorageDirectory(config.storage, path.dirname(config.storage));
     const file = path.join(config.storage, 'config.json');
     const env = agentEnvironment();
-    if (config.supervision === 'auto') { config.supervision = process.platform === 'linux' ? 'tmux' : 'detached'; }
+    config.supervision = supervisor.kind;
     atomicJson(file, config);
-    if (config.supervision === 'tmux') {
-        await run('tmux', ['new-session', '-d', '-s', `vscode-r-${config.id.slice(0, 8)}-${config.generation.slice(0, 8)}`,
-            `exec ${[node, agent, file].map(shellQuote).join(' ')} >>${shellQuote(path.join(config.storage, 'agent.log'))} 2>&1`], { env });
-    } else if (config.supervision === 'systemd') {
-        await run('systemd-run', ['--user', '--collect', '--unit', `vscode-r-${config.id}-${config.generation}`, '--', node, agent, file], { env });
-    } else if (config.supervision === 'detached') {
+    if (supervisor.kind !== 'detached') {
+        const args = supervisor.kind === 'tmux'
+            ? ['new-session', '-d', '-s', `vscode-r-${config.id.slice(0, 8)}-${config.generation.slice(0, 8)}`,
+                `exec ${[node, agent, file].map(shellQuote).join(' ')} >>${shellQuote(path.join(config.storage, 'agent.log'))} 2>&1`]
+            : ['--user', '--collect', '--unit', `vscode-r-${config.id}-${config.generation}`, '--', node, agent, file];
+        try { await run(supervisor.executable, args, { env, cwd: config.directory, timeout: 10000 }); }
+        catch (error) {
+            // A failed command may already have started an agent. Falling back now
+            // could create two R processes using the same session registry.
+            throw new Error(`Could not start the ${supervisor.kind} session supervisor. Check ${supervisor.kind === 'systemd' ? 'the systemd user service' : 'tmux'} on the R host, ` +
+                `or set r.interactive.supervision to "detached". ${String(error)}`, { cause: error });
+        }
+    } else {
+        if (supervisor.notice) {
+            log(supervisor.notice);
+            fs.appendFileSync(path.join(config.storage, 'agent.log'), `${supervisor.notice}\n`, { mode: 0o600 });
+        }
         // setsid/unref alone leaves the agent in the extension host's process tree.
         // Wait for a short-lived launcher to exit so tree-based editor/debugger cleanup
         // cannot reach the agent. The agent owns its log and has no inherited IPC or stdio.
@@ -179,7 +192,7 @@ export async function launchAgent(config: AgentConfig, agent: string, node: stri
             fs.closeSync(log);
         `;
         await run(node, ['-e', bootstrap, agent, file], { env });
-    } else { throw new Error('Unknown session supervisor'); }
+    }
     const deadline = Date.now() + 30000;
     while (Date.now() < deadline) {
         try {

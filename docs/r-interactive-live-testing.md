@@ -114,11 +114,11 @@ The subsequent [public-example and library validation](r-interactive-public-exam
 
 | Check | Result |
 | --- | --- |
-| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 396 passed |
+| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 405 passed |
 | Earlier full extension suite, VS Code 1.110.0, tmux enabled | 347 passed |
 | Earlier Interactive-only verification on 1.110.0 after trace/lint adjustments | 84 passed |
 | Full extension suite, VS Code 1.119.0, tmux enabled | 348 passed before the final new-session focus adjustment |
-| arf runtime and library matrix, including existing arf adoption and renv | 30 passed |
+| arf runtime and library matrix, including existing arf adoption and renv | 32 passed |
 | Standard-graphics runtime and library matrix | 21 passed; 9 optional/JGD cases skipped |
 | Fresh private sess package, full tinytest suite | 430 checks passed |
 | Browser renderer, dark / narrow light / high contrast | 46 assertions passed in each layout |
@@ -129,6 +129,20 @@ The subsequent [public-example and library validation](r-interactive-public-exam
 The full suites exercise lifecycle output ordering, reload restoration, restart generations, stale manifests, source targeting, language-server diagnostics, compressed assets and quotas, table paging, history/export, detached launch, real tmux supervision, and runtime inspection. The renderer harness covers disabled controls, numeric precision, stale replies, image readiness, format selection, layout stability, and disposal. See [the implementation review](r-interactive-review.md) for the earlier feature-by-feature regressions and Positron comparison.
 
 For future latest-release runs, use `npm run pretest` followed by `npx vscode-test --code-version stable`. Enable `VSCR_TEST_TMUX=1` when tmux is installed. Pin an older version only for a separate compatibility check, and verify the actual application version because cached desktop apps can update themselves.
+
+## Missing tmux and supervisor recovery (2026-10-01)
+
+Linux `auto` now falls back to the independent detached launcher when tmux is missing or not executable. The actual supervisor is recorded in the manifest and session details, and the fallback is logged. Explicit tmux/systemd choices are checked before runtime installation and before stopping R for restart. Restart reads the current setting, so changing it can repair a missing supervisor or select a different one for the replacement process.
+
+The full extension suite passed **405 tests** on the current stable release, **VS Code 1.140.0**, with real tmux enabled. The separate arf runtime/library suite passed **32 tests**. New coverage includes:
+
+- Real plain R and arf agents launched with a restricted PATH containing no tmux. The Linux selection branch is exercised on macOS as well as Linux CI. The tests verify the detached manifest/config, fallback log, absence from the editor's process ancestry, identical R PID after launcher termination/reconnection, and retained R objects.
+- Missing or nonexecutable tmux, executable PATH resolution, macOS defaults, explicit systemd selection, and unsupported/invalid configurations.
+- Missing explicit tmux rejected by **New Persistent Interactive Session** without creating storage or installing the runtime.
+- Missing tmux on restart leaves the original R process, generation, draft, transcript, and saved launch config intact. A later simulated tmux launch failure retains the transcript, and changing the supervision setting to `detached` allows retry in the same window.
+- Installed tmux/systemd launch failures include command diagnostics and do not trigger a second agent launch.
+
+Production/TypeScript builds and lint pass, with **0 errors and 70 existing TypeScript warnings**. These tests establish editor-independent process persistence; they do not validate a particular remote server's logout or systemd policies.
 
 ## Limits and remaining checks
 

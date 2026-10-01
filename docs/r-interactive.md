@@ -10,7 +10,7 @@ The remote host needs:
 
 - R and a C compiler capable of building R packages (`r-base-dev` and `build-essential` on Debian/Ubuntu).
 - Node.js 18 or newer. The default searches the extension host's PATH, then uses VS Code Server's own standalone Node runtime in Remote SSH. A separate Node installation is normally unnecessary on the remote host. Local desktop sessions require standalone Node on PATH or an explicit `r.interactive.nodePath`; the Electron helper is not used.
-- `tmux` for the default Linux supervisor. `systemd --user` and detached processes are optional alternatives.
+- `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
 - R packages `processx`, `later`, `jsonlite`, and `rstudioapi`. Install `languageserver` for language features, `jgd` and `systemfonts` for JGD graphics, `svglite` for the static fallback, and `htmlwidgets`/`htmltools` for HTML output.
 - `arf` is optional. Creating a headless arf session requires an executable on the R host; plain R requires no arf installation. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract was exercised with arf 0.5.1.
 
@@ -39,13 +39,17 @@ Typical remote settings:
 {
   "r.interactive.nodePath": "/usr/bin/node",
   "r.interactive.arfPath": "/home/me/.cargo/bin/arf",
-  "r.interactive.supervision": "tmux",
+  "r.interactive.supervision": "auto",
   "r.interactive.restore": true,
   "r.interactive.executionTarget": "auto"
 }
 ```
 
-Use the paths appropriate for your server. Linux `auto` selects tmux and reports an error if tmux cannot start; it does not silently weaken persistence. macOS `auto` uses a detached agent. Detached launch goes through a short-lived bootstrap so the agent leaves the editor's process tree before launch completes; VS Code debugger auto-attach settings are removed. User systemd services remain subject to the server's login/linger policy. No option preserves in-memory R objects across a host reboot or termination of the R process.
+Use the paths appropriate for your server. Linux `auto` prefers tmux when its executable is on the extension host's PATH. If tmux is missing or not executable, it uses a detached agent and records the fallback in the **R Interactive** output channel and agent log. Session Details shows **Independent process**. macOS `auto` also uses a detached agent. Both plain R and managed arf support this fallback with the same Interactive features.
+
+Selecting `tmux` or `systemd` explicitly requires `tmux` or `systemd-run` on the R host. Missing executables produce an actionable error before installing a runtime or stopping the current R process for restart. Install the selected supervisor or change `r.interactive.supervision` to `auto` or `detached`. New sessions and restarts use the current setting; merely reconnecting leaves the existing supervisor unchanged. If an installed supervisor fails to launch (for example, a systemd user service is unavailable), the error includes its diagnostics. The extension does not retry with another supervisor after a launch attempt, which could create duplicate R processes.
+
+Detached launch goes through a short-lived bootstrap so the agent leaves the editor's process tree before launch completes; VS Code debugger auto-attach settings are removed. It survives VS Code reload/exit and an SSH connection closing, but server policies that terminate a user's processes at logout can still stop it. User systemd services also depend on the server's login/linger policy. No option preserves in-memory R objects across a host reboot or termination of the R process.
 
 ## Your tmux/arf workflow
 

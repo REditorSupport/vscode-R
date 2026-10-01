@@ -10,6 +10,8 @@ import { SessionAgent } from '../../interactive/agent';
 import { AgentClient } from '../../interactive/client';
 import { AgentConfig, SessionEvent, SessionManifest, ExecutionRecord } from '../../interactive/protocol';
 import { defaultStorage, installRuntime } from '../../interactive/launcher';
+import { resolveExecutable } from '../../interactive/executable';
+import { resolveNodeExecutable } from '../../interactive/nodeExecutable';
 import { HistoryPage } from '../../interactive/history';
 import { AssetStorageStats, readAsset } from '../../interactive/assets';
 import { assertSvgTextVisible } from '../svgAssertions';
@@ -498,69 +500,90 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
         } finally { independent.close(); }
     });
 
-    test('detached session leaves the live editor process tree and retains objects after its termination', async () => {
-        const id = randomUUID();
-        const config: AgentConfig = { id, generation: randomUUID(), label: 'Editor termination test', directory: root,
-            storage: path.join(root, id), rPath: 'R', library, resources,
-            provider: process.env.VSCR_TEST_PROVIDER === 'arf' ? 'arf' : 'r', arfPath: process.env.ARF_PATH ?? 'arf',
-            supervision: 'detached', plotBackend: 'standard', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
-        const script = `const {launchAgent} = require(${JSON.stringify(require.resolve('../../interactive/launcher'))});
+    for (const supervision of ['detached', 'auto']) {
+        test(`${supervision === 'auto' ? 'Linux auto without tmux' : 'Detached'} session leaves the editor process tree and retains objects after its termination`, async () => {
+            const node = resolveNodeExecutable('node', root); assert.ok(node);
+            const rPath = resolveExecutable('R', root); assert.ok(rPath);
+            const arfPath = resolveExecutable(process.env.ARF_PATH ?? 'arf', root);
+            const environment = { ...process.env };
+            if (supervision === 'auto') {
+                // A real restricted PATH, including the shell utilities used by R but
+                // deliberately excluding tmux even on CI hosts where it is installed.
+                const bin = path.join(temporary, 'without-tmux'); fs.mkdirSync(bin);
+                for (const name of ['uname', 'rm', 'mkdir', 'which', 'sed', 'sh', 'env']) {
+                    const executable = resolveExecutable(name, root); assert.ok(executable);
+                    fs.symlinkSync(executable, path.join(bin, name));
+                }
+                environment.PATH = bin;
+            }
+            const id = randomUUID();
+            const config: AgentConfig = { id, generation: randomUUID(), label: 'Editor termination test', directory: root,
+                storage: path.join(root, id), rPath, library, resources,
+                provider: process.env.VSCR_TEST_PROVIDER === 'arf' ? 'arf' : 'r', arfPath,
+                supervision, plotBackend: 'standard', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
+            const script = `const {launchAgent} = require(${JSON.stringify(require.resolve('../../interactive/launcher'))});
+            ${supervision === 'auto' ? 'Object.defineProperty(process, \'platform\', { value: \'linux\' });' : ''}
             process.env.VSCODE_INSPECTOR_OPTIONS = '{}';
             process.env.NODE_OPTIONS = '--require /missing/vscode-debug-bootloader.js';
-            launchAgent(${JSON.stringify(config)}, ${JSON.stringify(agentBundle)}, 'node')
+            launchAgent(${JSON.stringify(config)}, ${JSON.stringify(agentBundle)}, ${JSON.stringify(node)})
                 .then(value => { console.log(JSON.stringify(value)); setInterval(() => {}, 1000); })
                 .catch(error => { console.error(error); process.exitCode = 1; });`;
-        const parent = spawn('node', ['-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
-        let independent: AgentClient | undefined;
-        try {
-            const value = await new Promise<SessionManifest>((resolve, reject) => {
-                let output = ''; let errors = '';
-                parent.stdout.on('data', (chunk: Buffer) => {
-                    output += chunk.toString();
-                    if (output.includes('\n')) { resolve(JSON.parse(output.split('\n')[0]) as SessionManifest); }
+            const parent = spawn(node, ['-e', script], { env: environment, stdio: ['ignore', 'pipe', 'pipe'] });
+            let independent: AgentClient | undefined;
+            try {
+                const value = await new Promise<SessionManifest>((resolve, reject) => {
+                    let output = ''; let errors = '';
+                    parent.stdout.on('data', (chunk: Buffer) => {
+                        output += chunk.toString();
+                        if (output.includes('\n')) { resolve(JSON.parse(output.split('\n')[0]) as SessionManifest); }
+                    });
+                    parent.stderr.on('data', (chunk: Buffer) => { errors += chunk.toString(); });
+                    parent.once('error', reject);
+                    parent.once('exit', () => reject(new Error(`Launcher exited before readiness: ${errors}`)));
                 });
-                parent.stderr.on('data', (chunk: Buffer) => { errors += chunk.toString(); });
-                parent.once('error', reject);
-                parent.once('exit', () => reject(new Error(`Launcher exited before readiness: ${errors}`)));
-            });
-            independent = new AgentClient(value); await independent.connect();
-            const before = randomUUID();
-            await independent.request('submit', { submission: { id: before, code: 'persisted <- 42' } });
-            const complete = async (execution: string): Promise<void> => {
-                assert.ok(independent);
-                for (let i = 0; i < 200; i++) {
-                    if ((await independent.request<ExecutionRecord>('execution', { id: execution })).state === 'success') { return; }
-                    await delay(25);
+                independent = new AgentClient(value); await independent.connect();
+                assert.strictEqual(value.supervision, 'detached');
+                const saved = JSON.parse(fs.readFileSync(path.join(config.storage, 'config.json'), 'utf8')) as AgentConfig;
+                assert.strictEqual(saved.supervision, 'detached');
+                if (supervision === 'auto') { assert.match(fs.readFileSync(path.join(config.storage, 'agent.log'), 'utf8'), /tmux is unavailable/); }
+                const before = randomUUID();
+                await independent.request('submit', { submission: { id: before, code: 'persisted <- 42' } });
+                const complete = async (execution: string): Promise<void> => {
+                    assert.ok(independent);
+                    for (let i = 0; i < 200; i++) {
+                        if ((await independent.request<ExecutionRecord>('execution', { id: execution })).state === 'success') { return; }
+                        await delay(25);
+                    }
+                    assert.fail('Persistent execution did not complete');
+                };
+                await complete(before);
+                const originalPid = (await independent.snapshot()).manifest.rPid;
+                assert.ok(originalPid);
+                // Check every ancestor, while the editor is still alive. A direct detached
+                // child survives ordinary exit but remains vulnerable to recursive cleanup.
+                let ancestor = value.agentPid;
+                for (let i = 0; ancestor > 1 && i < 50; i++) {
+                    assert.notStrictEqual(ancestor, parent.pid, 'Agent must not remain in the editor process tree');
+                    ancestor = Number((await run('ps', ['-p', String(ancestor), '-o', 'ppid='])).stdout.trim());
                 }
-                assert.fail('Persistent execution did not complete');
-            };
-            await complete(before);
-            const originalPid = (await independent.snapshot()).manifest.rPid;
-            assert.ok(originalPid);
-            // Check every ancestor, while the editor is still alive. A direct detached
-            // child survives ordinary exit but remains vulnerable to recursive cleanup.
-            let ancestor = value.agentPid;
-            for (let i = 0; ancestor > 1 && i < 50; i++) {
-                assert.notStrictEqual(ancestor, parent.pid, 'Agent must not remain in the editor process tree');
-                ancestor = Number((await run('ps', ['-p', String(ancestor), '-o', 'ppid='])).stdout.trim());
+                independent.close();
+                await new Promise<void>(resolve => { parent.once('exit', () => resolve()); parent.kill('SIGKILL'); });
+                independent = new AgentClient(value); await independent.connect();
+                assert.strictEqual(independent.manifest.rPid, originalPid);
+                const after = randomUUID();
+                await independent.request('submit', { submission: { id: after, code: 'stopifnot(persisted == 42); persisted <- persisted + 1' } });
+                await complete(after);
+            } finally {
+                parent.kill();
+                if (independent) {
+                    if (!independent.connected) { await independent.connect(); }
+                    await independent.request('stop');
+                    for (let i = 0; i < 200 && (await independent.snapshot()).manifest.status !== 'exited'; i++) { await delay(25); }
+                    await independent.request('shutdown'); independent.close();
+                }
             }
-            independent.close();
-            await new Promise<void>(resolve => { parent.once('exit', () => resolve()); parent.kill('SIGKILL'); });
-            independent = new AgentClient(value); await independent.connect();
-            assert.strictEqual(independent.manifest.rPid, originalPid);
-            const after = randomUUID();
-            await independent.request('submit', { submission: { id: after, code: 'stopifnot(persisted == 42); persisted <- persisted + 1' } });
-            await complete(after);
-        } finally {
-            parent.kill();
-            if (independent) {
-                if (!independent.connected) { await independent.connect(); }
-                await independent.request('stop');
-                for (let i = 0; i < 200 && (await independent.snapshot()).manifest.status !== 'exited'; i++) { await delay(25); }
-                await independent.request('shutdown'); independent.close();
-            }
-        }
-    });
+        });
+    }
 
     test('adopts an existing arf process without losing its objects', async function () {
         const arf = process.env.ARF_PATH ?? 'arf';

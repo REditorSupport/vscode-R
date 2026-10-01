@@ -8,6 +8,7 @@ import { AssetStore, AssetStorageStats, exportedAssetName, readAsset } from './a
 import { defaultStorage, discoverSessions, hasSessionEndpoint, installRuntime, launchAgent, newIdentity, prepareNodeRuntime } from './launcher';
 import { discoverArf, probeArfSession, ArfSession } from './arf';
 import { resolveArfExecutable } from './arfExecutable';
+import { prepareSupervisor } from './supervisor';
 import { Transcript, TranscriptCell } from './transcript';
 import { DISPLAY_MIME, InteractiveSerializer } from './notebook';
 import { setInteractiveExecutor } from './executionTarget';
@@ -533,6 +534,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const label = await vscode.window.showInputBox({ title: 'Session name', value: adopt ? `arf ${adopt.pid}` : path.basename(directory) });
         if (!label) { return; }
         if (kind === 'arf' && !(arfPath = this.checkArfExecutable(arfPath ?? arfCommand, directory))) { return; }
+        const supervision = util.config(resource).get<string>('interactive.supervision', 'auto');
+        prepareSupervisor(supervision, directory);
         const node = await this.nodeRuntime(directory, resource);
         return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Starting persistent R Interactive' }, async progress => {
             progress.report({ message: 'Preparing the private R runtime' });
@@ -542,14 +545,14 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             const config: AgentConfig = { ...identity, label, directory, storage: path.join(this.root, identity.id),
                 rPath, library: runtime.library, resources: runtime.resources, provider: kind,
                 arfPath, arfEndpoint: adopt?.socket_path,
-                supervision: util.config().get<string>('interactive.supervision', 'auto'),
+                supervision,
                 plotBackend: util.config().get<AgentConfig['plotBackend']>('interactive.plotBackend', 'auto'),
                 historyLimit: util.config().get<number>('interactive.historyLimit', 100),
                 maxOutputBytes: util.config().get<number>('interactive.maxOutputBytes', 4 * 1024 * 1024),
                 maxAssetBytes: util.config().get<number>('interactive.maxAssetBytes', DEFAULT_MAX_ASSET_BYTES),
                 maxJournalBytes: util.config().get<number>('interactive.maxJournalBytes', 128 * 1024 * 1024) };
             progress.report({ message: 'Launching the independent session agent' });
-            const manifest = await launchAgent(config, runtime.agent, node);
+            const manifest = await launchAgent(config, runtime.agent, node, text => this.output.appendLine(text));
             this.refresh(); await this.open(manifest);
             return this.views.get(`${manifest.id}:${manifest.generation}`);
         });
@@ -1331,6 +1334,10 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             if (answer !== 'Restart Session' || view.disposed) { return; }
             const storage = path.join(this.root, view.client.manifest.id);
             const config = JSON.parse(fs.readFileSync(path.join(storage, 'config.json'), 'utf8')) as AgentConfig;
+            // Re-evaluate auto and honor repaired settings; the saved config records
+            // the actual supervisor of the old process, not the current preference.
+            config.supervision = util.config(vscode.Uri.file(config.directory)).get<string>('interactive.supervision', 'auto');
+            prepareSupervisor(config.supervision, config.directory);
             const node = await this.nodeRuntime(config.directory, vscode.Uri.file(config.directory));
             if (config.provider === 'arf') {
                 // Preserve the original binary across PATH changes after a reload, but
@@ -1347,6 +1354,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             config.generation = randomUUID();
             if (view.disposed) { return; }
             if (config.provider === 'arf' && !this.checkArfExecutable(config.arfPath ?? 'arf', config.directory, true)) { return; }
+            prepareSupervisor(config.supervision, config.directory);
             clearTimeout(view.reconnectTimer);
             announced = true;
             await this.queueNotice(view, 'restarting');
@@ -1368,7 +1376,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             for (const { task } of view.executions.values()) { task.end(undefined); }
             view.executions.clear();
             view.client.close();
-            const manifest = await launchAgent(config, runtime.agent, node);
+            const manifest = await launchAgent(config, runtime.agent, node, text => this.output.appendLine(text));
             if (view.disposed) { return; }
             this.views.delete(`${manifest.id}:${generation}`);
             view.history.push(view.model);

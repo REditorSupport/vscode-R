@@ -2330,7 +2330,7 @@
             "detached"
           ],
           "default": "auto",
-          "description": "Independent session supervision. Auto uses tmux on Linux and a detached process on macOS. Detached processes survive editor exit, but host logout policies may stop them."
+          "description": "Independent session supervision. Auto prefers tmux on Linux when available, otherwise uses a detached process; macOS uses a detached process. Explicit tmux/systemd selections require their executables on the R host. Detached processes survive editor reload/exit, but host logout policies may stop them. Changes apply to new or restarted sessions."
         },
         "r.interactive.nodePath": {
           "type": "string",

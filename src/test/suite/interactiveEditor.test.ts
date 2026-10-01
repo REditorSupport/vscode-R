@@ -169,6 +169,29 @@ import type { WorkspaceData } from '../../session';
             await config.update('interactive.nodePath', previous, vscode.ConfigurationTarget.Global);
         }
     });
+    test('missing explicit tmux reports a recovery setting before installing or creating a session', async () => {
+        const config = vscode.workspace.getConfiguration('r');
+        const previous = config.inspect<string>('interactive.supervision')?.globalValue;
+        const entries = fs.readdirSync(root);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'R', value: 'r' } as vscode.QuickPickItem);
+        const previousPath = process.env.PATH;
+        // Resolve R normally, then simulate tmux disappearing before launch.
+        const input = sinon.stub(vscode.window, 'showInputBox').callsFake(() => {
+            process.env.PATH = root; return Promise.resolve('Missing tmux');
+        });
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        try {
+            await config.update('interactive.supervision', 'tmux', vscode.ConfigurationTarget.Global);
+            await vscode.commands.executeCommand('r.interactive.new');
+            sinon.assert.calledOnce(errors);
+            assert.match(errors.firstCall.args[0], /tmux.*remote server.*r\.interactive\.supervision/);
+            assert.deepStrictEqual(fs.readdirSync(root), entries);
+        } finally {
+            process.env.PATH = previousPath;
+            picker.restore(); input.restore(); errors.restore();
+            await config.update('interactive.supervision', previous, vscode.ConfigurationTarget.Global);
+        }
+    });
     test('cancels Open Interactive Session from the command palette without opening a notebook or reporting an error', async () => {
         const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
@@ -1400,6 +1423,7 @@ par(mfrow=c(1,1))`);
         const kernels = sinon.spy(vscode.notebooks, 'createNotebookController');
         let client: AgentClient | undefined;
         const nodePath = vscode.workspace.getConfiguration('r').inspect<string>('interactive.nodePath')?.globalValue;
+        const supervision = vscode.workspace.getConfiguration('r').inspect<string>('interactive.supervision')?.globalValue;
         try {
             // A cancelled restart must leave the process and transcript alone.
             confirmation.resolves(undefined);
@@ -1444,15 +1468,35 @@ par(mfrow=c(1,1))`);
             assert.ok(original.rPid); process.kill(original.rPid, 0);
             await vscode.workspace.getConfiguration('r').update('interactive.nodePath', nodePath, vscode.ConfigurationTarget.Global);
             errors.resetHistory();
-            // A later supervisor failure must still retain the window and permit retry.
-            fs.writeFileSync(launchFile, JSON.stringify({ ...JSON.parse(savedLaunch) as AgentConfig, supervision: 'invalid-for-test' }));
-            await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            // Losing tmux must not stop the live R process. This preflight uses the
+            // current setting even though the saved session used detached launch.
+            await vscode.workspace.getConfiguration('r').update('interactive.supervision', 'tmux', vscode.ConfigurationTarget.Global);
+            const previousPath = process.env.PATH;
+            try {
+                process.env.PATH = root;
+                await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            } finally { process.env.PATH = previousPath; }
             sinon.assert.calledOnce(errors);
+            assert.match(errors.firstCall.args[0], /Cannot find an executable tmux.*r\.interactive\.supervision/);
+            assert.strictEqual(notebook.cellCount, oldCount);
+            assert.strictEqual(notebook.metadata.rGeneration, original.generation);
+            assert.strictEqual(fs.readFileSync(launchFile, 'utf8'), savedLaunch);
+            assert.ok(restartController.label.endsWith(' · idle'));
+            process.kill(original.rPid, 0);
+            errors.resetHistory();
+            // A later supervisor failure must still retain the window and permit retry.
+            const supervisorBin = path.join(root, 'failed-supervisor'); fs.mkdirSync(supervisorBin);
+            fs.writeFileSync(path.join(supervisorBin, 'tmux'), '#!/bin/sh\necho "test tmux launch failure" >&2\nexit 1\n', { mode: 0o700 });
+            try {
+                process.env.PATH = `${supervisorBin}${path.delimiter}${previousPath ?? ''}`;
+                await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            } finally { process.env.PATH = previousPath; }
+            sinon.assert.calledOnce(errors);
+            assert.match(errors.firstCall.args[0], /Could not start the tmux.*test tmux launch failure/s);
             assert.ok(notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'restartFailed'));
             assert.strictEqual(oldCell.document.uri.toString(), oldUri);
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
-            const failedLaunch = JSON.parse(fs.readFileSync(launchFile, 'utf8')) as AgentConfig;
-            fs.writeFileSync(launchFile, JSON.stringify({ ...failedLaunch, supervision: 'detached' }));
+            await vscode.workspace.getConfiguration('r').update('interactive.supervision', 'detached', vscode.ConfigurationTarget.Global);
             confirmation.resetHistory(); errors.resetHistory();
             await Promise.all([
                 vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
@@ -1478,6 +1522,7 @@ par(mfrow=c(1,1))`);
             assert.notStrictEqual(config.library, path.join(root, 'library'));
             assert.notStrictEqual(config.resources, path.join(process.cwd(), 'R'));
             assert.strictEqual(config.maxAssetBytes, DEFAULT_MAX_ASSET_BYTES);
+            assert.strictEqual(config.supervision, 'detached', 'Restart honors the repaired setting instead of the persisted tmux supervisor');
             assert.ok(fs.existsSync(path.join(config.library, 'sess')));
             const current = (): SessionManifest => JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest;
             client = new AgentClient(current()); await client.connect({ claim: false });
@@ -1533,6 +1578,7 @@ par(mfrow=c(1,1))`);
         } finally {
             confirmation.restore(); errors.restore(); kernels.restore(); change.dispose();
             await vscode.workspace.getConfiguration('r').update('interactive.nodePath', nodePath, vscode.ConfigurationTarget.Global);
+            await vscode.workspace.getConfiguration('r').update('interactive.supervision', supervision, vscode.ConfigurationTarget.Global);
             if (!client?.connected) {
                 client = new AgentClient(JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest);
                 try { await client.connect(); } catch { client.close(); client = undefined; }
