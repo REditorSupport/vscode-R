@@ -161,14 +161,83 @@ import type { InteractiveManager } from '../../interactive/manager';
     test('the kernel button shows session identity, process details and live activity', async () => {
         const manifest = manifests[0];
         await vscode.commands.executeCommand('r.interactive.open', manifest);
-        await until(() => controller.label === `R: ${manifest.label} · plain · idle`);
-        assert.ok(controller.description?.includes(`PID: ${manifest.rPid ?? ''}`));
-        assert.ok(controller.description?.includes(manifest.directory));
-        assert.ok(controller.description?.includes(manifest.rVersion ?? 'R version'));
-        await vscode.commands.executeCommand('r.runSelection', 'Sys.sleep(0.4)');
-        await until(() => controller.label.endsWith(' · busy'));
-        assert.ok(controller.description?.includes('State: busy'));
-        await until(() => controller.label.endsWith(' · idle'));
+        await until(() => controller.label === `R: ${manifest.label} · idle`);
+        assert.ok(controller.description?.includes(`PID ${manifest.rPid ?? ''}`));
+        assert.ok(controller.detail?.includes(manifest.directory));
+        assert.match(controller.description ?? '', /^R \d/);
+        await new Promise<void>(resolve => setImmediate(resolve));
+        const refreshed: string[] = [];
+        const update = controller.updateNotebookAffinity.bind(controller);
+        const affinity = sinon.stub(controller, 'updateNotebookAffinity').callsFake((notebook, value) => {
+            assert.strictEqual(notebook.metadata.rSessionId, manifest.id);
+            assert.strictEqual(value, vscode.NotebookControllerAffinity.Preferred);
+            refreshed.push(controller.label);
+            update(notebook, value);
+        });
+        const selectionEvents: boolean[] = [];
+        const listener = controller.onDidChangeSelectedNotebooks(event => selectionEvents.push(event.selected));
+        try {
+            await vscode.commands.executeCommand('r.runSelection', 'Sys.sleep(0.4)');
+            await until(() => refreshed.some(label => label.endsWith(' · busy')));
+            await until(() => refreshed.at(-1)?.endsWith(' · idle') === true);
+            assert.deepStrictEqual(selectionEvents, [], 'Presentation refresh must not deselect the execution kernel');
+            affinity.resetHistory();
+            // Repeated unchanged status updates must not continually rebuild the picker.
+            const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function');
+            const status = manager as unknown as { updateStatus(): void };
+            status.updateStatus(); status.updateStatus();
+            await new Promise<void>(resolve => setImmediate(resolve));
+            sinon.assert.notCalled(affinity);
+        } finally { listener.dispose(); affinity.restore(); }
+    });
+
+    test('refreshes a controller opened during startup when R becomes ready', async () => {
+        const id = randomUUID();
+        const ready = path.join(root, 'release-startup');
+        const profile = path.join(root, 'startup.R');
+        fs.writeFileSync(profile, `local({ deadline <- Sys.time() + 20; while (!file.exists(${JSON.stringify(ready)}) && Sys.time() < deadline) Sys.sleep(0.02) })\n`);
+        const config = JSON.parse(fs.readFileSync(path.join(root, manifests[0].id, 'config.json'), 'utf8')) as AgentConfig;
+        const agent = new SessionAgent({ ...config, id, generation: randomUUID(), label: 'Delayed startup', storage: path.join(root, id) });
+        const previous = process.env.R_PROFILE_USER;
+        const created = sinon.spy(vscode.notebooks, 'createNotebookController');
+        let affinity: sinon.SinonSpy | undefined;
+        try {
+            process.env.R_PROFILE_USER = profile;
+            const manifest = await agent.start();
+            process.env.R_PROFILE_USER = previous;
+            await vscode.commands.executeCommand('r.interactive.open', manifest);
+            const native = created.returnValues.find(value => value.notebookType === 'interactive');
+            assert.ok(native);
+            assert.match(native.label, / · starting$/);
+            await new Promise<void>(resolve => setImmediate(resolve));
+            affinity = sinon.spy(native, 'updateNotebookAffinity');
+            fs.writeFileSync(ready, 'ready');
+            await until(() => native.label.endsWith(' · idle') && !!affinity?.called);
+            assert.match(native.description ?? '', /^R \d.*PID \d/);
+            // Selection must still execute in this same session after the refresh.
+            await vscode.commands.executeCommand('r.runSelection', 'cat("startup refreshed")');
+            const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === id);
+            assert.ok(notebook);
+            await until(() => notebook.getCells().some(cell => cell.executionSummary?.success === true));
+            await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
+        } finally {
+            if (previous === undefined) { delete process.env.R_PROFILE_USER; }
+            else { process.env.R_PROFILE_USER = previous; }
+            fs.writeFileSync(ready, 'ready');
+            affinity?.restore(); created.restore();
+            const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === id);
+            if (notebook) {
+                await vscode.commands.executeCommand('r.interactive.detach', notebook.uri);
+                // Detached native tabs remain open. Remove this fixture's association
+                // so later tests cannot mistake it for a newly created live session.
+                const edit = new vscode.WorkspaceEdit();
+                edit.set(notebook.uri, [vscode.NotebookEdit.updateNotebookMetadata({ rSessionId: null, rGeneration: null })]);
+                await vscode.workspace.applyEdit(edit);
+                await until(() => !notebook.metadata.rSessionId);
+            }
+            agent.close();
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        }
     });
     test('restores multiple native tabs without metadata and keeps R alive across manager disposal', async () => {
         // Load the activated bundle's context/constructor, so execution routing and
@@ -833,7 +902,7 @@ cat("\n")`;
             const current = (): SessionManifest => JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest;
             client = new AgentClient(current()); await client.connect({ claim: false });
             assert.notStrictEqual(current().rPid, original.rPid);
-            assert.ok(restartController.description?.includes(`PID: ${current().rPid ?? ''}`));
+            assert.ok(restartController.description?.includes(`PID ${current().rPid ?? ''}`));
             assert.ok(restartController.label.endsWith(' · idle'));
             const afterCode = 'stopifnot(!exists("before_restart")); after_restart <- 7; cat("fresh process")';
             await vscode.commands.executeCommand('r.runSelection', afterCode);

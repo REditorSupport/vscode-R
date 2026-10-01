@@ -47,6 +47,7 @@ interface SavedConnection { id: string; notebookUri?: string }
 export class InteractiveManager implements vscode.Disposable, vscode.TreeDataProvider<SessionManifest> {
     private views = new Map<string, InteractiveView>();
     private opening = new Map<string, Promise<void>>();
+    private presentationRefresh = new Set<InteractiveView>();
     private active?: InteractiveView;
     private routing = false;
     private targetSelection?: Promise<InteractiveView | 'createTerminal' | undefined>;
@@ -96,10 +97,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         command('r.interactive.copyCell', value => vscode.env.clipboard.writeText((value as vscode.NotebookCell).document.getText()));
         command('r.interactive.source', value => this.source((value as vscode.NotebookCell).metadata.rSource as SourceLocation | undefined));
         command('r.interactive.info', value => this.forView(value, view => {
-            const manifest = view.client.manifest;
-            this.output.appendLine(JSON.stringify({ name: manifest.label, status: manifest.status, provider: manifest.provider,
-                rVersion: manifest.rVersion, rPath: manifest.rPath, pid: manifest.rPid, workingDirectory: view.target.workingDir,
-                supervision: manifest.supervision, connected: view.client.connected, control: view.client.control }, null, 2));
+            this.output.appendLine(sessionPresentation(view.client.manifest, view.client.connected, view.client.control,
+                view.restarting, view.target.workingDir).tooltip);
             this.output.show(true);
         }));
         command('r.interactive.useTerminal', () => { this.routing = false; });
@@ -213,11 +212,26 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private updateStatus(): void {
         for (const view of this.views.values()) {
-            const { label, description } = sessionPresentation(view.client.manifest, view.client.connected, view.client.control,
+            const { label, description, detail } = sessionPresentation(view.client.manifest, view.client.connected, view.client.control,
                 view.restarting, view.target.workingDir);
+            let changed = false;
             for (const controller of view.controllers) {
-                if (controller.label !== label) { controller.label = label; }
-                if (controller.description !== description) { controller.description = description; }
+                if (controller.label !== label) { controller.label = label; changed = true; }
+                if (controller.description !== description) { controller.description = description; changed = true; }
+                if (controller.detail !== detail) { controller.detail = detail; changed = true; }
+            }
+            if (changed && !this.presentationRefresh.has(view)) {
+                this.presentationRefresh.add(view);
+                // VS Code's native toolbar/picker watches affinity, not kernel property
+                // changes. Reassert the existing affinity without changing selection.
+                // Property setters send a batched microtask: refresh on the next turn
+                // so the workbench receives the new label/details before this event.
+                setImmediate(() => {
+                    this.presentationRefresh.delete(view);
+                    if (!view.disposed && !view.notebook.isClosed) {
+                        view.controller.updateNotebookAffinity(view.notebook, vscode.NotebookControllerAffinity.Preferred);
+                    }
+                });
             }
         }
         const document = vscode.window.activeTextEditor?.document;
@@ -229,7 +243,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const state = view.restarting ? 'Restarting' : !view.client.connected ? 'Disconnected' : manifest.status === 'input' ? 'Waiting for input' : manifest.status;
         const icon = !view.client.connected ? 'debug-disconnect' : manifest.status === 'busy' ? 'sync~spin' : manifest.status === 'input' ? 'question' : 'terminal';
         this.status.text = `$(${icon}) R: ${manifest.label} · ${state}${queued ? ` · ${queued} queued` : ''}${view.client.connected && !view.client.control ? ' · observing' : ''}`;
-        this.status.tooltip = `${manifest.rVersion ?? 'R'} · ${manifest.provider}\n${view.target.workingDir}\n${view.client.control ? 'This window controls the session' : 'Use Take Control to submit code'}\nSelect to ${manifest.status === 'input' ? 'reply to R input' : 'switch sessions'}`;
+        this.status.tooltip = `${sessionPresentation(manifest, view.client.connected, view.client.control,
+            view.restarting, view.target.workingDir).tooltip}\nSelect to ${manifest.status === 'input' ? 'reply to R input' : 'switch sessions'}`;
         this.status.command = manifest.status === 'input'
             ? { command: 'r.interactive.input', title: 'Reply to R input', arguments: [manifest] } : 'r.interactive.connect';
         this.status.show();

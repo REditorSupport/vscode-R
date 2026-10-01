@@ -21,11 +21,14 @@ suite('Interactive session button', () => {
         rVersion: 'R version 4.6.1', directory: '/work/project', host: 'linux-host', supervision: 'tmux',
         rPath: '/usr/bin/R', token: 'private-token', endpoint: '/private/control.sock' } as SessionManifest;
 
-    test('shows provider and live state with useful process details but no credentials', () => {
+    test('uses two compact picker rows and keeps complete details separate', () => {
         const presentation = sessionPresentation(manifest, true, true);
-        assert.strictEqual(presentation.label, 'R: Analysis · plain · idle');
+        assert.strictEqual(presentation.label, 'R: Analysis · idle');
+        assert.strictEqual(presentation.description, 'R 4.6.1 · plain · PID 123');
+        assert.strictEqual(presentation.detail, '/work/project · linux-host · tmux');
+        for (const field of [presentation.label, presentation.description, presentation.detail]) { assert.ok(!field.includes('\n')); }
         for (const text of ['PID: 123', 'R version 4.6.1', '/work/project', 'linux-host', 'tmux', '/usr/bin/R']) {
-            assert.ok(presentation.description.includes(text));
+            assert.ok(presentation.tooltip.includes(text));
         }
         assert.ok(!JSON.stringify(presentation).includes(manifest.token));
         assert.ok(!JSON.stringify(presentation).includes(manifest.endpoint));
@@ -34,9 +37,21 @@ suite('Interactive session button', () => {
     test('distinguishes restart, disconnect, input, observer, and stopped states', () => {
         assert.match(sessionPresentation(manifest, false, false, true).label, /restarting$/);
         assert.match(sessionPresentation(manifest, false, false).label, /disconnected$/);
-        assert.match(sessionPresentation({ ...manifest, provider: 'arf', status: 'input' }, true, false).label, /arf · waiting for input · observing$/);
-        assert.match(sessionPresentation({ ...manifest, provider: 'arf-existing', status: 'exited' }, true, true).label, /arf \(attached\) · stopped$/);
-        assert.match(sessionPresentation({ ...manifest, rPid: 456 }, true, true).description, /PID: 456/);
+        const observer = sessionPresentation({ ...manifest, provider: 'arf', status: 'input' }, true, false);
+        assert.match(observer.label, /waiting for input$/);
+        assert.match(observer.description, /arf · PID 123 · observing$/);
+        const stopped = sessionPresentation({ ...manifest, provider: 'arf-existing', status: 'exited' }, true, true);
+        assert.match(stopped.label, /stopped$/);
+        assert.match(stopped.description, /arf \(attached\)/);
+        assert.match(sessionPresentation({ ...manifest, rPid: 456 }, true, true).description, /PID 456/);
+    });
+
+    test('does not report pending process metadata as a starting session', () => {
+        const presentation = sessionPresentation({ ...manifest, status: 'exited', rPid: undefined, rVersion: undefined }, true, true);
+        assert.ok(!JSON.stringify(presentation).includes('starting'));
+        assert.match(presentation.label, /stopped$/);
+        assert.match(presentation.description, /PID pending/);
+        assert.ok(sessionPresentation(manifest, true, true, false, '/new/directory').detail.startsWith('/new/directory'));
     });
 });
 
