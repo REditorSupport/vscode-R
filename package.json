@@ -825,6 +825,20 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "r.interactive.stopSelected",
+        "title": "Stop Selected Interactive Sessions…",
+        "category": "R",
+        "icon": "$(debug-stop)",
+        "shortTitle": "Stop Selected…"
+      },
+      {
+        "command": "r.interactive.stopAll",
+        "title": "Stop All Interactive Sessions…",
+        "category": "R",
+        "icon": "$(debug-stop)",
+        "shortTitle": "Stop All…"
+      },
+      {
         "command": "r.interactive.restart",
         "title": "Restart Interactive Session",
         "category": "R",
@@ -1478,8 +1492,13 @@
         },
         {
           "command": "r.interactive.stop",
-          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession && !listMultiSelection",
           "group": "session@10"
+        },
+        {
+          "command": "r.interactive.stopSelected",
+          "when": "view == rInteractiveSessions && viewItem == rInteractiveSession && listMultiSelection",
+          "group": "session@11"
         }
       ],
       "view/title": [
@@ -1522,6 +1541,16 @@
           "command": "r.interactive.refresh",
           "when": "view == rInteractiveSessions",
           "group": "navigation@3"
+        },
+        {
+          "command": "r.interactive.stopSelected",
+          "when": "view == rInteractiveSessions",
+          "group": "navigation@4"
+        },
+        {
+          "command": "r.interactive.stopAll",
+          "when": "view == rInteractiveSessions",
+          "group": "session@1"
         }
       ],
       "explorer/context": [

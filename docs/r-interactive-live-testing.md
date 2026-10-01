@@ -34,6 +34,14 @@ A second VS Code development window observed B while the first continued to disp
 
 The final full suite passed **354 tests**, including local tmux coverage. Workspace regressions cover late replies, node ownership, non-syntactic object names, dialog focus changes, readiness, and detach cleanup. Native test automation now waits for the exact input/source document, passes the target URI to the native Execute command, and uses a dedicated source-editor group for restart checks; relying on implicit editor focus caused failures in the full run. TypeScript and production builds pass; lint reports zero errors and 70 existing warnings.
 
+## Connection status and bulk stop follow-up
+
+The October 1 follow-up used VS Code **1.140.0** with another private profile and registry. Plain R **Bulk A** (PID 87958, value 42) and arf **Bulk B** (PID 88507, value 202) retained their processes and objects across **Developer: Reload Window**. Both **Interactive Sessions** tooltips changed to **Connection: Connected · controlling** after restoration. Process supervision appears separately as **Independent process (survives VS Code reload/exit)**. A detached **Bulk C** (PID 90441) showed **Not open in this VS Code window**.
+
+Native checks verified Shift-selection of two tree entries, the **Stop Selected Interactive Sessions…** context action, the header icon using the current selection, cancellation with both processes still alive, and the Command Palette's checkbox picker with names/PIDs/directories. Selecting only A stopped A and retained its output and stopped notice while B stayed alive. **Stop All…** in the view's overflow menu then listed exactly B and detached C. Both exited, with a **Stopped 2 of 2** result and B's stopped notice. Existing tabs and prior output remained in place. All disposable sessions and the test window were closed.
+
+Successful bulk stops now immediately remove unopened sessions from the list, avoiding a stale link during agent shutdown. Open stopped transcripts remain listed. Automated regressions also cover control changes, cancellation, duplicate selection, stale generations, partial failures, other-window leases, new sessions created during confirmation, and the empty-list case. The full suite passes **360 tests** with tmux enabled; TypeScript and production builds pass, and lint has **0 errors / 70 existing warnings**.
+
 ## Native UI coverage
 
 | Area | Checks completed |
@@ -56,7 +64,7 @@ The final full suite passed **354 tests**, including local tmux coverage. Worksp
 
 | Check | Result |
 | --- | --- |
-| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 354 passed |
+| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 360 passed |
 | Earlier full extension suite, VS Code 1.110.0, tmux enabled | 347 passed |
 | Earlier Interactive-only verification on 1.110.0 after trace/lint adjustments | 84 passed |
 | Full extension suite, VS Code 1.119.0, tmux enabled | 348 passed before the final new-session focus adjustment |

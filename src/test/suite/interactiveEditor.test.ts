@@ -320,7 +320,8 @@ import type { WorkspaceData } from '../../session';
         const created = sinon.spy(vscode.notebooks, 'createNotebookController');
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         try {
-            context.subscriptions.push(new Manager(context));
+            const restoredManager = new Manager(context);
+            context.subscriptions.push(restoredManager);
             await until(() => notebooks.every((notebook, i) => notebook.metadata.rSessionId === manifests[i].id));
             const native = created.returnValues.find(item => item.notebookType === 'interactive' && item.id.includes(manifests[0].id));
             assert.ok(native); controller = native;
@@ -338,11 +339,37 @@ import type { WorkspaceData } from '../../session';
             for (let i = 0; i < manifests.length; i++) {
                 const matching = vscode.workspace.notebookDocuments.filter(doc => doc.metadata.rSessionId === manifests[i].id);
                 assert.deepStrictEqual(matching.map(doc => doc.uri.toString()), [originalUris[i]]);
+                const item = restoredManager.getTreeItem(manifests[i]);
+                assert.match(String(item.tooltip), /Connection: Connected · controlling/);
+                assert.match(String(item.tooltip), /Process supervision: Independent process/);
+                assert.ok(!String(item.tooltip).includes('detached'));
             }
             sinon.assert.notCalled(errors);
         } finally {
             created.restore(); errors.restore();
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        }
+    });
+    test('refreshes session tree connection and control details after reconnect and Take Control', async () => {
+        const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const view = (manager as unknown as { views: Map<string, { client: AgentClient }> }).views.get(`${manifests[0].id}:${manifests[0].generation}`);
+        assert.ok(view);
+        let refreshes = 0;
+        const listener = manager.onDidChangeTreeData(() => refreshes++);
+        const other = new AgentClient(manifests[0]);
+        try {
+            await other.connect(); await other.request('claim', { force: true });
+            await view.client.connect();
+            assert.ok(refreshes > 0, 'Connecting updates the session tree even without a state event');
+            assert.match(String(manager.getTreeItem(manifests[0]).tooltip), /Connection: Connected · observing/);
+            refreshes = 0;
+            await vscode.commands.executeCommand('r.interactive.takeControl', manifests[0]);
+            assert.ok(refreshes > 0, 'Taking control updates the tree immediately');
+            assert.match(String(manager.getTreeItem(manifests[0]).tooltip), /Connection: Connected · controlling/);
+            view.client.close();
+            assert.match(String(manager.getTreeItem(manifests[0]).tooltip), /Connection: Disconnected/);
+        } finally {
+            other.close(); await view.client.connect(); await view.client.subscribe(0); listener.dispose();
         }
     });
     test('a session that disappears after selection reports a useful recovery message', async () => {
@@ -1189,6 +1216,119 @@ cat("\n")`;
                 client.close();
             }
         }
+    });
+    suite('bulk session management', () => {
+        const bulk: SessionManifest[] = [];
+        let other: AgentClient;
+        let notebook: vscode.NotebookDocument;
+        let windowCount: number;
+        const start = async (): Promise<SessionManifest> => {
+            const id = randomUUID();
+            const config: AgentConfig = { id, generation: randomUUID(), label: `Bulk test ${bulk.length}`,
+                directory: root, storage: path.join(root, id), library: path.join(root, 'library'),
+                rPath: 'R', resources: path.join(process.cwd(), 'R'), provider: 'r', supervision: 'detached',
+                plotBackend: 'auto', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
+            const agent = new SessionAgent(config); agents.push(agent);
+            const manifest = await agent.start(); bulk.push(manifest);
+            await until(() => manifest.status === 'idle');
+            return manifest;
+        };
+        suiteSetup(async () => {
+            for (let i = 0; i < 4; i++) { await start(); }
+            other = new AgentClient(bulk[2]); await other.connect();
+            await vscode.commands.executeCommand('r.interactive.open', bulk[0]);
+            const opened = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === bulk[0].id);
+            assert.ok(opened); notebook = opened;
+            const edit = new vscode.WorkspaceEdit();
+            edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(0, [new vscode.NotebookCellData(vscode.NotebookCellKind.Code,
+                'bulk_retained <- 42; print(bulk_retained)', 'r')])]);
+            await vscode.workspace.applyEdit(edit);
+            await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: 0, end: 1 }], document: notebook.uri });
+            await until(() => notebook.cellAt(0).executionSummary?.success === true);
+            windowCount = vscode.workspace.notebookDocuments.length;
+        });
+        suiteTeardown(async () => {
+            other?.close();
+            if (notebook) { await vscode.commands.executeCommand('r.interactive.detach', notebook.uri); }
+        });
+        test('cancelling the multi-select picker or all-session confirmation leaves every session alive', async () => {
+            const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+            const confirm = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+            try {
+                await vscode.commands.executeCommand('r.interactive.stopSelected');
+                assert.strictEqual(picker.firstCall.args[1]?.canPickMany, true);
+                assert.strictEqual((await picker.firstCall.args[0]).length, 4);
+                sinon.assert.notCalled(confirm);
+                await vscode.commands.executeCommand('r.interactive.stopAll');
+                sinon.assert.calledOnce(confirm);
+                assert.match(confirm.firstCall.args[0], /Stop 4 R Interactive sessions/);
+                const detail = confirm.firstCall.args[1].detail ?? '';
+                for (const manifest of bulk) { assert.ok(detail.includes(`${manifest.label} — PID ${manifest.rPid ?? 'starting'}`)); }
+                assert.ok(bulk.every(manifest => manifest.status === 'idle'));
+                assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
+            } finally { picker.restore(); confirm.restore(); }
+        });
+        test('tree multi-selection deduplicates targets, retains output, and never stops a replacement generation', async () => {
+            const stale = { ...bulk[1], generation: randomUUID() };
+            const confirm = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+            confirm.onFirstCall().resolves('Stop 2 Sessions' as unknown as vscode.MessageItem);
+            const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(undefined);
+            try {
+                await vscode.commands.executeCommand('r.interactive.stopSelected', bulk[0], [bulk[0], stale, bulk[0]]);
+                sinon.assert.notCalled(picker);
+                assert.strictEqual(bulk[0].status, 'exited');
+                assert.strictEqual(bulk[1].status, 'idle');
+                assert.strictEqual(bulk[2].status, 'idle');
+                assert.match(confirm.lastCall.args[0], /Stopped 1 of 2.*1 could not be stopped/);
+                await until(() => notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'stopped'));
+                assert.ok(notebook.cellAt(0).outputs.some(output => output.items.some(item => Buffer.from(item.data).toString().includes('42'))));
+                assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
+            } finally { confirm.restore(); picker.restore(); }
+        });
+        test('picker selection stops unopened sessions and reports other-window control without affecting unselected sessions', async () => {
+            const picker = sinon.stub(vscode.window, 'showQuickPick').resolves(bulk.slice(1, 3).map(manifest => ({ label: manifest.label, manifest })) as never);
+            const confirm = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+            confirm.onFirstCall().resolves('Stop 2 Sessions' as unknown as vscode.MessageItem);
+            try {
+                await vscode.commands.executeCommand('r.interactive.stopSelected');
+                const choices = await picker.firstCall.args[0] as (vscode.QuickPickItem & { manifest: SessionManifest })[];
+                assert.deepStrictEqual(new Set(choices.map(choice => choice.manifest.id)), new Set(bulk.slice(1).map(manifest => manifest.id)));
+                assert.strictEqual(bulk[1].status, 'exited');
+                assert.strictEqual(bulk[2].status, 'idle');
+                assert.strictEqual(bulk[3].status, 'idle');
+                assert.strictEqual((await other.request<{ control: boolean }>('heartbeat')).control, true);
+                assert.match(confirm.lastCall.args[0], /Stopped 1 of 2.*1 could not be stopped/);
+                const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+                assert.ok(!manager.getChildren().some(manifest => manifest.id === bulk[1].id), 'Stopped unopened sessions leave no dead tree link');
+                assert.ok(manager.getChildren().some(manifest => manifest.id === bulk[0].id), 'An open stopped transcript stays in the tree');
+                assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
+            } finally { picker.restore(); confirm.restore(); }
+        });
+        test('Stop All captures its targets before confirmation, skips other windows, and stops the remaining sessions after control is released', async () => {
+            const confirm = sinon.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+            confirm.onFirstCall().callsFake(async () => {
+                await start(); // A new session created while the confirmation is open was not approved.
+                return 'Stop 2 Sessions' as unknown as vscode.MessageItem;
+            });
+            const info = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
+            try {
+                await vscode.commands.executeCommand('r.interactive.stopAll');
+                assert.strictEqual(bulk[2].status, 'idle');
+                assert.strictEqual(bulk[3].status, 'exited');
+                assert.strictEqual(bulk[4].status, 'idle');
+                assert.match(confirm.lastCall.args[0], /Stopped 1 of 2/);
+                await other.request('detach'); other.close();
+                confirm.resetBehavior(); confirm.resolves('Stop 2 Sessions' as unknown as vscode.MessageItem);
+                await vscode.commands.executeCommand('r.interactive.stopAll');
+                assert.ok(bulk.every(manifest => manifest.status === 'exited'));
+                assert.match(info.lastCall.args[0], /Stopped 2 of 2/);
+                const count = confirm.callCount;
+                await vscode.commands.executeCommand('r.interactive.stopAll');
+                assert.strictEqual(confirm.callCount, count);
+                assert.match(info.lastCall.args[0], /No running R Interactive sessions/);
+                assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
+            } finally { confirm.restore(); info.restore(); }
+        });
     });
     test('exports portable notebook output without transient connection URLs', () => {
         const cell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'plot(1:3)', 'r');

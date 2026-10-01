@@ -53,6 +53,20 @@ suite('Interactive session button', () => {
         assert.match(presentation.description, /PID pending/);
         assert.ok(sessionPresentation(manifest, true, true, false, '/new/directory').detail.startsWith('/new/directory'));
     });
+
+    test('separates editor connection from independent process supervision', () => {
+        const independent = { ...manifest, supervision: 'detached' };
+        const connected = sessionPresentation(independent, true, true);
+        assert.match(connected.tooltip, /Connection: Connected · controlling/);
+        assert.match(connected.tooltip, /Process supervision: Independent process \(survives VS Code reload\/exit\)/);
+        assert.ok(!JSON.stringify(connected).includes('detached'));
+        assert.match(sessionPresentation(independent, true, false).tooltip, /Connection: Connected · observing/);
+        assert.match(sessionPresentation(independent, false, false).tooltip, /Connection: Disconnected/);
+        const unopened = sessionPresentation(independent, undefined, false);
+        assert.strictEqual(unopened.state, 'idle');
+        assert.match(unopened.tooltip, /Connection: Not open in this VS Code window/);
+        assert.strictEqual(sessionPresentation({ ...independent, status: 'exited' }, false, false).state, 'stopped');
+    });
 });
 
 suite('Interactive storage', () => {

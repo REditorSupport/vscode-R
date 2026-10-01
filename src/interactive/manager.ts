@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { AgentClient, probeSession } from './client';
+import { AgentClient } from './client';
 import { AgentConfig, AgentSnapshot, DEFAULT_MAX_ASSET_BYTES, ExecutionRecord, SessionEvent, SessionManifest, SourceLocation, object, sessionLabel } from './protocol';
 import { AssetStore, AssetStorageStats, exportedAssetName, readAsset } from './assets';
 import { defaultStorage, discoverSessions, hasSessionEndpoint, installRuntime, launchAgent, newIdentity } from './launcher';
@@ -19,6 +19,7 @@ import { tableDisplayValue } from './tableFormatting';
 import { HistoryPage, searchHistory } from './history';
 import { readExecutionRecords, readPreviousJournal } from './journal';
 import { sessionPresentation } from './sessionPresentation';
+import { runningSessions, stopSession } from './sessionLifecycle';
 
 interface InteractiveView {
     client: AgentClient;
@@ -97,10 +98,12 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         command('r.interactive.input', value => this.forView(value, view => this.resumeInput(view)));
         command('r.interactive.detach', value => this.forView(value, view => this.detach(view)));
         command('r.interactive.stop', value => this.forView(value, view => this.stop(view)));
+        command('r.interactive.stopSelected', (value, selection) => this.stopMultiple(false, value, selection));
+        command('r.interactive.stopAll', () => this.stopMultiple(true));
         command('r.interactive.restart', value => this.forView(value, view => this.restart(view)));
         command('r.interactive.sessionActions', value => this.forView(value, view => this.sessionActions(view)));
         command('r.interactive.takeControl', value => this.forView(value, async view => {
-            view.client.control = await view.client.request<boolean>('claim', { force: true }); this.updateStatus();
+            view.client.control = await view.client.request<boolean>('claim', { force: true }); this.updateStatus(); this.changes.fire(undefined);
         }));
         command('r.interactive.rename', (value, label) => this.forView(value, view => this.rename(view, typeof label === 'string' ? label : undefined)));
         command('r.interactive.history', value => this.forView(value, view => this.history(view)));
@@ -144,7 +147,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         }));
         this.status.name = 'R Interactive session'; this.status.command = 'r.interactive.connect';
         this.disposables.push(this.status);
-        this.disposables.push(vscode.window.registerTreeDataProvider('rInteractiveSessions', this),
+        this.disposables.push(vscode.window.createTreeView('rInteractiveSessions', { treeDataProvider: this, canSelectMany: true }),
             vscode.workspace.registerNotebookSerializer('r-interactive', this.serializer, { transientOutputs: false }),
             this.messages.onDidReceiveMessage(event => { void this.rendererMessage(event.editor, event.message as Record<string, unknown>); }),
             vscode.window.onDidChangeActiveNotebookEditor(editor => {
@@ -480,13 +483,15 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     }
     getChildren(): SessionManifest[] { return this.manifests; }
     getTreeItem(manifest: SessionManifest): vscode.TreeItem {
-        const item = new vscode.TreeItem(manifest.label);
-        item.id = `${manifest.id}:${manifest.generation}`; item.description = `${manifest.status} · ${manifest.provider}`;
-        item.contextValue = 'rInteractiveSession';
         const view = this.views.get(`${manifest.id}:${manifest.generation}`);
-        if (view && !view.client.connected) { item.description = `disconnected · ${manifest.provider}`; }
-        else if (view && !view.client.control) { item.description += ' · observing'; }
-        item.tooltip = `${manifest.directory}\n${manifest.rVersion ?? 'Starting R'}\nPID ${manifest.rPid ?? '—'} · ${manifest.supervision}`;
+        manifest = view?.client.manifest ?? manifest;
+        const presentation = sessionPresentation(manifest, view?.client.connected, view?.client.control ?? false,
+            view?.restarting, view?.target.workingDir);
+        const item = new vscode.TreeItem(manifest.label);
+        item.id = `${manifest.id}:${manifest.generation}`; item.description = `${presentation.state} · ${manifest.provider}`;
+        item.contextValue = 'rInteractiveSession';
+        if (view?.client.connected && !view.client.control) { item.description += ' · observing'; }
+        item.tooltip = presentation.tooltip;
         item.iconPath = new vscode.ThemeIcon(manifest.status === 'busy' ? 'sync~spin' : manifest.status === 'exited' ? 'circle-outline' : 'terminal');
         item.command = { command: 'r.interactive.open', title: 'Open R Interactive', arguments: [manifest] };
         return item;
@@ -527,14 +532,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private async sessionChoices(): Promise<SessionChoice[]> {
         this.refresh();
-        const live: SessionManifest[] = [];
-        const candidates = this.manifests.filter(hasSessionEndpoint);
-        for (let i = 0; i < candidates.length; i += 8) {
-            const batch = await Promise.all(candidates.slice(i, i + 8).map(manifest => probeSession(manifest)));
-            for (const manifest of batch) {
-                if (manifest && !['exited', 'stopping'].includes(manifest.status)) { live.push(manifest); }
-            }
-        }
+        const live = await runningSessions(this.manifests.filter(hasSessionEndpoint));
         const terminals: ArfSession[] = [];
         const arfCandidates = discoverArf().filter(arf => fs.existsSync(arf.socket_path) && !live.some(item => item.rPid === arf.pid));
         for (let i = 0; i < arfCandidates.length; i += 8) {
@@ -705,7 +703,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             if (view.client !== client) { return; }
             view.chain = view.chain.then(() => this.event(view, event)).catch(error => this.report(error));
         });
-        client.on('activity', () => { if (view.client === client) { this.updateStatus(); } });
+        client.on('activity', () => { if (view.client === client) { this.updateStatus(); this.changes.fire(undefined); } });
         client.on('disconnect', () => {
             if (view.client !== client || view.restarting) { return; }
             this.updateStatus(); this.changes.fire(undefined); this.reconnect(view, 1000);
@@ -1117,6 +1115,70 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private async stop(view: InteractiveView): Promise<void> {
         const answer = await vscode.window.showWarningMessage(`Stop R session “${view.client.manifest.label}”? Its in-memory objects will be lost.`, { modal: true }, 'Stop Session');
         if (answer === 'Stop Session') { await view.client.request('stop'); }
+    }
+
+    private async stopMultiple(all: boolean, value?: unknown, selection?: unknown): Promise<void> {
+        if (!vscode.workspace.isTrusted) { throw new Error('Trust this workspace before stopping R sessions'); }
+        const isManifest = (item: unknown): item is SessionManifest => !!item && typeof item === 'object'
+            && typeof (item as SessionManifest).id === 'string' && typeof (item as SessionManifest).generation === 'string';
+        // Tree actions can supply both the focused item and its selection; palette commands supply neither.
+        const selected = !all && isManifest(value) ? Array.isArray(selection) && selection.length
+            ? selection.filter(isManifest) : [value] : undefined;
+        this.refresh();
+        let targets = selected ?? await runningSessions(this.manifests);
+        if (!all && !selected && targets.length) {
+            const choices = targets.map(manifest => ({ label: manifest.label,
+                description: `${manifest.status} · ${manifest.provider} · PID ${manifest.rPid ?? 'starting'}`,
+                detail: `${manifest.directory} · ${manifest.host} · ${manifest.id.slice(0, 8)}`, manifest }));
+            const picked = await vscode.window.showQuickPick(choices, { canPickMany: true, matchOnDescription: true, matchOnDetail: true,
+                title: 'Stop Selected Interactive Sessions', placeHolder: 'Select the R sessions to stop' });
+            if (!picked?.length) { return; }
+            targets = picked.map(item => item.manifest);
+        }
+        // Freeze identities before confirmation: a restart or a newly created session must never become a target.
+        targets = [...new Map(targets.filter(manifest => !['exited', 'stopping'].includes(manifest.status))
+            .map(manifest => [`${manifest.id}:${manifest.generation}`, { ...manifest }])).values()];
+        if (!targets.length) { void vscode.window.showInformationMessage('No running R Interactive sessions to stop.'); return; }
+        const label = targets.length === 1 ? 'Stop Session' : `Stop ${targets.length} Sessions`;
+        const detail = [
+            'Their in-memory objects will be lost. Transcripts and saved output will be retained.',
+            targets.map(manifest => `${manifest.label} — PID ${manifest.rPid ?? 'starting'} · ${manifest.id.slice(0, 8)}\n${manifest.directory}`).join('\n\n'),
+            ...(targets.some(manifest => manifest.provider === 'arf-existing') ? ['Stopping an attached arf session also ends its R process.'] : []),
+            'Sessions controlled by another VS Code window will be skipped. Take Control of those sessions before retrying.',
+        ].join('\n\n');
+        const confirmed = await vscode.window.showWarningMessage(`Stop ${targets.length} R Interactive session${targets.length === 1 ? '' : 's'}?`,
+            { modal: true, detail }, label);
+        if (confirmed !== label || this.closed) { return; }
+        const stopped = new Set<string>();
+        const failures: string[] = [];
+        await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Stopping R Interactive sessions' }, async progress => {
+            for (let i = 0; i < targets.length; i += 4) {
+                const results = await Promise.allSettled(targets.slice(i, i + 4).map(async manifest => {
+                    if (this.views.get(`${manifest.id}:${manifest.generation}`)?.restarting) { throw new Error('Session is restarting; retry when it is ready.'); }
+                    await stopSession(manifest, this.clientId);
+                }));
+                results.forEach((result, index) => {
+                    const manifest = targets[i + index];
+                    if (result.status === 'fulfilled') { stopped.add(`${manifest.id}:${manifest.generation}`); }
+                    else { failures.push(`${manifest.label} (PID ${manifest.rPid ?? 'starting'}): ${String(result.reason)}`); }
+                });
+                progress.report({ increment: results.length / targets.length * 100, message: `${i + results.length} of ${targets.length} checked` });
+            }
+        });
+        this.refresh();
+        // An unopened session's agent shuts down when the temporary client closes.
+        // Its socket can still exist during refresh; do not leave an unusable tree link.
+        this.manifests = this.manifests.filter(manifest => {
+            const key = `${manifest.id}:${manifest.generation}`;
+            return !stopped.has(key) || this.views.has(key);
+        });
+        this.changes.fire(undefined);
+        const summary = `Stopped ${stopped.size} of ${targets.length} R Interactive sessions.`;
+        if (failures.length) {
+            this.output.appendLine(`${summary}\n${failures.join('\n')}`);
+            const details = 'Show Details';
+            if (await vscode.window.showWarningMessage(`${summary} ${failures.length} could not be stopped.`, details) === details) { this.output.show(true); }
+        } else { void vscode.window.showInformationMessage(summary); }
     }
 
     private noticeData(view: InteractiveView, state: 'stopped' | 'restarting' | 'restarted' | 'restartFailed', generation = view.model.generation): vscode.NotebookCellData {
