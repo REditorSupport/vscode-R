@@ -34,10 +34,11 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
         parent.replaceChildren();
         parent.style.cssText = 'overflow:auto;max-height:460px';
         const table = document.createElement('table'); table.style.cssText = 'border-collapse:collapse;font-size:12px;min-width:320px';
-        const columns = (data.columns ?? []) as { field: string; headerName: string; type?: unknown }[];
+        const columns = (data.columns ?? []) as { field: string; headerName: string; headerTooltip?: string; type?: unknown }[];
         const head = document.createElement('tr');
         for (const column of columns) {
             const th = document.createElement('th'); th.textContent = column.headerName;
+            if (column.headerTooltip) { th.title = column.headerTooltip; }
             th.style.cssText = `text-align:${tableColumnAlignment(data, column)};padding:5px 14px;border-bottom:1px solid var(--vscode-panel-border);position:sticky;top:0;background:var(--vscode-editor-background)`; head.append(th);
         }
         table.append(head);
@@ -48,6 +49,11 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                 td.textContent = tableDisplayValue(data, row, column.field, rowIndex);
                 if (typeof value === 'number' && td.textContent !== String(value)) { td.title = String(value); }
                 td.style.cssText = `text-align:${tableColumnAlignment(data, column)};padding:4px 14px;border-bottom:1px solid var(--vscode-panel-border);white-space:pre`; tr.append(td);
+                if (value === null && ['NA', 'NaN'].includes(td.textContent)) {
+                    td.style.fontStyle = 'italic'; td.style.color = 'var(--vscode-descriptionForeground)';
+                    td.title = td.textContent === 'NaN' ? 'Not a number (NaN)' : 'Missing value (NA)';
+                    td.setAttribute('aria-label', td.title);
+                }
             }
             table.append(tr);
         }

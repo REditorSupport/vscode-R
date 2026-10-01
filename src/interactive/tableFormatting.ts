@@ -17,5 +17,6 @@ export function tableDisplayValue(data: Record<string, unknown>, row: Record<str
     if (typeof value === 'number' && Number.isFinite(value) && !Number.isInteger(value)) {
         return String(Number(value.toPrecision(7)));
     }
+    if (value !== null && typeof value === 'object') { return JSON.stringify(value); }
     return value === null ? 'NA' : String(value ?? '');
 }

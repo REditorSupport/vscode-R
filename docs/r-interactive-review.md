@@ -1,5 +1,7 @@
 # R Interactive review and Positron comparison
 
+For the latest validation and improvements found during data analysis, see the [research workflow review](r-interactive-research-review.md). The results below document earlier revisions.
+
 Reviewed against Positron's public documentation on 2026-09-30. This comparison concerns workflows, not performance measurements or complete IDE parity.
 
 | Positron workflow | Value for this Interactive window | Implementation |

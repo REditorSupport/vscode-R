@@ -7,9 +7,10 @@ export function assertSvgTextVisible(svg: string, label: string, count = 1): voi
     const matches = $('text').filter((_, element) => $(element).text() === label);
     assert.strictEqual(matches.length, count, `Expected ${count} occurrences of ${label}`);
     matches.each((_, element) => {
-        const position = /translate\(([-\d.]+) ([-\d.]+)\)/.exec($(element).attr('transform') ?? '');
-        assert.ok(position, `Missing text position for ${label}`);
-        const x = Number(position[1]), y = Number(position[2]);
+        const position = /translate\(\s*([-\d.]+)[,\s]+([-\d.]+)\s*\)/.exec($(element).attr('transform') ?? '');
+        const x = Number($(element).attr('x') ?? 0) + Number(position?.[1] ?? 0);
+        const y = Number($(element).attr('y') ?? 0) + Number(position?.[2] ?? 0);
+        assert.ok(Number.isFinite(x) && Number.isFinite(y), `Invalid text position for ${label}`);
         $(element).parents('[clip-path]').each((_, ancestor) => {
             const id = /^url\(#(.+)\)$/.exec($(ancestor).attr('clip-path') ?? '')?.[1];
             assert.ok(id, `Missing clip reference for ${label}`);

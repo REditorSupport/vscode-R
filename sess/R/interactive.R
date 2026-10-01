@@ -76,6 +76,9 @@ interactive_start <- function(config, mirror = TRUE) {
   .sess_env$interactive_worker <- !mirror
   .sess_env$interactive_static <- !isTRUE(cfg$useJgd)
   .sess_env$interactive_last_plot <- NULL
+  .sess_env$interactive_plot_page <- 0L
+  .sess_env$interactive_last_plot_page <- NULL
+  .sess_env$interactive_last_plot_data <- NULL
   if (isTRUE(cfg$useJgd)) {
     select_device <- grDevices::dev.set
     .runtime_rebind("dev.set", function(which = grDevices::dev.next()) {
@@ -88,14 +91,27 @@ interactive_start <- function(config, mirror = TRUE) {
     original <- get(spec[[2L]], envir = asNamespace(spec[[1L]]))
     wrapped <- local({
       draw <- original
+      grid_page <- identical(spec[[2L]], "grid.newpage")
       function(...) {
-        if (isTRUE(.sess_env$interactive_static)) {
-          .interactive_capture_plot()
+        static <- isTRUE(.sess_env$interactive_static)
+        new_page <- FALSE
+        if (static) {
+          current <- grDevices::dev.cur()
+          owned <- current == 1L || current == getOption("sess.null_dev", -1L)
+          # plot.new is also called for each panel of mfrow/mfcol/layout.
+          new_page <- !isTRUE(.sess_env$interactive_capturing) && owned &&
+            (grid_page || current == 1L || isTRUE(graphics::par("page")))
+          if (new_page) .interactive_capture_plot()
         } else {
           .interactive_plot_new_page()
           on.exit(.interactive_plot_context(), add = TRUE)
         }
-        draw(...)
+        result <- draw(...)
+        if (new_page) {
+          .sess_env$interactive_plot_page <- .sess_env$interactive_plot_page + 1L
+          .sess_env$interactive_last_plot <- NULL
+        }
+        invisible(result)
       }
     })
     .runtime_rebind(spec[[2L]], wrapped, ns = spec[[1L]])
@@ -211,7 +227,7 @@ interactive_execute <- function(id, code, source = NULL) {
   }
   on_warning <- function(cnd) {
     if (getOption("warn") >= 2) return()
-    diagnostic(cnd, "warning")
+    if (getOption("warn") >= 0) diagnostic(cnd, "warning")
     invokeRestart("muffleWarning")
   }
   on_message <- function(cnd) {
@@ -229,7 +245,10 @@ interactive_execute <- function(id, code, source = NULL) {
       value <- withVisible(eval(expr, envir = .GlobalEnv))
       assign(".Last.value", value$value, envir = .GlobalEnv)
       if (value$visible) {
-        if (!.interactive_rich_value(value$value)) print(value$value)
+        # data.table uses an explicit autoprint flag for := and set* operations;
+        # withVisible() alone cannot distinguish them from an ordinary result.
+        show <- !inherits(value$value, "data.table") || data.table::shouldPrint(value$value)
+        if (show && !.interactive_rich_value(value$value)) print(value$value)
       }
       .interactive_capture_plot()
     }
@@ -251,21 +270,38 @@ interactive_execute <- function(id, code, source = NULL) {
 
 .interactive_capture_plot <- function() {
   if (!isTRUE(.sess_env$interactive_static) ||
-        isTRUE(.sess_env$interactive_capturing) || grDevices::dev.cur() == 1L) return()
+        isTRUE(.sess_env$interactive_capturing) ||
+        grDevices::dev.cur() != getOption("sess.null_dev", -1L)) return()
   .sess_env$interactive_capturing <- TRUE
   on.exit({
     .sess_env$interactive_capturing <- FALSE
   }, add = TRUE)
   record <- tryCatch(grDevices::recordPlot(), error = function(e) NULL)
-  if (is.null(record) || !length(record[[1L]]) ||
-        identical(record, .sess_env$interactive_last_plot)) return()
-  .sess_env$interactive_last_plot <- record
+  if (is.null(record)) return()
+  commands <- as.list(record[[1L]])
+  # Trailing par() calls configure future drawing; they do not paint this page.
+  # Comparing the whole record also compares graphics state changed by par().
+  while (length(commands)) {
+    routine <- commands[[length(commands)]][[2L]][[1L]]
+    if (!is.list(routine) || !identical(routine$name, "C_par")) break
+    commands <- head(commands, -1L)
+  }
+  if (!length(commands) || identical(commands, .sess_env$interactive_last_plot)) return()
+  .sess_env$interactive_last_plot <- commands
   .sess_env$latest_plot_record <- record
   plot <- handle_plot_latest(list(width = 800L, height = 600L, format = "svglite"))
   if (!is.null(plot$data)) {
+    page <- .sess_env$interactive_plot_page
+    # par() can change the display list without changing the rendered picture.
+    if (identical(page, .sess_env$interactive_last_plot_page) &&
+          identical(plot$data, .sess_env$interactive_last_plot_data)) return()
+    .sess_env$interactive_last_plot_page <- page
+    .sess_env$interactive_last_plot_data <- plot$data
     mime <- if (identical(plot$format, "png")) "image/png" else "image/svg+xml"
     .interactive_event("display", list(kind = "image", data = plot$data,
-                                       mime = mime))
+                                       mime = mime,
+                                       displayId = paste("static", .sess_env$interactive_id,
+                                                         page, sep = "-")))
   }
 }
 
@@ -292,6 +328,9 @@ interactive_execute <- function(id, code, source = NULL) {
 
 .interactive_rich_value <- function(value) {
   if (dataview_is_table(value)) {
+    # A transcript is a record of this result, including pages opened later.
+    # Unlike ordinary data frames, data.table mutates shared columns by reference.
+    if (inherits(value, "data.table")) value <- data.table::copy(value)
     registration <- dataview_register(value)
     metadata <- handle_dataview_init(list(view_id = registration$view_id))
     preview <- handle_dataview_page(list(view_id = registration$view_id,

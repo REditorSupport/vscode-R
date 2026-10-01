@@ -1,5 +1,7 @@
 # Interactive live testing — 2026-10-01
 
+The subsequent [research workflow review](r-interactive-research-review.md) records the latest full-suite results, twelve analysis workflows across both providers and standard graphics, and fixes for reproducibility, historical table data, and fallback plot pages. Counts below describe the earlier passes.
+
 This pass used a disposable VS Code profile, workspace, registry, R libraries, and sessions on macOS arm64. The user's existing R/arf sessions were not used or stopped. The expanded native UI pass ran on VS Code **1.139.1**, R 4.6.1, Node 26.10.0, arf 0.5.1, and JGD 0.2.0. The cached app had automatically updated; the minimum-version cache was replaced with a fresh official 1.110.0 build before running the automated matrix. Both test versions were verified from their application manifests.
 
 A follow-up native pass on **1.119.0**, with updates disabled in its private profile, completed the terminal, Shiny, and error-rendering checks. It also exercised the native cell toolbar directly, exposing the two additional fixes below. Reload kept the plain R session's PID 43381 and objects throughout the pass.

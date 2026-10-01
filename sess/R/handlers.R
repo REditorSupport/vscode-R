@@ -497,8 +497,9 @@ dataview_columns <- function(state) {
 
 dataview_new_id <- function() {
   repeat {
-    ts <- gsub("[^0-9]", "", format(Sys.time(), "%Y%m%d%H%M%OS6"), perl = TRUE)
-    view_id <- sprintf("dv_%s_%06d", ts, sample.int(999999L, 1L))
+    # Viewing data must neither advance nor initialize the analyst's RNG stream.
+    .sess_env$dataview_sequence <- (.sess_env$dataview_sequence %||% 0) + 1
+    view_id <- sprintf("dv_%d_%.0f", Sys.getpid(), .sess_env$dataview_sequence)
     if (is.null(.sess_env$dataviews) || is.null(.sess_env$dataviews[[view_id]])) {
       return(view_id)
     }

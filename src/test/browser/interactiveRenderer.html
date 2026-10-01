@@ -64,6 +64,11 @@ try {
  check(cell(0,1).textContent==='1.54e-100' && cell(0,2).textContent==='001.234567890123','Fallback must preserve tiny magnitudes and numeric-looking strings');
  render('numeric',{ ...numericData,rows:[{ '1':null },{ '1':null },{ '1':null },{ '1':null }],formattedColumns:{ '1':['NA','NaN','Inf','-Inf'] } },numeric);
  check([0,1,2,3].map(row=>cell(row,1).textContent).join(',')==='NA,NaN,Inf,-Inf','R labels must distinguish missing and non-finite values');
+ check(cell(0,1).title==='Missing value (NA)' && cell(1,1).title==='Not a number (NaN)' && !cell(2,1).title,'Missing markers must not mislabel infinities');
+ render('numeric',{kind:'table',columns:[{field:'1',headerName:'label',headerTooltip:'label, class: [character], type: character'},{field:'2',headerName:'nested'}],rows:[{'1':null,'2':{a:1}},{'1':'NA','2':[1,2]}],totalRows:2},numeric);
+ check(numeric.querySelector('th').title.includes('class: [character]'),'Column hovers must expose R class information');
+ check(cell(0,0).style.fontStyle==='italic' && !cell(1,0).style.fontStyle && cell(0,0).getAttribute('aria-label')==='Missing value (NA)','Actual missing values must differ from literal NA strings');
+ check(cell(0,1).textContent==='{"a":1}' && cell(1,1).textContent==='[1,2]','Nested list cells must show readable data rather than object placeholders');
  render('numeric',{ ...numericData,rows:[{ '1':1.23456789 }],formattedColumns:{ '1':['1,235'] } },numeric);
  check(cell(0,1).textContent==='1,235','R locale and digits settings must be used verbatim');
  render('numeric',{ ...numericData,totalRows:21,rows:Array.from({ length:20 },()=>numericData.rows[0]),formattedColumns:{ '1':Array(20).fill('1417.391') } },numeric);

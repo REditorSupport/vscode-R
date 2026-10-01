@@ -41,13 +41,14 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
     });
     suiteTeardown(() => fs.rmSync(temporary, { recursive: true, force: true }));
 
-    setup(async () => {
+    setup(async function () {
         events = [];
         const id = randomUUID();
         const config: AgentConfig = { id, generation: randomUUID(), label: 'Integration test',
             directory: process.cwd(), storage: path.join(root, id), rPath: 'R', library,
             resources, provider: process.env.VSCR_TEST_PROVIDER === 'arf' ? 'arf' : 'r', arfPath: process.env.ARF_PATH ?? 'arf', supervision: 'test',
-            plotBackend: process.env.VSCR_TEST_STATIC ? 'standard' : 'auto', historyLimit: 50, maxOutputBytes: 1024 * 1024, maxJournalBytes: 16 * 1024 * 1024 };
+            plotBackend: process.env.VSCR_TEST_STATIC || this.currentTest?.title.startsWith('standard graphics') ? 'standard' : 'auto',
+            historyLimit: 50, maxOutputBytes: 1024 * 1024, maxJournalBytes: 16 * 1024 * 1024 };
         agent = new SessionAgent(config); manifest = await agent.start();
         client = new AgentClient(manifest); await client.connect();
         client.on('event', (event: SessionEvent) => events.push(event));
@@ -173,6 +174,68 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         assert.strictEqual((await finished(queued)).state, 'cancelled');
         await client.request('interrupt', { id }); assert.strictEqual((await finished(id)).state, 'interrupted');
         const next = await submit('kept'); await finished(next); assert.match(text(next), /17/);
+    });
+
+    test('data inspection preserves random draws and reproducible resampling across cells', async () => {
+        const first = await submit(`set.seed(2026)
+expected <- replicate(100, mean(sample(mtcars$mpg, replace=TRUE)))
+set.seed(2026)
+head(mtcars)`);
+        assert.strictEqual((await finished(first)).state, 'success');
+        const second = await submit(`View(mtcars)
+sess::display(head(iris))
+actual <- replicate(100, mean(sample(mtcars$mpg, replace=TRUE)))
+stopifnot(identical(actual, expected))`);
+        assert.strictEqual((await finished(second)).state, 'success');
+        assert.strictEqual(events.filter(event => event.type === 'display' && event.data.kind === 'table').length, 3);
+    });
+
+    test('table pages retain their original data after reference-based cleaning and schema changes', async function () {
+        if (!(await run('Rscript', ['-e', 'cat(requireNamespace("data.table", quietly=TRUE))'])).stdout.includes('TRUE')) { this.skip(); }
+        const id = await submit('dt <- data.table::data.table(id=1:50, value=1:50); dt');
+        assert.strictEqual((await finished(id)).state, 'success');
+        const table = events.find(event => event.executionId === id && event.data.kind === 'table'); assert.ok(table);
+        await finished(await submit('dt[, value := value * 100]; data.table::setnames(dt, "value", "changed"); data.table::setorder(dt, -id)'));
+        const page = await client.request<{ rows: Record<string, number>[] }>('inspect', { method: 'dataview_page', params: {
+            view_id: table.data.viewId, startRow: 20, endRow: 40,
+        } });
+        assert.deepStrictEqual(page.rows.map(row => row['2']), Array.from({ length: 20 }, (_, i) => i + 21));
+        const filtered = await client.request<{ rows: Record<string, number>[] }>('inspect', { method: 'dataview_page', params: {
+            view_id: table.data.viewId, startRow: 0, endRow: 20, filterModel: { '2': { type: 'greaterThan', filter: 48 } }, sortModel: [{ colId: '1', sort: 'desc' }],
+        } });
+        assert.deepStrictEqual(filtered.rows.map(row => row['2']), [50, 49]);
+        const current = await submit('stopifnot(names(dt)[2] == "changed", dt$changed[1] == 5000)');
+        assert.strictEqual((await finished(current)).state, 'success');
+    });
+
+    test('data.table reference assignments stay quiet while explicit results and display remain visible', async function () {
+        if (!(await run('Rscript', ['-e', 'cat(requireNamespace("data.table", quietly=TRUE))'])).stdout.includes('TRUE')) { this.skip(); }
+        const setup = await submit('dt <- data.table::data.table(x=1:3)'); await finished(setup);
+        for (const code of ['dt[, x := 99]', 'data.table::set(dt, j="x", value=1:3)']) {
+            const id = await submit(code); assert.strictEqual((await finished(id)).state, 'success');
+            assert.ok(!events.some(event => event.executionId === id && event.type === 'display'));
+            assert.strictEqual(text(id), '');
+        }
+        for (const code of ['dt', 'dt[, x := 4:6][]', 'sess::display(dt[, x := 7:9])', 'View(dt)']) {
+            const id = await submit(code); assert.strictEqual((await finished(id)).state, 'success');
+            assert.strictEqual(events.filter(event => event.executionId === id && event.data.kind === 'table').length, 1);
+        }
+        const explicit = await submit('print(dt[, x := 10:12])'); await finished(explicit);
+        assert.match(text(explicit), /10/);
+        assert.ok(!events.some(event => event.executionId === explicit && event.type === 'display'));
+    });
+
+    test('respects warning suppression and warnings-as-errors during model fitting', async () => {
+        for (const warn of [-1, 0, 1, 2]) {
+            const id = await submit(`options(warn=${warn}); warning("model diagnostic"); after_warning <- TRUE`);
+            assert.strictEqual((await finished(id)).state, warn === 2 ? 'error' : 'success');
+            const conditions = events.filter(event => event.executionId === id && event.type === 'condition');
+            assert.strictEqual(conditions.length, warn < 0 ? 0 : 1);
+            if (warn >= 0) { assert.strictEqual(conditions[0].data.kind, warn === 2 ? 'error' : 'warning'); }
+        }
+        const id = await submit('options(warn=0); suppressWarnings(warning("hidden diagnostic")); warning("visible diagnostic")');
+        assert.strictEqual((await finished(id)).state, 'success');
+        assert.deepStrictEqual(events.filter(event => event.executionId === id && event.type === 'condition').map(event => event.data.message), ['visible diagnostic']);
     });
 
     test('retains class-specific R printing beside rich tables without rerunning code', async function () {
@@ -317,6 +380,40 @@ dt`);
         await finished(second);
         await until(() => new Set(events.filter(event => event.executionId === second && event.data.kind === 'plot').map(event => event.data.device)).size === 2);
         assert.strictEqual((await client.request<ExecutionRecord>('execution', { id: second })).state, 'success');
+    });
+
+    test('standard graphics retains complete pages and updates panels without duplicating snapshots', async () => {
+        const images = (id: string): Map<unknown, SessionEvent> => new Map(events
+            .filter(event => event.executionId === id && event.data.kind === 'image')
+            .map(event => [event.data.displayId, event]));
+        for (const layout of ['par(mfrow=c(2,2))', 'par(mfcol=c(2,2))', 'layout(matrix(1:4,2,2))']) {
+            const id = await submit(`${layout}; for (i in 1:8) { plot(1:3); title(main=paste("Panel", i)) }`);
+            assert.strictEqual((await finished(id)).state, 'success');
+            const pages = [...images(id).values()]; assert.strictEqual(pages.length, 2, layout);
+            for (const [page, event] of pages.entries()) {
+                const svg = Buffer.from(await client.request<string>('asset', { id: event.data.asset }), 'base64').toString();
+                for (let panel = page * 4 + 1; panel <= page * 4 + 4; panel++) { assertSvgTextVisible(svg, `Panel ${panel}`); }
+            }
+        }
+        const update = await submit('title(sub="Updated model")'); await finished(update);
+        assert.strictEqual(images(update).size, 1);
+        const parameters = await submit('par(mfrow=c(1,1)); 21 * 2'); await finished(parameters);
+        assert.strictEqual(images(parameters).size, 0, 'Changing future layout must not duplicate the previous plot');
+    });
+
+    test('standard graphics captures grid pages and leaves explicit file devices out of the transcript', async () => {
+        const id = await submit('grid::grid.newpage(); grid::grid.text("Grid one"); grid::grid.newpage(); grid::grid.text("Grid two")');
+        assert.strictEqual((await finished(id)).state, 'success');
+        const pages = new Map(events.filter(event => event.executionId === id && event.data.kind === 'image')
+            .map(event => [event.data.displayId, event]));
+        assert.strictEqual(pages.size, 2);
+        for (const [i, event] of [...pages.values()].entries()) {
+            const svg = Buffer.from(await client.request<string>('asset', { id: event.data.asset }), 'base64').toString();
+            assertSvgTextVisible(svg, i === 0 ? 'Grid one' : 'Grid two');
+        }
+        const file = await submit('local({ f <- tempfile(fileext=".pdf"); on.exit(unlink(f)); pdf(f); plot(1:3); title("File only"); dev.off(); stopifnot(file.info(f)$size > 1000) })');
+        assert.strictEqual((await finished(file)).state, 'success');
+        assert.ok(!events.some(event => event.executionId === file && event.type === 'display'));
     });
 
     test('execution markers remain balanced across base and grid pages with warnings treated as errors', async function () {

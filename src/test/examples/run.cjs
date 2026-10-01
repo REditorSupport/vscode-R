@@ -1,4 +1,4 @@
-// Run after npm run compile && npx tsc. Optional packages: ggplot2, dplyr, DT, plotly.
+// Run after npm run compile && npx tsc. See README.md for each suite's packages.
 // Output stays in a disposable directory; no downloads or package installations.
 const assert = require('assert');
 const fs = require('fs');
@@ -11,10 +11,12 @@ const { SessionAgent, rString } = require('../../../out/interactive/agent');
 const { AgentClient } = require('../../../out/interactive/client');
 const { installRuntime } = require('../../../out/interactive/launcher');
 const { AssetStore } = require('../../../out/interactive/assets');
-const examples = require('./public.json');
+const exampleSuite = process.env.VSCR_EXAMPLE_SUITE || 'public';
+if (!['public', 'research'].includes(exampleSuite)) throw new Error('VSCR_EXAMPLE_SUITE must be public or research');
+const examples = require('./' + exampleSuite + '.json');
 const run = promisify(execFile);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-const output = process.env.VSCR_EXAMPLE_OUTPUT || fs.mkdtempSync(path.join(os.tmpdir(), 'r-public-examples-'));
+const output = process.env.VSCR_EXAMPLE_OUTPUT || fs.mkdtempSync(path.join(os.tmpdir(), `r-${exampleSuite}-examples-`));
 const provider = process.env.VSCR_TEST_PROVIDER === 'arf' ? 'arf' : 'r';
 const backend = process.env.VSCR_TEST_STATIC ? 'standard' : 'jgd';
 
@@ -27,7 +29,7 @@ const backend = process.env.VSCR_TEST_STATIC ? 'standard' : 'jgd';
         const runtime = await installRuntime(process.cwd(), path.join(root, 'registry'), 'R', () => {});
         const id = randomUUID();
         const storage = path.join(root, id);
-        agent = new SessionAgent({ id, generation: randomUUID(), label: 'Public example test', directory: root,
+        agent = new SessionAgent({ id, generation: randomUUID(), label: `${exampleSuite} example test`, directory: root,
             storage, rPath: 'R', library: runtime.library, resources: runtime.resources, provider,
             arfPath: process.env.ARF_PATH || 'arf', supervision: 'test', plotBackend: backend,
             historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
@@ -62,6 +64,15 @@ const backend = process.env.VSCR_TEST_STATIC ? 'standard' : 'jgd';
             // Static graphics uses the image MIME instead of the retained JGD plot type.
             const expected = example.kinds.map(kind => backend === 'standard' && kind === 'plot' ? 'image' : kind);
             assert.deepStrictEqual([...kinds].sort(), expected.sort(), JSON.stringify(result));
+            const consoleText = captured.filter(event => event.type === 'stream').map(event => event.data.text).join('');
+            for (const text of example.textIncludes || []) {
+                assert.ok(consoleText.includes(text), `${example.id}: missing printed result ${text}`);
+            }
+            if (example.plotPages) {
+                const pages = displays.filter(data => data.kind === 'plot' || data.kind === 'image');
+                assert.strictEqual(new Set(pages.map(data => data.displayId || data.asset)).size, example.plotPages,
+                    `${example.id}: wrong number of plot pages`);
+            }
             if (example.table) {
                 const table = displays.find(data => data.kind === 'table');
                 const columns = table.columns.filter(column => column.headerName.trim());
@@ -78,10 +89,12 @@ const backend = process.env.VSCR_TEST_STATIC ? 'standard' : 'jgd';
                 fs.writeFileSync(path.join(folder, 'interactive.' + extension), bytes);
                 // Independent R renders the same expressions and RNG seed to PNG.
                 const reference = `png(${rString(path.join(folder, 'reference-%02d.png'))}, width=800, height=600, res=96)
-for (expression in parse(${rString(path.join(folder, 'code.R'))})) {
-  result <- withVisible(eval(expression, .GlobalEnv))
-  if (result$visible) print(result$value)
-}
+local({
+  for (expression in parse(${rString(path.join(folder, 'code.R'))})) {
+    result <- withVisible(eval(expression, .GlobalEnv))
+    if (result$visible) print(result$value)
+  }
+})
 dev.off()`;
                 await run('R', ['--vanilla', '--slave', '-e', reference], { cwd: root, timeout: 30000 });
             }
