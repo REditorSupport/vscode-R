@@ -2335,7 +2335,7 @@
         "r.interactive.nodePath": {
           "type": "string",
           "default": "node",
-          "description": "Standalone Node.js 18+ executable on the R host, used for persistent session agents."
+          "description": "Node.js 18+ executable on the R host, used for persistent session agents. The default looks for node on PATH, then uses VS Code Server's Node runtime in Remote SSH. Set a remote executable path if needed; supports ~ and ${userHome}/${workspaceFolder}. The desktop Electron runtime is never used."
         },
         "r.interactive.arfPath": {
           "type": "string",
@@ -2498,7 +2498,7 @@
     "pretest": "npm run compile && npm run clean && tsc -p ./",
     "test": "vscode-test",
     "lint": "eslint src --ext ts && Rscript -e \"lintr::lint_package('sess')\"",
-    "test:interactive": "npm run compile && tsc && mocha out/test/suite/arfExecutable.test.js out/test/suite/interactiveCore.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000"
+    "test:interactive": "npm run compile && tsc && mocha out/test/suite/arfExecutable.test.js out/test/suite/nodeExecutable.test.js out/test/suite/interactiveCore.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000"
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.35",

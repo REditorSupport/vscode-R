@@ -22,12 +22,17 @@ import type { WorkspaceData } from '../../session';
     let root: string;
     const sourceDirectories: string[] = [];
     let previousRProfile: string | undefined;
+    let previousTmpdir: string | undefined;
     let previousStorage: string | undefined;
     let previousConnections: unknown;
     let agents: SessionAgent[];
     let manifests: SessionManifest[];
     let controller: vscode.NotebookController;
     suiteSetup(async () => {
+        // Match R's cwd and temporary root on macOS as well as Linux. Symlinked
+        // /var or /tmp paths otherwise hide languageserver's temp-file filter.
+        previousTmpdir = process.env.TMPDIR;
+        process.env.TMPDIR = fs.realpathSync(os.tmpdir());
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-interactive-editor-'));
         previousStorage = vscode.workspace.getConfiguration('r').inspect<string>('interactive.storagePath')?.globalValue;
         await vscode.workspace.getConfiguration('r').update('interactive.storagePath', root, vscode.ConfigurationTarget.Global);
@@ -58,6 +63,8 @@ import type { WorkspaceData } from '../../session';
         }
     });
     suiteTeardown(async () => {
+        if (previousTmpdir === undefined) { delete process.env.TMPDIR; }
+        else { process.env.TMPDIR = previousTmpdir; }
         if (previousRProfile === undefined) { delete process.env.R_PROFILE_USER; }
         else { process.env.R_PROFILE_USER = previousRProfile; }
         await vscode.commands.executeCommand('r.interactive.detach');
@@ -142,6 +149,24 @@ import type { WorkspaceData } from '../../session';
             picker.restore(); input.restore(); warning.restore(); errors.restore();
             fs.rmSync(executable, { force: true });
             await config.update('interactive.arfPath', previous, vscode.ConfigurationTarget.Global);
+        }
+    });
+    test('missing Node reports the remote-host setting before installing a runtime or creating a session', async () => {
+        const config = vscode.workspace.getConfiguration('r');
+        const previous = config.inspect<string>('interactive.nodePath')?.globalValue;
+        const entries = fs.readdirSync(root);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'R', value: 'r' } as vscode.QuickPickItem);
+        const input = sinon.stub(vscode.window, 'showInputBox').resolves('Missing Node');
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        try {
+            await config.update('interactive.nodePath', path.join(root, 'missing-node'), vscode.ConfigurationTarget.Global);
+            await vscode.commands.executeCommand('r.interactive.new');
+            sinon.assert.calledOnce(errors);
+            assert.match(errors.firstCall.args[0], /r\.interactive\.nodePath.*remote server/);
+            assert.deepStrictEqual(fs.readdirSync(root), entries);
+        } finally {
+            picker.restore(); input.restore(); errors.restore();
+            await config.update('interactive.nodePath', previous, vscode.ConfigurationTarget.Global);
         }
     });
     test('cancels Open Interactive Session from the command palette without opening a notebook or reporting an error', async () => {
@@ -1312,14 +1337,26 @@ cat("\n")`;
                 await vscode.workspace.getConfiguration('r').update('interactive.arfPath', arfSetting, vscode.ConfigurationTarget.Global);
                 confirmation.resolves('Restart Session' as unknown as vscode.MessageItem);
             }
-            // A launch failure after stopping R must retain the window and permit retry.
+            // A missing Node runtime must be detected before stopping the current R.
             await vscode.workspace.getConfiguration('r').update('interactive.nodePath', path.join(root, 'missing-node'), vscode.ConfigurationTarget.Global);
+            await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            sinon.assert.calledOnce(errors);
+            assert.match(errors.firstCall.args[0], /r\.interactive\.nodePath/);
+            assert.strictEqual(notebook.cellCount, oldCount);
+            assert.strictEqual(notebook.metadata.rGeneration, original.generation);
+            assert.ok(restartController.label.endsWith(' · idle'));
+            assert.ok(original.rPid); process.kill(original.rPid, 0);
+            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', nodePath, vscode.ConfigurationTarget.Global);
+            errors.resetHistory();
+            // A later supervisor failure must still retain the window and permit retry.
+            fs.writeFileSync(launchFile, JSON.stringify({ ...JSON.parse(savedLaunch) as AgentConfig, supervision: 'invalid-for-test' }));
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
             sinon.assert.calledOnce(errors);
             assert.ok(notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'restartFailed'));
             assert.strictEqual(oldCell.document.uri.toString(), oldUri);
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
-            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', nodePath, vscode.ConfigurationTarget.Global);
+            const failedLaunch = JSON.parse(fs.readFileSync(launchFile, 'utf8')) as AgentConfig;
+            fs.writeFileSync(launchFile, JSON.stringify({ ...failedLaunch, supervision: 'detached' }));
             confirmation.resetHistory(); errors.resetHistory();
             await Promise.all([
                 vscode.commands.executeCommand('r.interactive.restart', notebook.uri),

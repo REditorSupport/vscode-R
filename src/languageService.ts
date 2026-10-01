@@ -1,7 +1,7 @@
 'use strict';
 
 import * as os from 'os';
-import { dirname } from 'path';
+import { basename, dirname } from 'path';
 import * as net from 'net';
 import { URL } from 'url';
 import * as fs from 'fs';
@@ -64,6 +64,15 @@ export class LanguageService implements Disposable {
         resource?: Uri, target?: Session): Promise<LanguageClient> {
 
         let client: LanguageClient;
+        const virtualOnly = selector.every(filter => 'scheme' in filter
+            && (filter.scheme === 'vscode-notebook-cell' || filter.scheme === 'vscode-interactive-input'));
+        // An unrooted server resolves opaque document paths against cwd, which
+        // makes languageserver discard cells when the session lives under /tmp.
+        // Give virtual documents their actual working directory as the root.
+        const syntheticWorkspace = virtualOnly && !workspaceFolder;
+        if (syntheticWorkspace) {
+            workspaceFolder = { uri: Uri.file(cwd), name: basename(cwd), index: 0 };
+        }
         const pathlessNotebook = selector.some(filter => 'scheme' in filter && filter.scheme === 'vscode-notebook-cell'
             && typeof filter.pattern === 'string' && !fs.existsSync(filter.pattern));
 
@@ -77,8 +86,8 @@ export class LanguageService implements Disposable {
         const use_stdio = this.config.get<boolean>('lsp.use_stdio');
         const env = Object.create(process.env) as NodeJS.ProcessEnv;
         env.VSCR_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
-        env.VSCR_LSP_VIRTUAL_DOCUMENTS = selector.every(filter =>
-            'scheme' in filter && (filter.scheme === 'vscode-notebook-cell' || filter.scheme === 'vscode-interactive-input')) ? 'TRUE' : 'FALSE';
+        env.VSCR_LSP_VIRTUAL_DOCUMENTS = virtualOnly ? 'TRUE' : 'FALSE';
+        env.VSCR_LSP_SYNTHETIC_WORKSPACE = syntheticWorkspace ? 'TRUE' : 'FALSE';
         env.VSCR_LIB_PATHS = target?.libraryPaths?.join('\n') ?? getRLibPaths();
         env.VSCR_USE_RENV_LIB_PATH = useRenvLibPath ? 'TRUE' : 'FALSE';
 

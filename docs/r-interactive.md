@@ -9,7 +9,7 @@ Install this extension **on the remote host**. The initial implementation suppor
 The remote host needs:
 
 - R and a C compiler capable of building R packages (`r-base-dev` and `build-essential` on Debian/Ubuntu).
-- Standalone Node.js 18 or newer, available to the remote extension host. The agent uses this executable rather than VS Code's Electron process.
+- Node.js 18 or newer. The default searches the extension host's PATH, then uses VS Code Server's own standalone Node runtime in Remote SSH. A separate Node installation is normally unnecessary on the remote host. Local desktop sessions require standalone Node on PATH or an explicit `r.interactive.nodePath`; the Electron helper is not used.
 - `tmux` for the default Linux supervisor. `systemd --user` and detached processes are optional alternatives.
 - R packages `processx`, `later`, `jsonlite`, and `rstudioapi`. Install `languageserver` for language features, `jgd` and `systemfonts` for JGD graphics, `svglite` for the static fallback, and `htmlwidgets`/`htmltools` for HTML output.
 - `arf` is optional. Creating a headless arf session requires an executable on the R host; plain R requires no arf installation. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract was exercised with arf 0.5.1.
@@ -22,6 +22,8 @@ install.packages(c(
   "jgd", "systemfonts", "svglite", "htmlwidgets", "htmltools"
 ))
 ```
+
+If a configured Node path is missing or unusable, set **R › Interactive: Node Path** to an executable on the R host. Paths support `~/`, `${userHome}`, and `${workspaceFolder}`. Runtime availability and version are checked before installation or restart, so a failed check leaves the current R process running.
 
 The extension compiles its bundled `sess` into a private, content-addressed library. It does not replace your installed `sess` package. A compiler or package dependency failure appears in the **R Interactive** output channel.
 

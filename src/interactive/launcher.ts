@@ -6,6 +6,7 @@ import { createHash, randomUUID } from 'crypto';
 import { promisify } from 'util';
 import { AgentConfig, SessionManifest, identifier } from './protocol';
 import { atomicJson } from './journal';
+import { resolveNodeExecutable } from './nodeExecutable';
 
 const run = promisify(execFile);
 
@@ -135,15 +136,28 @@ export async function installRuntime(extensionPath: string, root: string, rPath:
     } finally { fs.rmSync(lock, { recursive: true, force: true }); }
 }
 
+/** Validate before building a runtime or stopping a session for restart. */
+export async function prepareNodeRuntime(command: string, directory: string): Promise<string> {
+    const node = resolveNodeExecutable(command, directory);
+    const help = 'Set r.interactive.nodePath to a Node.js 18+ executable on the R host (the remote server when using Remote SSH).';
+    if (!node) { throw new Error(`Cannot find the Node.js runtime “${command}” on this host. ${help}`); }
+    let version: string;
+    try {
+        version = (await run(node, ['--version'], { env: agentEnvironment(), cwd: directory, timeout: 5000 })).stdout.trim();
+    } catch (error) { throw new Error(`Cannot run the Node.js runtime “${node}”. ${help}`, { cause: error }); }
+    const major = /^v(\d+)\.\d+\.\d+(?:[-+].*)?$/.exec(version)?.[1];
+    if (!major || Number(major) < 18) {
+        throw new Error(`The session agent requires Node.js 18 or newer; “${node}” reported “${version}”. ${help}`);
+    }
+    return node;
+}
+
 export async function launchAgent(config: AgentConfig, agent: string, node: string): Promise<SessionManifest> {
+    if (process.platform === 'win32') { throw new Error('Persistent Interactive native console support currently requires Linux or macOS'); }
+    node = await prepareNodeRuntime(node, config.directory);
     ensureStorageDirectory(config.storage, path.dirname(config.storage));
     const file = path.join(config.storage, 'config.json');
-    if (process.platform === 'win32') { throw new Error('Persistent Interactive native console support currently requires Linux or macOS'); }
     const env = agentEnvironment();
-    const nodeVersion = await run(node, ['--version'], { env });
-    if (Number(nodeVersion.stdout.trim().replace(/^v/, '').split('.')[0]) < 18) {
-        throw new Error('The session agent requires a standalone Node.js 18 or newer runtime');
-    }
     if (config.supervision === 'auto') { config.supervision = process.platform === 'linux' ? 'tmux' : 'detached'; }
     atomicJson(file, config);
     if (config.supervision === 'tmux') {

@@ -35,4 +35,10 @@ if (identical(Sys.getenv("VSCR_LSP_VIRTUAL_DOCUMENTS"), "TRUE")) {
     options(languageserver.lint_cache = FALSE)
 }
 
+if (identical(Sys.getenv("VSCR_LSP_SYNTHETIC_WORKSPACE"), "TRUE")) {
+    # A session directory supplies context for virtual documents, but is not an
+    # opened project. Avoid recursively indexing it (it may be the home folder).
+    options(languageserver.index_mode = "off")
+}
+
 languageserver::run(port = port, debug = debug)

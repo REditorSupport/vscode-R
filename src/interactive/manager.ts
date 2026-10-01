@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto';
 import { AgentClient } from './client';
 import { AgentConfig, AgentSnapshot, DEFAULT_MAX_ASSET_BYTES, ExecutionRecord, SessionEvent, SessionManifest, SourceLocation, object, sessionLabel } from './protocol';
 import { AssetStore, AssetStorageStats, exportedAssetName, readAsset } from './assets';
-import { defaultStorage, discoverSessions, hasSessionEndpoint, installRuntime, launchAgent, newIdentity } from './launcher';
+import { defaultStorage, discoverSessions, hasSessionEndpoint, installRuntime, launchAgent, newIdentity, prepareNodeRuntime } from './launcher';
 import { discoverArf, probeArfSession, ArfSession } from './arf';
 import { resolveArfExecutable } from './arfExecutable';
 import { Transcript, TranscriptCell } from './transcript';
@@ -522,6 +522,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const label = await vscode.window.showInputBox({ title: 'Session name', value: adopt ? `arf ${adopt.pid}` : path.basename(directory) });
         if (!label) { return; }
         if (kind === 'arf' && !(arfPath = this.checkArfExecutable(arfPath ?? arfCommand, directory))) { return; }
+        const node = await this.nodeRuntime(directory, resource);
         return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Starting persistent R Interactive' }, async progress => {
             progress.report({ message: 'Preparing the private R runtime' });
             const runtime = await installRuntime(this.context.extensionPath, this.root, rPath, text => this.output.append(text));
@@ -537,7 +538,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 maxAssetBytes: util.config().get<number>('interactive.maxAssetBytes', DEFAULT_MAX_ASSET_BYTES),
                 maxJournalBytes: util.config().get<number>('interactive.maxJournalBytes', 128 * 1024 * 1024) };
             progress.report({ message: 'Launching the independent session agent' });
-            const manifest = await launchAgent(config, runtime.agent, util.config().get<string>('interactive.nodePath', 'node'));
+            const manifest = await launchAgent(config, runtime.agent, node);
             this.refresh(); await this.open(manifest);
             return this.views.get(`${manifest.id}:${manifest.generation}`);
         });
@@ -545,6 +546,10 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private arfCommand(resource?: vscode.Uri): string {
         return util.substituteVariables(util.config(resource).get<string>('interactive.arfPath', 'arf'), resource).trim() || 'arf';
+    }
+
+    private nodeRuntime(directory: string, resource?: vscode.Uri): Promise<string> {
+        return prepareNodeRuntime(util.substituteVariables(util.config(resource).get<string>('interactive.nodePath', 'node'), resource), directory);
     }
 
     private async configureArf(): Promise<void> {
@@ -1265,6 +1270,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             if (answer !== 'Restart Session' || view.disposed) { return; }
             const storage = path.join(this.root, view.client.manifest.id);
             const config = JSON.parse(fs.readFileSync(path.join(storage, 'config.json'), 'utf8')) as AgentConfig;
+            const node = await this.nodeRuntime(config.directory, vscode.Uri.file(config.directory));
             if (config.provider === 'arf') {
                 // Preserve the original binary across PATH changes after a reload, but
                 // allow a repaired setting to replace a removed/moved executable.
@@ -1301,7 +1307,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             for (const { task } of view.executions.values()) { task.end(undefined); }
             view.executions.clear();
             view.client.close();
-            const manifest = await launchAgent(config, runtime.agent, util.config().get<string>('interactive.nodePath', 'node'));
+            const manifest = await launchAgent(config, runtime.agent, node);
             if (view.disposed) { return; }
             this.views.delete(`${manifest.id}:${generation}`);
             view.history.push(view.model);

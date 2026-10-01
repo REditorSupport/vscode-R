@@ -60,6 +60,14 @@ The full suite passes **377 tests** with tmux enabled, plus **24** real arf runt
 
 A subsequent picker polish uses only **R** and **arf**, each with its executable path on a second line. Native verification on **1.140.0** showed `/usr/local/bin/R` and `/Users/ken/.cargo/bin/arf` with matching row heights and no inline descriptions. The **46** Interactive editor tests pass, including missing-arf setup and both session-creation entry points. Production and TypeScript builds pass; changed-file lint reports no errors and two existing warnings.
 
+## Remote startup and CI follow-up
+
+The Remote SSH `spawn node ENOENT` report came from the shared agent launcher used by both R and arf. The default now resolves Node on PATH, then falls back to the standalone runtime running VS Code Server. Explicit invalid settings still produce an actionable `r.interactive.nodePath` error. A runtime/version check runs before private runtime installation and before stopping R for restart. Desktop Electron helpers are excluded.
+
+The Node regressions include a real standalone subprocess with PATH containing no Node executable, custom-path precedence, missing/removed executables, unsupported version output, no session storage on failed creation, and preservation of the running process and transcript on failed restart preflight. The full local suite passed **384 tests** on VS Code **1.140.0** with tmux enabled; the real arf runtime matrix passed **24 tests**. Actual Remote SSH transport was not exercised in this pass.
+
+CI also exposed a Windows-only path assertion and two missing-diagnostics failures on Ubuntu. The Workspace dialog test now compares native URIs and filesystem paths. The Ubuntu failure was reproduced locally with a canonical temporary directory: languageserver resolved an opaque cell URI's empty path against its temporary working directory and excluded it from diagnostics. Virtual clients without an opened project now use an explicit session-directory root, with recursive indexing disabled for that synthetic workspace. The editor tests canonicalize their temporary root so this regression is covered on both macOS and Linux; both previously failing diagnostics tests pass in the full run. CI preserves extension-host and language-server logs when tests fail.
+
 ## Native UI coverage
 
 | Area | Checks completed |
@@ -82,7 +90,7 @@ A subsequent picker polish uses only **R** and **arf**, each with its executable
 
 | Check | Result |
 | --- | --- |
-| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 369 passed |
+| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 384 passed |
 | Earlier full extension suite, VS Code 1.110.0, tmux enabled | 347 passed |
 | Earlier Interactive-only verification on 1.110.0 after trace/lint adjustments | 84 passed |
 | Full extension suite, VS Code 1.119.0, tmux enabled | 348 passed before the final new-session focus adjustment |
