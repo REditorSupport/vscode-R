@@ -19,6 +19,7 @@ import * as workspaceViewer from './workspaceViewer';
 import * as apiImplementation from './apiImplementation';
 import * as rHelp from './helpViewer';
 import * as completions from './completions';
+import { SessionSignatureHelpProvider } from './signatureHelp';
 import * as plotViewer from './plotViewer';
 import { PlotManager } from './plotViewer/types';
 import * as languageService from './languageService';
@@ -267,6 +268,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
     context.subscriptions.push(vscode.languages.registerCompletionItemProvider(
         ['r', 'rmd'], new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters));
+    // Lower selector priority lets languageserver retain source-local definitions
+    // and package documentation. Fall back to the owning session's live functions.
+    context.subscriptions.push(vscode.languages.registerSignatureHelpProvider('*', new SessionSignatureHelpProvider(), '(', ','));
 
     void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
 

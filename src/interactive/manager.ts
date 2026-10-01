@@ -18,7 +18,7 @@ import { tablePage } from './tablePaging';
 import { tableDisplayValue } from './tableFormatting';
 import { HistoryPage, searchHistory } from './history';
 import { readExecutionRecords, readPreviousJournal } from './journal';
-import { sessionPresentation } from './sessionPresentation';
+import { sessionAge, sessionPresentation } from './sessionPresentation';
 import { runningSessions, stopSession } from './sessionLifecycle';
 
 interface InteractiveView {
@@ -147,6 +147,9 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         }));
         this.status.name = 'R Interactive session'; this.status.command = 'r.interactive.connect';
         this.disposables.push(this.status);
+        const ageTimer = setInterval(() => { this.changes.fire(undefined); this.updateStatus(); }, 60000);
+        ageTimer.unref();
+        this.disposables.push({ dispose: () => clearInterval(ageTimer) });
         this.disposables.push(vscode.window.createTreeView('rInteractiveSessions', { treeDataProvider: this, canSelectMany: true }),
             vscode.workspace.registerNotebookSerializer('r-interactive', this.serializer, { transientOutputs: false }),
             this.messages.onDidReceiveMessage(event => { void this.rendererMessage(event.editor, event.message as Record<string, unknown>); }),
@@ -489,6 +492,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             view?.restarting, view?.target.workingDir);
         const item = new vscode.TreeItem(manifest.label);
         item.id = `${manifest.id}:${manifest.generation}`; item.description = `${presentation.state} · ${manifest.provider}`;
+        const age = sessionAge(manifest);
+        if (age) { item.description += ` · ${age}`; }
         item.contextValue = 'rInteractiveSession';
         if (view?.client.connected && !view.client.control) { item.description += ' · observing'; }
         item.tooltip = presentation.tooltip;
@@ -541,7 +546,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         }
         return [
             ...live.map(manifest => ({ label: manifest.label,
-                description: `${manifest.status} · ${manifest.provider} · PID ${manifest.rPid ?? 'starting'}`,
+                description: this.sessionChoiceDescription(manifest),
                 detail: `${manifest.directory} · ${manifest.id.slice(0, 8)}`, manifest })),
             ...terminals.map(arf =>
                 ({ label: `arf ${arf.pid}`, description: `${arf.r_version ?? ''} · ${arf.cwd ?? ''}`, arf })),
@@ -564,6 +569,11 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             await this.open(selected.manifest);
             return this.views.get(`${selected.manifest.id}:${selected.manifest.generation}`);
         }
+    }
+
+    private sessionChoiceDescription(manifest: SessionManifest): string {
+        const age = sessionAge(manifest);
+        return `${manifest.status} · ${manifest.provider} · PID ${manifest.rPid ?? 'starting'}${age ? ` · ${age}` : ''}`;
     }
 
     private async pick(): Promise<void> {
@@ -835,6 +845,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             view.client.manifest.status = event.data.status as SessionManifest['status'];
             view.client.manifest.rPid = typeof event.data.rPid === 'number' ? event.data.rPid : undefined;
             view.client.manifest.rVersion = typeof event.data.rVersion === 'string' ? event.data.rVersion : undefined;
+            view.client.manifest.ended = typeof event.data.ended === 'number' ? event.data.ended : undefined;
             view.target.pid = String(event.data.rPid ?? ''); view.target.rVer = String(event.data.rVersion ?? '');
             this.refresh();
             if (event.data.status === 'exited' && !view.restarting) { await this.sessionNotice(view, 'stopped'); }
@@ -1128,7 +1139,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         let targets = selected ?? await runningSessions(this.manifests);
         if (!all && !selected && targets.length) {
             const choices = targets.map(manifest => ({ label: manifest.label,
-                description: `${manifest.status} · ${manifest.provider} · PID ${manifest.rPid ?? 'starting'}`,
+                description: this.sessionChoiceDescription(manifest),
                 detail: `${manifest.directory} · ${manifest.host} · ${manifest.id.slice(0, 8)}`, manifest }));
             const picked = await vscode.window.showQuickPick(choices, { canPickMany: true, matchOnDescription: true, matchOnDetail: true,
                 title: 'Stop Selected Interactive Sessions', placeHolder: 'Select the R sessions to stop' });

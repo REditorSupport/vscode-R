@@ -14,7 +14,7 @@ import { probeSession } from '../../interactive/client';
 import { agentEnvironment, defaultStorage, discoverSessions, hasSessionEndpoint, installRuntime, prepareStorage, shellQuote } from '../../interactive/launcher';
 import { tablePage, TABLE_PAGE_SIZE } from '../../interactive/tablePaging';
 import { searchHistory } from '../../interactive/history';
-import { sessionPresentation } from '../../interactive/sessionPresentation';
+import { sessionAge, sessionPresentation } from '../../interactive/sessionPresentation';
 
 suite('Interactive session button', () => {
     const manifest = { id: 'session-12345678', label: 'Analysis', status: 'idle', provider: 'r', rPid: 123,
@@ -66,6 +66,21 @@ suite('Interactive session button', () => {
         assert.strictEqual(unopened.state, 'idle');
         assert.match(unopened.tooltip, /Connection: Not open in this VS Code window/);
         assert.strictEqual(sessionPresentation({ ...independent, status: 'exited' }, false, false).state, 'stopped');
+    });
+
+    test('formats persisted session ages and freezes the duration at process exit', () => {
+        const created = 1700000000000;
+        const live = { ...manifest, created };
+        for (const [minutes, expected] of [[0, '<1m'], [30, '30m'], [59, '59m'], [60, '1h'], [1439, '23h'], [1440, '1d'], [4320, '3d']] as const) {
+            assert.strictEqual(sessionAge(live, created + minutes * 60000), expected);
+        }
+        assert.strictEqual(sessionAge(live, created - 60000), '<1m', 'Clock changes must not produce negative ages');
+        const stopped = { ...live, status: 'exited' as const, ended: created + 7200000 };
+        assert.strictEqual(sessionAge(stopped, created + 864000000), '2h');
+        assert.match(sessionPresentation(stopped, true, true).tooltip, /Lifetime: 2h/);
+        assert.strictEqual(sessionAge({ ...stopped, ended: undefined }), undefined, 'Older stopped agents cannot report a reliable lifetime');
+        assert.strictEqual(sessionAge({ ...live, created: NaN }), undefined);
+        assert.strictEqual(sessionAge({ ...live, created: created + 60000 }, created + 120000), '1m', 'Restart uses the new process generation');
     });
 });
 

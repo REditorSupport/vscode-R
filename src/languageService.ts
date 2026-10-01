@@ -11,12 +11,14 @@ import { config, DisposableProcess, getRLibPaths, getRpath, promptToInstallRPack
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 import { boundSessionForDocument, Session } from './session';
+import { SessionSignatureHelpProvider } from './signatureHelp';
 
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
     private readonly initSet: Set<string> = new Set();
     private readonly config: WorkspaceConfiguration;
     private readonly outputChannel: OutputChannel;
+    private readonly sessionSignatures = new SessionSignatureHelpProvider();
 
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server');
@@ -155,6 +157,18 @@ export class LanguageService implements Disposable {
                 fileEvents: workspace.createFileSystemWatcher('**/*.{R,r}'),
             },
             middleware: {
+                provideSignatureHelp: async (document, position, context, token, next) => {
+                    const result = await next(document, position, context, token);
+                    // An empty LSP result still suppresses other VS Code providers.
+                    // Preserve source/package signatures, then consult this session.
+                    return result?.signatures.length ? result : this.sessionSignatures.provideSignatureHelp(document, position, token);
+                },
+                didChange: (event, next) => {
+                    if (event.document.uri.scheme === 'vscode-interactive-input' && !event.document.getText().trim()) {
+                        client.diagnostics?.delete(event.document.uri);
+                    }
+                    return next(event);
+                },
                 handleDiagnostics: (uri, diagnostics, next) => {
                     const supportedSchemes = ['file', 'untitled', 'vscode-notebook-cell', 'vscode-interactive-input'];
                     
@@ -165,6 +179,12 @@ export class LanguageService implements Disposable {
                     
                     // Drop diagnostics for files that no longer exist on disk
                     if (uri.scheme === 'file' && !fs.existsSync(uri.fsPath)) {
+                        return next(uri, []);
+                    }
+                    // An empty prompt is ready for the next command, not an R source file
+                    // needing whitespace repairs. Also reject late replies after it clears.
+                    if (uri.scheme === 'vscode-interactive-input' && !workspace.textDocuments.find(document =>
+                        document.uri.toString() === uri.toString())?.getText().trim()) {
                         return next(uri, []);
                     }
                     

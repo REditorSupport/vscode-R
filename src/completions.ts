@@ -40,7 +40,17 @@ export class HoverProvider implements vscode.HoverProvider {
         }
 
         let hoverRange = document.getWordRangeAtPosition(position);
+        if (!hoverRange || target.workspaceUnavailable) { return null; }
         let hoverText = null;
+
+        const symbol = document.getText(hoverRange);
+        const prefix = document.lineAt(position.line).text.slice(0, hoverRange.start.character).trimEnd();
+        // Workspace snapshots already contain simple-symbol summaries and function
+        // formals. Use those while R is busy, and avoid an IPC round trip on every hover.
+        const cached = /[$@:]/.test(prefix.slice(-1)) ? undefined : target.workspaceData.globalenv[symbol];
+        if (cached && ['closure', 'builtin'].includes(cached.type)) {
+            return new vscode.Hover(new vscode.MarkdownString().appendCodeblock(cached.str, 'r'), hoverRange);
+        }
 
         if (session.globalPipePath || target.requester) {
             const exprRegex = /([a-zA-Z0-9._$@ ])+(?<![@$])/;

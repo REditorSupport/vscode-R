@@ -42,6 +42,14 @@ Native checks verified Shift-selection of two tree entries, the **Stop Selected 
 
 Successful bulk stops now immediately remove unopened sessions from the list, avoiding a stale link during agent shutdown. Open stopped transcripts remain listed. Automated regressions also cover control changes, cancellation, duplicate selection, stale generations, partial failures, other-window leases, new sessions created during confirmation, and the empty-list case. The full suite passes **360 tests** with tmux enabled; TypeScript and production builds pass, and lint has **0 errors / 70 existing warnings**.
 
+## Input language features and session age follow-up
+
+The next pass used VS Code **1.140.0** with a fresh private profile. Plain R **Input A** (PID 24614) defined `fun1 <- function(x, y) x + y`; arf **Input B** (PID 25753) defined `fun1` with `alpha`, `beta`, and `gamma = 3`. Native typing in A showed `fun1(x, y)` automatically, highlighted `y` after a comma, and displayed `function (x, y)` on hover. B showed its own signature and highlighted `gamma` for a named argument. Switching back restored A's formals. Empty and whitespace-only prompts showed **No Problems**.
+
+Session age advanced from **<1m** to **1m** and onward without executing R. A real reload retained both PIDs and original start times, restored the correct function hints, and left blank inputs without diagnostics. Stopping both sessions showed fixed lifetimes of **5m** and **3m**. The private sessions and window were closed afterward.
+
+The full suite passes **369 tests**, including tmux coverage. Added regressions cover age boundaries and persisted exit time, late diagnostics after clearing input, per-session signatures, hover/hints while R is busy, source-local signature precedence, named/default arguments, strings/comments/raw strings, nested calls, and quoted names. The language-server middleware now falls back on empty signature results, since VS Code otherwise accepts those results and does not try another provider. Production and TypeScript builds pass; lint reports **0 errors / 70 existing warnings**.
+
 ## Native UI coverage
 
 | Area | Checks completed |
@@ -64,7 +72,7 @@ Successful bulk stops now immediately remove unopened sessions from the list, av
 
 | Check | Result |
 | --- | --- |
-| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 360 passed |
+| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 369 passed |
 | Earlier full extension suite, VS Code 1.110.0, tmux enabled | 347 passed |
 | Earlier Interactive-only verification on 1.110.0 after trace/lint adjustments | 84 passed |
 | Full extension suite, VS Code 1.119.0, tmux enabled | 348 passed before the final new-session focus adjustment |

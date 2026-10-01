@@ -342,6 +342,8 @@ import type { WorkspaceData } from '../../session';
                 const item = restoredManager.getTreeItem(manifests[i]);
                 assert.match(String(item.tooltip), /Connection: Connected · controlling/);
                 assert.match(String(item.tooltip), /Process supervision: Independent process/);
+                assert.match(String(item.description), / · (<1m|\d+[mhd])/);
+                assert.match(String(item.tooltip), /Started: /);
                 assert.ok(!String(item.tooltip).includes('detached'));
             }
             sinon.assert.notCalled(errors);
@@ -444,6 +446,112 @@ import type { WorkspaceData } from '../../session';
         const reset = new vscode.WorkspaceEdit();
         reset.delete(document.uri, new vscode.Range(0, 0, document.lineCount, 0));
         await vscode.workspace.applyEdit(reset);
+    });
+    test('provides live function hover in Interactive inputs as well as source documents', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const index = notebook.cellCount;
+        const edit = new vscode.WorkspaceEdit();
+        edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(index, [new vscode.NotebookCellData(vscode.NotebookCellKind.Code,
+            'interactive_signature <- function(x, y) x + y', 'r')])]);
+        await vscode.workspace.applyEdit(edit);
+        await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: index, end: index + 1 }], document: notebook.uri });
+        await until(() => notebook.cellAt(index).executionSummary?.success === true);
+        const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebook.uri);
+        const input = await vscode.workspace.openTextDocument(result.inputUri);
+        const previous = input.getText();
+        const text = new vscode.WorkspaceEdit();
+        text.replace(input.uri, new vscode.Range(0, 0, input.lineCount, 0), 'interactive_signature');
+        await vscode.workspace.applyEdit(text);
+        try {
+            const source = await vscode.workspace.openTextDocument({ language: 'r', content: 'interactive_signature' });
+            for (const document of [source, input]) {
+                const hovers = await vscode.commands.executeCommand<vscode.Hover[]>('vscode.executeHoverProvider', document.uri, new vscode.Position(0, 3));
+                const text = hovers.flatMap(hover => hover.contents.map(content => typeof content === 'string' ? content : content.value)).join('\n');
+                assert.ok(text.includes('function (x, y)'), `Missing live function hover in ${document.uri.scheme}: ${text}`);
+            }
+        } finally {
+            const reset = new vscode.WorkspaceEdit(); reset.replace(input.uri, new vscode.Range(0, 0, input.lineCount, 0), previous);
+            await vscode.workspace.applyEdit(reset);
+        }
+    });
+    test('keeps blank Interactive prompts free of diagnostics while still linting nonempty input', async () => {
+        const document = vscode.workspace.textDocuments.find(doc => doc.uri.scheme === 'vscode-interactive-input' && doc.languageId === 'r');
+        assert.ok(document);
+        const previous = document.getText();
+        const replace = async (text: string): Promise<void> => {
+            const edit = new vscode.WorkspaceEdit(); edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), text);
+            await vscode.workspace.applyEdit(edit);
+        };
+        try {
+            await replace('input_value <- 1\n\n');
+            await until(() => vscode.languages.getDiagnostics(document.uri).some(item => item.message.includes('trailing blank lines')));
+            await replace(' \n\t\n');
+            await until(() => vscode.languages.getDiagnostics(document.uri).length === 0);
+            // Let the server publish its whitespace diagnostics after the immediate clear.
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            assert.deepStrictEqual(vscode.languages.getDiagnostics(document.uri), []);
+            await replace('input_value<-1\n');
+            await until(() => vscode.languages.getDiagnostics(document.uri).some(item => item.message.includes('spaces around')));
+            await replace('');
+            await until(() => vscode.languages.getDiagnostics(document.uri).length === 0);
+        } finally { await replace(previous); }
+    });
+    test('uses each input owner for parameter hints and keeps live signatures available while R is busy', async () => {
+        const inputs: vscode.TextDocument[] = [];
+        const previous: string[] = [];
+        const notebooks: vscode.NotebookDocument[] = [];
+        const replace = async (document: vscode.TextDocument, code: string): Promise<void> => {
+            const edit = new vscode.WorkspaceEdit(); edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), code);
+            await vscode.workspace.applyEdit(edit);
+        };
+        const execute = async (notebook: vscode.NotebookDocument, code: string, wait = true): Promise<void> => {
+            const index = notebook.cellCount;
+            const edit = new vscode.WorkspaceEdit();
+            edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(index, [new vscode.NotebookCellData(vscode.NotebookCellKind.Code, code, 'r')])]);
+            await vscode.workspace.applyEdit(edit);
+            await vscode.commands.executeCommand('notebook.cell.execute', { ranges: [{ start: index, end: index + 1 }], document: notebook.uri });
+            if (wait) { await until(() => notebook.cellAt(index).executionSummary?.success === true); }
+        };
+        const help = async (document: vscode.TextDocument, expected: string, activeParameter: number, endOffset = 0): Promise<void> => {
+            const deadline = Date.now() + 10000;
+            for (;;) {
+                const result = await vscode.commands.executeCommand<vscode.SignatureHelp | undefined>('vscode.executeSignatureHelpProvider',
+                    document.uri, document.positionAt(document.getText().length + endOffset), ',');
+                if (result?.signatures[0]?.label === expected) { assert.strictEqual(result.activeParameter, activeParameter); return; }
+                if (Date.now() > deadline) { assert.fail(`Missing ${expected} in ${document.uri.scheme}: ${JSON.stringify(result)}`); }
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        };
+        try {
+            for (let i = 0; i < 2; i++) {
+                await vscode.commands.executeCommand('r.interactive.open', manifests[i]);
+                const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[i].id);
+                assert.ok(notebook); notebooks.push(notebook);
+                await execute(notebook, i === 0 ? 'interactive_signature <- function(x, y) x + y'
+                    : 'interactive_signature <- function(alpha, beta, gamma = 3) alpha + beta + gamma');
+                const opened = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebook.uri);
+                const input = await vscode.workspace.openTextDocument(opened.inputUri);
+                inputs.push(input); previous.push(input.getText());
+                await replace(input, 'interactive_signature(1, ');
+            }
+            await help(inputs[0], 'interactive_signature(x, y)', 1);
+            await help(inputs[1], 'interactive_signature(alpha, beta, gamma = 3)', 1);
+            await replace(inputs[1], 'interactive_signature(gamma = ');
+            await help(inputs[1], 'interactive_signature(alpha, beta, gamma = 3)', 2);
+            await execute(notebooks[0], 'Sys.sleep(1)', false);
+            await until(() => manifests[0].status === 'busy');
+            await help(inputs[0], 'interactive_signature(x, y)', 1);
+            const hovers = await vscode.commands.executeCommand<vscode.Hover[]>('vscode.executeHoverProvider', inputs[0].uri, new vscode.Position(0, 3));
+            assert.ok(hovers.some(hover => hover.contents.some(content => typeof content !== 'string' && content.value.includes('function (x, y)'))));
+            await until(() => manifests[0].status === 'idle');
+            const source = await vscode.workspace.openTextDocument({ language: 'r', content: 'interactive_signature <- function(local_arg) local_arg\ninteractive_signature()' });
+            await help(source, 'interactive_signature(local_arg)', 0, -1);
+        } finally {
+            for (let i = 0; i < inputs.length; i++) { await replace(inputs[i], previous[i]); }
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        }
     });
     test('keeps source-file diagnostics working with lint caching enabled', async () => {
         // languageserver deliberately excludes files under the system temporary directory.
@@ -1040,6 +1148,9 @@ cat("\n")`;
         try {
             await vscode.commands.executeCommand('r.interactive.stop', notebook.uri);
             await until(() => notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'stopped'));
+            const ended = manifests[0].ended;
+            assert.ok(typeof ended === 'number' && ended >= manifests[0].created);
+            assert.strictEqual((JSON.parse(fs.readFileSync(path.join(root, manifests[0].id, 'manifest.json'), 'utf8')) as SessionManifest).ended, ended);
             const notice = notebook.getCells().find(cell => cell.metadata.rNoticeKind === 'stopped');
             const drafts = vscode.workspace.textDocuments.filter(doc => doc.uri.scheme === 'vscode-interactive-input');
             const contents = drafts.map(doc => doc.getText());
@@ -1049,6 +1160,7 @@ cat("\n")`;
             await vscode.commands.executeCommand('r.interactive.source', notice);
             assert.match(info.lastCall.args[0], /no source location/);
             await vscode.commands.executeCommand('r.interactive.stop', notebook.uri);
+            assert.strictEqual(manifests[0].ended, ended, 'Repeated Stop must not extend the recorded lifetime');
             assert.strictEqual(notebook.getCells().filter(cell => cell.metadata.rNoticeKind === 'stopped').length, 1);
             assert.notStrictEqual(manifests[1].status, 'exited');
             await vscode.commands.executeCommand('r.runSelection', 'replacement_target_value <- 7');

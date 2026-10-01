@@ -134,12 +134,13 @@ export class SessionAgent {
         if (this.stopping && status !== 'exited') { status = 'stopping'; }
         this.manifest.status = status;
         if (status === 'exited') {
+            this.manifest.ended ??= Date.now();
             this.shutdownTimers.forEach(clearTimeout); this.shutdownTimers = [];
             this.cancelQueued(); this.input = undefined;
             this.metrics?.kill(); this.jgd.stop();
         }
         this.saveManifest();
-        this.event('state', { status, rPid: this.manifest.rPid, rVersion: this.manifest.rVersion });
+        this.event('state', { status, rPid: this.manifest.rPid, rVersion: this.manifest.rVersion, ended: this.manifest.ended });
     }
 
     private send(socket: net.Socket, message: unknown): void {
