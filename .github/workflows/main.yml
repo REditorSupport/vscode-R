@@ -49,6 +49,15 @@ jobs:
       - name: Run tests
         if: runner.os != 'Linux'
         run: npm run test
+      - name: Preserve extension test failure logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: extension-test-logs-${{ runner.os }}
+          path: |
+            .vscode-test/user-data/logs/**/exthost/exthost.log
+            .vscode-test/user-data/logs/**/exthost/output_logging_*/*.log
+          retention-days: 7
   build:
     runs-on: ubuntu-latest
     env:

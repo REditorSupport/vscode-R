@@ -126,22 +126,23 @@ suite('Workspace Viewer', () => {
     });
 
     test('save and load dialogs keep the original owner and working directory', async () => {
+        const saved = vscode.Uri.file(path.join(first.workingDir, 'saved.RData'));
         const save = sandbox.stub(vscode.window, 'showSaveDialog').callsFake(async options => {
-            assert.strictEqual(options?.defaultUri?.fsPath, '/first/workspace.RData');
+            assert.strictEqual(options?.defaultUri?.toString(), vscode.Uri.file(path.join(first.workingDir, 'workspace.RData')).toString());
             await session.activateSession(second);
-            return vscode.Uri.file('/tmp/saved.RData');
+            return saved;
         });
         await workspace.saveWorkspace();
         sinon.assert.calledOnce(save);
-        sinon.assert.calledWithExactly(first.execute as sinon.SinonStub, 'save.image("/tmp/saved.RData")');
+        sinon.assert.calledWithExactly(first.execute as sinon.SinonStub, `save.image(${JSON.stringify(saved.fsPath)})`);
         const open = sandbox.stub(vscode.window, 'showOpenDialog').callsFake(async options => {
-            assert.strictEqual(options?.defaultUri?.fsPath, '/second');
+            assert.strictEqual(options?.defaultUri?.toString(), vscode.Uri.file(second.workingDir).toString());
             await session.activateSession(first);
-            return [vscode.Uri.file('/tmp/saved.RData')];
+            return [saved];
         });
         await workspace.loadWorkspace();
         sinon.assert.calledOnce(open);
-        sinon.assert.calledWithExactly(second.execute as sinon.SinonStub, 'load("/tmp/saved.RData")');
+        sinon.assert.calledWithExactly(second.execute as sinon.SinonStub, `load(${JSON.stringify(saved.fsPath)})`);
     });
 
     test('unavailable and detached sessions clear the tree and reject stale actions', async () => {
