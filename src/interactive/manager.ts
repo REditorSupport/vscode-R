@@ -76,7 +76,20 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             this.disposables.push(vscode.commands.registerCommand(name, (...args: unknown[]) =>
                 Promise.resolve().then(() => handler(...args)).catch((error: unknown) => this.report(error))));
         };
-        command('r.interactive.new', async () => { await this.create(); });
+        command('r.interactive.new', async () => {
+            const view = await this.create();
+            if (view) {
+                if (view.inputUri) {
+                    // Reuse the native editor created beside the previous input.
+                    // showNotebookDocument would open a second tab in the old group.
+                    await vscode.commands.executeCommand('interactive.open', { preserveFocus: false }, view.notebook.uri);
+                    await vscode.commands.executeCommand('interactive.input.focus');
+                } else {
+                    const editor = vscode.window.visibleNotebookEditors.find(item => item.notebook === view.notebook);
+                    await vscode.window.showNotebookDocument(view.notebook, { preserveFocus: false, viewColumn: editor?.viewColumn });
+                }
+            }
+        });
         command('r.interactive.connect', () => this.pick());
         command('r.interactive.open', value => value ? this.open(value as SessionManifest) : this.pick());
         command('r.interactive.refresh', () => this.refresh());
@@ -93,9 +106,25 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         command('r.interactive.history', value => this.forView(value, view => this.history(view)));
         command('r.interactive.plots', value => this.forView(value, view => this.plots(view)));
         command('r.interactive.cancelQueued', value => this.forView(value, view => this.cancelQueued(view)));
-        command('r.interactive.reuseCell', value => this.forView(value, view => this.insertCode(view, (value as vscode.NotebookCell).document.getText())));
+        command('r.interactive.reuseCell', value => this.forView(value, async view => {
+            const cell = value as vscode.NotebookCell;
+            // Native Interactive toolbars do not expose notebookCellType, so
+            // their actions also appear on lifecycle notices.
+            if (cell.kind !== vscode.NotebookCellKind.Code) {
+                void vscode.window.showInformationMessage('Select an R code cell to insert into the Interactive input.');
+                return;
+            }
+            await this.insertCode(view, cell.document.getText());
+        }));
         command('r.interactive.copyCell', value => vscode.env.clipboard.writeText((value as vscode.NotebookCell).document.getText()));
-        command('r.interactive.source', value => this.source((value as vscode.NotebookCell).metadata.rSource as SourceLocation | undefined));
+        command('r.interactive.source', value => {
+            const cell = value as vscode.NotebookCell;
+            if (cell.kind !== vscode.NotebookCellKind.Code) {
+                void vscode.window.showInformationMessage('Session notices have no source location.');
+                return;
+            }
+            return this.source(cell.metadata.rSource as SourceLocation | undefined);
+        });
         command('r.interactive.info', value => this.forView(value, view => {
             this.output.appendLine(sessionPresentation(view.client.manifest, view.client.connected, view.client.control,
                 view.restarting, view.target.workingDir).tooltip);
@@ -864,8 +893,16 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             if (output.type === 'stream') {
                 items = [data.channel === 'stderr' ? vscode.NotebookCellOutputItem.stderr(String(data.text)) : vscode.NotebookCellOutputItem.stdout(String(data.text))];
             } else if (output.type === 'condition') {
-                items = data.kind === 'error' ? [vscode.NotebookCellOutputItem.error({ name: 'R error', message: String(data.message), stack: Array.isArray(data.trace) ? data.trace.join('\n') : '' })]
-                    : [vscode.NotebookCellOutputItem.stderr(`${String(data.kind)}: ${String(data.message)}\n`)];
+                if (data.kind === 'error') {
+                    const message = String(data.message);
+                    // VS Code renders a nonempty stack in place of the message.
+                    // Include the heading so nested calls cannot hide the cause.
+                    const trace = Array.isArray(data.trace) ? data.trace.join('\n') : '';
+                    const stack = `R error: ${message}${trace ? `\n${trace}` : ''}`;
+                    items = [vscode.NotebookCellOutputItem.error({ name: 'R error', message, stack })];
+                } else {
+                    items = [vscode.NotebookCellOutputItem.stderr(`${String(data.kind)}: ${String(data.message)}\n`)];
+                }
             } else if (output.type === 'truncated') { items = [vscode.NotebookCellOutputItem.text(String(data.message))]; }
             else if (data.kind === 'image' && typeof data.asset === 'string') {
                 items = [new vscode.NotebookCellOutputItem(readAsset(path.join(this.root, view.client.manifest.id, 'assets'), data.asset), String(data.mime))];

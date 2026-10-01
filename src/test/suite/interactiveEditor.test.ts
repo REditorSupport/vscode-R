@@ -137,6 +137,52 @@ import type { InteractiveManager } from '../../interactive/manager';
         assert.ok(items.some(item => Buffer.from(item.data).toString().includes('editor-stream')));
         assert.ok(items.some(item => item.mime === 'application/vnd.vscode-r.display+json'));
     });
+    test('shows the error message alongside user calls in native cells and portable exports', async () => {
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(notebook);
+        const index = notebook.cellCount;
+        const code = 'error_inner <- function(x) sqrt(x); error_wrapper <- function(x) error_inner(x); error_wrapper("bad")';
+        await vscode.commands.executeCommand('r.runSelection', code);
+        await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === false);
+        const cell = notebook.cellAt(index);
+        const item = cell.outputs.flatMap(output => output.items).find(output => output.mime === 'application/vnd.code.notebook.error');
+        assert.ok(item);
+        const error = JSON.parse(Buffer.from(item.data).toString()) as { name: string; message: string; stack: string };
+        assert.match(error.message, /non-numeric argument/);
+        assert.ok(!code.includes(error.message), 'The call text alone cannot explain this failure');
+        assert.ok(error.stack.startsWith(`R error: ${error.message}\n`));
+        assert.ok(error.stack.includes('error_wrapper("bad")'));
+        assert.ok(error.stack.includes('error_inner(x)'));
+        assert.ok(!error.stack.includes('withCallingHandlers'));
+
+        const format = sinon.stub(vscode.window, 'showQuickPick');
+        const save = sinon.stub(vscode.window, 'showSaveDialog');
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        try {
+            for (const extension of ['rnb', 'ipynb']) {
+                const file = path.join(root, `error-message.${extension}`);
+                format.resolves({ label: extension, format: extension } as vscode.QuickPickItem);
+                save.resolves(vscode.Uri.file(file));
+                await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
+                sinon.assert.notCalled(errors);
+                if (extension === 'rnb') {
+                    const restored = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(file));
+                    const restoredError: vscode.NotebookCellOutputItem | undefined = restored.cells[index].outputs?.flatMap(output => output.items)
+                        .find(output => output.mime === item.mime);
+                    assert.ok(restoredError);
+                    assert.deepStrictEqual(JSON.parse(Buffer.from(restoredError.data).toString()), error);
+                } else {
+                    const exported = JSON.parse(fs.readFileSync(file, 'utf8')) as {
+                        cells: { outputs: { output_type: string; evalue: string; traceback: string[] }[] }[];
+                    };
+                    const exportedError = exported.cells[index].outputs.find(output => output.output_type === 'error');
+                    assert.ok(exportedError);
+                    assert.strictEqual(exportedError.evalue, error.message);
+                    assert.strictEqual(exportedError.traceback.join('\n'), error.stack);
+                }
+            }
+        } finally { format.restore(); save.restore(); errors.restore(); }
+    });
     test('Open Interactive Session without arguments opens the chosen session even when another is active', async () => {
         const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: manifests[1].label, manifest: manifests[1] } as vscode.QuickPickItem);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
@@ -638,6 +684,61 @@ cat("\n")`;
         }
     });
 
+    test('New Persistent Interactive Session focuses its own input and preserves the previous session draft', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const original = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
+        assert.ok(original);
+        await vscode.window.showNotebookDocument(original, { preserveFocus: false });
+        await vscode.commands.executeCommand('interactive.input.focus');
+        const originalInput = vscode.window.activeTextEditor?.document;
+        assert.strictEqual(originalInput?.uri.scheme, 'vscode-interactive-input');
+        assert.ok(originalInput);
+        const originalText = originalInput.getText();
+        const draft = new vscode.WorkspaceEdit();
+        draft.replace(originalInput.uri, new vscode.Range(0, 0, originalInput.lineCount, 0), '# unfinished work in the previous session');
+        await vscode.workspace.applyEdit(draft);
+        const before = new Set(vscode.workspace.notebookDocuments.map(doc => doc.uri.toString()));
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'Plain R', value: 'r' } as vscode.QuickPickItem);
+        const name = sinon.stub(vscode.window, 'showInputBox').resolves('New session focus');
+        let notebook: vscode.NotebookDocument | undefined;
+        let client: AgentClient | undefined;
+        try {
+            await vscode.commands.executeCommand('r.interactive.new');
+            notebook = vscode.workspace.notebookDocuments.find(doc => !before.has(doc.uri.toString()) && doc.metadata.rSessionId);
+            assert.ok(notebook);
+            assert.strictEqual(vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === 'R: New session focus').length, 1,
+                'Focusing the new native input must not open a duplicate tab in the previous editor group');
+            const manifest = JSON.parse(fs.readFileSync(path.join(root, String(notebook.metadata.rSessionId), 'manifest.json'), 'utf8')) as SessionManifest;
+            client = new AgentClient(manifest); await client.connect();
+            const input = vscode.window.activeTextEditor?.document;
+            assert.strictEqual(input?.uri.scheme, 'vscode-interactive-input');
+            assert.ok(input);
+            assert.notStrictEqual(input.uri.toString(), originalInput.uri.toString());
+            assert.strictEqual(originalInput.getText(), '# unfinished work in the previous session');
+            const code = 'new_session_focus_value <- 123';
+            const edit = new vscode.WorkspaceEdit(); edit.insert(input.uri, new vscode.Position(0, 0), code);
+            await vscode.workspace.applyEdit(edit);
+            await vscode.commands.executeCommand('interactive.execute');
+            await until(() => notebook?.getCells().some(cell => cell.document.getText() === code && cell.executionSummary?.success === true) ?? false);
+            assert.ok(!original.getCells().some(cell => cell.document.getText() === code));
+        } finally {
+            picker.restore(); name.restore();
+            if (notebook) { await vscode.commands.executeCommand('r.interactive.detach', notebook.uri); }
+            if (client) {
+                await client.request('claim', { force: true });
+                await client.request('stop');
+                for (let i = 0; i < 100 && (await client.request<{ status: string }>('heartbeat')).status !== 'exited'; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+                await client.request('shutdown'); client.close();
+            }
+            const restore = new vscode.WorkspaceEdit();
+            restore.replace(originalInput.uri, new vscode.Range(0, 0, originalInput.lineCount, 0), originalText);
+            await vscode.workspace.applyEdit(restore);
+            await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        }
+    });
+
     test('history export chooses one format before saving and supports cancelling either step', async () => {
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
         assert.ok(notebook);
@@ -846,9 +947,18 @@ cat("\n")`;
         assert.ok(notebook);
         const confirmation = sinon.stub(vscode.window, 'showWarningMessage').resolves('Stop Session' as unknown as vscode.MessageItem);
         const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: manifests[1].label, manifest: manifests[1] } as vscode.QuickPickItem);
+        const info = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined);
         try {
             await vscode.commands.executeCommand('r.interactive.stop', notebook.uri);
             await until(() => notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'stopped'));
+            const notice = notebook.getCells().find(cell => cell.metadata.rNoticeKind === 'stopped');
+            const drafts = vscode.workspace.textDocuments.filter(doc => doc.uri.scheme === 'vscode-interactive-input');
+            const contents = drafts.map(doc => doc.getText());
+            await vscode.commands.executeCommand('r.interactive.reuseCell', notice);
+            assert.deepStrictEqual(drafts.map(doc => doc.getText()), contents, 'A lifecycle notice must not become executable R code');
+            assert.match(info.lastCall.args[0], /Select an R code cell/);
+            await vscode.commands.executeCommand('r.interactive.source', notice);
+            assert.match(info.lastCall.args[0], /no source location/);
             await vscode.commands.executeCommand('r.interactive.stop', notebook.uri);
             assert.strictEqual(notebook.getCells().filter(cell => cell.metadata.rNoticeKind === 'stopped').length, 1);
             assert.notStrictEqual(manifests[1].status, 'exited');
@@ -859,7 +969,7 @@ cat("\n")`;
             const client = new AgentClient(manifests[1]); await client.connect();
             try { assert.ok((await client.snapshot()).executions.some(record => record.code === 'replacement_target_value <- 7')); }
             finally { client.close(); }
-        } finally { confirmation.restore(); picker.restore(); }
+        } finally { confirmation.restore(); picker.restore(); info.restore(); }
     });
 
     test('restart keeps the window, drafts, transcript, bindings and kernel through multiple R processes', async () => {

@@ -1581,17 +1581,17 @@
         {
           "command": "r.interactive.reuseCell",
           "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
-          "group": "rInteractive@0"
+          "group": "inline/rInteractive@0"
         },
         {
           "command": "r.interactive.copyCell",
           "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
-          "group": "rInteractive@1"
+          "group": "inline/rInteractive@1"
         },
         {
           "command": "r.interactive.source",
           "when": "notebookType == r-interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
-          "group": "rInteractive@2"
+          "group": "inline/rInteractive@2"
         }
       ],
       "interactive/toolbar": [
@@ -1619,18 +1619,18 @@
       "interactive/cell/title": [
         {
           "command": "r.interactive.reuseCell",
-          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
-          "group": "rInteractive@0"
+          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "group": "inline/rInteractive@0"
         },
         {
           "command": "r.interactive.copyCell",
-          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
-          "group": "rInteractive@1"
+          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "group": "inline/rInteractive@1"
         },
         {
           "command": "r.interactive.source",
-          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i && notebookCellType == code",
-          "group": "rInteractive@2"
+          "when": "notebookType == interactive && notebookKernel =~ /^REditorSupport[.]r\\/r-/i",
+          "group": "inline/rInteractive@2"
         }
       ]
     },
