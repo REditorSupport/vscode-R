@@ -447,11 +447,15 @@ export async function runTextInTerm(text: string, execute: boolean = true): Prom
     if (term === undefined) {
         return false;
     }
-    const terminal = term;
+    await runTextInTerminal(term, text, execute);
+    return true;
+}
+
+export async function runTextInTerminal(terminal: vscode.Terminal, text: string, execute = true): Promise<void> {
     const pending = (terminalSends.get(terminal) ?? Promise.resolve()).catch(() => undefined)
         .then(() => sendToTerminal(terminal, text, execute));
     terminalSends.set(terminal, pending);
-    try { await pending; return true; }
+    try { await pending; }
     finally { if (terminalSends.get(terminal) === pending) { terminalSends.delete(terminal); } }
 }
 

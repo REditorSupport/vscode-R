@@ -14,6 +14,8 @@ import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook'
 import { AgentConfig, SessionManifest, DEFAULT_MAX_ASSET_BYTES } from '../../interactive/protocol';
 import { AssetStorageStats, exportedAssetName, readAsset } from '../../interactive/assets';
 import type { InteractiveManager } from '../../interactive/manager';
+import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
+import type { WorkspaceData } from '../../session';
 
 (process.platform === 'win32' ? suite.skip : suite)('Interactive VS Code integration', function () {
     this.timeout(60000);
@@ -444,7 +446,10 @@ import type { InteractiveManager } from '../../interactive/manager';
         const client = new AgentClient(manifests[0]); await client.connect();
         try {
             const count = (await client.snapshot()).executions.length;
+            const tabs = () => vscode.window.tabGroups.all.flatMap(group => group.tabs.map(tab => `${group.viewColumn}:${tab.label}`)).sort();
+            const before = tabs();
             await vscode.commands.executeCommand('r.interactive.reuseCell', notebook.cellAt(0));
+            assert.deepStrictEqual(tabs(), before, 'Cell reuse must keep the existing native Interactive tab');
             assert.ok(input.getText().startsWith('# keep my draft\n'));
             assert.ok(input.getText().includes('editor_value <- 42'));
             assert.strictEqual((await client.snapshot()).executions.length, count);
@@ -688,8 +693,9 @@ cat("\n")`;
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         const original = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
         assert.ok(original);
-        await vscode.window.showNotebookDocument(original, { preserveFocus: false });
+        const originalResult = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: false }, original.uri);
         await vscode.commands.executeCommand('interactive.input.focus');
+        await until(() => vscode.window.activeTextEditor?.document.uri.toString() === originalResult.inputUri.toString());
         const originalInput = vscode.window.activeTextEditor?.document;
         assert.strictEqual(originalInput?.uri.scheme, 'vscode-interactive-input');
         assert.ok(originalInput);
@@ -698,6 +704,7 @@ cat("\n")`;
         draft.replace(originalInput.uri, new vscode.Range(0, 0, originalInput.lineCount, 0), '# unfinished work in the previous session');
         await vscode.workspace.applyEdit(draft);
         const before = new Set(vscode.workspace.notebookDocuments.map(doc => doc.uri.toString()));
+        const inputsBefore = new Set(vscode.workspace.textDocuments.map(doc => doc.uri.toString()));
         const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'Plain R', value: 'r' } as vscode.QuickPickItem);
         const name = sinon.stub(vscode.window, 'showInputBox').resolves('New session focus');
         let notebook: vscode.NotebookDocument | undefined;
@@ -710,15 +717,15 @@ cat("\n")`;
                 'Focusing the new native input must not open a duplicate tab in the previous editor group');
             const manifest = JSON.parse(fs.readFileSync(path.join(root, String(notebook.metadata.rSessionId), 'manifest.json'), 'utf8')) as SessionManifest;
             client = new AgentClient(manifest); await client.connect();
-            const input = vscode.window.activeTextEditor?.document;
-            assert.strictEqual(input?.uri.scheme, 'vscode-interactive-input');
+            const input = vscode.workspace.textDocuments.find(doc => doc.uri.scheme === 'vscode-interactive-input' && !inputsBefore.has(doc.uri.toString()));
             assert.ok(input);
+            await until(() => vscode.window.activeTextEditor?.document.uri.toString() === input.uri.toString());
             assert.notStrictEqual(input.uri.toString(), originalInput.uri.toString());
             assert.strictEqual(originalInput.getText(), '# unfinished work in the previous session');
             const code = 'new_session_focus_value <- 123';
             const edit = new vscode.WorkspaceEdit(); edit.insert(input.uri, new vscode.Position(0, 0), code);
             await vscode.workspace.applyEdit(edit);
-            await vscode.commands.executeCommand('interactive.execute');
+            await vscode.commands.executeCommand('interactive.execute', notebook.uri);
             await until(() => notebook?.getCells().some(cell => cell.document.getText() === code && cell.executionSummary?.success === true) ?? false);
             assert.ok(!original.getCells().some(cell => cell.document.getText() === code));
         } finally {
@@ -888,6 +895,58 @@ cat("\n")`;
             assert.ok(snapshot.workspace?.globalenv);
         } finally { client.close(); }
     });
+    test('Workspace follows native focus and bound sources, and actions retain their displayed owner', async () => {
+        const workspace = (): WorkspaceDataProvider => (createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as { rWorkspace: WorkspaceDataProvider }).rWorkspace;
+        const nodes = async (): Promise<GlobalEnvItem[]> => {
+            const provider = workspace();
+            const root = (await provider.getChildren()).find(item => item.id === 'globalenv');
+            return await provider.getChildren(root) as GlobalEnvItem[];
+        };
+        const focus = async (index: number): Promise<void> => {
+            await vscode.commands.executeCommand('r.interactive.open', manifests[index]);
+            const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[index].id);
+            assert.ok(notebook);
+            await vscode.commands.executeCommand('interactive.open', { preserveFocus: false }, notebook.uri);
+            await vscode.commands.executeCommand('interactive.input.focus');
+            await until(() => workspace().owner?.sessionId === `${manifests[index].id}:${manifests[index].generation}`);
+        };
+        for (const index of [0, 1]) {
+            await focus(index);
+            await vscode.commands.executeCommand('r.runSelection', `workspace_marker <- rep(${index}, ${index + 1}); workspace_list <- list(owner = ${index})`);
+            await until(() => workspace().data?.globalenv.workspace_marker?.length === index + 1);
+        }
+        await focus(0);
+        const oldNode = (await nodes()).find(node => node.label === 'workspace_marker'); assert.ok(oldNode);
+        const source = await vscode.workspace.openTextDocument({ language: 'r', content: 'workspace_marker' });
+        await vscode.window.showTextDocument(source);
+        await vscode.commands.executeCommand('r.interactive.bindDocument');
+        await focus(1);
+        await vscode.window.showTextDocument(source);
+        await until(() => workspace().owner === oldNode.owner);
+        assert.strictEqual(workspace().data?.globalenv.workspace_marker.length, 1);
+        const list = (await nodes()).find(node => node.label === 'workspace_list'); assert.ok(list);
+        const children = await workspace().getChildren(list);
+        assert.ok(children.some(child => String(child.description).includes('0')));
+        await focus(1);
+        await vscode.commands.executeCommand('r.workspaceViewer.remove', oldNode);
+        const firstClient = new AgentClient(manifests[0]); await firstClient.connect({ claim: false });
+        try {
+            let removed = false;
+            const deadline = Date.now() + 10000;
+            while (!removed && Date.now() < deadline) {
+                removed = !((await firstClient.snapshot()).workspace as WorkspaceData | undefined)?.globalenv.workspace_marker;
+                if (!removed) { await new Promise(resolve => setTimeout(resolve, 50)); }
+            }
+            assert.ok(removed, 'Remove applies to the displayed node owner');
+            assert.strictEqual(workspace().owner?.sessionId, `${manifests[1].id}:${manifests[1].generation}`);
+            assert.strictEqual(workspace().data?.globalenv.workspace_marker.length, 2);
+        } finally { firstClient.close(); }
+        // Closing/detaching an active view must not leave live-looking objects behind.
+        await vscode.commands.executeCommand('r.interactive.detach', manifests[1]);
+        assert.strictEqual(workspace().owner, undefined);
+        assert.deepStrictEqual(await nodes(), []);
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+    });
     test('native toolbar actions target their notebook while another session is active', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
@@ -943,6 +1002,9 @@ cat("\n")`;
     });
     test('Stop Session adds one notice to its own notebook and source execution can choose a live replacement', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const source = await vscode.workspace.openTextDocument({ language: 'r', content: 'replacement_target_value <- 7' });
+        await vscode.window.showTextDocument(source);
+        await vscode.commands.executeCommand('r.interactive.bindDocument');
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
         assert.ok(notebook);
         const confirmation = sinon.stub(vscode.window, 'showWarningMessage').resolves('Stop Session' as unknown as vscode.MessageItem);
@@ -1004,7 +1066,7 @@ cat("\n")`;
         edit.insert(oldCell.document.uri, oldCell.document.positionAt(oldCell.document.getText().length), '\n# edited after execution');
         await vscode.workspace.applyEdit(edit);
         const source = await vscode.workspace.openTextDocument({ language: 'r', content: 'cat("bound source")' });
-        await vscode.window.showTextDocument(source);
+        await vscode.window.showTextDocument(source, { viewColumn: vscode.ViewColumn.One, preserveFocus: false });
         await vscode.commands.executeCommand('r.interactive.bindDocument');
         let sawRestarting = false;
         const change = vscode.workspace.onDidChangeNotebookDocument(event => {
@@ -1072,7 +1134,8 @@ cat("\n")`;
             assert.ok((await client.snapshot()).executions.some(record => record.code === afterCode));
             // Source routing remains bound even when another window becomes active.
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-            await vscode.window.showTextDocument(source);
+            await vscode.window.showTextDocument(source, { viewColumn: vscode.ViewColumn.One, preserveFocus: false });
+            await until(() => vscode.window.activeTextEditor?.document === source);
             await vscode.commands.executeCommand('r.runSelection');
             await until(() => notebook.getCells().some(cell => cell.document.getText() === source.getText().trim() && cell.executionSummary?.success === true));
             client.close();

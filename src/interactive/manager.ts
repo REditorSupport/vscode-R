@@ -153,7 +153,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 if (view) { void this.activate(view); }
             }),
             vscode.window.onDidChangeActiveTextEditor(editor => {
-                const view = [...this.views.values()].find(item => item.inputUri?.toString() === editor?.document.uri.toString());
+                const target = editor && session.boundSessionForDocument(editor.document.uri);
+                const view = target && [...this.views.values()].find(item => item.target === target);
                 if (view) { void this.activate(view); }
                 else { this.updateStatus(); }
             }),
@@ -206,6 +207,13 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 catch (error) { if (!this.closed) { this.output.appendLine(`Restore ${manifest.label}: ${String(error)}`); } }
             }
         }
+        // Restoring background tabs must not leave their workspace selected over
+        // the visible Interactive input or a source file with an explicit binding.
+        const document = vscode.window.activeTextEditor?.document;
+        const target = document && session.boundSessionForDocument(document.uri);
+        const focused = [...this.views.values()].find(view => target
+            ? view.target === target : view.notebook === vscode.window.activeNotebookEditor?.notebook);
+        if (focused) { await this.activate(focused); }
     }
 
     private saveConnections(): Thenable<void> {
@@ -241,6 +249,15 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private updateStatus(): void {
         for (const view of this.views.values()) {
+            const unavailable = view.restarting ? 'R is restarting. The workspace will refresh when it is ready.'
+                : ['exited', 'stopping'].includes(view.client.manifest.status) ? 'R session stopped. Restart it to inspect a new workspace.'
+                    : !view.client.connected ? 'R session disconnected. Reconnecting to its workspace…'
+                        : view.client.manifest.status === 'starting' ? 'R is starting…' : undefined;
+            if (view.target.label !== view.client.manifest.label || view.target.workspaceUnavailable !== unavailable) {
+                view.target.label = view.client.manifest.label;
+                view.target.workspaceUnavailable = unavailable;
+                session.updateSessionWorkspace(view.target, view.target.workspaceData);
+            }
             const { label, description, detail } = sessionPresentation(view.client.manifest, view.client.connected, view.client.control,
                 view.restarting, view.target.workingDir);
             let changed = false;
@@ -345,7 +362,11 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     }
 
     private async insertCode(view: InteractiveView, code: string): Promise<void> {
-        await vscode.window.showNotebookDocument(view.notebook, { preserveFocus: false });
+        if (view.inputUri) {
+            await vscode.commands.executeCommand('interactive.open', { preserveFocus: false }, view.notebook.uri);
+        } else {
+            await vscode.window.showNotebookDocument(view.notebook, { preserveFocus: false });
+        }
         const edit = new vscode.WorkspaceEdit();
         if (view.inputUri) {
             const document = await vscode.workspace.openTextDocument(view.inputUri);
@@ -670,6 +691,12 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             client.request('inspect', { method: data.method, params: data.params ?? {} }, data.method === 'hover' || data.method === 'completion' ? 250 : 6000));
         target.pid = String(manifest.rPid ?? ''); target.rVer = manifest.rVersion ?? '';
         target.rPath = manifest.rPath; target.libraryPaths = manifest.libraryPaths;
+        target.label = manifest.label;
+        target.execute = async code => {
+            const view = [...this.views.values()].find(item => item.target === target);
+            if (!view || view.disposed) { throw new Error('This Interactive session is no longer attached.'); }
+            await this.submit(view, code);
+        };
         return target;
     }
 
@@ -741,10 +768,14 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     }
 
     private async activate(view: InteractiveView): Promise<void> {
+        if (view.disposed) { return; }
         this.active = view; this.routing = true;
         ensureWorkspaceViewer();
+        this.updateStatus();
+        // Select synchronously before any command round trips; the latest focus wins.
+        const activated = session.activateSession(view.target);
         await vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', true);
-        await session.activateSession(view.target);
+        await activated;
         await vscode.commands.executeCommand('setContext', 'r.interactive.active', true);
         await vscode.commands.executeCommand('setContext', 'r.interactive.notebook', vscode.window.activeNotebookEditor?.notebook === view.notebook);
         this.updateStatus();
@@ -813,8 +844,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             view.client.manifest.label = event.data.label;
             this.refresh();
         } else if (event.type === 'workspace') {
-            view.target.workspaceData = event.data as unknown as session.WorkspaceData;
-            if (this.active === view) { await session.activateSession(view.target); }
+            session.updateSessionWorkspace(view.target, event.data as unknown as session.WorkspaceData);
         } else if (event.type === 'input' && view.client.control) {
             void this.prompt(view, event.data);
         } else if (event.type === 'clientRequest' && view.client.control) {

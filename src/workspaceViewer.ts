@@ -4,9 +4,9 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window, ThemeIcon } from 'vscode';
 import { runTextInTerm } from './rTerminal';
-import { workspaceData, workingDir, WorkspaceData, GlobalEnv, globalPipePath, sessionRequest, activeSession } from './session';
+import { workspaceData, WorkspaceData, GlobalEnv, sessionRequest, activeSession, Session, executeSessionCode } from './session';
 import { config } from './util';
-import { extensionContext, globalRHelp } from './extension';
+import { extensionContext, globalRHelp, rWorkspace } from './extension';
 import { PackageNode } from './helpViewer/treeView';
 
 const collapsibleTypes: string[] = [
@@ -55,6 +55,8 @@ function getPackageNode(name: string): PackageNode | undefined {
 }
 
 export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
+    private readonly tree: vscode.TreeView<TreeItem>;
+    public owner?: Session;
     private readonly attachedNamespacesRootItem: TreeItem;
     private readonly loadedNamespacesRootItem: TreeItem;
     private readonly globalEnvRootItem: TreeItem;
@@ -67,7 +69,10 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     public data: WorkspaceData | undefined;
 
     public refresh(): void {
-        this.data = workspaceData;
+        this.owner = activeSession;
+        this.data = this.owner?.workspaceUnavailable ? undefined : workspaceData;
+        this.tree.description = this.owner ? `${this.owner.label ?? 'R'}${this.owner.pid ? ` · PID ${this.owner.pid}` : ''}` : undefined;
+        this.tree.message = this.owner?.workspaceUnavailable ?? (!this.owner ? 'Select an R Interactive window or attach an R terminal to inspect its workspace.' : undefined);
         this.childPageGeneration++;
         this.childPages.clear();
         this.childPageLoads.clear();
@@ -96,7 +101,9 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             })
         );
 
-        vscode.window.registerTreeDataProvider('workspaceViewer', this);
+        this.tree = vscode.window.createTreeView('workspaceViewer', { treeDataProvider: this });
+        extensionContext.subscriptions.push(this.tree, this._onDidChangeTreeData);
+        this.refresh();
     }
 
     public getTreeItem(element: TreeItem): TreeItem {
@@ -109,9 +116,12 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                 return [];
             }
             const pkgPrefix = 'package:';
+            const data = this.data;
+            const generation = this.childPageGeneration;
             if (element.id === 'attached-namespaces') {
                 await populatePackageNodes();
-                return this.data.search.map(name => {
+                if (generation !== this.childPageGeneration) { return []; }
+                return data.search.map(name => {
                     if (name.startsWith(pkgPrefix)) {
                         const pkgName = name.substring(pkgPrefix.length);
                         const pkgNode = getPackageNode(pkgName);
@@ -124,10 +134,11 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                 });
             } else if (element.id === 'loaded-namespaces') {
                 await populatePackageNodes();
-                const attached_packages = this.data.search
+                if (generation !== this.childPageGeneration) { return []; }
+                const attached_packages = data.search
                     .filter(name => name.startsWith(pkgPrefix))
                     .map(name => name.substring(pkgPrefix.length));
-                return this.data.loaded_namespaces.map(name => {
+                return data.loaded_namespaces.map(name => {
                     const pkgNode = getPackageNode(name);
                     const item = new PackageItem(name, name, pkgNode);
                     if (attached_packages.includes(name)) {
@@ -149,7 +160,8 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                         undefined,
                         child.has_children,
                         element.rootName,
-                        child.selector ? [...element.objectPath, child.selector] : element.objectPath
+                        child.selector ? [...element.objectPath, child.selector] : element.objectPath,
+                        element.owner
                     )
                 );
                 if (page.nextStart !== undefined) {
@@ -185,6 +197,9 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                 TreeLevel.Parent,
                 dim,
                 hasChildren,
+                undefined,
+                undefined,
+                this.owner,
             );
         };
 
@@ -216,6 +231,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     }
 
     private async getGlobalEnvChildren(element: GlobalEnvItem): Promise<WorkspaceChildPage> {
+        if (element.owner !== this.owner) { return { children: [] }; }
         const key = this.getChildPageKey(element);
         const cached = this.childPages.get(key);
         if (cached) {
@@ -232,7 +248,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     }
 
     private async requestGlobalEnvChildren(element: GlobalEnvItem, start: number): Promise<WorkspaceChildPage> {
-        if ((globalPipePath || activeSession?.requester) && element.rootName) {
+        if (element.owner && element.owner === this.owner && !element.owner.workspaceUnavailable && element.rootName) {
             try {
                 const response = await sessionRequest({
                     method: 'workspace_children',
@@ -241,7 +257,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                         path: element.objectPath,
                         start,
                     },
-                }) as { children?: unknown, next_start?: unknown } | undefined;
+                }, element.owner) as { children?: unknown, next_start?: unknown } | undefined;
                 if (response && Array.isArray(response.children)) {
                     const children = response.children.filter((child): child is WorkspaceChild =>
                         typeof child === 'object' &&
@@ -264,6 +280,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     }
 
     private async loadMore(parent: GlobalEnvItem, start: number): Promise<void> {
+        if (parent.owner !== this.owner || !this.data) { return; }
         const key = this.getChildPageKey(parent);
         const loadKey = `${key}:${start}`;
         if (this.childPageLoads.has(loadKey)) {
@@ -284,7 +301,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             });
             this._onDidChangeTreeData.fire(parent);
         } finally {
-            this.childPageLoads.delete(loadKey);
+            if (generation === this.childPageGeneration) { this.childPageLoads.delete(loadKey); }
         }
     }
 }
@@ -351,6 +368,7 @@ export class GlobalEnvItem extends TreeItem {
         hasChildren?: boolean,
         rootName?: string,
         objectPath?: WorkspaceSelector[],
+        public readonly owner?: Session,
     ) {
         super(
             label,
@@ -426,78 +444,61 @@ export class GlobalEnvItem extends TreeItem {
     }
 }
 
-export function clearWorkspace(): void {
-    const removeHiddenItems: boolean | undefined = config().get('workspaceViewer.removeHiddenItems');
-    const promptUser: boolean | undefined = config().get('workspaceViewer.clearPrompt');
+function workspaceOwner(): Session | undefined {
+    return rWorkspace ? rWorkspace.owner : activeSession;
+}
 
-    if (workspaceData !== undefined) {
-        if (promptUser) {
-            void window.showInformationMessage(
-                'Are you sure you want to clear the workspace? This cannot be reversed.',
-                'Confirm',
-                'Cancel'
-            ).then(selection => {
-                if (selection === 'Confirm') {
-                    clear();
-                }
-            });
-        } else {
-            clear();
-        }
-    }
-
-    function clear() {
-        const hiddenText = 'rm(list = ls(all.names = TRUE))';
-        const text = 'rm(list = ls())';
-        if (removeHiddenItems) {
-            void runTextInTerm(`${hiddenText}`);
-        } else {
-            void runTextInTerm(`${text}`);
-        }
+async function runWorkspaceCode(code: string, owner: Session | undefined): Promise<void> {
+    try {
+        if (owner) { await executeSessionCode(owner, code); }
+        else { await runTextInTerm(code); }
+    } catch (error) {
+        void window.showWarningMessage(`R Workspace: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 
-export function saveWorkspace(): void {
-    if (workspaceData) {
-        void window.showSaveDialog({
-            defaultUri: Uri.file(path.join(workingDir, 'workspace.RData')),
-            filters: {
-                'RData': ['RData']
-            },
-            title: 'Save Workspace'
-        }
-        ).then(async (uri: Uri | undefined) => {
-            if (uri) {
-                return runTextInTerm(
-                    `save.image("${(uri.fsPath.split(path.sep).join(path.posix.sep))}")`
-                );
-            }
-        });
+export async function clearWorkspace(): Promise<void> {
+    const owner = workspaceOwner();
+    if (!owner || owner.workspaceUnavailable) { return; }
+    const removeHiddenItems = config().get<boolean>('workspaceViewer.removeHiddenItems');
+    if (config().get<boolean>('workspaceViewer.clearPrompt')) {
+        const selection = await window.showInformationMessage(
+            `Clear the workspace of “${owner.label ?? 'R'}” (PID ${owner.pid})? This cannot be reversed.`,
+            'Confirm', 'Cancel');
+        if (selection !== 'Confirm') { return; }
     }
+    await runWorkspaceCode(removeHiddenItems ? 'rm(list = ls(all.names = TRUE))' : 'rm(list = ls())', owner);
 }
 
-export function loadWorkspace(): void {
-    const defaultUri = workingDir ? Uri.file(workingDir) : vscode.window.activeTextEditor?.document.uri;
-    void window.showOpenDialog({
-        defaultUri: defaultUri,
-        filters: {
-            'Data': ['RData'],
-        },
-        title: 'Load workspace'
-    }).then(async (uri: Uri[] | undefined) => {
-        if (uri) {
-            const savePath = uri[0].fsPath.split(path.sep).join(path.posix.sep);
-            return runTextInTerm(
-                `load("${(savePath)}")`
-            );
-        }
+export async function saveWorkspace(): Promise<void> {
+    const owner = workspaceOwner();
+    if (!owner || owner.workspaceUnavailable) { return; }
+    const uri = await window.showSaveDialog({
+        defaultUri: Uri.file(path.join(owner.workingDir, 'workspace.RData')),
+        filters: { 'RData': ['RData'] },
+        title: `Save Workspace — ${owner.label ?? 'R'}`
     });
+    if (uri) { await runWorkspaceCode(`save.image(${JSON.stringify(uri.fsPath)})`, owner); }
 }
 
-export function viewItem(node: string): void {
-    void runTextInTerm(`View(${node})`);
+export async function loadWorkspace(): Promise<void> {
+    const owner = workspaceOwner();
+    const uri = await window.showOpenDialog({
+        defaultUri: owner?.workingDir ? Uri.file(owner.workingDir) : vscode.window.activeTextEditor?.document.uri,
+        filters: { 'Data': ['RData'] },
+        title: `Load Workspace${owner ? ` — ${owner.label ?? 'R'}` : ''}`
+    });
+    if (uri?.length) { await runWorkspaceCode(`load(${JSON.stringify(uri[0].fsPath)})`, owner); }
 }
 
-export function removeItem(node: string): void {
-    void runTextInTerm(`rm(${node})`);
+export async function viewItem(node: GlobalEnvItem): Promise<void> {
+    if (node.owner && node.label) {
+        await runWorkspaceCode(`View(get(${JSON.stringify(node.label)}, envir = .GlobalEnv, inherits = FALSE), title = ${JSON.stringify(node.label)})`, node.owner);
+    }
+}
+
+export async function removeItem(node: GlobalEnvItem): Promise<void> {
+    if (node.owner && node.label) {
+        await runWorkspaceCode(`rm(list = ${JSON.stringify(node.label)}, envir = .GlobalEnv)`, node.owner);
+    }
 }

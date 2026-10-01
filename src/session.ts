@@ -54,6 +54,9 @@ interface IpcSocket extends net.Socket {
 }
 
 export class Session {
+    public label?: string;
+    public workspaceUnavailable?: string;
+    public execute?: (code: string) => Promise<void>;
     public rPath?: string;
     public libraryPaths?: string[];
     public requester?: (data: Record<string, unknown>) => Promise<unknown>;
@@ -119,7 +122,41 @@ export function unbindSessionDocument(uri: Uri): void { documentSessions.delete(
 export function unregisterSessionTransport(target: Session): void {
     for (const [uri, owner] of documentSessions) { if (owner === target) { documentSessions.delete(uri); } }
     sessions.delete(target.sessionId);
-    if (activeSession === target) { activeSession = undefined; resetStatusBar(); }
+    if (activeSession === target) { void clearActiveSession(); }
+}
+
+function clearActiveSession(): Promise<void> {
+    deferWorkspaceRefresh();
+    workspaceRefreshPending = false;
+    activeSession = undefined;
+    workspaceData = { search: [], loaded_namespaces: [], globalenv: {} };
+    workingDir = '';
+    resetStatusBar();
+    rWorkspace?.refresh();
+    return setContext('rSessionActive', false);
+}
+
+/** Workspace actions must use the process represented by the tree, even after focus changes. */
+export async function executeSessionCode(target: Session, code: string): Promise<void> {
+    if (sessions.get(target.sessionId) !== target || target.workspaceUnavailable) {
+        throw new Error(target.workspaceUnavailable ?? 'This R session is no longer attached. Select an attached session in the Workspace viewer.');
+    }
+    if (target.execute) { await target.execute(code); return; }
+    for (const terminal of window.terminals) {
+        const terminalPid = await terminal.processId;
+        if (terminalPid && terminalSessions.get(String(terminalPid)) === target) {
+            await rTerminal.runTextInTerminal(terminal, code);
+            return;
+        }
+    }
+    throw new Error('This R session has no attached terminal. Attach its terminal or open it in an Interactive window.');
+}
+
+export function updateSessionWorkspace(target: Session, data: WorkspaceData): void {
+    target.workspaceData = data;
+    if (activeSession === target) {
+        void refreshActiveSession(target);
+    }
 }
 
 /** Move document routing to a new process; existing data viewers keep their old owner. */
@@ -930,13 +967,11 @@ async function runWorkspaceRefresh(): Promise<void> {
 
 export async function updateWorkspace() {
     const requestedSession = activeSession;
-    if ((!globalPipePath && !requestedSession?.requester) || !requestedSession) {return;}
+    if ((!globalPipePath && !requestedSession?.requester) || !requestedSession || requestedSession.workspaceUnavailable) {return;}
     try {
         const response = await sessionRequest({ method: 'workspace' }, requestedSession);
-        if (response && activeSession === requestedSession) {
-            workspaceData = response as WorkspaceData;
-            requestedSession.workspaceData = workspaceData;
-            void rWorkspace?.refresh();
+        if (response && sessions.get(requestedSession.sessionId) === requestedSession) {
+            updateSessionWorkspace(requestedSession, response as WorkspaceData);
             console.info('[updateWorkspace] Done');
         }
     } catch (e) {
@@ -1798,6 +1833,12 @@ import * as rstudioapi from './rstudioapi';
 
 export async function activateSession(session: Session): Promise<void> {
     activeSession = session;
+    const refreshed = refreshActiveSession(session);
+    if (!session.workspaceUnavailable) { scheduleWorkspaceRefresh(); }
+    await refreshed;
+}
+
+async function refreshActiveSession(session: Session): Promise<void> {
     pipeClient = session.socket;
     if (!session.requester) { globalPipePath = session.pipePath; }
     pid = session.pid;
@@ -1813,9 +1854,8 @@ export async function activateSession(session: Session): Promise<void> {
         sessionStatusBarItem.tooltip = `${info.version || rVer}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
         sessionStatusBarItem.show();
     }
-    await setContext('rSessionActive', true);
     rWorkspace?.refresh();
-    scheduleWorkspaceRefresh();
+    await setContext('rSessionActive', !session.workspaceUnavailable);
 }
 
 /** Activate a connected session by its stable protocol identity. */
@@ -2168,15 +2208,7 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
         session.socket.destroy();
     }
     if (activeSession === session) {
-        deferWorkspaceRefresh();
-        workspaceRefreshPending = false;
-        resetStatusBar();
-        activeSession = undefined;
-        workspaceData.globalenv = {};
-        workspaceData.loaded_namespaces = [];
-        workspaceData.search = [];
-        rWorkspace?.refresh();
-        await setContext('rSessionActive', false);
+        await clearActiveSession();
     }
 }
 

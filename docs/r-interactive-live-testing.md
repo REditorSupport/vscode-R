@@ -20,6 +20,19 @@ On 1.140.0, native checks covered first-run source routing, independent plain R 
 | Native cells showed the user calls but omitted the actual error message | VS Code renders a nonempty stack in place of the separate message. The stack now includes the error heading and message before the user calls. Native `sqrt("bad")` through nested functions shows the cause clearly; an editor regression checks the native error MIME and R/Jupyter exports. |
 | Insert, Copy, and Go to Source were missing from native cell toolbars | Native Interactive toolbars do not supply the `notebookCellType` context used by the visibility rule. The actions now use the R notebook/kernel context and appear as icons with tooltips. Native clicks verified draft-preserving insertion, exact code copy, source navigation, and an explanation for directly entered code. Lifecycle notices are guarded against insertion as R code. |
 | Creating a second session left keyboard focus in the previous session's input | The explicit **New Persistent Interactive Session** command now focuses its new input. Source-editor routing retains its existing focus behavior. An editor regression keeps an old draft and executes from the new input, checking that the code reaches only the new session. |
+| Workspace could show a different session from the focused bound source, and actions could follow a later execution target | Focus now selects the bound session. Tree nodes and dialog actions capture their session owner. Late child replies are discarded after switching, background updates do not activate their sender, and Refresh requests a fresh snapshot. The header identifies the session and PID. |
+| Workspace retained old objects after detach and could leave actions disabled after startup | Detach clears the active workspace; stop, restart, and disconnect show an explicit state. Readiness updates refresh command availability and attached-session metadata without requiring another focus event. |
+| Cell reuse opened a native Interactive document through the generic notebook API | Reuse now calls the native Interactive opener and keeps the existing tab layout. The editor regression checks the layout as well as the preserved draft and execution count. |
+
+## Workspace switching follow-up
+
+The follow-up used VS Code **1.140.0** with a fresh private profile and registry. Plain R **Workspace A** used PID 30771 and arf **Workspace B** used PID 31493. Both contained `workspace_list` and `workspace_table` with different contents, plus `only_A` or `only_B`.
+
+Native tab clicks changed the Workspace header, PID, and unique objects together. Expanding A's list showed `owner: "A"`; focusing a source bound to A restored A after selecting B. The table's View action executed in A. Reload retained both processes and selected the workspace matching the focused tab, including A when B was restored later. Save/Clear/Refresh were enabled for the ready session.
+
+A second VS Code development window observed B while the first continued to display A. Switching between the actual application windows preserved those independent selections. Restarting A displayed the restarting message, changed its PID to 36771, removed its previous objects from Workspace, and retained the Interactive transcript. Stopping it displayed **R session stopped** with an empty environment. The private test sessions and windows were closed after verification.
+
+The final full suite passed **354 tests**, including local tmux coverage. Workspace regressions cover late replies, node ownership, non-syntactic object names, dialog focus changes, readiness, and detach cleanup. Native test automation now waits for the exact input/source document, passes the target URI to the native Execute command, and uses a dedicated source-editor group for restart checks; relying on implicit editor focus caused failures in the full run. TypeScript and production builds pass; lint reports zero errors and 70 existing warnings.
 
 ## Native UI coverage
 
@@ -43,7 +56,7 @@ On 1.140.0, native checks covered first-run source routing, independent plain R 
 
 | Check | Result |
 | --- | --- |
-| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 349 passed |
+| Final full extension suite, latest stable VS Code 1.140.0, tmux enabled | 354 passed |
 | Earlier full extension suite, VS Code 1.110.0, tmux enabled | 347 passed |
 | Earlier Interactive-only verification on 1.110.0 after trace/lint adjustments | 84 passed |
 | Full extension suite, VS Code 1.119.0, tmux enabled | 348 passed before the final new-session focus adjustment |
