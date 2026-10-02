@@ -16,6 +16,7 @@ import { AssetStorageStats, exportedAssetName, readAsset } from '../../interacti
 import type { InteractiveManager } from '../../interactive/manager';
 import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
 import type { WorkspaceData } from '../../session';
+import type { LanguageClient } from 'vscode-languageclient/node';
 
 (process.platform === 'win32' ? suite.skip : suite)('Interactive VS Code integration', function () {
     this.timeout(60000);
@@ -677,6 +678,23 @@ import type { WorkspaceData } from '../../session';
             await until(() => vscode.languages.getDiagnostics(document.uri).length === 0);
             await document.save();
         } finally { sourceDirectories.push(directory); }
+    });
+    test('starts each Interactive input language server in its owning session directory', async () => {
+        const service = bundleContext().subscriptions.find(item =>
+            (item as { clients?: unknown }).clients instanceof Map) as { clients: Map<string, LanguageClient> } | undefined;
+        assert.ok(service);
+        try {
+            for (const manifest of manifests) {
+                await vscode.commands.executeCommand('r.interactive.open', manifest);
+                const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifest.id);
+                assert.ok(notebook);
+                const result = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: true }, notebook.uri);
+                await until(() => {
+                    const client = service.clients.get(result.inputUri.toString());
+                    return client?.isRunning() === true && client.clientOptions.workspaceFolder?.uri.fsPath === manifest.directory;
+                });
+            }
+        } finally { await vscode.commands.executeCommand('r.interactive.open', manifests[0]); }
     });
     test('reuses cell code in the input without executing it or replacing a draft', async () => {
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);

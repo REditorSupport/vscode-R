@@ -103,6 +103,8 @@ const SESS_PROTOCOL_VERSION = 1;
 
 const sessions = new Map<string, Session>();
 const documentSessions = new Map<string, Session>();
+const sessionDocumentBound = new vscode.EventEmitter<Uri>();
+export const onDidBindSessionDocument = sessionDocumentBound.event;
 
 export function sessionForDocument(uri: Uri): Session | undefined {
     return boundSessionForDocument(uri) ?? activeSession;
@@ -114,7 +116,9 @@ export function boundSessionForDocument(uri: Uri): Session | undefined {
 }
 
 export function bindSessionDocument(uri: Uri, session: Session): void {
+    const previous = boundSessionForDocument(uri);
     documentSessions.set(uri.toString(), session);
+    if (previous !== session) { sessionDocumentBound.fire(uri); }
 }
 
 export function unbindSessionDocument(uri: Uri): void { documentSessions.delete(uri.toString()); }
