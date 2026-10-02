@@ -4,7 +4,10 @@ local({
     installer <- new.env(parent = baseenv())
     sys.source(file.path(root, "R", "sess-package-install.R"), installer)
     fail <- function(code, pattern) {
-        error <- tryCatch({ force(code); NULL }, error = conditionMessage)
+        error <- tryCatch({
+            force(code)
+            NULL
+        }, error = conditionMessage)
         stopifnot(is.character(error), grepl(pattern, error))
     }
     repos <- installer$sess_binary_repositories("Linux", "x86_64", "source",
@@ -26,7 +29,10 @@ local({
     temporary <- tempfile("sess installer ")
     dir.create(temporary)
     previous_directory <- setwd(temporary)
-    on.exit({ setwd(previous_directory); unlink(temporary, recursive = TRUE) }, add = TRUE)
+    on.exit({
+        setwd(previous_directory)
+        unlink(temporary, recursive = TRUE)
+    }, add = TRUE)
     library <- file.path(temporary, "build library")
     dir.create(library)
     stopifnot(file.copy(file.path(root, "sess"), temporary, recursive = TRUE))
@@ -42,10 +48,13 @@ local({
     stopifnot(length(archive) == 1L)
     repository <- file.path(temporary, "repository")
     dir.create(repository)
-    stopifnot(file.copy(archive, repository))
     type <- if (.Platform$OS.type == "windows") "win.binary" else if (Sys.info()[["sysname"]] == "Darwin") {
         .Platform$pkgType
     } else "source"
+    # R CMD INSTALL --build adds a platform suffix on Linux, but source-layout
+    # repositories (including R-universe's Linux binaries) use the standard name.
+    repository_archive <- if (type == "source") paste0("sess_", version, ".tar.gz") else basename(archive)
+    stopifnot(file.copy(archive, file.path(repository, repository_archive)))
     tools::write_PACKAGES(repository, type = if (startsWith(type, "mac.binary")) "mac.binary" else type,
                            fields = "Built", latestOnly = FALSE)
     installer$sess_binary_repositories <- function() list(list(urls = repository_url(repository), type = type))
@@ -84,7 +93,7 @@ local({
     desc <- desc[, colnames(desc) != "Config/vscode-R/Interactive", drop = FALSE]
     write.dcf(desc, metadata)
     setwd(library)
-    bad_archive <- file.path(bad_repository, basename(archive))
+    bad_archive <- file.path(bad_repository, repository_archive)
     if (type == "win.binary") {
         utils::zip(bad_archive, "sess", flags = "-r9X")
     } else {
