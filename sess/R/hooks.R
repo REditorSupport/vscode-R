@@ -25,6 +25,8 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
 }
 
 .workspace_update_task_callback <- function(..., schedule = later::later) {
+  # An attached arf terminal can edit the same object outside Interactive cells.
+  .sess_env$dataview_revision <- (.sess_env$dataview_revision %||% 0) + 1
   .defer_runtime_notification("workspace_updated", schedule)
 }
 
@@ -58,6 +60,10 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
   show_dataview <- function(x, title = deparse(substitute(x))) {
     # make sure title is computed.
     force(title)
+
+    if (isTRUE(.sess_env$interactive_connected) && .interactive_rich_value(x)) {
+      return(invisible(NULL))
+    }
 
     if (dataview_is_table(x)) {
       title_key <- paste(as.character(title), collapse = "\n")

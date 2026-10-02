@@ -28,19 +28,36 @@ jobs:
           node-version: 24
           cache: 'npm'
       - run: npm install
-      - name: Install remotes
-        run: install.packages("remotes")
+      - name: Install R test dependencies
+        run: install.packages(c("remotes", "languageserver", "lintr", "renv"))
         shell: Rscript {0}
       - run: npm run build
       - name: Run sess tests
         run: tinytest::test_package("sess")
         shell: Rscript {0}
+      - name: Test persistent tmux sessions (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tmux
+          npm run compile
+          npx tsc
+          VSCR_TEST_TMUX=1 npx mocha out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000
       - name: Run tests (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test
       - name: Run tests
         if: runner.os != 'Linux'
         run: npm run test
+      - name: Preserve extension test failure logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: extension-test-logs-${{ runner.os }}
+          path: |
+            .vscode-test/user-data/logs/**/exthost/exthost.log
+            .vscode-test/user-data/logs/**/exthost/output_logging_*/*.log
+          retention-days: 7
   build:
     runs-on: ubuntu-latest
     env:

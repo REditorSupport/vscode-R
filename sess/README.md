@@ -28,6 +28,18 @@ socket on macOS/Linux, named pipe on Windows) using
 > outdated. Managed R terminals ask first; attaching an existing session
 > installs without prompting.
 
+The installer first tries the bundled source. If that fails (for example, because
+no C compiler is installed), it checks R-universe for a compatible pre-built
+package and verifies that it loads. On Linux, compiled binaries must match the
+Ubuntu codename, architecture and R version; other distributions can use pure-R
+releases when their dependencies are already available without compilation.
+It does not change your global repository settings.
+
+Persistent Interactive sessions additionally require the native bridge and its
+compatibility marker. The public sess 3.0.1 build checked on 2026-10-02 predates
+Interactive support: it can serve ordinary terminals, but a new R-universe build
+containing the bridge is needed for compiler-free Interactive installation.
+
 `sess` is not yet on CRAN. But you can install the development version from R-universe:
 
 ```r

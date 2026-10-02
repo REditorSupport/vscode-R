@@ -14,36 +14,38 @@ local({
         repo <- args[2]
     }
     if (!nzchar(repo)) {
-        repo <- getOption("repos")[["CRAN"]]
+        configured <- getOption("repos")
+        repo <- if ("CRAN" %in% names(configured)) {
+            configured[["CRAN"]]
+        } else if (length(configured)) {
+            configured[[1L]]
+        } else {
+            ""
+        }
     }
-    if (is.na(repo) || identical(repo, "@CRAN@")) {
-        repo <- ""
+    if (!length(repo) || is.na(repo) || !nzchar(repo) || identical(repo, "@CRAN@")) {
+        repo <- "https://cloud.r-project.org"
     }
 
     if (!file.exists(file.path(pkg_path, "DESCRIPTION"))) {
         stop(paste("DESCRIPTION file not found in", pkg_path))
     }
 
-    desc <- read.dcf(file.path(pkg_path, "DESCRIPTION"))
-    deps <- if ("Imports" %in% colnames(desc)) desc[, "Imports"] else ""
-    deps <- unlist(strsplit(deps, ","))
-    deps <- gsub("\\s*\\(.*\\)", "", deps)
-    deps <- trimws(deps)
-    # Filter out base packages and already installed packages
-    deps <- deps[nzchar(deps)]
-    installed <- rownames(installed.packages())
-    base_pkgs <- rownames(installed.packages(priority = "base"))
-    deps <- deps[!deps %in% base_pkgs & !deps %in% installed]
-
-    if (length(deps) > 0) {
-        message("Installing dependencies: ", paste(deps, collapse = ", "))
-        if (nzchar(repo)) {
-            install.packages(deps, repos = repo)
-        } else {
-            install.packages(deps)
+    library <- Sys.getenv("VSCODE_R_SESS_LIBRARY", unset = "")
+    private_library <- nzchar(library)
+    if (!private_library) {
+        library <- .libPaths()[1L]
+        if (file.access(library, 2L) != 0L) {
+            user_library <- strsplit(Sys.getenv("R_LIBS_USER"), .Platform$path.sep, fixed = TRUE)[[1L]]
+            if (!length(user_library) || !nzchar(user_library[[1L]])) stop("No writable R library is available.")
+            library <- path.expand(user_library[[1L]])
         }
     }
-
-    message("Installing sess package from: ", pkg_path)
-    install.packages(pkg_path, repos = NULL, type = "source")
+    dir.create(library, recursive = TRUE, showWarnings = FALSE)
+    if (file.access(library, 2L) != 0L) stop(paste("R library is not writable:", library))
+    if (!private_library) .libPaths(c(library, .libPaths()))
+    installer <- new.env(parent = baseenv())
+    sys.source(file.path(pkg_path, "..", "R", "sess-package-install.R"), envir = installer)
+    installer$sess_install(pkg_path, library, repo,
+                           interactive = identical(Sys.getenv("VSCODE_R_SESS_INTERACTIVE"), "1"))
 })

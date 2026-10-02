@@ -78,6 +78,20 @@ suite('R Terminal', () => {
         sandbox.restore();
     });
 
+    test('execution target discovery ignores exited and hidden terminals without creating one', () => {
+        const stopped = { name: 'R', exitStatus: { code: 0 } } as vscode.Terminal;
+        const hidden = { name: 'R Deactivate' } as vscode.Terminal;
+        const live = { name: 'R Interactive' } as vscode.Terminal;
+        const terminals = sandbox.stub(vscode.window, 'terminals').value([stopped, hidden, live]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(stopped);
+        sandbox.stub(util, 'config').returns(configuration());
+        const create = sandbox.spy(vscode.window, 'createTerminal');
+        assert.strictEqual(rTerminal.findTerminal(), live);
+        terminals.value([stopped, hidden]);
+        assert.strictEqual(rTerminal.findTerminal(), undefined);
+        sinon.assert.notCalled(create);
+    });
+
     test('makeTerminalOptions respects legacy plot.useHttpgd configurations', async () => {
         // Leave plot.backend at its default to verify the legacy boolean still selects httpgd.
         const configStub = {
