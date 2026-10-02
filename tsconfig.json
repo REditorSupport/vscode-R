@@ -13,10 +13,7 @@
         "esModuleInterop": true,
         "noFallthroughCasesInSwitch": true
     },
-    "exclude": [
-        "html",
-        "node_modules",
-        ".vscode-test",
-        ".github"
+    "include": [
+        "src/**/*.ts"
     ]
 }

@@ -7,9 +7,12 @@
       "label": "Package Extension",
       "type": "shell",
       "problemMatcher": [],
-      "command": "vsce",
+      "command": "pnpm",
       "args": [
+        "exec",
+        "vsce",
         "package",
+        "--no-dependencies",
         "-o",
         "${workspaceFolderBasename}.vsix"
       ]
@@ -31,49 +34,41 @@
       }
     },
     {
-      "type": "npm",
-      "script": "compile",
+      "label": "compile",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["run", "compile"],
       "problemMatcher": []
     },
     {
-      "type": "npm",
-      "script": "build",
+      "label": "build",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["run", "build"],
       "problemMatcher": "$tsc"
     },
 		{
-      "type": "npm",
-      "script": "watch",
+      "label": "watch",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["run", "watch"],
       "group": "build",
       // install https://marketplace.visualstudio.com/items?itemName=eamodio.tsl-problem-matcher
       "problemMatcher": ["$ts-webpack-watch"],
       "isBackground": true
 		},
     {
-      "type": "npm",
-      "script": "watchHelp",
-      "group": "build",
-      "problemMatcher": "$tsc-watch",
-      "isBackground": true
-    },
-    {
-      "type": "npm",
-      "script": "watchHttpgd",
-      "group": "build",
-      "problemMatcher": "$tsc-watch",
-      "isBackground": true
-    },
-    {
       "label": "watchAll",
       "dependsOn": [
-        "npm: watch",
-        "npm: watchHelp",
-        "npm: watchHttpgd"
+        "watch"
       ],
       "problemMatcher": []
     },
     {
-      "type": "npm",
-      "script": "pretest",
+      "label": "pretest",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["run", "pretest"],
       "problemMatcher": "$tsc",
       "presentation": {
         "reveal": "never"
