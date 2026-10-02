@@ -8,7 +8,7 @@ Install this extension **on the remote host**. The initial implementation suppor
 
 The remote host needs:
 
-- R and a C compiler capable of building R packages (`r-base-dev` and `build-essential` on Debian/Ubuntu).
+- R, plus either compatible pre-built sess/dependency packages or a C compiler capable of building R packages (`r-base-dev` and `build-essential` on Debian/Ubuntu).
 - Node.js 18 or newer. The default searches the extension host's PATH, then uses VS Code Server's own standalone Node runtime in Remote SSH. A separate Node installation is normally unnecessary on the remote host. Local desktop sessions require standalone Node on PATH or an explicit `r.interactive.nodePath`; the Electron helper is not used.
 - `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
 - R packages `processx`, `later`, `jsonlite`, and `rstudioapi`. Install `languageserver` for language features, `jgd` and `systemfonts` for JGD graphics, `svglite` for the static fallback, and `htmlwidgets`/`htmltools` for HTML output.
@@ -25,7 +25,11 @@ install.packages(c(
 
 If a configured Node path is missing or unusable, set **R › Interactive: Node Path** to an executable on the R host. Paths support `~/`, `${userHome}`, and `${workspaceFolder}`. Runtime availability and version are checked before installation or restart, so a failed check leaves the current R process running.
 
-The extension compiles its bundled `sess` into a private, content-addressed library. It does not replace your installed `sess` package. A compiler or package dependency failure appears in the **R Interactive** output channel.
+The extension installs its bundled `sess` into a private, content-addressed library. It does not replace your installed `sess` package. If the source build fails, including when build tools are missing, it tries a compiler-free package from [R-universe](https://reditorsupport.r-universe.dev/sess). Installation diagnostics appear in the **R Interactive** output channel.
+
+The fallback uses R's matching macOS/Windows binary repository, or an Ubuntu repository matching the host's codename, architecture and R version. It never assumes that an Ubuntu binary is compatible with a different Linux distribution. Where no binary target exists, a published pure-R package can also be used without compilation, provided its dependencies are already installed or available without compilation. Dependencies for a binary fallback come from the matching R-universe repositories. No global repository settings are changed.
+
+Interactive requires the published package's compatibility marker (`Config/vscode-R/Interactive: 1`), the expected exports, and the registered native console routines. A matching package version alone is insufficient. **The public sess 3.0.1 build checked on 2026-10-02 predates this PR, reports `NeedsCompilation: no`, and cannot run these Interactive sessions.** A build containing this branch's native bridge must be published before that fallback can replace local compilation for Interactive. Ordinary terminal sess installation can already use the existing public build. Missing/incompatible binaries produce an actionable installation error rather than a partially initialized session.
 
 That private library is used only to load the bridge; it is not added to your session's `.libPaths()` or `R_LIBS`. Package installation follows ordinary R behavior: `install.packages()` defaults to the first library in `.libPaths()`, usually your user library. Startup files can customize that order, and an explicit `lib=` still takes precedence. The extension does not force a user-library destination over a project library.
 
