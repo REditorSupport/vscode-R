@@ -177,6 +177,22 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         const next = await submit('kept'); await finished(next); assert.match(text(next), /17/);
     });
 
+    test('interrupts a slow inspection and continues serving R requests', async () => {
+        for (const afterTimeout of [false, true]) {
+            const marker = `inspection-started-${String(afterTimeout)}`;
+            const inspection = client.request('inspect', { method: 'hover', params: {
+                expr: `local({ cat("${marker}"); Sys.sleep(30); 42 })`,
+            } }).then(() => '', (error: Error) => error.message);
+            await until(() => events.some(event => event.type === 'stream' && String(event.data.text).includes(marker)));
+            if (afterTimeout) { assert.match(await inspection, /timed out/i); }
+            await client.request('interrupt');
+            if (!afterTimeout) { assert.match(await inspection, /interrupted/i); }
+            const next = await submit('21 * 2');
+            assert.strictEqual((await finished(next)).state, 'success'); assert.match(text(next), /42/);
+            assert.ok(await client.request('inspect', { method: 'workspace' }));
+        }
+    });
+
     test('data inspection preserves random draws and reproducible resampling across cells', async () => {
         const first = await submit(`set.seed(2026)
 expected <- replicate(100, mean(sample(mtcars$mpg, replace=TRUE)))

@@ -289,7 +289,9 @@ export class SessionAgent {
             case 'interrupt':
                 this.requireControl(client);
                 if (params.id && params.id !== this.current) { throw new Error('Execution is no longer running'); }
-                if (this.current && this.manifest.rPid && this.console && !this.console.destroyed) {
+                // Inspection can still be running after its request timed out,
+                // without a submitted execution in `current`.
+                if (this.manifest.rPid && this.console && !this.console.destroyed) {
                     process.kill(this.manifest.rPid, 'SIGINT');
                 }
                 break;

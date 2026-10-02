@@ -455,6 +455,11 @@ dispatch_message <- function(line) {
         error = function(e) {
           rpc_reply(payload$id, error = list(code = -32603L, message = conditionMessage(e)))
           warning(sprintf("[sess] Error in handler for '%s': %s", payload$method, e$message))
+        },
+        interrupt = function(e) {
+          # Return a terminal reply without unwinding poll_connection(), which
+          # must reschedule itself and dispatch the remaining buffered requests.
+          rpc_reply(payload$id, error = list(code = -32000L, message = "R request interrupted"))
         }
       )
     } else {
