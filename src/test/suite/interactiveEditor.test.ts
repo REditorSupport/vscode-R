@@ -1082,9 +1082,20 @@ cat("\n")`;
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
             assert.ok(fs.readFileSync(file, 'utf8').includes('Snapshot: first 1,000 of 832,976,871 rows'));
             const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+                messages: vscode.NotebookRendererMessaging;
                 rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
             };
             const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
+            const replies = sinon.spy(manager.messages, 'postMessage');
+            try {
+                await manager.rendererMessage(editor, { displayId: table.displayId, generation: table.generation, action: 'page', start: 832976860, size: 20, live: true, refresh: true, requestId: 77 });
+                const response = replies.lastCall.args[0] as { requestId: number; result: { startRow: number; live: boolean; rows: Record<string, number>[] }; error?: string };
+                assert.strictEqual(response.error, undefined);
+                assert.strictEqual(response.requestId, 77);
+                assert.strictEqual(response.result.live, true);
+                assert.strictEqual(response.result.rows[10]['1'], 832976871);
+                assert.strictEqual(notebook.cellAt(index).outputs.flatMap(output => output.items).find(item => item.mime === DISPLAY_MIME), custom, 'Browsing must not replace the saved output');
+            } finally { replies.restore(); }
             await manager.rendererMessage(editor, { displayId: table.displayId, generation: table.generation, action: 'table' });
             sinon.assert.calledOnce(panels);
             assert.match(panels.firstCall.args[1], /full table$/);

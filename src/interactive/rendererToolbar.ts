@@ -3,6 +3,11 @@
 const paths = {
     previous: 'M10 3 5 8l5 5',
     next: 'm6 3 5 5-5 5',
+    first: 'M3 3v10M12 3 7 8l5 5',
+    last: 'M13 3v10M4 3l5 5-5 5',
+    reset: 'M3 6a5 5 0 1 1 0 5M3 2v4h4',
+    filter: 'M2 3h12L9 8v5l-2 1V8Z',
+    columns: 'M2 2h12v12H2ZM6 2v12M10 2v12',
     table: 'M2 2h12v12H2ZM2 6h12M6 2v12',
     text: 'M2 3h12M2 6h9M2 9h12M2 12h9',
     open: 'M9 2h5v5M14 2 7 9M6 3H2v11h11v-4',

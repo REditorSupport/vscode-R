@@ -16,7 +16,7 @@ import * as session from '../session';
 import * as util from '../util';
 import { escapeXml } from './plotSvg';
 import { ensureWorkspaceViewer } from '../extension';
-import { tablePage } from './tablePaging';
+import { queryTablePage } from './tableQuery';
 import { tableColumnAlignment, tableDisplayValue, tableSnapshotSummary } from './tableFormatting';
 import { HistoryPage, searchHistory } from './history';
 import { readExecutionRecords, readPreviousJournal } from './journal';
@@ -1147,9 +1147,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                     await session.showDataView('table', 'json', `${view.client.manifest.label}: ${data.fullViewId ? 'full table' : 'table'}`, '', 'Beside', String(data.fullViewId ?? data.viewId), view.target); break;
                 case 'page': {
                     if (data.kind !== 'table') { return; }
-                    const page = tablePage(Number(data.totalRows), Number(message.start));
-                    result = await view.client.request('inspect', { method: 'dataview_page', params: { view_id: data.viewId,
-                        startRow: page.start, endRow: page.end, sortModel: [], filterModel: {}, formatNumbers: true } }); break;
+                    result = await queryTablePage(data, message, request => view.client.request('inspect', request)); break;
                 }
                 case 'resize':
                     if (data.kind !== 'plot') { return; }

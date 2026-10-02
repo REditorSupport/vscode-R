@@ -13,6 +13,7 @@ import { defaultStorage, installRuntime } from '../../interactive/launcher';
 import { resolveExecutable } from '../../interactive/executable';
 import { resolveNodeExecutable } from '../../interactive/nodeExecutable';
 import { HistoryPage } from '../../interactive/history';
+import { queryTablePage, TableColumn, tableSchema } from '../../interactive/tableQuery';
 import { AssetStorageStats, readAsset } from '../../interactive/assets';
 import { assertSvgTextVisible } from '../svgAssertions';
 
@@ -224,6 +225,10 @@ huge`);
         } });
         assert.strictEqual(last.totalRows, 832976871);
         assert.strictEqual(last.rows[0]['23'], 832976871);
+        const inline = await queryTablePage(table.data, { start: 832976860, live: true, refresh: true }, request => client.request('inspect', request));
+        assert.strictEqual(inline.startRow, 832976860);
+        assert.strictEqual((inline.rows as unknown[]).length, 11);
+        assert.strictEqual((inline.rows as Record<string, number>[])[10]['23'], 832976871);
         client.close(); await client.connect(); await client.subscribe(0);
         const restored = (await client.snapshot()).events.find(event => event.seq === table.seq);
         assert.strictEqual(restored?.data.fullViewId, table.data.fullViewId);
@@ -253,6 +258,34 @@ huge`);
         assert.strictEqual(saved.totalRows, 1000);
         assert.strictEqual(saved.rows.length, 20);
         assert.strictEqual(saved.rows[19]['2'], 1000);
+    });
+
+    test('inline full-table queries sort, filter, widen pages and recover after schema edits', async function () {
+        if (!(await run('Rscript', ['-e', 'cat(requireNamespace("data.table", quietly=TRUE))'])).stdout.includes('TRUE')) { this.skip(); }
+        const id = await submit('dt <- data.table::data.table(id=1:2000, name=rep(c("a", "b"), 1000), date=as.Date("2026-01-01")+0:1999, flag=rep(c(TRUE, FALSE),1000)); dt');
+        assert.strictEqual((await finished(id)).state, 'success');
+        const table = events.find(event => event.executionId === id && event.data.kind === 'table'); assert.ok(table);
+        const schema = tableSchema(table.data.columns as TableColumn[]);
+        const inspect = (request: { method: string; params: Record<string, unknown> }): Promise<Record<string, unknown>> => client.request('inspect', request);
+        const filters = { '2': { type: 'equals', filter: 'a' }, '4': { type: 'true' }, '3': { type: 'greaterThan', filter: '2026-01-01' } };
+        const query = { start: 0, size: 50, refresh: true, schema, sortModel: [{ colId: '1', sort: 'desc' }], filterModel: filters };
+        const result = await queryTablePage(table.data, query, inspect);
+        assert.strictEqual(result.queryReset, false, JSON.stringify({ schema, columns: result.columns }));
+        assert.strictEqual(result.totalRows, 999);
+        assert.strictEqual((result.rows as unknown[]).length, 50);
+        assert.strictEqual((result.rows as Record<string, number>[])[0]['1'], 1999);
+        const finalPage = await queryTablePage(table.data, { ...query, refresh: false, live: true, start: 950 }, inspect);
+        assert.strictEqual((finalPage.rows as unknown[]).length, 49);
+        assert.strictEqual((finalPage.rows as Record<string, number>[])[48]['1'], 3);
+        await finished(await submit('data.table::setnames(dt, "id", "renamed")'));
+        const refreshed = await queryTablePage(table.data, query, inspect);
+        assert.strictEqual(refreshed.queryReset, true);
+        assert.strictEqual(refreshed.totalRows, 2000);
+        assert.strictEqual((refreshed.columns as TableColumn[])[1].headerName, 'renamed');
+        const saved = await queryTablePage(table.data, { start: 0 }, inspect);
+        assert.strictEqual(saved.live, false);
+        assert.strictEqual((saved.columns as TableColumn[])[1].headerName, 'id');
+        assert.strictEqual((saved.rows as Record<string, number>[])[0]['1'], 1);
     });
 
     test('data.table reference assignments stay quiet while explicit results and display remain visible', async function () {
