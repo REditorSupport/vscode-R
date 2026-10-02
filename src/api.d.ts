@@ -3,10 +3,12 @@
 // implemented in apiImplementation.ts
 // used e.g. by vscode-r-debugger to show the help panel from within debug sessions
 
+import * as vscode from 'vscode';
 
 export declare class RExtension {
     helpPanel?: HelpPanel;
     session: RSessionApi;
+    getRExecutablePath(resource?: vscode.Uri): Promise<string | undefined>;
 }
 
 export interface RSessionConnectionInfo {
