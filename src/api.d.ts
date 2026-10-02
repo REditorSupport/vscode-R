@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 export declare class RExtension {
     helpPanel?: HelpPanel;
     session: RSessionApi;
-    getRExecutablePath(quote?: boolean, resource?: vscode.Uri, showError?: boolean): Promise<string | undefined>;
+    getRExecutablePath(resource?: vscode.Uri): Promise<string | undefined>;
 }
 
 export interface RSessionConnectionInfo {
