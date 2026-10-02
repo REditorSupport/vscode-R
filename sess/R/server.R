@@ -9,7 +9,8 @@
 #'   unexpected disconnect waits for a replacement endpoint in that file and
 #'   reconnects with the same runtime options and session identity. The optional
 #'   discovery jgdSocket string updates JGD_SOCKET when use_jgd is TRUE; an empty
-#'   string clears it, and an omitted field leaves it unchanged.
+#'   string clears it, and an omitted field leaves it unchanged. Set
+#'   `options(sess.quiet = TRUE)` to suppress the successful connection message.
 #' @export
 connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
   # Invalidate poll callbacks and restore a previous runtime before reconnecting.
@@ -54,8 +55,12 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
     }
   }
 
+  # An automatic reconnect prints from later while the prompt is already shown,
+  # and the console does not redraw it. Startup and console calls to connect()
+  # are followed by the frontend's own prompt.
   print_async_msg <- function(msg) {
-    prompt <- if (interactive()) getOption("prompt") else ""
+    redraw <- isTRUE(.sess_env$reconnecting) && interactive()
+    prompt <- if (redraw) getOption("prompt") else ""
     cat(sprintf("\r%s\n\n%s", msg, prompt))
   }
 
@@ -76,7 +81,9 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
 
     if (is.null(.sess_env$con)) return(FALSE)
 
-    print_async_msg("[sess] Connected to VS Code")
+    if (!isTRUE(getOption("sess.quiet"))) {
+      print_async_msg("[sess] Connected to VS Code")
+    }
 
     # Start the polling loop
     poll_connection(.sess_env$transport_generation)
@@ -272,9 +279,13 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
       # Read endpoint and renderer from one snapshot, even if the file is
       # replaced again while connect() runs.
       .configure_discovery_jgd(discovery, settings$options$use_jgd)
+      .sess_env$reconnecting <- TRUE
       tryCatch(
         do.call(connect, c(list(endpoint = endpoint), settings$options)),
-        error = function(e) message("[sess] Reconnection failed: ", conditionMessage(e))
+        error = function(e) message("[sess] Reconnection failed: ", conditionMessage(e)),
+        finally = {
+          .sess_env$reconnecting <- NULL
+        }
       )
       if (!is.null(.sess_env$con)) {
         settings$endpoint <- endpoint
