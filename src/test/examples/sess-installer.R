@@ -31,6 +31,10 @@ local({
     dir.create(library)
     stopifnot(file.copy(file.path(root, "sess"), temporary, recursive = TRUE))
     package <- file.path(temporary, "sess")
+    version <- read.dcf(file.path(package, "DESCRIPTION"))[1L, "Version"]
+    repository_url <- function(path) {
+        paste0("file://", if (.Platform$OS.type == "windows") "/" else "", normalizePath(path, winslash = "/"))
+    }
     status <- system2(file.path(R.home("bin"), "R"),
                       c("CMD", "INSTALL", "--build", "--clean", shQuote(paste0("--library=", library)), shQuote(package)))
     stopifnot(status == 0L)
@@ -44,7 +48,7 @@ local({
     } else "source"
     tools::write_PACKAGES(repository, type = if (startsWith(type, "mac.binary")) "mac.binary" else type,
                            fields = "Built", latestOnly = FALSE)
-    installer$sess_binary_repositories <- function() list(list(urls = paste0("file://", repository), type = type))
+    installer$sess_binary_repositories <- function() list(list(urls = repository_url(repository), type = type))
     makevars <- file.path(temporary, "No compiler")
     writeLines(c("CC=compiler-is-not-installed", "CXX=compiler-is-not-installed"), makevars)
     Sys.setenv(R_MAKEVARS_USER = makevars)
@@ -60,14 +64,14 @@ local({
     if (.Platform$OS.type != "windows") {
         linux_layout <- file.path(temporary, "linux-layout")
         dir.create(linux_layout)
-        stopifnot(file.copy(archive, file.path(linux_layout, "sess_3.0.1.tar.gz")))
+        stopifnot(file.copy(archive, file.path(linux_layout, paste0("sess_", version, ".tar.gz"))))
         tools::write_PACKAGES(linux_layout, type = "source", fields = "Built")
         installer$sess_binary_repositories <- function() {
-            list(list(urls = paste0("file://", linux_layout), type = "source"))
+            list(list(urls = repository_url(linux_layout), type = "source"))
         }
         linux_target <- file.path(temporary, "linux target")
         dir.create(linux_target)
-        installer$sess_install_binary(linux_target, "3.0.1", TRUE)
+        installer$sess_install_binary(linux_target, version, TRUE)
         cat("Linux binary repository layout installs without invoking the compiler.\n")
     }
 
@@ -88,9 +92,9 @@ local({
     }
     tools::write_PACKAGES(bad_repository, type = if (startsWith(type, "mac.binary")) "mac.binary" else type,
                            fields = "Built")
-    installer$sess_binary_repositories <- function() list(list(urls = paste0("file://", bad_repository), type = type))
+    installer$sess_binary_repositories <- function() list(list(urls = repository_url(bad_repository), type = type))
     before <- tools::md5sum(file.path(target, "sess", "DESCRIPTION"))
-    fail(installer$sess_install_binary(target, "3.0.1", TRUE), "does not support")
+    fail(installer$sess_install_binary(target, version, TRUE), "does not support")
     stopifnot(identical(before, tools::md5sum(file.path(target, "sess", "DESCRIPTION"))))
     cat("Incompatible published build rejected without replacing installed sess.\n")
     setwd(previous_directory)
