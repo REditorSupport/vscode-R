@@ -41,7 +41,7 @@ for other changes and upgrade notes.
     <summary>Install the development version</summary>
 
     The [`latest`](https://github.com/REditorSupport/vscode-R/releases/tag/latest)
-    pre-release is rebuilt from every push to `main`. Download and install it:
+    pre-release is updated after successful verification of a push to `main`. Download and install it:
 
     ```sh
     curl -fsSL -o vscode-R.vsix https://github.com/REditorSupport/vscode-R/releases/download/latest/vscode-R.vsix
