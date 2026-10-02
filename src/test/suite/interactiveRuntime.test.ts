@@ -423,6 +423,34 @@ dt`);
         const next = await submit('21 * 2'); await finished(next); assert.match(text(next), /42/);
     });
 
+    test('bounds oversized rich events before they can disconnect the native bridge', async () => {
+        for (const value of ['strrep("λ", 3000000)', 'strrep(intToUtf8(1L), 1000000)']) {
+            const id = await submit(`sess::display(${value}, "text/html"); cat("still running")`);
+            assert.strictEqual((await finished(id)).state, 'success');
+            assert.match(text(id), /still running/);
+            assert.ok(events.some(event => event.executionId === id && event.type === 'truncated'));
+            assert.ok(!events.some(event => event.executionId === id && event.type === 'display'));
+        }
+        const next = await submit('21 * 2');
+        assert.strictEqual((await finished(next)).state, 'success'); assert.match(text(next), /42/);
+        assert.strictEqual((await client.snapshot()).manifest.rPid, manifest.rPid);
+    });
+
+    test('forked R workers cannot corrupt the parent console bridge', async () => {
+        const id = await submit(`
+            values <- parallel::mclapply(1:4, function(i) {
+                for (j in 1:10) cat(strrep(as.character(i), 8192))
+                i * 2L
+            }, mc.cores = 4)
+            stopifnot(identical(unlist(values), c(2L, 4L, 6L, 8L)))
+            cat("parallel complete")
+        `);
+        assert.strictEqual((await finished(id)).state, 'success');
+        assert.match(text(id), /parallel complete/);
+        const next = await submit('21 * 2');
+        assert.strictEqual((await finished(next)).state, 'success'); assert.match(text(next), /42/);
+    });
+
     test('serializes a queue and enforces observer control leases', async () => {
         const observer = new AgentClient(manifest);
         try {

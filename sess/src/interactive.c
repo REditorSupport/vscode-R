@@ -15,6 +15,7 @@
 #include <errno.h>
 
 static int bridge_fd = -1;
+static pid_t bridge_pid = -1;
 static int mirror_output = 0;
 static int input_counter = 0;
 static char execution_id[101] = "";
@@ -23,6 +24,17 @@ static void (*previous_write_ex)(const char *, int, int) = NULL;
 static int (*previous_read)(const char *, unsigned char *, int, int) = NULL;
 static FILE *previous_output_file = NULL;
 static FILE *previous_console_file = NULL;
+
+/* Forked workers share the socket descriptor, but must never write framed
+ * messages to it or consume the parent process's console input. */
+static int bridge_owner(void) {
+    if (bridge_pid >= 0 && bridge_pid != getpid()) {
+        if (bridge_fd >= 0) close(bridge_fd);
+        bridge_fd = -1;
+        return 0;
+    }
+    return 1;
+}
 
 static int write_all(const char *data, size_t length) {
     while (length && bridge_fd >= 0) {
@@ -54,6 +66,18 @@ static char *escape_json(const char *text, size_t length) {
 }
 
 static void console_write(const char *buffer, int length, int type) {
+    if (!bridge_owner()) {
+        /* Use the worker's ordinary stdout/stderr, including mc.silent's
+         * redirection. Embedded frontend callbacks belong to the parent too. */
+        while (length > 0) {
+            ssize_t n = write(type ? STDERR_FILENO : STDOUT_FILENO, buffer, (size_t) length);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) break;
+            buffer += n;
+            length -= (int) n;
+        }
+        return;
+    }
     char header[256];
     if (bridge_fd >= 0 && length > 0) {
         /* Base64 preserves byte boundaries even when R splits a UTF-8 character
@@ -88,6 +112,7 @@ static void console_write(const char *buffer, int length, int type) {
 }
 
 static int console_read(const char *prompt, unsigned char *buffer, int length, int history) {
+    if (!bridge_owner()) return 0;
     if (!execution_id[0] && mirror_output && previous_read) {
         return previous_read(prompt, buffer, length, history);
     }
@@ -118,6 +143,7 @@ SEXP sess_bridge_start(SEXP endpoint, SEXP token, SEXP mirror) {
 #ifdef _WIN32
     Rf_error("Native Interactive console callbacks are currently supported on Unix R frontends");
 #else
+    if (!bridge_owner()) Rf_error("Disconnect the inherited bridge before starting one in a forked worker");
     if (bridge_fd >= 0) Rf_error("This R process already has an Interactive console bridge");
     const char *socket_path = CHAR(STRING_ELT(endpoint, 0));
     struct sockaddr_un address;
@@ -136,6 +162,7 @@ SEXP sess_bridge_start(SEXP endpoint, SEXP token, SEXP mirror) {
         Rf_error("Cannot connect Interactive console socket");
     }
     bridge_fd = fd;
+    bridge_pid = getpid();
     mirror_output = Rf_asLogical(mirror) == TRUE;
     char *escaped = escape_json(CHAR(STRING_ELT(token, 0)), strlen(CHAR(STRING_ELT(token, 0))));
     if (!escaped) { close(fd); bridge_fd = -1; Rf_error("Out of memory"); }
@@ -159,6 +186,7 @@ SEXP sess_bridge_start(SEXP endpoint, SEXP token, SEXP mirror) {
 
 SEXP sess_bridge_send(SEXP message) {
 #ifndef _WIN32
+    if (!bridge_owner()) return R_NilValue;
     const char *json = CHAR(STRING_ELT(message, 0));
     if (!write_all(json, strlen(json)) || !write_all("\n", 1)) {
         Rf_error("Interactive agent disconnected");
@@ -189,6 +217,7 @@ SEXP sess_bridge_stop(void) {
     if (ptr_R_ReadConsole == console_read) ptr_R_ReadConsole = previous_read;
     if (bridge_fd >= 0) close(bridge_fd);
     bridge_fd = -1;
+    bridge_pid = -1;
     execution_id[0] = '\0';
 #endif
     return R_NilValue;

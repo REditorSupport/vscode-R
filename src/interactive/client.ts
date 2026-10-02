@@ -9,6 +9,7 @@ export class AgentClient extends EventEmitter {
     private counter = 0;
     private pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
     private heartbeat?: NodeJS.Timeout;
+    private replaying?: SessionEvent[];
     private closing = false;
     private ready = false;
     control = false;
@@ -22,7 +23,11 @@ export class AgentClient extends EventEmitter {
         const socket = net.createConnection(this.manifest.endpoint);
         this.socket = socket;
         const parser = new JsonLines(message => {
-            if (message.event) { this.emit('event', message.event as SessionEvent); return; }
+            if (message.event) {
+                if (this.replaying) { this.replaying.push(message.event as SessionEvent); }
+                else { this.emit('event', message.event as SessionEvent); }
+                return;
+            }
             const id = Number(message.id);
             const pending = this.pending.get(id);
             if (!pending) { return; }
@@ -68,12 +73,23 @@ export class AgentClient extends EventEmitter {
 
     async subscribe(after: number): Promise<boolean> {
         let cursor = after;
-        for (;;) {
-            const replay = await this.request<{ events: SessionEvent[]; reset: boolean; seq: number }>('subscribe', { after: cursor });
-            if (replay.reset) { return false; }
-            for (const event of replay.events) { this.emit('event', event); cursor = event.seq; }
-            if (cursor >= replay.seq) { return true; }
-        }
+        const live: SessionEvent[] = [];
+        this.replaying = live;
+        try {
+            for (;;) {
+                const replay = await this.request<{ events: SessionEvent[]; reset: boolean; seq: number }>('subscribe', { after: cursor });
+                if (replay.reset) { return false; }
+                for (const event of replay.events) { this.emit('event', event); cursor = event.seq; }
+                if (cursor >= replay.seq) {
+                    // A socket read can contain both the response and newer events.
+                    // Deliver replay first, before the transcript advances its cursor.
+                    for (const event of live) {
+                        if (event.seq > cursor) { this.emit('event', event); cursor = event.seq; }
+                    }
+                    return true;
+                }
+            }
+        } finally { if (this.replaying === live) { this.replaying = undefined; } }
     }
 
     snapshot(limit = 50): Promise<AgentSnapshot> { return this.request('snapshot', { limit }); }
@@ -94,6 +110,7 @@ export class AgentClient extends EventEmitter {
 
     close(): void {
         this.closing = true;
+        this.replaying = undefined;
         this.ready = false; this.control = false;
         clearInterval(this.heartbeat);
         for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error('Session agent disconnected')); }

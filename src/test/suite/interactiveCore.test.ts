@@ -9,8 +9,8 @@ import { SessionJournal, retainedAssetIds, readPreviousJournal } from '../../int
 import { JsonLines } from '../../interactive/framing';
 import { AssetStore, exportedAssetName } from '../../interactive/assets';
 import { Transcript } from '../../interactive/transcript';
-import { submission, AgentSnapshot, SessionManifest } from '../../interactive/protocol';
-import { probeSession } from '../../interactive/client';
+import { submission, AgentSnapshot, SessionEvent, SessionManifest } from '../../interactive/protocol';
+import { AgentClient, probeSession } from '../../interactive/client';
 import { agentEnvironment, defaultStorage, discoverSessions, hasSessionEndpoint, installRuntime, prepareStorage, shellQuote } from '../../interactive/launcher';
 import { tablePage, TABLE_PAGE_SIZE } from '../../interactive/tablePaging';
 import { searchHistory } from '../../interactive/history';
@@ -241,6 +241,49 @@ suite('Interactive protocol and persistence', () => {
         journal.append('stream', { text: 'new' }, 'one');
         assert.strictEqual(journal.replay(0).events.length, 2);
         journal.close();
+    });
+
+    test('replays history before live events arriving in the same socket read', async function () {
+        if (process.platform === 'win32') { this.skip(); }
+        const manifest = { id: 'replay', generation: 'first', protocol: 1,
+            endpoint: path.join(directory, 'replay.sock'), token: 'test-token' } as SessionManifest;
+        const journal = new SessionJournal(directory, manifest.generation);
+        const record = journal.accept({ id: 'one', code: 'cat("historylive")' }).record;
+        const accepted = journal.append('accepted', { record }, record.id);
+        const historical = journal.append('stream', { text: 'history', channel: 'stdout' }, record.id);
+        const live = journal.append('stream', { text: 'live', channel: 'stdout' }, record.id);
+        const server = net.createServer(socket => {
+            socket.on('error', () => undefined);
+            const parser = new JsonLines(message => {
+                if (message.method === 'hello') {
+                    socket.write(JSON.stringify({ id: message.id, result: manifest }) + '\n');
+                } else if (message.method === 'subscribe') {
+                    const first = (message.params as { after: number }).after === 0;
+                    const response = { id: message.id, result: {
+                        events: [first ? accepted : historical], reset: false, seq: historical.seq,
+                    } };
+                    // The final replay response and new output can share a TCP/IPC read.
+                    socket.write([response, ...(first ? [] : [{ event: live }])].map(value => JSON.stringify(value) + '\n').join(''));
+                }
+            });
+            socket.on('data', (chunk: Buffer) => parser.push(chunk));
+        });
+        const client = new AgentClient(manifest);
+        try {
+            await new Promise<void>((resolve, reject) => {
+                server.once('error', reject); server.listen(manifest.endpoint, resolve);
+            });
+            await client.connect({ claim: false });
+            const model = new Transcript(manifest.generation);
+            const received: number[] = [];
+            client.on('event', (event: SessionEvent) => { received.push(event.seq); model.apply(event); });
+            assert.strictEqual(await client.subscribe(0), true);
+            assert.deepStrictEqual(received, [accepted.seq, historical.seq, live.seq]);
+            assert.strictEqual(model.cells.get(record.id)?.outputs[0].data.text, 'historylive');
+        } finally {
+            client.close(); journal.close();
+            await new Promise<void>(resolve => server.close(() => resolve()));
+        }
     });
 
     test('transcript deduplicates replay and replaces only the same display identity', () => {

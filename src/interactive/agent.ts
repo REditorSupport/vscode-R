@@ -487,6 +487,7 @@ export class SessionAgent {
                 break;
             }
             case 'condition': this.event('condition', message, executionId); break;
+            case 'truncated': this.event('truncated', { message: String(message.message) }, executionId); break;
             case 'input':
                 this.input = { ...message, executionId: executionId ?? this.current };
                 this.event('input', this.input, executionId); this.state('input'); break;

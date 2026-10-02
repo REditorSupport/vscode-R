@@ -2,9 +2,19 @@
 .interactive_event <- function(type, data = list()) {
   id <- .sess_env$interactive_id
   event <- c(list(type = type, executionId = if (is.null(id)) "" else id), data)
-  .Call("sess_bridge_send", as.character(jsonlite::toJSON(
+  json <- as.character(jsonlite::toJSON(
     event, auto_unbox = TRUE, null = "null", na = "null", digits = NA
-  )), PACKAGE = "sess")
+  ))
+  # Bound the encoded bytes before writing to the 4 MiB native IPC channel.
+  # Agent-side display limits run only after parsing and cannot protect it from
+  # oversized HTML, wide tables, or strings enlarged by JSON escaping.
+  if (nchar(json, type = "bytes") > 2 * 1024 * 1024) {
+    json <- as.character(jsonlite::toJSON(list(
+      type = "truncated", executionId = if (is.null(id)) "" else id,
+      message = "Rich output exceeds 2 MiB; display a smaller preview or save it to a file."
+    ), auto_unbox = TRUE))
+  }
+  .Call("sess_bridge_send", json, PACKAGE = "sess")
   invisible(NULL)
 }
 
