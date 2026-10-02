@@ -7,7 +7,7 @@ import { toolbarButton as button } from './rendererToolbar';
 export interface InlineTableState {
     data: Record<string, unknown>; start: number; size: number; live: boolean;
     sort: TableSort[]; filters: TableFilters; order: string[];
-    filterOpen?: boolean; columnsOpen?: boolean;
+    filterOpen?: boolean;
 }
 export interface InlineTable {
     reply(message: Record<string, unknown>): void;
@@ -41,8 +41,7 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
     const tableHost = document.createElement('div'); tableHost.dataset.table = ''; parent.append(tableHost);
     const tools = document.createElement('div'); tools.className = 'r-inline-tools'; parent.append(tools);
     const filtersPanel = document.createElement('form'); filtersPanel.className = 'r-inline-panel'; filtersPanel.setAttribute('aria-label', 'Table filters');
-    const columnsPanel = document.createElement('div'); columnsPanel.className = 'r-inline-panel'; columnsPanel.setAttribute('aria-label', 'Column order');
-    tools.append(filtersPanel, columnsPanel);
+    tools.append(filtersPanel);
     const pager = document.createElement('div'); pager.className = 'r-inline-pager';
     const number = document.createElement('input'); number.type = 'number'; number.min = '1'; number.step = '1'; number.setAttribute('aria-label', 'Page number');
     const pageCount = document.createElement('span');
@@ -78,15 +77,14 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
     size.onchange = () => request(state.start, state.sort, state.filters, Number(size.value));
     pager.append(first, previous, document.createTextNode('Page '), number, pageCount, go, next, last, size);
     const filtersButton = button('Filter columns', 'filter', () => { state.filterOpen = !state.filterOpen; remember(state); update(); }, 'Filters');
-    const columnsButton = button('Reorder columns', 'columns', () => { state.columnsOpen = !state.columnsOpen; remember(state); update(); }, 'Columns');
     const reset = button('Reset table view', 'reset', () => {
         if (!active) { return; }
         // Restoring saved output is local, and invalidates even an in-flight reply.
         pending = undefined; state = initial(); error = ''; remember(state);
-        draw(); buildPanels(true); update(); tableHost.scrollLeft = 0; tableHost.scrollTop = 0;
+        draw(); buildFilters(true); update(); tableHost.scrollLeft = 0; tableHost.scrollTop = 0;
     }, 'Reset');
     reset.title = 'Restore the saved preview, first page, original column order, and clear sorting and filters';
-    toolbar.append(filtersButton, columnsButton, reset, pager);
+    toolbar.append(filtersButton, reset, pager);
 
     const move = (field: string, target: string): void => {
         if (!active || field === '0' || target === '0' || field === target) { return; }
@@ -94,9 +92,7 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
         const from = fields.indexOf(field); const to = fields.indexOf(target);
         if (from < 0 || to < 0) { return; }
         fields.splice(from, 1); fields.splice(to, 0, field); state.order = fields;
-        remember(state); draw(); buildColumns();
-        columnSelect.value = field;
-        updateMoveButtons();
+        remember(state); draw();
     };
     function draw(): void {
         const scroll = tableHost.scrollLeft;
@@ -183,31 +179,11 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
         }
         request(0, state.sort, { ...state.filters, [filterColumn.value]: { type: operator.value, ...(filterNeedsValue(operator.value) ? { filter: value.value } : {}) } });
     };
-    const columnSelect = document.createElement('select'); columnSelect.setAttribute('aria-label', 'Column to move');
-    const shift = (direction: number): void => {
-        const fields = ordered().filter(column => column.field !== '0').map(column => column.field);
-        const target = fields[fields.indexOf(columnSelect.value) + direction];
-        if (target) { move(columnSelect.value, target); }
-    };
-    const moveLeft = button('Move column left', 'previous', () => shift(-1), 'Move left');
-    const moveRight = button('Move column right', 'next', () => shift(1), 'Move right');
-    columnsPanel.append(columnSelect, moveLeft, moveRight);
-    function updateMoveButtons(): void {
-        moveLeft.disabled = columnSelect.selectedIndex <= 0;
-        moveRight.disabled = columnSelect.selectedIndex < 0 || columnSelect.selectedIndex >= columnSelect.options.length - 1;
-    }
-    columnSelect.onchange = updateMoveButtons;
-    function buildColumns(resetSelection = false): void {
-        const selected = columnSelect.value; columnSelect.replaceChildren();
-        for (const column of ordered().filter(column => column.field !== '0')) { columnSelect.add(new Option(column.headerName, column.field)); }
-        if (!resetSelection && Array.from(columnSelect.options).some(option => option.value === selected)) { columnSelect.value = selected; }
-        updateMoveButtons();
-    }
-    function buildPanels(resetDraft = false): void {
+    function buildFilters(resetDraft = false): void {
         const selected = filterColumn.value; filterColumn.replaceChildren();
         for (const column of columns().filter(column => column.field !== '0' && column.filter !== false)) { filterColumn.add(new Option(column.headerName, column.field)); }
         if (!resetDraft && Array.from(filterColumn.options).some(option => option.value === selected)) { filterColumn.value = selected; }
-        updateOperators(!resetDraft && filterColumn.value === selected); buildColumns(resetDraft); chips.replaceChildren();
+        updateOperators(!resetDraft && filterColumn.value === selected); chips.replaceChildren();
         for (const [field, filter] of Object.entries(state.filters)) {
             const name = columns().find(column => column.field === field)?.headerName ?? field;
             const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'r-interactive-button';
@@ -219,9 +195,9 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
     }
     function update(): void {
         tableHost.hidden = textMode; tools.hidden = textMode; pager.hidden = textMode;
-        filtersButton.hidden = columnsButton.hidden = reset.hidden = textMode;
-        filtersButton.setAttribute('aria-expanded', String(!!state.filterOpen)); columnsButton.setAttribute('aria-expanded', String(!!state.columnsOpen));
-        filtersPanel.hidden = !state.filterOpen; columnsPanel.hidden = !state.columnsOpen;
+        filtersButton.hidden = reset.hidden = textMode;
+        filtersButton.setAttribute('aria-expanded', String(!!state.filterOpen));
+        filtersPanel.hidden = !state.filterOpen;
         const disabled = !available || !!pending;
         first.disabled = previous.disabled = disabled || state.start === 0;
         last.disabled = next.disabled = disabled || state.start + state.size >= count() || count() === 0;
@@ -240,7 +216,7 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
         status.title = state.live && !textMode ? 'Rows are fetched on demand from the original object. Reference edits may appear. Reset restores the saved preview.'
             : hasFull ? `${tableSnapshotSummary(original)}. Browse beyond these rows, sort or filter to retrieve live data.` : '';
     }
-    draw(); buildPanels(); update();
+    draw(); buildFilters(); update();
     return {
         setTextMode(text) { textMode = text; update(); },
         reply(message) {
@@ -252,7 +228,7 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
                 size: query.size, live: result.live === true || query.live,
                 sort: result.queryReset ? [] : query.sort, filters: result.queryReset ? {} : query.filters };
             if (result.queryReset) { state.order = []; error = 'Columns changed; sorting and filters were cleared.'; }
-            remember(state); draw(); buildPanels(result.queryReset === true); update();
+            remember(state); draw(); buildFilters(result.queryReset === true); update();
         },
         dispose() { active = false; pending = undefined; tableHost.replaceChildren(); tools.replaceChildren(); pager.replaceChildren(); },
     };

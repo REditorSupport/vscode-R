@@ -47,7 +47,7 @@ Existing persistent sessions keep the R bridge loaded when they started. Start a
 
 ## Inline browsing follow-up
 
-The lightweight inline viewer now offers first/last navigation, arbitrary page jumps, 20/50/100-row pages, column sorting, explicit typed filters, local column reordering and Reset. The 1,000-row snapshot remains a fast, stable saved preview rather than a navigation limit. The [user guide](r-interactive.md) explains saved/live semantics, cache lifetime and stopped-session controls.
+The lightweight inline viewer now offers first/last navigation, arbitrary page jumps, 20/50/100-row pages, column sorting, explicit typed filters, drag-to-reorder columns and Reset. The 1,000-row snapshot remains a fast, stable saved preview rather than a navigation limit. The [user guide](r-interactive.md) explains saved/live semantics, cache lifetime and stopped-session controls.
 
 The extension validates queries against the owning output's handles and limits each request to at most 100 rows. No new R bridge or dataset copy is introduced. The renderer keeps one current page per cached output, with a 32-output cache limit; it never builds a cache of all visited pages. Sorting/filtering reuse the existing R query-index cache, while ordinary navigation needs no full-data index. Large explicit sorts/filters still have their normal R memory and execution costs.
 
@@ -56,3 +56,5 @@ Live regressions exercise the final 11 rows of the exact-dimension compact fixtu
 Follow-up validation on VS Code **1.140.0**: **424** native extension tests passed, **41** arf runtime/library tests passed, and **105** browser assertions passed in each of dark, narrow light, and high-contrast layouts. Browser coverage includes snapshot transitions, direct/last-page requests, page sizes, sort cycling, explicit filtering, empty results, draft retention, drag/keyboard reordering, Reset after stop, stale replies, and output replacement. Build/type checks and lint pass with the existing 70 TypeScript warnings. The allocation benchmark above was rerun successfully, including its bounded-preview allocation assertions. The original snapshot validation numbers above describe the preceding revision.
 
 This follow-up is editor-side: sessions already created with bounded snapshots and full-data handles can keep running after the extension update/reload. Only older agents lacking those handles need a new session to expand a truncated snapshot.
+
+The subsequent toolbar simplification removes the Columns button and its panel, keeping header dragging and Reset. Build/type checks, targeted lint and **102 browser assertions per layout** (dark, narrow light, high contrast) pass; the three removed assertions exercised the deleted panel.
