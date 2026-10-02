@@ -97,34 +97,32 @@ interactive_start <- function(config, mirror = TRUE) {
       invisible(result)
     }, ns = "grDevices")
   }
-  for (spec in list(c("graphics", "plot.new"), c("grid", "grid.newpage"))) {
-    original <- get(spec[[2L]], envir = asNamespace(spec[[1L]]))
-    wrapped <- local({
-      draw <- original
-      grid_page <- identical(spec[[2L]], "grid.newpage")
-      function(...) {
-        static <- isTRUE(.sess_env$interactive_static)
-        new_page <- FALSE
-        if (static) {
+  # Hooks also run through references already imported by stats/lattice.
+  # Rebinding plot.new/grid.newpage misses those references and loses pages.
+  for (name in c("plot.new", "grid.newpage")) {
+    before_page <- local({
+      grid_page <- identical(name, "grid.newpage")
+      function() {
+        if (isTRUE(.sess_env$interactive_static)) {
           current <- grDevices::dev.cur()
           owned <- current == 1L || current == getOption("sess.null_dev", -1L)
           # plot.new is also called for each panel of mfrow/mfcol/layout.
           new_page <- !isTRUE(.sess_env$interactive_capturing) && owned &&
             (grid_page || current == 1L || isTRUE(graphics::par("page")))
-          if (new_page) .interactive_capture_plot()
+          if (new_page) {
+            .interactive_capture_plot()
+            .sess_env$interactive_plot_page <- .sess_env$interactive_plot_page + 1L
+            .sess_env$interactive_last_plot <- NULL
+          }
         } else {
           .interactive_plot_new_page()
-          on.exit(.interactive_plot_context(), add = TRUE)
         }
-        result <- draw(...)
-        if (new_page) {
-          .sess_env$interactive_plot_page <- .sess_env$interactive_plot_page + 1L
-          .sess_env$interactive_last_plot <- NULL
-        }
-        invisible(result)
       }
     })
-    .runtime_rebind(spec[[2L]], wrapped, ns = spec[[1L]])
+    .runtime_set_hook(paste0("before.", name), before_page, "append")
+    if (isTRUE(cfg$useJgd)) {
+      .runtime_set_hook(name, .interactive_plot_context, "append")
+    }
   }
   device <- getOption("device")
   if (is.function(device)) {
@@ -292,11 +290,11 @@ interactive_execute <- function(id, code, source = NULL) {
   record <- tryCatch(grDevices::recordPlot(), error = function(e) NULL)
   if (is.null(record)) return()
   commands <- as.list(record[[1L]])
-  # Trailing par() calls configure future drawing; they do not paint this page.
+  # Trailing par()/layout() calls configure future drawing; they do not paint this page.
   # Comparing the whole record also compares graphics state changed by par().
   while (length(commands)) {
     routine <- commands[[length(commands)]][[2L]][[1L]]
-    if (!is.list(routine) || !identical(routine$name, "C_par")) break
+    if (!is.list(routine) || !routine$name %in% c("C_par", "C_layout")) break
     commands <- head(commands, -1L)
   }
   if (!length(commands) || identical(commands, .sess_env$interactive_last_plot)) return()

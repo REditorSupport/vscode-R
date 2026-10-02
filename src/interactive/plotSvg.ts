@@ -10,7 +10,7 @@ interface Operation {
     x: number & number[]; y: number & number[];
     x0: number; y0: number; x1: number; y1: number; x2: number; y2: number;
     r: number; str: string; rot: number; hadj: number;
-    w: number; h: number; data: string; winding: string; subpaths: number[][][];
+    w: number; h: number; data: string; interpolate?: boolean; winding: string; subpaths: number[][][];
     ext?: { opacity?: number; blendMode?: string; filter?: string };
 }
 
@@ -52,7 +52,14 @@ export function plotToSvg(plot: PlotFrame): string {
             case 'line':
                 parts.push(`<line x1="${n(op.x1)}" y1="${n(op.y1)}" x2="${n(op.x2)}" y2="${n(op.y2)}"${stroke}/>`); break;
             case 'rect':
-                parts.push(`<rect x="${Math.min(n(op.x0), n(op.x1))}" y="${Math.min(n(op.y0), n(op.y1))}" width="${Math.abs(n(op.x1) - n(op.x0))}" height="${Math.abs(n(op.y1) - n(op.y0))}"${paint}/>`); break;
+                // SVG omits zero-area rectangles entirely; R still strokes
+                // their border (e.g. empty bins in a marginal histogram).
+                if (n(op.x0) === n(op.x1) || n(op.y0) === n(op.y1)) {
+                    parts.push(`<line x1="${n(op.x0)}" y1="${n(op.y0)}" x2="${n(op.x1)}" y2="${n(op.y1)}"${stroke}/>`);
+                } else {
+                    parts.push(`<rect x="${Math.min(n(op.x0), n(op.x1))}" y="${Math.min(n(op.y0), n(op.y1))}" width="${Math.abs(n(op.x1) - n(op.x0))}" height="${Math.abs(n(op.y1) - n(op.y0))}"${paint}/>`);
+                }
+                break;
             case 'circle':
                 parts.push(`<circle cx="${n(op.x)}" cy="${n(op.y)}" r="${n(op.r)}"${paint}/>`); break;
             case 'polyline': case 'polygon': {
@@ -77,8 +84,11 @@ export function plotToSvg(plot: PlotFrame): string {
             case 'raster': {
                 if (!/^data:image\/(png|jpeg);base64,[a-zA-Z0-9+/=\s]+$/.test(op.data)) { break; }
                 const w = Math.abs(n(op.w)), h = Math.abs(n(op.h));
-                const x = n(op.x) + Math.min(0, n(op.w)), y = n(op.y) - h;
-                parts.push(`<image x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="none" transform="rotate(${-n(op.rot)} ${x + w / 2} ${y + h / 2})" href="${escapeXml(op.data)}"/>`);
+                // R anchors rasters at (xleft, ybottom) and rotates about that
+                // point. JGD's downward device Y axis gives ordinary rasters
+                // a negative height; reversed extents mirror the pixels.
+                const transform = `translate(${n(op.x)} ${n(op.y)}) rotate(${-n(op.rot)}) scale(${n(op.w) < 0 ? -1 : 1} ${n(op.h) > 0 ? -1 : 1})`;
+                parts.push(`<image x="0" y="${-h}" width="${w}" height="${h}" preserveAspectRatio="none" transform="${transform}" image-rendering="${op.interpolate === false ? 'pixelated' : 'auto'}" href="${escapeXml(op.data)}"/>`);
                 break;
             }
             case 'beginGroup':

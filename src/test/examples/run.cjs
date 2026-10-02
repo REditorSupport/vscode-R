@@ -10,9 +10,9 @@ const { promisify } = require('util');
 const { SessionAgent, rString } = require('../../../out/interactive/agent');
 const { AgentClient } = require('../../../out/interactive/client');
 const { installRuntime } = require('../../../out/interactive/launcher');
-const { AssetStore } = require('../../../out/interactive/assets');
+const { AssetStore, readAsset } = require('../../../out/interactive/assets');
 const exampleSuite = process.env.VSCR_EXAMPLE_SUITE || 'public';
-if (!['public', 'research'].includes(exampleSuite)) throw new Error('VSCR_EXAMPLE_SUITE must be public or research');
+if (!['public', 'public-more', 'research'].includes(exampleSuite)) throw new Error('VSCR_EXAMPLE_SUITE must be public, public-more or research');
 const examples = require('./' + exampleSuite + '.json');
 const run = promisify(execFile);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -60,31 +60,17 @@ const backend = process.env.VSCR_TEST_STATIC ? 'standard' : 'jgd';
             results.push(result);
             fs.writeFileSync(path.join(folder, 'events.json'), JSON.stringify(captured, null, 2));
             fs.writeFileSync(path.join(folder, 'outputs.json'), JSON.stringify(displays, null, 2));
-            assert.strictEqual(record.state, 'success', JSON.stringify(result));
-            // Static graphics uses the image MIME instead of the retained JGD plot type.
-            const expected = example.kinds.map(kind => backend === 'standard' && kind === 'plot' ? 'image' : kind);
-            assert.deepStrictEqual([...kinds].sort(), expected.sort(), JSON.stringify(result));
-            const consoleText = captured.filter(event => event.type === 'stream').map(event => event.data.text).join('');
-            for (const text of example.textIncludes || []) {
-                assert.ok(consoleText.includes(text), `${example.id}: missing printed result ${text}`);
+            const pages = [...new Map(displays.filter(data => data.kind === 'plot' || data.kind === 'image')
+                .map(data => [data.displayId || data.asset, data])).values()];
+            for (const [index, page] of pages.entries()) {
+                const name = page.svg || page.asset;
+                fs.writeFileSync(path.join(folder, `interactive-${String(index + 1).padStart(2, '0')}.${name.includes('.png') ? 'png' : 'svg'}`),
+                    readAsset(path.join(storage, 'assets'), name));
             }
-            if (example.plotPages) {
-                const pages = displays.filter(data => data.kind === 'plot' || data.kind === 'image');
-                assert.strictEqual(new Set(pages.map(data => data.displayId || data.asset)).size, example.plotPages,
-                    `${example.id}: wrong number of plot pages`);
-            }
-            if (example.table) {
-                const table = displays.find(data => data.kind === 'table');
-                const columns = table.columns.filter(column => column.headerName.trim());
-                assert.strictEqual(table.totalRows, example.table.rows.length);
-                assert.deepStrictEqual(columns.map(column => column.headerName), example.table.headers);
-                assert.deepStrictEqual(table.rows.map(row => columns.map(column => row[column.field])), example.table.rows);
-                assert.deepStrictEqual(table.rows.map((_, index) => columns.map(column => table.formattedColumns[column.field][index])), example.table.formatted);
-            }
-            const plot = displays.filter(data => data.kind === 'plot' || data.kind === 'image').at(-1);
+            const plot = pages.at(-1);
             if (plot) {
                 const name = plot.svg || plot.asset;
-                const bytes = Buffer.from(await client.request('asset', { id: name }), 'base64');
+                const bytes = readAsset(path.join(storage, 'assets'), name);
                 const extension = name.includes('.png') ? 'png' : 'svg';
                 fs.writeFileSync(path.join(folder, 'interactive.' + extension), bytes);
                 // Independent R renders the same expressions and RNG seed to PNG.
@@ -103,6 +89,28 @@ dev.off()`;
                 const assets = new AssetStore(path.join(storage, 'assets'));
                 assets.exportTo(path.join(folder, 'widget'), [html.asset]);
                 result.widget = path.join(example.id, 'widget', html.asset);
+            }
+            assert.strictEqual(record.state, 'success', JSON.stringify(result));
+            assert.ok(!result.warnings.some(message => /jgd:.*unclosed group/.test(message)), JSON.stringify(result));
+            // Static graphics uses the image MIME instead of the retained JGD plot type.
+            const expected = example.kinds.map(kind => backend === 'standard' && kind === 'plot' ? 'image' : kind);
+            assert.deepStrictEqual([...kinds].sort(), expected.sort(), JSON.stringify(result));
+            const consoleText = captured.filter(event => event.type === 'stream').map(event => event.data.text).join('');
+            for (const text of example.textIncludes || []) {
+                assert.ok(consoleText.includes(text), `${example.id}: missing printed result ${text}`);
+            }
+            if (example.plotPages) {
+                assert.strictEqual(pages.length, example.plotPages, `${example.id}: wrong number of plot pages`);
+            }
+            if (example.table) {
+                const table = displays.find(data => data.kind === 'table');
+                const columns = table.columns.filter(column => column.headerName.trim());
+                assert.strictEqual(table.totalRows, example.table.rows.length);
+                assert.deepStrictEqual(columns.map(column => column.headerName), example.table.headers);
+                assert.deepStrictEqual(table.rows.map(row => columns.map(column => row[column.field])), example.table.rows);
+                if (example.table.formatted) {
+                    assert.deepStrictEqual(table.rows.map((_, index) => columns.map(column => table.formattedColumns[column.field][index])), example.table.formatted);
+                }
             }
             console.log(JSON.stringify(result));
         }

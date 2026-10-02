@@ -659,6 +659,43 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
         assert.match(svg, /<image [^>]*width="\d{2,}[^"]*"[^>]*preserveAspectRatio="none"/);
     });
 
+    for (const backend of ['JGD', 'standard graphics']) {
+        test(`${backend} captures pages from graphics functions imported by stats`, async function () {
+            if (backend === 'JGD' && !client.manifest.capabilities.jgd) { this.skip(); }
+            await finished(await submit('plot(1:3)'));
+            // stats imports plot.new before the bridge starts. All three pages
+            // are drawn within one expression, so end-of-expression capture is insufficient.
+            const id = await submit(`local({
+                old <- options(warn=2); on.exit(options(old))
+                plot(co2, main="First time series")
+                plot(AirPassengers, main="Second time series")
+                plot(nottem, main="Third time series")
+            })`);
+            assert.strictEqual((await finished(id)).state, 'success');
+            await until(() => new Set(events.filter(event => event.executionId === id &&
+                (event.data.kind === 'plot' || event.data.kind === 'image'))
+                .map(event => event.data.displayId)).size === 3);
+            const pages = new Map(events.filter(event => event.executionId === id &&
+                (event.data.kind === 'plot' || event.data.kind === 'image'))
+                .map(event => [event.data.displayId, event.data]));
+            for (const [index, page] of [...pages.values()].entries()) {
+                const svg = readAsset(path.join(root, manifest.id, 'assets'), String(page.svg || page.asset)).toString();
+                assert.match(svg, new RegExp(['First', 'Second', 'Third'][index] + ' time series'));
+            }
+        });
+    }
+
+    test('standard graphics layout changes do not copy the preceding plot into a new cell', async () => {
+        await finished(await submit('plot(1:3, main="Previous plot")'));
+        const id = await submit('filled.contour(volcano, plot.title=title("Current contour"))');
+        assert.strictEqual((await finished(id)).state, 'success');
+        const pages = events.filter(event => event.executionId === id && event.data.kind === 'image');
+        assert.strictEqual(new Set(pages.map(event => event.data.displayId)).size, 1);
+        const svg = readAsset(path.join(root, manifest.id, 'assets'), String(pages.at(-1)?.data.asset)).toString();
+        assert.match(svg, /Current contour/);
+        assert.doesNotMatch(svg, /Previous plot/);
+    });
+
     test('measures and renders twelve-point text at the default 96 DPI', async function () {
         if (!client.manifest.capabilities.jgd) { this.skip(); }
         const id = await submit('par(family="mono"); plot.new(); w <- strwidth("0123456789", units="inches"); stopifnot(w > 0.9, w < 1.1); text(0.5, 0.5, "Twelve points")');

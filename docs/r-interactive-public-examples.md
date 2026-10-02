@@ -61,3 +61,35 @@ One initial full-suite renv install exceeded the 20-second cell deadline. The is
 JGD's metrics request does not include DPI. The server uses the default 96 DPI until the first frame reports the device resolution, then tracks it per connection. Custom devices requesting metrics before their first frame remain subject to that protocol limitation. This pass did not exercise actual Remote SSH transport, network-dependent widgets, or every R graphics extension.
 
 See [the runner instructions](../src/test/examples/README.md) to repeat the matrix. Start a new Interactive session after updating to use the new bootstrap and agent SVG writer. Old persistent agents and retained SVG files do not hot-update.
+
+## October 2: additional public R manual examples
+
+Fourteen additional cases are retained in [public-more.json](../src/test/examples/public-more.json), including exact source URLs and adaptations. They use built-in data and standard/recommended R packages, with no runtime downloads. The cases cover:
+
+| Public manual | Exercise |
+| --- | --- |
+| [prcomp](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/prcomp.html) | Scaled USArrests PCA, orthonormal loadings, variance totals, scree plot and biplot |
+| [aggregate](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/aggregate.html) | Airquality grouped quantiles, including matrix-valued Ozone/Temp columns; all five rows checked against expected values |
+| [kmeans](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/kmeans.html) | Fitted centres, sum-of-squares identities and two cluster plots |
+| [arima](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/arima.html) | Presidents series with missing observations, model comparison, residual diagnostics and forecasts |
+| [nls](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/nls.html) | Puromycin Michaelis-Menten fit, convergence, coefficients and fitted curve |
+| [HoltWinters](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/HoltWinters.html) | CO2 and AirPassengers seasonal fits, fitted matrix and three plot pages |
+| [stl](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/stl.html) | Seasonal decomposition, exact component reconstruction and two plot pages |
+| [rasterImage](https://stat.ethz.ch/R-manual/R-devel/library/graphics/html/rasterImage.html) | Two cases: the manual's interpolation/15-degree rotation example, and asymmetric colours with all four axis-reflection combinations |
+| [layout](https://stat.ethz.ch/R-manual/R-devel/library/graphics/html/layout.html) | Five pages of layouts and marginal histograms, including empty bins |
+| [filled.contour](https://stat.ethz.ch/R-manual/R-devel/library/graphics/html/filled.contour.html) | Volcano topography, colour key, axes and title |
+| [grid.raster](https://stat.ethz.ch/R-manual/R-devel/library/grid/html/grid.raster.html) | Four pages with smooth, blocky, stretched and repeated rasters |
+| [xyplot](https://stat.ethz.ch/R-manual/R-devel/library/lattice/html/xyplot.html) | Quakes in eight depth panels, followed by updated strips/aspect |
+| [txtProgressBar](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/txtProgressBar.html) | Console progress styles, Unicode and completion; tutorial sleeps removed |
+
+This pass found and fixed five problems:
+
+1. **Raster transforms and sampling.** Retained SVGs smoothed `interpolate=FALSE`, rotated around the image centre, and failed to reflect reversed axes. They now rotate about R's anchor, account for the downward device Y axis, reflect pixels, and request nearest-neighbour rendering when interpolation is disabled. JGD 0.2.0's public CRAN device source confirms that its raster fields directly retain R's signed device coordinates.
+2. **Composite table columns.** Numeric matrix columns were incorrectly treated as scalar numeric fields. Sorting five grouped rows returned fifteen indices; filtering could select indices beyond the table. Matrix/array cells now retain their values as composite text cells with scalar sorting/filtering disabled. Ordinary scalar columns still sort and page the complete rows correctly. Regressions check both query paths and verify the original R object is unchanged.
+3. **Imported graphics calls.** Functions imported by `stats` bypassed rebound `plot.new` functions. Standard graphics retained only the final plot when several time series were drawn in one expression; JGD could report unclosed execution groups at new pages. Native R page hooks now cover imported functions too. Regressions draw three named time series within one expression through both backends, with warnings promoted to errors.
+4. **Previous plot duplicated by layout changes.** `filled.contour()` configures a layout before drawing. That could make the standard backend capture the preceding cell's plot again. Trailing `layout()` changes are now excluded from drawing comparisons, alongside `par()` changes. The contour regression verifies exactly one new page and no preceding title.
+5. **Missing zero-count bar borders.** SVG omits rectangles with zero width or height. The public marginal-histogram example therefore lost the outlines of empty bars. Degenerate rectangles now render their border as a line, matching ordinary R.
+
+The runner now saves every retained page and reads compressed local assets directly, so the dense contour SVG is not limited by the small-asset RPC. It saves artifacts before assertions for failure inspection and rejects internal JGD group warnings. Twelve final JGD plots were rasterized with the bundled Sharp renderer and visually compared with ordinary-R PNGs at 800 × 600. The corrected raster bounds, reflection, rotation, empty bars, panel geometry, labels and fitted curves match. Smooth-image resampling, font rendering, colour management and antialiasing vary between renderers; these comparisons do not assert pixel identity. The public `rasterImage` example itself emits R's expected matrix-recycling warning.
+
+Final local validation on macOS/R 4.6.1 passed **434 extension tests** in VS Code 1.140.0, **47 arf runtime/library tests**, **37 standard-graphics runtime/library tests** (10 optional/JGD skips), and **489 sess checks**. All three example suites were rerun through R + JGD, arf + JGD, and R + standard graphics: **108 successful executions**, including 42 executions of the fourteen new cases. TypeScript, the production build and R lint passed; TypeScript lint retained its 70 existing warnings with no errors. DT was installed only in the temporary test library for the earlier widget examples. Existing user libraries and sessions were not modified.

@@ -47,6 +47,34 @@ suite('Interactive SVG rendering', () => {
         assert.strictEqual($('image').attr('preserveAspectRatio'), 'none');
     });
 
+    test('zero-height and zero-width bars retain their border lines', () => {
+        const $ = cheerio.load(render([
+            { op: 'rect', x0: 20, y0: 50, x1: 80, y1: 50, gc: { col: 'black', fill: 'grey' } },
+            { op: 'rect', x0: 90, y0: 20, x1: 90, y1: 80, gc: { col: 'red', fill: 'grey' } },
+        ]), { xmlMode: true });
+        assert.strictEqual($('line').length, 2);
+        assert.deepStrictEqual($('line').toArray().map(line => [
+            $(line).attr('x1'), $(line).attr('y1'), $(line).attr('x2'), $(line).attr('y2'), $(line).attr('stroke'),
+        ]), [['20', '50', '80', '50', 'black'], ['90', '20', '90', '80', 'red']]);
+    });
+
+    test('rasters rotate about the R anchor, reflect signed extents and preserve interpolation', () => {
+        for (const w of [40, -40]) {
+            for (const h of [60, -60]) {
+                for (const interpolate of [true, false]) {
+                    const svg = render([{ op: 'raster', x: 50, y: 100, w, h, rot: 30,
+                        interpolate, data: 'data:image/png;base64,AAAA' }]);
+                    const $ = cheerio.load(svg, { xmlMode: true });
+                    assert.strictEqual($('image').attr('x'), '0');
+                    assert.strictEqual($('image').attr('y'), '-60');
+                    assert.strictEqual($('image').attr('transform'),
+                        `translate(50 100) rotate(-30) scale(${Math.sign(w)} ${-Math.sign(h)})`);
+                    assert.strictEqual($('image').attr('image-rendering'), interpolate ? 'auto' : 'pixelated');
+                }
+            }
+        }
+    });
+
     test('R point sizes are converted to device pixels for each plot DPI', () => {
         for (const dpi of [72, 96, 144]) {
             const svg = plotToSvg({ version: 1, sessionId: 'test',

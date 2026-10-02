@@ -287,3 +287,38 @@ local({
     ), 2L, info = case_name)
   }
 })
+
+# aggregate() can return a matrix per column. Its cells are tuples, not scalars.
+local({
+  .sess_env <- sess:::.sess_env
+  original_views <- .sess_env$dataviews
+  on.exit({
+    .sess_env$dataviews <- original_views
+  })
+  df <- aggregate(cbind(Ozone, Temp) ~ Month, airquality, quantile,
+                  probs = c(.25, .5, .75))
+  original <- serialize(df, NULL)
+  view_id <- sess:::dataview_register(df)$view_id
+  state <- sess:::dataview_get_state(view_id)
+  for (position in 3:4) {
+    expect_equal(as.character(state$columns[[position]]$type), "textColumn")
+    expect_false(state$columns[[position]]$sortable)
+    expect_false(state$columns[[position]]$filter)
+  }
+  # Ignore stale or externally supplied scalar queries on composite columns.
+  page <- sess:::handle_dataview_page(list(
+    view_id = view_id, formatNumbers = TRUE,
+    sortModel = list(list(colId = "2", sort = "desc")),
+    filterModel = list("3" = list(type = "greaterThan", filter = 70))
+  ))
+  expect_equal(page$totalRows, 5L)
+  expect_identical(page$rows[["2"]], df$Ozone)
+  expect_null(page$formattedColumns[["2"]])
+  # Scalar columns still query and page the complete matrix rows together.
+  page <- sess:::handle_dataview_page(list(
+    view_id = view_id, startRow = 1L, endRow = 3L,
+    sortModel = list(list(colId = "1", sort = "desc"))
+  ))
+  expect_identical(page$rows[["2"]], df$Ozone[c(4L, 3L), , drop = FALSE])
+  expect_identical(serialize(df, NULL), original)
+})

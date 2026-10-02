@@ -335,7 +335,12 @@ get_column_def <- function(name, field, value) {
   if (!is.null(units)) {
     tooltip <- sprintf("%s, units: %s", tooltip, toString(units))
   }
-  if (inherits(value, "integer64")) {
+  if (!is.null(dim(value))) {
+    # A matrix/array column contains one composite cell per row. Treating its
+    # flattened elements as scalar sort/filter values invents out-of-range rows.
+    type <- "textColumn"
+    filter <- FALSE
+  } else if (inherits(value, "integer64")) {
     if (!requireNamespace("bit64", quietly = TRUE)) {
       stop("Viewing integer64 columns requires the optional 'bit64' package")
     }
@@ -358,7 +363,7 @@ get_column_def <- function(name, field, value) {
     type <- "textColumn"
     filter <- "agTextColumnFilter"
   }
-  sortable <- !is.complex(value) &&
+  sortable <- is.null(dim(value)) && !is.complex(value) &&
     !(is.list(value) && !inherits(value, "POSIXlt")) &&
     !is.raw(value)
   if (identical(field, "0")) {
