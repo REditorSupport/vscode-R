@@ -1045,13 +1045,15 @@ export async function showDataView(source: string, type: string, title: string, 
         }
         const content = await getTableHtml(panel.webview, file || undefined, title);
         panel.webview.html = content;
-    } else if (source === 'list') {
+    } else if (source === 'list' || source === 'vector') {
         if (viewId) {
             const existing = dynamicDataViewPanels.get(viewId);
             if (existing) {
                 existing.title = title;
                 existing.reveal(existing.viewColumn, true);
-                existing.webview.html = getListHtml(existing.webview, title, navigation);
+                existing.webview.html = getListHtml(
+                    existing.webview, title, navigation, source === 'vector'
+                );
                 return;
             }
         }
@@ -1120,7 +1122,9 @@ export async function showDataView(source: string, type: string, title: string, 
                 });
             });
         }
-        panel.webview.html = getListHtml(panel.webview, title, navigation);
+        panel.webview.html = getListHtml(
+            panel.webview, title, navigation, source === 'vector'
+        );
     } else {
         await commands.executeCommand('vscode.open', Uri.file(file), {
             preserveFocus: true,
@@ -1823,7 +1827,12 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 `;
 }
 
-export function getListHtml(webview: Webview, title: string, navigation?: ListViewNavigation): string {
+export function getListHtml(
+    webview: Webview,
+    title: string,
+    navigation?: ListViewNavigation,
+    vector = false
+): string {
     const icon = new UriIcon('open-preview-codicon');
     const darkIcon = webview.asWebviewUri(icon.dark).toString();
     const lightIcon = webview.asWebviewUri(icon.light).toString();
@@ -1914,6 +1923,12 @@ export function getListHtml(webview: Webview, title: string, navigation?: ListVi
         color: var(--vscode-symbolIcon-fieldForeground);
         white-space: nowrap;
     }
+    body.vector .label {
+        min-width: 64px;
+    }
+    body.vector .item {
+        gap: 8px;
+    }
     .str {
         flex: 1;
         color: var(--vscode-descriptionForeground);
@@ -1953,10 +1968,10 @@ export function getListHtml(webview: Webview, title: string, navigation?: ListVi
     }
     </style>
 </head>
-<body>
+<body class="${vector ? 'vector' : ''}">
     <div class="navigation">
         <button id="back" title="Back" aria-label="Back" disabled><span class="back-icon" aria-hidden="true"></span>Back</button>
-        <nav id="breadcrumbs" aria-label="List path"></nav>
+        <nav id="breadcrumbs" aria-label="${vector ? 'Vector path' : 'List path'}"></nav>
     </div>
     <div id="navigation-status" role="status"></div>
     <div id="list"></div>
@@ -1964,7 +1979,7 @@ export function getListHtml(webview: Webview, title: string, navigation?: ListVi
     <script>
     ${getListViewerScript(++dynamicDataViewReloadRevision, navigation ?? {
         title, path: [], breadcrumbs: [{ label: title, path: [] }],
-    })}
+    }, vector)}
     </script>
 </body>
 </html>

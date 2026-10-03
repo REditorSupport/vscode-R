@@ -35,7 +35,7 @@ interface Request {
 
 function createViewer(initial: ListViewNavigation = {
     title: 'x', path: [], breadcrumbs: [{ label: 'x', path: [] }],
-}) {
+}, vector = false) {
     const root = new Element('div');
     const back = new Element('button');
     const breadcrumbs = new Element('nav');
@@ -43,7 +43,7 @@ function createViewer(initial: ListViewNavigation = {
     const elements: Record<string, Element> = { list: root, back, breadcrumbs, 'navigation-status': status };
     const messages: Request[] = [];
     let receive: (event: unknown) => void = () => undefined;
-    vm.runInNewContext(getListViewerScript(7, initial), {
+    vm.runInNewContext(getListViewerScript(7, initial, vector), {
         acquireVsCodeApi: () => ({ postMessage: (message: Request) => {
             messages.push(JSON.parse(JSON.stringify(message)) as Request);
         } }),
@@ -195,6 +195,21 @@ suite('List viewer', () => {
         reply(messages[4], { children: [{ label: 'last', index: 501 }] });
         assert.strictEqual(secondPage.children[0].childElementCount, 2);
         assert.strictEqual(secondPage.children[1].hidden, true);
+    });
+
+    test('renders vector values as simple indexed rows', () => {
+        const viewer = createViewer(undefined, true);
+        viewer.reply(viewer.messages[0], {
+            children: [{
+                label: '[1]', str: '12.4', index: 1,
+                viewable: false, has_children: false,
+            }],
+        });
+        const row = viewer.root.children[0].children[0].children[0];
+        assert.deepStrictEqual(row.children.map(child => child.className), ['label', 'str']);
+        assert.strictEqual(row.children[0].textContent, '[1]');
+        assert.strictEqual(row.children[1].textContent, '12.4');
+        assert.ok(!row.children.some(child => child.tag === 'button'));
     });
 
     test('ignores old viewer responses and hides open buttons for unavailable items', () => {

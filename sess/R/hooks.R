@@ -124,6 +124,8 @@ runtime_start <- function(use_rstudioapi = TRUE,
       "table"
     } else if (is.list(x) || is.pairlist(x) || is.environment(x) || isS4(x)) {
       "list"
+    } else if (is.atomic(x) && length(x) > 1L) {
+      "vector"
     } else {
       "object"
     }
@@ -151,17 +153,18 @@ runtime_start <- function(use_rstudioapi = TRUE,
         type = "json",
         view_id = registration$view_id
       ))
-    } else if (view_type == "list") {
+    } else if (view_type %in% c("list", "vector")) {
       context <- .sess_env$listview_context
       if (is.null(context) && missing(title)) {
         context <- listview_expression_context(original_expression, parent.frame(), owner)
       }
       root <- if (is.null(context)) listview_state(x, title_key, owner) else context$root
+      root$type <- view_type
       navigation <- if (is.null(context)) listview_navigation(root) else context$navigation
       .sess_env$dataviews[[view_id]] <- root
       notify_client("dataview", list(
         title = title,
-        source = "list",
+        source = view_type,
         type = "json",
         view_id = view_id,
         navigation = navigation

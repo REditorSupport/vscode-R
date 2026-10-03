@@ -7,10 +7,11 @@ export interface ListViewNavigation {
 /** Script shared by the list webview and its interaction tests. */
 export function getListViewerScript(generation: number, initial: ListViewNavigation = {
     title: '', path: [], breadcrumbs: [{ label: '', path: [] }],
-}): string {
+}, vector = false): string {
     return `
     const vscode = acquireVsCodeApi();
     const generation = ${generation};
+    const vector = ${vector};
     const pending = new Map();
     let nextRequestId = 0;
     const list = document.getElementById('list');
@@ -114,10 +115,12 @@ export function getListViewerScript(generation: number, initial: ListViewNavigat
                     const entry = document.createElement(expandable ? 'details' : 'div');
                     const row = document.createElement(expandable ? 'summary' : 'div');
                     row.className = 'item';
-                    const arrow = document.createElement('span');
-                    arrow.className = 'arrow';
-                    arrow.setAttribute('aria-hidden', 'true');
-                    row.appendChild(arrow);
+                    if (!vector) {
+                        const arrow = document.createElement('span');
+                        arrow.className = 'arrow';
+                        arrow.setAttribute('aria-hidden', 'true');
+                        row.appendChild(arrow);
+                    }
                     const label = document.createElement('span');
                     label.className = 'label';
                     label.textContent = item.label;
