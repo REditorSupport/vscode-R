@@ -15,10 +15,10 @@ export interface ArfSession {
 
 /** arf speaks HTTP JSON-RPC, not sess's JSON Lines framing. */
 export function arfRequest(endpoint: string, method: string, params: Record<string, unknown> = {},
-    timeout = 30000): Promise<unknown> {
+    timeout = 30000, signal?: AbortSignal): Promise<unknown> {
     return new Promise((resolve, reject) => {
         const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method, params });
-        const request = http.request({ socketPath: endpoint, path: '/', method: 'POST', agent: false,
+        const request = http.request({ socketPath: endpoint, path: '/', method: 'POST', agent: false, signal,
             headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), Connection: 'close' } }, response => {
             const chunks: Buffer[] = [];
             let size = 0;

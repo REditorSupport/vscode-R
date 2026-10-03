@@ -2,26 +2,17 @@ import * as net from 'net';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { spawn, ChildProcess, execFile } from 'child_process';
 import { randomBytes, randomUUID } from 'crypto';
-import { promisify } from 'util';
 import { StringDecoder } from 'string_decoder';
 import { JsonLines } from './framing';
 import { SessionJournal, atomicJson, retainedAssetIds } from './journal';
 import { AssetStore } from './assets';
-import { arfRequest } from './arf';
+import { BackendEvent, BackendFactory, SessionBackend, inspectionMethod } from './backend';
 import { AGENT_PROTOCOL, AgentConfig, AgentSnapshot, ExecutionRecord, SessionEvent,
     SessionManifest, object, submission, identifier, sessionLabel } from './protocol';
-import { JgdSocketServer, JgdMessage } from '../plotViewer/jgdSocketServer';
-import { PlotHistory, PlotFrame } from '../plotViewer/jgdPlotHistory';
-import { plotToSvg } from './plotSvg';
 import { searchHistory } from './history';
 
 interface Client { socket: net.Socket; authenticated: boolean; subscribed: boolean; id: string }
-interface Pending { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout; socket: net.Socket }
-
-const run = promisify(execFile);
-
 /** This process never imports vscode and is supervised independently of the editor. */
 export class SessionAgent {
     private journal: SessionJournal;
@@ -29,13 +20,10 @@ export class SessionAgent {
     private clients = new Set<Client>();
     private lease?: { client: string; until: number };
     private manifest: SessionManifest;
-    private worker?: ChildProcess;
-    private metrics?: ChildProcess;
-    private console?: net.Socket;
-    private sess?: net.Socket;
+    private backend: SessionBackend;
+    private unsubscribe: () => void;
     private servers: net.Server[] = [];
-    private pending = new Map<number, Pending>();
-    private frontendRequests = new Map<number, { socket: net.Socket; id: unknown; timer: NodeJS.Timeout }>();
+    private frontendRequests = new Map<number, string>();
     private nextRequest = 1;
     private queue: string[] = [];
     private current?: string;
@@ -43,45 +31,31 @@ export class SessionAgent {
     private workspace?: Record<string, unknown>;
     private outputBytes = new Map<string, number>();
     private truncated = new Set<string>();
-    private nativeReady = false;
-    private plotContexts = new Map<string, string>();
-    private arfEndpoint?: string;
+    private retentionWarnings = new Set<string>();
+    private backendReady = false;
     private runtime: string;
-    private bootstrap: string;
-    private supportLibraries: string[] = [];
-    private jgd: JgdSocketServer;
-    private history: PlotHistory;
-    private metricPending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
-    private metricCounter = 0;
+    private closing?: Promise<void>;
     private stopped = false;
     private stopping = false;
-    private shutdownTimers: NodeJS.Timeout[] = [];
     private dispatching = false;
-    private decoders = new Map<string, StringDecoder>();
     private externalOutput: Record<string, unknown>[] = [];
     private externalBytes = 0;
     private externalTimer?: NodeJS.Timeout;
-    private pendingPlots = new Map<string, { frame: PlotFrame; count: number; device: string; plot: number; executionId?: string }>();
-    private plotTimer?: NodeJS.Timeout;
-    private retentionWarnings = new Set<string>();
 
-    constructor(private config: AgentConfig) {
+    constructor(private config: AgentConfig, factory: BackendFactory) {
         identifier(config.id); identifier(config.generation);
         this.runtime = fs.mkdtempSync(path.join(os.tmpdir(), 'r-i-'));
         fs.chmodSync(this.runtime, 0o700);
-        this.bootstrap = path.join(this.runtime, 'bootstrap.json');
         fs.mkdirSync(config.storage, { recursive: true, mode: 0o700 });
         this.journal = new SessionJournal(path.join(config.storage, config.generation), config.generation, config.maxJournalBytes);
         this.assets = new AssetStore(path.join(config.storage, 'assets'), config.maxAssetBytes, () => retainedAssetIds(config.storage));
-        this.history = new PlotHistory(config.historyLimit);
-        this.jgd = new JgdSocketServer(this.history);
+        this.backend = factory(config);
         this.manifest = {
             protocol: AGENT_PROTOCOL, id: config.id, generation: config.generation,
             label: config.label, host: os.hostname(), directory: config.directory,
             endpoint: path.join(this.runtime, 'control.sock'), token: randomBytes(32).toString('hex'),
-            agentPid: process.pid, provider: config.provider, created: Date.now(), status: 'starting',
-            capabilities: { persistent: true, streaming: true, stdin: true, debugger: true,
-                tables: true, html: true, interrupt: process.platform !== 'win32', jgd: false,
+            agentPid: process.pid, provider: config.provider, backend: config.backend?.kind, ownership: this.backend.ownership, created: Date.now(), status: 'starting',
+            capabilities: { ...this.backend.capabilities, persistent: true,
                 history: true, rename: true, cancelQueued: true, assetStorage: true },
             supervision: config.supervision,
         };
@@ -91,23 +65,21 @@ export class SessionAgent {
                 this.journal.update({ ...entry, state: 'unknown', ended: Date.now() });
             }
         }
+        this.unsubscribe = this.backend.onEvent(event => this.backendEvent(event));
     }
 
     async start(): Promise<SessionManifest> {
-        const libraries = await run(this.config.rPath, ['--vanilla', '--slave', '-e', 'cat(.libPaths(), sep="\\n")'], { timeout: 15000 });
-        this.supportLibraries = libraries.stdout.trim().split(/\r?\n/).filter(Boolean);
-        await this.assets.start();
-        this.manifest.assetBase = this.assets.base;
-        await this.listen(this.manifest.endpoint, socket => this.connectClient(socket));
-        await this.listen(path.join(this.runtime, 'sess.sock'), socket => this.connectSess(socket));
-        await this.listen(path.join(this.runtime, 'console.sock'), socket => this.connectConsole(socket));
-        await this.startGraphics();
-        atomicJson(this.bootstrap, {
-            sess: path.join(this.runtime, 'sess.sock'), console: path.join(this.runtime, 'console.sock'),
-            jgd: this.jgd.getSocketPath(), token: this.manifest.token, useJgd: this.manifest.capabilities.jgd,
-        });
-        this.saveManifest();
-        await this.launch();
+        try {
+            await this.assets.start();
+            if (this.stopped) { this.assets.close(); throw new Error('Agent stopped during startup'); }
+            this.manifest.assetBase = this.assets.base;
+            await this.listen(this.manifest.endpoint, socket => this.connectClient(socket));
+            this.saveManifest();
+            await this.backend.start();
+            if (this.stopped) { throw new Error('Agent stopped during startup'); }
+            Object.assign(this.manifest.capabilities, this.backend.capabilities);
+            this.saveManifest();
+        } catch (error) { await this.close(); throw error; }
         return this.manifest;
     }
 
@@ -123,7 +95,7 @@ export class SessionAgent {
 
     private saveManifest(): void { atomicJson(path.join(this.config.storage, 'manifest.json'), this.manifest); }
 
-    private event(type: string, data: Record<string, unknown> = {}, executionId = this.current, durable = false): SessionEvent {
+    private event(type: string, data: Record<string, unknown> = {}, executionId: string | undefined = undefined, durable = false): SessionEvent {
         if (this.stopped) { return { seq: this.journal.seq, generation: this.config.generation, type, data, executionId, time: Date.now() }; }
         const event = this.journal.append(type, data, executionId, durable);
         for (const client of this.clients) {
@@ -138,12 +110,12 @@ export class SessionAgent {
         this.manifest.status = status;
         if (status === 'exited') {
             this.manifest.ended ??= Date.now();
-            this.shutdownTimers.forEach(clearTimeout); this.shutdownTimers = [];
             this.cancelQueued(); this.input = undefined;
-            this.metrics?.kill(); this.jgd.stop();
         }
         this.saveManifest();
-        this.event('state', { status, rPid: this.manifest.rPid, rVersion: this.manifest.rVersion, ended: this.manifest.ended });
+        this.event('state', { status, rPid: this.manifest.rPid, rVersion: this.manifest.rVersion, ended: this.manifest.ended,
+            rPath: this.manifest.rPath, libraryPaths: this.manifest.libraryPaths, runtimeSessionId: this.manifest.runtimeSessionId,
+            capabilities: this.manifest.capabilities });
     }
 
     private send(socket: net.Socket, message: unknown): void {
@@ -167,7 +139,7 @@ export class SessionAgent {
         socket.on('close', () => {
             clearTimeout(authTimer);
             this.clients.delete(client);
-            if (this.manifest.status === 'exited' && !this.clients.size && !this.stopped) { this.close(); }
+            if (this.manifest.status === 'exited' && !this.clients.size && !this.stopped) { void this.close(); }
             // Keep the lease briefly for reconnect; accepted executions keep running.
         });
     }
@@ -288,12 +260,11 @@ export class SessionAgent {
             }
             case 'interrupt':
                 this.requireControl(client);
+                if (this.backend.capabilities.interrupt === false) { throw new Error('This runtime does not support interruption'); }
                 if (params.id && params.id !== this.current) { throw new Error('Execution is no longer running'); }
                 // Inspection can still be running after its request timed out,
                 // without a submitted execution in `current`.
-                if (this.manifest.rPid && this.console && !this.console.destroyed) {
-                    process.kill(this.manifest.rPid, 'SIGINT');
-                }
+                await this.backend.interrupt();
                 break;
             case 'input':
                 this.requireControl(client);
@@ -303,19 +274,17 @@ export class SessionAgent {
                 if (typeof params.value !== 'string' || /[\r\n\0]/.test(params.value) || Buffer.byteLength(params.value) > Number(this.input.maxLength ?? 4094)) {
                     throw new Error('Input must be a single line');
                 }
-                this.console?.write(params.value + '\n');
+                await this.backend.replyInput({ value: params.value });
                 this.input = undefined;
                 this.state('busy');
                 break;
             case 'inspect':
+                if (this.backend.capabilities.inspection === false) { throw new Error('This runtime does not support inspection'); }
                 if (this.current) {
                     if (params.method === 'workspace') { result = this.workspace ?? {}; break; }
                     throw new Error('R is busy; cached data remains available. Retry when idle.');
                 }
-                if (!['workspace', 'workspace_children', 'hover', 'completion', 'dataview_init', 'dataview_page', 'dataview_dispose'].includes(String(params.method))) {
-                    throw new Error('Unsupported inspection method');
-                }
-                result = await this.sessRequest(String(params.method), object(params.params ?? {}), 5000);
+                result = await this.backend.inspect({ method: inspectionMethod(params.method), params: object(params.params ?? {}), timeout: 5000 });
                 break;
             case 'asset': {
                 result = this.assets.read(String(params.id), 2 * 1024 * 1024).toString('base64');
@@ -335,7 +304,8 @@ export class SessionAgent {
                 this.requireControl(client);
                 if (this.current) { throw new Error('R is busy; the retained plot can be scaled locally'); }
                 if (typeof params.device !== 'string' || typeof params.plot !== 'number') { throw new Error('Invalid plot'); }
-                this.jgd.sendToSession(params.device, { type: 'resize', plotIndex: params.plot,
+                if (!this.backend.resizePlot || !this.backend.capabilities.plotResize) { throw new Error('Live plot resizing is unavailable'); }
+                await this.backend.resizePlot({ device: params.device, plot: params.plot,
                     width: Math.max(100, Math.min(4096, Number(params.width) || 800)),
                     height: Math.max(100, Math.min(4096, Number(params.height) || 600)) });
                 break;
@@ -343,9 +313,8 @@ export class SessionAgent {
                 this.requireControl(client);
                 const pending = this.frontendRequests.get(Number(params.id));
                 if (pending) {
-                    clearTimeout(pending.timer); this.frontendRequests.delete(Number(params.id));
-                    this.send(pending.socket, { jsonrpc: '2.0', id: pending.id,
-                        ...(params.error ? { error: { code: -32000, message: String(params.error) } } : { result: params.result ?? null }) });
+                    this.frontendRequests.delete(Number(params.id));
+                    await this.backend.replyClientRequest(pending, { error: params.error ? String(params.error) : undefined, result: params.result });
                 }
                 break;
             }
@@ -355,164 +324,102 @@ export class SessionAgent {
                 break;
             case 'stop':
                 this.requireControl(client);
-                this.stopWorker();
+                await this.stopWorker();
                 break;
             case 'shutdown':
                 this.requireControl(client);
                 if (this.manifest.status !== 'exited') { throw new Error('Stop R before shutting down its agent'); }
                 this.send(client.socket, { id: request.id, result: true });
-                setTimeout(() => this.close(), 100);
+                setTimeout(() => { void this.close(); }, 100);
                 return;
             default: throw new Error(`Unknown agent method: ${request.method}`);
         }
         this.send(client.socket, { id: request.id, result });
     }
 
-    private connectSess(socket: net.Socket): void {
-        let attached = false;
-        const parser = new JsonLines(message => {
-            if (message.method === 'attach') {
-                const params = object(message.params);
-                if (params.protocol_version !== 1 || params.interactive_token !== this.manifest.token ||
-                    (this.sess && this.sess !== socket)) { socket.destroy(); return; }
-                if (this.sess && this.sess !== socket) { this.sess.destroy(); }
-                this.sess = socket; attached = true;
-                this.manifest.rPid = Number(params.pid);
-                this.manifest.rVersion = String(params.version);
-                this.manifest.runtimeSessionId = String(params.session_id);
-                this.saveManifest();
-                return;
-            }
-            if (!attached || this.sess !== socket) { return; }
-            if (typeof message.id === 'number' && !message.method) {
-                const pending = this.pending.get(message.id);
-                if (pending?.socket !== socket) { return; }
-                clearTimeout(pending.timer); this.pending.delete(message.id);
-                if (message.error) { pending.reject(new Error(JSON.stringify(message.error))); }
-                else { pending.resolve(message.result); }
-            } else if (message.method && message.id !== undefined) {
-                const id = this.nextRequest++;
-                const timer = setTimeout(() => {
-                    this.frontendRequests.delete(id);
-                    this.send(socket, { jsonrpc: '2.0', id: message.id,
-                        error: { code: -32000, message: 'No controlling editor replied within 30 seconds' } });
-                }, 30000);
-                this.frontendRequests.set(id, { socket, id: message.id, timer });
-                this.event('clientRequest', { id, method: message.method, params: message.params });
-            } else if (message.method) {
-                this.notification(String(message.method), object(message.params ?? {}));
-            }
-        });
-        socket.on('data', (chunk: Buffer) => { try { parser.push(chunk); } catch { socket.destroy(); } });
-        socket.on('error', () => socket.destroy());
-        socket.on('close', () => {
-            if (this.sess === socket) { this.sess = undefined; }
-            for (const [id, pending] of this.pending) {
-                if (pending.socket === socket) {
-                    clearTimeout(pending.timer); pending.reject(new Error('R disconnected')); this.pending.delete(id);
-                }
-            }
-        });
-    }
-
-    private sessRequest(method: string, params: Record<string, unknown>, timeout = 10000): Promise<unknown> {
-        const socket = this.sess;
-        if (!socket || socket.destroyed) { return Promise.reject(new Error('R session is disconnected')); }
-        return new Promise((resolve, reject) => {
-            const id = this.nextRequest++;
-            const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('R request timed out')); }, timeout);
-            this.pending.set(id, { resolve, reject, timer, socket });
-            this.send(socket, { jsonrpc: '2.0', id, method, params });
-        });
-    }
-
-    private connectConsole(socket: net.Socket): void {
-        let authenticated = false;
-        const parser = new JsonLines(message => {
-            if (!authenticated) {
-                if (message.type !== 'hello' || message.token !== this.manifest.token || this.console) { socket.destroy(); return; }
-                authenticated = true; this.console = socket; return;
-            }
-            if (this.console !== socket) { return; }
-            try { this.nativeEvent(message); }
-            catch (error) {
-                // A disk/asset error must not stop draining the R console.
-                process.stderr.write(`Interactive event error: ${String(error)}\n`);
-                try { this.event('truncated', { message: `Output could not be retained: ${String(error)}` }, this.current); }
-                catch { this.manifest.status = 'unknown'; }
-            }
-        });
-        socket.on('data', (chunk: Buffer) => { try { parser.push(chunk); } catch { socket.destroy(); } });
-        socket.on('error', () => socket.destroy());
-        socket.on('close', () => {
-            if (this.console !== socket) { return; }
-            this.console = undefined; this.nativeReady = false;
-            if (!this.stopped) {
-                if (this.current) { this.finish(this.journal.executions.get(this.current)!, 'unknown'); }
-                this.state('exited');
-            }
-        });
-    }
-
-    private nativeEvent(message: Record<string, unknown>): void {
+    private backendEvent(event: BackendEvent): void {
         if (this.stopped) { return; }
-        const executionId = typeof message.executionId === 'string' && message.executionId ? message.executionId : undefined;
-        switch (message.type) {
+        try { this.handleBackendEvent(event); }
+        catch (error) {
+            // Storage failures must never stop draining runtime output.
+            if (event.type === 'display') {
+                const key = event.executionId ?? 'session';
+                if (this.retentionWarnings.has(key)) { return; }
+                this.retentionWarnings.add(key);
+                if (this.retentionWarnings.size > 1000) { this.retentionWarnings.delete(this.retentionWarnings.values().next().value as string); }
+            }
+            process.stderr.write(`Interactive event error: ${String(error)}\n`);
+            try { this.event('truncated', { message: `Output could not be retained: ${String(error)}` }, event.executionId); }
+            catch { this.manifest.status = 'unknown'; }
+        }
+    }
+
+    private handleBackendEvent(event: BackendEvent): void {
+        const executionId = event.executionId;
+        switch (event.type) {
+            case 'metadata': Object.assign(this.manifest, event.metadata); this.saveManifest(); break;
             case 'ready':
-                this.nativeReady = true;
-                this.manifest.rPid = Number(message.pid);
-                this.manifest.rVersion = String(message.version);
-                this.manifest.runtimeSessionId = String(message.sessionId);
-                this.manifest.rPath = typeof message.rPath === 'string' ? message.rPath : this.config.rPath;
-                this.manifest.libraryPaths = Array.isArray(message.libraryPaths) ? message.libraryPaths.map(String) : [];
+                if (this.manifest.status === 'exited') { break; }
+                this.backendReady = true;
+                Object.assign(this.manifest, event.metadata);
+                Object.assign(this.manifest.capabilities, event.capabilities);
                 this.state('idle'); void this.refreshWorkspace(); void this.pump(); break;
             case 'started': {
                 const record = executionId && this.journal.executions.get(executionId);
-                if (!record || this.current !== executionId) { throw new Error('Unexpected execution start'); }
+                if (!record || this.current !== executionId || record.started) { break; }
                 this.journal.update({ ...record, state: 'running', started: Date.now() });
                 this.event('started', { order: record.order }, executionId, true); this.state('busy'); break;
             }
-            case 'stream': {
-                const channel = String(message.channel ?? 'stdout');
-                const key = `${executionId ?? 'external'}:${channel}`;
-                let decoder = this.decoders.get(key);
-                if (!decoder) { decoder = new StringDecoder('utf8'); this.decoders.set(key, decoder); }
-                const text = typeof message.bytes === 'string' ? decoder.write(Buffer.from(message.bytes, 'base64')) : String(message.text ?? '');
-                if (!executionId && this.config.provider !== 'r') {
+            case 'stream':
+                if (event.external) {
                     if (this.externalBytes < this.config.maxOutputBytes) {
-                        this.externalOutput.push({ text, channel }); this.externalBytes += Buffer.byteLength(text);
+                        this.externalOutput.push({ text: event.text, channel: event.channel }); this.externalBytes += Buffer.byteLength(event.text);
                     }
-                    if (!this.externalTimer) {
-                        this.externalTimer = setTimeout(() => this.flushExternal(), 100);
-                    }
-                } else { this.stream(text, channel, executionId); }
+                    this.externalTimer ??= setTimeout(() => this.flushExternal(), 100);
+                } else { this.stream(event.text, event.channel, executionId); }
                 break;
-            }
-            case 'condition': this.event('condition', message, executionId); break;
-            case 'truncated': this.event('truncated', { message: String(message.message) }, executionId); break;
+            case 'condition': this.event('condition', event.data, executionId); break;
+            case 'truncated': this.event('truncated', { message: event.message }, executionId); break;
             case 'input':
-                this.input = { ...message, executionId: executionId ?? this.current };
+                this.input = { ...event.data, executionId: executionId ?? this.current };
                 this.event('input', this.input, executionId); this.state('input'); break;
-            case 'display': this.display(message, executionId); break;
-            case 'notification': this.notification(String(message.method), object(message.params ?? {}), executionId); break;
+            case 'display': this.display(event.data, executionId); break;
+            case 'notification': case 'viewer': this.event(event.type, { method: event.method, params: event.params }, executionId); break;
+            case 'workspaceChanged': if (!this.current) { void this.refreshWorkspace(); } break;
+            case 'clientRequest': {
+                const id = this.nextRequest++;
+                this.frontendRequests.set(id, event.id);
+                this.event('clientRequest', { id, method: event.method, params: event.params }, executionId); break;
+            }
+            case 'clientRequestExpired':
+                for (const [id, backendId] of this.frontendRequests) { if (backendId === event.id) { this.frontendRequests.delete(id); } }
+                break;
             case 'finished': {
                 const record = executionId && this.journal.executions.get(executionId);
                 if (!record || this.current !== executionId) { break; }
-                const state = message.state === 'success' || message.state === 'interrupted' ? message.state : 'error';
-                this.finish(record, state); this.state('idle');
+                this.finish(record, event.state); this.state(this.backendReady ? 'idle' : 'unknown');
                 void this.refreshWorkspace().finally(() => { void this.pump(); }); break;
             }
-            case 'external': {
-                this.flushExternal(String(message.code ?? '# Terminal output'), Boolean(message.success));
-                void this.refreshWorkspace(); break;
-            }
+            case 'external': this.flushExternal(event.code, event.success); void this.refreshWorkspace(); break;
+            case 'warning': case 'error': this.event(event.type === 'warning' ? 'agentWarning' : 'agentError', { message: event.message }); break;
+            case 'provider': this.event('provider', event.data); break;
+            case 'unavailable':
+                if (this.manifest.status === 'exited') { break; }
+                this.backendReady = false;
+                if (this.current) { this.uncertain(this.current, event.message); }
+                this.state('unknown'); break;
+            case 'exit':
+                this.backendReady = false;
+                this.event('exit', { code: event.code, signal: event.signal });
+                if (this.current) { this.finish(this.journal.executions.get(this.current)!, 'unknown'); }
+                this.state('exited'); break;
         }
     }
 
     private flushExternal(code?: string, success = true): void {
         clearTimeout(this.externalTimer); this.externalTimer = undefined;
         if (this.stopped || (!code && !this.externalOutput.length)) { return; }
-        // Some arf evaluation paths do not run R task callbacks. Preserve their
+        // Some frontends cannot report terminal execution boundaries. Preserve their
         // output without claiming to know the source or execution boundary.
         const record = this.journal.accept({ id: randomUUID(), code: code ?? '# Output from attached R terminal (source unavailable)' }).record;
         this.event('accepted', { record, origin: 'terminal' }, record.id, true);
@@ -544,6 +451,7 @@ export class SessionAgent {
 
     private display(data: Record<string, unknown>, executionId?: string): void {
         const display: Record<string, unknown> = { ...data, displayId: typeof data.displayId === 'string' ? data.displayId : randomUUID() };
+        if (data.kind === 'plot' && typeof data.svg === 'string') { display.svg = this.assets.put(data.svg, '.svg'); }
         if (data.kind === 'html' && typeof data.file === 'string') {
             display.asset = this.assets.importHtml(data.file);
             delete display.file;
@@ -559,23 +467,12 @@ export class SessionAgent {
         this.event('display', display, executionId);
     }
 
-    private notification(method: string, params: Record<string, unknown>, executionId = this.current): void {
-        if (['webview', 'page_viewer', 'browser'].includes(method) && typeof params.url === 'string') {
-            if (/^https?:\/\//.test(params.url)) { this.display({ kind: 'url', url: params.url }, executionId); }
-            else { this.display({ kind: 'html', file: params.url }, executionId); }
-        } else if (method === 'workspace_updated') {
-            if (!this.current) { void this.refreshWorkspace(); }
-        } else if (method === 'dataview') {
-            this.event('viewer', { method, params }, executionId);
-        } else {
-            this.event('notification', { method, params }, executionId);
-        }
-    }
-
     private async refreshWorkspace(): Promise<void> {
-        if (!this.sess || this.current) { return; }
+        if (this.stopped || !this.backendReady || this.current || this.manifest.capabilities.inspection === false) { return; }
         try {
-            this.workspace = object(await this.sessRequest('workspace', {}, 2000));
+            const workspace = object(await this.backend.inspect({ method: 'workspace', params: {}, timeout: 2000 }));
+            if (this.stopped) { return; }
+            this.workspace = workspace;
             this.event('workspace', this.workspace, undefined);
         } catch { /* A busy or disconnected process retains the last workspace snapshot. */ }
     }
@@ -591,16 +488,14 @@ export class SessionAgent {
 
     private finish(record: ExecutionRecord, state: ExecutionRecord['state']): void {
         if (this.stopped) { return; }
-        this.flushPlots(record.id);
         const final = { ...record, state, ended: Date.now() };
         this.journal.update(final);
         this.event('finished', { state, record: final }, record.id, true);
         if (this.current === record.id) { this.current = undefined; this.input = undefined; }
-        for (const channel of ['stdout', 'stderr']) { this.decoders.delete(`${record.id}:${channel}`); }
     }
 
     private async pump(): Promise<void> {
-        if (this.stopped || this.stopping || !this.nativeReady || this.dispatching || this.current || !this.queue.length ||
+        if (this.stopped || this.stopping || !this.backendReady || this.dispatching || this.current || !this.queue.length ||
             this.manifest.status === 'exited' || this.manifest.status === 'unknown') { return; }
         const id = this.queue.shift()!;
         const record = this.journal.executions.get(id)!;
@@ -608,246 +503,40 @@ export class SessionAgent {
         this.current = id;
         this.dispatching = true;
         try {
-            if (this.config.provider === 'r') {
-                await this.sessRequest('interactive_execute', { id, code: record.code, source: record.source });
-            } else {
-                // Visible eval respects arf's advertised policy. No silent-eval bypass.
-                const code = `sess::interactive_execute(${rString(id)}, ${rString(record.code)}, jsonlite::fromJSON(${rString(JSON.stringify(record.source ?? null))}, simplifyVector=FALSE))`;
-                const result = object(await arfRequest(this.arfEndpoint!, 'evaluate', { code, visible: true }, 0));
-                if (result.error && this.current === id) { throw new Error(String(result.error)); }
-            }
+            await this.backend.dispatch(record);
         } catch (error) {
             if (this.stopped || this.current !== id) { return; }
-            this.event('condition', { kind: 'error', message: String(error) }, id);
-            // Transport failures are ambiguous: never automatically retry submitted R code.
-            this.journal.update({ ...this.journal.executions.get(id)!, state: 'unknown' });
-            this.event('uncertain', { record: this.journal.executions.get(id) }, id, true);
+            this.uncertain(id, String(error));
             this.state('unknown');
-            // Keep current until native completion or process exit establishes the outcome.
+            // Keep current until completion or confirmed process exit establishes the outcome.
         } finally {
             this.dispatching = false;
             if (!this.current) { void this.pump(); }
         }
     }
 
-    private async launch(): Promise<void> {
-        const env = { ...process.env,
-            SESS_ENDPOINT: path.join(this.runtime, 'sess.sock'), JGD_SOCKET: this.jgd.getSocketPath() };
-        if (this.config.provider === 'arf-existing') {
-            this.arfEndpoint = this.config.arfEndpoint;
-            if (!this.arfEndpoint) { throw new Error('Missing arf endpoint'); }
-            await this.bootstrapArf(); return;
-        }
-        const command = this.config.provider === 'r' ? this.config.rPath : this.config.arfPath ?? 'arf';
-        const args = this.config.provider === 'r'
-            ? ['--quiet', '--no-save', '--no-restore', '--interactive']
-            : ['headless', '--json'];
-        this.worker = spawn(command, args, { cwd: this.config.directory, env, stdio: ['pipe', 'pipe', 'pipe'] });
-        if (this.config.provider === 'r') {
-            // --interactive intentionally reads the console rather than -f/-e input.
-            this.worker.stdin!.write(this.bootstrapCode(true) + '\n');
-        }
-        this.worker.on('error', error => { if (!this.stopped) { this.event('agentError', { message: error.message }); this.state('exited'); } });
-        this.worker.on('exit', (code, signal) => {
-            if (this.stopped) { return; }
-            this.event('exit', { code, signal });
-            if (this.current) { this.finish(this.journal.executions.get(this.current)!, 'unknown'); }
-            this.nativeReady = false; this.state('exited');
-        });
-        let readiness = '';
-        const stdoutDecoder = new StringDecoder('utf8');
-        const stderrDecoder = new StringDecoder('utf8');
-        this.worker.stdout!.on('data', (chunk: Buffer) => {
-            if (this.config.provider === 'arf' && !this.arfEndpoint) {
-                readiness += stdoutDecoder.write(chunk);
-                let newline: number;
-                while (!this.arfEndpoint && (newline = readiness.indexOf('\n')) >= 0) {
-                    const line = readiness.slice(0, newline);
-                    readiness = readiness.slice(newline + 1);
-                    let info: Record<string, unknown> | undefined;
-                    try {
-                        info = object(JSON.parse(line));
-                    } catch { /* R profiles (including renv) can print before arf's readiness record. */ }
-                    if (typeof info?.socket_path === 'string') {
-                        this.arfEndpoint = info.socket_path;
-                        void this.bootstrapArf().catch(error => {
-                            this.event('agentError', { message: String(error) }); this.state('unknown');
-                        });
-                    } else { this.stream(line + '\n', 'stdout'); }
-                }
-                if (this.arfEndpoint || readiness.length > 65536) {
-                    if (readiness) { this.stream(readiness, 'stdout'); }
-                    readiness = '';
-                }
-            } else if (!this.nativeReady || this.config.provider === 'r') {
-                this.stream(stdoutDecoder.write(chunk), 'stdout', this.current);
-            }
-        });
-        this.worker.stderr!.on('data', (chunk: Buffer) => {
-            if (!this.nativeReady || this.config.provider === 'r') { this.stream(stderrDecoder.write(chunk), 'stderr', this.current); }
-        });
+    private uncertain(id: string, message: string): void {
+        this.event('condition', { kind: 'error', message }, id);
+        this.journal.update({ ...this.journal.executions.get(id)!, state: 'unknown' });
+        this.event('uncertain', { record: this.journal.executions.get(id) }, id, true);
     }
 
-    private bootstrapCode(worker: boolean): string {
-        return `base::source(${rString(path.join(this.config.resources, 'interactive-worker.R'))}, local=base::new.env(parent=base::baseenv()))$value(` +
-            `${rString(this.config.library)}, ${rString(this.bootstrap)}, c(${this.supportLibraries.map(rString).join(',')}), worker=${worker ? 'TRUE' : 'FALSE'})`;
-    }
-
-    private async bootstrapArf(): Promise<void> {
-        this.dispatching = true;
-        try {
-            const metadata = object(await arfRequest(this.arfEndpoint!, 'session'));
-            this.event('provider', { provider: this.config.provider, policy: metadata.ipc_policy });
-            const code = this.bootstrapCode(false);
-            const result = object(await arfRequest(this.arfEndpoint!, 'evaluate', { code, visible: true }, 0));
-            if (result.error) { throw new Error(String(result.error)); }
-        } finally { this.dispatching = false; void this.pump(); }
-    }
-
-    private async startGraphics(): Promise<void> {
-        if (this.config.plotBackend === 'standard') { return; }
-        try {
-            const probe = await run(this.config.rPath, ['--vanilla', '--slave', '-e',
-                'cat(requireNamespace("jgd",quietly=TRUE) && requireNamespace("systemfonts",quietly=TRUE))'], { timeout: 15000 });
-            if (probe.stdout.trim() !== 'TRUE') {
-                if (this.config.plotBackend === 'jgd') { throw new Error('JGD requires the jgd and systemfonts R packages'); }
-                return;
-            }
-            this.metrics = spawn(this.config.rPath, ['--vanilla', '--slave', '-f', path.join(this.config.resources, 'interactive-metrics.R')], { stdio: ['pipe', 'pipe', 'pipe'] });
-            const parser = new JsonLines(message => {
-                const pending = this.metricPending.get(Number(message.id));
-                if (!pending) { return; }
-                clearTimeout(pending.timer); this.metricPending.delete(Number(message.id));
-                if (message.type === 'metrics_error') { pending.reject(new Error(String(message.message))); }
-                else { pending.resolve(message); }
-            });
-            this.metrics.stdout!.on('data', (chunk: Buffer) => { try { parser.push(chunk); } catch { this.metrics?.kill(); } });
-            this.metrics.stderr!.on('data', (chunk: Buffer) => process.stderr.write(chunk));
-            this.metrics.on('error', error => process.stderr.write(error.message + '\n'));
-            this.jgd.setGetDimensions(() => ({ width: 800, height: 600 }));
-            this.jgd.setMeasureText((request, dpi) => this.measure(request, dpi));
-            this.jgd.setOnFrame((device, message) => {
-                try { this.plot(device, message); }
-                catch (error) { this.retentionWarning(error, this.current); }
-            });
-            await new Promise<void>(resolve => { this.jgd.onReady(resolve); this.jgd.start(); });
-            this.manifest.capabilities.jgd = true;
-        } catch (error) {
-            if (this.config.plotBackend === 'jgd') { throw error; }
-            this.event('agentWarning', { message: `JGD unavailable: ${String(error)}. Using static graphics.` });
-        }
-    }
-
-    private measure(request: JgdMessage, dpi: number): Promise<unknown> {
-        return new Promise((resolve, reject) => {
-            const id = this.metricCounter++;
-            const timer = setTimeout(() => { this.metricPending.delete(id); reject(new Error('Font metrics timed out')); }, 2000);
-            this.metricPending.set(id, { resolve: value => {
-                resolve({ ...object(value), id: request.id });
-            }, reject, timer });
-            this.metrics?.stdin?.write(JSON.stringify({ ...request, id, dpi }) + '\n');
-        });
-    }
-
-    private plot(device: string, message: JgdMessage): void {
-        // A historical resize is a complete frame for that plot, not the device's
-        // latest plot. Its context must not replace the live drawing context.
-        const replay = message.resizeReplay === true;
-        const frame = replay ? message.plot : this.history.latestPlot(device);
-        if (!frame) { return; }
-        const operations = (message.plot?.ops ?? []) as { op: string; ext?: { executionId?: string } }[];
-        if (message.newPage && !replay) { this.plotContexts.delete(device); }
-        let context = replay ? frame.frameExt?.executionId : this.plotContexts.get(device) ?? frame.frameExt?.executionId;
-        let drawing = false;
-        let drawingContext = context;
-        for (const operation of operations) {
-            if (operation.op === 'beginGroup' && operation.ext?.executionId) {
-                context = operation.ext.executionId;
-                if (!replay) { this.plotContexts.set(device, operation.ext.executionId); }
-            } else if (!['clip', 'beginGroup', 'endGroup'].includes(operation.op)) { drawing = true; drawingContext = context; }
-        }
-        if (!drawing) { return; }
-        const executionId = typeof drawingContext === 'string' && drawingContext ? drawingContext : undefined;
-        const plot = frame.rIndex ?? message.plotNumber ?? 0;
-        const displayId = `plot-${executionId ?? 'session'}-${device}-${plot}`;
-        // JGD may emit hundreds of incremental frames for one ggplot. Keep only
-        // the latest pending frame, preserving its operation boundary if another
-        // cell later appends to the same device before this batch is flushed.
-        this.pendingPlots.set(displayId, { frame: { ...frame }, count: frame.ops.length, device, plot, executionId });
-        if (!this.plotTimer) { this.plotTimer = setTimeout(() => this.flushPlots(), 200); }
-    }
-
-    private flushPlots(executionId?: string): void {
-        if (this.stopped) { return; }
-        if (!executionId) { clearTimeout(this.plotTimer); this.plotTimer = undefined; }
-        for (const [displayId, pending] of this.pendingPlots) {
-            if (executionId && pending.executionId !== executionId) { continue; }
-            this.pendingPlots.delete(displayId);
-            try {
-                const { frame, count, device, plot } = pending;
-                const svg = this.assets.put(plotToSvg({ ...frame, ops: frame.ops.slice(0, count) }), '.svg');
-                this.display({ kind: 'plot', displayId, svg, device, plot,
-                    width: frame.device.width, height: frame.device.height }, pending.executionId);
-            } catch (error) { this.retentionWarning(error, pending.executionId); }
-        }
-    }
-
-    private retentionWarning(error: unknown, executionId?: string): void {
-        const key = executionId ?? 'session';
-        if (this.retentionWarnings.has(key)) { return; }
-        this.retentionWarnings.add(key);
-        if (this.retentionWarnings.size > 1000) { this.retentionWarnings.delete(this.retentionWarnings.values().next().value as string); }
-        this.event('truncated', { message: `Plot could not be retained: ${String(error)}` }, executionId);
-    }
-
-    private stopWorker(): void {
+    private async stopWorker(): Promise<void> {
         if (this.stopping || this.manifest.status === 'exited') { return; }
         this.stopping = true; this.cancelQueued(); this.state('stopping');
-        const worker = this.worker, console = this.console;
-        const pid = this.manifest.rPid ?? worker?.pid;
-        const alive = (): boolean => !this.stopped && (worker
-            ? worker.exitCode === null && worker.signalCode === null
-            : !!console && this.console === console && !console.destroyed);
-        const signal = (signal: NodeJS.Signals): void => {
-            if (!pid || !alive()) { return; }
-            try { process.kill(pid, signal); }
-            catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') { this.event('agentWarning', { message: String(error) }); } }
-        };
-        // Embedded frontends can defer SIGTERM while R is evaluating. Interrupt first,
-        // then bound shutdown; the Stop command has explicitly authorized process exit.
-        signal('SIGINT');
-        this.shutdownTimers.push(setTimeout(() => signal('SIGTERM'), 100), setTimeout(() => signal('SIGKILL'), 3000));
+        await this.backend.stop();
     }
 
-    close(): void {
-        if (this.stopped) { return; }
-        this.stopped = true;
-        this.shutdownTimers.forEach(clearTimeout); this.shutdownTimers = [];
+    close(): Promise<void> {
+        if (this.closing) { return this.closing; }
+        this.stopped = true; this.unsubscribe();
         clearTimeout(this.externalTimer);
-        clearTimeout(this.plotTimer); this.pendingPlots.clear();
-        this.worker?.kill('SIGKILL'); this.metrics?.kill();
-        this.jgd.stop(); this.assets.close();
-        this.console?.destroy(); this.sess?.destroy();
+        this.assets.close();
         for (const client of this.clients) { client.socket.destroy(); }
         for (const server of this.servers) { server.close(); }
-        for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error('Agent stopped')); }
-        for (const pending of this.frontendRequests.values()) { clearTimeout(pending.timer); }
-        for (const pending of this.metricPending.values()) { clearTimeout(pending.timer); pending.reject(new Error('Agent stopped')); }
+        this.frontendRequests.clear();
         this.journal.close();
         fs.rmSync(this.runtime, { recursive: true, force: true });
+        return this.closing = this.backend.dispose();
     }
-}
-
-export function rString(value: string): string {
-    return JSON.stringify(value).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-}
-
-if (require.main === module) {
-    const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')) as AgentConfig;
-    const agent = new SessionAgent(config);
-    process.once('SIGTERM', () => { agent.close(); process.exit(0); });
-    process.once('SIGINT', () => { agent.close(); process.exit(0); });
-    void agent.start().catch(error => {
-        process.stderr.write(String(error) + '\n'); agent.close(); process.exit(1);
-    });
 }

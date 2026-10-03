@@ -20,6 +20,8 @@ export interface SessionManifest extends SessionIdentity {
     endpoint: string;
     token: string;
     agentPid: number;
+    backend?: string;
+    ownership?: 'managed' | 'adopted';
     rPid?: number;
     rVersion?: string;
     provider: ProviderKind;
@@ -74,24 +76,32 @@ export interface AgentSnapshot {
     truncated?: string[];
 }
 
-export interface AgentConfig extends SessionIdentity {
+export interface AgentSettings extends SessionIdentity {
     /** Completed processes whose transcripts precede this generation in the same window. */
     previousGenerations?: string[];
     label: string;
     directory: string;
     storage: string;
-    rPath: string;
-    library: string;
-    resources: string;
     provider: ProviderKind;
-    arfPath?: string;
-    arfEndpoint?: string;
     supervision: string;
-    plotBackend: 'auto' | 'jgd' | 'standard';
     historyLimit: number;
     maxOutputBytes: number;
     maxJournalBytes: number;
     maxAssetBytes?: number;
+}
+
+/** Persisted backend descriptor. Its definition validates and owns its options. */
+export interface BackendDescriptor { kind: string; options: Record<string, unknown> }
+
+export interface AgentConfig extends AgentSettings {
+    backend?: BackendDescriptor;
+    /** Legacy sess projection, derived from backend.options when writing new configs. */
+    rPath?: string;
+    library?: string;
+    resources?: string;
+    arfPath?: string;
+    arfEndpoint?: string;
+    plotBackend?: 'auto' | 'jgd' | 'standard';
 }
 
 export interface Request {

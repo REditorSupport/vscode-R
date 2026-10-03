@@ -6,7 +6,7 @@ import { execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import { randomUUID } from 'crypto';
 import { arfRequest, probeArfSession } from '../../interactive/arf';
-import { SessionAgent } from '../../interactive/agent';
+import { SessionAgent } from '../../interactive/agentMain';
 import { AgentClient } from '../../interactive/client';
 import { AgentConfig, SessionEvent, SessionManifest, ExecutionRecord } from '../../interactive/protocol';
 import { defaultStorage, installRuntime } from '../../interactive/launcher';
@@ -56,7 +56,7 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         await client.subscribe(0);
         await until(() => events.some(event => event.type === 'state' && event.data.status === 'idle'));
     });
-    teardown(async () => { client?.close(); agent?.close(); await delay(100); });
+    teardown(async () => { client?.close(); await agent?.close(); await delay(100); });
 
     async function until(predicate: () => boolean, timeout = 10000): Promise<void> {
         const deadline = Date.now() + timeout;
@@ -134,11 +134,28 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
     test('closing a busy agent prevents late callbacks from writing its closed journal', async () => {
         const id = await submit('Sys.sleep(30)');
         await until(() => events.some(event => event.type === 'started' && event.executionId === id));
-        agent.close();
+        await agent.close();
         const file = path.join(root, manifest.id, manifest.generation, 'executions', `${id}.json`);
         const saved = fs.readFileSync(file, 'utf8');
         await delay(200);
         assert.strictEqual(fs.readFileSync(file, 'utf8'), saved);
+    });
+
+    test('Stop during startup waits for the runtime and confirms exit', async () => {
+        const id = randomUUID(), storage = path.join(root, id);
+        const starting = new SessionAgent({ id, generation: randomUUID(), label: 'Stop during startup', directory: root, storage,
+            rPath: 'R', library, resources, provider: 'r', supervision: 'test', plotBackend: 'standard',
+            historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
+        const startup = starting.start();
+        let connection: AgentClient | undefined;
+        try {
+            await until(() => fs.existsSync(path.join(storage, 'manifest.json')));
+            connection = new AgentClient(JSON.parse(fs.readFileSync(path.join(storage, 'manifest.json'), 'utf8')) as SessionManifest);
+            await connection.connect();
+            await connection.request('stop');
+            await startup;
+            assert.strictEqual((await connection.snapshot()).manifest.status, 'exited');
+        } finally { connection?.close(); await starting.close(); await startup.catch(() => undefined); }
     });
 
     test('reconnects after output produced without any editor and deduplicates submission', async () => {
@@ -882,7 +899,26 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             assert.ok(terminal);
             assert.match(observed.filter(event => event.executionId === terminal.executionId && event.type === 'stream').map(event => event.data.text).join(''), /terminal-origin/);
 
-        } finally { connection?.close(); adopted?.close(); child.kill(); }
+            connection.close(); await adopted.close();
+            assert.strictEqual(child.exitCode, null);
+            process.kill(child.pid!, 0);
+            const result = await arfRequest(endpoint, 'evaluate', {
+                code: 'stopifnot(kept_before_adoption == 73); kept_after_disposal <- 74', visible: true,
+            }) as { error?: unknown };
+            assert.ok(!result.error, JSON.stringify(result));
+            const check = await arfRequest(endpoint, 'evaluate', { code: 'stopifnot(kept_after_disposal == 74)', visible: true }) as { error?: unknown };
+            assert.ok(!check.error, JSON.stringify(check));
+            // Stop is a separate, explicitly authorized operation on a new attachment.
+            const next = randomUUID();
+            adopted = new SessionAgent({ id: next, generation: randomUUID(), label: 'Adopted again', directory: root,
+                storage: path.join(root, next), rPath: 'R', library, resources,
+                provider: 'arf-existing', arfEndpoint: endpoint, supervision: 'test', plotBackend: 'standard',
+                historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
+            connection = new AgentClient(await adopted.start()); await connection.connect();
+            await connection.request('stop');
+            await until(() => child.exitCode !== null || child.signalCode !== null);
+            assert.strictEqual((await connection.snapshot()).manifest.status, 'exited');
+        } finally { connection?.close(); await adopted?.close(); child.kill(); }
     });
 
 });

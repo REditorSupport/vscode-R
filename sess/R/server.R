@@ -433,6 +433,7 @@ dispatch_message <- function(line) {
         TRUE
       },
       "interactive_stop" = function(p) {
+        if (!isTRUE(.sess_env$interactive_worker)) interactive_stop()
         .sess_env$interactive_stop <- TRUE
         TRUE
       },

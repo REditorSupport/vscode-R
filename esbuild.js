@@ -73,7 +73,7 @@ async function main() {
 
     // A session agent remains alive after the extension host exits.
     const agentCtx = await esbuild.context({
-        entryPoints: ['./src/interactive/agent.ts'],
+        entryPoints: ['./src/interactive/agentMain.ts'],
         bundle: true,
         format: 'cjs',
         platform: 'node',

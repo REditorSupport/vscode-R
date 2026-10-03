@@ -5,7 +5,8 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { SessionAgent, rString } from '../../interactive/agent';
+import { SessionAgent } from '../../interactive/agentMain';
+import { rString } from '../../interactive/backends/rCode';
 import { AgentClient } from '../../interactive/client';
 import { installRuntime } from '../../interactive/launcher';
 import { SessionEvent } from '../../interactive/protocol';
@@ -103,7 +104,7 @@ stopifnot(vscrlibprobe::answer() == 42, identical(.libPaths(), startup_library_p
             await execute('stopifnot(vscrlibprobe::answer() == 42); cat("still usable")');
             assert.ok(!fs.existsSync(path.join(runtime.library, 'vscrlibprobe')));
         } finally {
-            client?.close(); agent.close();
+            client?.close(); await agent.close();
             await new Promise(resolve => setTimeout(resolve, 200));
             for (const [key, value] of Object.entries(previous)) {
                 if (value === undefined) { delete process.env[key]; } else { process.env[key] = value; }

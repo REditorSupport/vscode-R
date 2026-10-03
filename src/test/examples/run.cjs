@@ -7,7 +7,8 @@ const path = require('path');
 const { randomUUID } = require('crypto');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const { SessionAgent, rString } = require('../../../out/interactive/agent');
+const { SessionAgent } = require('../../../out/interactive/agentMain');
+const { rString } = require('../../../out/interactive/backends/rCode');
 const { AgentClient } = require('../../../out/interactive/client');
 const { installRuntime } = require('../../../out/interactive/launcher');
 const { AssetStore, readAsset } = require('../../../out/interactive/assets');
@@ -115,7 +116,7 @@ dev.off()`;
             console.log(JSON.stringify(result));
         }
     } finally {
-        client?.close(); agent?.close(); await delay(200);
+        client?.close(); await agent?.close(); await delay(200);
         fs.rmSync(root, { recursive: true, force: true });
         fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify(results, null, 2));
         console.log('Results: ' + output);

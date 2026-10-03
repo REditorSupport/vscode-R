@@ -25,7 +25,7 @@ export class AgentClient extends EventEmitter {
         const parser = new JsonLines(message => {
             if (message.event) {
                 if (this.replaying) { this.replaying.push(message.event as SessionEvent); }
-                else { this.emit('event', message.event as SessionEvent); }
+                else { this.emitEvent(message.event as SessionEvent); }
                 return;
             }
             const id = Number(message.id);
@@ -71,6 +71,21 @@ export class AgentClient extends EventEmitter {
         this.heartbeat.unref();
     }
 
+    private emitEvent(event: SessionEvent): void {
+        if (event.generation === this.manifest.generation && event.type === 'state') {
+            const data = event.data;
+            this.manifest.status = data.status as SessionManifest['status'];
+            if (typeof data.rPid === 'number') { this.manifest.rPid = data.rPid; }
+            if (typeof data.rVersion === 'string') { this.manifest.rVersion = data.rVersion; }
+            if (typeof data.rPath === 'string') { this.manifest.rPath = data.rPath; }
+            if (typeof data.runtimeSessionId === 'string') { this.manifest.runtimeSessionId = data.runtimeSessionId; }
+            if (Array.isArray(data.libraryPaths)) { this.manifest.libraryPaths = data.libraryPaths.map(String); }
+            if (data.capabilities && typeof data.capabilities === 'object') { Object.assign(this.manifest.capabilities, data.capabilities); }
+            if (typeof data.ended === 'number') { this.manifest.ended = data.ended; }
+        }
+        this.emit('event', event);
+    }
+
     async subscribe(after: number): Promise<boolean> {
         let cursor = after;
         const live: SessionEvent[] = [];
@@ -79,12 +94,12 @@ export class AgentClient extends EventEmitter {
             for (;;) {
                 const replay = await this.request<{ events: SessionEvent[]; reset: boolean; seq: number }>('subscribe', { after: cursor });
                 if (replay.reset) { return false; }
-                for (const event of replay.events) { this.emit('event', event); cursor = event.seq; }
+                for (const event of replay.events) { this.emitEvent(event); cursor = event.seq; }
                 if (cursor >= replay.seq) {
                     // A socket read can contain both the response and newer events.
                     // Deliver replay first, before the transcript advances its cursor.
                     for (const event of live) {
-                        if (event.seq > cursor) { this.emit('event', event); cursor = event.seq; }
+                        if (event.seq > cursor) { this.emitEvent(event); cursor = event.seq; }
                     }
                     return true;
                 }

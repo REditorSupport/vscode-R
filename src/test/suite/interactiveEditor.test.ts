@@ -8,7 +8,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createRequire } from 'module';
 import { randomUUID } from 'crypto';
-import { SessionAgent } from '../../interactive/agent';
+import { SessionAgent } from '../../interactive/agentMain';
 import { AgentClient } from '../../interactive/client';
 import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook';
 import { AgentConfig, SessionManifest, DEFAULT_MAX_ASSET_BYTES } from '../../interactive/protocol';
@@ -71,7 +71,7 @@ import type { LanguageClient } from 'vscode-languageclient/node';
         await vscode.commands.executeCommand('r.interactive.detach');
         await vscode.workspace.getConfiguration('r').update('interactive.storagePath', previousStorage, vscode.ConfigurationTarget.Global);
         await bundleContext().workspaceState.update('r.interactive.connections', previousConnections);
-        agents?.forEach(agent => agent.close());
+        await Promise.all(agents?.map(agent => agent.close()) ?? []);
         await new Promise(resolve => setTimeout(resolve, 200));
         fs.rmSync(root, { recursive: true, force: true });
         sourceDirectories.forEach(directory => fs.rmSync(directory, { recursive: true, force: true }));
@@ -391,7 +391,7 @@ import type { LanguageClient } from 'vscode-languageclient/node';
                 await vscode.workspace.applyEdit(edit);
                 await until(() => !notebook.metadata.rSessionId);
             }
-            agent.close();
+            await agent.close();
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         }
     });
@@ -480,6 +480,45 @@ import type { LanguageClient } from 'vscode-languageclient/node';
             assert.match(String(manager.getTreeItem(manifests[0]).tooltip), /Connection: Disconnected/);
         } finally {
             other.close(); await view.client.connect(); await view.client.subscribe(0); listener.dispose();
+        }
+    });
+    test('observer execution consistently reports errors from native input, cells and source commands', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const view = (manager as unknown as { views: Map<string, { client: AgentClient; controller: vscode.NotebookController; notebook: vscode.NotebookDocument }> }).views.get(`${manifests[0].id}:${manifests[0].generation}`);
+        assert.ok(view);
+        const other = new AgentClient(manifests[0]);
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        try {
+            await other.connect(); await other.request('claim', { force: true });
+            const before = (await other.snapshot()).executions.length;
+            // Test both a stale local lease and an already-known observer.
+            for (const stale of [true, false]) {
+                view.client.control = stale;
+                const edit = new vscode.WorkspaceEdit();
+                edit.set(view.notebook.uri, [vscode.NotebookEdit.insertCells(view.notebook.cellCount, [
+                    new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'stop("observer must not execute")', 'r'),
+                ])]);
+                await vscode.workspace.applyEdit(edit);
+                const count = errors.callCount;
+                await view.controller.executeHandler([view.notebook.cellAt(view.notebook.cellCount - 1)], view.notebook, view.controller);
+                assert.strictEqual(errors.callCount, count + 1);
+                assert.match(errors.lastCall.args[0], /observing.*[Tt]ake [Cc]ontrol/);
+            }
+            const input = await vscode.commands.executeCommand<{ inputUri: vscode.Uri }>('interactive.open', { preserveFocus: false }, view.notebook.uri);
+            const document = await vscode.workspace.openTextDocument(input.inputUri);
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(document.uri, new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), 'stop("native observer")');
+            await vscode.workspace.applyEdit(edit);
+            const count = errors.callCount;
+            await vscode.commands.executeCommand('interactive.execute', view.notebook.uri);
+            await until(() => errors.callCount === count + 1);
+            await vscode.commands.executeCommand('r.runSelection', 'stop("source observer")');
+            assert.strictEqual(errors.callCount, count + 2);
+            assert.strictEqual((await other.snapshot()).executions.length, before);
+        } finally {
+            errors.restore(); other.close();
+            await vscode.commands.executeCommand('r.interactive.takeControl', manifests[0]);
         }
     });
     test('a session that disappears after selection reports a useful recovery message', async () => {
@@ -969,6 +1008,21 @@ cat("\n")`;
         const inputsBefore = new Set(vscode.workspace.textDocuments.map(doc => doc.uri.toString()));
         const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'R', value: 'r' } as vscode.QuickPickItem);
         const name = sinon.stub(vscode.window, 'showInputBox').resolves('New session focus');
+        const execute = vscode.commands.executeCommand.bind(vscode.commands);
+        const commands = sinon.stub(vscode.commands, 'executeCommand').callThrough();
+        commands.withArgs('interactive.open').callsFake(async (command: string, ...args: unknown[]) => {
+            const result = await execute<{ notebookUri: vscode.Uri; inputUri: vscode.Uri }>(command, ...args);
+            if (args[3] === 'R: New session focus') {
+                // Emulate native models retained under a recycled numbered URI.
+                const retained = new vscode.WorkspaceEdit();
+                retained.set(result.notebookUri, [vscode.NotebookEdit.insertCells(0, [
+                    new vscode.NotebookCellData(vscode.NotebookCellKind.Code, '# previous window draft', 'r'),
+                ])]);
+                retained.insert(result.inputUri, new vscode.Position(0, 0), '# previous window input');
+                await vscode.workspace.applyEdit(retained);
+            }
+            return result;
+        });
         let notebook: vscode.NotebookDocument | undefined;
         let client: AgentClient | undefined;
         try {
@@ -985,6 +1039,8 @@ cat("\n")`;
             await until(() => vscode.window.activeTextEditor?.document.uri.toString() === input.uri.toString());
             assert.notStrictEqual(input.uri.toString(), originalInput.uri.toString());
             assert.strictEqual(originalInput.getText(), '# unfinished work in the previous session');
+            assert.strictEqual(input.getText(), '', 'A new session must not inherit a recycled input model');
+            assert.strictEqual(notebook.cellCount, 0, 'A new session must not inherit old notebook drafts');
             const code = 'new_session_focus_value <- 123';
             const edit = new vscode.WorkspaceEdit(); edit.insert(input.uri, new vscode.Position(0, 0), code);
             await vscode.workspace.applyEdit(edit);
@@ -992,7 +1048,7 @@ cat("\n")`;
             await until(() => notebook?.getCells().some(cell => cell.document.getText() === code && cell.executionSummary?.success === true) ?? false);
             assert.ok(!original.getCells().some(cell => cell.document.getText() === code));
         } finally {
-            picker.restore(); name.restore();
+            commands.restore(); picker.restore(); name.restore();
             await settings.update('interactive.arfPath', previousArf, vscode.ConfigurationTarget.Global);
             if (notebook) { await vscode.commands.executeCommand('r.interactive.detach', notebook.uri); }
             if (client) {
@@ -1584,7 +1640,7 @@ par(mfrow=c(1,1))`);
             assert.notStrictEqual(config.resources, path.join(process.cwd(), 'R'));
             assert.strictEqual(config.maxAssetBytes, DEFAULT_MAX_ASSET_BYTES);
             assert.strictEqual(config.supervision, 'detached', 'Restart honors the repaired setting instead of the persisted tmux supervisor');
-            assert.ok(fs.existsSync(path.join(config.library, 'sess')));
+            assert.ok(fs.existsSync(path.join(config.library!, 'sess')));
             const current = (): SessionManifest => JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest;
             client = new AgentClient(current()); await client.connect({ claim: false });
             assert.notStrictEqual(current().rPid, original.rPid);
@@ -1770,6 +1826,39 @@ par(mfrow=c(1,1))`);
                 assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
             } finally { confirm.restore(); info.restore(); }
         });
+    });
+    test('a stale saved URI cannot reconnect one session into another session window', async () => {
+        const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const saved = (manager as unknown as { savedConnections: Map<string, { id: string; notebookUri?: string }> }).savedConnections;
+        const temporary: { agent: SessionAgent; manifest: SessionManifest }[] = [];
+        const before = new Set(vscode.window.tabGroups.all.flatMap(group => group.tabs));
+        try {
+            for (let i = 0; i < 2; i++) {
+                const id = randomUUID();
+                const agent = new SessionAgent({ id, generation: randomUUID(), label: `URI reuse ${i}`, directory: root, storage: path.join(root, id),
+                    rPath: 'R', library: path.join(root, 'library'), resources: path.join(process.cwd(), 'R'), provider: 'r', supervision: 'test',
+                    plotBackend: 'standard', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
+                const manifest = await agent.start(); temporary.push({ agent, manifest });
+                await manager.open(manifest);
+            }
+            const [first, second] = temporary.map(({ manifest }) => vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifest.id));
+            assert.ok(first && second);
+            await vscode.commands.executeCommand('r.interactive.detach', first.uri);
+            const reset = new vscode.WorkspaceEdit();
+            reset.set(first.uri, [vscode.NotebookEdit.updateNotebookMetadata({})]);
+            await vscode.workspace.applyEdit(reset);
+            saved.set(temporary[0].manifest.id, { id: temporary[0].manifest.id, notebookUri: second.uri.toString() });
+            await manager.open(temporary[0].manifest);
+            assert.strictEqual(second.metadata.rSessionId, temporary[1].manifest.id);
+            const reopened = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === temporary[0].manifest.id);
+            assert.ok(reopened && reopened !== second);
+            assert.notStrictEqual(saved.get(temporary[0].manifest.id)?.notebookUri, saved.get(temporary[1].manifest.id)?.notebookUri);
+        } finally {
+            for (const { agent, manifest } of temporary) {
+                await vscode.commands.executeCommand('r.interactive.detach', manifest); await agent.close();
+            }
+            await vscode.window.tabGroups.close(vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => !before.has(tab)), true);
+        }
     });
     test('exports portable notebook output without transient connection URLs', () => {
         const cell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, 'plot(1:3)', 'r');
