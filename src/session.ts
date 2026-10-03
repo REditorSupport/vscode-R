@@ -13,7 +13,7 @@ import { config, readContent, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
-import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
+import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher, rLanguageService } from './extension';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import type { RSessionConnectionInfo } from './api';
 
@@ -892,6 +892,7 @@ export async function updateWorkspace() {
         if (response && activeSession === requestedSession) {
             workspaceData = response as WorkspaceData;
             requestedSession.workspaceData = workspaceData;
+            rLanguageService?.syncSessionState(workspaceData);
             void rWorkspace?.refresh();
             console.info('[updateWorkspace] Done');
         }
@@ -1761,6 +1762,7 @@ export async function activateSession(session: Session): Promise<void> {
     sessionDir = session.sessionDir;
     workingDir = session.workingDir;
     workspaceData = session.workspaceData;
+    rLanguageService?.syncSessionState(workspaceData);
 
     if (sessionStatusBarItem) {
         sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
@@ -2120,6 +2122,7 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
         workspaceData.globalenv = {};
         workspaceData.loaded_namespaces = [];
         workspaceData.search = [];
+        rLanguageService?.syncSessionState();
         rWorkspace?.refresh();
         await setContext('rSessionActive', false);
     }

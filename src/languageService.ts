@@ -11,11 +11,23 @@ import { config, DisposableProcess, getRLibPaths, getRpath, promptToInstallRPack
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 
+interface SessionState {
+    attachedPackages: string[];
+    loadedNamespaces: string[];
+}
+
+interface SessionWorkspaceData {
+    search: string[];
+    loaded_namespaces: string[];
+}
+
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
     private readonly initSet: Set<string> = new Set();
     private readonly config: WorkspaceConfiguration;
     private readonly outputChannel: OutputChannel;
+    private sessionState: SessionState | undefined;
+    private sessionStateKey: string | undefined;
 
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server');
@@ -25,6 +37,43 @@ export class LanguageService implements Disposable {
 
     dispose(): Thenable<void> {
         return this.stopLanguageService();
+    }
+
+    syncSessionState(data?: SessionWorkspaceData): void {
+        const state: SessionState = {
+            attachedPackages: data?.search
+                .filter(value => value.startsWith('package:'))
+                .map(value => value.substring(8)) ?? [],
+            loadedNamespaces: data?.loaded_namespaces ?? [],
+        };
+        const stateKey = this.getSessionStateKey(state);
+        if (this.sessionStateKey === stateKey) {
+            return;
+        }
+
+        this.sessionState = state;
+        this.sessionStateKey = stateKey;
+        for (const client of this.clients.values()) {
+            void this.applySessionState(client);
+        }
+    }
+
+    private async applySessionState(client: LanguageClient): Promise<void> {
+        if (!this.sessionState) {
+            return;
+        }
+        try {
+            await client.sendRequest('r/syncSessionState', this.sessionState);
+        } catch {
+            // Keep language-service features available if session synchronization fails.
+        }
+    }
+
+    private getSessionStateKey(state: SessionState): string {
+        return [
+            state.attachedPackages.join('\u0000'),
+            state.loadedNamespaces.join('\u0000'),
+        ].join('\u0001');
     }
 
     private spawnServer(client: LanguageClient, rPath: string, args: readonly string[], options: CommonOptions & { cwd: string }): DisposableProcess {
@@ -181,6 +230,7 @@ export class LanguageService implements Disposable {
 
         extensionContext.subscriptions.push(client);
         await client.start();
+        await this.applySessionState(client);
         return client;
     }
 
