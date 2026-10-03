@@ -1067,7 +1067,7 @@ export async function showDataView(source: string, type: string, title: string, 
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(extensionContext.asAbsolutePath('images/icons'))],
             });
-        panel.iconPath = new UriIcon('open-preview');
+        panel.iconPath = new UriIcon('preview');
         if (viewId) {
             dynamicDataViewPanels.set(viewId, panel);
             panel.webview.onDidReceiveMessage(async (message: {
