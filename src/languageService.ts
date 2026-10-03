@@ -11,11 +11,23 @@ import { config, DisposableProcess, getRLibPaths, getRpath, promptToInstallRPack
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
 
+interface SessionState {
+    attachedPackages: string[];
+    loadedNamespaces: string[];
+}
+
+interface SessionWorkspaceData {
+    search: string[];
+    loaded_namespaces: string[];
+}
+
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
     private readonly initSet: Set<string> = new Set();
     private readonly config: WorkspaceConfiguration;
     private readonly outputChannel: OutputChannel;
+    private readonly clientScopes: Map<string, string> = new Map();
+    private readonly sessionStates: Map<string, { state: SessionState; stateKey: string; sessionId: string }> = new Map();
 
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server');
@@ -25,6 +37,59 @@ export class LanguageService implements Disposable {
 
     dispose(): Thenable<void> {
         return this.stopLanguageService();
+    }
+
+    syncSessionState(data?: SessionWorkspaceData, resource?: Uri, sessionId = ''): void {
+        const scope = this.getSessionScope(resource);
+        const current = this.sessionStates.get(scope);
+        if (!data) {
+            if (!current || (sessionId && current.sessionId !== sessionId)) {
+                return;
+            }
+            this.sessionStates.delete(scope);
+            this.applySessionStateToScope(scope, {
+                attachedPackages: [],
+                loadedNamespaces: [],
+            });
+            return;
+        }
+
+        const state: SessionState = {
+            attachedPackages: data.search
+                .filter(value => value.startsWith('package:'))
+                .map(value => value.substring(8)),
+            loadedNamespaces: data.loaded_namespaces,
+        };
+        const stateKey = this.getSessionStateKey(state);
+        if (current?.stateKey === stateKey && current.sessionId === sessionId) {
+            return;
+        }
+
+        this.sessionStates.set(scope, { state, stateKey, sessionId });
+        this.applySessionStateToScope(scope, state);
+    }
+
+    private applySessionStateToScope(scope: string, state: SessionState): void {
+        for (const [key, client] of this.clients) {
+            if (this.clientScopes.get(key) === scope) {
+                void this.applySessionState(client, state);
+            }
+        }
+    }
+
+    private async applySessionState(client: LanguageClient, state: SessionState): Promise<void> {
+        try {
+            await client.sendRequest('r/syncSessionState', state);
+        } catch {
+            // Keep language-service features available if session synchronization fails.
+        }
+    }
+
+    private getSessionStateKey(state: SessionState): string {
+        return [
+            state.attachedPackages.join('\u0000'),
+            state.loadedNamespaces.join('\u0000'),
+        ].join('\u0001');
     }
 
     private spawnServer(client: LanguageClient, rPath: string, args: readonly string[], options: CommonOptions & { cwd: string }): DisposableProcess {
@@ -58,7 +123,7 @@ export class LanguageService implements Disposable {
 
     private async createClient(selector: DocumentFilter[],
         cwd: string, workspaceFolder: WorkspaceFolder | undefined, outputChannel: OutputChannel,
-        resource?: Uri): Promise<LanguageClient> {
+        resource?: Uri, sessionScope: string = 'global'): Promise<LanguageClient> {
 
         let client: LanguageClient;
 
@@ -181,6 +246,10 @@ export class LanguageService implements Disposable {
 
         extensionContext.subscriptions.push(client);
         await client.start();
+        const sessionState = this.sessionStates.get(sessionScope)?.state;
+        if (sessionState) {
+            await this.applySessionState(client, sessionState);
+        }
         return client;
     }
 
@@ -195,6 +264,14 @@ export class LanguageService implements Disposable {
         }
         this.initSet.add(name);
         return false;
+    }
+
+    private getSessionScope(resource?: Uri): string {
+        if (this.config.get<boolean>('lsp.multiServer') !== true) {
+            return 'global';
+        }
+        const folder = resource ? workspace.getWorkspaceFolder(resource) : undefined;
+        return folder ? this.getKey(folder.uri) : 'unscoped';
     }
 
     private getKey(uri: Uri): string {
@@ -223,14 +300,16 @@ export class LanguageService implements Disposable {
             // Each notebook uses a server started from parent folder
             if (document.uri.scheme === 'vscode-notebook-cell') {
                 const key = this.getKey(document.uri);
+                const scope = folder ? this.getKey(folder.uri) : 'unscoped';
                 if (!this.checkClient(key)) {
                     console.log(`Start language server for ${document.uri.toString(true)}`);
                     const documentSelector: DocumentFilter[] = [
                         { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}` },
                     ];
                     const client = await this.createClient(documentSelector,
-                        dirname(document.uri.fsPath), folder, this.outputChannel, folder?.uri ?? document.uri);
+                        dirname(document.uri.fsPath), folder, this.outputChannel, folder?.uri ?? document.uri, scope);
                     this.clients.set(key, client);
+                    this.clientScopes.set(key, scope);
                     this.initSet.delete(key);
                 }
                 return;
@@ -247,8 +326,9 @@ export class LanguageService implements Disposable {
                         { scheme: 'file', language: 'r', pattern: pattern },
                         { scheme: 'file', language: 'rmd', pattern: pattern },
                     ];
-                    const client = await this.createClient(documentSelector, folder.uri.fsPath, folder, this.outputChannel, folder.uri);
+                    const client = await this.createClient(documentSelector, folder.uri.fsPath, folder, this.outputChannel, folder.uri, key);
                     this.clients.set(key, client);
+                    this.clientScopes.set(key, key);
                     this.initSet.delete(key);
                 }
 
@@ -263,8 +343,9 @@ export class LanguageService implements Disposable {
                             { scheme: 'untitled', language: 'r' },
                             { scheme: 'untitled', language: 'rmd' },
                         ];
-                        const client = await this.createClient(documentSelector, os.homedir(), undefined, this.outputChannel, document.uri);
+                        const client = await this.createClient(documentSelector, os.homedir(), undefined, this.outputChannel, document.uri, 'unscoped');
                         this.clients.set(key, client);
+                        this.clientScopes.set(key, 'unscoped');
                         this.initSet.delete(key);
                     }
                     return;
@@ -279,8 +360,9 @@ export class LanguageService implements Disposable {
                             { scheme: 'file', pattern: document.uri.fsPath },
                         ];
                         const client = await this.createClient(documentSelector,
-                            dirname(document.uri.fsPath), undefined, this.outputChannel, document.uri);
+                            dirname(document.uri.fsPath), undefined, this.outputChannel, document.uri, 'unscoped');
                         this.clients.set(key, client);
+                        this.clientScopes.set(key, 'unscoped');
                         this.initSet.delete(key);
                     }
                     return;
@@ -311,6 +393,7 @@ export class LanguageService implements Disposable {
             const client = this.clients.get(key);
             if (client) {
                 this.clients.delete(key);
+                this.clientScopes.delete(key);
                 this.initSet.delete(key);
                 void client.stop();
             }
@@ -325,6 +408,7 @@ export class LanguageService implements Disposable {
                 const client = this.clients.get(key);
                 if (client) {
                     this.clients.delete(key);
+                    this.clientScopes.delete(key);
                     this.initSet.delete(key);
                     void client.stop();
                 }
@@ -353,8 +437,9 @@ export class LanguageService implements Disposable {
 
             const workspaceFolder = workspace.workspaceFolders?.[0];
             const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : os.homedir();
-            const client = await this.createClient(documentSelector, cwd, undefined, this.outputChannel, workspaceFolder?.uri);
+            const client = await this.createClient(documentSelector, cwd, undefined, this.outputChannel, workspaceFolder?.uri, 'global');
             this.clients.set('global', client);
+            this.clientScopes.set('global', 'global');
         }
     }
 

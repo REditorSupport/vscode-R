@@ -13,7 +13,7 @@ import { config, readContent, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
-import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
+import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher, rLanguageService } from './extension';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import type { RSessionConnectionInfo } from './api';
 
@@ -64,6 +64,7 @@ export class Session {
     public info: SessionInfo;
     public sessionDir: string;
     public workingDir: string;
+    public resource: Uri | undefined;
     public workspaceData: WorkspaceData;
 
     constructor(sessionId: string, host: string, sessVersion: string, pipePath: string, socket: IpcSocket) {
@@ -77,6 +78,7 @@ export class Session {
         this.info = { version: '', command: '', start_time: '' };
         this.sessionDir = '';
         this.workingDir = '';
+        this.resource = undefined;
         this.workspaceData = { search: [], loaded_namespaces: [], globalenv: {} };
     }
 }
@@ -892,6 +894,7 @@ export async function updateWorkspace() {
         if (response && activeSession === requestedSession) {
             workspaceData = response as WorkspaceData;
             requestedSession.workspaceData = workspaceData;
+            rLanguageService?.syncSessionState(workspaceData, requestedSession.resource, requestedSession.sessionId);
             void rWorkspace?.refresh();
             console.info('[updateWorkspace] Done');
         }
@@ -1761,6 +1764,7 @@ export async function activateSession(session: Session): Promise<void> {
     sessionDir = session.sessionDir;
     workingDir = session.workingDir;
     workspaceData = session.workspaceData;
+    rLanguageService?.syncSessionState(workspaceData, session.resource, session.sessionId);
 
     if (sessionStatusBarItem) {
         sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
@@ -1796,11 +1800,11 @@ function isLocalHost(host: string): boolean {
     return host.length > 0 && host.toLocaleLowerCase() === os.hostname().toLocaleLowerCase();
 }
 
-async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
+async function findLocalTerminal(rPid: string): Promise<vscode.Terminal | undefined> {
     for (const terminal of window.terminals) {
         const terminalPid = await terminal.processId;
         if (terminalPid !== undefined && String(terminalPid) === rPid) {
-            return String(terminalPid);
+            return terminal;
         }
     }
     return undefined;
@@ -1860,9 +1864,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             }
 
             const rPid = params.pid === undefined || params.pid === null ? '' : String(params.pid);
-            const terminalPid = rPid && isLocalHost(host)
-                ? await findLocalTerminalPid(rPid)
+            const terminal = rPid && isLocalHost(host)
+                ? await findLocalTerminal(rPid)
                 : undefined;
+            const terminalPid = terminal ? rPid : undefined;
             const selectedTerminal = window.activeTerminal;
             const selectedTerminalPid = terminalPid ? await selectedTerminal?.processId : undefined;
             if (socket.destroyed) {
@@ -1907,6 +1912,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             session.info = (params.info as SessionInfo | undefined) ?? { version: session.rVer, command: '', start_time: '' };
             session.sessionDir = String(params.tempdir);
             session.workingDir = String(params.wd);
+            session.resource = terminal ? rTerminal.getTerminalResource(terminal) : undefined;
 
             // Reload does not trigger a terminal-selection event after every attach.
             // Prefer its connected session when a terminal reconnects in the background.
@@ -2112,6 +2118,7 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
     if (!session.socket.destroyed && session.socket !== closingSocket) {
         session.socket.destroy();
     }
+    rLanguageService?.syncSessionState(undefined, session.resource, session.sessionId);
     if (activeSession === session) {
         deferWorkspaceRefresh();
         workspaceRefreshPending = false;

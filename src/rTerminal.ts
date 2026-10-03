@@ -318,9 +318,9 @@ export function deleteTerminal(term: vscode.Terminal): void {
     }
 }
 
-function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
+export function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
     if (term === rTerm && rTermResource) {
-        return rTermResource;
+        return vscode.workspace.getWorkspaceFolder(rTermResource)?.uri;
     }
 
     const creationOptions = term.creationOptions;
@@ -329,9 +329,7 @@ function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
     const cwdResource = typeof cwd === 'string'
         ? vscode.workspace.workspaceFolders?.find(folder => folder.uri.fsPath === cwd)?.uri ?? vscode.Uri.file(cwd)
         : cwd;
-    return cwdResource
-        ? getCurrentWorkspaceFolder(cwdResource)?.uri ?? cwdResource
-        : getCurrentWorkspaceFolder()?.uri;
+    return cwdResource ? vscode.workspace.getWorkspaceFolder(cwdResource)?.uri : undefined;
 }
 
 export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
