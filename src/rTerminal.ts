@@ -318,7 +318,7 @@ export function deleteTerminal(term: vscode.Terminal): void {
     }
 }
 
-function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
+export function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
     if (term === rTerm && rTermResource) {
         return rTermResource;
     }

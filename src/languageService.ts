@@ -26,8 +26,7 @@ export class LanguageService implements Disposable {
     private readonly initSet: Set<string> = new Set();
     private readonly config: WorkspaceConfiguration;
     private readonly outputChannel: OutputChannel;
-    private sessionState: SessionState | undefined;
-    private sessionStateKey: string | undefined;
+    private readonly sessionStates: Map<string, { state: SessionState; stateKey: string; sessionId: string }> = new Map();
 
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server');
@@ -39,31 +38,51 @@ export class LanguageService implements Disposable {
         return this.stopLanguageService();
     }
 
-    syncSessionState(data?: SessionWorkspaceData): void {
-        const state: SessionState = {
-            attachedPackages: data?.search
-                .filter(value => value.startsWith('package:'))
-                .map(value => value.substring(8)) ?? [],
-            loadedNamespaces: data?.loaded_namespaces ?? [],
-        };
-        const stateKey = this.getSessionStateKey(state);
-        if (this.sessionStateKey === stateKey) {
+    syncSessionState(data?: SessionWorkspaceData, resource?: Uri, sessionId = ''): void {
+        const clientKey = this.config.get<boolean>('lsp.multiServer') === true
+            ? resource ? this.getClientKey(resource) : undefined
+            : 'global';
+        if (!clientKey) {
             return;
         }
 
-        this.sessionState = state;
-        this.sessionStateKey = stateKey;
-        for (const client of this.clients.values()) {
-            void this.applySessionState(client);
+        const current = this.sessionStates.get(clientKey);
+        if (!data) {
+            if (!current || (sessionId && current.sessionId !== sessionId)) {
+                return;
+            }
+            this.sessionStates.delete(clientKey);
+            const client = this.clients.get(clientKey);
+            if (client) {
+                void this.applySessionState(client, {
+                    attachedPackages: [],
+                    loadedNamespaces: [],
+                });
+            }
+            return;
+        }
+
+        const state: SessionState = {
+            attachedPackages: data.search
+                .filter(value => value.startsWith('package:'))
+                .map(value => value.substring(8)),
+            loadedNamespaces: data.loaded_namespaces,
+        };
+        const stateKey = this.getSessionStateKey(state);
+        if (current?.stateKey === stateKey && current.sessionId === sessionId) {
+            return;
+        }
+
+        this.sessionStates.set(clientKey, { state, stateKey, sessionId });
+        const client = this.clients.get(clientKey);
+        if (client) {
+            void this.applySessionState(client, state);
         }
     }
 
-    private async applySessionState(client: LanguageClient): Promise<void> {
-        if (!this.sessionState) {
-            return;
-        }
+    private async applySessionState(client: LanguageClient, state: SessionState): Promise<void> {
         try {
-            await client.sendRequest('r/syncSessionState', this.sessionState);
+            await client.sendRequest('r/syncSessionState', state);
         } catch {
             // Keep language-service features available if session synchronization fails.
         }
@@ -107,7 +126,7 @@ export class LanguageService implements Disposable {
 
     private async createClient(selector: DocumentFilter[],
         cwd: string, workspaceFolder: WorkspaceFolder | undefined, outputChannel: OutputChannel,
-        resource?: Uri): Promise<LanguageClient> {
+        resource?: Uri, clientKey: string = 'global'): Promise<LanguageClient> {
 
         let client: LanguageClient;
 
@@ -230,7 +249,10 @@ export class LanguageService implements Disposable {
 
         extensionContext.subscriptions.push(client);
         await client.start();
-        await this.applySessionState(client);
+        const sessionState = this.sessionStates.get(clientKey)?.state;
+        if (sessionState) {
+            await this.applySessionState(client, sessionState);
+        }
         return client;
     }
 
@@ -245,6 +267,11 @@ export class LanguageService implements Disposable {
         }
         this.initSet.add(name);
         return false;
+    }
+
+    private getClientKey(uri: Uri): string {
+        const folder = workspace.getWorkspaceFolder(uri);
+        return this.getKey(folder?.uri ?? uri);
     }
 
     private getKey(uri: Uri): string {
@@ -279,7 +306,7 @@ export class LanguageService implements Disposable {
                         { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}` },
                     ];
                     const client = await this.createClient(documentSelector,
-                        dirname(document.uri.fsPath), folder, this.outputChannel, folder?.uri ?? document.uri);
+                        dirname(document.uri.fsPath), folder, this.outputChannel, folder?.uri ?? document.uri, key);
                     this.clients.set(key, client);
                     this.initSet.delete(key);
                 }
@@ -297,7 +324,7 @@ export class LanguageService implements Disposable {
                         { scheme: 'file', language: 'r', pattern: pattern },
                         { scheme: 'file', language: 'rmd', pattern: pattern },
                     ];
-                    const client = await this.createClient(documentSelector, folder.uri.fsPath, folder, this.outputChannel, folder.uri);
+                    const client = await this.createClient(documentSelector, folder.uri.fsPath, folder, this.outputChannel, folder.uri, key);
                     this.clients.set(key, client);
                     this.initSet.delete(key);
                 }
@@ -313,7 +340,7 @@ export class LanguageService implements Disposable {
                             { scheme: 'untitled', language: 'r' },
                             { scheme: 'untitled', language: 'rmd' },
                         ];
-                        const client = await this.createClient(documentSelector, os.homedir(), undefined, this.outputChannel, document.uri);
+                        const client = await this.createClient(documentSelector, os.homedir(), undefined, this.outputChannel, document.uri, key);
                         this.clients.set(key, client);
                         this.initSet.delete(key);
                     }
@@ -329,7 +356,7 @@ export class LanguageService implements Disposable {
                             { scheme: 'file', pattern: document.uri.fsPath },
                         ];
                         const client = await this.createClient(documentSelector,
-                            dirname(document.uri.fsPath), undefined, this.outputChannel, document.uri);
+                            dirname(document.uri.fsPath), undefined, this.outputChannel, document.uri, key);
                         this.clients.set(key, client);
                         this.initSet.delete(key);
                     }
@@ -403,7 +430,7 @@ export class LanguageService implements Disposable {
 
             const workspaceFolder = workspace.workspaceFolders?.[0];
             const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : os.homedir();
-            const client = await this.createClient(documentSelector, cwd, undefined, this.outputChannel, workspaceFolder?.uri);
+            const client = await this.createClient(documentSelector, cwd, undefined, this.outputChannel, workspaceFolder?.uri, 'global');
             this.clients.set('global', client);
         }
     }
