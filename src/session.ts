@@ -72,6 +72,7 @@ export class Session {
     public info: SessionInfo;
     public sessionDir: string;
     public workingDir: string;
+    public resource: Uri | undefined;
     public workspaceData: WorkspaceData;
 
     constructor(sessionId: string, host: string, sessVersion: string, pipePath: string, socket: IpcSocket) {
@@ -85,6 +86,7 @@ export class Session {
         this.info = { version: '', command: '', start_time: '' };
         this.sessionDir = '';
         this.workingDir = '';
+        this.resource = undefined;
         this.workspaceData = { search: [], loaded_namespaces: [], globalenv: {} };
     }
 }
@@ -2063,7 +2065,7 @@ async function refreshActiveSession(session: Session): Promise<void> {
     sessionDir = session.sessionDir;
     workingDir = session.workingDir;
     workspaceData = session.workspaceData;
-    rLanguageService?.syncSessionState(workspaceData);
+    rLanguageService?.syncSessionState(workspaceData, session.resource, session.sessionId);
 
     if (sessionStatusBarItem) {
         const version = rVer.replace(/^R (?:version )?/, '').replace(/\s+\(.*/, '');
@@ -2100,13 +2102,13 @@ function isLocalHost(host: string): boolean {
     return host.length > 0 && host.toLocaleLowerCase() === os.hostname().toLocaleLowerCase();
 }
 
-async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
+async function findLocalTerminal(rPid: string): Promise<vscode.Terminal | undefined> {
     const candidates = new Map<number, vscode.Terminal>();
     for (const terminal of window.terminals) {
         const terminalPid = await terminal.processId;
         if (terminalPid === undefined || isTerminalClosed(terminal) || terminal.exitStatus) { continue; }
         if (String(terminalPid) === rPid) {
-            return String(terminalPid);
+            return terminal;
         }
         candidates.set(terminalPid, terminal);
     }
@@ -2122,7 +2124,7 @@ async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
         if (attachedRPids.has(String(pid))) { return undefined; }
         const terminal = candidates.get(pid);
         if (terminal && !isTerminalClosed(terminal) && !terminal.exitStatus && window.terminals.includes(terminal)) {
-            return String(pid);
+            return terminal;
         }
     }
     return undefined;
@@ -2185,9 +2187,11 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             }
 
             const rPid = typeof params.pid === 'string' || typeof params.pid === 'number' ? String(params.pid) : '';
-            const terminalPid = rPid && isLocalHost(host)
-                ? await findLocalTerminalPid(rPid)
+            const terminal = rPid && isLocalHost(host)
+                ? await findLocalTerminal(rPid)
                 : undefined;
+            const matchedTerminalPid = await terminal?.processId;
+            const terminalPid = matchedTerminalPid === undefined ? undefined : String(matchedTerminalPid);
             const selectedTerminal = window.activeTerminal;
             const selectedTerminalPid = terminalPid ? await selectedTerminal?.processId : undefined;
             if (socket.destroyed) {
@@ -2232,6 +2236,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             session.info = (params.info as SessionInfo | undefined) ?? { version: session.rVer, command: '', start_time: '' };
             session.sessionDir = params.tempdir;
             session.workingDir = params.wd;
+            session.resource = terminal ? rTerminal.getTerminalResource(terminal) : undefined;
 
             if (terminalPid) {
                 terminalSessionAttached.fire(terminalPid);
@@ -2465,8 +2470,8 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
     if (!session.socket.destroyed && session.socket !== closingSocket) {
         session.socket.destroy();
     }
+    rLanguageService?.syncSessionState(undefined, session.resource, session.sessionId);
     if (activeSession === session) {
-        rLanguageService?.syncSessionState();
         await clearActiveSession();
     }
 }
