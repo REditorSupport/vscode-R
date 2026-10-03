@@ -128,3 +128,7 @@ Call `View(x)` to open a table. The viewer loads rows on demand and applies colu
 * If you find a problem or have a feature request with the extension, please [find out](https://github.com/REditorSupport/vscode-R/issues) if there is a current issue you may upvote or otherwise [file an issue](https://github.com/REditorSupport/vscode-R/issues/new/choose).
 
 * Contributions are always welcome! Please see the [contributing guide](https://github.com/REditorSupport/vscode-R/wiki/Contributing) for more details.
+
+## Icon attribution
+
+The list viewer’s navigation and chevron icons are from Microsoft’s [VS Code Codicons](https://github.com/microsoft/vscode-codicons), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The icon artwork is unchanged.
