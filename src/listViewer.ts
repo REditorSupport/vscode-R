@@ -11,7 +11,7 @@ export function getListViewerScript(generation: number, initial: ListViewNavigat
     return `
     const vscode = acquireVsCodeApi();
     const generation = ${generation};
-    const vector = ${vector};
+    const vector = ${String(vector)};
     const pending = new Map();
     let nextRequestId = 0;
     const list = document.getElementById('list');
