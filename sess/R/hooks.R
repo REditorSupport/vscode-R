@@ -56,24 +56,44 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
   }
 
   show_dataview <- function(x, title = deparse(substitute(x))) {
-    # make sure title is computed.
+    # Capture the root before forcing x so View(x$a) shares the viewer for x.
+    original_expression <- substitute(x)
+    expression <- original_expression
+    while (is.call(expression) && is.symbol(expression[[1L]]) &&
+             as.character(expression[[1L]]) %in% c("$", "[[", "@")) {
+      expression <- expression[[2L]]
+    }
+    owner <- .sess_env$view_owner
+    if (is.null(owner) && missing(title) && is.symbol(expression)) {
+      owner <- as.character(expression)
+    }
     force(title)
 
-    if (dataview_is_table(x)) {
-      title_key <- paste(as.character(title), collapse = "\n")
-      dataview_registry <- .sess_env$dataview_registry
-      has_view_id <- nzchar(title_key) &&
-        exists(title_key, envir = dataview_registry, inherits = FALSE)
-      view_id <- if (has_view_id) {
-        get(title_key, envir = dataview_registry, inherits = FALSE)
-      } else {
-        id <- dataview_new_id()
-        if (nzchar(title_key)) {
-          assign(title_key, id, envir = dataview_registry)
-        }
-        id
+    view_type <- if (dataview_is_table(x)) {
+      "table"
+    } else if (is.list(x) || is.pairlist(x) || is.environment(x) || isS4(x)) {
+      "list"
+    } else if (is.atomic(x) && length(x) > 1L) {
+      "vector"
+    } else {
+      "object"
+    }
+    title_key <- paste(as.character(title), collapse = "\n")
+    owner <- owner %||% title_key
+    registry_key <- paste0(view_type, ":", owner)
+    dataview_registry <- .sess_env$dataview_registry
+    view_id <- if (nzchar(title_key) &&
+                     exists(registry_key, envir = dataview_registry, inherits = FALSE)) {
+      get(registry_key, envir = dataview_registry, inherits = FALSE)
+    } else {
+      id <- dataview_new_id()
+      if (nzchar(title_key)) {
+        assign(registry_key, id, envir = dataview_registry)
       }
+      id
+    }
 
+    if (view_type == "table") {
       registration <- dataview_register(x, view_id = view_id)
 
       notify_client("dataview", list(
@@ -82,19 +102,28 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
         type = "json",
         view_id = registration$view_id
       ))
-    } else if (is.list(x)) {
-      file_path <- tempfile(tmpdir = .sess_env$tempdir, fileext = ".json")
-      jsonlite::write_json(x, file_path, auto_unbox = TRUE, null = "null", na = "string")
+    } else if (view_type %in% c("list", "vector")) {
+      context <- .sess_env$listview_context
+      if (is.null(context) && missing(title)) {
+        context <- listview_expression_context(original_expression, parent.frame(), owner)
+      }
+      root <- if (is.null(context)) listview_state(x, title_key, owner) else context$root
+      root$type <- view_type
+      navigation <- if (is.null(context)) listview_navigation(root) else context$navigation
+      .sess_env$dataviews[[view_id]] <- root
       notify_client("dataview", list(
         title = title,
-        file = file_path,
-        source = "list",
-        type = "json"
+        source = view_type,
+        type = "json",
+        view_id = view_id,
+        navigation = navigation
       ))
     } else {
       code <- if (is.primitive(x)) utils::capture.output(print(x)) else deparse(x)
-      file_path <- tempfile(tmpdir = .sess_env$tempdir, fileext = ".R")
+      file_path <- .sess_env$dataviews[[view_id]]$file %||%
+        tempfile(tmpdir = .sess_env$tempdir, fileext = ".R")
       writeLines(code, file_path)
+      .sess_env$dataviews[[view_id]] <- list(type = "object", file = file_path)
       notify_client("dataview", list(
         title = title,
         file = file_path,

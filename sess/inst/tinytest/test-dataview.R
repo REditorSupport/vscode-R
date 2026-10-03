@@ -201,3 +201,50 @@ local({
     ), 2L, info = case_name)
   }
 })
+
+
+# Workspace children expose View for both structured and text-viewable objects.
+local({
+  selector <- list(kind = "index", value = 1L)
+  expect_true(sess:::workspace_child_item(data.frame(x = 1), "df", selector)$viewable)
+  expect_true(sess:::workspace_child_item(matrix(1:4, 2), "matrix", selector)$viewable)
+  expect_true(sess:::workspace_child_item(list(x = 1), "list", selector)$viewable)
+  expect_true(sess:::workspace_child_item(new.env(), "environment", selector)$viewable)
+  expect_true(sess:::workspace_child_item(pairlist(x = 1), "pairlist", selector)$viewable)
+  methods::setClass("list_viewer_test_slots", slots = c(child = "list"))
+  on.exit(methods::removeClass("list_viewer_test_slots"), add = TRUE)
+  object <- methods::new("list_viewer_test_slots", child = list(x = 1))
+  expect_true(sess:::workspace_child_item(object, "S4", selector)$viewable)
+  expect_true(sess:::workspace_child_item(1:3, "vector", selector)$viewable)
+})
+
+# List pages inspect only the requested children, with stable indices across pages.
+local({
+  runtime <- sess:::.sess_env
+  previous <- runtime$dataviews
+  on.exit(runtime$dataviews <- previous, add = TRUE)
+  object <- new.env(parent = emptyenv())
+  child_names <- paste0("item", seq_len(501L))
+  for (name in child_names[1:500]) assign(name, 1L, envir = object)
+  delayedAssign("item501", stop("unrequested binding was evaluated"), assign.env = object)
+  runtime$dataviews$paging_test <- list(
+    type = "list", data = object, kind = "name", names = child_names, title = "object"
+  )
+
+  first <- sess:::get_workspace_children(view_id = "paging_test", start = 1L)
+  expect_length(first$children, 500L)
+  expect_equal(first$next_start, 501L)
+  expect_equal(vapply(first$children, `[[`, 1L, "index"), 1:500)
+
+  # Removing a binding must not shift later indices or fail the next page.
+  rm("item501", envir = object)
+  last <- sess:::get_workspace_children(view_id = "paging_test", start = 501L)
+  expect_equal(last$children[[1L]]$label, "$ item501")
+  expect_false(last$children[[1L]]$viewable)
+  expect_null(last$next_start)
+  makeActiveBinding("item501", function() stop("active binding was evaluated"), object)
+  last <- sess:::get_workspace_children(view_id = "paging_test", start = 501L)
+  expect_equal(last$children[[1L]]$str, "(active-binding)")
+  expect_false(last$children[[1L]]$viewable)
+  expect_length(sess:::get_workspace_children(view_id = "paging_test", start = 502L)$children, 0L)
+})
