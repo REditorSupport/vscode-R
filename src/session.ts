@@ -14,7 +14,7 @@ import * as rTerminal from './rTerminal';
 import { getProcessAncestors } from './processTree';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
-import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
+import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher, rLanguageService } from './extension';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import type { RSessionConnectionInfo } from './api';
 
@@ -2063,6 +2063,7 @@ async function refreshActiveSession(session: Session): Promise<void> {
     sessionDir = session.sessionDir;
     workingDir = session.workingDir;
     workspaceData = session.workspaceData;
+    rLanguageService?.syncSessionState(workspaceData);
 
     if (sessionStatusBarItem) {
         const version = rVer.replace(/^R (?:version )?/, '').replace(/\s+\(.*/, '');
@@ -2465,6 +2466,7 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
         session.socket.destroy();
     }
     if (activeSession === session) {
+        rLanguageService?.syncSessionState();
         await clearActiveSession();
     }
 }
