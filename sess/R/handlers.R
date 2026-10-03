@@ -133,14 +133,161 @@ workspace_child_label <- function(name, index) {
   }
 }
 
-handle_workspace_view <- function(name, path = list()) {
-  title <- paste0(c(name, vapply(path, function(selector) switch(selector$kind,
-    index = if (!is.null(selector$name) && !is.na(selector$name) && nzchar(selector$name)) paste0("$", selector$name) else paste0("[[", selector$value, "]]"),
-    name = paste0("$", selector$value),
-    slot = paste0("@", selector$value)
-  ), "")), collapse = "")
-  utils::View(workspace_object(name, path), title = title)
+# Keep one viewer of each type for a workspace root, including its descendants.
+workspace_show_view <- function(object, title, owner, context = NULL) {
+  previous <- .sess_env$view_owner
+  previous_context <- .sess_env$listview_context
+  on.exit({
+    .sess_env$view_owner <- previous
+    .sess_env$listview_context <- previous_context
+  }, add = TRUE)
+  .sess_env$view_owner <- owner
+  .sess_env$listview_context <- context
+  utils::View(object, title = title)
   TRUE
+}
+
+handle_workspace_view <- function(name, path = list()) {
+  suffix <- vapply(path, function(selector) {
+    switch(selector$kind,
+      index = {
+        if (!is.null(selector$name) && !is.na(selector$name) && nzchar(selector$name)) {
+          paste0("$", selector$name)
+        } else {
+          paste0("[[", selector$value, "]]")
+        }
+      },
+      name = paste0("$", selector$value),
+      slot = paste0("@", selector$value)
+    )
+  }, "")
+  title <- paste0(c(name, suffix), collapse = "")
+  root <- listview_state(workspace_object(name), name, name)
+  context <- listview_context(root, path)
+  workspace_show_view(workspace_object(name, path), title, name, context)
+}
+
+listview_is_list <- function(object) {
+  !dataview_is_table(object) &&
+    (is.list(object) || is.pairlist(object) || is.environment(object) || isS4(object))
+}
+
+listview_state <- function(object, title, owner) {
+  kind <- if (is.environment(object)) "name" else if (isS4(object)) "slot" else "index"
+  list(
+    type = "list", data = object, title = title, owner = owner, kind = kind,
+    names = switch(kind,
+      name = workspace_env_names(object),
+      slot = methods::slotNames(object),
+      index = names(object)
+    ),
+    child_names = new.env(parent = emptyenv())
+  )
+}
+
+# Resolve workspace selectors once; navigation paths are relative to the retained root.
+listview_context <- function(root, selectors) {
+  path <- list()
+  for (selector in selectors) {
+    location <- listview_location(root, path)
+    index <- if (selector$kind == "index" && is.numeric(selector$value)) {
+      selector$value
+    } else {
+      match(selector$value, location$names)
+    }
+    path <- c(path, list(index))
+  }
+  location <- listview_location(root, path)
+  list(root = root, navigation = list(
+    title = location$title, path = I(path), breadcrumbs = I(location$breadcrumbs)
+  ))
+}
+
+# Direct View(x$a) calls can also start with a complete breadcrumb path.
+listview_expression_context <- function(expression, envir, owner) {
+  tryCatch({
+    selectors <- list()
+    while (is.call(expression) && length(expression) == 3L &&
+             is.symbol(expression[[1L]])) {
+      operator <- as.character(expression[[1L]])
+      if (!operator %in% c("$", "[[", "@")) return(NULL)
+      value <- expression[[3L]]
+      if (operator %in% c("$", "@") && is.symbol(value)) value <- as.character(value)
+      if (length(value) != 1L || !(is.character(value) || is.numeric(value))) return(NULL)
+      selectors <- c(list(list(kind = "index", value = value)), selectors)
+      expression <- expression[[2L]]
+    }
+    if (!is.symbol(expression)) return(NULL)
+    name <- as.character(expression)
+    root <- listview_state(get(name, envir = envir, inherits = TRUE), name, owner)
+    listview_context(root, selectors)
+  }, error = function(e) NULL)
+}
+
+listview_navigation <- function(state, path = list()) {
+  location <- listview_location(state, path)
+  if (!listview_is_list(location$data) && length(path)) stop("Not a list view")
+  list(title = location$title, path = I(path), breadcrumbs = I(location$breadcrumbs))
+}
+
+handle_listview_navigate <- function(view_id, path = list()) {
+  state <- dataview_get_state(view_id)
+  if (!identical(state$type, "list")) stop("Not a list view")
+  listview_navigation(state, path)
+}
+
+listview_location <- function(state, path = list()) {
+  visited <- integer()
+  state$breadcrumbs <- list(list(label = state$title, path = I(list())))
+  for (index in path) {
+    child_count <- if (state$kind == "index") length(state$data) else length(state$names)
+    if (length(index) != 1L || !is.numeric(index) || is.na(index) ||
+          index != as.integer(index) || index < 1L || index > child_count) {
+      stop("Invalid list item index")
+    }
+    child_name <- if (is.null(state$names)) NULL else state$names[[index]]
+    if (state$kind == "name" &&
+          (!exists(child_name, envir = state$data, inherits = FALSE) ||
+             bindingIsActive(child_name, state$data))) {
+      stop("List item is unavailable")
+    }
+    child <- switch(state$kind,
+      name = get(child_name, envir = state$data, inherits = FALSE),
+      slot = methods::slot(state$data, child_name),
+      index = state$data[[index]]
+    )
+    state$title <- if (state$kind == "slot") {
+      paste0(state$title, "@", child_name)
+    } else if (!is.null(child_name) && !is.na(child_name) && nzchar(child_name)) {
+      paste0(state$title, "$", child_name)
+    } else {
+      paste0(state$title, "[[", index, "]]")
+    }
+    state$data <- child
+    state$kind <- if (is.environment(child)) "name" else if (isS4(child)) "slot" else "index"
+    state$names <- switch(state$kind,
+      name = workspace_env_names(child),
+      slot = methods::slotNames(child),
+      index = names(child)
+    )
+    visited <- c(visited, index)
+    label <- if (!is.null(child_name) && !is.na(child_name) && nzchar(child_name)) {
+      child_name
+    } else {
+      paste0("[[", index, "]]")
+    }
+    state$breadcrumbs <- c(state$breadcrumbs, list(list(label = label, path = I(as.list(visited)))))
+    # Environment bindings can disappear while their rows remain visible.
+    if (state$kind == "name" && is.environment(state$child_names)) {
+      key <- paste(visited, collapse = "/")
+      if (exists(key, envir = state$child_names, inherits = FALSE)) {
+        state$names <- get(key, envir = state$child_names, inherits = FALSE)
+      } else {
+        assign(key, state$names, envir = state$child_names)
+      }
+    }
+  }
+  state
 }
 
 get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_id = NULL) {
@@ -156,6 +303,7 @@ get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_
     } else {
       state <- dataview_get_state(view_id)
       if (!identical(state$type, "list")) stop("Not a list view")
+      state <- listview_location(state, path)
       object <- state$data
       kind <- state$kind
       child_names <- state$names
@@ -198,7 +346,10 @@ get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_
       )
       summary <- trimws(try_capture_str(child))
       if (!is.null(view_id)) {
-        list(label = label, str = summary, viewable = TRUE, index = index)
+        list(
+          label = label, str = summary, viewable = TRUE, index = index,
+          has_children = workspace_child_count(child) > 0L
+        )
       } else {
         selector <- if (kind == "index") {
           list(kind = kind, value = index, name = child_name)
@@ -215,36 +366,17 @@ get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_
   })
 }
 
-handle_listview_view <- function(view_id, index) {
+handle_listview_view <- function(view_id, index, path = list()) {
   state <- .sess_env$dataviews[[as.character(view_id)]]
   if (is.null(state) || !identical(state$type, "list")) {
     return(FALSE)
   }
-  index <- as.integer(index)
-  child_count <- if (state$kind == "index") length(state$data) else length(state$names)
-  if (length(index) != 1L || is.na(index) || index < 1L || index > child_count) {
-    return(FALSE)
+  location <- tryCatch(listview_location(state, c(path, list(index))), error = function(e) NULL)
+  if (is.null(location)) return(FALSE)
+  if (listview_is_list(location$data)) {
+    return(listview_navigation(state, c(path, list(index))))
   }
-  child_name <- if (is.null(state$names)) NULL else state$names[[index]]
-  if (state$kind == "name" &&
-        (!exists(child_name, envir = state$data, inherits = FALSE) ||
-           bindingIsActive(child_name, state$data))) {
-    return(FALSE)
-  }
-  child <- switch(state$kind,
-    name = get(child_name, envir = state$data, inherits = FALSE),
-    slot = methods::slot(state$data, child_name),
-    index = state$data[[index]]
-  )
-  title <- if (state$kind == "slot") {
-    paste0(state$title, "@", child_name)
-  } else if (!is.null(child_name) && !is.na(child_name) && nzchar(child_name)) {
-    paste0(state$title, "$", child_name)
-  } else {
-    paste0(state$title, "[[", index, "]]")
-  }
-  utils::View(child, title = title)
-  TRUE
+  workspace_show_view(location$data, location$title, state$owner %||% state$title)
 }
 
 handle_hover <- function(expr_str) {

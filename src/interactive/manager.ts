@@ -1184,7 +1184,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             switch (message.action) {
                 case 'table':
                     if (data.kind !== 'table') { return; }
-                    await session.showDataView('table', 'json', `${view.client.manifest.label}: ${data.fullViewId ? 'full table' : 'table'}`, '', 'Beside', String(data.fullViewId ?? data.viewId), view.target); break;
+                    await session.showDataView('table', 'json', `${view.client.manifest.label}: ${data.fullViewId ? 'full table' : 'table'}`, '', 'Beside', String(data.fullViewId ?? data.viewId), undefined, view.target); break;
                 case 'page': {
                     if (data.kind !== 'table') { return; }
                     result = await queryTablePage(data, message, request => view.client.request('inspect', request)); break;

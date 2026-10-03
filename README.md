@@ -138,3 +138,7 @@ Call `View(x)` to open a table. The viewer loads rows on demand and applies colu
 ## Persistent R Interactive
 
 This experimental feature provides native VS Code Interactive windows with independent plain-R or arf sessions, including adoption of existing arf sessions over Remote SSH. See the [setup and usage guide](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive) for session switching, persistence, rich outputs, and platform requirements.
+
+## Icon attribution
+
+The list viewer’s navigation and chevron icons are from Microsoft’s [VS Code Codicons](https://github.com/microsoft/vscode-codicons), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The icon artwork is unchanged.
