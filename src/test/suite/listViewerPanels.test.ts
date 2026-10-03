@@ -62,11 +62,13 @@ suite('List viewer panels', () => {
         assert.strictEqual(panels[0].title, 'x$a$b');
         await session.showDataView('list', 'json', 'y', '', 'Two', 'test-list-y');
         assert.strictEqual(create.callCount, 3);
+        await session.showDataView('vector', 'json', 'x$id', '', 'Two', 'test-vector-x');
+        assert.strictEqual(create.callCount, 4);
         const first = panels.shift();
         assert.ok(first);
         first.dispose();
         await session.showDataView('list', 'json', 'x', '', 'Two', 'test-list-x');
-        assert.strictEqual(create.callCount, 4);
+        assert.strictEqual(create.callCount, 5);
     });
 
     test('supported workspace children retain open actions alongside expansion', () => {

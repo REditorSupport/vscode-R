@@ -98,6 +98,21 @@ local({
   root_table_id <- id("table", table_root)
   expect_true(request("workspace_view", list(
     name = table_root,
+    path = list(selector(1L, "id"))
+  )))
+  vector_id <- id("vector", table_root)
+  expect_false(identical(vector_id, root_table_id))
+  vector_page <- request("workspace_children", list(
+    view_id = vector_id,
+    path = list(1L),
+    start = 1L
+  ))
+  expect_equal(vapply(vector_page$children, `[[`, "", "label"), c("[1]", "[2]"))
+  expect_equal(vapply(vector_page$children, `[[`, "", "str"), c("1", "2"))
+  expect_false(any(vapply(vector_page$children, `[[`, FALSE, "viewable")))
+  expect_false(any(vapply(vector_page$children, `[[`, FALSE, "has_children")))
+  expect_true(request("workspace_view", list(
+    name = table_root,
     path = list(selector(2L, "nested"))
   )))
   table_list_id <- id("list", table_root)
@@ -123,6 +138,22 @@ local({
   direct_table <- id("table", "x")
   utils::View(x$a$df)
   expect_identical(id("table", "x"), direct_table)
+  utils::View(seq_len(501L))
+  direct_vector <- id("vector", "seq_len(501L)")
+  first_vector_page <- sess:::get_workspace_children(
+    view_id = direct_vector,
+    start = 1L
+  )
+  expect_length(first_vector_page$children, 500L)
+  expect_equal(first_vector_page$next_start, 501L)
+  last_vector_page <- sess:::get_workspace_children(
+    view_id = direct_vector,
+    start = 501L
+  )
+  expect_length(last_vector_page$children, 1L)
+  expect_equal(last_vector_page$children[[1L]]$label, "[501]")
+  expect_equal(last_vector_page$children[[1L]]$str, "501")
+
   utils::View(x$a$b$value)
   text_id <- id("object", "x")
   text_file <- runtime$dataviews[[text_id]]$file

@@ -230,13 +230,22 @@ listview_navigation <- function(state, path = list()) {
 
 handle_listview_navigate <- function(view_id, path = list()) {
   state <- dataview_get_state(view_id)
-  if (!identical(state$type, "list")) stop("Not a list view")
+  if (!state$type %in% c("list", "vector")) stop("Not a list view")
   location <- listview_location(state, path)
   if (dataview_is_table(location$data)) {
     return(workspace_show_view(
       location$data,
       location$title,
       state$owner %||% state$title
+    ))
+  }
+  if (identical(state$type, "vector") && listview_is_list(location$data)) {
+    navigation <- listview_navigation(state, path)
+    return(workspace_show_view(
+      location$data,
+      location$title,
+      state$owner %||% state$title,
+      list(root = state, navigation = navigation)
     ))
   }
   listview_navigation(state, path)
@@ -308,13 +317,22 @@ get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_
       )
     } else {
       state <- dataview_get_state(view_id)
-      if (!identical(state$type, "list")) stop("Not a list view")
+      if (!state$type %in% c("list", "vector")) stop("Not a list view")
+      vector_view <- identical(state$type, "vector")
       state <- listview_location(state, path)
       object <- state$data
       kind <- state$kind
       child_names <- state$names
     }
-    child_count <- if (kind == "index") workspace_child_count(object) else length(child_names)
+    child_count <- if (kind == "index") {
+      if (!is.null(view_id) && isTRUE(vector_view)) {
+        length(object)
+      } else {
+        workspace_child_count(object)
+      }
+    } else {
+      length(child_names)
+    }
     start <- max(1L, as.integer(start))
     end <- min(child_count, start + workspace_child_page_size - 1L)
     if (start > end) {
@@ -323,7 +341,9 @@ get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_
 
     children <- lapply(seq.int(start, end), function(index) {
       child_name <- if (is.null(child_names)) NULL else child_names[[index]]
-      label <- if (kind == "slot") {
+      label <- if (!is.null(view_id) && isTRUE(vector_view)) {
+        paste0("[", index, "]")
+      } else if (kind == "slot") {
         paste0("@ ", child_name)
       } else {
         workspace_child_label(child_name, index)
@@ -350,11 +370,19 @@ get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_
         slot = methods::slot(object, child_name),
         index = object[[index]]
       )
-      summary <- trimws(try_capture_str(child))
+      summary <- if (!is.null(view_id) && isTRUE(vector_view)) {
+        if (is.character(child)) {
+          encodeString(child, quote = "\"", na.encode = TRUE)
+        } else {
+          paste(format(child, trim = TRUE), collapse = " ")
+        }
+      } else {
+        trimws(try_capture_str(child))
+      }
       if (!is.null(view_id)) {
         list(
-          label = label, str = summary, viewable = TRUE, index = index,
-          has_children = workspace_child_count(child) > 0L
+          label = label, str = summary, viewable = !isTRUE(vector_view), index = index,
+          has_children = !isTRUE(vector_view) && workspace_child_count(child) > 0L
         )
       } else {
         selector <- if (kind == "index") {
