@@ -231,6 +231,14 @@ listview_navigation <- function(state, path = list()) {
 handle_listview_navigate <- function(view_id, path = list()) {
   state <- dataview_get_state(view_id)
   if (!identical(state$type, "list")) stop("Not a list view")
+  location <- listview_location(state, path)
+  if (dataview_is_table(location$data)) {
+    return(workspace_show_view(
+      location$data,
+      location$title,
+      state$owner %||% state$title
+    ))
+  }
   listview_navigation(state, path)
 }
 

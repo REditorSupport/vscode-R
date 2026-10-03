@@ -6,13 +6,14 @@ local({
   previous_registry <- runtime$dataview_registry
   root <- paste0(".sess_listview_test_", Sys.getpid())
   other <- paste0(root, "_other")
+  table_root <- paste0(root, "_table")
   pipe <- processx::conn_create_pipepair()
   on.exit({
     sess:::runtime_stop()
     runtime$con <- previous_con
     runtime$dataviews <- previous_views
     runtime$dataview_registry <- previous_registry
-    rm(list = c(root, other), envir = .GlobalEnv)
+    rm(list = c(root, other, table_root), envir = .GlobalEnv)
     lapply(pipe, close)
   }, add = TRUE)
   runtime$con <- pipe[[2L]]
@@ -88,6 +89,24 @@ local({
   expect_false(identical(id("list", other), list_id))
   expect_true(request("workspace_view", list(name = other, path = list(selector(2L, "df")))))
   expect_false(identical(id("table", other), table_id))
+
+  # A list column can use the List Viewer without changing the table root's viewer.
+  table_object <- data.frame(id = 1:2)
+  table_object$nested <- I(list(list(value = 1L), list(value = 2L)))
+  assign(table_root, table_object, envir = .GlobalEnv)
+  expect_true(request("workspace_view", list(name = table_root)))
+  root_table_id <- id("table", table_root)
+  expect_true(request("workspace_view", list(
+    name = table_root,
+    path = list(selector(2L, "nested"))
+  )))
+  table_list_id <- id("list", table_root)
+  expect_false(identical(table_list_id, root_table_id))
+  expect_true(request("listview_navigate", list(
+    view_id = table_list_id,
+    path = list()
+  )))
+  expect_identical(id("table", table_root), root_table_id)
 
   # Direct View calls also group nested expressions by their root.
   utils::View(x)
