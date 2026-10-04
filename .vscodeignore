@@ -3,8 +3,11 @@
 !README.md
 !CHANGELOG.md
 !LICENSE
-!R/**
-R/tests/**
+!R/*.R
+!R/cppProperties/**
+!R/help/**
+!R/rmarkdown/**
+!R/template/**
 !html/**/*.ejs
 !html/**/*.css
 !html/**/*.js
