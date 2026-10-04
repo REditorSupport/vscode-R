@@ -474,13 +474,14 @@ suite('R Terminal', () => {
     });
 
     test('console arguments, substitution, and send delay use the R terminal workspace resource', async () => {
+        const consoleSendDelay = 17;
         const resource = vscode.Uri.file(path.join(path.sep, 'workspace', 'project'));
         sandbox.stub(util, 'getCurrentWorkspaceFolder').returns({ uri: resource } as vscode.WorkspaceFolder);
         const requestedResources: Array<vscode.Uri | undefined> = [];
         const configStub = configuration({
             consoleArgs: ['--project=${workspaceFolder}'],
             'rterm.option': ['--legacy'],
-            consoleSendDelay: 17,
+            consoleSendDelay,
             rtermSendDelay: 4
         }, {}, true);
         sandbox.stub(util, 'config').callsFake((requestedResource?: vscode.Uri) => {
@@ -515,7 +516,7 @@ suite('R Terminal', () => {
 
         assert.deepStrictEqual(options.shellArgs, [`--project=${resource.fsPath}`]);
         assert.ok(requestedResources.includes(resource), 'configuration should be requested for the R terminal resource');
-        assert.deepStrictEqual(delayStub.args, [[200], [17]],
+        assert.deepStrictEqual(delayStub.args, [[200], [consoleSendDelay]],
             'startup fallback should be followed by the explicit canonical per-line send delay');
         assert.deepStrictEqual(sent, ['first', 'second']);
         rTerminal.deleteTerminal(fakeTerminal as unknown as vscode.Terminal);
