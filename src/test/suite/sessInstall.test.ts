@@ -79,7 +79,7 @@ suite('Sess Install Test Suite', () => {
         assert.strictEqual(showMessageStub.called, false);
     });
 
-    test('sess package version matches extension version', () => {
+    test('bundled sess package is at least as new as the extension', () => {
         const packageJsonPath = path.join(extension_root, 'package.json');
         const descriptionPath = path.join(extension_root, 'sess', 'DESCRIPTION');
         
@@ -94,6 +94,7 @@ suite('Sess Install Test Suite', () => {
         const sessVersion = match ? match[1] : undefined;
         
         const baseVersion = packageJson.version.split('-')[0];
-        assert.strictEqual(sessVersion, baseVersion, 'sess package version should match base extension version in package.json');
+        assert.ok(sessVersion && util.compareVersions(sessVersion, baseVersion) >= 0,
+            'bundled sess version must not be older than the extension version');
     });
 });

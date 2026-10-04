@@ -3,6 +3,7 @@
   "displayName": "R",
   "description": "R Extension for Visual Studio Code",
   "version": "3.0.1",
+  "packageManager": "pnpm@11.27.1",
   "author": "REditorSupport",
   "license": "SEE LICENSE IN LICENSE",
   "publisher": "REditorSupport",
@@ -2213,6 +2214,8 @@
         "r.plot.useHttpgd": {
           "type": "boolean",
           "default": false,
+          "scope": "window",
+          "ignoreSync": true,
           "markdownDescription": "Legacy compatibility setting for selecting the httpgd plot viewer. When `#r.plot.backend#` is `auto`, setting this to `true` selects the `httpgd` backend. Workspace settings take precedence over user settings. Within the same scope, an explicit `#r.plot.backend#` value takes precedence.\n\nRequires the `httpgd` R package version 1.2.0 or later.",
           "markdownDeprecationMessage": "Deprecated: use `#r.plot.backend#` instead. This setting is retained for compatibility with existing configurations but will be removed in a future release.",
           "deprecationMessage": "Deprecated: use r.plot.backend instead. This setting is retained for compatibility with existing configurations but will be removed in a future release."
@@ -2220,19 +2223,23 @@
         "r.plot.backend": {
           "type": "string",
           "default": "auto",
+          "scope": "window",
+          "ignoreSync": true,
           "enum": [
             "auto",
             "standard",
             "httpgd",
-            "jgd"
+            "jgd",
+            "native"
           ],
           "markdownEnumDescriptions": [
             "Automatic: tries JGD first (if installed), then httpgd, then standard. Existing `#r.plot.useHttpgd#` configurations remain supported.",
             "Standard static plot viewer (PNG/SVG)",
             "httpgd-based interactive plot viewer (requires `httpgd` R package)",
-            "JGD-based interactive plot viewer (requires `jgd` R package)"
+            "JGD-based interactive plot viewer (requires `jgd` R package)",
+            "Use R's configured graphics device without plot integration or an automatic VS Code plot viewer"
           ],
-          "markdownDescription": "The canonical setting for selecting the plot backend.\n\nWhen set to `auto`, the best available backend is used (JGD if installed, then httpgd, then standard). For backwards compatibility, setting `#r.plot.useHttpgd#` to `true` selects httpgd while this setting remains `auto`; workspace settings take precedence over user settings, with an explicit backend value preferred within the same scope."
+          "markdownDescription": "The canonical setting for selecting the plot backend. `standard` uses the VS Code static plot viewer; `native` leaves R's configured graphics device untouched.\n\nWhen set to `auto`, the best available backend is used (JGD if installed, then httpgd, then standard). For backwards compatibility, setting `#r.plot.useHttpgd#` to `true` selects httpgd while this setting remains `auto`; workspace settings take precedence over user settings, with an explicit backend value preferred within the same scope."
         },
         "r.plot.jgd.historyLimit": {
           "type": "number",
@@ -2497,16 +2504,16 @@
   },
   "scripts": {
     "vscode:prepublish": "node esbuild.js --production",
-    "changelog": "npx git-cliff v2.8.5.. -o",
+    "changelog": "git-cliff v2.8.5.. -o",
     "compile": "node esbuild.js",
-    "build": "npm run compile && Rscript -e \"remotes::install_local('sess', dependencies=TRUE, force=TRUE)\"",
+    "build": "pnpm run compile && Rscript -e \"remotes::install_local('sess', dependencies=TRUE, force=TRUE)\"",
     "watch": "node esbuild.js --watch",
     "clean": "rimraf out",
-    "pretest": "npm run compile && npm run clean && tsc -p ./",
+    "pretest": "pnpm run compile && pnpm run clean && tsc -p ./",
     "test": "vscode-test",
     "lint": "eslint src --ext ts && Rscript -e \"lintr::lint_package('sess')\"",
-    "test:interactive": "npm run compile && tsc && mocha out/test/suite/arfExecutable.test.js out/test/suite/nodeExecutable.test.js out/test/suite/plotSvg.test.js out/test/suite/interactiveCore.test.js out/test/suite/interactiveBackend.test.js out/test/suite/interactiveLibraries.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000",
-    "test:interactive:examples": "npm run compile && tsc && node src/test/examples/run.cjs"
+    "test:interactive": "pnpm run compile && tsc && mocha out/test/suite/arfExecutable.test.js out/test/suite/nodeExecutable.test.js out/test/suite/plotSvg.test.js out/test/suite/interactiveCore.test.js out/test/suite/interactiveBackend.test.js out/test/suite/interactiveLibraries.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000",
+    "test:interactive:examples": "pnpm run compile && tsc && node src/test/examples/run.cjs"
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.35",
@@ -2525,12 +2532,15 @@
     "@typescript-eslint/parser": "^5.62.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^3.1.0",
-    "esbuild": "^0.27.4",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.28.1",
     "eslint": "^7.32.0",
     "eslint-plugin-jsdoc": "^35.5.1",
     "git-cliff": "^2.12.0",
     "glob": "^13.0.6",
     "mocha": "^11.7.5",
+    "ovsx": "^0.10.8",
+    "rimraf": "3.0.2",
     "sinon": "^15.2.0",
     "typescript": "~5.8.3"
   },
@@ -2544,7 +2554,7 @@
     "httpgd": "0.1.6",
     "jquery": "^3.7.1",
     "jquery.json-viewer": "^1.5.0",
-    "js-yaml": "^4.1.1",
+    "js-yaml": "^4.3.2",
     "node-fetch": "^2.7.0",
     "vscode-languageclient": "^9.0.1",
     "winreg": "^1.2.5"

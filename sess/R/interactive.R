@@ -74,7 +74,7 @@ interactive_start <- function(config, mirror = TRUE) {
   options(sess.quiet = TRUE)
   .sess_env$interactive_token <- cfg$token
   Sys.setenv(JGD_SOCKET = cfg$jgd, SESS_ENDPOINT = cfg$sess)
-  connect(endpoint = cfg$sess, use_httpgd = FALSE, use_jgd = isTRUE(cfg$useJgd))
+  connect(endpoint = cfg$sess, plot_backend = if (isTRUE(cfg$useJgd)) "jgd" else "standard")
   if (is.null(.sess_env$con)) stop("Could not connect to the session agent")
   .Call("sess_bridge_start", cfg$console, cfg$token, mirror, PACKAGE = "sess")
   .sess_env$interactive_connected <- TRUE

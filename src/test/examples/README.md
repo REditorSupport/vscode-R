@@ -5,7 +5,7 @@
 From the repository root, install the normal Interactive test dependencies plus `ggplot2`, `dplyr`, `DT`, and `plotly` into a test library, then run:
 
 ```sh
-R_LIBS=/path/to/test-library npm run test:interactive:examples
+R_LIBS=/path/to/test-library pnpm run test:interactive:examples
 ```
 
 `VSCR_EXAMPLE_OUTPUT` selects the result directory (otherwise a new temporary directory is printed). Use a fresh directory for each run. Set `VSCR_TEST_PROVIDER=arf` and optionally `ARF_PATH` for arf, or `VSCR_TEST_STATIC=1` for standard graphics. JGD runs need `jgd` and `systemfonts`; the standard backend uses `svglite`, falling back to PNG.
@@ -15,7 +15,7 @@ R_LIBS=/path/to/test-library npm run test:interactive:examples
 `research.json` adds twelve end-to-end research workflows: CSV import and cleaning, data.table joins/reshape, dplyr/tidyr summaries, descriptive statistics and tests, linear and logistic regression, bootstrap reproducibility, paged model diagnostics, faceted plots, survival analysis, file/model export, and a 100,000-row table. These use built-in data and assert numerical results, output kinds, printed model summaries, and diagnostic page counts. Install `data.table`, `ggplot2`, `dplyr`, `tidyr`, `survival`, and `svglite` in the test library, then run:
 
 ```sh
-R_LIBS=/path/to/test-library VSCR_EXAMPLE_SUITE=research npm run test:interactive:examples
+R_LIBS=/path/to/test-library VSCR_EXAMPLE_SUITE=research pnpm run test:interactive:examples
 ```
 
 The same provider/backend variables apply to all suites. When testing in parallel, compile once first and invoke `node src/test/examples/run.cjs` directly; do not rebuild assets while another test is using them. Cases share a disposable R session, as in a continuing analysis. Their files stay in its temporary working directory and are removed afterward. The recorded timings include polling and a 350 ms output-settle delay; they are not execution benchmarks.

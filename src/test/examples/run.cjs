@@ -1,4 +1,4 @@
-// Run after npm run compile && npx tsc. See README.md for each suite's packages.
+// Run after pnpm run compile && pnpm exec tsc. See README.md for each suite's packages.
 // Output stays in a disposable directory; no downloads or package installations.
 const assert = require('assert');
 const fs = require('fs');

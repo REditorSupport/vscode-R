@@ -63,7 +63,7 @@ local({
     expect_identical(getTaskCallbackNames(), original_callbacks)
     expect_identical(getHook("plot.new"), original_plot_hook)
   }
-  opts <- list(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  opts <- list(use_rstudioapi = FALSE, plot_backend = "standard")
   listen()
   expect_error(do.call(env$connect, c(list(endpoint = endpoint), opts)),
                "injected runtime failure")

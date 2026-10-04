@@ -236,6 +236,25 @@ suite('R Terminal', () => {
         assert.strictEqual(options.env['SESS_PLOT_BACKEND'], 'standard');
     });
 
+    test('makeTerminalOptions passes native to sess without a JGD socket', async () => {
+        sandbox.stub(util, 'config').returns(configuration({
+            sessionWatcher: true,
+            'plot.backend': 'native',
+            'plot.useHttpgd': true,
+        }));
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        const options = await rTerminal.makeTerminalOptions();
+        const discoveryFile = options.env?.['SESS_DISCOVERY_FILE'];
+        try {
+            assert.strictEqual(options.env?.['SESS_PLOT_BACKEND'], 'native');
+            assert.strictEqual(options.env?.['JGD_SOCKET'], undefined);
+        } finally {
+            if (typeof discoveryFile === 'string') {
+                await fs.remove(discoveryFile);
+            }
+        }
+    });
+
     test('makeTerminalOptions does not set session watcher env if disabled', async () => {
         const configStub = {
             get: (key: string) => {

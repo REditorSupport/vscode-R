@@ -41,7 +41,7 @@ for other changes and upgrade notes.
     <summary>Install the development version</summary>
 
     The [`latest`](https://github.com/REditorSupport/vscode-R/releases/tag/latest)
-    pre-release is rebuilt from every push to `main`. Download and install it:
+    pre-release is updated after successful verification of a push to `main`. Download and install it:
 
     ```sh
     curl -fsSL -o vscode-R.vsix https://github.com/REditorSupport/vscode-R/releases/download/latest/vscode-R.vsix
@@ -77,6 +77,10 @@ For example, assuming that you have installed `arf` and `jgd`, your user `settin
 ```
 
 Please consult the relevant installation wiki pages for your OS ([Windows](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Windows) | [macOS](https://github.com/REditorSupport/vscode-R/wiki/Installation:-macOS) | [Linux](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Linux)) for more detailed instructions.
+
+Set `r.plot.backend` to `"native"` to use R's configured graphics device without
+opening the VS Code plot viewer automatically. The `"standard"` backend continues
+to display static plots in VS Code.
 
 ## Features
 
@@ -121,11 +125,13 @@ Call `View(x)` to open a table. The viewer loads rows on demand and applies colu
 * Columns fit the available width by default and adapt when the viewer is resized. **Size to content** sizes the currently displayed cells, up to 480 pixels, and keeps those widths; **Fit width** switches back to filling the viewer. Manually resized columns retain their widths while the remaining flexible columns share the space. Hover over a cell to see its full value.
 * Repeated `View()` calls for the same object retain the viewer's sizing mode, column layout, sorting, filters, and page size when the column names, order, and types are unchanged. Refreshed data starts on the first page. **Reset view** restores fit-width sizing, the default layout, filters, sorting, and configured page size.
 
-## Questions, issues, feature requests, and contributions
+## Questions, bug reports, ideas, and contributions
 
-* If you have a question about accomplishing something in general with the extension, please [start a discussion](https://github.com/REditorSupport/vscode-R/discussions) or [ask on Stack Overflow](https://stackoverflow.com/questions/tagged/visual-studio-code+r).
+* If you have a question, need help with setup or troubleshooting, or are unsure whether you have found a bug, please [start a Q&A discussion](https://github.com/REditorSupport/vscode-R/discussions/new?category=q-a).
 
-* If you find a problem or have a feature request with the extension, please [find out](https://github.com/REditorSupport/vscode-R/issues) if there is a current issue you may upvote or otherwise [file an issue](https://github.com/REditorSupport/vscode-R/issues/new/choose).
+* If you have an idea for a new feature or behavior change, please [start an Ideas discussion](https://github.com/REditorSupport/vscode-R/discussions/new?category=ideas).
+
+* If you find a reproducible problem with the extension, please [check the existing issues](https://github.com/REditorSupport/vscode-R/issues) and then [file a bug report](https://github.com/REditorSupport/vscode-R/issues/new/choose).
 
 * Contributions are always welcome! Please see the [contributing guide](https://github.com/REditorSupport/vscode-R/wiki/Contributing) for more details.
 
