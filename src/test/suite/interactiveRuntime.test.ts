@@ -784,7 +784,8 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
     });
 
     for (const supervision of ['detached', 'auto']) {
-        test(`${supervision === 'auto' ? 'Linux auto without tmux' : 'Detached'} session leaves the editor process tree and retains objects after its termination`, async () => {
+        const label = supervision === 'auto' ? `${process.platform === 'linux' ? 'Linux' : 'Desktop'} auto without tmux` : 'Detached';
+        test(`${label} session leaves the editor process tree and retains objects after its termination`, async () => {
             const runtime = hostNodeRuntime();
             const node = runtime.executable;
             const rPath = resolveExecutable('R', root); assert.ok(rPath);
@@ -806,7 +807,6 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
                 provider: process.env.VSCR_TEST_PROVIDER === 'arf' ? 'arf' : 'r', arfPath,
                 supervision, plotBackend: 'standard', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
             const script = `const {launchAgent} = require(${JSON.stringify(require.resolve('../../interactive/launcher'))});
-            ${supervision === 'auto' ? 'Object.defineProperty(process, \'platform\', { value: \'linux\' });' : ''}
             process.env.VSCODE_INSPECTOR_OPTIONS = '{}';
             process.env.NODE_OPTIONS = '--require /missing/vscode-debug-bootloader.js';
             launchAgent(${JSON.stringify(config)}, ${JSON.stringify(agentBundle)})
@@ -829,7 +829,9 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
                 assert.strictEqual(value.supervision, 'detached');
                 const saved = JSON.parse(fs.readFileSync(path.join(config.storage, 'config.json'), 'utf8')) as AgentConfig;
                 assert.strictEqual(saved.supervision, 'detached');
-                if (supervision === 'auto') { assert.match(fs.readFileSync(path.join(config.storage, 'agent.log'), 'utf8'), /tmux is unavailable/); }
+                if (supervision === 'auto' && process.platform === 'linux') {
+                    assert.match(fs.readFileSync(path.join(config.storage, 'agent.log'), 'utf8'), /tmux is unavailable/);
+                }
                 const before = randomUUID();
                 await independent.request('submit', { submission: { id: before, code: 'stopifnot(Sys.getenv("ELECTRON_RUN_AS_NODE") == ""); persisted <- 42' } });
                 const complete = async (execution: string): Promise<void> => {

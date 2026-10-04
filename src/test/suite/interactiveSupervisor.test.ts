@@ -64,9 +64,8 @@ import { AgentConfig } from '../../interactive/protocol';
         const marker = path.join(root, 'unexpected-detached-launch');
         const node = executable('node', `#!/bin/sh\nif [ "$1" = "-p" ] && [ "$ELECTRON_RUN_AS_NODE" = 1 ]; then echo 24.0.0; else : > '${marker}'; exit 1; fi\n`);
         const environment = sinon.stub(process.env, 'PATH').value(root);
-        const platform = sinon.stub(process, 'platform').value('linux');
         try {
-            for (const supervision of ['auto', 'tmux', 'systemd']) {
+            for (const supervision of [...(process.platform === 'linux' ? ['auto'] : []), 'tmux', 'systemd']) {
                 const config = { id: supervision, generation: 'test', supervision, directory: root, storage: path.join(root, `session-${supervision}`) } as AgentConfig;
                 await assert.rejects(launchAgent(config, 'unused-agent', { executable: node, electron: true }), /Could not start.*r\.interactive\.supervision.*test (tmux|systemd).*failure/s);
                 // The tmux server/systemd manager can predate VS Code and does
@@ -76,6 +75,6 @@ import { AgentConfig } from '../../interactive/protocol';
                 assert.ok(!fs.existsSync(marker));
                 assert.ok(!fs.existsSync(path.join(config.storage, 'manifest.json')));
             }
-        } finally { environment.restore(); platform.restore(); }
+        } finally { environment.restore(); }
     });
 });
