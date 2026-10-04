@@ -8,9 +8,13 @@ local({
     stop("DESCRIPTION must contain exactly one source revision field")
   }
   description[source_field] <- paste0(field, ": @VSCODE_R_SESS_SOURCE_REVISION@")
+  write_description <- function(lines) {
+    # A binary write keeps generated DESCRIPTION at LF on Windows as well.
+    writeBin(charToRaw(paste0(paste(lines, collapse = "\n"), "\n")), "DESCRIPTION")
+  }
   # R-universe ignores bootstrap's exit status. Remove a stale stamp first so a
   # failed bootstrap cannot leave behind an apparently valid source identity.
-  writeLines(description, "DESCRIPTION")
+  write_description(description)
   git <- function(args) {
     output <- system2("git", args, stdout = TRUE)
     if (!is.null(attr(output, "status")) || length(output) > 1L) {
@@ -48,5 +52,5 @@ local({
     stop("Invalid sess source revision")
   }
   description[source_field] <- paste0(field, ": ", revision)
-  writeLines(description, "DESCRIPTION")
+  write_description(description)
 })

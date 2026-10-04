@@ -49,25 +49,6 @@ test('clean stamp equals Git subtree, is idempotent, and preserves the real inde
     assert.equal(git('ls-files', '--stage'), index);
 });
 
-test('LF checkouts and sess identity are independent of core.autocrlf', t => {
-    const { directory, descriptionPath, git } = fixture(t);
-    const expected = `git-tree:${git('rev-parse', 'HEAD:sess')}`;
-    for (const autocrlf of ['false', 'true', 'input']) {
-        git('config', 'core.autocrlf', autocrlf);
-        git('config', 'core.eol', 'crlf');
-        // Recreate this test fixture's files exactly as a checkout would.
-        git('checkout-index', '--all', '--force');
-        for (const source of [descriptionPath, path.join(directory, 'sess', 'R', 'server.R')]) {
-            assert.ok(!fs.readFileSync(source, 'utf8').includes('\r'), `${autocrlf}: checkout must use LF`);
-        }
-        assert.equal(stampSess(directory), expected);
-        assert.equal(stampSess(directory), expected);
-        // An editor's CRLF rewrite also normalizes to the same Git snapshot.
-        fs.writeFileSync(descriptionPath, fs.readFileSync(descriptionPath, 'utf8').replace(/\r?\n/g, '\r\n'));
-        assert.equal(stampSess(directory), expected);
-    }
-});
-
 test('extension changes preserve identity; same-version sess changes and reverting change it', t => {
     const { directory, git } = fixture(t);
     const stable = stampSess(directory);

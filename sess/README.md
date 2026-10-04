@@ -162,6 +162,7 @@ CRLF edits before calculating the snapshot. Git and a checkout with HEAD are
 required to build the extension. The generated stamp should not
 be committed; restore the placeholder before committing DESCRIPTION changes.
 Watch mode stamps at startup; restart the build after editing `sess/` sources.
+Both stampers also write generated DESCRIPTION files with LF endings.
 
 R-universe runs `sess/bootstrap.R` from the package directory. It replaces the
 same placeholder with the committed package subtree ID, before R CMD build,

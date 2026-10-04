@@ -11,7 +11,7 @@ const placeholder = `${field}: @VSCODE_R_SESS_SOURCE_REVISION@`;
 // checkout, the result is exactly HEAD:sess (not the extension's commit ID).
 function stampSess(root = path.join(__dirname, '..')) {
     const descriptionPath = path.join(root, 'sess', 'DESCRIPTION');
-    const template = fs.readFileSync(descriptionPath, 'utf8');
+    const template = fs.readFileSync(descriptionPath, 'utf8').replace(/\r\n/g, '\n');
     const fieldPattern = /^Config\/vscode-R\/source-revision:[^\r\n]*(?:\r?\n[ \t][^\r\n]*)*/gm;
     const description = template.replace(fieldPattern, placeholder);
     const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'vscode-r-sess-'));
