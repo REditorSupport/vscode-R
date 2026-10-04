@@ -56,13 +56,13 @@ suite('List viewer panels', () => {
             const receive = sandbox.spy(panel.webview, 'onDidReceiveMessage');
             sandbox.stub(vscode.window, 'createWebviewPanel').returns(panel);
             await session.showDataView(source, 'json', 'x', '', 'Two', `test-pending-${source}`);
-            const generation = Number(/const generation = (\d+)/.exec(panel.webview.html)?.[1]);
+            const documentGeneration = Number(/const documentGeneration = (\d+)/.exec(panel.webview.html)?.[1]);
             const listener = receive.firstCall.args[0] as (message: unknown) => Promise<void>;
             // With no R session, requests settle asynchronously with an unavailable response.
             const pending = source === 'table'
                 ? [listener({ message: 'dataview/request', action: 'page', requestId: 1 })]
                 : ['listview/page', 'listview/navigate'].map(message => listener({
-                    message, generation, requestId: 1, path: [], start: 1,
+                    message, documentGeneration, requestId: 1, path: [], start: 1,
                 }));
             panel.dispose();
             await Promise.all(pending);
@@ -140,24 +140,64 @@ suite('List viewer panels', () => {
         } as unknown as vscode.WebviewPanel;
         panels.push(panel);
         sandbox.stub(vscode.window, 'createWebviewPanel').returns(panel);
-        const generation = () => Number(/const generation = (\d+)/.exec(panel.webview.html)?.[1]);
-        await session.showDataView('list', 'json', 'x', '', 'Two', 'test-list-generation');
+        const documentGeneration = () => Number(/const documentGeneration = (\d+)/.exec(panel.webview.html)?.[1]);
+        await session.showDataView('list', 'json', 'x', '', 'Two', 'test-list-document-generation');
 
         for (const message of ['listview/navigate', 'listview/page']) {
-            const request = { message, generation: generation(), requestId: 1, path: [], start: 1 };
+            const request = { message, documentGeneration: documentGeneration(), requestId: 1, path: [], start: 1 };
             // sessionRequest settles asynchronously even without an attached R session.
             const pending = receive(request);
-            await session.showDataView('list', 'json', 'x$updated', '', 'Two', 'test-list-generation');
+            await session.showDataView('list', 'json', 'x$updated', '', 'Two', 'test-list-document-generation');
             await pending;
             sinon.assert.notCalled(postMessage);
             await receive(request);
             sinon.assert.notCalled(postMessage);
             assert.strictEqual(panel.title, 'x$updated');
         }
-        await receive({ message: 'listview/page', generation: generation(), requestId: 2, path: [], start: 1 });
+        await receive({ message: 'listview/page', documentGeneration: documentGeneration(), requestId: 2, path: [], start: 1 });
         sinon.assert.calledOnce(postMessage);
-        const response = postMessage.firstCall.args[0] as { generation: number };
-        assert.strictEqual(response.generation, generation());
+        const response = postMessage.firstCall.args[0] as { documentGeneration: number };
+        assert.strictEqual(response.documentGeneration, documentGeneration());
+    });
+
+    test('ignores requests and replies from a previous data viewer document after panel reuse', async () => {
+        let receive: (message: unknown) => Promise<void> = () => Promise.resolve();
+        const postMessage = sandbox.stub().resolves(true);
+        const disposed = new vscode.EventEmitter<void>();
+        const panel = {
+            title: '', viewColumn: vscode.ViewColumn.Two, reveal: sandbox.stub(),
+            webview: {
+                html: '', asWebviewUri: (uri: vscode.Uri) => uri, postMessage,
+                onDidReceiveMessage: (listener: typeof receive) => { receive = listener; },
+            },
+            onDidDispose: disposed.event,
+            dispose: () => { disposed.fire(); disposed.dispose(); },
+        } as unknown as vscode.WebviewPanel;
+        panels.push(panel);
+        sandbox.stub(vscode.window, 'createWebviewPanel').returns(panel);
+        const documentGeneration = () =>
+            Number(/const documentGeneration = (\d+)/.exec(panel.webview.html)?.[1]);
+        await session.showDataView('table', 'json', 'x', '', 'Two', 'test-dataview-document-generation');
+
+        const request = {
+            message: 'dataview/request', action: 'page',
+            documentGeneration: documentGeneration(), requestId: 1,
+        };
+        const pending = receive(request);
+        await session.showDataView(
+            'table', 'json', 'x$updated', '', 'Two', 'test-dataview-document-generation'
+        );
+        await pending;
+        sinon.assert.notCalled(postMessage);
+        await receive(request);
+        sinon.assert.notCalled(postMessage);
+
+        await receive({
+            ...request, documentGeneration: documentGeneration(), requestId: 2,
+        });
+        sinon.assert.calledOnce(postMessage);
+        const response = postMessage.firstCall.args[0] as { documentGeneration: number };
+        assert.strictEqual(response.documentGeneration, documentGeneration());
     });
 
     test('supported workspace children retain open actions alongside expansion', () => {

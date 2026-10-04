@@ -13,7 +13,10 @@ local({
     runtime$con <- previous_con
     runtime$dataviews <- previous_views
     runtime$dataview_registry <- previous_registry
-    rm(list = c(root, other, table_root), envir = .GlobalEnv)
+    rm(
+      list = intersect(c(root, other, table_root), ls(envir = .GlobalEnv, all.names = TRUE)),
+      envir = .GlobalEnv
+    )
     lapply(pipe, close)
   }, add = TRUE)
   runtime$con <- pipe[[2L]]
@@ -479,7 +482,7 @@ local({
   expect_false(sess:::handle_listview_view(list_id, 1.5))
   expect_false(sess:::handle_listview_view(list_id, 1L, list(99L)))
   expect_true(sess:::handle_dataview_dispose(list(
-    view_id = list_id, instance = runtime$dataviews[[list_id]]$instance
+    view_id = list_id, state_generation = runtime$dataviews[[list_id]]$state_generation
   )))
   expect_null(runtime$dataviews[[list_id]])
   sess:::handle_workspace_view(root)

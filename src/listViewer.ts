@@ -7,12 +7,12 @@ export interface ListViewNavigation {
 }
 
 /** Script shared by the list webview and its interaction tests. */
-export function getListViewerScript(generation: number, initial: ListViewNavigation = {
+export function getListViewerScript(documentGeneration: number, initial: ListViewNavigation = {
     title: '', path: [], breadcrumbs: [{ label: '', path: [] }],
 }): string {
     return `
     const vscode = acquireVsCodeApi();
-    const generation = ${generation};
+    const documentGeneration = ${documentGeneration};
     const pending = new Map();
     let nextRequestId = 0;
     const list = document.getElementById('list');
@@ -75,7 +75,7 @@ export function getListViewerScript(generation: number, initial: ListViewNavigat
                 showNavigation(response.navigation, goingBack);
             }
         });
-        vscode.postMessage({ message, generation, requestId, ...params });
+        vscode.postMessage({ message, documentGeneration, requestId, ...params });
     }
 
     back.addEventListener('click', () => {
@@ -164,7 +164,7 @@ export function getListViewerScript(generation: number, initial: ListViewNavigat
                 more.textContent = 'Load more';
                 status.textContent = rows.childElementCount ? '' : 'No items';
             });
-            vscode.postMessage({ message: 'listview/page', generation, requestId, path, start: nextStart });
+            vscode.postMessage({ message: 'listview/page', documentGeneration, requestId, path, start: nextStart });
         }
         more.addEventListener('click', loadPage);
         return { loadOnce: () => { if (!loaded) loadPage(); } };
@@ -172,7 +172,7 @@ export function getListViewerScript(generation: number, initial: ListViewNavigat
 
     window.addEventListener('message', (event) => {
         const message = event.data;
-        if (!['listview/page', 'listview/navigation'].includes(message.message) || message.generation !== generation) return;
+        if (!['listview/page', 'listview/navigation'].includes(message.message) || message.documentGeneration !== documentGeneration) return;
         const receive = pending.get(message.requestId);
         if (receive) {
             pending.delete(message.requestId);

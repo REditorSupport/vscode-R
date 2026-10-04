@@ -213,6 +213,7 @@ interface DataViewRequestMessage {
     message: 'dataview/request';
     action: 'init' | 'page';
     requestId: number;
+    documentGeneration: number;
     startRow?: number;
     endRow?: number;
     sortModel?: unknown[];
@@ -220,9 +221,9 @@ interface DataViewRequestMessage {
 }
 
 const dynamicDataViewPanels = new Map<string, vscode.WebviewPanel>();
-const dynamicDataViewInstances = new WeakMap<vscode.WebviewPanel, number>();
-const listViewGenerations = new WeakMap<Webview, number>();
-let dynamicDataViewReloadRevision = 0;
+const dynamicDataViewStateGenerations = new WeakMap<vscode.WebviewPanel, number>();
+const documentGenerations = new WeakMap<Webview, number>();
+let documentGenerationRevision = 0;
 
 function escapeHtml(text: string): string {
     const map: Record<string, string> = {
@@ -237,18 +238,18 @@ function escapeHtml(text: string): string {
 
 function registerDataViewPanel(
     panel: vscode.WebviewPanel, key: string, viewId: string, sessionId: string | null,
-    instance?: number,
+    stateGeneration?: number,
 ): void {
     // The panel's webview getter throws once onDidDispose fires.
     const webview = panel.webview;
     dynamicDataViewPanels.set(key, panel);
-    if (instance !== undefined) {
-        dynamicDataViewInstances.set(panel, instance);
+    if (stateGeneration !== undefined) {
+        dynamicDataViewStateGenerations.set(panel, stateGeneration);
     }
     panel.onDidDispose(() => {
-        listViewGenerations.delete(webview);
-        const currentInstance = dynamicDataViewInstances.get(panel);
-        dynamicDataViewInstances.delete(panel);
+        documentGenerations.delete(webview);
+        const currentStateGeneration = dynamicDataViewStateGenerations.get(panel);
+        dynamicDataViewStateGenerations.delete(panel);
         if (dynamicDataViewPanels.get(key) !== panel) {
             return;
         }
@@ -257,16 +258,22 @@ function registerDataViewPanel(
         if (sessions.get(sessionId ?? '')?.requester) { return; }
         void sessionRequest({
             method: 'dataview_dispose',
-            params: { view_id: viewId, instance: currentInstance },
+            params: { view_id: viewId, state_generation: currentStateGeneration },
         }, sessionId);
     });
 }
 
 function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, sessionId: string | null): void {
     const webview = panel.webview;
-    const postResponse = (requestId: number, ok: boolean, result?: unknown, error?: string) => {
+    const postResponse = (
+        documentGeneration: number, requestId: number, ok: boolean, result?: unknown, error?: string
+    ) => {
+        if (documentGeneration !== documentGenerations.get(webview)) {
+            return;
+        }
         void webview.postMessage({
             message: 'dataview/response',
+            documentGeneration,
             requestId,
             ok,
             result,
@@ -276,7 +283,9 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
 
     webview.onDidReceiveMessage(async (raw: unknown) => {
         const msg = raw as Partial<DataViewRequestMessage>;
-        if (msg.message !== 'dataview/request' || typeof msg.requestId !== 'number') {
+        if (msg.message !== 'dataview/request' || typeof msg.requestId !== 'number' ||
+            typeof msg.documentGeneration !== 'number' ||
+            msg.documentGeneration !== documentGenerations.get(webview)) {
             return;
         }
 
@@ -289,7 +298,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                 if (!result || !Array.isArray(result.columns) || typeof result.totalRows !== 'number') {
                     throw new Error('Invalid dataview_init response');
                 }
-                postResponse(msg.requestId, true, result);
+                postResponse(msg.documentGeneration, msg.requestId, true, result);
                 return;
             }
 
@@ -309,13 +318,13 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                     typeof result.totalUnfiltered !== 'number') {
                     throw new Error('Invalid dataview_page response');
                 }
-                postResponse(msg.requestId, true, result);
+                postResponse(msg.documentGeneration, msg.requestId, true, result);
                 return;
             }
 
-            postResponse(msg.requestId, false, undefined, `Unsupported dataview action: ${String(msg.action)}`);
+            postResponse(msg.documentGeneration, msg.requestId, false, undefined, `Unsupported dataview action: ${String(msg.action)}`);
         } catch (e) {
-            postResponse(msg.requestId, false, undefined, e instanceof Error ? e.message : String(e));
+            postResponse(msg.documentGeneration, msg.requestId, false, undefined, e instanceof Error ? e.message : String(e));
         }
     });
 }
@@ -1031,7 +1040,7 @@ export async function showDataView(
     source: string, type: string, title: string, file: string, viewer: string,
     viewId?: string, navigation?: ListViewNavigation,
     sessionId: string | null = activeSession?.sessionId ?? null,
-    instance?: number,
+    stateGeneration?: number,
 ): Promise<void> {
     resDir ??= path.join(extensionContext.extensionPath, 'dist', 'resources');
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, viewId: ${String(viewId ?? '')}`);
@@ -1041,13 +1050,12 @@ export async function showDataView(
         if (viewId) {
             const existing = dynamicDataViewPanels.get(panelKey);
             if (existing) {
-                if (instance !== undefined) {
-                    dynamicDataViewInstances.set(existing, instance);
+                if (stateGeneration !== undefined) {
+                    dynamicDataViewStateGenerations.set(existing, stateGeneration);
                 }
                 existing.title = title;
                 existing.reveal(existing.viewColumn, true);
-                const content = await getTableHtml(existing.webview, undefined, title);
-                existing.webview.html = `${content}\n<!-- dataview-reload:${++dynamicDataViewReloadRevision} -->`;
+                existing.webview.html = await getTableHtml(existing.webview, undefined, title);
                 return;
             }
         }
@@ -1065,7 +1073,7 @@ export async function showDataView(
             });
         panel.iconPath = new UriIcon('open-preview');
         if (viewId) {
-            registerDataViewPanel(panel, panelKey, viewId, sessionId, instance);
+            registerDataViewPanel(panel, panelKey, viewId, sessionId, stateGeneration);
             attachDynamicDataViewBridge(panel, viewId, sessionId);
         }
         const content = await getTableHtml(panel.webview, file || undefined, title);
@@ -1074,8 +1082,8 @@ export async function showDataView(
         if (viewId) {
             const existing = dynamicDataViewPanels.get(panelKey);
             if (existing) {
-                if (instance !== undefined) {
-                    dynamicDataViewInstances.set(existing, instance);
+                if (stateGeneration !== undefined) {
+                    dynamicDataViewStateGenerations.set(existing, stateGeneration);
                 }
                 existing.title = title;
                 existing.reveal(existing.viewColumn, true);
@@ -1099,13 +1107,13 @@ export async function showDataView(
             });
         panel.iconPath = new UriIcon('preview');
         if (viewId) {
-            registerDataViewPanel(panel, panelKey, viewId, sessionId, instance);
+            registerDataViewPanel(panel, panelKey, viewId, sessionId, stateGeneration);
             const webview = panel.webview;
             webview.onDidReceiveMessage(async (message: {
                 message?: string; index?: number; start?: number; requestId?: number;
-                path?: number[]; generation?: number;
+                path?: number[]; documentGeneration?: number;
             }) => {
-                if (message.generation !== listViewGenerations.get(webview)) {
+                if (message.documentGeneration !== documentGenerations.get(webview)) {
                     return;
                 }
                 if (!Array.isArray(message.path) || !message.path.every(index => Number.isSafeInteger(index) && index > 0)) {
@@ -1117,7 +1125,7 @@ export async function showDataView(
                         method: message.message === 'listview/navigate' ? 'listview_navigate' : 'listview_view',
                         params: { view_id: viewId, index: message.index, path: message.path },
                     }, sessionId) as ListViewNavigation | boolean | undefined;
-                    if (message.generation !== listViewGenerations.get(webview)) {
+                    if (message.documentGeneration !== documentGenerations.get(webview)) {
                         return;
                     }
                     const navigation = result && typeof result === 'object' && Array.isArray(result.breadcrumbs)
@@ -1127,7 +1135,7 @@ export async function showDataView(
                     }
                     void webview.postMessage({
                         message: 'listview/navigation',
-                        generation: message.generation,
+                        documentGeneration: message.documentGeneration,
                         requestId: message.requestId,
                         navigation,
                         error: result ? undefined : 'Unable to open this item. Check the R session and try again.',
@@ -1138,12 +1146,12 @@ export async function showDataView(
                         method: 'workspace_children',
                         params: { view_id: viewId, start: message.start, path: message.path },
                     }, sessionId) as { children?: unknown; next_start?: number | null } | undefined;
-                    if (message.generation !== listViewGenerations.get(webview)) {
+                    if (message.documentGeneration !== documentGenerations.get(webview)) {
                         return;
                     }
                     void webview.postMessage({
                         message: 'listview/page',
-                        generation: message.generation,
+                        documentGeneration: message.documentGeneration,
                         requestId: message.requestId,
                         ...page,
                         error: Array.isArray(page?.children) ? undefined : 'Unable to load items. Check the R session and try again.',
@@ -1167,6 +1175,8 @@ export async function showDataView(
 export async function getTableHtml(webview: Webview, file: string | undefined, title: string): Promise<string> {
     const pageSize = config().get<number>('session.data.pageSize', 500);
     if (!file) {
+        const documentGeneration = ++documentGenerationRevision;
+        documentGenerations.set(webview, documentGeneration);
         return `
 <!DOCTYPE html>
 <html lang="en">
@@ -1344,6 +1354,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
     <script>
     const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : { postMessage: () => {} };
+    const documentGeneration = ${documentGeneration};
     let requestIdSeq = 1;
     const pending = new Map();
     let gridApi;
@@ -1525,6 +1536,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
                 console.log('[dataview] Sending request:', action, 'with payload:', payload);
                 vscode.postMessage({
                     message: 'dataview/request',
+                    documentGeneration,
                     action,
                     requestId,
                     ...payload,
@@ -1539,7 +1551,8 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 
     window.addEventListener('message', (event) => {
         const data = event.data;
-        if (!data || data.message !== 'dataview/response') {
+        if (!data || data.message !== 'dataview/response' ||
+            data.documentGeneration !== documentGeneration) {
             return;
         }
         const entry = pending.get(data.requestId);
@@ -1861,8 +1874,8 @@ export function getListHtml(
     title: string,
     navigation?: ListViewNavigation
 ): string {
-    const generation = ++dynamicDataViewReloadRevision;
-    listViewGenerations.set(webview, generation);
+    const documentGeneration = ++documentGenerationRevision;
+    documentGenerations.set(webview, documentGeneration);
     const icon = new UriIcon('open-preview-codicon');
     const darkIcon = webview.asWebviewUri(icon.dark).toString();
     const lightIcon = webview.asWebviewUri(icon.light).toString();
@@ -2007,7 +2020,7 @@ export function getListHtml(
     <div id="list"></div>
     <template id="view-icon"><img class="dark-icon" src="${darkIcon}" alt=""><img class="light-icon" src="${lightIcon}" alt=""></template>
     <script>
-    ${getListViewerScript(generation, navigation ?? {
+    ${getListViewerScript(documentGeneration, navigation ?? {
         title, path: [], breadcrumbs: [{ label: title, path: [] }],
     })}
     </script>
@@ -2258,7 +2271,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                         params.view_id ? String(params.view_id) : undefined,
                         params.navigation as ListViewNavigation | undefined,
                         socket._sessionId ?? null,
-                        typeof params.instance === 'number' ? params.instance : undefined,
+                        typeof params.state_generation === 'number' ? params.state_generation : undefined,
                     );
                 }
             }

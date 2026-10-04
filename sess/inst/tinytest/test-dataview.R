@@ -393,20 +393,20 @@ local({
     replacement <- sess:::dataview_set_state(
       "replacement_test", cases[[name]]$replacement
     )
-    expect_true(replacement$instance > first$instance, info = name)
+    expect_true(replacement$state_generation > first$state_generation, info = name)
 
     expect_true(sess:::handle_dataview_dispose(list(
-      view_id = "replacement_test", instance = first$instance
+      view_id = "replacement_test", state_generation = first$state_generation
     )), info = name)
     expect_identical(
-      runtime$dataviews$replacement_test$instance, replacement$instance, info = name
+      runtime$dataviews$replacement_test$state_generation, replacement$state_generation, info = name
     )
     expect_identical(
       runtime$dataviews$replacement_test$data, cases[[name]]$replacement$data, info = name
     )
 
     expect_true(sess:::handle_dataview_dispose(list(
-      view_id = "replacement_test", instance = replacement$instance
+      view_id = "replacement_test", state_generation = replacement$state_generation
     )), info = name)
     expect_null(runtime$dataviews$replacement_test, info = name)
   }

@@ -11,7 +11,7 @@ import { mockExtensionContext } from '../common/mockvscode';
 interface Request {
     id: number;
     method: string;
-    params?: { view_id?: string; instance?: number };
+    params?: { view_id?: string; state_generation?: number };
 }
 
 interface Client {
@@ -138,12 +138,12 @@ suite('Viewer session ownership', () => {
     }
 
     async function open(
-        client: Client, source: 'list' | 'table', existing?: Panel, instance = 1,
+        client: Client, source: 'list' | 'table', existing?: Panel, stateGeneration = 1,
     ): Promise<Panel> {
         const count = panels.length;
         const html = existing?.panel.webview.html;
         notify(client, 'dataview', {
-            source, type: 'json', title: 'x', view_id: `same-${source}-id`, instance,
+            source, type: 'json', title: 'x', view_id: `same-${source}-id`, state_generation: stateGeneration,
             navigation: { title: 'x', path: [], breadcrumbs: [{ label: 'x', path: [] }] },
         });
         await waitFor(() => existing ? existing.panel.webview.html !== html : panels.length > count);
@@ -154,8 +154,8 @@ suite('Viewer session ownership', () => {
     }
 
     async function send(panel: Panel, message: Record<string, unknown>): Promise<void> {
-        const generation = Number(/const generation = (\d+)/.exec(panel.panel.webview.html)?.[1]);
-        await panel.receive({ generation, requestId: 1, path: [], start: 1, ...message });
+        const documentGeneration = Number(/const documentGeneration = (\d+)/.exec(panel.panel.webview.html)?.[1]);
+        await panel.receive({ documentGeneration, requestId: 1, path: [], start: 1, ...message });
     }
 
     const viewerRequests = (client: Client) => client.requests.filter(request => request.method !== 'workspace');
@@ -194,7 +194,7 @@ suite('Viewer session ownership', () => {
         await waitFor(() => viewerRequests(b).length === 7);
         assert.deepStrictEqual(viewerRequests(b).slice(-2).map(request => request.params?.view_id),
             ['same-list-id', 'same-table-id']);
-        assert.deepStrictEqual(viewerRequests(b).slice(-2).map(request => request.params?.instance),
+        assert.deepStrictEqual(viewerRequests(b).slice(-2).map(request => request.params?.state_generation),
             [2, 2]);
         assert.strictEqual(viewerRequests(a).length, 5);
         await open(a, 'list', aList);

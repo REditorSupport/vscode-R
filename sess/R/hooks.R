@@ -150,7 +150,7 @@ runtime_start <- function(use_rstudioapi = TRUE,
         source = "table",
         type = "json",
         view_id = registration$view_id,
-        instance = registration$instance
+        state_generation = registration$state_generation
       ))
     } else if (view_type == "list") {
       context <- .sess_env$listview_context
@@ -169,7 +169,7 @@ runtime_start <- function(use_rstudioapi = TRUE,
         source = view_type,
         type = "json",
         view_id = view_id,
-        instance = root$instance,
+        state_generation = root$state_generation,
         navigation = navigation
       ))
     } else {
