@@ -143,7 +143,7 @@ local({
       expect_length(warnings, as.integer(length(case$deprecated) > 0L))
       if (length(case$deprecated)) {
         expect_true(grepl(paste(case$deprecated, collapse = " and "),
-                         warnings[[1L]], fixed = TRUE))
+                          warnings[[1L]], fixed = TRUE))
         expect_true(grepl("deprecated; use plot_backend", warnings[[1L]], fixed = TRUE))
       }
     }
