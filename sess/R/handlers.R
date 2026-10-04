@@ -182,35 +182,66 @@ listview_state <- function(object, title, owner) {
 }
 
 # Resolve workspace selectors once; navigation paths are relative to the retained root.
-listview_context <- function(root, selectors) {
-  location <- listview_location(root, selectors, resolve_selectors = TRUE)
+listview_context <- function(root, selectors, expression_env = NULL) {
+  location <- listview_location(
+    root, selectors, resolve_selectors = TRUE, expression_env = expression_env
+  )
   list(root = root, data = location$data, navigation = listview_navigation(location))
 }
 
+# Read a binding without invoking an active binding for a second time.
+listview_binding <- function(name, envir) {
+  while (!identical(envir, emptyenv()) && !exists(name, envir = envir, inherits = FALSE)) {
+    envir <- parent.env(envir)
+  }
+  if (identical(envir, emptyenv()) || bindingIsActive(name, envir)) return(NULL)
+  get(name, envir = envir, inherits = FALSE)
+}
+
+# Only known structural extraction can be represented by an index breadcrumb.
+listview_structural_extraction <- function(object, operator, envir) {
+  if (operator == "@") return(isS4(object))
+  if (!is.object(object)) return(TRUE)
+  if (isS4(object) || !identical(class(object), "data.frame")) return(FALSE)
+  if (operator == "$" &&
+        !is.null(utils::getS3method("$", "data.frame", optional = TRUE, envir = envir))) {
+    return(FALSE)
+  }
+  # Check both the caller's extraction and the viewer's later indexed traversal.
+  all(vapply(list(envir, environment(listview_location)), function(method_env) {
+    identical(utils::getS3method("[[", "data.frame", optional = TRUE, envir = method_env),
+              base::`[[.data.frame`)
+  }, logical(1)))
+}
+
 # Direct View(x$a) calls can also start with a complete breadcrumb path.
-listview_expression_context <- function(expression, envir, owner) {
+listview_expression_context <- function(expression, envir, owner, value) {
   tryCatch({
     selectors <- list()
     while (is.call(expression) && length(expression) == 3L &&
              is.symbol(expression[[1L]])) {
       operator <- as.character(expression[[1L]])
       if (!operator %in% c("$", "[[", "@")) return(NULL)
-      value <- expression[[3L]]
-      if (operator %in% c("$", "@") && is.symbol(value)) value <- as.character(value)
-      if (length(value) != 1L || !(is.character(value) || is.numeric(value))) return(NULL)
-      selectors <- c(list(list(kind = "index", value = value)), selectors)
+      if (!identical(listview_binding(operator, envir), get(operator, envir = baseenv()))) {
+        return(NULL)
+      }
+      selector <- expression[[3L]]
+      if (operator %in% c("$", "@") && is.symbol(selector)) selector <- as.character(selector)
+      if (length(selector) != 1L || !(is.character(selector) || is.numeric(selector))) return(NULL)
+      selectors <- c(list(list(kind = operator, value = selector)), selectors)
       expression <- expression[[2L]]
     }
     if (!length(selectors) || !is.symbol(expression)) return(NULL)
     name <- as.character(expression)
-    while (!identical(envir, emptyenv()) && !exists(name, envir = envir, inherits = FALSE)) {
-      envir <- parent.env(envir)
+    object <- listview_binding(name, envir)
+    if (is.null(object) || !listview_structural_extraction(object, selectors[[1L]]$kind, envir)) {
+      return(NULL)
     }
-    # View has already evaluated its argument; rebuilding an active root would
-    # evaluate it again and could display a different value.
-    if (identical(envir, emptyenv()) || bindingIsActive(name, envir)) return(NULL)
-    root <- listview_state(get(name, envir = envir, inherits = FALSE), name, owner)
-    listview_context(root, selectors)
+    root <- listview_state(object, name, owner)
+    context <- listview_context(root, selectors, expression_env = envir)
+    # Even a safe path is optional: the already-evaluated argument is authoritative.
+    if (!identical(context$data, value)) return(NULL)
+    context
   }, error = function(e) NULL)
 }
 
@@ -236,13 +267,20 @@ handle_listview_navigate <- function(view_id, path = list()) {
   listview_navigation(location)
 }
 
-listview_location <- function(state, path = list(), resolve_selectors = FALSE) {
+listview_location <- function(state, path = list(), resolve_selectors = FALSE,
+                              expression_env = NULL) {
   visited <- integer()
   state$breadcrumbs <- list(list(label = state$title, path = I(list())))
   for (index in path) {
     if (resolve_selectors) {
-      index <- if (index$kind == "index" && is.numeric(index$value)) {
+      if (!is.null(expression_env) &&
+            !listview_structural_extraction(state$data, index$kind, expression_env)) {
+        stop("Cannot reconstruct custom extraction as an index path")
+      }
+      index <- if (index$kind %in% c("index", "[[") && is.numeric(index$value)) {
         index$value
+      } else if (index$kind == "$" && state$kind == "index") {
+        pmatch(index$value, state$names, duplicates.ok = TRUE)
       } else {
         match(index$value, state$names)
       }

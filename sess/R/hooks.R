@@ -154,7 +154,7 @@ runtime_start <- function(use_rstudioapi = TRUE,
     } else if (view_type == "list") {
       context <- .sess_env$listview_context
       if (is.null(context) && missing(title)) {
-        context <- listview_expression_context(original_expression, parent.frame(), owner)
+        context <- listview_expression_context(original_expression, parent.frame(), owner, x)
       }
       root <- if (is.null(context)) listview_state(x, title_key, owner) else context$root
       navigation <- if (is.null(context)) {

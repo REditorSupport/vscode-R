@@ -143,9 +143,14 @@ local({
   expect_identical(runtime$dataviews[[direct_id]]$data, x)
   utils::View(x$a$b)
   expect_identical(runtime$dataviews[[direct_id]]$data, x)
-  direct_context <- sess:::listview_expression_context(quote(x$a$b), environment(), "x")
+  direct_context <- sess:::listview_expression_context(quote(x$a$b), environment(), "x", x$a$b)
   expect_equal(direct_context$navigation$path, list(1L, 1L), check.attributes = FALSE)
   expect_equal(direct_context$navigation$title, "x$a$b")
+  indexed_context <- sess:::listview_expression_context(
+    quote(x[[1L]][[1L]]), environment(), "x", x$a$b
+  )
+  expect_identical(indexed_context$data, x$a$b)
+  expect_equal(indexed_context$navigation$path, list(1L, 1L), check.attributes = FALSE)
 
   # Active roots are evaluated once, including when inherited by the caller.
   for (inherited in c(FALSE, TRUE)) {
@@ -174,6 +179,117 @@ local({
       expect_length(notification()$navigation$breadcrumbs, 1L)
     }
   }
+
+  # Custom $ extraction can differ from the indexed path used by breadcrumbs.
+  dollar_calls <- 0L
+  `$.listview_custom` <- function(object, name) {
+    dollar_calls <<- dollar_calls + 1L
+    custom_value
+  }
+  index_calls <- 0L
+  `[[.listview_custom` <- function(object, index) {
+    index_calls <<- index_calls + 1L
+    unclass(object)[[index]]
+  }
+  # Register the method so dispatch inside the package can find it too.
+  registerS3method("[[", "listview_custom", `[[.listview_custom`, envir = asNamespace("base"))
+  on.exit({
+    rm("[[.listview_custom", envir = get(".__S3MethodsTable__.", asNamespace("base")))
+  }, add = TRUE)
+  custom <- structure(list(a = c(1L, 2L)), class = "listview_custom")
+  outer <- list(custom = custom)
+  for (custom_value in list(c(90L, 91L), list(returned = c(90L, 91L)))) {
+    for (expression in c("custom$a", "outer$custom$a")) {
+      dollar_calls <- 0L
+      index_calls <- 0L
+      eval(parse(text = paste0("utils::View(", expression, ")")))
+      read_messages()
+      expect_identical(dollar_calls, 1L)
+      expect_null(sess:::listview_expression_context(
+        parse(text = expression)[[1L]], environment(), "custom", custom_value
+      ))
+      expect_identical(index_calls, 0L)
+      view_id <- notification()$view_id
+      expect_identical(runtime$dataviews[[view_id]]$data, custom_value)
+      expect_equal(notification()$navigation$title, expression)
+      expect_length(notification()$navigation$breadcrumbs, 1L)
+      expect_length(notification()$navigation$path, 0L)
+      page <- sess:::get_workspace_children(view_id = view_id)
+      if (is.atomic(custom_value)) {
+        expect_equal(vapply(page$children, `[[`, "", "str"), c("90", "91"))
+      } else {
+        expect_equal(page$children[[1L]]$label, "$ returned")
+      }
+    }
+  }
+
+  index_calls <- 0L
+  utils::View(custom[["a"]])
+  read_messages()
+  expect_identical(index_calls, 1L)
+  expect_identical(runtime$dataviews[[notification()$view_id]]$data, c(1L, 2L))
+
+  # A locally rebound operator changes extraction even for an ordinary list.
+  for (operator in c("$", "[[", "@")) {
+    for (active in c(FALSE, TRUE)) {
+      caller <- new.env(parent = environment())
+      caller$x <- list(a = c(1L, 2L))
+      extraction_calls <- 0L
+      binding_calls <- 0L
+      extraction <- function(object, name) {
+        extraction_calls <<- extraction_calls + 1L
+        c(90L, 91L)
+      }
+      if (active) {
+        makeActiveBinding(operator, function() {
+          binding_calls <<- binding_calls + 1L
+          extraction
+        }, caller)
+      } else {
+        assign(operator, extraction, envir = caller)
+      }
+      expression <- switch(operator, "$" = "x$a", "[[" = "x[[1L]]", "@" = "x@a")
+      eval(parse(text = paste0("utils::View(", expression, ")")), caller)
+      read_messages()
+      expect_identical(extraction_calls, 1L)
+      expect_identical(binding_calls, if (active) 1L else 0L)
+      expect_identical(runtime$dataviews[[notification()$view_id]]$data, c(90L, 91L))
+      expect_length(notification()$navigation$path, 0L)
+    }
+  }
+
+  # Standard data-frame columns retain their parent navigation.
+  frame <- data.frame(values = 1:2)
+  for (expression in c("frame$values", "frame$val", "frame[[1L]]", "frame[['values']]")) {
+    eval(parse(text = paste0("utils::View(", expression, ")")))
+    read_messages()
+    expect_identical(runtime$dataviews[[notification()$view_id]]$data, frame)
+    expect_equal(notification()$navigation$path, list(1L))
+    expect_equal(vapply(notification()$navigation$breadcrumbs, `[[`, "", "label"),
+                 c("frame", "values"))
+  }
+
+  # Local S3 overrides of standard data-frame extraction must also run only once.
+  for (operator in c("$", "[[")) {
+    caller <- new.env(parent = environment())
+    caller$frame <- frame
+    extraction_calls <- 0L
+    assign(paste0(operator, ".data.frame"), function(object, name) {
+      extraction_calls <<- extraction_calls + 1L
+      c(90L, 91L)
+    }, envir = caller)
+    expression <- if (operator == "$") "frame$values" else "frame[[1L]]"
+    eval(parse(text = paste0("utils::View(", expression, ")")), caller)
+    read_messages()
+    expect_identical(extraction_calls, 1L)
+    expect_identical(runtime$dataviews[[notification()$view_id]]$data, c(90L, 91L))
+    expect_length(notification()$navigation$path, 0L)
+  }
+
+  # A structural path must not replace an already-evaluated, different value.
+  expect_null(sess:::listview_expression_context(
+    quote(x$a$b), environment(), "x", list(other = 1L)
+  ))
 
   utils::View(x$df)
   direct_table <- id("table", "x")
