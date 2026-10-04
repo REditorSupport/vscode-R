@@ -1860,6 +1860,7 @@
         "r.plot.useHttpgd": {
           "type": "boolean",
           "default": false,
+          "scope": "machine-overridable",
           "markdownDescription": "Legacy compatibility setting for selecting the httpgd plot viewer. When `#r.plot.backend#` is `auto`, setting this to `true` selects the `httpgd` backend. Workspace settings take precedence over user settings. Within the same scope, an explicit `#r.plot.backend#` value takes precedence.\n\nRequires the `httpgd` R package version 1.2.0 or later.",
           "markdownDeprecationMessage": "Deprecated: use `#r.plot.backend#` instead. This setting is retained for compatibility with existing configurations but will be removed in a future release.",
           "deprecationMessage": "Deprecated: use r.plot.backend instead. This setting is retained for compatibility with existing configurations but will be removed in a future release."
@@ -1867,6 +1868,7 @@
         "r.plot.backend": {
           "type": "string",
           "default": "auto",
+          "scope": "machine-overridable",
           "enum": [
             "auto",
             "standard",
