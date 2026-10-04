@@ -75,7 +75,7 @@ export class HelpProvider {
             childProcess.stdout?.on('data', (data: Buffer) => {
                 try{
                     str += data.toString();
-                } catch　{
+                } catch {
                     resolve(0);
                 }
                 if(portRegex.exec(str)){
