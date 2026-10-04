@@ -101,13 +101,14 @@ export class CommonPlotManager implements PlotManager {
     private applyBackend(): void {
         const backend = resolveBackend();
         void vscode.commands.executeCommand('setContext', 'r.plot.backend', backend);
+        const envCollection = extensionContext.environmentVariableCollection;
+        envCollection.persistent = false;
         if (!jgdEnabled(backend)) {
+            envCollection.delete('JGD_SOCKET');
             return;
         }
         this.jgdManager.start();
         // Set JGD_SOCKET env var for R child processes
-        const envCollection = extensionContext.environmentVariableCollection;
-        envCollection.persistent = false;
         for (const [key, value] of Object.entries(this.getJgdEnvVars())) {
             envCollection.replace(key, value);
         }
