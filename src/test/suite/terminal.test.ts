@@ -89,7 +89,10 @@ suite('R Terminal', () => {
         const { watcher, args, integrated } = scenario;
         const createTarget = scenario.createTarget ?? false;
         test(`initial sends share terminal creation and readiness (watcher: ${String(watcher)}, args: ${args.join(' ')}, target picker: ${String(createTarget)})`, async () => {
-            sandbox.stub(executionTarget, 'tryInteractiveExecution').resolves(createTarget ? 'createTerminal' : false);
+            // Offer creation only while no terminal exists, as the default
+            // execution target picker does after choosing a terminal.
+            const target = sandbox.stub(executionTarget, 'tryInteractiveExecution')
+                .callsFake((_code, _resource, _source, offerTarget) => Promise.resolve(createTarget && offerTarget ? 'createTerminal' : false));
             let resolveReady!: (ready: boolean) => void;
             const readiness = new Promise<boolean>(resolve => { resolveReady = resolve; });
             const readyStub = sandbox.stub(session, 'waitForTerminalReady').returns(readiness);
@@ -132,6 +135,9 @@ suite('R Terminal', () => {
             assert.deepStrictEqual(sent, ['\x1b[200~first\x1b[201~', '\x1b[200~second\x1b[201~', '\x1b[200~third\x1b[201~']);
             await rTerminal.runTextInTerm('fourth');
             assert.strictEqual(sent.length, 4);
+            sinon.assert.calledOnce(create);
+            assert.strictEqual(target.thirdCall.args[3], false);
+            assert.strictEqual(target.lastCall.args[3], false);
             rTerminal.deleteTerminal(terminal);
         });
     }
