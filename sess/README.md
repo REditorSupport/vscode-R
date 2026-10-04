@@ -27,7 +27,8 @@ socket on macOS/Linux, named pipe on Windows) using
 > for you (along with any missing CRAN dependencies) if the installed package
 > does not match the bundled source snapshot, including when switching between
 > stable and pre-release builds. Managed R terminals ask first; attaching an
-> existing session installs without prompting. If sess is already loaded,
+> existing session installs without prompting. When accepted, installation
+> finishes before the managed terminal starts. If sess is already loaded,
 > restart R after updating to use the new copy.
 
 `sess` is not yet on CRAN. But you can install the development version from R-universe:

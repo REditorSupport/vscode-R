@@ -99,7 +99,7 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const options = await rTerminal.makeTerminalOptions();
         const discoveryFile = options.env?.['SESS_DISCOVERY_FILE'];
@@ -214,7 +214,7 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const options = await rTerminal.makeTerminalOptions();
 
@@ -252,7 +252,7 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const options = await rTerminal.makeTerminalOptions();
 
@@ -265,7 +265,7 @@ suite('R Terminal', () => {
             'rterm.option': ['--no-save']
         }));
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const options = await rTerminal.makeTerminalOptions();
 
@@ -277,7 +277,7 @@ suite('R Terminal', () => {
             consoleArgs: ['--no-save', '--no-restore']
         }));
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const options = await rTerminal.makeTerminalOptions();
 
@@ -299,7 +299,7 @@ suite('R Terminal', () => {
     test('makeTerminalOptions keeps existing console args defaults when neither setting is explicit', async () => {
         sandbox.stub(util, 'config').returns(configuration({}, { consoleArgs: ['--no-save', '--no-restore'] }));
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const options = await rTerminal.makeTerminalOptions();
 
@@ -368,7 +368,7 @@ suite('R Terminal', () => {
             get: (key: string) => key === 'sessionWatcher' ? false : settings[key]
         };
         sandbox.stub(vscode.workspace, 'getConfiguration').returns(configStub as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
         const errorStub = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
 
         assert.strictEqual(await rTerminal.createRTerm(), false);
@@ -414,7 +414,7 @@ suite('R Terminal', () => {
             assert.strictEqual(requestedResource, resource);
             return value.replace('${workspaceFolder}', resource.fsPath);
         });
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
         const sent: string[] = [];
         const fakeTerminal = {
             name: 'R Interactive',
@@ -487,10 +487,21 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        let finishSetup!: (result: boolean) => void;
+        const setupFinished = new Promise<boolean>(resolve => { finishSetup = resolve; });
+        let setupStarted!: () => void;
+        const started = new Promise<void>(resolve => { setupStarted = resolve; });
+        sandbox.stub(util, 'promptToInstallSessPackage').callsFake(() => {
+            setupStarted();
+            return setupFinished;
+        });
+        const createTerminal = sandbox.spy(vscode.window, 'createTerminal');
 
-        // First creation
-        const result = await rTerminal.createRTerm(true);
+        const creation = rTerminal.createRTerm(true);
+        await started;
+        assert.strictEqual(createTerminal.called, false, 'terminal must wait for sess setup');
+        finishSetup(true);
+        const result = await creation;
         assert.ok(result, 'createRTerm should return true');
         assert.ok(rTerminal.rTerm, 'rTerminal.rTerm should be defined');
 
@@ -511,7 +522,7 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(`${process.execPath}.does-not-exist`);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         try {
             assert.strictEqual(await rTerminal.createRTerm(), false);
@@ -535,11 +546,35 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
         sandbox.stub(vscode.window, 'createTerminal').throws(new Error('terminal creation failed'));
 
         try {
             await assert.rejects(rTerminal.createRTerm(), /terminal creation failed/);
+            assert.strictEqual(createdDiscoveryFiles.length, 1);
+            assert.strictEqual(await fs.pathExists(createdDiscoveryFiles[0]), false);
+        } finally {
+            await Promise.all(createdDiscoveryFiles.map(filePath => fs.remove(filePath)));
+        }
+    });
+
+    test('createRTerm removes its discovery file when sess installation fails', async () => {
+        const createdDiscoveryFiles: string[] = [];
+        const createDiscoveryFile = session.createSessionDiscoveryFile;
+        sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async endpoint => {
+            const filePath = await createDiscoveryFile(endpoint);
+            createdDiscoveryFiles.push(filePath);
+            return filePath;
+        });
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'sessionWatcher' ? true : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(false);
+        const createTerminal = sandbox.stub(vscode.window, 'createTerminal');
+        try {
+            assert.strictEqual(await rTerminal.createRTerm(), false);
+            assert.strictEqual(createTerminal.called, false);
             assert.strictEqual(createdDiscoveryFiles.length, 1);
             assert.strictEqual(await fs.pathExists(createdDiscoveryFiles[0]), false);
         } finally {
@@ -565,7 +600,7 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
         const createTerminalStub = sandbox.stub(vscode.window, 'createTerminal');
         createTerminalStub.onFirstCall().returns(firstTerminal);
         createTerminalStub.onSecondCall().returns(secondTerminal);
@@ -610,7 +645,7 @@ suite('R Terminal', () => {
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         // We need to mock the terminal and its processId
         const fakeTerminal = {
