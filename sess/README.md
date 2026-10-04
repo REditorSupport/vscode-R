@@ -154,68 +154,31 @@ Use `plot_backend` for new code.
 
 ## Source identity and installation
 
-`Version` is the R package version, not an extension deployment identifier. The
-extension checks `Config/vscode-R/source-revision` in the installed DESCRIPTION
-against its bundled copy. A missing, invalid or different revision requires
-installing the bundle, including when switching from pre-release back to stable
-or when two builds have the same package version. Older installations without
-this field migrate by installing the bundled copy once. A bundle with an
-unexpanded placeholder is a build error; version comparison is not a fallback.
+The extension compares `Config/vscode-R/source-revision` in the installed and
+bundled DESCRIPTION files. Missing, invalid or different identities require the
+bundle, regardless of package version. This handles stable/pre-release switching
+and migrates older installations through one bundled installation.
 
-The field is committed as `@VSCODE_R_SESS_SOURCE_REVISION@`. Every esbuild entry
-(compile, watch startup and production/VSIX packaging) prepares a generated copy
-at `dist/resources/sess/`, where the placeholder becomes `git-tree:<object ID>`.
-`scripts/prepare-sess.js` fingerprints the `sess/` working tree using a temporary
-Git index, restoring the placeholder for the calculation. It includes new,
-modified and deleted source files without changing the user's index or source
-files. The same temporary index is then exported with `git checkout-index` so
-untracked ignored files cannot enter the bundle without entering its identity.
-The generated directory is recreated to remove obsolete files. The
-extension installs from this directory, and only this copy is included in the
-VSIX. For a clean checkout this is exactly `git rev-parse HEAD:sess`; extension
-changes outside `sess/` do not cause another installation. The repository's
-`.gitattributes` keeps text checkouts at LF across platforms, including when
-`core.autocrlf` is enabled. Git normalizes a developer's
-CRLF edits before calculating the snapshot. Git and a checkout with HEAD are
-required to build the extension. The tracked DESCRIPTION keeps its placeholder;
-compiling or packaging does not dirty the source tree. Watch mode prepares the
-copy at startup; restart the build after editing `sess/` sources. Both build
-paths write stamped DESCRIPTION files with LF endings.
+`scripts/prepare-sess.js` fingerprints `sess/` using a temporary Git index and
+exports that same snapshot to `dist/resources/sess/`. Untracked ignored files
+are excluded; source files and the developer's index remain unchanged. Only the
+generated DESCRIPTION receives `git-tree:<object ID>` in place of the committed
+placeholder. A clean checkout matches `HEAD:sess`; extension-only changes do not
+require reinstalling sess.
 
-The source DESCRIPTION declares `Config/build/bootstrap: TRUE` so pkgbuild
-prepares committed source checkouts before building. The generated copy instead
-declares `FALSE`: Node has already prepared it, and pkgbuild (including through
-`remotes::install_local()`) must not repeat the Git-dependent bootstrap in a
-staging or temporary directory. This build setting is changed after computing
-the source identity, so both build paths still identify the original subtree.
-Building unprepared sources requires their Git checkout; use the generated copy
-for development installation rather than a Git-free copy of the source directory.
+R-universe's `bootstrap.R` stamps the same identity from committed sources before
+R CMD build. Source DESCRIPTION declares `Config/build/bootstrap: TRUE` for
+pkgbuild; the prepared bundle declares `FALSE` to prevent repeating bootstrap
+when installed through remotes.
 
-R-universe runs `sess/bootstrap.R` from the package directory. It replaces the
-same placeholder with the committed package subtree ID, before R CMD build,
-and the field survives into source and binary packages. The build service first
-normalizes DESCRIPTION and may add `Config/pak/sysreqs`; these generated changes
-are excluded from source identity. Bootstrap requires committed sources and
-rejects other source/description edits. Local development VSIXs instead identify
-their actual working tree. Since R-universe ignores bootstrap failures, the
-script resets any previous stamp to the placeholder before doing Git work. CI
-runs bootstrap explicitly, checks agreement with the prepared VSIX copy after
-DESCRIPTION normalization, checks R CMD build preserves the field, and validates both the
-installed package and packaged VSIX. Run these lightweight tests with
-`pnpm run test:sess-source` (Node, Git and base R only).
+Builds require Git and a checkout with HEAD. Watch mode prepares the bundle at
+startup; restart it after editing `sess/`. Run the lightweight identity tests
+with `pnpm run test:sess-source`.
 
-`R/sess_source.R` shares the installed-package lookup and install decision between
-the prompt, attach command and installer. It reads DESCRIPTION from `.libPaths()`
-without loading the namespace. After installation, the installer verifies that
-the visible package has the expected revision; warnings or a shadowing library
-must not silently count as success. Updating files does not replace a namespace
-already loaded in R: restart that R process to use the new source. On platforms
-that prevent overwriting loaded packages, restart before installing.
-
-Source identity is deployment metadata. It does not describe a running
-namespace or determine whether a session can connect. The existing
-`protocol_version` handshake remains responsible for runtime compatibility;
-source mismatches do not reject an otherwise compatible running session.
+Installation verifies the expected package is visible through `.libPaths()`.
+Restart R to use updated files if sess is already loaded. Source identity controls
+installation only; the existing `protocol_version` handshake determines runtime
+compatibility, and source mismatches do not reject compatible sessions.
 
 ## Protocol reference
 
