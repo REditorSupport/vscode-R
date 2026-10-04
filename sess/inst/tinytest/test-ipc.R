@@ -158,7 +158,10 @@ local({
   response <- jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]))
   expect_true(all(abs(response$result$rows[["1"]] - expected) <= abs(expected) * 1e-14))
 
-  disposed <- sess:::handle_dataview_dispose(list(view_id = registration$view_id))
+  disposed <- sess:::handle_dataview_dispose(list(
+    view_id = registration$view_id,
+    state_generation = registration$state_generation
+  ))
   expect_true(isTRUE(disposed))
   expect_error(
     sess:::handle_dataview_init(list(view_id = registration$view_id)),
