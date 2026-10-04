@@ -298,7 +298,7 @@ Route synchronous `rstudioapi` requests and stdin prompts to the controlling cli
 
 ### Plain background R
 
-Add a managed worker entry point, for example the proposed `sess::run_worker()`, launched by the session agent. The worker owns the evaluation loop and `.GlobalEnv`; `sess` continues to provide editor hooks.
+Add a managed worker entry point, for example the internal sess `run_worker()`, launched by the session agent. The worker owns the evaluation loop and `.GlobalEnv`; `sess` continues to provide editor hooks.
 
 Use a dedicated execution driver that receives structured submissions at safe points. Prototype R-level evaluation with `evaluate` and output handlers, or an equivalent carefully tested expression driver. This is a new dependency/implementation choice to settle in the execution spike. It must preserve visible-value printing, assignments, multiple expressions, warnings/messages, errors, source locations, working directory, options, and random-number state as expected for interactive use.
 

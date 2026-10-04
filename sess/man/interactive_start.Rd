@@ -14,3 +14,4 @@ interactive_start(config, mirror = TRUE)
 \description{
 Connect an existing R frontend to a persistent Interactive agent
 }
+\keyword{internal}

@@ -152,22 +152,20 @@ import type { LanguageClient } from 'vscode-languageclient/node';
             await config.update('interactive.arfPath', previous, vscode.ConfigurationTarget.Global);
         }
     });
-    test('missing Node reports the remote-host setting before installing a runtime or creating a session', async () => {
-        const config = vscode.workspace.getConfiguration('r');
-        const previous = config.inspect<string>('interactive.nodePath')?.globalValue;
+    test('a removed VS Code runtime is reported before installing a runtime or creating a session', async () => {
+        const executable = sinon.stub(process, 'execPath').value(path.join(root, 'removed-host-runtime'));
         const entries = fs.readdirSync(root);
         const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'R', value: 'r' } as vscode.QuickPickItem);
         const input = sinon.stub(vscode.window, 'showInputBox').resolves('Missing Node');
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         try {
-            await config.update('interactive.nodePath', path.join(root, 'missing-node'), vscode.ConfigurationTarget.Global);
             await vscode.commands.executeCommand('r.interactive.new');
             sinon.assert.calledOnce(errors);
-            assert.match(errors.firstCall.args[0], /r\.interactive\.nodePath.*remote server/);
+            assert.match(errors.firstCall.args[0], /Reload VS Code.*VS Code Server/);
             assert.deepStrictEqual(fs.readdirSync(root), entries);
         } finally {
             picker.restore(); input.restore(); errors.restore();
-            await config.update('interactive.nodePath', previous, vscode.ConfigurationTarget.Global);
+            executable.restore();
         }
     });
     test('missing explicit tmux reports a recovery setting before installing or creating a session', async () => {
@@ -1539,7 +1537,7 @@ par(mfrow=c(1,1))`);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
         const kernels = sinon.spy(vscode.notebooks, 'createNotebookController');
         let client: AgentClient | undefined;
-        const nodePath = vscode.workspace.getConfiguration('r').inspect<string>('interactive.nodePath')?.globalValue;
+        let executable: sinon.SinonStub | undefined;
         const supervision = vscode.workspace.getConfiguration('r').inspect<string>('interactive.supervision')?.globalValue;
         try {
             // A cancelled restart must leave the process and transcript alone.
@@ -1575,15 +1573,15 @@ par(mfrow=c(1,1))`);
                 confirmation.resolves('Restart Session' as unknown as vscode.MessageItem);
             }
             // A missing Node runtime must be detected before stopping the current R.
-            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', path.join(root, 'missing-node'), vscode.ConfigurationTarget.Global);
+            executable = sinon.stub(process, 'execPath').value(path.join(root, 'removed-host-runtime'));
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
             sinon.assert.calledOnce(errors);
-            assert.match(errors.firstCall.args[0], /r\.interactive\.nodePath/);
+            assert.match(errors.firstCall.args[0], /Reload VS Code/);
             assert.strictEqual(notebook.cellCount, oldCount);
             assert.strictEqual(notebook.metadata.rGeneration, original.generation);
             assert.ok(restartController.label.endsWith(' · idle'));
             assert.ok(original.rPid); process.kill(original.rPid, 0);
-            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', nodePath, vscode.ConfigurationTarget.Global);
+            executable?.restore();
             errors.resetHistory();
             // Losing tmux must not stop the live R process. This preflight uses the
             // current setting even though the saved session used detached launch.
@@ -1694,7 +1692,7 @@ par(mfrow=c(1,1))`);
             sinon.assert.notCalled(errors);
         } finally {
             confirmation.restore(); errors.restore(); kernels.restore(); change.dispose();
-            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', nodePath, vscode.ConfigurationTarget.Global);
+            executable?.restore();
             await vscode.workspace.getConfiguration('r').update('interactive.supervision', supervision, vscode.ConfigurationTarget.Global);
             if (!client?.connected) {
                 client = new AgentClient(JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest);

@@ -16,3 +16,4 @@ interactive_execute(id, code, source = NULL)
 \description{
 Evaluate an execution admitted by a persistent Interactive agent
 }
+\keyword{internal}

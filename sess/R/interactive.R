@@ -64,7 +64,7 @@
 #'
 #' @param config Path to the private JSON bootstrap configuration created by the agent.
 #' @param mirror Whether to also write console output to the original frontend.
-#' @export
+#' @keywords internal
 interactive_start <- function(config, mirror = TRUE) {
   if (isTRUE(.sess_env$interactive_connected)) {
     stop("This R process already belongs to an Interactive agent")
@@ -158,7 +158,7 @@ interactive_start <- function(config, mirror = TRUE) {
 #' Run the managed Interactive worker
 #'
 #' @param config Path to the agent's private bootstrap configuration.
-#' @export
+#' @keywords internal
 run_worker <- function(config) {
   interactive_start(config, mirror = FALSE)
   on.exit(.Call("sess_bridge_stop", PACKAGE = "sess"), add = TRUE)
@@ -184,7 +184,7 @@ run_worker <- function(config) {
 #' @param id Unique execution identifier within this R process.
 #' @param code R code to evaluate in the global environment.
 #' @param source Optional source-location metadata.
-#' @export
+#' @keywords internal
 interactive_execute <- function(id, code, source = NULL) {
   .sess_env$interactive_skip_task <- TRUE
   if (!isTRUE(.sess_env$interactive_connected)) stop("No Interactive agent connected")

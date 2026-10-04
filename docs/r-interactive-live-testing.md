@@ -64,7 +64,7 @@ A subsequent picker polish uses only **R** and **arf**, each with its executable
 
 ## Remote startup and CI follow-up
 
-The Remote SSH `spawn node ENOENT` report came from the shared agent launcher used by both R and arf. The default now resolves Node on PATH, then falls back to the standalone runtime running VS Code Server. Explicit invalid settings still produce an actionable `r.interactive.nodePath` error. A runtime/version check runs before private runtime installation and before stopping R for restart. Desktop Electron helpers are excluded.
+The Remote SSH `spawn node ENOENT` report came from the shared agent launcher used by both R and arf. The launcher now uses the extension host's own runtime, including VS Code Server remotely and Electron in Node mode on desktop. No Node PATH lookup or runtime setting is required. A runtime/version check runs before private runtime installation and before stopping R for restart.
 
 The Node regressions include a real standalone subprocess with PATH containing no Node executable, custom-path precedence, missing/removed executables, unsupported version output, no session storage on failed creation, and preservation of the running process and transcript on failed restart preflight. The full local suite passed **384 tests** on VS Code **1.140.0** with tmux enabled; the real arf runtime matrix passed **24 tests**. Actual Remote SSH transport was not exercised in this pass.
 
@@ -153,3 +153,15 @@ Production/TypeScript builds and lint pass, with **0 errors and 70 existing Type
 - Unsubmitted native input drafts were preserved when creating another session, but were not restored after full application exit in the 1.140.0 pass. Persistent R objects and executed history survived. Save unfinished code in a source file before quitting.
 - Renaming a session updates its kernel/status/picker presentation, but an already-open native Interactive tab can retain its original name. Widget frames currently use a fixed height, which can leave whitespace for small widgets.
 - Existing agents retain their original HTTP policy and R runtime. Reloading updates editor-side diagnostics and export behavior; start a new session or explicitly restart a managed session to use the widget policy and shortened error traces. Restart loses in-memory R objects, so a new session is preferable while old work is still needed.
+
+## Bundled editor runtime and private sess entry points (2026-10-04)
+
+The session agent now uses the current extension host executable automatically. Desktop launches set `ELECTRON_RUN_AS_NODE=1`; remote launches use VS Code Server's Node. The flag reaches detached launchers and is passed explicitly through tmux/systemd, then removed before the agent starts R. `r.interactive.nodePath` has been removed. Availability and Node version checks still run before private runtime preparation or stopping a session for restart.
+
+The bootstrap and arf adapter call the internal sess `interactive_start`, `interactive_execute`, and `run_worker` functions through namespace lookups. Public `display` and `interactive_stop` remain exported. Compatibility checks verify the internal functions without requiring their export. Qualified base lookups prevent user-defined `get` or `asNamespace` helpers from breaking arf dispatch. All remaining `r.interactive.*` settings carry VS Code's experimental tag.
+
+Local macOS validation passed 99 backend/runtime tests, 47 arf tests, 106 editor/runtime/supervision/terminal tests, and 634 sess checks. TypeScript compilation and R lint passed; ESLint reported no errors and the existing warnings. The combined editor suite exposed a terminal fixture that assumed no editor was focused; it now explicitly isolates that state.
+
+The repeatable `src/test/examples/runtime-lifecycle.cjs` fixture launched a session from the actual VS Code 1.110.0 extension host with no standalone Node on PATH, exited the full application, and verified that R remained reachable. VS Code 1.140.0 then reconnected to the same R PID and retained object, and launched a second session using its own extension-host executable. Both sessions survived application exit, and R did not inherit `ELECTRON_RUN_AS_NODE`.
+
+This checks quit/reopen and switching editor versions on macOS. It does not exercise the editor's updater or establish that every OS/update mechanism preserves running agents. New launches resolve the current host each time; a removed runtime reports a reload/repair instruction, and reconnection to a live agent does not need to relaunch its executable. Linux supervisor coverage remains in CI; the local supervisor fixtures verify propagation of the Electron flag through both command forms.

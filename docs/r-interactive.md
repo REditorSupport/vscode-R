@@ -2,6 +2,8 @@
 
 R Interactive runs R independently of the VS Code extension host. Each session has its own Interactive window, execution queue, environment, retained transcript, plot service, and private agent. Reloading VS Code, closing a tab, or losing an SSH connection does not terminate R.
 
+R Interactive and its `r.interactive.*` settings are experimental. Configuration and behavior may change as the design evolves.
+
 ## Remote SSH setup
 
 Install this extension **on the remote host**. The initial implementation supports Linux and macOS; its native console bridge does not support Windows.
@@ -9,7 +11,7 @@ Install this extension **on the remote host**. The initial implementation suppor
 The remote host needs:
 
 - R, plus either compatible pre-built sess/dependency packages or a C compiler capable of building R packages (`r-base-dev` and `build-essential` on Debian/Ubuntu).
-- Node.js 18 or newer. The default searches the extension host's PATH, then uses VS Code Server's own standalone Node runtime in Remote SSH. A separate Node installation is normally unnecessary on the remote host. Local desktop sessions require standalone Node on PATH or an explicit `r.interactive.nodePath`; the Electron helper is not used.
+- The session agent uses the extension host's bundled runtime: VS Code's Electron runtime in Node mode on desktop, or VS Code Server's Node runtime remotely. No separate Node.js installation or runtime setting is needed.
 - `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
 - R packages `processx`, `later`, `jsonlite`, and `rstudioapi`. Install `languageserver` for language features, `jgd` and `systemfonts` for JGD graphics, `svglite` for the static fallback, and `htmlwidgets`/`htmltools` for HTML output.
 - `arf` is optional. Creating a headless arf session requires an executable on the R host; plain R requires no arf installation. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract was exercised with arf 0.5.1.
@@ -23,13 +25,13 @@ install.packages(c(
 ))
 ```
 
-If a configured Node path is missing or unusable, set **R › Interactive: Node Path** to an executable on the R host. Paths support `~/`, `${userHome}`, and `${workspaceFolder}`. Runtime availability and version are checked before installation or restart, so a failed check leaves the current R process running.
+Runtime availability and version (Node.js 18+) are checked before installation or restart, so a failed check leaves the current R process running. If an editor update removes the previous runtime, reload VS Code to select its current executable. Reconnecting to an existing agent does not launch or replace its runtime; new and restarted sessions use the current extension host's runtime.
 
 The extension installs its bundled `sess` into a private, content-addressed library. It does not replace your installed `sess` package. If the source build fails, including when build tools are missing, it tries a compiler-free package from [R-universe](https://reditorsupport.r-universe.dev/sess). Installation diagnostics appear in the **R Interactive** output channel.
 
 The fallback uses R's matching macOS/Windows binary repository, or an Ubuntu repository matching the host's codename, architecture and R version. It never assumes that an Ubuntu binary is compatible with a different Linux distribution. Where no binary target exists, a published pure-R package can also be used without compilation, provided its dependencies are already installed or available without compilation. Dependencies for a binary fallback come from the matching R-universe repositories. No global repository settings are changed.
 
-Interactive requires the published package's compatibility marker (`Config/vscode-R/Interactive: 1`), the expected exports, and the registered native console routines. A matching package version alone is insufficient. **The public sess 3.0.1 build checked on 2026-10-02 predates this PR, reports `NeedsCompilation: no`, and cannot run these Interactive sessions.** A build containing this branch's native bridge must be published before that fallback can replace local compilation for Interactive. Ordinary terminal sess installation can already use the existing public build. Missing/incompatible binaries produce an actionable installation error rather than a partially initialized session.
+Interactive requires the published package's compatibility marker (`Config/vscode-R/Interactive: 1`), the expected public exports and internal entry points, and the registered native console routines. A matching package version alone is insufficient. **The public sess 3.0.1 build checked on 2026-10-02 predates this PR, reports `NeedsCompilation: no`, and cannot run these Interactive sessions.** A build containing this branch's native bridge must be published before that fallback can replace local compilation for Interactive. Ordinary terminal sess installation can already use the existing public build. Missing/incompatible binaries produce an actionable installation error rather than a partially initialized session.
 
 That private library is used only to load the bridge; it is not added to your session's `.libPaths()` or `R_LIBS`. Package installation follows ordinary R behavior: `install.packages()` defaults to the first library in `.libPaths()`, usually your user library. Startup files can customize that order, and an explicit `lib=` still takes precedence. The extension does not force a user-library destination over a project library.
 
@@ -41,7 +43,6 @@ Typical remote settings:
 
 ```json
 {
-  "r.interactive.nodePath": "/usr/bin/node",
   "r.interactive.arfPath": "/home/me/.cargo/bin/arf",
   "r.interactive.supervision": "auto",
   "r.interactive.restore": true,

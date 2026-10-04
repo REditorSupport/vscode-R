@@ -354,6 +354,9 @@ suite('R Terminal', () => {
         test(`file resource uses workspace cwd (workspace present: ${String(hasWorkspace)})`, async () => {
             const folder = vscode.Uri.file(path.join(path.sep, 'workspace', 'project'));
             const file = vscode.Uri.file(path.join(folder.fsPath, 'script.R'));
+            // Variable substitution also inspects the active editor. Keep this
+            // explicit-resource test independent of preceding editor suites.
+            sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
             sandbox.stub(vscode.workspace, 'workspaceFolders').value(
                 hasWorkspace ? [{ uri: folder } as vscode.WorkspaceFolder] : undefined
             );

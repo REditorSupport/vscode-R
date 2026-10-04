@@ -4,63 +4,55 @@ import * as os from 'os';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { resolveNodeExecutable } from '../../interactive/nodeExecutable';
-import { agentEnvironment, prepareNodeRuntime } from '../../interactive/launcher';
+import * as sinon from 'sinon';
+import { hostNodeRuntime } from '../../interactive/nodeExecutable';
+import { nodeEnvironment, prepareNodeRuntime } from '../../interactive/launcher';
 
 suite('Interactive Node runtime', () => {
     let root: string;
-    const name = process.platform === 'win32' ? 'node.exe' : 'node';
-    setup(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-node-path-')); });
+    setup(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-node-runtime-')); });
     teardown(() => { fs.rmSync(root, { recursive: true, force: true }); });
-    function executable(directory: string, filename = name, text = ''): string {
-        fs.mkdirSync(directory, { recursive: true });
-        const file = path.join(directory, filename);
-        fs.writeFileSync(file, text, { mode: 0o700 });
-        return file;
-    }
 
-    test('uses VS Code Server Node when node is missing from the remote PATH', () => {
-        const bundled = executable(path.join(root, '.vscode-server', 'bin'));
-        assert.strictEqual(resolveNodeExecutable('node', root, { execPath: bundled, path: path.join(root, 'empty') }), bundled);
-        assert.strictEqual(resolveNodeExecutable('', root, { execPath: bundled, path: '' }), bundled);
+    test('uses the current extension host executable without a PATH lookup', () => {
+        const environment = sinon.stub(process.env, 'PATH').value(root);
+        const executable = sinon.stub(process, 'execPath').value(path.join(root, 'Code Helper (Plugin)'));
+        try {
+            assert.deepStrictEqual(hostNodeRuntime(), { executable: process.execPath, electron: !!process.versions.electron });
+            // A reload after an editor update must select the new host, not a cached path.
+            executable.value(path.join(root, 'updated-server', 'node'));
+            assert.strictEqual(hostNodeRuntime().executable, process.execPath);
+        } finally { executable.restore(); environment.restore(); }
     });
-    test('prefers PATH or an explicit executable and does not replace invalid custom paths', () => {
-        const bundled = executable(path.join(root, 'server'));
-        const local = executable(path.join(root, 'custom path'));
-        const host = { execPath: bundled, path: path.dirname(local) };
-        assert.strictEqual(resolveNodeExecutable('node', root, host), local);
-        assert.strictEqual(resolveNodeExecutable(`"${local}"`, root, host), local);
-        assert.strictEqual(resolveNodeExecutable(path.join(root, 'missing-node'), root, host), undefined);
+    test('scopes Electron Node mode to its launch environment and removes debugger injection', () => {
+        const environment = { ELECTRON_RUN_AS_NODE: '1', VSCODE_INSPECTOR_OPTIONS: '{}', NODE_OPTIONS: '--require missing', PATH: root };
+        assert.deepStrictEqual(nodeEnvironment({ executable: 'Code', electron: true }, environment), { PATH: root, ELECTRON_RUN_AS_NODE: '1' });
+        assert.deepStrictEqual(nodeEnvironment({ executable: 'node', electron: false }, environment), { PATH: root });
+        assert.strictEqual(environment.NODE_OPTIONS, '--require missing');
     });
-    test('never falls back to a desktop Electron helper or a removed server runtime', () => {
-        const bundled = executable(path.join(root, 'server'));
-        assert.strictEqual(resolveNodeExecutable('node', root, { execPath: bundled, electron: '42.0.0', path: '' }), undefined);
-        const helper = executable(root, 'Code Helper');
-        assert.strictEqual(resolveNodeExecutable('node', root, { execPath: helper, path: '' }), undefined);
-        fs.unlinkSync(bundled);
-        assert.strictEqual(resolveNodeExecutable('node', root, { execPath: bundled, path: '' }), undefined);
-    });
-    test('reports invalid paths with a Remote SSH recovery setting before launch', async () => {
-        await assert.rejects(prepareNodeRuntime(path.join(root, 'missing-node'), root), /r\.interactive\.nodePath.*remote server/);
+    test('reports a removed host runtime before creating session storage', async () => {
+        await assert.rejects(prepareNodeRuntime(root, { executable: path.join(root, 'removed-host'), electron: true }), /Reload VS Code.*VS Code Server/);
         assert.deepStrictEqual(fs.readdirSync(root), []);
     });
-    test('prepares the actual standalone host runtime with no node on PATH', async () => {
-        const node = resolveNodeExecutable('node', root); assert.ok(node);
+    test('prepares and launches the actual host runtime with no node on PATH', async () => {
+        const runtime = await prepareNodeRuntime(root);
         const script = `require(${JSON.stringify(require.resolve('../../interactive/launcher'))})
-            .prepareNodeRuntime('node', process.cwd()).then(node => process.stdout.write(node))
+            .prepareNodeRuntime(process.cwd()).then(runtime => process.stdout.write(JSON.stringify(runtime)))
             .catch(error => { console.error(error); process.exitCode = 1; });`;
-        const result = await promisify(execFile)(node, ['-e', script], {
-            cwd: root, env: { ...agentEnvironment(), PATH: root }, timeout: 10000,
+        const result = await promisify(execFile)(runtime.executable, ['-e', script], {
+            cwd: root, env: nodeEnvironment(runtime, { ...process.env, PATH: root }), timeout: 10000,
         });
-        assert.strictEqual(fs.realpathSync(result.stdout), fs.realpathSync(node));
+        assert.deepStrictEqual(JSON.parse(result.stdout), runtime);
     });
-    test('validates the runtime version rather than accepting arbitrary version output', async function () {
+    test('probes the Node version in Electron mode instead of its application version', async function () {
         if (process.platform === 'win32') { this.skip(); }
-        const node = executable(root, name, '#!/bin/sh\nprintf "v24.0.0\\n"\n');
-        assert.strictEqual(await prepareNodeRuntime(node, root), node);
-        for (const version of ['v16.0.0', 'not node']) {
-            fs.writeFileSync(node, `#!/bin/sh\nprintf "${version}\\n"\n`);
-            await assert.rejects(prepareNodeRuntime(node, root), /requires Node.js 18 or newer/);
+        const executable = path.join(root, 'Code Helper');
+        const runtime = { executable, electron: true };
+        const script = (version: string): string => `#!/bin/sh\n[ "$ELECTRON_RUN_AS_NODE" = 1 ] && [ "$1" = -p ] && [ "$2" = process.versions.node ] || exit 1\nprintf '${version}\\n'\n`;
+        fs.writeFileSync(executable, script('24.0.0'), { mode: 0o700 });
+        assert.deepStrictEqual(await prepareNodeRuntime(root, runtime), runtime);
+        for (const version of ['16.0.0', 'not node']) {
+            fs.writeFileSync(executable, script(version));
+            await assert.rejects(prepareNodeRuntime(root, runtime), /requires Node.js 18 or newer/);
         }
     });
 });

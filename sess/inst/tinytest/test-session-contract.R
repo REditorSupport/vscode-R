@@ -1,3 +1,12 @@
+# Bootstrap and dispatch entry points are private; explicit user APIs stay public.
+ns <- asNamespace("sess")
+internal <- c("interactive_start", "interactive_execute", "run_worker")
+expect_true(all(vapply(internal, function(n) {
+  exists(n, ns, mode = "function", inherits = FALSE)
+}, FALSE)))
+expect_false(any(internal %in% getNamespaceExports(ns)))
+expect_true(all(c("display", "interactive_stop") %in% getNamespaceExports(ns)))
+
 # The attach identity and protocol metadata are process-scoped, not connection-scoped.
 local({
   expect_true("endpoint" %in% names(formals(sess::connect)))

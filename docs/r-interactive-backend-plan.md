@@ -15,7 +15,7 @@ The current coupling extends beyond execution:
 | `src/interactive/manager.ts:518`–`558`, `1323`–`1355` | provider preflight and unconditional sess installation during creation and restart |
 | `src/interactive/launcher.ts:88`–`142` | one cache/install operation currently bundles the agent, sess, bootstrap scripts and graphics resources |
 
-Plain R currently calls `interactive_execute` over sess RPC. The arf path uses visible arf `evaluate` to call `sess::interactive_execute()`. Both still depend on the sess console bridge and use sess for inspection. Implementing two independent backends by copying that shared code would make subsequent fixes harder to maintain.
+Plain R currently calls `interactive_execute` over sess RPC. The arf path uses visible arf `evaluate` to call the internal sess `interactive_execute()` entry point. Both still depend on the sess console bridge and use sess for inspection. Implementing two independent backends by copying that shared code would make subsequent fixes harder to maintain.
 
 ## Responsibility boundary
 

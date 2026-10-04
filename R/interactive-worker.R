@@ -19,7 +19,7 @@ function(library, config, support_libraries = character(), worker = TRUE) {
     for (package in c("jsonlite", "later", "ps", "processx", "rstudioapi")) {
         loadNamespace(package, lib.loc = support_paths)
     }
-    loadNamespace("sess", lib.loc = c(library, support_paths))
+    ns <- loadNamespace("sess", lib.loc = c(library, support_paths))
     cfg <- jsonlite::fromJSON(config)
     # Prefer project versions of support packages. Libraries outside an isolated
     # project are available only for loading the IDE bridge and its plot device.
@@ -28,5 +28,9 @@ function(library, config, support_libraries = character(), worker = TRUE) {
              error = function(e) {
                  if (isTRUE(cfg$useJgd)) stop(e)
              })
-    if (worker) sess::run_worker(config) else sess::interactive_start(config, mirror = TRUE)
+    if (worker) {
+        base::get("run_worker", ns, inherits = FALSE)(config)
+    } else {
+        base::get("interactive_start", ns, inherits = FALSE)(config, mirror = TRUE)
+    }
 }

@@ -537,7 +537,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (kind === 'arf' && !(arfPath = this.checkArfExecutable(arfPath ?? arfCommand, directory))) { return; }
         const supervision = util.config(resource).get<string>('interactive.supervision', 'auto');
         prepareSupervisor(supervision, directory);
-        const node = await this.nodeRuntime(directory, resource);
+        const node = await prepareNodeRuntime(directory);
         return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Starting persistent R Interactive' }, async progress => {
             progress.report({ message: 'Preparing the private R runtime' });
             if (kind === 'arf' && !(arfPath = this.checkArfExecutable(arfPath ?? arfCommand, directory))) { return; }
@@ -562,10 +562,6 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private arfCommand(resource?: vscode.Uri): string {
         return util.substituteVariables(util.config(resource).get<string>('interactive.arfPath', 'arf'), resource).trim() || 'arf';
-    }
-
-    private nodeRuntime(directory: string, resource?: vscode.Uri): Promise<string> {
-        return prepareNodeRuntime(util.substituteVariables(util.config(resource).get<string>('interactive.nodePath', 'node'), resource), directory);
     }
 
     private async configureArf(): Promise<void> {
@@ -1365,7 +1361,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             // the actual supervisor of the old process, not the current preference.
             config.supervision = util.config(vscode.Uri.file(config.directory)).get<string>('interactive.supervision', 'auto');
             prepareSupervisor(config.supervision, config.directory);
-            const node = await this.nodeRuntime(config.directory, vscode.Uri.file(config.directory));
+            const node = await prepareNodeRuntime(config.directory);
             const backend = backendDescriptor(config);
             if (backend.kind === 'sess' && backend.options.frontend === 'arf' && backend.options.ownership === 'managed') {
                 // Preserve the original binary across PATH changes after a reload, but

@@ -9,6 +9,9 @@ export class SessionAgent extends Agent {
 }
 
 if (require.main === module) {
+    // Electron is already running as Node. Do not change how user R code starts
+    // other Electron applications (including the editor's CLI).
+    delete process.env.ELECTRON_RUN_AS_NODE;
     const config = JSON.parse(fs.readFileSync(process.argv[2], 'utf8')) as AgentConfig;
     const agent = new SessionAgent(config);
     process.once('SIGTERM', () => { void agent.close().finally(() => process.exit(0)); });

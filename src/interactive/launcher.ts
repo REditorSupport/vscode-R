@@ -6,7 +6,7 @@ import { createHash, randomUUID } from 'crypto';
 import { promisify } from 'util';
 import { AgentConfig, SessionManifest, identifier } from './protocol';
 import { atomicJson } from './journal';
-import { resolveNodeExecutable } from './nodeExecutable';
+import { hostNodeRuntime, NodeRuntime } from './nodeExecutable';
 import { prepareSupervisor } from './supervisor';
 import { ensureStorageDirectory, prepareStorage, storageError } from './storage';
 import { installSessRuntime } from './backends/sessPreparation';
@@ -63,10 +63,18 @@ export function shellQuote(value: string): string { return `'${value.replace(/'/
 /** Debugger auto-attach must not make the persistent agent part of the editor's debug session. */
 export function agentEnvironment(environment = process.env): NodeJS.ProcessEnv {
     const result = { ...environment };
+    delete result.ELECTRON_RUN_AS_NODE;
     if (result.VSCODE_INSPECTOR_OPTIONS) {
         delete result.NODE_OPTIONS;
         delete result.VSCODE_INSPECTOR_OPTIONS;
     }
+    return result;
+}
+
+/** Only the Electron launcher and agent need this flag, not their R children. */
+export function nodeEnvironment(runtime: NodeRuntime, environment = process.env): NodeJS.ProcessEnv {
+    const result = agentEnvironment(environment);
+    if (runtime.electron) { result.ELECTRON_RUN_AS_NODE = '1'; }
     return result;
 }
 
@@ -92,35 +100,36 @@ export async function installRuntime(extensionPath: string, root: string, rPath:
 }
 
 /** Validate before building a runtime or stopping a session for restart. */
-export async function prepareNodeRuntime(command: string, directory: string): Promise<string> {
-    const node = resolveNodeExecutable(command, directory);
-    const help = 'Set r.interactive.nodePath to a Node.js 18+ executable on the R host (the remote server when using Remote SSH).';
-    if (!node) { throw new Error(`Cannot find the Node.js runtime “${command}” on this host. ${help}`); }
+export async function prepareNodeRuntime(directory: string, runtime = hostNodeRuntime()): Promise<NodeRuntime> {
+    const node = runtime.executable;
+    const help = 'Reload VS Code to use its current runtime. If this persists, repair or update VS Code (VS Code Server on a remote host).';
     let version: string;
     try {
-        version = (await run(node, ['--version'], { env: agentEnvironment(), cwd: directory, timeout: 5000 })).stdout.trim();
-    } catch (error) { throw new Error(`Cannot run the Node.js runtime “${node}”. ${help}`, { cause: error }); }
-    const major = /^v(\d+)\.\d+\.\d+(?:[-+].*)?$/.exec(version)?.[1];
+        version = (await run(node, ['-p', 'process.versions.node'], { env: nodeEnvironment(runtime), cwd: directory, timeout: 5000 })).stdout.trim();
+    } catch (error) { throw new Error(`Cannot run VS Code's Node.js runtime “${node}”. ${help}`, { cause: error }); }
+    const major = /^(\d+)\.\d+\.\d+(?:[-+].*)?$/.exec(version)?.[1];
     if (!major || Number(major) < 18) {
         throw new Error(`The session agent requires Node.js 18 or newer; “${node}” reported “${version}”. ${help}`);
     }
-    return node;
+    return runtime;
 }
 
-export async function launchAgent(config: AgentConfig, agent: string, node: string,
+export async function launchAgent(config: AgentConfig, agent: string, runtime = hostNodeRuntime(),
     log: (text: string) => void = () => undefined): Promise<SessionManifest> {
     const supervisor = prepareSupervisor(config.supervision, config.directory);
-    node = await prepareNodeRuntime(node, config.directory);
+    runtime = await prepareNodeRuntime(config.directory, runtime);
+    const node = runtime.executable;
     ensureStorageDirectory(config.storage, path.dirname(config.storage));
     const file = path.join(config.storage, 'config.json');
-    const env = agentEnvironment();
+    const env = nodeEnvironment(runtime);
     config.supervision = supervisor.kind;
     atomicJson(file, config);
     if (supervisor.kind !== 'detached') {
         const args = supervisor.kind === 'tmux'
             ? ['new-session', '-d', '-s', `vscode-r-${config.id.slice(0, 8)}-${config.generation.slice(0, 8)}`,
-                `exec ${[node, agent, file].map(shellQuote).join(' ')} >>${shellQuote(path.join(config.storage, 'agent.log'))} 2>&1`]
-            : ['--user', '--collect', '--unit', `vscode-r-${config.id}-${config.generation}`, '--', node, agent, file];
+                `${runtime.electron ? 'ELECTRON_RUN_AS_NODE=1 ' : ''}exec ${[node, agent, file].map(shellQuote).join(' ')} >>${shellQuote(path.join(config.storage, 'agent.log'))} 2>&1`]
+            : ['--user', '--collect', '--unit', `vscode-r-${config.id}-${config.generation}`,
+                ...(runtime.electron ? ['--setenv=ELECTRON_RUN_AS_NODE=1'] : []), '--', node, agent, file];
         try { await run(supervisor.executable, args, { env, cwd: config.directory, timeout: 10000 }); }
         catch (error) {
             // A failed command may already have started an agent. Falling back now

@@ -9,9 +9,9 @@ import { arfRequest, probeArfSession } from '../../interactive/arf';
 import { SessionAgent } from '../../interactive/agentMain';
 import { AgentClient } from '../../interactive/client';
 import { AgentConfig, SessionEvent, SessionManifest, ExecutionRecord } from '../../interactive/protocol';
-import { defaultStorage, installRuntime } from '../../interactive/launcher';
+import { defaultStorage, installRuntime, nodeEnvironment } from '../../interactive/launcher';
 import { resolveExecutable } from '../../interactive/executable';
-import { resolveNodeExecutable } from '../../interactive/nodeExecutable';
+import { hostNodeRuntime } from '../../interactive/nodeExecutable';
 import { HistoryPage } from '../../interactive/history';
 import { queryTablePage, TableColumn, tableSchema } from '../../interactive/tableQuery';
 import { AssetStorageStats, readAsset } from '../../interactive/assets';
@@ -83,6 +83,14 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         assert.strictEqual((await finished(id)).state, 'success');
         assert.match(text(id), /early λ🙂/); assert.match(text(id), /42/);
         const next = await submit('answer + 1'); await finished(next); assert.match(text(next), /43/);
+    });
+
+    test('dispatch remains usable when user code masks namespace lookup functions', async () => {
+        const first = await submit('get <- asNamespace <- function(...) stop("user helper called")');
+        assert.strictEqual((await finished(first)).state, 'success');
+        const next = await submit('cat("namespace dispatch works")');
+        assert.strictEqual((await finished(next)).state, 'success');
+        assert.match(text(next), /namespace dispatch works/);
     });
 
     test('searches durable history beyond the reconnect window without executing code', async () => {
@@ -752,14 +760,14 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             provider: 'r', supervision: process.env.VSCR_TEST_TMUX ? 'tmux' : 'detached', plotBackend: 'standard',
             historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
         const script = `const {launchAgent} = require(${JSON.stringify(require.resolve('../../interactive/launcher'))});
-            launchAgent(${JSON.stringify(config)}, ${JSON.stringify(agentBundle)}, 'node')
+            launchAgent(${JSON.stringify(config)}, ${JSON.stringify(agentBundle)})
             .then(value => process.stdout.write(JSON.stringify(value))).catch(error => { console.error(error); process.exitCode=1; });`;
-        const result = await run('node', ['-e', script]);
+        const result = await run(process.execPath, ['-e', script], { env: nodeEnvironment(hostNodeRuntime()) });
         const independent = new AgentClient(JSON.parse(result.stdout) as SessionManifest);
         try {
             await independent.connect();
             const execution = randomUUID();
-            await independent.request('submit', { submission: { id: execution, code: 'persisted <- 42' } });
+            await independent.request('submit', { submission: { id: execution, code: 'stopifnot(Sys.getenv("ELECTRON_RUN_AS_NODE") == ""); persisted <- 42' } });
             for (let i = 0; i < 200; i++) {
                 const record = await independent.request<ExecutionRecord>('execution', { id: execution });
                 if (record.state === 'success') { break; }
@@ -777,10 +785,11 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
 
     for (const supervision of ['detached', 'auto']) {
         test(`${supervision === 'auto' ? 'Linux auto without tmux' : 'Detached'} session leaves the editor process tree and retains objects after its termination`, async () => {
-            const node = resolveNodeExecutable('node', root); assert.ok(node);
+            const runtime = hostNodeRuntime();
+            const node = runtime.executable;
             const rPath = resolveExecutable('R', root); assert.ok(rPath);
             const arfPath = resolveExecutable(process.env.ARF_PATH ?? 'arf', root);
-            const environment = { ...process.env };
+            const environment = nodeEnvironment(runtime);
             if (supervision === 'auto') {
                 // A real restricted PATH, including the shell utilities used by R but
                 // deliberately excluding tmux even on CI hosts where it is installed.
@@ -800,7 +809,7 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             ${supervision === 'auto' ? 'Object.defineProperty(process, \'platform\', { value: \'linux\' });' : ''}
             process.env.VSCODE_INSPECTOR_OPTIONS = '{}';
             process.env.NODE_OPTIONS = '--require /missing/vscode-debug-bootloader.js';
-            launchAgent(${JSON.stringify(config)}, ${JSON.stringify(agentBundle)}, ${JSON.stringify(node)})
+            launchAgent(${JSON.stringify(config)}, ${JSON.stringify(agentBundle)})
                 .then(value => { console.log(JSON.stringify(value)); setInterval(() => {}, 1000); })
                 .catch(error => { console.error(error); process.exitCode = 1; });`;
             const parent = spawn(node, ['-e', script], { env: environment, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -822,7 +831,7 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
                 assert.strictEqual(saved.supervision, 'detached');
                 if (supervision === 'auto') { assert.match(fs.readFileSync(path.join(config.storage, 'agent.log'), 'utf8'), /tmux is unavailable/); }
                 const before = randomUUID();
-                await independent.request('submit', { submission: { id: before, code: 'persisted <- 42' } });
+                await independent.request('submit', { submission: { id: before, code: 'stopifnot(Sys.getenv("ELECTRON_RUN_AS_NODE") == ""); persisted <- 42' } });
                 const complete = async (execution: string): Promise<void> => {
                     assert.ok(independent);
                     for (let i = 0; i < 200; i++) {

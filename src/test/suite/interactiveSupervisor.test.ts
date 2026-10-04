@@ -51,23 +51,28 @@ import { AgentConfig } from '../../interactive/protocol';
         try {
             for (const supervision of ['tmux', 'systemd']) {
                 await assert.rejects(launchAgent({ supervision, directory: root, storage: path.join(root, 'session') } as AgentConfig,
-                    'unused-agent', 'missing-node'), /Cannot find an executable.*r\.interactive\.supervision/);
+                    'unused-agent', { executable: 'missing-node', electron: false }), /Cannot find an executable.*r\.interactive\.supervision/);
             }
             assert.deepStrictEqual(fs.readdirSync(root), []);
         } finally { environment.restore(); }
     });
 
     test('an installed supervisor launch failure reports diagnostics without starting a second agent', async () => {
-        executable('tmux', '#!/bin/sh\necho "test tmux server failure" >&2\nexit 1\n');
-        executable('systemd-run', '#!/bin/sh\necho "test systemd user service failure" >&2\nexit 1\n');
+        const argumentsFile = path.join(root, 'supervisor-arguments');
+        executable('tmux', `#!/bin/sh\nprintf '%s\\n' "$@" > '${argumentsFile}'\necho "test tmux server failure" >&2\nexit 1\n`);
+        executable('systemd-run', `#!/bin/sh\nprintf '%s\\n' "$@" > '${argumentsFile}'\necho "test systemd user service failure" >&2\nexit 1\n`);
         const marker = path.join(root, 'unexpected-detached-launch');
-        const node = executable('node', `#!/bin/sh\nif [ "$1" = "--version" ]; then echo v24.0.0; else : > '${marker}'; exit 1; fi\n`);
+        const node = executable('node', `#!/bin/sh\nif [ "$1" = "-p" ] && [ "$ELECTRON_RUN_AS_NODE" = 1 ]; then echo 24.0.0; else : > '${marker}'; exit 1; fi\n`);
         const environment = sinon.stub(process.env, 'PATH').value(root);
         const platform = sinon.stub(process, 'platform').value('linux');
         try {
             for (const supervision of ['auto', 'tmux', 'systemd']) {
                 const config = { id: supervision, generation: 'test', supervision, directory: root, storage: path.join(root, `session-${supervision}`) } as AgentConfig;
-                await assert.rejects(launchAgent(config, 'unused-agent', node), /Could not start.*r\.interactive\.supervision.*test (tmux|systemd).*failure/s);
+                await assert.rejects(launchAgent(config, 'unused-agent', { executable: node, electron: true }), /Could not start.*r\.interactive\.supervision.*test (tmux|systemd).*failure/s);
+                // The tmux server/systemd manager can predate VS Code and does
+                // not necessarily inherit the environment of this invocation.
+                assert.match(fs.readFileSync(argumentsFile, 'utf8'), supervision === 'systemd'
+                    ? /--setenv=ELECTRON_RUN_AS_NODE=1/ : /ELECTRON_RUN_AS_NODE=1 exec /);
                 assert.ok(!fs.existsSync(marker));
                 assert.ok(!fs.existsSync(path.join(config.storage, 'manifest.json')));
             }

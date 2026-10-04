@@ -28,3 +28,16 @@ The separate `interactiveLibraries.test.ts` suite requires `renv`. It installs t
 
 See [the validation report](../../../docs/r-interactive-public-examples.md) for the recorded results and limits.
 See also [the research review](../../../docs/r-interactive-research-review.md) for workflow coverage and fixes found through native Interactive use.
+
+## Editor runtime lifecycle
+
+After `pnpm run pretest`, `runtime-lifecycle.cjs` launches isolated VS Code test instances and checks that a real R session remains reachable after the application exits. It then reopens VS Code, verifies the same R PID and saved objects, and creates another session using the current editor runtime. No standalone Node executable is exposed to the agent launcher through PATH. Test profiles, libraries, and sessions are temporary.
+
+Pass one editor executable to test quit/reopen, or two versions to also test reconnection after switching editor versions:
+
+```sh
+R_LIBS=/path/to/test-library pnpm exec node src/test/examples/runtime-lifecycle.cjs \
+  /path/to/older/VSCode /path/to/newer/VSCode
+```
+
+The second case exercises reconnecting and launching across versions; it does not run the editor's updater or prove that every platform's update mechanism preserves running agents. On macOS, use the app's `Contents/MacOS/Code` executable. The fixture needs the normal Interactive R dependencies and the R Syntax extension in `.vscode-test/extensions`.

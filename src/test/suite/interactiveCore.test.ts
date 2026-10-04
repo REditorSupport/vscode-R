@@ -86,7 +86,7 @@ suite('Interactive session button', () => {
 
 suite('Interactive storage', () => {
     test('removes editor debugger injection while preserving ordinary runtime configuration', () => {
-        const environment = { PATH: '/usr/bin', R_HOME: '/R', NODE_OPTIONS: '--require debugger/bootloader.js', VSCODE_INSPECTOR_OPTIONS: '{}' };
+        const environment = { PATH: '/usr/bin', R_HOME: '/R', ELECTRON_RUN_AS_NODE: '1', NODE_OPTIONS: '--require debugger/bootloader.js', VSCODE_INSPECTOR_OPTIONS: '{}' };
         assert.deepStrictEqual(agentEnvironment(environment), { PATH: '/usr/bin', R_HOME: '/R' });
         assert.strictEqual(environment.VSCODE_INSPECTOR_OPTIONS, '{}');
         assert.deepStrictEqual(agentEnvironment({ NODE_OPTIONS: '--max-old-space-size=2048' }), { NODE_OPTIONS: '--max-old-space-size=2048' });
