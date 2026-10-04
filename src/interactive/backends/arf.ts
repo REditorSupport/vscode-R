@@ -47,7 +47,7 @@ export class Arf implements SessFrontend {
     }
     dispose(): void { this.abort.abort(); this.process.dispose(); }
     async dispatch(submission: Submission): Promise<void> {
-        const code = `base::get("interactive_execute", base::asNamespace("sess"), inherits=FALSE)(${rString(submission.id)}, ${rString(submission.code)}, jsonlite::fromJSON(${rString(JSON.stringify(submission.source ?? null))}, simplifyVector=FALSE))`;
+        const code = `sess:::interactive_execute(${rString(submission.id)}, ${rString(submission.code)}, jsonlite::fromJSON(${rString(JSON.stringify(submission.source ?? null))}, simplifyVector=FALSE))`;
         const result = object(await arfRequest(this.endpoint!, 'evaluate', { code, visible: true }, 0, this.abort.signal));
         if (result.error) { throw new Error(String(result.error)); }
     }
