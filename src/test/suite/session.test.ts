@@ -89,6 +89,15 @@ suite('Session Communication', () => {
         sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Two');
     });
 
+    test('help notification ignores malformed request paths', async () => {
+        const showHelpForPath = await showHelpWith(undefined, { requestPath: { path: 'base/html/mean.html' } });
+        await session.showHelpNotification({ requestPath: ['base/html/mean.html'] });
+        await session.showHelpNotification({ requestPath: 42 });
+        await session.showHelpNotification({ requestPath: '' });
+
+        sinon.assert.notCalled(showHelpForPath);
+    });
+
     test('help notification ignores stale viewer parameter from sess', async () => {
         const showHelpForPath = await showHelpWith({ helpPanel: 'Active' }, {
             requestPath: 'base/html/mean.html',
@@ -481,7 +490,7 @@ suite('Session Communication', () => {
                     params: { width: 800, height: 600, format: 'svglite' }
                 }) as { data?: string, format?: string, error?: unknown };
                 return svgliteResp && svgliteResp.data;
-            } catch (e) {
+            } catch {
                 return false;
             }
         }, 15000, 500);
@@ -519,7 +528,7 @@ suite('Session Communication', () => {
                     params: { width: 800, height: 600, format: 'png' }
                 }) as { data?: string, format?: string };
                 return pngResp && pngResp.data;
-            } catch (e) {
+            } catch {
                 return false;
             }
         }, 15000, 500);
@@ -945,6 +954,33 @@ suite('Session Communication', () => {
             await waitFor(() => showError.called);
             assert.match(String(showError.firstCall.args[0]), /unsupported sess protocol version 2/);
             assert.notStrictEqual(session.activeSession?.sessionId, 'future-session');
+        } finally {
+            client.destroy();
+        }
+    }).timeout(10000);
+
+    test('rejects attach session paths that are not strings', async () => {
+        const showError = sandbox.stub(vscode.window, 'showErrorMessage');
+        const endpoint = await session.getGlobalPipePath();
+        const client = net.createConnection(endpoint);
+        try {
+            await new Promise<void>((resolve, reject) => {
+                client.once('connect', resolve);
+                client.once('error', reject);
+            });
+            client.write(`${JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'attach',
+                params: {
+                    protocol_version: 1,
+                    session_id: 'malformed-session',
+                    tempdir: { path: os.tmpdir() },
+                    wd: os.tmpdir()
+                }
+            })}\n`);
+            await waitFor(() => showError.called);
+            assert.match(String(showError.firstCall.args[0]), /missing or invalid session paths/);
+            assert.notStrictEqual(session.activeSession?.sessionId, 'malformed-session');
         } finally {
             client.destroy();
         }

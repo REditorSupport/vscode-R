@@ -311,7 +311,7 @@ export function deleteTerminal(term: vscode.Terminal): void {
         if (config().get<boolean>('sessionWatcher')) {
             void term.processId.then((v) => {
                 if (v) {
-                    void cleanupTerminalAssociation(v.toString());
+                    cleanupTerminalAssociation(v.toString());
                 }
             });
         }

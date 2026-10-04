@@ -62,7 +62,9 @@ export class PlotHistory {
             return this.addPlot(sessionId, plot);
         }
         const old = session.plots[session.currentIndex];
-        if (old?.rIndex !== undefined) plot.rIndex = old.rIndex;
+        if (old?.rIndex !== undefined) {
+            plot.rIndex = old.rIndex;
+        }
         session.plots[session.currentIndex] = plot;
         this.activeSessionId = sessionId;
         this.emitter.emit('change');
@@ -70,7 +72,9 @@ export class PlotHistory {
 
     appendOps(sessionId: string, plot: PlotFrame): boolean {
         const session = this.sessions.get(sessionId);
-        if (session && session.latestDeleted) return false;
+        if (session && session.latestDeleted) {
+            return false;
+        }
         if (!session || session.plots.length === 0) {
             this.addPlot(sessionId, plot);
             return true;
@@ -88,9 +92,13 @@ export class PlotHistory {
 
     replaceAtIndex(sessionId: string, rIndex: number, plot: PlotFrame): boolean {
         const session = this.sessions.get(sessionId);
-        if (!session) return false;
+        if (!session) {
+            return false;
+        }
         const idx = session.plots.findIndex(p => p.rIndex === rIndex);
-        if (idx < 0) return false;
+        if (idx < 0) {
+            return false;
+        }
         plot.rIndex = rIndex;
         session.plots[idx] = plot;
         this.activeSessionId = sessionId;
@@ -100,7 +108,9 @@ export class PlotHistory {
 
     replaceLatest(sessionId: string, plot: PlotFrame, expectedRIndex?: number): boolean {
         const session = this.sessions.get(sessionId);
-        if (session && session.latestDeleted) return false;
+        if (session && session.latestDeleted) {
+            return false;
+        }
         if (!session || session.plots.length === 0) {
             this.addPlot(sessionId, plot);
             return true;
@@ -122,13 +132,17 @@ export class PlotHistory {
 
     currentPlot(): PlotFrame | null {
         const session = this.sessions.get(this.activeSessionId);
-        if (!session || session.currentIndex < 0) return null;
+        if (!session || session.currentIndex < 0) {
+            return null;
+        }
         return session.plots[session.currentIndex] ?? null;
     }
 
     navigatePrevious(): PlotFrame | null {
         const session = this.sessions.get(this.activeSessionId);
-        if (!session || session.currentIndex <= 0) return null;
+        if (!session || session.currentIndex <= 0) {
+            return null;
+        }
         session.currentIndex--;
         this.emitter.emit('change');
         return session.plots[session.currentIndex];
@@ -136,7 +150,9 @@ export class PlotHistory {
 
     navigateNext(): PlotFrame | null {
         const session = this.sessions.get(this.activeSessionId);
-        if (!session || session.currentIndex >= session.plots.length - 1) return null;
+        if (!session || session.currentIndex >= session.plots.length - 1) {
+            return null;
+        }
         session.currentIndex++;
         this.emitter.emit('change');
         return session.plots[session.currentIndex];
@@ -178,10 +194,14 @@ export class PlotHistory {
 
     removeCurrent(): PlotFrame | null {
         const session = this.sessions.get(this.activeSessionId);
-        if (!session || session.plots.length === 0) return null;
+        if (!session || session.plots.length === 0) {
+            return null;
+        }
         const wasLatest = (session.currentIndex === session.plots.length - 1);
         session.plots.splice(session.currentIndex, 1);
-        if (wasLatest) session.latestDeleted = true;
+        if (wasLatest) {
+            session.latestDeleted = true;
+        }
         if (session.plots.length === 0) {
             session.currentIndex = -1;
             this.emitter.emit('change');

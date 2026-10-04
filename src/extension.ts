@@ -84,7 +84,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.names': () => rTerminal.runSelectionOrWord(['names']),
         'r.view': () => rTerminal.runSelectionOrWord(['View']),
         'r.runSource': () => { void rTerminal.runSource(false); },
-        'r.runSelection':  (code?: string) => { code ? void rTerminal.runTextInTerm(code) : void rTerminal.runSelection(); },
+        'r.runSelection': (code?: string) => {
+            if (code) {
+                void rTerminal.runTextInTerm(code);
+            } else {
+                void rTerminal.runSelection();
+            }
+        },
         'r.runFromLineToEnd': rTerminal.runFromLineToEnd,
         'r.runFromBeginningToLine': rTerminal.runFromBeginningToLine,
         'r.runSelectionRetainCursor': rTerminal.runSelectionRetainCursor,
@@ -242,7 +248,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // deploy session watcher (if configured by user)
     if (enableSessionWatcher) {
         console.info('Initialize session watcher');
-        void session.deploySessionWatcher(context.extensionPath);
+        session.deploySessionWatcher(context.extensionPath);
         // create status bar item that contains info about the session watcher
         console.info('Create sessionStatusBarItem');
         sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);

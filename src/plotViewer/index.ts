@@ -60,7 +60,9 @@ export class CommonPlotManager implements PlotManager {
     get viewers(): PlotViewer[] {
         const viewers: PlotViewer[] = [...this.httpgdManager.viewers];
         const jgdViewer = this.jgdManager.getViewer();
-        if (jgdViewer) viewers.push(jgdViewer);
+        if (jgdViewer) {
+            viewers.push(jgdViewer);
+        }
         viewers.push(this.standardPlotViewer);
         return viewers;
     }

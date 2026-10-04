@@ -285,7 +285,7 @@ export async function getCranUrl(path: string = '', cwd?: string | URL): Promise
     let url: string;
     try {
         url = new URL(path, baseUrl).toString();
-    } catch (e) {
+    } catch {
         url = new URL(path, defaultCranUrl).toString();
     }
     return url;
@@ -689,7 +689,7 @@ export function readFileSyncSafe(
 ): string | undefined {
     try {
         return fs.readFileSync(path, {encoding:encoding});
-    } catch (e) {
+    } catch {
         return undefined;
     }
 }
@@ -701,7 +701,7 @@ export function readdirSyncSafe(
 ){
     try {
         return fs.readdirSync(path, {encoding: encoding});
-    } catch (e) {
+    } catch {
         return undefined;
     }
 }
@@ -709,7 +709,7 @@ export function readdirSyncSafe(
 export function statSyncSafe(path: fs.PathLike): fs.Stats | undefined {
     try {
         return fs.statSync(path, { throwIfNoEntry: false });
-    } catch (e) {
+    } catch {
         return undefined;
     }
 }

@@ -2,9 +2,13 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "options": {
     "typeAware": true,
+    "denyWarnings": true,
     "reportUnusedDisableDirectives": "error"
   },
   "rules": {
+    "eqeqeq": "error",
+    "curly": "warn",
+    "no-empty": ["warn", { "allowEmptyCatch": true }],
     "typescript/await-thenable": "error",
     "typescript/no-floating-promises": "error",
     "typescript/no-for-in-array": "error",
