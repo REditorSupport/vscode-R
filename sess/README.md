@@ -24,9 +24,11 @@ socket on macOS/Linux, named pipe on Windows) using
 >
 > Users of the VS Code R extension (>=v3.0.0) do not need to install `sess`
 > manually. The extension bundles its own copy of `sess` and will install it
-> for you (along with any missing CRAN dependencies) if it is missing or
-> outdated. Managed R terminals ask first; attaching an existing session
-> installs without prompting.
+> for you (along with any missing CRAN dependencies) if the installed package
+> does not match the bundled source snapshot, including when switching between
+> stable and pre-release builds. Managed R terminals ask first; attaching an
+> existing session installs without prompting. If sess is already loaded,
+> restart R after updating to use the new copy.
 
 `sess` is not yet on CRAN. But you can install the development version from R-universe:
 
@@ -151,34 +153,6 @@ Use `plot_backend` for new code.
 | `SESS_PLOT_BACKEND` | env var | `auto`, `standard`, `httpgd`, `jgd` or `native`; passed as `plot_backend` by the extension's R profile. |
 | `JGD_SOCKET` | env var | Socket used by the jgd device; set by the extension. |
 | `sess.quiet` | R option | Set to `TRUE` to suppress the successful connection message. Connection failures remain visible. |
-
-## Source identity and installation
-
-The extension compares `Config/vscode-R/source-revision` in the installed and
-bundled DESCRIPTION files. Missing, invalid or different identities require the
-bundle, regardless of package version. This handles stable/pre-release switching
-and migrates older installations through one bundled installation.
-
-`scripts/prepare-sess.js` fingerprints `sess/` using a temporary Git index and
-exports that same snapshot to `dist/resources/sess/`. Untracked ignored files
-are excluded; source files and the developer's index remain unchanged. Only the
-generated DESCRIPTION receives `git-tree:<object ID>` in place of the committed
-placeholder. A clean checkout matches `HEAD:sess`; extension-only changes do not
-require reinstalling sess.
-
-R-universe's `bootstrap.R` stamps the same identity from committed sources before
-R CMD build. Source DESCRIPTION declares `Config/build/bootstrap: TRUE` for
-pkgbuild; the prepared bundle declares `FALSE` to prevent repeating bootstrap
-when installed through remotes.
-
-Builds require Git and a checkout with HEAD. Watch mode prepares the bundle at
-startup; restart it after editing `sess/`. Run the lightweight identity tests
-with `pnpm run test:sess-source`.
-
-Installation verifies the expected package is visible through `.libPaths()`.
-Restart R to use updated files if sess is already loaded. Source identity controls
-installation only; the existing `protocol_version` handshake determines runtime
-compatibility, and source mismatches do not reject compatible sessions.
 
 ## Protocol reference
 

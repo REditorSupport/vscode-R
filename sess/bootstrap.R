@@ -1,6 +1,8 @@
 # pkgbuild and R-universe run this from the committed package source directory.
 # R-universe first normalizes DESCRIPTION and may add system requirements.
 # Use the original Git snapshot, not the build service's generated metadata.
+# Source DESCRIPTION enables Config/build/bootstrap. Prepared extension bundles
+# disable it: their identity is already stamped and they may have no Git checkout.
 local({
   field <- "Config/vscode-R/source-revision"
   description <- readLines("DESCRIPTION", warn = FALSE)
@@ -24,8 +26,8 @@ local({
     trimws(paste(output, collapse = ""))
   }
   prefix <- git(c("rev-parse", "--show-prefix"))
-  # Bootstrap identifies committed R-universe sources. Refuse local source edits;
-  # VSIX development builds fingerprint the working tree via prepare-sess.js.
+  # Bootstrap identifies committed sources. Refuse local source edits;
+  # extension development builds identify their working tree separately.
   status <- system2("git", c("diff", "--quiet", "HEAD", "--", ".",
                            shQuote(":(exclude)DESCRIPTION")))
   untracked <- system2("git", c("ls-files", "--others", "--exclude-standard", "."),

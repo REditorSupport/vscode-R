@@ -11,3 +11,22 @@ If you are interested in writing code to fix issues, please see [How to Contribu
 For continuous rebuilding, run `pnpm run watch`. `pnpm run build` additionally installs the bundled `sess` R package; this is not required just to launch the extension debugger. **Extension Tests** builds both the bundle and the TypeScript test files before launching.
 
 VS Code 1.139 has a [JavaScript debugger regression](https://github.com/microsoft/vscode-js-debug/issues/2420) that can leave the development host paused before any extension activates. The launching window's extension host log shows `ECONNREFUSED ::1` and `Could not find any debuggable target`. The fix is included in [JavaScript Debugger 1.140](https://github.com/microsoft/vscode-js-debug/releases/tag/v1.140.0). Until your VS Code version includes it, use Microsoft's [JavaScript Debugger Nightly](https://marketplace.visualstudio.com/items?itemName=ms-vscode.js-debug-nightly): disable the built-in **JavaScript Debugger**, install Nightly, and reload VS Code. Switch back to the built-in debugger once VS Code includes the fix.
+
+## Building bundled sess
+
+Builds require Git and a checkout with HEAD. `scripts/prepare-sess.js` fingerprints
+`sess/` using a temporary Git index and exports the same snapshot to
+`dist/resources/sess/`, excluding untracked ignored files. It stamps only the
+generated DESCRIPTION; source files and the developer's index remain unchanged.
+A clean checkout matches `HEAD:sess`, so extension-only changes retain the identity.
+
+Compile and VSIX packaging prepare this copy, and `pnpm run build` installs it.
+Watch mode prepares it at startup; restart the watcher after editing `sess/`.
+R-universe's `sess/bootstrap.R` produces the same identity from committed sources.
+Source DESCRIPTION enables pkgbuild's bootstrap hook; the prepared copy disables
+it to avoid repeating preparation when installed through remotes.
+
+`Config/vscode-R/source-revision` controls installation independently of package
+versions and the runtime `protocol_version` handshake. Missing or different
+installed metadata requires the bundle; installation verifies it is visible
+through `.libPaths()`. Run the lightweight checks with `pnpm run test:sess-source`.
