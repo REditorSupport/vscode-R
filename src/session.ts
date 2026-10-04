@@ -97,6 +97,52 @@ const SESS_PROTOCOL_VERSION = 1;
 
 const sessions = new Map<string, Session>();
 const terminalSessions = new Map<string, Session>();
+const terminalSessionAttached = new vscode.EventEmitter<string>();
+
+/** Wait for this terminal's session handshake, not just process creation. */
+export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000): Promise<boolean> {
+    return new Promise(resolve => {
+        let terminalPid: string | undefined;
+        let settled = false;
+        const finish = (ready: boolean) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            attached.dispose();
+            closed.dispose();
+            resolve(ready);
+        };
+        const attached = terminalSessionAttached.event(pid => {
+            if (pid === terminalPid) {
+                finish(true);
+            }
+        });
+        const closed = window.onDidCloseTerminal(closedTerminal => {
+            if (closedTerminal === terminal) {
+                finish(false);
+            }
+        });
+        // This bounds a failed integration; it never authorizes sending input.
+        const timer = setTimeout(() => finish(false), timeout);
+        void Promise.resolve(terminal.processId).then(pid => {
+            if (settled) {
+                return;
+            }
+            if (pid === undefined || isTerminalClosed(terminal) || terminal.exitStatus) {
+                finish(false);
+                return;
+            }
+            terminalPid = String(pid);
+            // Also covers a handshake received before processId resolved.
+            const session = terminalSessions.get(terminalPid);
+            if (session && !session.socket.destroyed) {
+                finish(true);
+            }
+        }, () => finish(false));
+    });
+}
 export let activeSession: Session | undefined;
 let activeBrowserUri: Uri | undefined;
 let workspaceRefreshTimer: NodeJS.Timeout | undefined;
@@ -1906,6 +1952,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             session.info = (params.info as SessionInfo | undefined) ?? { version: session.rVer, command: '', start_time: '' };
             session.sessionDir = String(params.tempdir);
             session.workingDir = String(params.wd);
+
+            if (terminalPid) {
+                terminalSessionAttached.fire(terminalPid);
+            }
 
             // Reload does not trigger a terminal-selection event after every attach.
             // Prefer its connected session when a terminal reconnects in the background.

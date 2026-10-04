@@ -18,6 +18,7 @@ import {
     isTerminalClosed,
     removeTerminalDiscoveryFile,
     updateTerminalSessionDiscoveryFile,
+    waitForTerminalReady,
 } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder, getRPathConfigEntry } from './util';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
@@ -26,6 +27,39 @@ import * as yaml from 'js-yaml';
 
 export let rTerm: vscode.Terminal | undefined = undefined;
 let rTermResource: vscode.Uri | undefined;
+let terminalCreation: Promise<vscode.Terminal | undefined> | undefined;
+const terminalStartup = new WeakMap<vscode.Terminal, {
+    integrated: boolean;
+    ready: boolean;
+    pending?: Promise<boolean>;
+}>();
+
+async function prepareTerminalForInput(terminal: vscode.Terminal): Promise<boolean> {
+    const startup = terminalStartup.get(terminal);
+    if (!startup || startup.ready) {
+        return !isTerminalClosed(terminal) && !terminal.exitStatus;
+    }
+    if (!startup.pending) {
+        startup.pending = (async () => {
+            const ready = startup.integrated
+                ? await waitForTerminalReady(terminal)
+                : await delay(200).then(() => !isTerminalClosed(terminal) && !terminal.exitStatus);
+            startup.ready = ready;
+            if (!ready && !isTerminalClosed(terminal) && !terminal.exitStatus) {
+                void vscode.window.showWarningMessage('R session did not attach. Code was not sent. Check the session watcher and sess installation, then try again.');
+            }
+            return ready;
+        })();
+    }
+    const pending = startup.pending;
+    try {
+        return await pending;
+    } finally {
+        if (startup.pending === pending) {
+            startup.pending = undefined;
+        }
+    }
+}
 
 let lastParamsRmdPath: string | undefined;
 let lastParamsRmdVersion: number | undefined;
@@ -271,6 +305,12 @@ export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri)
     }
     rTerm = createdTerminal;
     rTermResource = resource;
+    const args = termOptions.shellArgs;
+    const skipsProfile = Array.isArray(args) && args.some(arg => arg === '--vanilla' || arg === '--no-init-file');
+    terminalStartup.set(createdTerminal, {
+        integrated: typeof discoveryFile === 'string' && !skipsProfile,
+        ready: false,
+    });
     createdTerminal.show(preserveshow);
 
     void Promise.resolve(createdTerminal.processId).then(async (pid: number | undefined) => {
@@ -377,9 +417,19 @@ export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
     } else {
         // If no valid R terminals are found, create a new one
         console.info(msg);
-        await createRTerm(true);
-        await delay(200); // Let RTerm warm up
-        return rTerm;
+        // Share creation when several send commands arrive before VS Code has
+        // exposed the new terminal. Every send still waits for its readiness.
+        if (!terminalCreation) {
+            terminalCreation = (async () => await createRTerm(true) ? rTerm : undefined)();
+        }
+        const creating = terminalCreation;
+        try {
+            return await creating;
+        } finally {
+            if (terminalCreation === creating) {
+                terminalCreation = undefined;
+            }
+        }
     }
 }
 
@@ -428,7 +478,7 @@ export async function runChunksInTerm(chunks: vscode.Range[]): Promise<void> {
 export async function runTextInTerm(text: string, execute: boolean = true): Promise<void> {
     deferWorkspaceRefresh();
     const term = await chooseTerminal();
-    if (term === undefined) {
+    if (term === undefined || !await prepareTerminalForInput(term)) {
         return;
     }
     if (config().get<boolean>('bracketedPaste')) {

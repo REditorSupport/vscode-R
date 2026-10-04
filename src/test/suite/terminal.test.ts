@@ -78,6 +78,87 @@ suite('R Terminal', () => {
         sandbox.restore();
     });
 
+    for (const scenario of [
+        { watcher: true, args: [], integrated: true },
+        { watcher: false, args: [], integrated: false },
+        { watcher: true, args: ['--vanilla'], integrated: false },
+        { watcher: true, args: ['--no-init-file'], integrated: false },
+    ]) {
+        const { watcher, args, integrated } = scenario;
+        test(`initial sends share terminal creation and readiness (watcher: ${String(watcher)}, args: ${args.join(' ')})`, async () => {
+            let resolveReady!: (ready: boolean) => void;
+            const readiness = new Promise<boolean>(resolve => { resolveReady = resolve; });
+            const readyStub = sandbox.stub(session, 'waitForTerminalReady').returns(readiness);
+            const delayStub = sandbox.stub(util, 'delay').callsFake(async () => { await readiness; });
+            sandbox.stub(util, 'config').returns(configuration({
+                sessionWatcher: watcher, consoleArgs: args, bracketedPaste: true, 'source.focus': 'none'
+            }));
+            sandbox.stub(util, 'getRterm').resolves(process.execPath);
+            sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+            sandbox.stub(session, 'getGlobalPipePath').resolves('unused-test-endpoint');
+            sandbox.stub(session, 'createSessionDiscoveryFile').resolves('/unused-test-discovery');
+            const sent: string[] = [];
+            const terminal = {
+                name: 'R Interactive', processId: Promise.resolve(undefined),
+                show: () => undefined, dispose: () => undefined,
+                sendText: (text: string) => sent.push(text),
+            } as unknown as vscode.Terminal;
+            const create = sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+            const terminals = sandbox.stub(vscode.window, 'terminals').value([]);
+            sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+            const first = rTerminal.runTextInTerm('first');
+            const second = rTerminal.runTextInTerm('second');
+            // Let both commands reach the shared wait, then expose the terminal
+            // as VS Code would before a third Ctrl+Enter.
+            for (let i = 0; i < 20; i++) { await Promise.resolve(); }
+            terminals.value([terminal]);
+            const third = rTerminal.runTextInTerm('third');
+            for (let i = 0; i < 20; i++) { await Promise.resolve(); }
+            assert.deepStrictEqual(sent, []);
+            sinon.assert.calledOnce(create);
+            if (integrated) {
+                sinon.assert.calledOnceWithExactly(readyStub, terminal);
+                sinon.assert.notCalled(delayStub);
+            } else {
+                sinon.assert.notCalled(readyStub);
+                sinon.assert.calledOnceWithExactly(delayStub, 200);
+            }
+            resolveReady(true);
+            await Promise.all([first, second, third]);
+            assert.deepStrictEqual(sent, ['\x1b[200~first\x1b[201~', '\x1b[200~second\x1b[201~', '\x1b[200~third\x1b[201~']);
+            await rTerminal.runTextInTerm('fourth');
+            assert.strictEqual(sent.length, 4);
+            rTerminal.deleteTerminal(terminal);
+        });
+    }
+
+    test('failed readiness does not send code and allows retry', async () => {
+        sandbox.stub(util, 'config').returns(configuration({ sessionWatcher: true, bracketedPaste: true, 'source.focus': 'none' }));
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(session, 'getGlobalPipePath').resolves('unused-test-endpoint');
+        sandbox.stub(session, 'createSessionDiscoveryFile').resolves('/unused-test-discovery');
+        const ready = sandbox.stub(session, 'waitForTerminalReady');
+        ready.onFirstCall().resolves(false);
+        ready.onSecondCall().resolves(true);
+        const sendText = sandbox.stub();
+        const terminal = {
+            name: 'R Interactive', processId: Promise.resolve(undefined),
+            show: () => undefined, sendText,
+        } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        await rTerminal.createRTerm();
+        await rTerminal.runTextInTerm('first');
+        sinon.assert.notCalled(sendText);
+        sinon.assert.calledOnce(warning);
+        await rTerminal.runTextInTerm('retry');
+        sinon.assert.calledOnceWithExactly(sendText, '\x1b[200~retry\x1b[201~', true);
+        rTerminal.deleteTerminal(terminal);
+    });
+
     test('makeTerminalOptions respects legacy plot.useHttpgd configurations', async () => {
         // Leave plot.backend at its default to verify the legacy boolean still selects httpgd.
         const configStub = {
