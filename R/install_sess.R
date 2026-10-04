@@ -14,10 +14,17 @@ local({
         repo <- args[2]
     }
     if (!nzchar(repo)) {
-        repo <- getOption("repos")[["CRAN"]]
+        configured <- getOption("repos")
+        repo <- if ("CRAN" %in% names(configured)) {
+            configured[["CRAN"]]
+        } else if (length(configured)) {
+            configured[[1L]]
+        } else {
+            ""
+        }
     }
-    if (is.na(repo) || identical(repo, "@CRAN@")) {
-        repo <- ""
+    if (!length(repo) || is.na(repo) || !nzchar(repo) || identical(repo, "@CRAN@")) {
+        repo <- "https://cloud.r-project.org"
     }
 
     if (!file.exists(file.path(pkg_path, "DESCRIPTION"))) {
@@ -37,37 +44,33 @@ local({
     if (!length(script_files)) {
         stop("Cannot locate install_sess.R")
     }
-    source(file.path(dirname(tail(script_files, 1)), "sess_source.R"), local = TRUE)
+    script_directory <- dirname(tail(script_files, 1))
+    source(file.path(script_directory, "sess_source.R"), local = TRUE)
     expected_revision <- sess_source_revision(file.path(pkg_path, "DESCRIPTION"))
     if (is.null(expected_revision)) {
         stop("Bundled sess has no valid source revision. Rebuild or reinstall the vscode-R extension.")
     }
 
-    desc <- read.dcf(file.path(pkg_path, "DESCRIPTION"))
-    deps <- if ("Imports" %in% colnames(desc)) desc[, "Imports"] else ""
-    deps <- unlist(strsplit(deps, ","))
-    deps <- gsub("\\s*\\(.*\\)", "", deps)
-    deps <- trimws(deps)
-    # Filter out base packages and already installed packages
-    deps <- deps[nzchar(deps)]
-    installed <- rownames(installed.packages())
-    base_pkgs <- rownames(installed.packages(priority = "base"))
-    deps <- deps[!deps %in% base_pkgs & !deps %in% installed]
-
-    if (length(deps) > 0) {
-        message("Installing dependencies: ", paste(deps, collapse = ", "))
-        if (nzchar(repo)) {
-            install.packages(deps, repos = repo)
-        } else {
-            install.packages(deps)
+    library <- Sys.getenv("VSCODE_R_SESS_LIBRARY", unset = "")
+    private_library <- nzchar(library)
+    if (!private_library) {
+        library <- .libPaths()[1L]
+        if (file.access(library, 2L) != 0L) {
+            user_library <- strsplit(Sys.getenv("R_LIBS_USER"), .Platform$path.sep, fixed = TRUE)[[1L]]
+            if (!length(user_library) || !nzchar(user_library[[1L]])) stop("No writable R library is available.")
+            library <- path.expand(user_library[[1L]])
         }
     }
-
-    message("Installing sess package from: ", pkg_path)
-    install.packages(pkg_path, repos = NULL, type = "source")
-    # install.packages can report failure as a warning. Also detect a different
-    # package shadowing the installed copy earlier in .libPaths().
-    if (!identical(sess_installed_source_revision(), expected_revision)) {
+    dir.create(library, recursive = TRUE, showWarnings = FALSE)
+    if (file.access(library, 2L) != 0L) stop(paste("R library is not writable:", library))
+    if (!private_library) .libPaths(c(library, .libPaths()))
+    installer <- new.env(parent = baseenv())
+    sys.source(file.path(script_directory, "sess-package-install.R"), envir = installer)
+    installer$sess_install(pkg_path, library, repo,
+                           interactive = identical(Sys.getenv("VSCODE_R_SESS_INTERACTIVE"), "1"))
+    # Ordinary terminals must see the bundled source through their search path.
+    # Interactive uses its isolated library and the shared native API verifier.
+    if (!private_library && !identical(sess_installed_source_revision(), expected_revision)) {
         stop("sess installation did not make the bundled source available in .libPaths(). Check the installation log.")
     }
     if ("sess" %in% loadedNamespaces()) {

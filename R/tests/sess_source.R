@@ -44,27 +44,41 @@ write_description(bundled, "3.0.2")
 stopifnot(inherits(tryCatch(sess_install_required(bundled), error = identity), "error"))
 
 # Exercise the real installer flow while replacing the package installation with
-# controlled success/failure (install.packages can return after a warning).
+# controlled success/failure, including a shadowed installation.
 extension <- file.path(root, "extension with spaces")
 dir.create(extension)
 dir.create(file.path(extension, "R"))
 stopifnot(file.copy("R/sess_source.R", file.path(extension, "R", "sess_source.R")))
+stopifnot(file.copy("R/sess-package-install.R", file.path(extension, "R", "sess-package-install.R")))
 installer <- file.path(extension, "R", "install_sess.R")
 stopifnot(file.copy("R/install_sess.R", installer))
 pkg <- file.path(extension, "dist", "resources", "sess")
 dir.create(pkg, recursive = TRUE)
 write_description(pkg, "3.0.1", stable)
 Sys.setenv(VSCODE_R_SESS_PKG_PATH = pkg, VSCODE_R_SESS_REPO = "https://example.com")
-simulate <- function(outcome) {
+simulate <- function(outcome, private = FALSE) {
+    original_libs <- .libPaths()
+    library <- file.path(root, "simulated-library")
+    dir.create(library, showWarnings = FALSE)
+    .libPaths(c(library, original_libs))
+    on.exit({
+        .libPaths(original_libs)
+        Sys.unsetenv(c("VSCODE_R_SESS_LIBRARY", "VSCODE_R_SESS_INTERACTIVE"))
+    })
+    if (private) Sys.setenv(VSCODE_R_SESS_LIBRARY = library, VSCODE_R_SESS_INTERACTIVE = "1")
     env <- new.env(parent = globalenv())
-    env$install.packages <- function(pkgs, repos, type) {
-        stopifnot(identical(pkgs, pkg), is.null(repos), identical(type, "source"))
-        if (outcome == "success") {
-            write_description(installed, "3.0.1", stable)
-        } else if (outcome == "shadowed") {
-            write_description(installed, "3.0.1", pre_release)
-        } else {
-            warning("Installation failed")
+    env$sys.source <- function(file, envir) {
+        stopifnot(identical(file, file.path(extension, "R", "sess-package-install.R")))
+        envir$sess_install <- function(pkg_path, library, repos, interactive) {
+            stopifnot(identical(pkg_path, pkg), identical(repos, "https://example.com"),
+                      identical(interactive, private))
+            if (outcome == "success") {
+                write_description(installed, "3.0.1", stable)
+            } else if (outcome == "shadowed") {
+                write_description(installed, "3.0.1", pre_release)
+            } else {
+                stop("Installation failed")
+            }
         }
     }
     suppressWarnings(tryCatch(source(installer, local = env), error = identity))
@@ -72,6 +86,9 @@ simulate <- function(outcome) {
 write_description(installed, "3.0.1", pre_release)
 stopifnot(inherits(simulate("failure"), "error"))
 stopifnot(inherits(simulate("shadowed"), "error"))
+# A private runtime uses the shared compatibility verifier rather than requiring
+# its source to be visible in the ordinary terminal's library search path.
+stopifnot(!inherits(simulate("shadowed", private = TRUE), "error"))
 stopifnot(!inherits(simulate("success"), "error"))
 stopifnot(!sess_install_required(pkg))
 Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO"))
@@ -107,7 +124,9 @@ local({
     cli_library <- file.path(project, "library")
     dir.create(cli_library, recursive = TRUE)
     writeLines(".libPaths(c(file.path(getwd(), \"library\"), .libPaths()))", file.path(project, ".Rprofile"))
-    writeLines("NULL", file.path(pkg, "R", "zzz.R"))
+    exports <- c("connect", "notify_client", "register_hooks", "request_client")
+    writeLines(paste0(exports, " <- function(...) NULL"), file.path(pkg, "R", "zzz.R"))
+    writeLines(paste0("export(", exports, ")"), file.path(pkg, "NAMESPACE"))
     previous_profile <- Sys.getenv("R_PROFILE_USER", unset = NA_character_)
     previous_cwd <- getwd()
     on.exit({

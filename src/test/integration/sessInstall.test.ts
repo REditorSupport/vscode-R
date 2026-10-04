@@ -37,14 +37,15 @@ suite('Sess installation with real R tasks', () => {
         extensionRoot = path.join(root, 'extension with spaces');
         const repositoryRoot = path.join(__dirname, '..', '..', '..');
         await fs.ensureDir(path.join(extensionRoot, 'R'));
-        for (const script of ['install_sess.R', 'sess_source.R']) {
+        for (const script of ['install_sess.R', 'sess_source.R', 'sess-package-install.R']) {
             await fs.copy(path.join(repositoryRoot, 'R', script), path.join(extensionRoot, 'R', script));
         }
         const pkg = path.join(extensionRoot, 'dist', 'resources', 'sess');
         await fs.ensureDir(path.join(pkg, 'R'));
         await fs.writeFile(path.join(pkg, 'DESCRIPTION'), description(bundledRevision));
-        await fs.writeFile(path.join(pkg, 'NAMESPACE'), '');
-        await fs.writeFile(path.join(pkg, 'R', 'fixture.R'), '# No external dependencies.\n');
+        const exports = ['connect', 'notify_client', 'register_hooks', 'request_client'];
+        await fs.writeFile(path.join(pkg, 'NAMESPACE'), exports.map(name => `export(${name})`).join('\n'));
+        await fs.writeFile(path.join(pkg, 'R', 'fixture.R'), exports.map(name => `${name} <- function(...) NULL`).join('\n'));
         for (const project of [projectA, projectB]) {
             const library = path.join(project, 'library');
             await fs.ensureDir(path.join(library, 'sess'));
