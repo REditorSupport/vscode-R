@@ -102,6 +102,12 @@ import type { LanguageClient } from 'vscode-languageclient/node';
         fs.writeFileSync(executable, `#!/bin/sh\n[ -z "$ELECTRON_RUN_AS_NODE" ] || exit 1\nprintf '%s\\n' "$1" >>${shellQuote(log)}\nexec ${shellQuote(node)} "$@"\n`, { mode: 0o700 });
         return { executable, log };
     }
+    function assertNodeLaunched(log: string): void {
+        const invocations = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean);
+        // Version probes use -p. Detached launches use -e; tmux/systemd launch
+        // the agent file directly. Both must invoke the configured executable.
+        assert.ok(invocations.some(argument => argument !== '-p'), 'The configured Node must launch the session');
+    }
     test('missing arf offers R and setup, with no failed session or runtime installation', async () => {
         const config = vscode.workspace.getConfiguration('r');
         const previous = config.inspect<string>('interactive.arfPath')?.globalValue;
@@ -1060,13 +1066,15 @@ cat("\n")`;
             await settings.update('interactive.arfPath', path.join(root, 'missing-arf'), vscode.ConfigurationTarget.Global);
             await settings.update('interactive.nodePath', `"\${userHome}/${path.relative(os.homedir(), override.executable)}"`, vscode.ConfigurationTarget.Global);
             await vscode.commands.executeCommand('r.interactive.new');
-            assert.ok(fs.readFileSync(override.log, 'utf8').split('\n').includes('-e'), 'The configured Node must launch the session');
             notebook = vscode.workspace.notebookDocuments.find(doc => !before.has(doc.uri.toString()) && doc.metadata.rSessionId);
             assert.ok(notebook);
+            const manifest = JSON.parse(fs.readFileSync(path.join(root, String(notebook.metadata.rSessionId), 'manifest.json'), 'utf8')) as SessionManifest;
+            // Acquire cleanup handles before assertions so a failure cannot leave
+            // an extra session or notebook to affect subsequent tests.
+            client = new AgentClient(manifest); await client.connect();
+            assertNodeLaunched(override.log);
             assert.strictEqual(vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === 'R: New session focus').length, 1,
                 'Focusing the new native input must not open a duplicate tab in the previous editor group');
-            const manifest = JSON.parse(fs.readFileSync(path.join(root, String(notebook.metadata.rSessionId), 'manifest.json'), 'utf8')) as SessionManifest;
-            client = new AgentClient(manifest); await client.connect();
             const input = vscode.workspace.textDocuments.find(doc => doc.uri.scheme === 'vscode-interactive-input' && !inputsBefore.has(doc.uri.toString()));
             assert.ok(input);
             await until(() => vscode.window.activeTextEditor?.document.uri.toString() === input.uri.toString());
@@ -1679,7 +1687,7 @@ par(mfrow=c(1,1))`);
             ]);
             sinon.assert.calledOnce(confirmation);
             sinon.assert.notCalled(errors); sinon.assert.notCalled(kernels);
-            assert.ok(fs.readFileSync(override.log, 'utf8').split('\n').includes('-e'));
+            assertNodeLaunched(override.log);
             assert.ok(sawRestarting);
             assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
             assert.strictEqual(notebook.cellCount, oldCount + 1);
@@ -1729,7 +1737,7 @@ par(mfrow=c(1,1))`);
                 await vscode.workspace.getConfiguration('r').update(limitSettings[index], value, vscode.ConfigurationTarget.Global);
             }
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
-            assert.ok(fs.readFileSync(replacement.log, 'utf8').split('\n').includes('-e'), 'Restart must reread the Node override');
+            assertNodeLaunched(replacement.log);
             const restartedConfig = JSON.parse(fs.readFileSync(path.join(root, original.id, 'config.json'), 'utf8')) as AgentConfig;
             assert.strictEqual(restartedConfig.maxOutputBytes, 65536);
             assert.strictEqual(restartedConfig.maxJournalBytes, 40 * 1024 * 1024);
