@@ -26,7 +26,7 @@ class Element {
 
 interface Request {
     message: string;
-    generation: number;
+    documentGeneration: number;
     requestId: number;
     path: number[];
     index?: number;
@@ -280,7 +280,7 @@ suite('List viewer', () => {
 
     test('ignores old viewer responses and hides open buttons for unavailable items', () => {
         const { root, messages, reply } = createViewer();
-        reply(messages[0], { generation: 6, children: [{ label: 'stale' }] });
+        reply(messages[0], { documentGeneration: 6, children: [{ label: 'stale' }] });
         assert.strictEqual(root.children[0].childElementCount, 0);
         reply(messages[0], { children: [
             { label: 'removed', viewable: false },
