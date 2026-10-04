@@ -68,7 +68,8 @@ simulate <- function(outcome, private = FALSE) {
     if (private) Sys.setenv(VSCODE_R_SESS_LIBRARY = library, VSCODE_R_SESS_INTERACTIVE = "1")
     env <- new.env(parent = globalenv())
     env$sys.source <- function(file, envir) {
-        stopifnot(identical(file, file.path(extension, "R", "sess-package-install.R")))
+        stopifnot(identical(normalizePath(file),
+                            normalizePath(file.path(extension, "R", "sess-package-install.R"))))
         envir$sess_install <- function(pkg_path, library, repos, interactive) {
             stopifnot(identical(pkg_path, pkg), identical(repos, "https://example.com"),
                       identical(interactive, private))
@@ -84,12 +85,16 @@ simulate <- function(outcome, private = FALSE) {
     suppressWarnings(tryCatch(source(installer, local = env), error = identity))
 }
 write_description(installed, "3.0.1", pre_release)
-stopifnot(inherits(simulate("failure"), "error"))
+failure <- simulate("failure")
+stopifnot(inherits(failure, "error"), identical(conditionMessage(failure), "Installation failed"))
 stopifnot(inherits(simulate("shadowed"), "error"))
+assert_success <- function(result) {
+    if (inherits(result, "error")) stop(conditionMessage(result), call. = FALSE)
+}
 # A private runtime uses the shared compatibility verifier rather than requiring
 # its source to be visible in the ordinary terminal's library search path.
-stopifnot(!inherits(simulate("shadowed", private = TRUE), "error"))
-stopifnot(!inherits(simulate("success"), "error"))
+assert_success(simulate("shadowed", private = TRUE))
+assert_success(simulate("success"))
 stopifnot(!sess_install_required(pkg))
 Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO"))
 
