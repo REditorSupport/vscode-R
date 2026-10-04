@@ -137,4 +137,4 @@ Call `View(x)` to open a table. The viewer loads rows on demand and applies colu
 
 ## Persistent R Interactive
 
-This experimental feature provides native VS Code Interactive windows with independent plain-R or arf sessions, including adoption of existing arf sessions over Remote SSH. See the [setup and usage guide](docs/r-interactive.md) for session switching, persistence, rich outputs, and platform requirements.
+This experimental feature provides native VS Code Interactive windows with independent plain-R or arf sessions, including adoption of existing arf sessions over Remote SSH. See the [setup and usage guide](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive) for session switching, persistence, rich outputs, and platform requirements.
