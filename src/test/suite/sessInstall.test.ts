@@ -151,6 +151,8 @@ suite('Sess Install Test Suite', () => {
         assert.strictEqual(installed.calledTwice, true);
         assert.strictEqual(errors.called, false);
         assert.ok(task.firstCall.args[2].includes(path.join(extension_root, 'dist', 'resources', 'sess').replace(/\\/g, '/')));
+        assert.ok(task.firstCall.args[2].includes(
+            `--file=${path.join(extension_root, 'R', 'install_sess.R').replace(/\\/g, '/')}`));
     }).timeout(15000);
 
     test('failed or ineffective installation prevents startup and reports an error', async () => {

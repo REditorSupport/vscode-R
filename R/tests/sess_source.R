@@ -99,5 +99,39 @@ utils::install.packages(pkg, repos = NULL, type = "source", lib = library_path,
 stopifnot(identical(sess_installed_source_revision(), stable), !sess_install_required(pkg))
 stopifnot(!"sess" %in% loadedNamespaces())
 .libPaths(original_libs)
+
+# Run the same R executable invocation as the managed installer, rather than
+# source() (which supplies an ofile frame and hides command-line path failures).
+local({
+    project <- file.path(root, "project with spaces")
+    cli_library <- file.path(project, "library")
+    dir.create(cli_library, recursive = TRUE)
+    writeLines(".libPaths(c(file.path(getwd(), \"library\"), .libPaths()))", file.path(project, ".Rprofile"))
+    writeLines("NULL", file.path(pkg, "R", "zzz.R"))
+    previous_profile <- Sys.getenv("R_PROFILE_USER", unset = NA_character_)
+    previous_cwd <- getwd()
+    on.exit({
+        setwd(previous_cwd)
+        if (is.na(previous_profile)) {
+            Sys.unsetenv("R_PROFILE_USER")
+        } else {
+            Sys.setenv(R_PROFILE_USER = previous_profile)
+        }
+        .libPaths(original_libs)
+    })
+    Sys.unsetenv("R_PROFILE_USER")
+    setwd(project)
+    r_binary <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "R.exe" else "R")
+    output <- suppressWarnings(system2(r_binary, shQuote(c(
+        "--silent", "--no-echo", "--no-save", "--no-restore",
+        paste0("--file=", installer), "--args", pkg, "https://example.com"
+    )), stdout = TRUE, stderr = TRUE))
+    if (!is.null(attr(output, "status")) && attr(output, "status") != 0L) {
+        stop(paste(output, collapse = "\n"))
+    }
+    stopifnot(file.exists(file.path(cli_library, "sess", "DESCRIPTION")))
+    .libPaths(c(cli_library, original_libs))
+    stopifnot(identical(sess_installed_source_revision(), stable))
+})
 unlink(root, recursive = TRUE)
 cat("sess source identity and installer tests passed\n")

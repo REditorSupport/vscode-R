@@ -212,27 +212,28 @@ export async function getConfirmation(prompt: string, confirmation?: string, det
 // executes a given command as shell task
 // is more transparent than background processes without littering the integrated terminals
 // is not intended for actual user interaction
-export async function executeAsTask(name: string, process: string, args?: string[], asProcess?: true): Promise<void>;
-export async function executeAsTask(name: string, command: string, args?: string[], asProcess?: false): Promise<void>;
-export async function executeAsTask(name: string, cmdOrProcess: string, args?: string[], asProcess: boolean = false): Promise<void> {
+export async function executeAsTask(name: string, process: string, args?: string[], asProcess?: true, cwd?: string): Promise<void>;
+export async function executeAsTask(name: string, command: string, args?: string[], asProcess?: false, cwd?: string): Promise<void>;
+export async function executeAsTask(name: string, cmdOrProcess: string, args?: string[], asProcess: boolean = false, cwd?: string): Promise<void> {
     let taskDefinition: vscode.TaskDefinition;
     let taskExecution: vscode.ShellExecution | vscode.ProcessExecution;
     if(asProcess){
         taskDefinition = { type: 'process'};
-        taskExecution = args ? new vscode.ProcessExecution(
+        taskExecution = new vscode.ProcessExecution(
             cmdOrProcess,
-            args
-        ) : new vscode.ProcessExecution(
-            cmdOrProcess
+            args ?? [],
+            { cwd }
         );
     } else {
         taskDefinition = { type: 'shell' };
         const quotedArgs = args && args.map<vscode.ShellQuotedString>(arg => { return { value: arg, quoting: vscode.ShellQuoting.Weak }; });
         taskExecution = quotedArgs ? new vscode.ShellExecution(
             cmdOrProcess,
-            quotedArgs
+            quotedArgs,
+            { cwd }
         ) : new vscode.ShellExecution(
-            cmdOrProcess
+            cmdOrProcess,
+            { cwd }
         );
     }
     const task = new vscode.Task(
@@ -577,9 +578,10 @@ export async function promptToInstallSessPackage(
     _config = config,
     _getInstalledSessSourceRevision = getInstalledSessSourceRevision,
     _readFileSyncSafe = readFileSyncSafe,
-    _executeAsTask: (name: string, process: string, args: string[], asProcess: true) => Promise<void> = executeAsTask
+    _executeAsTask: (name: string, process: string, args: string[], asProcess: true, cwd?: string) => Promise<void> = executeAsTask
 ): Promise<boolean> {
     const resource = resourceFromCwd(cwd);
+    const workingDirectory = cwd instanceof vscode.Uri ? cwd.fsPath : cwd;
     const activeConfig = _config();
     const sessionWatcher = activeConfig.get<boolean>('sessionWatcher');
     if (!sessionWatcher) {
@@ -595,7 +597,7 @@ export async function promptToInstallSessPackage(
         return false;
     }
 
-    const installedRevision = await _getInstalledSessSourceRevision(cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
+    const installedRevision = await _getInstalledSessSourceRevision(workingDirectory);
     if (installedRevision === bundledRevision) {
         return true;
     }
@@ -613,18 +615,18 @@ export async function promptToInstallSessPackage(
     if (!rPath) {
         return false;
     }
-    const repo = await getCranUrl('', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
+    const repo = await getCranUrl('', workingDirectory);
     const args = [
         '--silent',
         '--no-echo',
         '--no-save',
         '--no-restore',
-        '-f', installSessScript,
+        `--file=${installSessScript}`,
         '--args', sessPath, repo
     ];
     try {
-        await _executeAsTask('Install "sess" package', rPath, args, true);
-        if (await _getInstalledSessSourceRevision(cwd instanceof vscode.Uri ? cwd.fsPath : cwd) !== bundledRevision) {
+        await _executeAsTask('Install "sess" package', rPath, args, true, workingDirectory);
+        if (await _getInstalledSessSourceRevision(workingDirectory) !== bundledRevision) {
             void vscode.window.showErrorMessage('The bundled "sess" package was not installed successfully. Check the installation task output and try starting R again.');
             return false;
         }
