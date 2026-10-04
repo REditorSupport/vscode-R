@@ -2044,6 +2044,7 @@
     "clean": "rimraf out",
     "pretest": "pnpm run compile && pnpm run clean && tsc -p ./",
     "test": "vscode-test",
+    "test:sess-source": "node --test scripts/sess-source.test.js && Rscript --vanilla R/tests/sess_source.R",
     "lint": "eslint src --ext ts && Rscript -e \"lintr::lint_package('sess')\""
   },
   "devDependencies": {

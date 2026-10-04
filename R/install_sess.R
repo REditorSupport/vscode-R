@@ -24,6 +24,14 @@ local({
         stop(paste("DESCRIPTION file not found in", pkg_path))
     }
 
+    # This script can be sourced by the attach command or run as an R task.
+    # The helper is beside it in the extension, one level above bundled sess.
+    source(file.path(pkg_path, "..", "R", "sess_source.R"), local = TRUE)
+    expected_revision <- sess_source_revision(file.path(pkg_path, "DESCRIPTION"))
+    if (is.null(expected_revision)) {
+        stop("Bundled sess has no valid source revision. Rebuild or reinstall the vscode-R extension.")
+    }
+
     desc <- read.dcf(file.path(pkg_path, "DESCRIPTION"))
     deps <- if ("Imports" %in% colnames(desc)) desc[, "Imports"] else ""
     deps <- unlist(strsplit(deps, ","))
@@ -46,4 +54,12 @@ local({
 
     message("Installing sess package from: ", pkg_path)
     install.packages(pkg_path, repos = NULL, type = "source")
+    # install.packages can report failure as a warning. Also detect a different
+    # package shadowing the installed copy earlier in .libPaths().
+    if (!identical(sess_installed_source_revision(), expected_revision)) {
+        stop("sess installation did not make the bundled source available in .libPaths(). Check the installation log.")
+    }
+    if ("sess" %in% loadedNamespaces()) {
+        message("sess was already loaded. Restart R to use the newly installed source.")
+    }
 })

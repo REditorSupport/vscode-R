@@ -4,6 +4,7 @@
 !CHANGELOG.md
 !LICENSE
 !R/**
+R/tests/**
 !sess/**
 !html/**/*.ejs
 !html/**/*.css

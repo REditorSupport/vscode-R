@@ -37,3 +37,4 @@ Suggests:
     svglite,
     tinytest
 Config/roxygen2/version: 8.1.0
+Config/vscode-R/source-revision: @VSCODE_R_SESS_SOURCE_REVISION@

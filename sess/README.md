@@ -139,6 +139,53 @@ In VS Code, this is controlled by the `r.plot.backend` setting.
 | `JGD_SOCKET` | env var | Socket used by the jgd device; set by the extension. |
 | `sess.quiet` | R option | Set to `TRUE` to suppress the successful connection message. Connection failures remain visible. |
 
+## Source identity and installation
+
+`Version` is the R package version, not an extension deployment identifier. The
+extension checks `Config/vscode-R/source-revision` in the installed DESCRIPTION
+against its bundled copy. A missing, invalid or different revision requires
+installing the bundle, including when switching from pre-release back to stable
+or when two builds have the same package version. Older installations without
+this field migrate by installing the bundled copy once. A bundle with an
+unexpanded placeholder is a build error; version comparison is not a fallback.
+
+The field is committed as `@VSCODE_R_SESS_SOURCE_REVISION@`. Every esbuild entry
+(compile, watch startup and production/VSIX packaging) replaces it with
+`git-tree:<object ID>`. `scripts/stamp-sess.js` fingerprints the `sess/` working
+tree using a temporary Git index, restoring the placeholder for the calculation.
+It includes new, modified and deleted source files without changing the user's
+index. For a clean checkout this is exactly `git rev-parse HEAD:sess`; extension
+changes outside `sess/` do not cause another installation. Git and a checkout
+with HEAD are required to build the extension. The generated stamp should not
+be committed; restore the placeholder before committing DESCRIPTION changes.
+Watch mode stamps at startup; restart the build after editing `sess/` sources.
+
+R-universe runs `sess/bootstrap.R` from the package directory. It replaces the
+same placeholder with the committed package subtree ID, before R CMD build,
+and the field survives into source and binary packages. The build service first
+normalizes DESCRIPTION and may add `Config/pak/sysreqs`; these generated changes
+are excluded from source identity. Bootstrap requires committed sources and
+rejects other source/description edits. Local development VSIXs instead identify
+their actual working tree. Since R-universe ignores bootstrap failures, the
+script resets any previous stamp to the placeholder before doing Git work. CI
+runs bootstrap explicitly, checks agreement with VSIX stamping after DESCRIPTION
+normalization, checks R CMD build preserves the field, and validates both the
+installed package and packaged VSIX. Run these lightweight tests with
+`pnpm run test:sess-source` (Node, Git and base R only).
+
+`R/sess_source.R` shares the installed-package lookup and install decision between
+the prompt, attach command and installer. It reads DESCRIPTION from `.libPaths()`
+without loading the namespace. After installation, the installer verifies that
+the visible package has the expected revision; warnings or a shadowing library
+must not silently count as success. Updating files does not replace a namespace
+already loaded in R: restart that R process to use the new source. On platforms
+that prevent overwriting loaded packages, restart before installing.
+
+Source identity is deployment metadata. It does not describe a running
+namespace or determine whether a session can connect. The existing
+`protocol_version` handshake remains responsible for runtime compatibility;
+source mismatches do not reject an otherwise compatible running session.
+
 ## Protocol reference
 
 This section is for developers writing or debugging a client.

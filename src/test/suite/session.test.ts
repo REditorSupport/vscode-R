@@ -551,6 +551,9 @@ suite('Session Communication', () => {
         const scriptPath = JSON.parse(commandMatch[1]) as string;
         const scriptContent = await fs.readFile(scriptPath, 'utf8');
         assert.match(scriptContent, /sess::connect\(endpoint = endpoint/);
+        assert.match(scriptContent, /sess_install_required\(sess_src\)/);
+        assert.match(scriptContent, /sess_source\.R/);
+        assert.doesNotMatch(scriptContent, /packageVersion|compareVersion/);
         assert.strictEqual(path.dirname(scriptPath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach'));
         const scriptStat = await fs.stat(scriptPath);
         if (process.platform !== 'win32') {
