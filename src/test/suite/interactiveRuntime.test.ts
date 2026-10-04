@@ -36,9 +36,16 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'r-interactive-runtime-'));
         // Exercise the real installer and paths containing spaces, as in the macOS default.
         root = defaultStorage('darwin', temporary, {});
-        const runtime = await installRuntime(process.cwd(), root, 'R', () => undefined);
+        // Reproduce the packaged extension: the source checkout's sess/ is absent.
+        const extension = path.join(temporary, 'packaged extension');
+        fs.cpSync(path.join(process.cwd(), 'dist', 'resources', 'sess'),
+            path.join(extension, 'dist', 'resources', 'sess'), { recursive: true });
+        fs.cpSync(path.join(process.cwd(), 'R'), path.join(extension, 'R'), { recursive: true });
+        fs.copyFileSync(path.join(process.cwd(), 'dist', 'interactive-agent.js'),
+            path.join(extension, 'dist', 'interactive-agent.js'));
+        const runtime = await installRuntime(extension, root, 'R', () => undefined);
         library = runtime.library; resources = runtime.resources; agentBundle = runtime.agent;
-        assert.deepStrictEqual(await installRuntime(process.cwd(), root, 'R', () => assert.fail('A ready runtime should be reused')), runtime);
+        assert.deepStrictEqual(await installRuntime(extension, root, 'R', () => assert.fail('A ready runtime should be reused')), runtime);
     });
     suiteTeardown(() => fs.rmSync(temporary, { recursive: true, force: true }));
 

@@ -368,7 +368,7 @@ suite('Session Communication', () => {
         assert.ok(rPath, 'R path should be found');
         sandbox.stub(util, 'getRterm').resolves(rPath);
         
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const result = await rTerminal.createRTerm(true);
         assert.ok(result, 'createRTerm should return true');
@@ -471,7 +471,7 @@ suite('Session Communication', () => {
         const rPath = await util.getRterm();
         assert.ok(rPath, 'R path should be found');
         sandbox.stub(util, 'getRterm').resolves(rPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         // svglite is a Suggests (optional) dependency of the sess package, so it may or
         // may not be present. Detect it before stubbing so the format assertions below
@@ -590,6 +590,11 @@ suite('Session Communication', () => {
         const scriptPath = JSON.parse(commandMatch[1]) as string;
         const scriptContent = await fs.readFile(scriptPath, 'utf8');
         assert.match(scriptContent, /sess::connect\(endpoint = endpoint/);
+        assert.match(scriptContent, /sess_install_required\(sess_src\)/);
+        assert.match(scriptContent, /sess_source\.R/);
+        assert.ok(scriptContent.includes(extension.extensionContext.asAbsolutePath(
+            path.join('dist', 'resources', 'sess')).replace(/\\/g, '/')));
+        assert.doesNotMatch(scriptContent, /packageVersion|compareVersion/);
         assert.strictEqual(path.dirname(scriptPath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach'));
         const scriptStat = await fs.stat(scriptPath);
         if (process.platform !== 'win32') {

@@ -54,6 +54,7 @@ function copyWebviewAssets() {
 }
 
 async function main() {
+    require('./scripts/prepare-sess').prepareBundledSess();
     copyResources();
     copyWebviewAssets();
 

@@ -25,6 +25,25 @@ If launching reports `Configured debug type 'extensionHost' is not supported`, e
 
 On VS Code 1.139, the regression can leave the development host paused before any extension activates; the launching window's extension host log shows `ECONNREFUSED ::1` and `Could not find any debuggable target`. Upgrade to VS Code 1.140.0 or newer, or use Microsoft's [JavaScript Debugger Nightly](https://marketplace.visualstudio.com/items?itemName=ms-vscode.js-debug-nightly) as a temporary workaround: disable the built-in **JavaScript Debugger**, enable Nightly, and reload VS Code.
 
+## Building bundled sess
+
+Builds require Git and a checkout with HEAD. `scripts/prepare-sess.js` fingerprints
+`sess/` using a temporary Git index and exports the same snapshot to
+`dist/resources/sess/`, excluding untracked ignored files. It stamps only the
+generated DESCRIPTION; source files and the developer's index remain unchanged.
+A clean checkout matches `HEAD:sess`, so extension-only changes retain the identity.
+
+Compile and VSIX packaging prepare this copy, and `pnpm run build` installs it.
+Watch mode prepares it at startup; restart the watcher after editing `sess/`.
+R-universe's `sess/bootstrap.R` produces the same identity from committed sources.
+Source DESCRIPTION enables pkgbuild's bootstrap hook; the prepared copy disables
+it to avoid repeating preparation when installed through remotes.
+
+`Config/vscode-R/source-revision` controls installation independently of package
+versions and the runtime `protocol_version` handshake. Missing or different
+installed metadata requires the bundle; installation verifies it is visible
+through `.libPaths()`. Run the lightweight checks with `pnpm run test:sess-source`.
+
 ## Testing R Interactive
 
 The [architecture and backend contract](src/interactive/README.md) live beside the implementation. User setup and behavior belong in the [R Interactive wiki page](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive).

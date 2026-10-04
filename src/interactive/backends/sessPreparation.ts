@@ -11,9 +11,10 @@ export async function installSessRuntime(extensionPath: string, root: string, rP
     log: (text: string) => void): Promise<{ library: string; resources: string }> {
     prepareStorage(root);
     const hash = createHash('sha256');
-    const sources = ['sess/DESCRIPTION', 'sess/NAMESPACE',
-        'R/interactive-worker.R', 'R/interactive-metrics.R', 'R/install_sess.R', 'R/sess-package-install.R'];
-    for (const directory of ['sess/R', 'sess/src']) {
+    const bundledSess = 'dist/resources/sess';
+    const sources = [`${bundledSess}/DESCRIPTION`, `${bundledSess}/NAMESPACE`,
+        'R/interactive-worker.R', 'R/interactive-metrics.R', 'R/install_sess.R', 'R/sess-package-install.R', 'R/sess_source.R'];
+    for (const directory of [`${bundledSess}/R`, `${bundledSess}/src`]) {
         for (const name of fs.readdirSync(path.join(extensionPath, directory)).sort()) {
             if (/\.(R|c|h)$/.test(name)) { sources.push(`${directory}/${name}`); }
         }
@@ -40,13 +41,13 @@ export async function installSessRuntime(extensionPath: string, root: string, rP
         fs.mkdirSync(library, { recursive: true, mode: 0o700 });
         fs.mkdirSync(resources, { recursive: true, mode: 0o700 });
         const packagePath = path.join(runtime, 'sess');
-        fs.cpSync(path.join(extensionPath, 'sess'), packagePath, { recursive: true,
+        fs.cpSync(path.join(extensionPath, bundledSess), packagePath, { recursive: true,
             filter: source => !/\.(o|so|dll)$/.test(source) });
-        for (const file of ['interactive-worker.R', 'interactive-metrics.R', 'install_sess.R', 'sess-package-install.R']) {
+        for (const file of ['interactive-worker.R', 'interactive-metrics.R', 'install_sess.R', 'sess-package-install.R', 'sess_source.R']) {
             fs.copyFileSync(path.join(extensionPath, 'R', file), path.join(resources, file));
         }
         await new Promise<void>((resolve, reject) => {
-            const child = spawn(rPath, ['--vanilla', '--slave', '-f', path.join(resources, 'install_sess.R')], {
+            const child = spawn(rPath, ['--vanilla', '--slave', `--file=${path.join(resources, 'install_sess.R')}`], {
                 stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env,
                     VSCODE_R_SESS_PKG_PATH: packagePath, VSCODE_R_SESS_LIBRARY: library, VSCODE_R_SESS_INTERACTIVE: '1' },
             });
