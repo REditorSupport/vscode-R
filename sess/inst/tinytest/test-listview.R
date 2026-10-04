@@ -146,6 +146,35 @@ local({
   direct_context <- sess:::listview_expression_context(quote(x$a$b), environment(), "x")
   expect_equal(direct_context$navigation$path, list(1L, 1L), check.attributes = FALSE)
   expect_equal(direct_context$navigation$title, "x$a$b")
+
+  # Active roots are evaluated once, including when inherited by the caller.
+  for (inherited in c(FALSE, TRUE)) {
+    calls <- 0L
+    evaluated <- NULL
+    binding_env <- new.env(parent = environment())
+    makeActiveBinding("active_root", function() {
+      calls <<- calls + 1L
+      evaluated <<- list(nested = list(value = c(calls, calls + 10L)))
+      evaluated
+    }, binding_env)
+    caller <- if (inherited) new.env(parent = binding_env) else binding_env
+    expressions <- c("active_root", "active_root$nested", "active_root$nested$value")
+    for (expression in expressions) {
+      calls <- 0L
+      eval(parse(text = paste0("utils::View(", expression, ")")), caller)
+      read_messages()
+      expect_identical(calls, 1L)
+      expected <- switch(expression,
+        active_root = evaluated,
+        "active_root$nested" = evaluated$nested,
+        "active_root$nested$value" = evaluated$nested$value
+      )
+      expect_identical(runtime$dataviews[[id("list", "active_root")]]$data, expected)
+      expect_equal(notification()$navigation$title, expression)
+      expect_length(notification()$navigation$breadcrumbs, 1L)
+    }
+  }
+
   utils::View(x$df)
   direct_table <- id("table", "x")
   utils::View(x$a$df)

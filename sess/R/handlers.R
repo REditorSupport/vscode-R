@@ -201,9 +201,15 @@ listview_expression_context <- function(expression, envir, owner) {
       selectors <- c(list(list(kind = "index", value = value)), selectors)
       expression <- expression[[2L]]
     }
-    if (!is.symbol(expression)) return(NULL)
+    if (!length(selectors) || !is.symbol(expression)) return(NULL)
     name <- as.character(expression)
-    root <- listview_state(get(name, envir = envir, inherits = TRUE), name, owner)
+    while (!identical(envir, emptyenv()) && !exists(name, envir = envir, inherits = FALSE)) {
+      envir <- parent.env(envir)
+    }
+    # View has already evaluated its argument; rebuilding an active root would
+    # evaluate it again and could display a different value.
+    if (identical(envir, emptyenv()) || bindingIsActive(name, envir)) return(NULL)
+    root <- listview_state(get(name, envir = envir, inherits = FALSE), name, owner)
     listview_context(root, selectors)
   }, error = function(e) NULL)
 }
