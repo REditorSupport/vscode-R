@@ -515,7 +515,8 @@ suite('R Terminal', () => {
 
         assert.deepStrictEqual(options.shellArgs, [`--project=${resource.fsPath}`]);
         assert.ok(requestedResources.includes(resource), 'configuration should be requested for the R terminal resource');
-        assert.strictEqual(delayStub.firstCall.args[0], 17, 'explicit canonical send delay should be used');
+        assert.deepStrictEqual(delayStub.args, [[200], [17]],
+            'startup fallback should be followed by the explicit canonical per-line send delay');
         assert.deepStrictEqual(sent, ['first', 'second']);
         rTerminal.deleteTerminal(fakeTerminal as unknown as vscode.Terminal);
     });
