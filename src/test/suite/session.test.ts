@@ -234,8 +234,9 @@ suite('Session Communication', () => {
         assert.strictEqual(await api.getConnectionInfo(), undefined);
 
         watcher.value(true);
+        let backend = 'standard';
         const configStub = {
-            get: (key: string) => key === 'plot.backend' ? 'standard' : undefined,
+            get: (key: string) => key === 'plot.backend' ? backend : undefined,
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         await waitFor(() => session.globalPipePath);
@@ -246,6 +247,11 @@ suite('Session Communication', () => {
         assert.strictEqual(connection.endpoint, session.globalPipePath);
         assert.strictEqual(connection.plotBackend, 'standard');
         assert.ok(!('socket' in connection), 'connection info should contain plain contract data only');
+
+        backend = 'native';
+        const nativeConnection = await api.getConnectionInfo();
+        assert.strictEqual(nativeConnection?.plotBackend, 'native');
+        assert.strictEqual(nativeConnection?.jgdSocket, undefined);
     });
 
     test('public session API activates a connected session by id and rejects missing or disconnected sessions', async () => {
@@ -630,6 +636,19 @@ suite('Session Communication', () => {
                 }
             }
         }
+    });
+
+    test('attach script passes the native backend to sess', async () => {
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'plot.backend' ? 'native' : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
+        const command = await session.getAttachSessionCommand();
+        const commandMatch = command.match(/^source\((.*)\)$/);
+        assert.ok(commandMatch);
+        const scriptPath = JSON.parse(commandMatch[1]) as string;
+        const scriptContent = await fs.readFile(scriptPath, 'utf8');
+        assert.match(scriptContent, /sess::connect\(endpoint = endpoint, plot_backend = "native"\)/);
+        assert.doesNotMatch(scriptContent, /Sys\.(?:setenv|unsetenv)\(JGD_SOCKET/);
     });
 
     test('manual recovery targets the selected managed terminal while another session is active', async () => {

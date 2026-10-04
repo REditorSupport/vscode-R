@@ -78,6 +78,10 @@ For example, assuming that you have installed `arf` and `jgd`, your user `settin
 
 Please consult the relevant installation wiki pages for your OS ([Windows](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Windows) | [macOS](https://github.com/REditorSupport/vscode-R/wiki/Installation:-macOS) | [Linux](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Linux)) for more detailed instructions.
 
+Set `r.plot.backend` to `"native"` to use R's configured graphics device without
+opening the VS Code plot viewer automatically. The `"standard"` backend continues
+to display static plots in VS Code.
+
 ## Features
 
 * Snippets for R and R Markdown.

@@ -662,16 +662,15 @@ function getAttachSessionScriptPath(pipePath: string): string {
 
 function buildAttachSessionScript(pipePath: string, sessPath: string, installSessScriptPath: string): string {
     const backend = resolveBackend();
-    const useHttpgd = backend === 'httpgd' || backend === 'auto' ? 'TRUE' : 'FALSE';
-    const jgd = jgdEnabled(backend);
-    const useJgd = jgd ? 'TRUE' : 'FALSE';
     const jgdSocket = getSessionJgdSocket();
     return [
         'local({',
         `  endpoint <- ${asRStringLiteral(pipePath)}`,
         `  sess_src <- ${asRStringLiteral(sessPath)}`,
         `  install_sess_script <- ${asRStringLiteral(installSessScriptPath)}`,
-        jgdSocket ? `  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})` : '  Sys.unsetenv("JGD_SOCKET")',
+        ...(backend === 'native' ? [] : [
+            jgdSocket ? `  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})` : '  Sys.unsetenv("JGD_SOCKET")',
+        ]),
         `  source(${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')).replace(/\\/g, '/'))}, local = TRUE)`,
         '  if (sess_install_required(sess_src)) {',
         '    if (!file.exists(install_sess_script)) {',
@@ -681,7 +680,7 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, installSes
         '    on.exit(Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO")), add = TRUE)',
         '    source(install_sess_script, local = TRUE)',
         '  }',
-        `  sess::connect(endpoint = endpoint, use_httpgd = ${useHttpgd}, use_jgd = ${useJgd})`,
+        `  sess::connect(endpoint = endpoint, plot_backend = ${asRStringLiteral(backend)})`,
         '})',
         '',
     ].join('\n');

@@ -36,7 +36,7 @@ local({
   path <- tempfile()
   on.exit(unlink(path), add = TRUE)
   settings <- list(path = path, endpoint = "old", options = list(
-    use_rstudioapi = FALSE, use_httpgd = TRUE, use_jgd = FALSE
+    use_rstudioapi = FALSE, plot_backend = "httpgd"
   ))
   env$.schedule_reconnect(settings, schedule = schedule)
   tick() # Missing discovery file.
@@ -73,7 +73,7 @@ local({
   expect_equal(length(callbacks), 0L)
 
   # Renderer metadata must be installed before connect starts the runtime.
-  settings$options$use_jgd <- TRUE
+  settings$options$plot_backend <- "jgd"
   for (socket in c("replacement-jgd", "")) {
     env$.sess_env$con <- NULL
     Sys.setenv(JGD_SOCKET = "dead-jgd")
@@ -109,6 +109,19 @@ local({
   tick()
   expect_equal(Sys.getenv("JGD_SOCKET"), "external-jgd")
   expect_equal(length(attempts), count)
+  expect_equal(length(callbacks), 0L)
+
+  # An explicit native backend must survive the same reconnect path.
+  native_options <- list(use_rstudioapi = FALSE, plot_backend = "native")
+  native_settings <- list(path = path, endpoint = "old", options = native_options)
+  env$.sess_env$con <- NULL
+  Sys.setenv(JGD_SOCKET = "external-jgd")
+  writeLines('{"version":1,"endpoint":"new","jgdSocket":"unused"}', path)
+  env$.schedule_reconnect(native_settings, schedule = schedule)
+  tick()
+  expect_equal(tail(attempts, 1L)[[1L]],
+               c(list(endpoint = "new"), native_options))
+  expect_equal(Sys.getenv("JGD_SOCKET"), "external-jgd")
   expect_equal(length(callbacks), 0L)
 
 })

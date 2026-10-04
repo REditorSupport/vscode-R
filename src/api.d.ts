@@ -15,7 +15,7 @@ export interface RSessionConnectionInfo {
     protocolVersion: number;
     endpoint: string;
     /** The configured, compatibility-resolved plot backend preference. */
-    plotBackend: 'auto' | 'standard' | 'httpgd' | 'jgd';
+    plotBackend: 'auto' | 'standard' | 'httpgd' | 'jgd' | 'native';
     /** Present when plotBackend is jgd or auto and the JGD socket is available. */
     jgdSocket?: string;
 }

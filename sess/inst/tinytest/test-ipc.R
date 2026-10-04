@@ -248,7 +248,7 @@ local({
   expect_equal(.sess_env$dataviews, list())
   expect_length(ls(.sess_env$dataview_registry, all.names = TRUE), 0L)
 
-  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "standard")
   expect_equal(.sess_env$dataviews, list())
   expect_length(ls(.sess_env$dataview_registry, all.names = TRUE), 0L)
   expect_true(isTRUE(sess:::.runtime_state()$active))
@@ -276,7 +276,7 @@ local({
   runtime_device <- grDevices::dev.cur()
 
   callbacks_after_first_start <- getTaskCallbackNames()
-  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "standard")
   expect_equal(.sess_env$dataviews, list())
   expect_length(ls(.sess_env$dataview_registry, all.names = TRUE), 0L)
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 1L)
@@ -335,7 +335,7 @@ local({
     .sess_env$latest_plot_path <- old_plot_path
   }, add = TRUE)
 
-  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "standard")
   options(viewer = user_viewer)
   if (binding_was_locked) unlockBinding("View", utils_ns)
   assign("View", user_view, envir = utils_ns)
@@ -366,7 +366,7 @@ local({
     .sess_env$latest_plot_path <- old_plot_path
   }, add = TRUE)
 
-  sess:::runtime_start(use_rstudioapi = TRUE, use_httpgd = FALSE, use_jgd = FALSE)
+  sess:::runtime_start(use_rstudioapi = TRUE, plot_backend = "standard")
   expect_false(identical(get("isAvailable", rstudioapi_ns, inherits = FALSE),
                          original_is_available))
   expect_false(identical(getHook(rstudioapi_hook_name), original_load_hook))
@@ -424,7 +424,7 @@ local({
   } else {
     .sess_env$transport_generation + 1L
   }
-  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "standard")
   expect_true(isTRUE(sess:::.runtime_state()$active))
 
   close(cons[[1L]])
@@ -601,7 +601,7 @@ local({
 
   connected <- tryCatch({
     sess::connect(endpoint = first$path, use_rstudioapi = FALSE,
-                  use_httpgd = FALSE, use_jgd = FALSE)
+                  plot_backend = "standard")
     first_peer <- accept_peer(first$server)
     !is.null(first_peer) && !is.null(.sess_env$con)
   }, error = function(e) FALSE)
@@ -639,7 +639,7 @@ local({
   expect_false(is.null(second_peer))
   expect_equal(sess:::.session_id(), identity)
   expect_equal(.sess_env$reconnect$options,
-               list(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE))
+               list(use_rstudioapi = FALSE, plot_backend = "standard"))
   expect_true(isTRUE(sess:::.runtime_state()$active))
   expect_equal(length(grep("^sess.workspace$", getTaskCallbackNames())), 1L)
   sess:::.transport_disconnect()
@@ -667,7 +667,7 @@ local({
   }, add = TRUE)
 
   connected <- tryCatch({
-    sess::connect(endpoint = path, use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+    sess::connect(endpoint = path, use_rstudioapi = FALSE, plot_backend = "standard")
     ready <- processx::poll(list(server), 1000L)
     if (ready[[1]] %in% c("connect", "ready")) {
       processx::conn_accept_unix_socket(server)
