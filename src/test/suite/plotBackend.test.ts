@@ -1,10 +1,12 @@
 import * as assert from 'assert';
+import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as util from '../../util';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from '../../plotViewer';
 import { HttpgdViewer } from '../../plotViewer/httpgdViewer';
 import { JgdViewer } from '../../plotViewer/jgdViewer';
+import { mockExtensionContext } from '../common/mockvscode';
 
 suite('Plot backend setting migration', () => {
     let sandbox: sinon.SinonSandbox;
@@ -55,6 +57,7 @@ suite('Plot backend setting migration', () => {
 
     test('auto prefers an available JGD viewer over httpgd', () => {
         settings({ workspaceValue: 'auto' });
+        mockExtensionContext(path.resolve(__dirname, '../../..'), sandbox);
         const manager = new CommonPlotManager();
         const httpgd = { id: 'httpgd' } as HttpgdViewer;
         const jgd = { id: 'jgd' } as JgdViewer;
