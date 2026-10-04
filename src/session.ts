@@ -235,9 +235,11 @@ function escapeHtml(text: string): string {
 }
 
 function registerDataViewPanel(panel: vscode.WebviewPanel, key: string, viewId: string, sessionId: string | null): void {
+    // The panel's webview getter throws once onDidDispose fires.
+    const webview = panel.webview;
     dynamicDataViewPanels.set(key, panel);
     panel.onDidDispose(() => {
-        listViewGenerations.delete(panel.webview);
+        listViewGenerations.delete(webview);
         if (dynamicDataViewPanels.get(key) !== panel) {
             return;
         }
@@ -252,8 +254,9 @@ function registerDataViewPanel(panel: vscode.WebviewPanel, key: string, viewId: 
 }
 
 function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, sessionId: string | null): void {
+    const webview = panel.webview;
     const postResponse = (requestId: number, ok: boolean, result?: unknown, error?: string) => {
-        void panel.webview.postMessage({
+        void webview.postMessage({
             message: 'dataview/response',
             requestId,
             ok,
@@ -262,7 +265,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
         });
     };
 
-    panel.webview.onDidReceiveMessage(async (raw: unknown) => {
+    webview.onDidReceiveMessage(async (raw: unknown) => {
         const msg = raw as Partial<DataViewRequestMessage>;
         if (msg.message !== 'dataview/request' || typeof msg.requestId !== 'number') {
             return;
@@ -1081,11 +1084,12 @@ export async function showDataView(
         panel.iconPath = new UriIcon('preview');
         if (viewId) {
             registerDataViewPanel(panel, panelKey, viewId, sessionId);
-            panel.webview.onDidReceiveMessage(async (message: {
+            const webview = panel.webview;
+            webview.onDidReceiveMessage(async (message: {
                 message?: string; index?: number; start?: number; requestId?: number;
                 path?: number[]; generation?: number;
             }) => {
-                if (message.generation !== listViewGenerations.get(panel.webview)) {
+                if (message.generation !== listViewGenerations.get(webview)) {
                     return;
                 }
                 if (!Array.isArray(message.path) || !message.path.every(index => Number.isSafeInteger(index) && index > 0)) {
@@ -1097,7 +1101,7 @@ export async function showDataView(
                         method: message.message === 'listview/navigate' ? 'listview_navigate' : 'listview_view',
                         params: { view_id: viewId, index: message.index, path: message.path },
                     }, sessionId) as ListViewNavigation | boolean | undefined;
-                    if (message.generation !== listViewGenerations.get(panel.webview)) {
+                    if (message.generation !== listViewGenerations.get(webview)) {
                         return;
                     }
                     const navigation = result && typeof result === 'object' && Array.isArray(result.breadcrumbs)
@@ -1105,7 +1109,7 @@ export async function showDataView(
                     if (navigation) {
                         panel.title = navigation.title;
                     }
-                    void panel.webview.postMessage({
+                    void webview.postMessage({
                         message: 'listview/navigation',
                         generation: message.generation,
                         requestId: message.requestId,
@@ -1118,10 +1122,10 @@ export async function showDataView(
                         method: 'workspace_children',
                         params: { view_id: viewId, start: message.start, path: message.path },
                     }, sessionId) as { children?: unknown; next_start?: number | null } | undefined;
-                    if (message.generation !== listViewGenerations.get(panel.webview)) {
+                    if (message.generation !== listViewGenerations.get(webview)) {
                         return;
                     }
-                    void panel.webview.postMessage({
+                    void webview.postMessage({
                         message: 'listview/page',
                         generation: message.generation,
                         requestId: message.requestId,

@@ -22,6 +22,53 @@ suite('List viewer panels', () => {
         sandbox.restore();
     });
 
+    for (const source of ['list', 'table']) {
+        test(`reopens a disposed ${source} viewer using real VS Code panels`, async () => {
+            const create = sandbox.spy(vscode.window, 'createWebviewPanel');
+            const viewId = `test-real-${source}`;
+            const open = async () => {
+                try {
+                    await session.showDataView(source, 'json', 'x', '', 'Two', viewId);
+                } finally {
+                    for (const panel of create.returnValues) {
+                        if (!panels.includes(panel)) {
+                            panels.push(panel);
+                        }
+                    }
+                }
+            };
+
+            await open();
+            await open();
+            sinon.assert.calledOnce(create);
+            create.firstCall.returnValue.dispose();
+            await open();
+            sinon.assert.calledTwice(create);
+            assert.notStrictEqual(create.firstCall.returnValue, create.secondCall.returnValue);
+            create.secondCall.returnValue.dispose();
+            await open();
+            sinon.assert.calledThrice(create);
+        });
+
+        test(`handles pending ${source} requests when a real VS Code panel closes`, async () => {
+            const panel = vscode.window.createWebviewPanel('dataview', 'x', vscode.ViewColumn.Two, {});
+            panels.push(panel);
+            const receive = sandbox.spy(panel.webview, 'onDidReceiveMessage');
+            sandbox.stub(vscode.window, 'createWebviewPanel').returns(panel);
+            await session.showDataView(source, 'json', 'x', '', 'Two', `test-pending-${source}`);
+            const generation = Number(/const generation = (\d+)/.exec(panel.webview.html)?.[1]);
+            const listener = receive.firstCall.args[0] as (message: unknown) => Promise<void>;
+            // With no R session, requests settle asynchronously with an unavailable response.
+            const pending = source === 'table'
+                ? [listener({ message: 'dataview/request', action: 'page', requestId: 1 })]
+                : ['listview/page', 'listview/navigate'].map(message => listener({
+                    message, generation, requestId: 1, path: [], start: 1,
+                }));
+            panel.dispose();
+            await Promise.all(pending);
+        });
+    }
+
     test('reuses separate list and table panels, updates titles, and reopens closed viewers', async () => {
         const reveals: sinon.SinonStub[] = [];
         const create = sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title) => {
