@@ -1974,9 +1974,14 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             break;
         }
         case 'dataview': {
+            // R's deparse() can return several title lines. Preserve the
+            // comma-separated title previously produced by String(array).
+            const title = typeof params.title === 'string' ? params.title
+                : Array.isArray(params.title) && params.title.every((line: unknown) => typeof line === 'string')
+                    ? params.title.join(',') : undefined;
             if (typeof params.source === 'string' && params.source
                 && typeof params.type === 'string' && params.type
-                && typeof params.title === 'string' && params.title
+                && title
                 && (params.file === undefined || params.file === null || typeof params.file === 'string')
                 && (params.view_id === undefined || params.view_id === null || typeof params.view_id === 'string')) {
                 const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
@@ -1985,7 +1990,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                     await showDataView(
                         params.source,
                         params.type,
-                        params.title,
+                        title,
                         params.file ?? '',
                         viewer,
                         params.view_id || undefined,
