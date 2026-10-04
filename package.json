@@ -2330,6 +2330,7 @@
         },
         "r.interactive.supervision": {
           "type": "string",
+          "ignoreSync": true,
           "enum": [
             "auto",
             "tmux",
@@ -2341,21 +2342,25 @@
         },
         "r.interactive.nodePath": {
           "type": "string",
+          "ignoreSync": true,
           "default": "node",
           "description": "Node.js 18+ executable on the R host, used for persistent session agents. The default looks for node on PATH, then uses VS Code Server's Node runtime in Remote SSH. Set a remote executable path if needed; supports ~ and ${userHome}/${workspaceFolder}. The desktop Electron runtime is never used."
         },
         "r.interactive.arfPath": {
           "type": "string",
+          "ignoreSync": true,
           "default": "arf",
           "description": "Optional arf executable for managed headless Interactive sessions, resolved on the R host. Use an executable name on PATH or a path (supports ~ and ${userHome}/${workspaceFolder}). Plain R sessions do not require arf; if unavailable, the provider picker offers configuration instead of launching arf."
         },
         "r.interactive.storagePath": {
           "type": "string",
+          "ignoreSync": true,
           "default": "",
           "description": "Absolute, writable path on the R host for persistent Interactive sessions. Empty uses $XDG_STATE_HOME/vscode-r/interactive when set, otherwise ~/Library/Application Support/vscode-r/interactive on macOS or ~/.local/state/vscode-r/interactive on Linux. Existing macOS registries at the Linux-style path are reused. Reload VS Code after changing this setting."
         },
         "r.interactive.plotBackend": {
           "type": "string",
+          "ignoreSync": true,
           "enum": [
             "auto",
             "jgd",
@@ -2385,6 +2390,7 @@
         },
         "r.interactive.maxOutputBytes": {
           "type": "integer",
+          "ignoreSync": true,
           "minimum": 65536,
           "maximum": 67108864,
           "default": 4194304,
@@ -2392,6 +2398,7 @@
         },
         "r.interactive.maxJournalBytes": {
           "type": "integer",
+          "ignoreSync": true,
           "minimum": 8388608,
           "maximum": 1073741824,
           "default": 134217728,
@@ -2399,6 +2406,7 @@
         },
         "r.interactive.maxAssetBytes": {
           "type": "integer",
+          "ignoreSync": true,
           "default": 4294967296,
           "minimum": 1048576,
           "description": "Hard disk-space limit for plots and HTML assets per Interactive session (4 GiB by default). Automatic cleanup starts at 80% and removes superseded or unreferenced assets while preserving current retained outputs and widget dependencies. Changes apply to connected sessions that support asset management."

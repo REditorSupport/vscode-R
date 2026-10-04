@@ -1351,7 +1351,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private async restart(view: InteractiveView): Promise<void> {
         if (view.restarting) { return; }
-        if (!(view.client.manifest.capabilities.restart ?? view.client.manifest.provider !== 'arf-existing')) { throw new Error('Restart adopted arf from its tmux terminal, then reconnect to the new process'); }
+        if (!(view.client.manifest.capabilities.restart ?? view.client.manifest.provider !== 'arf-existing')) { throw new Error('Restart adopted arf from its original terminal or session manager, then reconnect to the new process'); }
         view.restarting = true;
         this.updateStatus();
         const generation = view.model.generation;
