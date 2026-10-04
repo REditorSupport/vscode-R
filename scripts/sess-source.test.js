@@ -51,7 +51,9 @@ test('prepared copy matches Git subtree, is idempotent, and preserves source and
     assert.equal(prepareBundledSess(directory), expected);
     assert.equal(git('ls-files', '--stage'), index);
     assert.deepEqual(fs.readFileSync(descriptionPath), sourceDescription);
+    assert.match(sourceDescription.toString(), /^Config\/build\/bootstrap: TRUE$/m);
     assert.match(fs.readFileSync(bundledDescriptionPath, 'utf8'), new RegExp(`${field}: ${expected}`));
+    assert.match(fs.readFileSync(bundledDescriptionPath, 'utf8'), /^Config\/build\/bootstrap: FALSE$/m);
     assert.equal(git('status', '--porcelain'), '');
 });
 

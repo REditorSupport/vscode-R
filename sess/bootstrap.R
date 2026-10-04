@@ -1,4 +1,5 @@
-# R-universe runs this from the package directory after normalizing DESCRIPTION.
+# pkgbuild and R-universe run this from the committed package source directory.
+# R-universe first normalizes DESCRIPTION and may add system requirements.
 # Use the original Git snapshot, not the build service's generated metadata.
 local({
   field <- "Config/vscode-R/source-revision"

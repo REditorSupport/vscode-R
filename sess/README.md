@@ -180,6 +180,15 @@ compiling or packaging does not dirty the source tree. Watch mode prepares the
 copy at startup; restart the build after editing `sess/` sources. Both build
 paths write stamped DESCRIPTION files with LF endings.
 
+The source DESCRIPTION declares `Config/build/bootstrap: TRUE` so pkgbuild
+prepares committed source checkouts before building. The generated copy instead
+declares `FALSE`: Node has already prepared it, and pkgbuild (including through
+`remotes::install_local()`) must not repeat the Git-dependent bootstrap in a
+staging or temporary directory. This build setting is changed after computing
+the source identity, so both build paths still identify the original subtree.
+Building unprepared sources requires their Git checkout; use the generated copy
+for development installation rather than a Git-free copy of the source directory.
+
 R-universe runs `sess/bootstrap.R` from the package directory. It replaces the
 same placeholder with the committed package subtree ID, before R CMD build,
 and the field survives into source and binary packages. The build service first

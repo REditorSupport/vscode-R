@@ -32,8 +32,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Verify sess source identity and bootstrap
         run: pnpm run test:sess-source
-      - name: Install remotes
-        run: install.packages("remotes")
+      - name: Install R build tools
+        run: install.packages(c("remotes", "pkgbuild"))
         shell: Rscript {0}
       - run: pnpm run build
       - name: Verify installed sess identity

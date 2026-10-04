@@ -40,7 +40,11 @@ function prepareBundledSess(root = path.join(__dirname, '..')) {
         fs.rmSync(bundledPath, { recursive: true, force: true });
         fs.mkdirSync(path.dirname(bundledPath), { recursive: true });
         fs.cpSync(path.join(root, 'sess'), bundledPath, { recursive: true, verbatimSymlinks: true });
-        fs.writeFileSync(path.join(bundledPath, 'DESCRIPTION'), description.replace(placeholder, `${field}: ${revision}`));
+        // This copy is already prepared. pkgbuild (also used by remotes) must
+        // not rerun the Git-dependent bootstrap from a staging/temporary path.
+        const preparedDescription = description.replace(placeholder, `${field}: ${revision}`)
+            .replace(/^Config\/build\/bootstrap:[^\r\n]*$/m, 'Config/build/bootstrap: FALSE');
+        fs.writeFileSync(path.join(bundledPath, 'DESCRIPTION'), preparedDescription);
         return revision;
     } finally {
         fs.rmSync(temporary, { recursive: true, force: true });
