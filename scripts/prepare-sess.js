@@ -36,15 +36,22 @@ function prepareBundledSess(root = path.join(__dirname, '..')) {
         if (!/^git-tree:(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision)) {
             throw new Error('Could not determine bundled sess source revision');
         }
-        // Recreate the generated package so deleted source files cannot linger.
+        // Materialize the same index that defined the fingerprint. Copying the
+        // working directory would also bundle ignored files outside that snapshot.
         fs.rmSync(bundledPath, { recursive: true, force: true });
         fs.mkdirSync(path.dirname(bundledPath), { recursive: true });
-        fs.cpSync(path.join(root, 'sess'), bundledPath, { recursive: true, verbatimSymlinks: true });
+        const files = execFileSync('git', ['ls-files', '-z', '--', 'sess'], { cwd: root, env });
+        const prefix = `${path.dirname(bundledPath).replace(/\\/g, '/')}/`;
+        execFileSync('git', ['checkout-index', `--prefix=${prefix}`, '-z', '--stdin'], {
+            cwd: root, env, input: files
+        });
         // This copy is already prepared. pkgbuild (also used by remotes) must
         // not rerun the Git-dependent bootstrap from a staging/temporary path.
-        const preparedDescription = description.replace(placeholder, `${field}: ${revision}`)
+        const bundledDescriptionPath = path.join(bundledPath, 'DESCRIPTION');
+        const preparedDescription = fs.readFileSync(bundledDescriptionPath, 'utf8').replace(/\r\n/g, '\n')
+            .replace(placeholder, `${field}: ${revision}`)
             .replace(/^Config\/build\/bootstrap:[^\r\n]*$/m, 'Config/build/bootstrap: FALSE');
-        fs.writeFileSync(path.join(bundledPath, 'DESCRIPTION'), preparedDescription);
+        fs.writeFileSync(bundledDescriptionPath, preparedDescription);
         return revision;
     } finally {
         fs.rmSync(temporary, { recursive: true, force: true });

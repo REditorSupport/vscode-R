@@ -76,17 +76,23 @@ test('extension changes preserve identity; same-version sess changes and reverti
     assert.equal(prepareBundledSess(directory), stable);
 });
 
-test('new and deleted sess files are included in development fingerprints', t => {
+test('prepared files match development fingerprints, excluding untracked ignored files', t => {
     const { directory } = fixture(t);
     const initial = prepareBundledSess(directory);
-    const source = path.join(directory, 'sess', 'R', 'new.R');
+    const bundled = path.join(directory, 'dist', 'resources', 'sess');
+    fs.writeFileSync(path.join(directory, 'sess', 'inst', 'local-data.csv'), 'local,data\n');
+    assert.equal(prepareBundledSess(directory), initial);
+    assert.ok(!fs.existsSync(path.join(bundled, 'inst', 'local-data.csv')));
+    const source = path.join(directory, 'sess', 'R', 'new source.R');
     fs.writeFileSync(source, '# new source\n');
     assert.notEqual(prepareBundledSess(directory), initial);
+    assert.equal(fs.readFileSync(path.join(bundled, 'R', 'new source.R'), 'utf8'), '# new source\n');
     fs.unlinkSync(source);
     assert.equal(prepareBundledSess(directory), initial);
+    assert.ok(!fs.existsSync(path.join(bundled, 'R', 'new source.R')));
     fs.unlinkSync(path.join(directory, 'sess', 'R', 'server.R'));
     assert.notEqual(prepareBundledSess(directory), initial);
-    assert.ok(!fs.existsSync(path.join(directory, 'dist', 'resources', 'sess', 'R', 'server.R')));
+    assert.ok(!fs.existsSync(path.join(bundled, 'R', 'server.R')));
 });
 
 test('R-universe bootstrap after DESCRIPTION normalization matches VSIX identity', t => {

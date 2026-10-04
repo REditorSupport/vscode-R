@@ -168,7 +168,9 @@ at `dist/resources/sess/`, where the placeholder becomes `git-tree:<object ID>`.
 `scripts/prepare-sess.js` fingerprints the `sess/` working tree using a temporary
 Git index, restoring the placeholder for the calculation. It includes new,
 modified and deleted source files without changing the user's index or source
-files. The generated directory is recreated to remove obsolete files. The
+files. The same temporary index is then exported with `git checkout-index` so
+untracked ignored files cannot enter the bundle without entering its identity.
+The generated directory is recreated to remove obsolete files. The
 extension installs from this directory, and only this copy is included in the
 VSIX. For a clean checkout this is exactly `git rev-parse HEAD:sess`; extension
 changes outside `sess/` do not cause another installation. The repository's
