@@ -39,7 +39,7 @@ jobs:
       - name: Verify installed sess identity
         run: |
           source("R/sess_source.R")
-          stopifnot(!sess_install_required("sess"))
+          stopifnot(!sess_install_required("dist/resources/sess"))
         shell: Rscript {0}
       - name: Run sess tests
         run: tinytest::test_package("sess")

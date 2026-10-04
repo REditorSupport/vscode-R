@@ -24,7 +24,7 @@ local({
   }
   prefix <- git(c("rev-parse", "--show-prefix"))
   # Bootstrap identifies committed R-universe sources. Refuse local source edits;
-  # VSIX development builds fingerprint the working tree via stamp-sess.js.
+  # VSIX development builds fingerprint the working tree via prepare-sess.js.
   status <- system2("git", c("diff", "--quiet", "HEAD", "--", ".",
                            shQuote(":(exclude)DESCRIPTION")))
   untracked <- system2("git", c("ls-files", "--others", "--exclude-standard", "."),

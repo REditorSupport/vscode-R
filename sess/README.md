@@ -150,19 +150,22 @@ this field migrate by installing the bundled copy once. A bundle with an
 unexpanded placeholder is a build error; version comparison is not a fallback.
 
 The field is committed as `@VSCODE_R_SESS_SOURCE_REVISION@`. Every esbuild entry
-(compile, watch startup and production/VSIX packaging) replaces it with
-`git-tree:<object ID>`. `scripts/stamp-sess.js` fingerprints the `sess/` working
-tree using a temporary Git index, restoring the placeholder for the calculation.
-It includes new, modified and deleted source files without changing the user's
-index. For a clean checkout this is exactly `git rev-parse HEAD:sess`; extension
+(compile, watch startup and production/VSIX packaging) prepares a generated copy
+at `dist/resources/sess/`, where the placeholder becomes `git-tree:<object ID>`.
+`scripts/prepare-sess.js` fingerprints the `sess/` working tree using a temporary
+Git index, restoring the placeholder for the calculation. It includes new,
+modified and deleted source files without changing the user's index or source
+files. The generated directory is recreated to remove obsolete files. The
+extension installs from this directory, and only this copy is included in the
+VSIX. For a clean checkout this is exactly `git rev-parse HEAD:sess`; extension
 changes outside `sess/` do not cause another installation. The repository's
 `.gitattributes` keeps text checkouts at LF across platforms, including when
 `core.autocrlf` is enabled. Git normalizes a developer's
 CRLF edits before calculating the snapshot. Git and a checkout with HEAD are
-required to build the extension. The generated stamp should not
-be committed; restore the placeholder before committing DESCRIPTION changes.
-Watch mode stamps at startup; restart the build after editing `sess/` sources.
-Both stampers also write generated DESCRIPTION files with LF endings.
+required to build the extension. The tracked DESCRIPTION keeps its placeholder;
+compiling or packaging does not dirty the source tree. Watch mode prepares the
+copy at startup; restart the build after editing `sess/` sources. Both build
+paths write stamped DESCRIPTION files with LF endings.
 
 R-universe runs `sess/bootstrap.R` from the package directory. It replaces the
 same placeholder with the committed package subtree ID, before R CMD build,
@@ -172,8 +175,8 @@ are excluded from source identity. Bootstrap requires committed sources and
 rejects other source/description edits. Local development VSIXs instead identify
 their actual working tree. Since R-universe ignores bootstrap failures, the
 script resets any previous stamp to the placeholder before doing Git work. CI
-runs bootstrap explicitly, checks agreement with VSIX stamping after DESCRIPTION
-normalization, checks R CMD build preserves the field, and validates both the
+runs bootstrap explicitly, checks agreement with the prepared VSIX copy after
+DESCRIPTION normalization, checks R CMD build preserves the field, and validates both the
 installed package and packaged VSIX. Run these lightweight tests with
 `pnpm run test:sess-source` (Node, Git and base R only).
 

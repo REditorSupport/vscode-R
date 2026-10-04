@@ -50,6 +50,8 @@ suite('Sess Install Test Suite', () => {
         
         await util.promptToInstallSessPackage(undefined, undefined, getRevisionStub, readFileStub);
         
+        assert.strictEqual(readFileStub.firstCall.args[0], path.join(
+            extension_root, 'dist', 'resources', 'sess', 'DESCRIPTION'));
         assert.strictEqual(showMessageStub.calledOnce, true);
         const args = showMessageStub.getCall(0).args;
         assert.ok(args[0].includes('required for the session watcher to work'));

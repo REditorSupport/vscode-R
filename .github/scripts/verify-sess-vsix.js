@@ -22,13 +22,13 @@ function readDescription(vsixFile) {
             zip.on('error', fail);
             zip.on('end', () => {
                 if (description === undefined) {
-                    reject(new Error('VSIX is missing extension/sess/DESCRIPTION'));
+                    reject(new Error('VSIX is missing extension/dist/resources/sess/DESCRIPTION'));
                 } else {
                     resolve(description);
                 }
             });
             zip.on('entry', entry => {
-                if (entry.fileName !== 'extension/sess/DESCRIPTION') {
+                if (entry.fileName !== 'extension/dist/resources/sess/DESCRIPTION') {
                     zip.readEntry();
                     return;
                 }

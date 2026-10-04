@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { createRequire } = require('node:module');
 const { test } = require('node:test');
-const { stampSess } = require('./stamp-sess');
+const { prepareBundledSess } = require('./prepare-sess');
 const { verifySessVsix } = require('../.github/scripts/verify-sess-vsix');
 const { ZipFile } = createRequire(require.resolve('@vscode/vsce/package.json'))('yazl');
 
@@ -17,6 +17,7 @@ function fixture(t) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sess source test '));
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
     fs.copyFileSync(path.join(root, '.gitattributes'), path.join(directory, '.gitattributes'));
+    fs.copyFileSync(path.join(root, '.gitignore'), path.join(directory, '.gitignore'));
     fs.cpSync(path.join(root, 'sess'), path.join(directory, 'sess'), { recursive: true });
     const descriptionPath = path.join(directory, 'sess', 'DESCRIPTION');
     fs.writeFileSync(descriptionPath, fs.readFileSync(descriptionPath, 'utf8')
@@ -29,7 +30,8 @@ function fixture(t) {
     git('config', 'core.autocrlf', 'false');
     git('add', '.');
     git('commit', '--quiet', '-m', 'Source snapshot');
-    return { directory, descriptionPath, git };
+    const bundledDescriptionPath = path.join(directory, 'dist', 'resources', 'sess', 'DESCRIPTION');
+    return { directory, descriptionPath, bundledDescriptionPath, git };
 }
 
 // A script file avoids passing multiline expressions through Windows command-line
@@ -40,49 +42,54 @@ function runRScript(directory, cwd, source) {
     execFileSync(rscript, ['--vanilla', script], { cwd });
 }
 
-test('clean stamp equals Git subtree, is idempotent, and preserves the real index', t => {
-    const { directory, git } = fixture(t);
+test('prepared copy matches Git subtree, is idempotent, and preserves source and index', t => {
+    const { directory, descriptionPath, bundledDescriptionPath, git } = fixture(t);
+    const sourceDescription = fs.readFileSync(descriptionPath);
     const index = git('ls-files', '--stage');
     const expected = `git-tree:${git('rev-parse', 'HEAD:sess')}`;
-    assert.equal(stampSess(directory), expected);
-    assert.equal(stampSess(directory), expected);
+    assert.equal(prepareBundledSess(directory), expected);
+    assert.equal(prepareBundledSess(directory), expected);
     assert.equal(git('ls-files', '--stage'), index);
+    assert.deepEqual(fs.readFileSync(descriptionPath), sourceDescription);
+    assert.match(fs.readFileSync(bundledDescriptionPath, 'utf8'), new RegExp(`${field}: ${expected}`));
+    assert.equal(git('status', '--porcelain'), '');
 });
 
 test('extension changes preserve identity; same-version sess changes and reverting change it', t => {
     const { directory, git } = fixture(t);
-    const stable = stampSess(directory);
+    const stable = prepareBundledSess(directory);
     fs.writeFileSync(path.join(directory, 'extension.ts'), '// pre-release\n');
-    assert.equal(stampSess(directory), stable);
+    assert.equal(prepareBundledSess(directory), stable);
     const source = path.join(directory, 'sess', 'R', 'server.R');
     const original = fs.readFileSync(source);
     fs.appendFileSync(source, '\n# new implementation at the same package version\n');
-    const preRelease = stampSess(directory);
+    const preRelease = prepareBundledSess(directory);
     assert.notEqual(preRelease, stable);
-    assert.equal(stampSess(directory), preRelease);
+    assert.equal(prepareBundledSess(directory), preRelease);
     fs.writeFileSync(source, original);
-    assert.equal(stampSess(directory), stable);
+    assert.equal(prepareBundledSess(directory), stable);
     // Changing commits outside sess is also independent of the subtree identity.
     git('add', 'extension.ts');
     git('commit', '--quiet', '-m', 'Extension only');
-    assert.equal(stampSess(directory), stable);
+    assert.equal(prepareBundledSess(directory), stable);
 });
 
 test('new and deleted sess files are included in development fingerprints', t => {
     const { directory } = fixture(t);
-    const initial = stampSess(directory);
+    const initial = prepareBundledSess(directory);
     const source = path.join(directory, 'sess', 'R', 'new.R');
     fs.writeFileSync(source, '# new source\n');
-    assert.notEqual(stampSess(directory), initial);
+    assert.notEqual(prepareBundledSess(directory), initial);
     fs.unlinkSync(source);
-    assert.equal(stampSess(directory), initial);
+    assert.equal(prepareBundledSess(directory), initial);
     fs.unlinkSync(path.join(directory, 'sess', 'R', 'server.R'));
-    assert.notEqual(stampSess(directory), initial);
+    assert.notEqual(prepareBundledSess(directory), initial);
+    assert.ok(!fs.existsSync(path.join(directory, 'dist', 'resources', 'sess', 'R', 'server.R')));
 });
 
 test('R-universe bootstrap after DESCRIPTION normalization matches VSIX identity', t => {
     const { directory, descriptionPath, git } = fixture(t);
-    const expected = stampSess(directory);
+    const expected = prepareBundledSess(directory);
     // R-universe normalizes DESCRIPTION and may append system requirement metadata
     // before invoking bootstrap.R from the package directory.
     const packageDirectory = path.join(directory, 'sess');
@@ -109,7 +116,9 @@ test('R-universe bootstrap after DESCRIPTION normalization matches VSIX identity
 
 test('failed bootstrap leaves no stale stamp, including dirty sources', t => {
     const { directory, descriptionPath } = fixture(t);
-    stampSess(directory);
+    const revision = prepareBundledSess(directory);
+    fs.writeFileSync(descriptionPath, fs.readFileSync(descriptionPath, 'utf8')
+        .replace('@VSCODE_R_SESS_SOURCE_REVISION@', revision));
     fs.appendFileSync(path.join(directory, 'sess', 'R', 'server.R'), '\n# dirty source\n');
     const failed = spawnSync(rscript, ['--vanilla', 'bootstrap.R'], { cwd: path.join(directory, 'sess') });
     assert.notEqual(failed.status, 0);
@@ -124,18 +133,18 @@ test('failed bootstrap leaves no stale stamp, including dirty sources', t => {
     assert.notEqual(missingGit.status, 0);
     assert.match(missingGit.stderr.toString(), /Cannot determine sess source revision from Git/);
     assert.ok(fs.readFileSync(descriptionPath, 'utf8').includes('@VSCODE_R_SESS_SOURCE_REVISION@'));
-    assert.throws(() => stampSess(directory));
+    assert.throws(() => prepareBundledSess(directory));
 });
 
 test('VSIX verification accepts the matching stamp and rejects invalid packaged metadata', async t => {
-    const { directory, descriptionPath } = fixture(t);
-    const revision = stampSess(directory);
-    const description = fs.readFileSync(descriptionPath, 'utf8');
+    const { directory, bundledDescriptionPath } = fixture(t);
+    const revision = prepareBundledSess(directory);
+    const description = fs.readFileSync(bundledDescriptionPath, 'utf8');
     const vsix = path.join(directory, 'test.vsix');
     async function writeVsix(content) {
         const zip = new ZipFile();
         if (content !== undefined) {
-            zip.addBuffer(Buffer.from(content), 'extension/sess/DESCRIPTION');
+            zip.addBuffer(Buffer.from(content), 'extension/dist/resources/sess/DESCRIPTION');
         } else {
             zip.addBuffer(Buffer.from('{}'), 'extension/package.json');
         }

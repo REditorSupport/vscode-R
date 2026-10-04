@@ -24,9 +24,16 @@ local({
         stop(paste("DESCRIPTION file not found in", pkg_path))
     }
 
-    # This script can be sourced by the attach command or run as an R task.
-    # The helper is beside it in the extension, one level above bundled sess.
-    source(file.path(pkg_path, "..", "R", "sess_source.R"), local = TRUE)
+    # Resolve the helper beside this script, independently of the package's
+    # staging path. source() records ofile; an R task supplies --file instead.
+    script_files <- unlist(lapply(sys.frames(), function(frame) frame$ofile))
+    if (!length(script_files)) {
+        script_files <- sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE))
+    }
+    if (!length(script_files)) {
+        stop("Cannot locate install_sess.R")
+    }
+    source(file.path(dirname(tail(script_files, 1)), "sess_source.R"), local = TRUE)
     expected_revision <- sess_source_revision(file.path(pkg_path, "DESCRIPTION"))
     if (is.null(expected_revision)) {
         stop("Bundled sess has no valid source revision. Rebuild or reinstall the vscode-R extension.")

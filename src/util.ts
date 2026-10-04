@@ -583,7 +583,7 @@ export async function promptToInstallSessPackage(
         return;
     }
 
-    const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
+    const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
     const descriptionPath = path.join(sessPath, 'DESCRIPTION');
     const descriptionContent = _readFileSyncSafe(descriptionPath);
     const bundledRevision = readSessSourceRevision(descriptionContent);

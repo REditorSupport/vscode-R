@@ -689,7 +689,7 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, installSes
 
 export async function getAttachSessionCommand(): Promise<string> {
     const pipePath = await getGlobalPipePath();
-    const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
+    const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
     const installSessScriptPath = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
     const scriptPath = getAttachSessionScriptPath(pipePath);
     await fs.ensureDir(path.dirname(scriptPath));

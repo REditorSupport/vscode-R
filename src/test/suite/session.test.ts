@@ -553,6 +553,8 @@ suite('Session Communication', () => {
         assert.match(scriptContent, /sess::connect\(endpoint = endpoint/);
         assert.match(scriptContent, /sess_install_required\(sess_src\)/);
         assert.match(scriptContent, /sess_source\.R/);
+        assert.ok(scriptContent.includes(extension.extensionContext.asAbsolutePath(
+            path.join('dist', 'resources', 'sess')).replace(/\\/g, '/')));
         assert.doesNotMatch(scriptContent, /packageVersion|compareVersion/);
         assert.strictEqual(path.dirname(scriptPath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach'));
         const scriptStat = await fs.stat(scriptPath);

@@ -54,7 +54,7 @@ function copyWebviewAssets() {
 }
 
 async function main() {
-    require('./scripts/stamp-sess').stampSess();
+    require('./scripts/prepare-sess').prepareBundledSess();
     copyResources();
     copyWebviewAssets();
 

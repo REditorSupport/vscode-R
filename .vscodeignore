@@ -5,7 +5,6 @@
 !LICENSE
 !R/**
 R/tests/**
-!sess/**
 !html/**/*.ejs
 !html/**/*.css
 !html/**/*.js
@@ -16,3 +15,4 @@ R/tests/**
 !dist/**/*.js
 !dist/**/*.css
 !dist/**/*.ejs
+!dist/resources/sess/**

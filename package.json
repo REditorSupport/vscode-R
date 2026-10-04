@@ -2039,7 +2039,7 @@
     "vscode:prepublish": "node esbuild.js --production",
     "changelog": "git-cliff v2.8.5.. -o",
     "compile": "node esbuild.js",
-    "build": "pnpm run compile && Rscript -e \"remotes::install_local('sess', dependencies=TRUE, force=TRUE)\"",
+    "build": "pnpm run compile && Rscript -e \"remotes::install_local('dist/resources/sess', dependencies=TRUE, force=TRUE)\"",
     "watch": "node esbuild.js --watch",
     "clean": "rimraf out",
     "pretest": "pnpm run compile && pnpm run clean && tsc -p ./",

@@ -7,9 +7,10 @@ const field = 'Config/vscode-R/source-revision';
 const placeholder = `${field}: @VSCODE_R_SESS_SOURCE_REVISION@`;
 
 // A temporary index includes local development edits without changing the user's
-// index. Restore the placeholder so stamping is idempotent and, for a clean
-// checkout, the result is exactly HEAD:sess (not the extension's commit ID).
-function stampSess(root = path.join(__dirname, '..')) {
+// index. Normalize the placeholder for the fingerprint, then stamp only the
+// generated copy. For a clean checkout the result is exactly HEAD:sess.
+function prepareBundledSess(root = path.join(__dirname, '..')) {
+    const bundledPath = path.join(root, 'dist', 'resources', 'sess');
     const descriptionPath = path.join(root, 'sess', 'DESCRIPTION');
     const template = fs.readFileSync(descriptionPath, 'utf8').replace(/\r\n/g, '\n');
     const fieldPattern = /^Config\/vscode-R\/source-revision:[^\r\n]*(?:\r?\n[ \t][^\r\n]*)*/gm;
@@ -35,14 +36,18 @@ function stampSess(root = path.join(__dirname, '..')) {
         if (!/^git-tree:(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision)) {
             throw new Error('Could not determine bundled sess source revision');
         }
-        fs.writeFileSync(descriptionPath, description.replace(placeholder, `${field}: ${revision}`));
+        // Recreate the generated package so deleted source files cannot linger.
+        fs.rmSync(bundledPath, { recursive: true, force: true });
+        fs.mkdirSync(path.dirname(bundledPath), { recursive: true });
+        fs.cpSync(path.join(root, 'sess'), bundledPath, { recursive: true, verbatimSymlinks: true });
+        fs.writeFileSync(path.join(bundledPath, 'DESCRIPTION'), description.replace(placeholder, `${field}: ${revision}`));
         return revision;
     } finally {
         fs.rmSync(temporary, { recursive: true, force: true });
     }
 }
 
-module.exports = { stampSess };
+module.exports = { prepareBundledSess };
 if (require.main === module) {
-    console.log(stampSess());
+    console.log(prepareBundledSess());
 }

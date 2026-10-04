@@ -48,9 +48,11 @@ stopifnot(inherits(tryCatch(sess_install_required(bundled), error = identity), "
 extension <- file.path(root, "extension")
 dir.create(extension)
 dir.create(file.path(extension, "R"))
-dir.create(file.path(extension, "sess"))
 stopifnot(file.copy("R/sess_source.R", file.path(extension, "R", "sess_source.R")))
-pkg <- file.path(extension, "sess")
+installer <- file.path(extension, "R", "install_sess.R")
+stopifnot(file.copy("R/install_sess.R", installer))
+pkg <- file.path(extension, "dist", "resources", "sess")
+dir.create(pkg, recursive = TRUE)
 write_description(pkg, "3.0.1", stable)
 Sys.setenv(VSCODE_R_SESS_PKG_PATH = pkg, VSCODE_R_SESS_REPO = "https://example.com")
 simulate <- function(outcome) {
@@ -65,7 +67,7 @@ simulate <- function(outcome) {
             warning("Installation failed")
         }
     }
-    suppressWarnings(tryCatch(source("R/install_sess.R", local = env), error = identity))
+    suppressWarnings(tryCatch(source(installer, local = env), error = identity))
 }
 write_description(installed, "3.0.1", pre_release)
 stopifnot(inherits(simulate("failure"), "error"))
