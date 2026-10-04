@@ -1860,6 +1860,8 @@
         "r.plot.useHttpgd": {
           "type": "boolean",
           "default": false,
+          "scope": "window",
+          "ignoreSync": true,
           "markdownDescription": "Legacy compatibility setting for selecting the httpgd plot viewer. When `#r.plot.backend#` is `auto`, setting this to `true` selects the `httpgd` backend. Workspace settings take precedence over user settings. Within the same scope, an explicit `#r.plot.backend#` value takes precedence.\n\nRequires the `httpgd` R package version 1.2.0 or later.",
           "markdownDeprecationMessage": "Deprecated: use `#r.plot.backend#` instead. This setting is retained for compatibility with existing configurations but will be removed in a future release.",
           "deprecationMessage": "Deprecated: use r.plot.backend instead. This setting is retained for compatibility with existing configurations but will be removed in a future release."
@@ -1867,19 +1869,23 @@
         "r.plot.backend": {
           "type": "string",
           "default": "auto",
+          "scope": "window",
+          "ignoreSync": true,
           "enum": [
             "auto",
             "standard",
             "httpgd",
-            "jgd"
+            "jgd",
+            "native"
           ],
           "markdownEnumDescriptions": [
             "Automatic: tries JGD first (if installed), then httpgd, then standard. Existing `#r.plot.useHttpgd#` configurations remain supported.",
             "Standard static plot viewer (PNG/SVG)",
             "httpgd-based interactive plot viewer (requires `httpgd` R package)",
-            "JGD-based interactive plot viewer (requires `jgd` R package)"
+            "JGD-based interactive plot viewer (requires `jgd` R package)",
+            "Use R's configured graphics device without plot integration or an automatic VS Code plot viewer"
           ],
-          "markdownDescription": "The canonical setting for selecting the plot backend.\n\nWhen set to `auto`, the best available backend is used (JGD if installed, then httpgd, then standard). For backwards compatibility, setting `#r.plot.useHttpgd#` to `true` selects httpgd while this setting remains `auto`; workspace settings take precedence over user settings, with an explicit backend value preferred within the same scope."
+          "markdownDescription": "The canonical setting for selecting the plot backend. `standard` uses the VS Code static plot viewer; `native` leaves R's configured graphics device untouched.\n\nWhen set to `auto`, the best available backend is used (JGD if installed, then httpgd, then standard). For backwards compatibility, setting `#r.plot.useHttpgd#` to `true` selects httpgd while this setting remains `auto`; workspace settings take precedence over user settings, with an explicit backend value preferred within the same scope."
         },
         "r.plot.jgd.historyLimit": {
           "type": "number",
