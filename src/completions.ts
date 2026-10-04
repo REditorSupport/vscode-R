@@ -44,6 +44,9 @@ export class HoverProvider implements vscode.HoverProvider {
         if (session.globalPipePath) {
             const exprRegex = /([a-zA-Z0-9._$@ ])+(?<![@$])/;
             hoverRange = document.getWordRangeAtPosition(position, exprRegex)?.with({ end: hoverRange?.end });
+            if (!hoverRange) {
+                return null;
+            }
             const expr = document.getText(hoverRange);
             const response = await session.sessionRequest({
                 method: 'hover',
@@ -165,14 +168,16 @@ export class LiveCompletionItemProvider implements vscode.CompletionItemProvider
             if (session.globalPipePath) {
                 const re = /([a-zA-Z0-9._$@ ])+(?<![@$])/;
                 const exprRange = document.getWordRangeAtPosition(symbolPosition, re)?.with({ end: symbolPosition });
-                const expr = document.getText(exprRange);
-                const response = await session.sessionRequest({
-                    method: 'completion',
-                    params: { expr: expr, trigger: trigger }
-                }) as RObjectElement[];
+                if (exprRange) {
+                    const expr = document.getText(exprRange);
+                    const response = await session.sessionRequest({
+                        method: 'completion',
+                        params: { expr: expr, trigger: trigger }
+                    }) as RObjectElement[];
 
-                if (response) {
-                    items.push(...getCompletionItemsFromElements(response, '[session]'));
+                    if (response) {
+                        items.push(...getCompletionItemsFromElements(response, '[session]'));
+                    }
                 }
             } else {
                 const symbolRange = document.getWordRangeAtPosition(symbolPosition);
