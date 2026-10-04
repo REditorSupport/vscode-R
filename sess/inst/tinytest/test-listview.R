@@ -20,7 +20,7 @@ local({
     lapply(pipe, close)
   }, add = TRUE)
   runtime$con <- pipe[[2L]]
-  sess:::runtime_start(use_rstudioapi = FALSE, use_httpgd = FALSE, use_jgd = FALSE)
+  sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "standard")
   x <- list(a = list(b = list(value = 1L), df = data.frame(nested = 2L)),
             df = data.frame(top = 1L))
   assign(root, x, envir = .GlobalEnv)
