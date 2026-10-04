@@ -160,12 +160,11 @@ handle_workspace_view <- function(name, path = list()) {
 listview_supported <- function(object) {
   !dataview_is_table(object) &&
     (is.list(object) || is.pairlist(object) || is.environment(object) || isS4(object) ||
-       (is.atomic(object) && length(object) > 1L))
+       listview_is_vector(object))
 }
 
 listview_is_vector <- function(object) {
-  !dataview_is_table(object) &&
-    (inherits(object, "POSIXlt") || (!isS4(object) && is.atomic(object) && length(object) > 1L))
+  !dataview_is_table(object) && (is.atomic(object) || inherits(object, "POSIXlt"))
 }
 
 listview_state <- function(object, title, owner) {
@@ -338,6 +337,50 @@ listview_location <- function(state, path = list(), resolve_selectors = FALSE,
   state
 }
 
+listview_format_values <- function(values) {
+  # Format before extracting individual elements, which may discard their class.
+  formatted <- dataview_format_column(values)
+  if (is.character(values) && !is.object(values)) {
+    return(encodeString(formatted, quote = "\"", na.encode = TRUE))
+  }
+  if (is.numeric(formatted) && !is.object(formatted)) {
+    # Match the numeric precision sent to the data viewer over IPC.
+    formatted <- vapply(formatted, function(value) {
+      if (is.finite(value)) {
+        as.character(jsonlite::toJSON(value, auto_unbox = TRUE, digits = NA))
+      } else {
+        as.character(value)
+      }
+    }, character(1))
+  } else if (!is.character(formatted)) {
+    formatted <- format(formatted, trim = TRUE, justify = "none")
+  }
+  formatted[is.na(formatted)] <- "NA"
+  formatted
+}
+
+listview_summary <- function(object) {
+  if (is.atomic(object) || inherits(object, "POSIXlt")) {
+    size <- length(object)
+    type <- if (is.object(object)) {
+      paste(class(object), collapse = "/")
+    } else {
+      switch(typeof(object), integer = "int", double = "num", complex = "cplx",
+             logical = "logi", character = "chr", raw = "raw")
+    }
+    if (!size) return(paste0(type, "(0)"))
+    shape <- if (!is.null(dim(object))) {
+      paste0(" [", paste0("1:", dim(object), collapse = ", "), "]")
+    } else if (size > 1L) {
+      paste0(" [1:", size, "]")
+    }
+    paste0(type, shape, " ",
+           listview_format_values(object[1L]), if (size > 1L) " ...")
+  } else {
+    trimws(try_capture_str(object))
+  }
+}
+
 get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_id = NULL) {
   tryCatch({
     vector_rows <- FALSE
@@ -355,8 +398,8 @@ get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_
       state <- listview_location(state, path)
       object <- state$data
       vector_rows <- listview_is_vector(object)
-      kind <- state$kind
-      child_names <- state$names
+      kind <- if (vector_rows) "index" else state$kind
+      child_names <- if (vector_rows) names(object) else state$names
     }
     child_count <- if (kind == "index") {
       if (vector_rows) {
@@ -372,6 +415,7 @@ get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_
     if (start > end) {
       return(list(children = I(list()), next_start = NULL))
     }
+    formatted_values <- if (vector_rows) listview_format_values(object[seq.int(start, end)])
 
     children <- lapply(seq.int(start, end), function(index) {
       child_name <- if (is.null(child_names)) NULL else child_names[[index]]
@@ -403,19 +447,15 @@ get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_
           type = unavailable, has_children = FALSE
         ))
       }
-      child <- switch(kind,
+      child <- if (!vector_rows) switch(kind,
         name = get(child_name, envir = object, inherits = FALSE),
         slot = methods::slot(object, child_name),
         index = object[[index]]
       )
       summary <- if (vector_rows) {
-        if (is.character(child)) {
-          encodeString(child, quote = "\"", na.encode = TRUE)
-        } else {
-          paste(format(child, trim = TRUE), collapse = " ")
-        }
+        formatted_values[[index - start + 1L]]
       } else {
-        trimws(try_capture_str(child))
+        listview_summary(child)
       }
       if (!is.null(view_id)) {
         list(

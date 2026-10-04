@@ -338,12 +338,62 @@ local({
   }
 
   utils::View(x$a$b$value)
-  text_id <- id("object", "x")
-  text_file <- runtime$dataviews[[text_id]]$file
+  read_messages()
+  expect_equal(notification()$view_id, direct_id)
+  expect_true(notification()$navigation$vector)
+  expect_equal(notification()$navigation$path, list(1L, 1L, 1L))
+  scalar_page <- request("workspace_children", list(
+    view_id = direct_id, path = list(1L, 1L, 1L)
+  ))
+  expect_length(scalar_page$children, 1L)
+  expect_equal(scalar_page$children[[1L]]$str, "1")
   utils::View(x$a$df$nested)
-  expect_identical(id("object", "x"), text_id)
+  read_messages()
+  expect_equal(notification()$view_id, direct_id)
+  expect_true(notification()$navigation$vector)
+  expect_equal(notification()$navigation$path, list(1L, 2L, 1L))
+  navigation <- request("listview_view", list(view_id = direct_id, path = list(1L, 1L), index = 1L))
+  expect_true(navigation$vector)
+  expect_equal(navigation$path, list(1L, 1L, 1L))
+  expect_length(notifications, 0L)
+
+  # Scalars use the vector formatting route regardless of storage type or class.
+  for (sample in list(difftime(1, 2, units = "mins"), as.Date("2026-01-01"),
+                      as.POSIXct("2026-01-01 12:34:56", tz = "UTC"), factor("ready"),
+                      TRUE, "001", as.raw(255))) {
+    utils::View(sample, title = "scalar")
+    read_messages()
+    expect_equal(notification()$source, "list")
+    expect_true(notification()$navigation$vector)
+    scalar_page <- request("workspace_children", list(view_id = notification()$view_id))
+    expect_length(scalar_page$children, 1L)
+    expected <- if (is.character(sample)) {
+      encodeString(sample, quote = "\"")
+    } else {
+      format(sample, trim = TRUE, justify = "none")
+    }
+    expect_equal(scalar_page$children[[1L]]$str, expected)
+    expect_false(scalar_page$children[[1L]]$has_children)
+    expect_false(scalar_page$children[[1L]]$viewable)
+  }
+
+  for (sample in list(numeric(), character(), logical(), raw())) {
+    utils::View(sample, title = "empty vector")
+    read_messages()
+    expect_equal(notification()$source, "list")
+    expect_true(notification()$navigation$vector)
+    empty_page <- request("workspace_children", list(view_id = notification()$view_id))
+    expect_length(empty_page$children, 0L)
+  }
+
+  functions <- list(first = function() 1L, second = function() 2L)
+  utils::View(functions$first)
+  text_id <- id("object", "functions")
+  text_file <- runtime$dataviews[[text_id]]$file
+  utils::View(functions$second)
+  expect_identical(id("object", "functions"), text_id)
   expect_identical(runtime$dataviews[[text_id]]$file, text_file)
-  expect_equal(readLines(text_file), "2L")
+  expect_equal(readLines(text_file), deparse(functions$second))
   unlink(text_file)
 
   # Vectors opened from expanded list rows retain the root and every breadcrumb.
