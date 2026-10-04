@@ -60,7 +60,9 @@ suite('List viewer panels', () => {
             const listener = receive.firstCall.args[0] as (message: unknown) => Promise<void>;
             // With no R session, requests settle asynchronously with an unavailable response.
             const pending = source === 'table'
-                ? [listener({ message: 'dataview/request', action: 'page', requestId: 1 })]
+                ? [listener({
+                    message: 'dataview/request', action: 'page', documentGeneration, requestId: 1,
+                })]
                 : ['listview/page', 'listview/navigate'].map(message => listener({
                     message, documentGeneration, requestId: 1, path: [], start: 1,
                 }));
