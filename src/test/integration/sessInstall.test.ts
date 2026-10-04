@@ -81,8 +81,9 @@ suite('Sess installation with real R tasks', () => {
             assert.strictEqual(errors.called, false);
             assert.strictEqual(await util.getInstalledSessSourceRevision(projectB), bundledRevision);
             assert.strictEqual(await util.getInstalledSessSourceRevision(projectA), oldRevision);
-            const installed = await fs.readFile(path.join(projectB, 'library', 'sess', 'DESCRIPTION'), 'utf8');
-            assert.strictEqual(util.readSessSourceRevision(installed), bundledRevision);
+            // R may fold the installed DESCRIPTION field onto a continuation
+            // line. The production R query above reads it through read.dcf().
+            assert.strictEqual(await fs.pathExists(path.join(projectB, 'library', 'sess', 'Meta', 'package.rds')), true);
             assert.strictEqual(await fs.pathExists(path.join(projectA, 'library', 'sess', 'Meta')), false);
         }).timeout(120000);
     }
