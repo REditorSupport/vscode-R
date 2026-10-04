@@ -102,11 +102,11 @@ export async function installRuntime(extensionPath: string, root: string, rPath:
 /** Validate before building a runtime or stopping a session for restart. */
 export async function prepareNodeRuntime(directory: string, runtime = hostNodeRuntime()): Promise<NodeRuntime> {
     const node = runtime.executable;
-    const help = 'Reload VS Code to use its current runtime. If this persists, repair or update VS Code (VS Code Server on a remote host).';
+    const help = 'Set r.interactive.nodePath to a Node.js 18+ executable on the R host, or clear it to use VS Code\'s runtime. Reload VS Code to refresh the automatic runtime; repair or update VS Code (VS Code Server on a remote host) if needed.';
     let version: string;
     try {
         version = (await run(node, ['-p', 'process.versions.node'], { env: nodeEnvironment(runtime), cwd: directory, timeout: 5000 })).stdout.trim();
-    } catch (error) { throw new Error(`Cannot run VS Code's Node.js runtime “${node}”. ${help}`, { cause: error }); }
+    } catch (error) { throw new Error(`Cannot run the Node.js runtime “${node}”. ${help}`, { cause: error }); }
     const major = /^(\d+)\.\d+\.\d+(?:[-+].*)?$/.exec(version)?.[1];
     if (!major || Number(major) < 18) {
         throw new Error(`The session agent requires Node.js 18 or newer; “${node}” reported “${version}”. ${help}`);

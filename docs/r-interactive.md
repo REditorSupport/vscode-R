@@ -11,7 +11,7 @@ Install this extension **on the remote host**. The initial implementation suppor
 The remote host needs:
 
 - R, plus either compatible pre-built sess/dependency packages or a C compiler capable of building R packages (`r-base-dev` and `build-essential` on Debian/Ubuntu).
-- The session agent uses the extension host's bundled runtime: VS Code's Electron runtime in Node mode on desktop, or VS Code Server's Node runtime remotely. No separate Node.js installation or runtime setting is needed.
+- The session agent automatically uses the extension host's bundled runtime: VS Code's Electron runtime in Node mode on desktop, or VS Code Server's Node runtime remotely. A separate Node.js installation is optional.
 - `tmux` is optional. On Linux, the default supervisor uses tmux when available and otherwise starts an independent detached process. `systemd --user` is another configurable option.
 - R packages `processx`, `later`, `jsonlite`, and `rstudioapi`. Install `languageserver` for language features, `jgd` and `systemfonts` for JGD graphics, `svglite` for the static fallback, and `htmlwidgets`/`htmltools` for HTML output.
 - `arf` is optional. Creating a headless arf session requires an executable on the R host; plain R requires no arf installation. Connecting to an already-running arf uses its socket and does not require arf on the extension host's PATH. The provider contract was exercised with arf 0.5.1.
@@ -25,7 +25,9 @@ install.packages(c(
 ))
 ```
 
-Runtime availability and version (Node.js 18+) are checked before installation or restart, so a failed check leaves the current R process running. If an editor update removes the previous runtime, reload VS Code to select its current executable. Reconnecting to an existing agent does not launch or replace its runtime; new and restarted sessions use the current extension host's runtime.
+The experimental `r.interactive.nodePath` setting provides an optional standalone Node.js override for compatible IDEs where the automatic runtime is unavailable, such as some code-server, OpenVSCode Server, or VSCodium configurations. Its default is empty, which selects the current extension host's runtime. Set it to a Node.js 18+ executable name on the R host's PATH or a path such as `/usr/bin/node`; `~`, `${userHome}`, and `${workspaceFolder}` are supported. An invalid explicit override is reported and must be repaired or cleared. The override is excluded from Settings Sync and restricted to trusted workspaces.
+
+Runtime availability and version (Node.js 18+) are checked before installation or restart, so a failed check leaves the current R process running. If an editor update removes the automatic runtime, reload VS Code to select its current executable. Reconnecting to an existing agent does not launch or replace its runtime; new and restarted sessions reread `r.interactive.nodePath`.
 
 The extension installs its bundled `sess` into a private, content-addressed library. It does not replace your installed `sess` package. If the source build fails, including when build tools are missing, it tries a compiler-free package from [R-universe](https://reditorsupport.r-universe.dev/sess). Installation diagnostics appear in the **R Interactive** output channel.
 

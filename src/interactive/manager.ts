@@ -6,6 +6,7 @@ import { AgentClient } from './client';
 import { AgentConfig, AgentSnapshot, DEFAULT_MAX_ASSET_BYTES, ExecutionRecord, SessionEvent, SessionManifest, SourceLocation, object, sessionLabel } from './protocol';
 import { AssetStore, AssetStorageStats, exportedAssetName, readAsset } from './assets';
 import { defaultStorage, discoverSessions, hasSessionEndpoint, launchAgent, newIdentity, prepareNodeRuntime } from './launcher';
+import { NodeRuntime, resolveNodeRuntime } from './nodeExecutable';
 import { backendDescriptor, prepareBackendRuntime } from './backendRegistry';
 import { discoverArf, probeArfSession, ArfSession } from './arf';
 import { resolveArfExecutable } from './arfExecutable';
@@ -537,7 +538,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (kind === 'arf' && !(arfPath = this.checkArfExecutable(arfPath ?? arfCommand, directory))) { return; }
         const supervision = util.config(resource).get<string>('interactive.supervision', 'auto');
         prepareSupervisor(supervision, directory);
-        const node = await prepareNodeRuntime(directory);
+        const node = await this.nodeRuntime(directory, resource);
         return vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Starting persistent R Interactive' }, async progress => {
             progress.report({ message: 'Preparing the private R runtime' });
             if (kind === 'arf' && !(arfPath = this.checkArfExecutable(arfPath ?? arfCommand, directory))) { return; }
@@ -571,6 +572,11 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
 
     private arfCommand(resource?: vscode.Uri): string {
         return util.substituteVariables(util.config(resource).get<string>('interactive.arfPath', 'arf'), resource).trim() || 'arf';
+    }
+
+    private nodeRuntime(directory: string, resource = vscode.Uri.file(directory)): Promise<NodeRuntime> {
+        const command = util.substituteVariables(util.config(resource).get<string>('interactive.nodePath', ''), resource);
+        return prepareNodeRuntime(directory, resolveNodeRuntime(command, directory));
     }
 
     private async configureArf(): Promise<void> {
@@ -1370,7 +1376,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             // the actual supervisor of the old process, not the current preference.
             config.supervision = util.config(vscode.Uri.file(config.directory)).get<string>('interactive.supervision', 'auto');
             prepareSupervisor(config.supervision, config.directory);
-            const node = await prepareNodeRuntime(config.directory);
+            const node = await this.nodeRuntime(config.directory);
             const backend = backendDescriptor(config);
             if (backend.kind === 'sess' && backend.options.frontend === 'arf' && backend.options.ownership === 'managed') {
                 // Preserve the original binary across PATH changes after a reload, but

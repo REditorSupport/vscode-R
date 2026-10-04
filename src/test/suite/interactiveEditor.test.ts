@@ -13,6 +13,8 @@ import { AgentClient } from '../../interactive/client';
 import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook';
 import { AgentConfig, SessionManifest } from '../../interactive/protocol';
 import { AssetStorageStats, exportedAssetName, readAsset } from '../../interactive/assets';
+import { resolveExecutable } from '../../interactive/executable';
+import { shellQuote } from '../../interactive/launcher';
 import type { InteractiveManager } from '../../interactive/manager';
 import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
 import type { WorkspaceData } from '../../session';
@@ -93,6 +95,13 @@ import type { LanguageClient } from 'vscode-languageclient/node';
         manager.dispose(); context.subscriptions.splice(context.subscriptions.indexOf(manager), 1);
         context.subscriptions.push(new Manager(context));
     }
+    function nodeOverride(name: string): { executable: string; log: string } {
+        const node = resolveExecutable('node', root); assert.ok(node);
+        const directory = path.join(root, name); fs.mkdirSync(directory);
+        const executable = path.join(directory, 'node'), log = path.join(directory, 'launches');
+        fs.writeFileSync(executable, `#!/bin/sh\n[ -z "$ELECTRON_RUN_AS_NODE" ] || exit 1\nprintf '%s\\n' "$1" >>${shellQuote(log)}\nexec ${shellQuote(node)} "$@"\n`, { mode: 0o700 });
+        return { executable, log };
+    }
     test('missing arf offers R and setup, with no failed session or runtime installation', async () => {
         const config = vscode.workspace.getConfiguration('r');
         const previous = config.inspect<string>('interactive.arfPath')?.globalValue;
@@ -166,6 +175,24 @@ import type { LanguageClient } from 'vscode-languageclient/node';
         } finally {
             picker.restore(); input.restore(); errors.restore();
             executable.restore();
+        }
+    });
+    test('an invalid Node override is reported before installing a runtime or creating a session', async () => {
+        const settings = vscode.workspace.getConfiguration('r');
+        const previous = settings.inspect<string>('interactive.nodePath')?.globalValue;
+        const entries = fs.readdirSync(root);
+        const picker = sinon.stub(vscode.window, 'showQuickPick').resolves({ label: 'R', value: 'r' } as vscode.QuickPickItem);
+        const input = sinon.stub(vscode.window, 'showInputBox').resolves('Missing Node override');
+        const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        try {
+            await settings.update('interactive.nodePath', path.join(root, 'missing-node'), vscode.ConfigurationTarget.Global);
+            await vscode.commands.executeCommand('r.interactive.new');
+            sinon.assert.calledOnce(errors);
+            assert.match(errors.firstCall.args[0], /r\.interactive\.nodePath.*remote server/);
+            assert.deepStrictEqual(fs.readdirSync(root), entries);
+        } finally {
+            picker.restore(); input.restore(); errors.restore();
+            await settings.update('interactive.nodePath', previous, vscode.ConfigurationTarget.Global);
         }
     });
     test('missing explicit tmux reports a recovery setting before installing or creating a session', async () => {
@@ -993,6 +1020,8 @@ cat("\n")`;
     test('New Persistent Interactive Session focuses its own input and preserves the previous session draft', async () => {
         const settings = vscode.workspace.getConfiguration('r');
         const previousArf = settings.inspect<string>('interactive.arfPath')?.globalValue;
+        const previousNode = settings.inspect<string>('interactive.nodePath')?.globalValue;
+        const override = nodeOverride('custom Node for creation');
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         const original = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
         assert.ok(original);
@@ -1029,7 +1058,9 @@ cat("\n")`;
         let client: AgentClient | undefined;
         try {
             await settings.update('interactive.arfPath', path.join(root, 'missing-arf'), vscode.ConfigurationTarget.Global);
+            await settings.update('interactive.nodePath', `"\${userHome}/${path.relative(os.homedir(), override.executable)}"`, vscode.ConfigurationTarget.Global);
             await vscode.commands.executeCommand('r.interactive.new');
+            assert.ok(fs.readFileSync(override.log, 'utf8').split('\n').includes('-e'), 'The configured Node must launch the session');
             notebook = vscode.workspace.notebookDocuments.find(doc => !before.has(doc.uri.toString()) && doc.metadata.rSessionId);
             assert.ok(notebook);
             assert.strictEqual(vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === 'R: New session focus').length, 1,
@@ -1052,6 +1083,7 @@ cat("\n")`;
         } finally {
             commands.restore(); picker.restore(); name.restore();
             await settings.update('interactive.arfPath', previousArf, vscode.ConfigurationTarget.Global);
+            await settings.update('interactive.nodePath', previousNode, vscode.ConfigurationTarget.Global);
             if (notebook) { await vscode.commands.executeCommand('r.interactive.detach', notebook.uri); }
             if (client) {
                 await client.request('claim', { force: true });
@@ -1548,6 +1580,7 @@ par(mfrow=c(1,1))`);
         let client: AgentClient | undefined;
         let executable: sinon.SinonStub | undefined;
         const supervision = vscode.workspace.getConfiguration('r').inspect<string>('interactive.supervision')?.globalValue;
+        const previousNode = vscode.workspace.getConfiguration('r').inspect<string>('interactive.nodePath')?.globalValue;
         const limitSettings = ['interactive.maxOutputSizeMiB', 'interactive.maxJournalSizeMiB', 'interactive.maxAssetSizeMiB'];
         const previousLimits = limitSettings.map(key => vscode.workspace.getConfiguration('r').inspect<number>(key)?.globalValue);
         try {
@@ -1594,6 +1627,17 @@ par(mfrow=c(1,1))`);
             assert.ok(original.rPid); process.kill(original.rPid, 0);
             executable?.restore();
             errors.resetHistory();
+            // An explicit missing override must also leave the current R process alone.
+            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', path.join(root, 'missing-restart-node'), vscode.ConfigurationTarget.Global);
+            await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            sinon.assert.calledOnce(errors);
+            assert.match(errors.firstCall.args[0], /r\.interactive\.nodePath/);
+            assert.strictEqual(notebook.cellCount, oldCount);
+            assert.strictEqual(notebook.metadata.rGeneration, original.generation);
+            assert.ok(restartController.label.endsWith(' · idle'));
+            process.kill(original.rPid, 0);
+            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', '', vscode.ConfigurationTarget.Global);
+            errors.resetHistory();
             // Losing tmux must not stop the live R process. This preflight uses the
             // current setting even though the saved session used detached launch.
             await vscode.workspace.getConfiguration('r').update('interactive.supervision', 'tmux', vscode.ConfigurationTarget.Global);
@@ -1623,6 +1667,8 @@ par(mfrow=c(1,1))`);
             assert.strictEqual(oldCell.document.uri.toString(), oldUri);
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
             await vscode.workspace.getConfiguration('r').update('interactive.supervision', 'detached', vscode.ConfigurationTarget.Global);
+            const override = nodeOverride('custom Node for restart');
+            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', override.executable, vscode.ConfigurationTarget.Global);
             for (const [index, value] of [1.5, 24, 96].entries()) {
                 await vscode.workspace.getConfiguration('r').update(limitSettings[index], value, vscode.ConfigurationTarget.Global);
             }
@@ -1633,6 +1679,7 @@ par(mfrow=c(1,1))`);
             ]);
             sinon.assert.calledOnce(confirmation);
             sinon.assert.notCalled(errors); sinon.assert.notCalled(kernels);
+            assert.ok(fs.readFileSync(override.log, 'utf8').split('\n').includes('-e'));
             assert.ok(sawRestarting);
             assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
             assert.strictEqual(notebook.cellCount, oldCount + 1);
@@ -1676,10 +1723,13 @@ par(mfrow=c(1,1))`);
             await vscode.commands.executeCommand('r.runSelection');
             await until(() => notebook.getCells().some(cell => cell.document.getText() === source.getText().trim() && cell.executionSummary?.success === true));
             client.close();
+            const replacement = nodeOverride('replacement Node for restart');
+            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', replacement.executable, vscode.ConfigurationTarget.Global);
             for (const [index, value] of [0.0625, 40, 96.5].entries()) {
                 await vscode.workspace.getConfiguration('r').update(limitSettings[index], value, vscode.ConfigurationTarget.Global);
             }
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            assert.ok(fs.readFileSync(replacement.log, 'utf8').split('\n').includes('-e'), 'Restart must reread the Node override');
             const restartedConfig = JSON.parse(fs.readFileSync(path.join(root, original.id, 'config.json'), 'utf8')) as AgentConfig;
             assert.strictEqual(restartedConfig.maxOutputBytes, 65536);
             assert.strictEqual(restartedConfig.maxJournalBytes, 40 * 1024 * 1024);
@@ -1717,6 +1767,7 @@ par(mfrow=c(1,1))`);
             confirmation.restore(); errors.restore(); kernels.restore(); change.dispose();
             executable?.restore();
             await vscode.workspace.getConfiguration('r').update('interactive.supervision', supervision, vscode.ConfigurationTarget.Global);
+            await vscode.workspace.getConfiguration('r').update('interactive.nodePath', previousNode, vscode.ConfigurationTarget.Global);
             for (const [index, key] of limitSettings.entries()) {
                 await vscode.workspace.getConfiguration('r').update(key, previousLimits[index], vscode.ConfigurationTarget.Global);
             }

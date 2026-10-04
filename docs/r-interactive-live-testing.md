@@ -156,7 +156,7 @@ Production/TypeScript builds and lint pass, with **0 errors and 70 existing Type
 
 ## Bundled editor runtime and private sess entry points (2026-10-04)
 
-The session agent now uses the current extension host executable automatically. Desktop launches set `ELECTRON_RUN_AS_NODE=1`; remote launches use VS Code Server's Node. The flag reaches detached launchers and is passed explicitly through tmux/systemd, then removed before the agent starts R. `r.interactive.nodePath` has been removed. Availability and Node version checks still run before private runtime preparation or stopping a session for restart.
+The session agent uses the current extension host executable automatically by default. Desktop launches set `ELECTRON_RUN_AS_NODE=1`; remote launches use VS Code Server's Node. The flag reaches detached launchers and is passed explicitly through tmux/systemd, then removed before the agent starts R. The optional experimental `r.interactive.nodePath` setting selects a standalone Node.js 18+ executable without Electron mode. Availability and Node version checks run before private runtime preparation or stopping a session for restart.
 
 The bootstrap and arf adapter call the internal sess `interactive_start`, `interactive_execute`, and `run_worker` functions using `sess:::name`, matching existing calls to named sess internals. The bootstrap still loads the private library explicitly before these calls. Public `display` and `interactive_stop` remain exported. Compatibility checks verify the internal functions without requiring their export. Namespace-qualified calls prevent user-defined `get` or `asNamespace` helpers from breaking arf dispatch. All remaining `r.interactive.*` settings carry VS Code's experimental tag.
 

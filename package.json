@@ -2342,6 +2342,13 @@
           "default": "auto",
           "description": "Independent session supervision. Auto prefers tmux on Linux when available, otherwise uses a detached process; macOS uses a detached process. Explicit tmux/systemd selections require their executables on the R host. Detached processes survive editor reload/exit, but host logout policies may stop them. Changes apply to new or restarted sessions."
         },
+        "r.interactive.nodePath": {
+          "tags": ["experimental"],
+          "type": "string",
+          "ignoreSync": true,
+          "default": "",
+          "description": "Optional standalone Node.js 18+ executable on the R host for persistent session agents. Empty uses VS Code's runtime automatically (VS Code Server on remote hosts). Set an executable name on PATH or a path if the automatic runtime is unavailable in a compatible IDE; supports ~ and ${userHome}/${workspaceFolder}. Changes apply to new or restarted sessions."
+        },
         "r.interactive.arfPath": {
           "tags": ["experimental"],
           "type": "string",
@@ -2583,6 +2590,7 @@
       "supported": "limited",
       "description": "R execution and persistent session connections require a trusted workspace.",
       "restrictedConfigurations": [
+        "r.interactive.nodePath",
         "r.interactive.arfPath",
         "r.interactive.storagePath"
       ]
