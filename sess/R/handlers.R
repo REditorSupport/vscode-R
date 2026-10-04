@@ -376,7 +376,11 @@ get_workspace_children <- function(name = NULL, path = list(), start = 1L, view_
     children <- lapply(seq.int(start, end), function(index) {
       child_name <- if (is.null(child_names)) NULL else child_names[[index]]
       label <- if (vector_rows) {
-        paste0("[", index, "]")
+        if (!is.null(child_name) && !is.na(child_name) && nzchar(child_name)) {
+          child_name
+        } else {
+          paste0("[", index, "]")
+        }
       } else if (kind == "slot") {
         paste0("@ ", child_name)
       } else {

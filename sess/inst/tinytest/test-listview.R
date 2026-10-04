@@ -311,6 +311,32 @@ local({
   expect_equal(last_vector_page$children[[1L]]$label, "[501]")
   expect_equal(last_vector_page$children[[1L]]$str, "501")
 
+  # Named vectors retain names, duplicates and positions across page boundaries.
+  named_values <- seq_len(501L)
+  names(named_values) <- rep("", length(named_values))
+  names(named_values)[c(1L, 3L, 4L, 5L, 6L, 7L, 501L)] <-
+    c("first", "first", NA, "a b", "<tag>", "\u540d\u524d", "last")
+  named_root <- list(values = named_values)
+  for (expression in c("named_values", "named_root$values")) {
+    eval(parse(text = paste0("utils::View(", expression, ")")))
+    read_messages()
+    params <- list(view_id = notification()$view_id, path = notification()$navigation$path)
+    page <- do.call(sess:::get_workspace_children, params)
+    expect_equal(vapply(page$children[seq_len(7L)], `[[`, "", "label"),
+                 c("first", "[2]", "first", "[4]", "a b", "<tag>", "\u540d\u524d"))
+    expect_equal(vapply(page$children[seq_len(7L)], `[[`, "", "str"), as.character(seq_len(7L)))
+    expect_equal(vapply(page$children, `[[`, 0L, "index"), seq_len(500L))
+    expect_false(any(vapply(page$children, `[[`, FALSE, "has_children")))
+    expect_false(any(vapply(page$children, `[[`, FALSE, "viewable")))
+    expect_equal(page$next_start, 501L)
+    params$start <- page$next_start
+    last <- request("workspace_children", params)
+    expect_equal(last$children[[1L]]$label, "last")
+    expect_equal(last$children[[1L]]$str, "501")
+    expect_equal(last$children[[1L]]$index, 501L)
+    expect_null(last$next_start)
+  }
+
   utils::View(x$a$b$value)
   text_id <- id("object", "x")
   text_file <- runtime$dataviews[[text_id]]$file

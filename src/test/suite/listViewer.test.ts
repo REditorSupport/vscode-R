@@ -210,21 +210,25 @@ suite('List viewer', () => {
         assert.strictEqual(secondPage.children[1].hidden, true);
     });
 
-    test('renders vector values as simple indexed rows', () => {
+    test('renders named and unnamed vector rows as plain text', () => {
         const viewer = createViewer({
             title: 'x', path: [], breadcrumbs: [{ label: 'x', path: [] }], vector: true,
         });
+        const labels = ['first', '[2]', 'first', '<tag>', 'a b'];
         viewer.reply(viewer.messages[0], {
-            children: [{
-                label: '[1]', str: '12.4', index: 1,
+            children: labels.map((label, index) => ({
+                label, str: '12.4', index: index + 1,
                 viewable: false, has_children: false,
-            }],
+            })),
         });
-        const row = viewer.root.children[0].children[0].children[0];
-        assert.deepStrictEqual(row.children.map(child => child.className), ['label', 'str']);
-        assert.strictEqual(row.children[0].textContent, '[1]');
-        assert.strictEqual(row.children[1].textContent, '12.4');
-        assert.ok(!row.children.some(child => child.tag === 'button'));
+        labels.forEach((label, index) => {
+            const row = viewer.root.children[0].children[index].children[0];
+            assert.deepStrictEqual(row.children.map(child => child.className), ['label', 'str']);
+            assert.strictEqual(row.children[0].textContent, label);
+            assert.strictEqual(row.children[0].innerHTML, '');
+            assert.strictEqual(row.children[1].textContent, '12.4');
+            assert.ok(!row.children.some(child => child.tag === 'button'));
+        });
     });
 
     test('vectors share list navigation, Back and cached pages, including late page responses', () => {
