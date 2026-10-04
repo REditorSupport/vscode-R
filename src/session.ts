@@ -220,6 +220,7 @@ interface DataViewRequestMessage {
 }
 
 const dynamicDataViewPanels = new Map<string, vscode.WebviewPanel>();
+const dynamicDataViewInstances = new WeakMap<vscode.WebviewPanel, number>();
 const listViewGenerations = new WeakMap<Webview, number>();
 let dynamicDataViewReloadRevision = 0;
 
@@ -234,12 +235,20 @@ function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, c => map[c]);
 }
 
-function registerDataViewPanel(panel: vscode.WebviewPanel, key: string, viewId: string, sessionId: string | null): void {
+function registerDataViewPanel(
+    panel: vscode.WebviewPanel, key: string, viewId: string, sessionId: string | null,
+    instance?: number,
+): void {
     // The panel's webview getter throws once onDidDispose fires.
     const webview = panel.webview;
     dynamicDataViewPanels.set(key, panel);
+    if (instance !== undefined) {
+        dynamicDataViewInstances.set(panel, instance);
+    }
     panel.onDidDispose(() => {
         listViewGenerations.delete(webview);
+        const currentInstance = dynamicDataViewInstances.get(panel);
+        dynamicDataViewInstances.delete(panel);
         if (dynamicDataViewPanels.get(key) !== panel) {
             return;
         }
@@ -248,7 +257,7 @@ function registerDataViewPanel(panel: vscode.WebviewPanel, key: string, viewId: 
         if (sessions.get(sessionId ?? '')?.requester) { return; }
         void sessionRequest({
             method: 'dataview_dispose',
-            params: { view_id: viewId },
+            params: { view_id: viewId, instance: currentInstance },
         }, sessionId);
     });
 }
@@ -1022,6 +1031,7 @@ export async function showDataView(
     source: string, type: string, title: string, file: string, viewer: string,
     viewId?: string, navigation?: ListViewNavigation,
     sessionId: string | null = activeSession?.sessionId ?? null,
+    instance?: number,
 ): Promise<void> {
     resDir ??= path.join(extensionContext.extensionPath, 'dist', 'resources');
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, viewId: ${String(viewId ?? '')}`);
@@ -1031,6 +1041,9 @@ export async function showDataView(
         if (viewId) {
             const existing = dynamicDataViewPanels.get(panelKey);
             if (existing) {
+                if (instance !== undefined) {
+                    dynamicDataViewInstances.set(existing, instance);
+                }
                 existing.title = title;
                 existing.reveal(existing.viewColumn, true);
                 const content = await getTableHtml(existing.webview, undefined, title);
@@ -1052,7 +1065,7 @@ export async function showDataView(
             });
         panel.iconPath = new UriIcon('open-preview');
         if (viewId) {
-            registerDataViewPanel(panel, panelKey, viewId, sessionId);
+            registerDataViewPanel(panel, panelKey, viewId, sessionId, instance);
             attachDynamicDataViewBridge(panel, viewId, sessionId);
         }
         const content = await getTableHtml(panel.webview, file || undefined, title);
@@ -1061,6 +1074,9 @@ export async function showDataView(
         if (viewId) {
             const existing = dynamicDataViewPanels.get(panelKey);
             if (existing) {
+                if (instance !== undefined) {
+                    dynamicDataViewInstances.set(existing, instance);
+                }
                 existing.title = title;
                 existing.reveal(existing.viewColumn, true);
                 existing.webview.html = getListHtml(
@@ -1083,7 +1099,7 @@ export async function showDataView(
             });
         panel.iconPath = new UriIcon('preview');
         if (viewId) {
-            registerDataViewPanel(panel, panelKey, viewId, sessionId);
+            registerDataViewPanel(panel, panelKey, viewId, sessionId, instance);
             const webview = panel.webview;
             webview.onDidReceiveMessage(async (message: {
                 message?: string; index?: number; start?: number; requestId?: number;
@@ -2242,6 +2258,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                         params.view_id ? String(params.view_id) : undefined,
                         params.navigation as ListViewNavigation | undefined,
                         socket._sessionId ?? null,
+                        typeof params.instance === 'number' ? params.instance : undefined,
                     );
                 }
             }

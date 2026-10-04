@@ -11,7 +11,7 @@ import { mockExtensionContext } from '../common/mockvscode';
 interface Request {
     id: number;
     method: string;
-    params?: { view_id?: string };
+    params?: { view_id?: string; instance?: number };
 }
 
 interface Client {
@@ -137,11 +137,13 @@ suite('Viewer session ownership', () => {
         return client;
     }
 
-    async function open(client: Client, source: 'list' | 'table', existing?: Panel): Promise<Panel> {
+    async function open(
+        client: Client, source: 'list' | 'table', existing?: Panel, instance = 1,
+    ): Promise<Panel> {
         const count = panels.length;
         const html = existing?.panel.webview.html;
         notify(client, 'dataview', {
-            source, type: 'json', title: 'x', view_id: `same-${source}-id`,
+            source, type: 'json', title: 'x', view_id: `same-${source}-id`, instance,
             navigation: { title: 'x', path: [], breadcrumbs: [{ label: 'x', path: [] }] },
         });
         await waitFor(() => existing ? existing.panel.webview.html !== html : panels.length > count);
@@ -166,8 +168,8 @@ suite('Viewer session ownership', () => {
         const bList = await open(b, 'list');
         const bTable = await open(b, 'table');
         assert.strictEqual(panels.length, 4);
-        await open(a, 'list', aList);
-        await open(a, 'table', aTable);
+        await open(a, 'list', aList, 2);
+        await open(a, 'table', aTable, 2);
         assert.strictEqual(session.activeSession?.sessionId, b.id);
 
         const exercise = async (list: Panel, table: Panel) => {
@@ -185,11 +187,15 @@ suite('Viewer session ownership', () => {
         await exercise(bList, bTable);
         assert.deepStrictEqual(viewerRequests(b).map(request => request.method), expected);
 
+        await open(b, 'list', bList, 2);
+        await open(b, 'table', bTable, 2);
         bList.panel.dispose();
         bTable.panel.dispose();
         await waitFor(() => viewerRequests(b).length === 7);
         assert.deepStrictEqual(viewerRequests(b).slice(-2).map(request => request.params?.view_id),
             ['same-list-id', 'same-table-id']);
+        assert.deepStrictEqual(viewerRequests(b).slice(-2).map(request => request.params?.instance),
+            [2, 2]);
         assert.strictEqual(viewerRequests(a).length, 5);
         await open(a, 'list', aList);
         await open(a, 'table', aTable);

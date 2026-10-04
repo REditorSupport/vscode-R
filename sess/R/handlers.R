@@ -804,11 +804,16 @@ dataview_new_id <- function() {
   }
 }
 
-dataview_register <- function(data, view_id = NULL, live = FALSE) {
+dataview_set_state <- function(view_id, state) {
   if (is.null(.sess_env$dataviews)) {
     .sess_env$dataviews <- list()
   }
+  state$instance <- (.sess_env$dataviews[[view_id]]$instance %||% 0L) + 1L
+  .sess_env$dataviews[[view_id]] <- state
+  state
+}
 
+dataview_register <- function(data, view_id = NULL, live = FALSE) {
   if (is.null(view_id)) {
     view_id <- dataview_new_id()
   }
@@ -816,9 +821,10 @@ dataview_register <- function(data, view_id = NULL, live = FALSE) {
   state <- dataview_to_state(data)
   state$live <- live
   state$revision <- .sess_env$dataview_revision %||% 0
-  .sess_env$dataviews[[view_id]] <- state
+  state <- dataview_set_state(view_id, state)
   list(
     view_id = view_id,
+    instance = state$instance,
     total_rows = state$total_rows,
     columns = dataview_columns(state)
   )
@@ -839,6 +845,7 @@ dataview_get_state <- function(view_id, refresh = FALSE) {
           !identical(state$total_rows, current$total_rows)) {
       current$live <- TRUE
       current$revision <- revision
+      current$instance <- state$instance
       state <- current
       .sess_env$dataviews[[view_id]] <- state
     }
@@ -1268,7 +1275,9 @@ handle_dataview_page <- function(params) {
 
 handle_dataview_dispose <- function(params) {
   view_id <- as.character(params$view_id %||% "")
-  if (!is.null(.sess_env$dataviews) && !is.null(.sess_env$dataviews[[view_id]])) {
+  state <- if (is.null(.sess_env$dataviews)) NULL else .sess_env$dataviews[[view_id]]
+  instance <- suppressWarnings(as.integer(params$instance %||% NA_integer_))
+  if (!is.null(state) && identical(state$instance, instance)) {
     .sess_env$dataviews[[view_id]] <- NULL
   }
   TRUE

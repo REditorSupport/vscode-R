@@ -149,7 +149,8 @@ runtime_start <- function(use_rstudioapi = TRUE,
         title = title,
         source = "table",
         type = "json",
-        view_id = registration$view_id
+        view_id = registration$view_id,
+        instance = registration$instance
       ))
     } else if (view_type == "list") {
       context <- .sess_env$listview_context
@@ -162,12 +163,13 @@ runtime_start <- function(use_rstudioapi = TRUE,
       } else {
         context$navigation
       }
-      .sess_env$dataviews[[view_id]] <- root
+      root <- dataview_set_state(view_id, root)
       notify_client("dataview", list(
         title = title,
         source = view_type,
         type = "json",
         view_id = view_id,
+        instance = root$instance,
         navigation = navigation
       ))
     } else {

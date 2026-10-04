@@ -368,3 +368,46 @@ local({
   expect_false(last$children[[1L]]$viewable)
   expect_length(sess:::get_workspace_children(view_id = "paging_test", start = 502L)$children, 0L)
 })
+
+
+# A delayed panel close cannot dispose state recreated under the same viewer id.
+local({
+  runtime <- sess:::.sess_env
+  previous <- runtime$dataviews
+  on.exit(runtime$dataviews <- previous, add = TRUE)
+
+  cases <- list(
+    list = list(
+      first = sess:::listview_state(list(value = 1L), "x", "x"),
+      replacement = sess:::listview_state(list(value = 2L), "x", "x")
+    ),
+    table = list(
+      first = sess:::dataview_to_state(data.frame(value = 1L)),
+      replacement = sess:::dataview_to_state(data.frame(value = 2L))
+    )
+  )
+
+  for (name in names(cases)) {
+    runtime$dataviews <- list()
+    first <- sess:::dataview_set_state("replacement_test", cases[[name]]$first)
+    replacement <- sess:::dataview_set_state(
+      "replacement_test", cases[[name]]$replacement
+    )
+    expect_true(replacement$instance > first$instance, info = name)
+
+    expect_true(sess:::handle_dataview_dispose(list(
+      view_id = "replacement_test", instance = first$instance
+    )), info = name)
+    expect_identical(
+      runtime$dataviews$replacement_test$instance, replacement$instance, info = name
+    )
+    expect_identical(
+      runtime$dataviews$replacement_test$data, cases[[name]]$replacement$data, info = name
+    )
+
+    expect_true(sess:::handle_dataview_dispose(list(
+      view_id = "replacement_test", instance = replacement$instance
+    )), info = name)
+    expect_null(runtime$dataviews$replacement_test, info = name)
+  }
+})

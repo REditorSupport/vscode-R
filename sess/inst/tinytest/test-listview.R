@@ -358,7 +358,7 @@ local({
   expect_length(notifications, 0L)
 
   # Scalars use the vector formatting route regardless of storage type or class.
-  for (sample in list(difftime(1, 2, units = "mins"), as.Date("2026-01-01"),
+  for (sample in list(as.difftime(1, units = "mins"), as.Date("2026-01-01"),
                       as.POSIXct("2026-01-01 12:34:56", tz = "UTC"), factor("ready"),
                       TRUE, "001", as.raw(255))) {
     utils::View(sample, title = "scalar")
@@ -478,7 +478,9 @@ local({
   expect_false(sess:::handle_listview_view(list_id, 0L))
   expect_false(sess:::handle_listview_view(list_id, 1.5))
   expect_false(sess:::handle_listview_view(list_id, 1L, list(99L)))
-  expect_true(sess:::handle_dataview_dispose(list(view_id = list_id)))
+  expect_true(sess:::handle_dataview_dispose(list(
+    view_id = list_id, instance = runtime$dataviews[[list_id]]$instance
+  )))
   expect_null(runtime$dataviews[[list_id]])
   sess:::handle_workspace_view(root)
   expect_identical(id("list"), list_id)
