@@ -72,7 +72,7 @@ For example, assuming that you have installed `arf` and `jgd`, your user `settin
 {
     "r.consolePath": "arf",
     "r.bracketedPaste": true,  // recommended for arf (and radian)
-    "r.plot.backend": "jgd"    // "auto" prefers httpgd, then jgd
+    "r.plot.backend": "jgd"    // "auto" already prefers jgd, then httpgd
 }
 ```
 

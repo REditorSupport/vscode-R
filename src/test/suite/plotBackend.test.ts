@@ -53,13 +53,13 @@ suite('Plot backend setting migration', () => {
         assert.strictEqual(jgdEnabled(resolveBackend()), false);
     });
 
-    test('auto prefers an available httpgd viewer over JGD', () => {
+    test('auto prefers an available JGD viewer over httpgd', () => {
         settings({ workspaceValue: 'auto' });
         const manager = new CommonPlotManager();
         const httpgd = { id: 'httpgd' } as HttpgdViewer;
         const jgd = { id: 'jgd' } as JgdViewer;
         sandbox.stub(manager.httpgdManager, 'getRecentViewer').returns(httpgd);
         sandbox.stub(manager.jgdManager, 'getViewer').returns(jgd);
-        assert.strictEqual(manager.activeViewer, httpgd);
+        assert.strictEqual(manager.activeViewer, jgd);
     });
 });

@@ -68,12 +68,8 @@ export class CommonPlotManager implements PlotManager {
     }
 
     get activeViewer(): PlotViewer | undefined {
-        const backend = resolveBackend();
-        if (backend === 'jgd') {
+        if (jgdEnabled()) {
             return this.jgdManager.getViewer() || this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
-        }
-        if (backend === 'auto') {
-            return this.httpgdManager.getRecentViewer() || this.jgdManager.getViewer() || this.standardPlotViewer;
         }
         return this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
     }

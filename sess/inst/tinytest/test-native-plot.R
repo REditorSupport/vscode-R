@@ -16,7 +16,8 @@ local({
   for (backend in c("auto", "jgd", "httpgd", "standard", "native")) {
     expect_equal(resolve(backend), backend)
   }
-  expect_equal(select("auto", TRUE, TRUE), "httpgd")
+  expect_equal(select("auto", TRUE, TRUE), "jgd")
+  expect_equal(select("auto", TRUE, FALSE), "httpgd")
   expect_equal(select("auto", FALSE, TRUE), "jgd")
   expect_equal(select("auto", FALSE, FALSE), "standard")
   expect_equal(select("jgd", TRUE, TRUE), "jgd")
@@ -108,7 +109,6 @@ local({
   server <- tryCatch(processx::conn_create_unix_socket(endpoint, encoding = ""),
                      error = function(e) NULL)
   if (is.null(server)) return(invisible(NULL))
-  peer <- NULL
   discovery <- tempfile(fileext = ".json")
   writeLines(jsonlite::toJSON(list(version = 1L, endpoint = endpoint),
                               auto_unbox = TRUE), discovery)
@@ -120,7 +120,6 @@ local({
   options(device = sentinel_device)
   on.exit({
     sess:::.transport_disconnect(silent = TRUE)
-    if (!is.null(peer)) try(close(peer), silent = TRUE)
     try(close(server), silent = TRUE)
     unlink(c(discovery, if (.Platform$OS.type != "windows") endpoint))
     if (is.na(old_discovery)) Sys.unsetenv("SESS_DISCOVERY_FILE") else
@@ -133,9 +132,9 @@ local({
   environment(env$connect) <- env
   env$poll_connection <- function(...) {
     processx::poll(list(server), 1000L)
-    peer <<- processx::conn_accept_unix_socket(server)
-    processx::poll(list(peer), 1000L)
-    expect_equal(jsonlite::fromJSON(processx::conn_read_chars(peer))$method,
+    processx::conn_accept_unix_socket(server)
+    processx::poll(list(server), 1000L)
+    expect_equal(jsonlite::fromJSON(processx::conn_read_chars(server))$method,
                  "attach")
   }
   env$connect(endpoint = endpoint, use_rstudioapi = FALSE,

@@ -46,8 +46,8 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
 
 .select_plot_backend <- function(plot_backend, has_httpgd, has_jgd) {
   if (plot_backend == "native") return("native")
-  if (plot_backend %in% c("auto", "httpgd") && has_httpgd) return("httpgd")
   if (plot_backend %in% c("auto", "jgd") && has_jgd) return("jgd")
+  if (plot_backend %in% c("auto", "httpgd") && has_httpgd) return("httpgd")
   "standard"
 }
 
@@ -213,12 +213,12 @@ runtime_start <- function(use_rstudioapi = TRUE,
     }
     invisible(x)
   }
-  # 4. Plot device: httpgd > JGD > Standard, or no plot integration for native
+  # 4. Plot device: JGD > httpgd > Standard, or no plot integration for native
   .sess_env$runtime_start_phase <- "plot"
+  has_jgd <- plot_backend %in% c("auto", "jgd") &&
+    nzchar(Sys.getenv("JGD_SOCKET")) && requireNamespace("jgd", quietly = TRUE)
   has_httpgd <- plot_backend %in% c("auto", "httpgd") &&
     requireNamespace("httpgd", quietly = TRUE)
-  has_jgd <- (plot_backend == "jgd" || (plot_backend == "auto" && !has_httpgd)) &&
-    nzchar(Sys.getenv("JGD_SOCKET")) && requireNamespace("jgd", quietly = TRUE)
   selected_backend <- .select_plot_backend(plot_backend, has_httpgd, has_jgd)
   if (selected_backend == "jgd") {
     .runtime_set_option("device", function(...) {

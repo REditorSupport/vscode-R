@@ -123,10 +123,10 @@ stacking hooks.
 For displaying R plots, `sess` chooses a graphics device in this order when
 `plot_backend = "auto"`:
 
-1. **httpgd**, if the [httpgd](https://cran.r-project.org/package=httpgd)
-   package is installed.
-2. **jgd**, if `JGD_SOCKET` is set and the
+1. **jgd**, if `JGD_SOCKET` is set and the
    [jgd](https://cran.r-project.org/package=jgd) package is installed.
+2. **httpgd**, if the [httpgd](https://cran.r-project.org/package=httpgd)
+   package is installed.
 3. **Standard**: plots are recorded on a null device and re-rendered by the
    client on demand at the viewer's size (as SVG via
    [svglite](https://cran.r-project.org/package=svglite) if installed,
