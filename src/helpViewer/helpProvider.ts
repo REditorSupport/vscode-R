@@ -72,9 +72,8 @@ export class HelpProvider {
         let str = '';
         // promise containing the port number of the process (or 0)
         const portPromise = new Promise<number>((resolve) => {
-            childProcess.stdout?.on('data', (data) => {
+            childProcess.stdout?.on('data', (data: Buffer) => {
                 try{
-                    // eslint-disable-next-line
                     str += data.toString();
                 } catch(e){
                     resolve(0);

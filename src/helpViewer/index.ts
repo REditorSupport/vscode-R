@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* oxlint-disable typescript/no-unsafe-argument */
 
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';

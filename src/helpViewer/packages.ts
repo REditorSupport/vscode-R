@@ -394,8 +394,10 @@ function parseIndexFile(html: string): IndexEntry[] {
                     e0.firstChild?.type === 'tag'
                 ){
                     const href = e0.firstChild.attribs['href'];
-                    const name = e0.firstChild?.firstChild?.data || '';
-                    const description = e1.firstChild?.data || '';
+                    const nameNode = e0.firstChild.firstChild;
+                    const descriptionNode = e1.firstChild;
+                    const name = nameNode && 'data' in nameNode ? nameNode.data : '';
+                    const description = descriptionNode && 'data' in descriptionNode ? descriptionNode.data : '';
                     ret.push({
                         name: name,
                         description: description,

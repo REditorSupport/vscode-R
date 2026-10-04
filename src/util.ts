@@ -386,7 +386,6 @@ function resourceFromCwd(cwd?: string | URL | vscode.Uri): vscode.Uri | undefine
 // This class is a wrapper around Map<string, any> that implements vscode.Memento
 // Can be used in place of vscode.ExtensionContext.globalState or .workspaceState when no caching is desired
 export class DummyMemento implements vscode.Memento {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     items = new Map<string, any>()
     public get<T>(key: string, defaultValue?: T): T | undefined {
         if (this.items.has(key)) {
@@ -395,7 +394,7 @@ export class DummyMemento implements vscode.Memento {
             return defaultValue;
         }
     }
-    // eslint-disable-next-line @typescript-eslint/require-await, @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/require-await
     public async update(key: string, value: any): Promise<void> {
         this.items.set(key, value);
     }
@@ -405,7 +404,6 @@ export class DummyMemento implements vscode.Memento {
     }
 }
 
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types, @typescript-eslint/no-explicit-any
 export async function setContext(key: string, value: any): Promise<void> {
     await vscode.commands.executeCommand(
         'setContext', key, value
@@ -679,7 +677,6 @@ export function asViewColumn(s: string | undefined | vscode.ViewColumn, fallback
 }
 
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function makeWebviewCommandUriString(command: string, ...args: any[]): string {
     const argString = encodeURIComponent(JSON.stringify(args));
     return `command:${command}?${argString}`;

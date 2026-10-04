@@ -81,8 +81,8 @@ jobs:
           cache: 'pnpm'
 
       - run: pnpm install --frozen-lockfile
-      - name: eslint
-        run: pnpm exec eslint src --ext ts
+      - name: Lint TypeScript
+        run: pnpm run lint
 
       - name: Lint R directory
         run: lintr::lint_dir("./R")
