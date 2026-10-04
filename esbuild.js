@@ -12,7 +12,11 @@ function copyResources() {
     const resources = [
         './node_modules/ag-grid-community/dist/ag-grid-community.min.noStyle.js',
         './node_modules/ag-grid-community/styles/ag-grid.min.css',
-        './node_modules/ag-grid-community/styles/ag-theme-balham.min.css'
+        './node_modules/ag-grid-community/styles/ag-theme-balham.min.css',
+        './node_modules/@vscode/codicons/dist/codicon.css',
+        './node_modules/@vscode/codicons/dist/codicon.ttf',
+        './node_modules/@vscode/codicons/LICENSE',
+        './node_modules/@vscode/codicons/LICENSE-CODE'
     ];
 
     for (const res of resources) {

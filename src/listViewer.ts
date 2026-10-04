@@ -46,7 +46,7 @@ export function getListViewerScript(documentGeneration: number, initial: ListVie
         navigation.breadcrumbs.forEach((crumb, index) => {
             if (index) {
                 const separator = document.createElement('span');
-                separator.className = 'breadcrumb-separator';
+                separator.className = 'codicon codicon-chevron-right';
                 separator.setAttribute('aria-hidden', 'true');
                 breadcrumbs.appendChild(separator);
             }
@@ -119,7 +119,7 @@ export function getListViewerScript(documentGeneration: number, initial: ListVie
                     row.className = 'item';
                     if (!vector) {
                         const arrow = document.createElement('span');
-                        arrow.className = 'arrow';
+                        arrow.className = expandable ? 'arrow codicon codicon-chevron-right' : 'arrow';
                         arrow.setAttribute('aria-hidden', 'true');
                         row.appendChild(arrow);
                     }
@@ -136,7 +136,10 @@ export function getListViewerScript(documentGeneration: number, initial: ListVie
                         const button = document.createElement('button');
                         button.title = 'View';
                         button.setAttribute('aria-label', 'View ' + item.label);
-                        button.innerHTML = document.getElementById('view-icon').innerHTML;
+                        const icon = document.createElement('span');
+                        icon.className = 'codicon codicon-open-preview';
+                        icon.setAttribute('aria-hidden', 'true');
+                        button.appendChild(icon);
                         button.addEventListener('click', (event) => {
                             event.preventDefault();
                             event.stopPropagation();

@@ -1103,7 +1103,7 @@ export async function showDataView(
                 enableScripts: true,
                 enableFindWidget: true,
                 retainContextWhenHidden: true,
-                localResourceRoots: [Uri.file(extensionContext.asAbsolutePath('images/icons'))],
+                localResourceRoots: [Uri.file(resDir)],
             });
         panel.iconPath = new UriIcon('preview');
         if (viewId) {
@@ -1876,17 +1876,8 @@ export function getListHtml(
 ): string {
     const documentGeneration = ++documentGenerationRevision;
     documentGenerations.set(webview, documentGeneration);
-    const icon = new UriIcon('open-preview-codicon');
-    const darkIcon = webview.asWebviewUri(icon.dark).toString();
-    const lightIcon = webview.asWebviewUri(icon.light).toString();
-    const chevronIcon = webview.asWebviewUri(
-        Uri.file(extensionContext.asAbsolutePath('images/icons/chevron-right.svg'))
-    ).toString();
-    const backIcon = webview.asWebviewUri(
-        Uri.file(extensionContext.asAbsolutePath('images/icons/arrow-left.svg'))
-    ).toString();
-    const expandedChevronIcon = webview.asWebviewUri(
-        Uri.file(extensionContext.asAbsolutePath('images/icons/chevron-down.svg'))
+    const codicons = webview.asWebviewUri(
+        Uri.file(path.join(resDir, 'codicon.css'))
     ).toString();
 
     return `
@@ -1896,6 +1887,7 @@ export function getListHtml(
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(title)}</title>
+    <link rel="stylesheet" href="${codicons}">
     <style>
     body {
         margin: 0;
@@ -1920,15 +1912,7 @@ export function getListHtml(
     }
     #back { gap: 4px; padding: 4px 6px; flex-shrink: 0; border-radius: 3px; }
     #back:disabled { opacity: 0.4; cursor: default; background: transparent; }
-    .back-icon, .breadcrumb-separator {
-        display: inline-block;
-        width: 16px;
-        height: 16px;
-        flex-shrink: 0;
-        background-color: currentColor;
-    }
-    .back-icon { mask: url('${backIcon}') center / 16px 16px no-repeat; }
-    .breadcrumb-separator { mask: url('${chevronIcon}') center / 16px 16px no-repeat; }
+    .codicon { flex-shrink: 0; }
     #breadcrumbs {
         display: flex;
         align-items: center;
@@ -1955,10 +1939,9 @@ export function getListHtml(
     summary.item::-webkit-details-marker { display: none; }
     .arrow { width: 16px; height: 16px; flex-shrink: 0; }
     summary > .arrow {
-        background-color: var(--vscode-icon-foreground, currentColor);
-        mask: url('${chevronIcon}') center / 16px 16px no-repeat;
+        color: var(--vscode-icon-foreground, currentColor);
     }
-    details[open] > summary > .arrow { mask-image: url('${expandedChevronIcon}'); }
+    details[open] > summary > .arrow { transform: rotate(90deg); }
     .children { margin-left: 24px; }
     button:focus-visible, summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
     .label {
@@ -1990,35 +1973,21 @@ export function getListHtml(
     button:hover {
         background-color: var(--vscode-toolbar-hoverBackground);
     }
-    button img {
-        width: 16px;
-        height: 16px;
-    }
     .load-more {
         margin: 8px;
     }
     .load-more[hidden] {
         display: none;
     }
-    .light-icon {
-        display: none;
-    }
-    body.vscode-light .dark-icon {
-        display: none;
-    }
-    body.vscode-light .light-icon {
-        display: block;
-    }
     </style>
 </head>
 <body>
     <div class="navigation">
-        <button id="back" title="Back" aria-label="Back" disabled><span class="back-icon" aria-hidden="true"></span>Back</button>
+        <button id="back" title="Back" aria-label="Back" disabled><span class="codicon codicon-arrow-left" aria-hidden="true"></span>Back</button>
         <nav id="breadcrumbs" aria-label="Object path"></nav>
     </div>
     <div id="navigation-status" role="status"></div>
     <div id="list"></div>
-    <template id="view-icon"><img class="dark-icon" src="${darkIcon}" alt=""><img class="light-icon" src="${lightIcon}" alt=""></template>
     <script>
     ${getListViewerScript(documentGeneration, navigation ?? {
         title, path: [], breadcrumbs: [{ label: title, path: [] }],

@@ -2566,6 +2566,7 @@
     "typescript": "~5.8.3"
   },
   "dependencies": {
+    "@vscode/codicons": "0.0.46-24",
     "ag-grid-community": "^36.2.0",
     "cheerio": "1.0.0-rc.12",
     "crypto": "^1.0.1",

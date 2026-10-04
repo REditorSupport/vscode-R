@@ -206,13 +206,13 @@ suite('List viewer panels', () => {
         for (const type of ['list', 'environment', 'pairlist', 'S4', 'double', 'closure']) {
             const structured = ['list', 'environment', 'pairlist', 'S4'].includes(type);
             const node = new GlobalEnvItem('', type, '$ item', type, 1, undefined, structured,
-                'x', [{ kind: 'index', value: 1 }], true);
+                'x', [{ kind: 'index', value: 1 }], undefined, true);
             assert.strictEqual(node.contextValue, 'viewableNode');
             assert.strictEqual(node.collapsibleState, structured
                 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
         }
         const unavailable = new GlobalEnvItem('', 'active_binding', '', 'active_binding', 1,
-            undefined, false, 'x', [], false);
+            undefined, false, 'x', [], undefined, false);
         assert.notStrictEqual(unavailable.contextValue, 'viewableNode');
     });
 });

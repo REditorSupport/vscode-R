@@ -117,7 +117,7 @@ suite('List viewer', () => {
         viewer.reply(viewer.messages[0], { children: [] });
         const original = viewer.root;
         assert.deepStrictEqual(viewer.breadcrumbs.children.map(item => item.className),
-            ['breadcrumb', 'breadcrumb-separator', 'breadcrumb', 'breadcrumb-separator', 'breadcrumb']);
+            ['breadcrumb', 'codicon codicon-chevron-right', 'breadcrumb', 'codicon codicon-chevron-right', 'breadcrumb']);
         viewer.breadcrumbs.children[0].fire('click');
         assert.deepStrictEqual(viewer.messages[1].path, []);
         viewer.reply(viewer.messages[1], {

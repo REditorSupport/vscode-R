@@ -3,11 +3,17 @@
 !README.md
 !CHANGELOG.md
 !LICENSE
+<<<<<<< HEAD
 !R/*.R
 !R/cppProperties/**
 !R/help/**
 !R/rmarkdown/**
 !R/template/**
+=======
+!ThirdPartyNotices.txt
+!R/**
+!sess/**
+>>>>>>> 109dc25 (refactor(viewer): use packaged codicons and consolidate icon notices)
 !html/**/*.ejs
 !html/**/*.css
 !html/**/*.js
@@ -18,4 +24,10 @@
 !dist/**/*.js
 !dist/**/*.css
 !dist/**/*.ejs
+<<<<<<< HEAD
 !dist/resources/sess/**
+=======
+!dist/resources/codicon.ttf
+!dist/resources/LICENSE
+!dist/resources/LICENSE-CODE
+>>>>>>> 109dc25 (refactor(viewer): use packaged codicons and consolidate icon notices)
