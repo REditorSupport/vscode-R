@@ -29,12 +29,6 @@ importers:
       httpgd:
         specifier: 0.1.6
         version: 0.1.6
-      jquery:
-        specifier: ^3.7.1
-        version: 3.7.1
-      jquery.json-viewer:
-        specifier: ^1.5.0
-        version: 1.5.0
       js-yaml:
         specifier: ^4.3.2
         version: 4.3.2
@@ -1727,12 +1721,6 @@ packages:
     resolution: {integrity: sha512-wpHYzhxiVQL+IV05BLE2Xn34zW1S223hvjtqk0+gsPrwd/8JNLXJgZZM/iPFsYc1xyphF+6M6EvdE5E9MBGkDA==}
     engines: {node: '>=10'}
     hasBin: true
-
-  jquery.json-viewer@1.5.0:
-    resolution: {integrity: sha512-M/mRFXg14V/UUAlz7TBNBIDmQdWt05BunsqC/UjEx5BoFdQpNpfkfDdVn+VtjX951n/an/T9GWB3apBp02x8Mg==}
-
-  jquery@3.7.1:
-    resolution: {integrity: sha512-m4avr8yL8kmFN8psrbFFFmB/If14iN5o9nw/NgnnM+kybDJpRsAynV2BsfpTYrTRysYUdADVD7CkUUizgkpLfg==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -4326,10 +4314,6 @@ snapshots:
       async: 3.2.6
       filelist: 1.0.6
       picocolors: 1.1.1
-
-  jquery.json-viewer@1.5.0: {}
-
-  jquery@3.7.1: {}
 
   js-tokens@4.0.0: {}
 

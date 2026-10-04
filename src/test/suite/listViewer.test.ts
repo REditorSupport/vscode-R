@@ -35,19 +35,27 @@ interface Request {
 
 function createViewer(initial: ListViewNavigation = {
     title: 'x', path: [], breadcrumbs: [{ label: 'x', path: [] }],
-}, vector = false) {
+}) {
     const root = new Element('div');
     const back = new Element('button');
     const breadcrumbs = new Element('nav');
     const status = new Element('div');
+    const bodyClasses = new Set<string>();
     const elements: Record<string, Element> = { list: root, back, breadcrumbs, 'navigation-status': status };
     const messages: Request[] = [];
     let receive: (event: unknown) => void = () => undefined;
-    vm.runInNewContext(getListViewerScript(7, initial, vector), {
+    vm.runInNewContext(getListViewerScript(7, initial), {
         acquireVsCodeApi: () => ({ postMessage: (message: Request) => {
             messages.push(JSON.parse(JSON.stringify(message)) as Request);
         } }),
         document: {
+            body: { classList: { toggle: (name: string, enabled: boolean) => {
+                if (enabled) {
+                    bodyClasses.add(name);
+                } else {
+                    bodyClasses.delete(name);
+                }
+            } } },
             createElement: (tag: string) => new Element(tag),
             getElementById: (id: string) => elements[id] ?? new Element('template'),
         },
@@ -56,7 +64,10 @@ function createViewer(initial: ListViewNavigation = {
     const reply = (request: Request, result: Record<string, unknown>) => receive({
         data: { ...request, children: [], next_start: null, ...result },
     });
-    return { get root() { return root.children[0]; }, viewport: root, back, breadcrumbs, status, messages, reply };
+    return {
+        get root() { return root.children[0]; },
+        viewport: root, back, breadcrumbs, status, messages, reply, bodyClasses,
+    };
 }
 
 suite('List viewer', () => {
@@ -143,9 +154,11 @@ suite('List viewer', () => {
         reply(messages[0], { children: [{ label: '$ a', str: 'List of 1', index: 1, viewable: true, has_children: true }] });
         const entry = root.children[0].children[0];
         assert.strictEqual(entry.tag, 'details');
+        assert.strictEqual(entry.children[1].childElementCount, 0);
         assert.strictEqual(messages.length, 1);
         entry.open = true;
         entry.fire('toggle');
+        assert.strictEqual(entry.children[1].childElementCount, 3);
         assert.deepStrictEqual(messages[1].path, [1]);
         reply(messages[1], { children: [{ label: '$ b', str: 'List of 1', index: 2, viewable: true, has_children: true }] });
         entry.open = false;
@@ -198,7 +211,9 @@ suite('List viewer', () => {
     });
 
     test('renders vector values as simple indexed rows', () => {
-        const viewer = createViewer(undefined, true);
+        const viewer = createViewer({
+            title: 'x', path: [], breadcrumbs: [{ label: 'x', path: [] }], vector: true,
+        });
         viewer.reply(viewer.messages[0], {
             children: [{
                 label: '[1]', str: '12.4', index: 1,
@@ -210,6 +225,53 @@ suite('List viewer', () => {
         assert.strictEqual(row.children[0].textContent, '[1]');
         assert.strictEqual(row.children[1].textContent, '12.4');
         assert.ok(!row.children.some(child => child.tag === 'button'));
+    });
+
+    test('vectors share list navigation, Back and cached pages, including late page responses', () => {
+        const rootNavigation = { title: 'x', path: [], breadcrumbs: [{ label: 'x', path: [] }] };
+        const vectorNavigation = {
+            title: 'x$v', path: [1], vector: true,
+            breadcrumbs: [{ label: 'x', path: [] }, { label: 'v', path: [1] }],
+        };
+        const viewer = createViewer(rootNavigation);
+        const { messages, reply, back, bodyClasses } = viewer;
+        reply(messages[0], { children: [{ label: '$ v', index: 1, viewable: true }] });
+        const original = viewer.root;
+        viewer.viewport.scrollTop = 120;
+        const button = original.children[0].children[0].children[0].children.at(-1);
+        assert.ok(button);
+        const click = { preventDefault: () => undefined, stopPropagation: () => undefined };
+        button.fire('click', click);
+        reply(messages[1], { message: 'listview/navigation', navigation: vectorNavigation });
+        const vectorPage = viewer.root;
+        assert.deepStrictEqual(messages[2].path, [1]);
+        assert.ok(bodyClasses.has('vector'));
+        assert.strictEqual(back.disabled, false);
+
+        back.fire('click');
+        reply(messages[3], { message: 'listview/navigation', navigation: rootNavigation });
+        assert.strictEqual(viewer.root, original);
+        assert.strictEqual(viewer.viewport.scrollTop, 120);
+        assert.ok(!bodyClasses.has('vector'));
+        reply(messages[2], {
+            children: [{ label: '[1]', str: '42', index: 1, viewable: false, has_children: false }],
+        });
+
+        button.fire('click', click);
+        reply(messages[4], { message: 'listview/navigation', navigation: vectorNavigation });
+        assert.strictEqual(viewer.root, vectorPage);
+        assert.strictEqual(messages.length, 5);
+        const row = vectorPage.children[0].children[0].children[0];
+        assert.deepStrictEqual(row.children.map(child => child.className), ['label', 'str']);
+        assert.ok(bodyClasses.has('vector'));
+        viewer.breadcrumbs.children[0].fire('click');
+        reply(messages[5], { message: 'listview/navigation', navigation: rootNavigation });
+        assert.strictEqual(viewer.root, original);
+        assert.ok(!bodyClasses.has('vector'));
+        back.fire('click');
+        reply(messages[6], { message: 'listview/navigation', navigation: vectorNavigation });
+        assert.strictEqual(viewer.root, vectorPage);
+        assert.ok(bodyClasses.has('vector'));
     });
 
     test('ignores old viewer responses and hides open buttons for unavailable items', () => {

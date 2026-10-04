@@ -24,13 +24,22 @@ local({
   assign(other, x, envir = .GlobalEnv)
 
   # Exercise the JSON-RPC methods used by both the workspace and list webviews.
+  notifications <- list()
+  read_messages <- function() {
+    messages <- strsplit(processx::conn_read_chars(pipe[[1L]]), "\n", fixed = TRUE)[[1L]]
+    responses <- lapply(messages[nzchar(messages)], jsonlite::fromJSON, simplifyVector = FALSE)
+    notifications <<- Filter(function(message) identical(message$method, "dataview"), responses)
+    responses
+  }
+  notification <- function() {
+    if (length(notifications)) tail(notifications, 1L)[[1L]]$params else NULL
+  }
   request <- function(method, params) {
     sess:::dispatch_message(as.character(jsonlite::toJSON(
       list(jsonrpc = "2.0", id = "list-test", method = method, params = params),
       auto_unbox = TRUE
     )))
-    messages <- strsplit(processx::conn_read_chars(pipe[[1L]]), "\n", fixed = TRUE)[[1L]]
-    responses <- lapply(messages[nzchar(messages)], jsonlite::fromJSON, simplifyVector = FALSE)
+    responses <- read_messages()
     replies <- Filter(function(message) identical(message$id, "list-test"), responses)
     expect_length(replies, 1L)
     expect_null(replies[[1L]]$error)
@@ -100,7 +109,8 @@ local({
     name = table_root,
     path = list(selector(1L, "id"))
   )))
-  vector_id <- id("vector", table_root)
+  vector_id <- id("list", table_root)
+  expect_true(notification()$navigation$vector)
   expect_false(identical(vector_id, root_table_id))
   vector_page <- request("workspace_children", list(
     view_id = vector_id,
@@ -116,6 +126,8 @@ local({
     path = list(selector(2L, "nested"))
   )))
   table_list_id <- id("list", table_root)
+  expect_identical(table_list_id, vector_id)
+  expect_false(notification()$navigation$vector)
   expect_false(identical(table_list_id, root_table_id))
   expect_true(request("listview_navigate", list(
     view_id = table_list_id,
@@ -139,7 +151,7 @@ local({
   utils::View(x$a$df)
   expect_identical(id("table", "x"), direct_table)
   utils::View(seq_len(501L))
-  direct_vector <- id("vector", "seq_len(501L)")
+  direct_vector <- id("list", "seq_len(501L)")
   first_vector_page <- sess:::get_workspace_children(
     view_id = direct_vector,
     start = 1L
@@ -162,6 +174,84 @@ local({
   expect_identical(runtime$dataviews[[text_id]]$file, text_file)
   expect_equal(readLines(text_file), "2L")
   unlink(text_file)
+
+  # Vectors opened from expanded list rows retain the root and every breadcrumb.
+  values <- list(nested = list(v = seq_len(501L)))
+  assign(other, values, envir = .GlobalEnv)
+  expect_true(request("workspace_view", list(name = other)))
+  values_list_id <- id("list", other)
+  vector_navigation <- request("listview_view", list(
+    view_id = values_list_id, path = list(1L), index = 1L
+  ))
+  expect_length(notifications, 0L)
+  expect_true(vector_navigation$vector)
+  expect_equal(vector_navigation$path, list(1L, 1L))
+  expect_equal(vapply(vector_navigation$breadcrumbs, `[[`, "", "label"),
+               c(other, "nested", "v"))
+  expect_identical(runtime$dataviews[[values_list_id]]$data, values)
+  first <- sess:::get_workspace_children(view_id = values_list_id, path = list(1L, 1L))
+  expect_length(first$children, 500L)
+  expect_equal(first$next_start, 501L)
+  last <- request("workspace_children", list(
+    view_id = values_list_id, path = list(1L, 1L), start = 501L
+  ))
+  expect_equal(vapply(last$children, `[[`, "", "str"), "501")
+  parent <- request("listview_navigate", list(view_id = values_list_id, path = list(1L)))
+  expect_length(notifications, 0L)
+  expect_false(parent$vector)
+  expect_equal(parent$path, list(1L))
+  back <- request("listview_navigate", list(view_id = values_list_id, path = list(1L, 1L)))
+  expect_equal(back, vector_navigation)
+  expect_true(request("workspace_view", list(
+    name = other, path = list(selector(1L, "nested"), selector(1L, "v"))
+  )))
+  expect_equal(notification()$view_id, values_list_id)
+  expect_equal(notification()$source, "list")
+  expect_equal(notification()$navigation, vector_navigation)
+  utils::View(values)
+  direct_values_id <- id("list", "values")
+  utils::View(values$nested$v)
+  read_messages()
+  expect_equal(notification()$view_id, direct_values_id)
+  expect_true(notification()$navigation$vector)
+  expect_equal(notification()$navigation$path, list(1L, 1L))
+  expect_equal(vapply(notification()$navigation$breadcrumbs, `[[`, "", "label"),
+               c("values", "nested", "v"))
+
+  # POSIXlt values are vector leaves, including scalar, missing and empty values.
+  dates <- as.POSIXlt(c("2026-01-01 12:34:56", "2026-01-02 01:02:03", NA), tz = "UTC")
+  for (sample in list(dates, dates[1L], dates[3L], dates[FALSE])) {
+    utils::View(sample, title = "POSIXlt values")
+    read_messages()
+    expect_equal(notification()$source, "list")
+    expect_true(notification()$navigation$vector)
+    page <- request("workspace_children", list(view_id = notification()$view_id))
+    expect_length(page$children, length(sample))
+    expected <- format(sample, "%Y-%m-%d %H:%M:%S")
+    expected[is.na(expected)] <- "NA"
+    expect_equal(vapply(page$children, `[[`, "", "str"), expected)
+    expect_false(any(vapply(page$children, `[[`, FALSE, "has_children")))
+    expect_false(any(vapply(page$children, `[[`, FALSE, "viewable")))
+    expect_equal(sess:::workspace_child_count(sample), 0L)
+  }
+  values <- list(dates = dates)
+  assign(other, values, envir = .GlobalEnv)
+  expect_true(request("workspace_view", list(name = other)))
+  page <- request("workspace_children", list(name = other))
+  expect_false(page$children[[1L]]$has_children)
+  expect_true(page$children[[1L]]$viewable)
+  page <- request("workspace_children", list(view_id = values_list_id))
+  expect_false(page$children[[1L]]$has_children)
+  expect_true(page$children[[1L]]$viewable)
+  navigation <- request("listview_view", list(view_id = values_list_id, index = 1L))
+  expect_length(notifications, 0L)
+  expect_true(navigation$vector)
+  expect_equal(navigation$path, list(1L))
+  expect_true(request("workspace_view", list(name = other, path = list(selector(1L, "dates")))))
+  expect_equal(notification()$source, "list")
+  expect_equal(notification()$view_id, values_list_id)
+  expect_equal(notification()$navigation, navigation)
+  expect_false(any(startsWith(ls(runtime$dataview_registry), "vector:")))
 
   # Invalid or unavailable descendants cannot navigate or force active bindings.
   expect_false(sess:::handle_listview_view(list_id, 0L))
@@ -219,4 +309,45 @@ local({
   expect_false(sess:::handle_listview_view("nested_test", child_index, list(2L)))
   expect_equal(page(list(3L))$children[[1L]]$label, "@ child")
   expect_equal(page(list(3L, 1L))$children[[1L]]$label, "$ value")
+})
+
+# Resolve a deep selector path once rather than repeatedly extracting its prefixes.
+local({
+  class_name <- paste0("sess_counted_list_", Sys.getpid())
+  method_name <- paste0("[[.", class_name)
+  extractions <- 0L
+  assign(method_name, function(object, index, ...) {
+    extractions <<- extractions + 1L
+    unclass(object)[[index]]
+  }, envir = .GlobalEnv)
+  on.exit(rm(list = method_name, envir = .GlobalEnv), add = TRUE)
+  object <- 1:3
+  for (i in seq_len(6L)) object <- structure(list(child = object), class = class_name)
+  root <- sess:::listview_state(object, "object", "object")
+  selectors <- rep(list(list(kind = "index", value = 1L)), 6L)
+  context <- sess:::listview_context(root, selectors)
+  expect_equal(extractions, 6L)
+  expect_identical(context$data, 1:3)
+  expect_equal(context$navigation$path, rep(list(1L), 6L), check.attributes = FALSE)
+  expect_equal(context$navigation$title, paste0("object", paste(rep("$child", 6L), collapse = "")))
+})
+
+# Repeated pages use cached environment names without enumerating bindings again.
+local({
+  scans <- 0L
+  location <- sess:::listview_location
+  environment(location) <- new.env(parent = environment(location))
+  environment(location)$workspace_env_names <- function(object) {
+    scans <<- scans + 1L
+    sess:::workspace_env_names(object)
+  }
+  child <- new.env(parent = emptyenv())
+  child$value <- 1:3
+  root <- sess:::listview_state(list(child = child), "object", "object")
+  first <- location(root, list(1L))
+  expect_equal(scans, 1L)
+  child$added <- 4:6
+  again <- location(root, list(1L))
+  expect_equal(scans, 1L)
+  expect_identical(again$names, first$names)
 })

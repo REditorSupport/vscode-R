@@ -10,9 +10,6 @@ function copyResources() {
     fs.mkdirSync(destDir, { recursive: true });
 
     const resources = [
-        './node_modules/jquery/dist/jquery.min.js',
-        './node_modules/jquery.json-viewer/json-viewer/jquery.json-viewer.js',
-        './node_modules/jquery.json-viewer/json-viewer/jquery.json-viewer.css',
         './node_modules/ag-grid-community/dist/ag-grid-community.min.noStyle.js',
         './node_modules/ag-grid-community/styles/ag-grid.min.css',
         './node_modules/ag-grid-community/styles/ag-theme-balham.min.css'

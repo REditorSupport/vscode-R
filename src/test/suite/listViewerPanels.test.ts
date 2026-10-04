@@ -62,13 +62,55 @@ suite('List viewer panels', () => {
         assert.strictEqual(panels[0].title, 'x$a$b');
         await session.showDataView('list', 'json', 'y', '', 'Two', 'test-list-y');
         assert.strictEqual(create.callCount, 3);
-        await session.showDataView('vector', 'json', 'x$id', '', 'Two', 'test-vector-x');
-        assert.strictEqual(create.callCount, 4);
+        await session.showDataView('list', 'json', 'x$id', '', 'Two', 'test-list-x', {
+            title: 'x$id', path: [1], vector: true,
+            breadcrumbs: [{ label: 'x', path: [] }, { label: 'id', path: [1] }],
+        });
+        assert.strictEqual(create.callCount, 3);
+        assert.strictEqual(panels[0].title, 'x$id');
+        await session.showDataView('list', 'json', 'x', '', 'Two', 'test-list-x');
+        assert.strictEqual(create.callCount, 3);
+        assert.strictEqual(panels[0].title, 'x');
         const first = panels.shift();
         assert.ok(first);
         first.dispose();
         await session.showDataView('list', 'json', 'x', '', 'Two', 'test-list-x');
-        assert.strictEqual(create.callCount, 5);
+        assert.strictEqual(create.callCount, 4);
+    });
+
+    test('ignores requests and replies from a previous list page after panel reuse', async () => {
+        let receive: (message: unknown) => Promise<void> = () => Promise.resolve();
+        const postMessage = sandbox.stub().resolves(true);
+        const disposed = new vscode.EventEmitter<void>();
+        const panel = {
+            title: '', viewColumn: vscode.ViewColumn.Two, reveal: sandbox.stub(),
+            webview: {
+                html: '', asWebviewUri: (uri: vscode.Uri) => uri, postMessage,
+                onDidReceiveMessage: (listener: typeof receive) => { receive = listener; },
+            },
+            onDidDispose: disposed.event,
+            dispose: () => { disposed.fire(); disposed.dispose(); },
+        } as unknown as vscode.WebviewPanel;
+        panels.push(panel);
+        sandbox.stub(vscode.window, 'createWebviewPanel').returns(panel);
+        const generation = () => Number(/const generation = (\d+)/.exec(panel.webview.html)?.[1]);
+        await session.showDataView('list', 'json', 'x', '', 'Two', 'test-list-generation');
+
+        for (const message of ['listview/navigate', 'listview/page']) {
+            const request = { message, generation: generation(), requestId: 1, path: [], start: 1 };
+            // sessionRequest settles asynchronously even without an attached R session.
+            const pending = receive(request);
+            await session.showDataView('list', 'json', 'x$updated', '', 'Two', 'test-list-generation');
+            await pending;
+            sinon.assert.notCalled(postMessage);
+            await receive(request);
+            sinon.assert.notCalled(postMessage);
+            assert.strictEqual(panel.title, 'x$updated');
+        }
+        await receive({ message: 'listview/page', generation: generation(), requestId: 2, path: [], start: 1 });
+        sinon.assert.calledOnce(postMessage);
+        const response = postMessage.firstCall.args[0] as { generation: number };
+        assert.strictEqual(response.generation, generation());
     });
 
     test('supported workspace children retain open actions alongside expansion', () => {

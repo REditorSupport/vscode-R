@@ -2,16 +2,17 @@ export interface ListViewNavigation {
     title: string;
     path: number[];
     breadcrumbs: { label: string; path: number[] }[];
+    /** Row presentation at this path; lists and vectors share the same viewer. */
+    vector?: boolean;
 }
 
 /** Script shared by the list webview and its interaction tests. */
 export function getListViewerScript(generation: number, initial: ListViewNavigation = {
     title: '', path: [], breadcrumbs: [{ label: '', path: [] }],
-}, vector = false): string {
+}): string {
     return `
     const vscode = acquireVsCodeApi();
     const generation = ${generation};
-    const vector = ${String(vector)};
     const pending = new Map();
     let nextRequestId = 0;
     const list = document.getElementById('list');
@@ -31,10 +32,11 @@ export function getListViewerScript(generation: number, initial: ListViewNavigat
             else if (JSON.stringify(current.path) !== key) history.push(current);
         }
         current = navigation;
+        document.body.classList.toggle('vector', !!navigation.vector);
         let page = pages.get(key);
         if (!page) {
             const element = document.createElement('div');
-            page = { element, scrollTop: 0, loader: createPage(element, navigation.path) };
+            page = { element, scrollTop: 0, loader: createPage(element, navigation.path, navigation.vector) };
             pages.set(key, page);
         }
         list.replaceChildren(page.element);
@@ -80,7 +82,7 @@ export function getListViewerScript(generation: number, initial: ListViewNavigat
         if (history.length) navigate('listview/navigate', { path: history[history.length - 1].path }, true);
     });
 
-    function createPage(container, path) {
+    function createPage(container, path, vector = false) {
         const rows = document.createElement('div');
         const more = document.createElement('button');
         more.className = 'load-more';
@@ -147,9 +149,12 @@ export function getListViewerScript(generation: number, initial: ListViewNavigat
                         const children = document.createElement('div');
                         children.className = 'children';
                         entry.appendChild(children);
-                        const page = createPage(children, [...path, item.index]);
+                        let page;
                         entry.addEventListener('toggle', () => {
-                            if (entry.open) page.loadOnce();
+                            if (entry.open) {
+                                page ??= createPage(children, [...path, item.index]);
+                                page.loadOnce();
+                            }
                         });
                     }
                     rows.appendChild(entry);

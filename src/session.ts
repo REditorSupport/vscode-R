@@ -220,6 +220,7 @@ interface DataViewRequestMessage {
 }
 
 const dynamicDataViewPanels = new Map<string, vscode.WebviewPanel>();
+const listViewGenerations = new WeakMap<Webview, number>();
 let dynamicDataViewReloadRevision = 0;
 
 function escapeHtml(text: string): string {
@@ -1045,14 +1046,14 @@ export async function showDataView(source: string, type: string, title: string, 
         }
         const content = await getTableHtml(panel.webview, file || undefined, title);
         panel.webview.html = content;
-    } else if (source === 'list' || source === 'vector') {
+    } else if (source === 'list') {
         if (viewId) {
             const existing = dynamicDataViewPanels.get(viewId);
             if (existing) {
                 existing.title = title;
                 existing.reveal(existing.viewColumn, true);
                 existing.webview.html = getListHtml(
-                    existing.webview, title, navigation, source === 'vector'
+                    existing.webview, title, navigation
                 );
                 return;
             }
@@ -1076,6 +1077,9 @@ export async function showDataView(source: string, type: string, title: string, 
                 message?: string; index?: number; start?: number; requestId?: number;
                 path?: number[]; generation?: number;
             }) => {
+                if (message.generation !== listViewGenerations.get(panel.webview)) {
+                    return;
+                }
                 if (!Array.isArray(message.path) || !message.path.every(index => Number.isSafeInteger(index) && index > 0)) {
                     return;
                 }
@@ -1085,6 +1089,9 @@ export async function showDataView(source: string, type: string, title: string, 
                         method: message.message === 'listview/navigate' ? 'listview_navigate' : 'listview_view',
                         params: { view_id: viewId, index: message.index, path: message.path },
                     }) as ListViewNavigation | boolean | undefined;
+                    if (message.generation !== listViewGenerations.get(panel.webview)) {
+                        return;
+                    }
                     const navigation = result && typeof result === 'object' && Array.isArray(result.breadcrumbs)
                         ? result : undefined;
                     if (navigation) {
@@ -1103,6 +1110,9 @@ export async function showDataView(source: string, type: string, title: string, 
                         method: 'workspace_children',
                         params: { view_id: viewId, start: message.start, path: message.path },
                     }) as { children?: unknown; next_start?: number | null } | undefined;
+                    if (message.generation !== listViewGenerations.get(panel.webview)) {
+                        return;
+                    }
                     void panel.webview.postMessage({
                         message: 'listview/page',
                         generation: message.generation,
@@ -1113,9 +1123,11 @@ export async function showDataView(source: string, type: string, title: string, 
                 }
             });
             panel.onDidDispose(() => {
-                if (dynamicDataViewPanels.get(viewId) === panel) {
-                    dynamicDataViewPanels.delete(viewId);
+                listViewGenerations.delete(panel.webview);
+                if (dynamicDataViewPanels.get(viewId) !== panel) {
+                    return;
                 }
+                dynamicDataViewPanels.delete(viewId);
                 void sessionRequest({
                     method: 'dataview_dispose',
                     params: { view_id: viewId },
@@ -1123,7 +1135,7 @@ export async function showDataView(source: string, type: string, title: string, 
             });
         }
         panel.webview.html = getListHtml(
-            panel.webview, title, navigation, source === 'vector'
+            panel.webview, title, navigation
         );
     } else {
         await commands.executeCommand('vscode.open', Uri.file(file), {
@@ -1830,9 +1842,10 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 export function getListHtml(
     webview: Webview,
     title: string,
-    navigation?: ListViewNavigation,
-    vector = false
+    navigation?: ListViewNavigation
 ): string {
+    const generation = ++dynamicDataViewReloadRevision;
+    listViewGenerations.set(webview, generation);
     const icon = new UriIcon('open-preview-codicon');
     const darkIcon = webview.asWebviewUri(icon.dark).toString();
     const lightIcon = webview.asWebviewUri(icon.light).toString();
@@ -1968,18 +1981,18 @@ export function getListHtml(
     }
     </style>
 </head>
-<body class="${vector ? 'vector' : ''}">
+<body>
     <div class="navigation">
         <button id="back" title="Back" aria-label="Back" disabled><span class="back-icon" aria-hidden="true"></span>Back</button>
-        <nav id="breadcrumbs" aria-label="${vector ? 'Vector path' : 'List path'}"></nav>
+        <nav id="breadcrumbs" aria-label="Object path"></nav>
     </div>
     <div id="navigation-status" role="status"></div>
     <div id="list"></div>
     <template id="view-icon"><img class="dark-icon" src="${darkIcon}" alt=""><img class="light-icon" src="${lightIcon}" alt=""></template>
     <script>
-    ${getListViewerScript(++dynamicDataViewReloadRevision, navigation ?? {
+    ${getListViewerScript(generation, navigation ?? {
         title, path: [], breadcrumbs: [{ label: title, path: [] }],
-    }, vector)}
+    })}
     </script>
 </body>
 </html>
