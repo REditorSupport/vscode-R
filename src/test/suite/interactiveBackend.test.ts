@@ -38,15 +38,35 @@ class FakeBackend implements SessionBackend {
     dispose(): Promise<void> { this.disposals++; return Promise.resolve(); }
 }
 
-suite('Interactive backend contract', function () {
+function fakeConfig(root: string): AgentConfig {
+    return { id: randomUUID(), generation: randomUUID(), label: 'Fake runtime', directory: root, storage: path.join(root, 'session'),
+        provider: 'r', backend: { kind: 'fake', options: {} }, supervision: 'test', historyLimit: 50,
+        maxOutputBytes: 1024 * 1024, maxJournalBytes: 16 * 1024 * 1024 };
+}
+
+suite('Interactive backend configuration', () => {
+    test('normalizes legacy configs once and rejects unknown backend kinds', () => {
+        const config = fakeConfig(os.tmpdir());
+        const legacy: AgentConfig = { ...config, backend: undefined, provider: 'arf-existing', rPath: 'R', library: '/private/lib', resources: '/resources', arfEndpoint: '/arf.sock' };
+        const descriptor = backendDescriptor(legacy);
+        assert.strictEqual(descriptor.options.ownership, 'adopted');
+        assert.strictEqual(descriptor.options.frontend, 'arf');
+        const normalized = withBackend(legacy, descriptor);
+        normalized.rPath = '/stale/legacy/R';
+        assert.strictEqual(backendDescriptor(normalized).options.rPath, 'R');
+        assert.throws(() => createBackend(config), /Unsupported Interactive backend/);
+        assert.throws(() => backendDefinition('toString'), /Unsupported/);
+    });
+});
+
+// A fake backend still uses the agent's real Unix socket transport.
+(process.platform === 'win32' ? suite.skip : suite)('Interactive backend contract', function () {
     this.timeout(10000);
     let root: string, backend: FakeBackend, agent: SessionAgent, client: AgentClient, config: AgentConfig;
     let events: SessionEvent[];
     setup(async () => {
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'r-backend-test-'));
-        config = { id: randomUUID(), generation: randomUUID(), label: 'Fake runtime', directory: root, storage: path.join(root, 'session'),
-            provider: 'r', backend: { kind: 'fake', options: {} }, supervision: 'test', historyLimit: 50,
-            maxOutputBytes: 1024 * 1024, maxJournalBytes: 16 * 1024 * 1024 };
+        config = fakeConfig(root);
         backend = new FakeBackend(); events = [];
         agent = new SessionAgent(config, () => backend);
         client = new AgentClient(await agent.start()); await client.connect();
@@ -86,17 +106,6 @@ suite('Interactive backend contract', function () {
         assert.ok(snapshot.manifest.capabilities.restart);
         assert.ok(snapshot.events.some(event => event.type === 'stream' && event.data.text === 'hello'));
         await client.request('stop'); assert.strictEqual((await client.snapshot()).manifest.status, 'exited');
-    });
-    test('normalizes legacy configs once and rejects unknown backend kinds', () => {
-        const legacy: AgentConfig = { ...config, backend: undefined, provider: 'arf-existing', rPath: 'R', library: '/private/lib', resources: '/resources', arfEndpoint: '/arf.sock' };
-        const descriptor = backendDescriptor(legacy);
-        assert.strictEqual(descriptor.options.ownership, 'adopted');
-        assert.strictEqual(descriptor.options.frontend, 'arf');
-        const normalized = withBackend(legacy, descriptor);
-        normalized.rPath = '/stale/legacy/R';
-        assert.strictEqual(backendDescriptor(normalized).options.rPath, 'R');
-        assert.throws(() => createBackend(config), /Unsupported Interactive backend/);
-        assert.throws(() => backendDefinition('toString'), /Unsupported/);
     });
     test('handles completion before transport acknowledgement and deduplicates submissions', async () => {
         let acknowledge!: () => void;
