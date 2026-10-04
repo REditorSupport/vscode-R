@@ -130,7 +130,7 @@ The subsequent [public-example and library validation](r-interactive-public-exam
 
 The full suites exercise lifecycle output ordering, reload restoration, restart generations, stale manifests, source targeting, language-server diagnostics, compressed assets and quotas, table paging, history/export, detached launch, real tmux supervision, and runtime inspection. The renderer harness covers disabled controls, numeric precision, stale replies, image readiness, format selection, layout stability, and disposal. See [the implementation review](r-interactive-review.md) for the earlier feature-by-feature regressions and Positron comparison.
 
-For future latest-release runs, use `npm run pretest` followed by `npx vscode-test --code-version stable`. Enable `VSCR_TEST_TMUX=1` when tmux is installed. Pin an older version only for a separate compatibility check, and verify the actual application version because cached desktop apps can update themselves.
+For future latest-release runs, use `pnpm run pretest` followed by `pnpm exec vscode-test --code-version stable`. Enable `VSCR_TEST_TMUX=1` when tmux is installed. Pin an older version only for a separate compatibility check, and verify the actual application version because cached desktop apps can update themselves.
 
 ## Missing tmux and supervisor recovery (2026-10-01)
 

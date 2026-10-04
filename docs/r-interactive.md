@@ -193,13 +193,16 @@ Cleanup preserves distinct historical plots; it is not an age-based policy that 
 
 ## Development and validation
 
+Install the pinned pnpm version following [the contributor setup](../CONTRIBUTING.md#debugging-the-extension), then run:
+
 ```sh
-npm run pretest
-npm run test:interactive
-VSCR_TEST_PROVIDER=arf ARF_PATH=/path/to/arf npm run test:interactive
-VSCR_TEST_STATIC=1 npm run test:interactive
-VSCR_TEST_TMUX=1 npm run test:interactive
-npx vscode-test --run out/test/suite/interactiveEditor.test.js
+pnpm install --frozen-lockfile
+pnpm run pretest
+pnpm run test:interactive
+VSCR_TEST_PROVIDER=arf ARF_PATH=/path/to/arf pnpm run test:interactive
+VSCR_TEST_STATIC=1 pnpm run test:interactive
+VSCR_TEST_TMUX=1 pnpm run test:interactive
+pnpm exec vscode-test --run out/test/suite/interactiveEditor.test.js
 ```
 
 After compiling, serve the repository on localhost and open `src/test/browser/interactiveRenderer.html` to run the browser renderer regression harness. It checks contiguous paging, stale responses, retry behavior, offline controls, Unicode SVG, SVG/PNG export, menu navigation and disposal, image failures, and sandboxed HTML. Use `?theme=light&width=narrow` or `?theme=contrast` for layout/theme checks; verify native Tab/Shift+Tab and Enter/Space manually. See [the Positron comparison and review](r-interactive-review.md) for the feature priorities and verification results.
