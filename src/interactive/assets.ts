@@ -188,7 +188,7 @@ export class AssetStore {
         if (this.bytes + bytes > this.limit * 0.8 &&
             (this.bytes !== this.lastCollectionBytes || Date.now() - this.lastCollection > 1000)) { this.compact(); }
         if (this.bytes + bytes > this.limit) {
-            throw new Error(`Session asset storage limit reached (${Math.round(this.limit / 1024 / 1024)} MiB). Retained outputs were preserved. Increase r.interactive.maxAssetBytes or use R: Clean Up Interactive Assets.`);
+            throw new Error(`Session asset storage limit reached (${Math.round(this.limit / 1024 / 1024)} MiB). Retained outputs were preserved. Increase r.interactive.maxAssetSizeMiB or use R: Clean Up Interactive Assets.`);
         }
     }
 

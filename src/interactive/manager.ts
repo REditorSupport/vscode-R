@@ -183,8 +183,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                         }).catch(error => this.report(error));
                     }
                 }
-                if (!event.affectsConfiguration('r.interactive.maxAssetBytes')) { return; }
-                const limitBytes = util.config().get<number>('interactive.maxAssetBytes', DEFAULT_MAX_ASSET_BYTES);
+                if (!event.affectsConfiguration('r.interactive.maxAssetSizeMiB')) { return; }
+                const limitBytes = this.retentionLimits().maxAssetBytes;
                 for (const view of this.views.values()) {
                     if (view.client.connected && view.client.control && view.client.manifest.capabilities.assetStorage) {
                         void view.client.request('assetStorage', { limitBytes }).catch(error => this.report(error));
@@ -548,9 +548,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 supervision,
                 plotBackend: util.config().get<AgentConfig['plotBackend']>('interactive.plotBackend', 'auto'),
                 historyLimit: util.config().get<number>('interactive.historyLimit', 100),
-                maxOutputBytes: util.config().get<number>('interactive.maxOutputBytes', 4 * 1024 * 1024),
-                maxAssetBytes: util.config().get<number>('interactive.maxAssetBytes', DEFAULT_MAX_ASSET_BYTES),
-                maxJournalBytes: util.config().get<number>('interactive.maxJournalBytes', 128 * 1024 * 1024) };
+                ...this.retentionLimits() };
             const runtime = await prepareBackendRuntime(config, { extensionPath: this.context.extensionPath, root: this.root, log: text => this.output.append(text) });
             config = runtime.config;
             progress.report({ message: 'Launching the independent session agent' });
@@ -558,6 +556,17 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             this.refresh(); await this.open(manifest);
             return this.views.get(`${manifest.id}:${manifest.generation}`);
         });
+    }
+
+    private retentionLimits(): Required<Pick<AgentConfig, 'maxOutputBytes' | 'maxAssetBytes' | 'maxJournalBytes'>> {
+        const settings = util.config();
+        const mib = 1024 * 1024;
+        // Settings use MiB; the agent and its saved configuration use whole bytes.
+        return {
+            maxOutputBytes: Math.floor(settings.get<number>('interactive.maxOutputSizeMiB', 4) * mib),
+            maxAssetBytes: Math.floor(settings.get<number>('interactive.maxAssetSizeMiB', DEFAULT_MAX_ASSET_BYTES / mib) * mib),
+            maxJournalBytes: Math.floor(settings.get<number>('interactive.maxJournalSizeMiB', 128) * mib),
+        };
     }
 
     private arfCommand(resource?: vscode.Uri): string {
@@ -1375,7 +1384,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             config.backend = backend;
             const runtime = await prepareBackendRuntime(config, { extensionPath: this.context.extensionPath, root: this.root, log: text => this.output.append(text) });
             config = runtime.config;
-            config.maxAssetBytes = util.config().get<number>('interactive.maxAssetBytes', DEFAULT_MAX_ASSET_BYTES);
+            Object.assign(config, this.retentionLimits());
             config.previousGenerations = [...view.history.map(model => model.generation), generation];
             config.generation = randomUUID();
             if (view.disposed) { return; }

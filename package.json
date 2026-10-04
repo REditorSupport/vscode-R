@@ -2390,31 +2390,31 @@
           "default": 100,
           "description": "Recent executions and plots restored in an Interactive window."
         },
-        "r.interactive.maxOutputBytes": {
+        "r.interactive.maxOutputSizeMiB": {
           "tags": ["experimental"],
-          "type": "integer",
+          "type": "number",
           "ignoreSync": true,
-          "minimum": 65536,
-          "maximum": 67108864,
-          "default": 4194304,
-          "description": "Maximum retained text output per execution. Excess output is drained and reported as truncated."
+          "minimum": 0.0625,
+          "maximum": 64,
+          "default": 4,
+          "description": "Maximum retained console text output per execution, in MiB (1 MiB = 1,048,576 bytes). Excess output is drained and reported as truncated. Rich outputs have separate limits. Changes apply to new or restarted sessions."
         },
-        "r.interactive.maxJournalBytes": {
+        "r.interactive.maxJournalSizeMiB": {
           "tags": ["experimental"],
-          "type": "integer",
+          "type": "number",
           "ignoreSync": true,
-          "minimum": 8388608,
-          "maximum": 1073741824,
-          "default": 134217728,
-          "description": "Maximum retained output journal size per R generation. Execution identity records are retained separately."
+          "minimum": 8,
+          "maximum": 1024,
+          "default": 128,
+          "description": "Approximate retained output journal limit per R generation, in MiB (1 MiB = 1,048,576 bytes). Old output is removed when journal segments rotate, roughly every 4 MiB. Earlier generations and execution records are retained separately. Changes apply to new or restarted sessions."
         },
-        "r.interactive.maxAssetBytes": {
+        "r.interactive.maxAssetSizeMiB": {
           "tags": ["experimental"],
-          "type": "integer",
+          "type": "number",
           "ignoreSync": true,
-          "default": 4294967296,
-          "minimum": 1048576,
-          "description": "Hard disk-space limit for plots and HTML assets per Interactive session (4 GiB by default). Automatic cleanup starts at 80% and removes superseded or unreferenced assets while preserving current retained outputs and widget dependencies. Changes apply to connected sessions that support asset management."
+          "default": 1024,
+          "minimum": 1,
+          "description": "Hard disk-space limit for plots and HTML assets per Interactive session, in MiB (1 MiB = 1,048,576 bytes; default 1024 MiB = 1 GiB). Counts stored bytes after compression where supported. Automatic cleanup starts at 80% and removes superseded or unreferenced assets while preserving current retained outputs and widget dependencies. Changes apply to new or restarted sessions, and immediately to connected sessions controlled by this window that support asset management. Lowering the limit below protected output size is rejected."
         }
       }
     },

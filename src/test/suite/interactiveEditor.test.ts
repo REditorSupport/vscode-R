@@ -11,7 +11,7 @@ import { randomUUID } from 'crypto';
 import { SessionAgent } from '../../interactive/agentMain';
 import { AgentClient } from '../../interactive/client';
 import { InteractiveSerializer, DISPLAY_MIME } from '../../interactive/notebook';
-import { AgentConfig, SessionManifest, DEFAULT_MAX_ASSET_BYTES } from '../../interactive/protocol';
+import { AgentConfig, SessionManifest } from '../../interactive/protocol';
 import { AssetStorageStats, exportedAssetName, readAsset } from '../../interactive/assets';
 import type { InteractiveManager } from '../../interactive/manager';
 import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer';
@@ -958,6 +958,10 @@ cat("\n")`;
             notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId && !manifests.some(item => item.id === doc.metadata.rSessionId));
             assert.ok(notebook);
             const manifest = JSON.parse(fs.readFileSync(path.join(root, String(notebook.metadata.rSessionId), 'manifest.json'), 'utf8')) as SessionManifest;
+            const config = JSON.parse(fs.readFileSync(path.join(root, manifest.id, 'config.json'), 'utf8')) as AgentConfig;
+            assert.strictEqual(config.maxOutputBytes, 4 * 1024 * 1024);
+            assert.strictEqual(config.maxJournalBytes, 128 * 1024 * 1024);
+            assert.strictEqual(config.maxAssetBytes, 1024 * 1024 * 1024);
             client = new AgentClient(manifest); await client.connect();
             const snapshot = await client.snapshot();
             assert.strictEqual(snapshot.executions.filter(record => record.code === 'created_target_value <- 123').length, 1);
@@ -1297,20 +1301,25 @@ par(mfrow=c(1,1))`);
     });
     test('applies asset quota settings to connected sessions without restarting R', async () => {
         const configuration = vscode.workspace.getConfiguration('r');
-        const previous = configuration.inspect<number>('interactive.maxAssetBytes')?.globalValue;
+        const previous = configuration.inspect<number>('interactive.maxAssetSizeMiB')?.globalValue;
         const client = new AgentClient(manifests[0]); await client.connect();
+        const pid = manifests[0].rPid;
         try {
-            await configuration.update('interactive.maxAssetBytes', 64 * 1024 * 1024, vscode.ConfigurationTarget.Global);
+            await configuration.update('interactive.maxAssetSizeMiB', 64.1, vscode.ConfigurationTarget.Global);
+            const expectedBytes = Math.floor(64.1 * 1024 * 1024);
             let stats: AssetStorageStats | undefined;
             const deadline = Date.now() + 10000;
             do {
                 stats = await client.request<AssetStorageStats>('assetStorage');
-                if (stats.limitBytes === 64 * 1024 * 1024) { break; }
+                if (stats.limitBytes === expectedBytes) { break; }
                 await new Promise(resolve => setTimeout(resolve, 50));
             } while (Date.now() < deadline);
-            assert.strictEqual(stats.limitBytes, 64 * 1024 * 1024);
+            assert.strictEqual(stats.limitBytes, expectedBytes);
+            assert.strictEqual((await client.snapshot()).manifest.rPid, pid);
+            const config = JSON.parse(fs.readFileSync(path.join(root, manifests[0].id, 'config.json'), 'utf8')) as AgentConfig;
+            assert.strictEqual(config.maxAssetBytes, expectedBytes);
         } finally {
-            await configuration.update('interactive.maxAssetBytes', previous, vscode.ConfigurationTarget.Global);
+            await configuration.update('interactive.maxAssetSizeMiB', previous, vscode.ConfigurationTarget.Global);
             client.close();
         }
     });
@@ -1539,6 +1548,8 @@ par(mfrow=c(1,1))`);
         let client: AgentClient | undefined;
         let executable: sinon.SinonStub | undefined;
         const supervision = vscode.workspace.getConfiguration('r').inspect<string>('interactive.supervision')?.globalValue;
+        const limitSettings = ['interactive.maxOutputSizeMiB', 'interactive.maxJournalSizeMiB', 'interactive.maxAssetSizeMiB'];
+        const previousLimits = limitSettings.map(key => vscode.workspace.getConfiguration('r').inspect<number>(key)?.globalValue);
         try {
             // A cancelled restart must leave the process and transcript alone.
             confirmation.resolves(undefined);
@@ -1612,6 +1623,9 @@ par(mfrow=c(1,1))`);
             assert.strictEqual(oldCell.document.uri.toString(), oldUri);
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
             await vscode.workspace.getConfiguration('r').update('interactive.supervision', 'detached', vscode.ConfigurationTarget.Global);
+            for (const [index, value] of [1.5, 24, 96].entries()) {
+                await vscode.workspace.getConfiguration('r').update(limitSettings[index], value, vscode.ConfigurationTarget.Global);
+            }
             confirmation.resetHistory(); errors.resetHistory();
             await Promise.all([
                 vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
@@ -1636,7 +1650,9 @@ par(mfrow=c(1,1))`);
             assert.deepStrictEqual(config.previousGenerations, [original.generation]);
             assert.notStrictEqual(config.library, path.join(root, 'library'));
             assert.notStrictEqual(config.resources, path.join(process.cwd(), 'R'));
-            assert.strictEqual(config.maxAssetBytes, DEFAULT_MAX_ASSET_BYTES);
+            assert.strictEqual(config.maxOutputBytes, 1.5 * 1024 * 1024);
+            assert.strictEqual(config.maxJournalBytes, 24 * 1024 * 1024);
+            assert.strictEqual(config.maxAssetBytes, 96 * 1024 * 1024);
             assert.strictEqual(config.supervision, 'detached', 'Restart honors the repaired setting instead of the persisted tmux supervisor');
             assert.ok(fs.existsSync(path.join(config.library!, 'sess')));
             const current = (): SessionManifest => JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest;
@@ -1660,7 +1676,14 @@ par(mfrow=c(1,1))`);
             await vscode.commands.executeCommand('r.runSelection');
             await until(() => notebook.getCells().some(cell => cell.document.getText() === source.getText().trim() && cell.executionSummary?.success === true));
             client.close();
+            for (const [index, value] of [0.0625, 40, 96.5].entries()) {
+                await vscode.workspace.getConfiguration('r').update(limitSettings[index], value, vscode.ConfigurationTarget.Global);
+            }
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
+            const restartedConfig = JSON.parse(fs.readFileSync(path.join(root, original.id, 'config.json'), 'utf8')) as AgentConfig;
+            assert.strictEqual(restartedConfig.maxOutputBytes, 65536);
+            assert.strictEqual(restartedConfig.maxJournalBytes, 40 * 1024 * 1024);
+            assert.strictEqual(restartedConfig.maxAssetBytes, 96.5 * 1024 * 1024);
             assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
             assert.strictEqual(notebook.getCells().filter(cell => cell.metadata.rNoticeKind === 'restarted').length, 2);
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
@@ -1694,6 +1717,9 @@ par(mfrow=c(1,1))`);
             confirmation.restore(); errors.restore(); kernels.restore(); change.dispose();
             executable?.restore();
             await vscode.workspace.getConfiguration('r').update('interactive.supervision', supervision, vscode.ConfigurationTarget.Global);
+            for (const [index, key] of limitSettings.entries()) {
+                await vscode.workspace.getConfiguration('r').update(key, previousLimits[index], vscode.ConfigurationTarget.Global);
+            }
             if (!client?.connected) {
                 client = new AgentClient(JSON.parse(fs.readFileSync(path.join(root, original.id, 'manifest.json'), 'utf8')) as SessionManifest);
                 try { await client.connect(); } catch { client.close(); client = undefined; }
