@@ -1,0 +1,224 @@
+import * as assert from 'assert';
+import * as net from 'net';
+import * as path from 'path';
+import * as sinon from 'sinon';
+import * as vscode from 'vscode';
+import * as extension from '../../extension';
+import * as session from '../../session';
+import * as util from '../../util';
+import { mockExtensionContext } from '../common/mockvscode';
+
+interface Request {
+    id: number;
+    method: string;
+    params?: { view_id?: string };
+}
+
+interface Client {
+    id: string;
+    socket: net.Socket;
+    requests: Request[];
+}
+
+interface Panel {
+    panel: vscode.WebviewPanel;
+    receive: (message: unknown) => Promise<void>;
+    replies: Array<{ ok?: boolean; error?: string }>;
+}
+
+async function waitFor(condition: () => boolean): Promise<void> {
+    const deadline = Date.now() + 5000;
+    while (!condition()) {
+        if (Date.now() > deadline) {
+            throw new Error('Timed out waiting for viewer IPC');
+        }
+        await new Promise(resolve => setTimeout(resolve, 10));
+    }
+}
+
+suite('Viewer session ownership', () => {
+    let sandbox: sinon.SinonSandbox;
+    const clients: Client[] = [];
+    const panels: Panel[] = [];
+
+    setup(() => {
+        sandbox = sinon.createSandbox();
+        const root = path.join(__dirname, '..', '..', '..');
+        mockExtensionContext(root, sandbox);
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        sandbox.stub(util, 'config').returns({
+            get: (_key: string, defaultValue: unknown) => defaultValue,
+        } as vscode.WorkspaceConfiguration);
+        session.deploySessionWatcher(root);
+        sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title) => {
+            const disposed = new vscode.EventEmitter<void>();
+            let closed = false;
+            const item: Panel = {
+                panel: undefined as unknown as vscode.WebviewPanel,
+                receive: () => Promise.resolve(), replies: [],
+            };
+            item.panel = {
+                title, viewColumn: vscode.ViewColumn.Two, reveal: sandbox.stub(),
+                webview: {
+                    html: '', asWebviewUri: (uri: vscode.Uri) => uri,
+                    onDidReceiveMessage: (listener: Panel['receive']) => { item.receive = listener; },
+                    postMessage: (reply: Panel['replies'][number]) => {
+                        item.replies.push(reply);
+                        return Promise.resolve(true);
+                    },
+                },
+                onDidDispose: disposed.event,
+                dispose: () => {
+                    if (!closed) {
+                        closed = true;
+                        disposed.fire();
+                        disposed.dispose();
+                    }
+                },
+            } as unknown as vscode.WebviewPanel;
+            panels.push(item);
+            return item.panel;
+        });
+    });
+
+    teardown(async () => {
+        panels.splice(0).forEach(item => { item.panel.dispose(); });
+        for (const client of clients.splice(0)) {
+            await session.cleanupSession(client.id);
+            client.socket.destroy();
+        }
+        await session.shutdownSessionWatcher();
+        sandbox.restore();
+    });
+
+    function notify(client: Client, method: string, params: Record<string, unknown>): void {
+        client.socket.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n');
+    }
+
+    async function attach(id: string): Promise<Client> {
+        const previousSocket = session.activeSession?.socket;
+        const socket = net.createConnection(await session.getGlobalPipePath());
+        const client = { id, socket, requests: [] as Request[] };
+        clients.push(client);
+        let buffer = '';
+        socket.on('data', (data: Buffer) => {
+            buffer += data.toString();
+            let newline: number;
+            while ((newline = buffer.indexOf('\n')) >= 0) {
+                const request = JSON.parse(buffer.slice(0, newline)) as Request;
+                buffer = buffer.slice(newline + 1);
+                client.requests.push(request);
+                let result: unknown = true;
+                switch (request.method) {
+                    case 'workspace': result = { globalenv: {}, search: [], loaded_namespaces: [] }; break;
+                    case 'dataview_init': result = { columns: [], totalRows: 1 }; break;
+                    case 'dataview_page': result = { rows: [{ owner: id }], totalRows: 1, totalUnfiltered: 1 }; break;
+                    case 'workspace_children': result = { children: [], next_start: null }; break;
+                    case 'listview_navigate':
+                    case 'listview_view':
+                        result = { title: 'x$child', path: [1], breadcrumbs: [{ label: 'x', path: [] }] };
+                        break;
+                }
+                socket.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\n');
+            }
+        });
+        await new Promise<void>((resolve, reject) => {
+            socket.once('connect', resolve);
+            socket.once('error', reject);
+        });
+        notify(client, 'attach', {
+            protocol_version: 1, session_id: id, host: 'viewer-test-host', pid: id,
+            version: '4.6.0', tempdir: '/tmp', wd: '/tmp',
+        });
+        await waitFor(() => session.activeSession?.sessionId === id &&
+            session.activeSession.socket !== previousSocket);
+        // A round trip ensures the new connection has completed its handshake.
+        await session.sessionRequest({ method: 'workspace' }, id);
+        return client;
+    }
+
+    async function open(client: Client, source: 'list' | 'table', existing?: Panel): Promise<Panel> {
+        const count = panels.length;
+        const html = existing?.panel.webview.html;
+        notify(client, 'dataview', {
+            source, type: 'json', title: 'x', view_id: `same-${source}-id`,
+            navigation: { title: 'x', path: [], breadcrumbs: [{ label: 'x', path: [] }] },
+        });
+        await waitFor(() => existing ? existing.panel.webview.html !== html : panels.length > count);
+        if (existing) {
+            assert.strictEqual(panels.length, count);
+        }
+        return existing ?? panels[count];
+    }
+
+    async function send(panel: Panel, message: Record<string, unknown>): Promise<void> {
+        const generation = Number(/const generation = (\d+)/.exec(panel.panel.webview.html)?.[1]);
+        await panel.receive({ generation, requestId: 1, path: [], start: 1, ...message });
+    }
+
+    const viewerRequests = (client: Client) => client.requests.filter(request => request.method !== 'workspace');
+
+    test('identical viewer ids stay separate and background views keep their originating session', async () => {
+        const a = await attach('viewer-session-a');
+        const b = await attach('viewer-session-b');
+        const aList = await open(a, 'list');
+        const aTable = await open(a, 'table');
+        const bList = await open(b, 'list');
+        const bTable = await open(b, 'table');
+        assert.strictEqual(panels.length, 4);
+        await open(a, 'list', aList);
+        await open(a, 'table', aTable);
+        assert.strictEqual(session.activeSession?.sessionId, b.id);
+
+        const exercise = async (list: Panel, table: Panel) => {
+            await send(table, { message: 'dataview/request', action: 'init' });
+            await send(table, { message: 'dataview/request', action: 'page', startRow: 0, endRow: 1 });
+            await send(list, { message: 'listview/page' });
+            await send(list, { message: 'listview/navigate' });
+            await send(list, { message: 'listview/view', index: 1 });
+        };
+        const expected = ['dataview_init', 'dataview_page', 'workspace_children', 'listview_navigate', 'listview_view'];
+        await exercise(aList, aTable);
+        assert.deepStrictEqual(viewerRequests(a).map(request => request.method), expected);
+        assert.deepStrictEqual(viewerRequests(b), []);
+        assert.strictEqual(await session.activateSessionById(a.id), true);
+        await exercise(bList, bTable);
+        assert.deepStrictEqual(viewerRequests(b).map(request => request.method), expected);
+
+        bList.panel.dispose();
+        bTable.panel.dispose();
+        await waitFor(() => viewerRequests(b).length === 7);
+        assert.deepStrictEqual(viewerRequests(b).slice(-2).map(request => request.params?.view_id),
+            ['same-list-id', 'same-table-id']);
+        assert.strictEqual(viewerRequests(a).length, 5);
+        await open(a, 'list', aList);
+        await open(a, 'table', aTable);
+    });
+
+    test('viewers follow the same session on reconnect and never fall back after disconnect', async () => {
+        const a = await attach('viewer-reconnect-a');
+        const list = await open(a, 'list');
+        const table = await open(a, 'table');
+        const b = await attach('viewer-reconnect-b');
+        const replacement = await attach(a.id);
+        assert.strictEqual(await session.activateSessionById(b.id), true);
+        await open(replacement, 'list', list);
+        await open(replacement, 'table', table);
+        await send(list, { message: 'listview/page' });
+        await send(table, { message: 'dataview/request', action: 'init' });
+        assert.deepStrictEqual(viewerRequests(replacement).map(request => request.method),
+            ['workspace_children', 'dataview_init']);
+        assert.deepStrictEqual(viewerRequests(a), []);
+        assert.deepStrictEqual(viewerRequests(b), []);
+
+        await session.cleanupSession(a.id);
+        await send(list, { message: 'listview/page' });
+        await send(table, { message: 'dataview/request', action: 'page' });
+        assert.ok(list.replies.at(-1)?.error);
+        assert.strictEqual(table.replies.at(-1)?.ok, false);
+        list.panel.dispose();
+        table.panel.dispose();
+        assert.deepStrictEqual(viewerRequests(b), []);
+        assert.strictEqual(session.activeSession?.sessionId, b.id);
+    });
+});

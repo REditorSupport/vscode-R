@@ -234,8 +234,24 @@ function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, c => map[c]);
 }
 
-function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string, owner: Session | undefined): void {
-    const panelKey = `${owner?.sessionId ?? ''}:${viewId}`;
+function registerDataViewPanel(panel: vscode.WebviewPanel, key: string, viewId: string, sessionId: string | null): void {
+    dynamicDataViewPanels.set(key, panel);
+    panel.onDidDispose(() => {
+        listViewGenerations.delete(panel.webview);
+        if (dynamicDataViewPanels.get(key) !== panel) {
+            return;
+        }
+        dynamicDataViewPanels.delete(key);
+        // Interactive transcripts retain this handle after the expanded viewer closes.
+        if (sessions.get(sessionId ?? '')?.requester) { return; }
+        void sessionRequest({
+            method: 'dataview_dispose',
+            params: { view_id: viewId },
+        }, sessionId);
+    });
+}
+
+function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, sessionId: string | null): void {
     const postResponse = (requestId: number, ok: boolean, result?: unknown, error?: string) => {
         void panel.webview.postMessage({
             message: 'dataview/response',
@@ -257,7 +273,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                 const result = await sessionRequest({
                     method: 'dataview_init',
                     params: { view_id: viewId },
-                }, owner) as DataViewInitResult | undefined;
+                }, sessionId) as DataViewInitResult | undefined;
                 if (!result || !Array.isArray(result.columns) || typeof result.totalRows !== 'number') {
                     throw new Error('Invalid dataview_init response');
                 }
@@ -275,7 +291,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                         sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
                         filterModel: msg.filterModel ?? {},
                     },
-                }, owner) as DataViewPageResult | undefined;
+                }, sessionId) as DataViewPageResult | undefined;
                 if (!result || !Array.isArray(result.rows) ||
                     typeof result.totalRows !== 'number' ||
                     typeof result.totalUnfiltered !== 'number') {
@@ -289,19 +305,6 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
         } catch (e) {
             postResponse(msg.requestId, false, undefined, e instanceof Error ? e.message : String(e));
         }
-    });
-
-    panel.onDidDispose(() => {
-        if (dynamicDataViewPanels.get(panelKey) !== panel) {
-            return;
-        }
-        dynamicDataViewPanels.delete(panelKey);
-        // Interactive transcripts retain this handle after the expanded viewer closes.
-        if (owner?.requester) { return; }
-        void sessionRequest({
-            method: 'dataview_dispose',
-            params: { view_id: viewId },
-        }, owner);
     });
 }
 
@@ -1012,13 +1015,18 @@ export function openExternalBrowser(): void {
     }
 }
 
-export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, viewId?: string, navigation?: ListViewNavigation, owner = activeSession): Promise<void> {
+export async function showDataView(
+    source: string, type: string, title: string, file: string, viewer: string,
+    viewId?: string, navigation?: ListViewNavigation,
+    sessionId: string | null = activeSession?.sessionId ?? null,
+): Promise<void> {
     resDir ??= path.join(extensionContext.extensionPath, 'dist', 'resources');
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, viewId: ${String(viewId ?? '')}`);
+    const panelKey = JSON.stringify([sessionId, viewId]);
 
     if (source === 'table') {
         if (viewId) {
-            const existing = dynamicDataViewPanels.get(`${owner?.sessionId ?? ''}:${viewId}`);
+            const existing = dynamicDataViewPanels.get(panelKey);
             if (existing) {
                 existing.title = title;
                 existing.reveal(existing.viewColumn, true);
@@ -1041,14 +1049,14 @@ export async function showDataView(source: string, type: string, title: string, 
             });
         panel.iconPath = new UriIcon('open-preview');
         if (viewId) {
-            dynamicDataViewPanels.set(`${owner?.sessionId ?? ''}:${viewId}`, panel);
-            attachDynamicDataViewBridge(panel, viewId, title, owner);
+            registerDataViewPanel(panel, panelKey, viewId, sessionId);
+            attachDynamicDataViewBridge(panel, viewId, sessionId);
         }
         const content = await getTableHtml(panel.webview, file || undefined, title);
         panel.webview.html = content;
     } else if (source === 'list') {
         if (viewId) {
-            const existing = dynamicDataViewPanels.get(viewId);
+            const existing = dynamicDataViewPanels.get(panelKey);
             if (existing) {
                 existing.title = title;
                 existing.reveal(existing.viewColumn, true);
@@ -1072,7 +1080,7 @@ export async function showDataView(source: string, type: string, title: string, 
             });
         panel.iconPath = new UriIcon('preview');
         if (viewId) {
-            dynamicDataViewPanels.set(viewId, panel);
+            registerDataViewPanel(panel, panelKey, viewId, sessionId);
             panel.webview.onDidReceiveMessage(async (message: {
                 message?: string; index?: number; start?: number; requestId?: number;
                 path?: number[]; generation?: number;
@@ -1088,7 +1096,7 @@ export async function showDataView(source: string, type: string, title: string, 
                     const result = await sessionRequest({
                         method: message.message === 'listview/navigate' ? 'listview_navigate' : 'listview_view',
                         params: { view_id: viewId, index: message.index, path: message.path },
-                    }) as ListViewNavigation | boolean | undefined;
+                    }, sessionId) as ListViewNavigation | boolean | undefined;
                     if (message.generation !== listViewGenerations.get(panel.webview)) {
                         return;
                     }
@@ -1109,7 +1117,7 @@ export async function showDataView(source: string, type: string, title: string, 
                     const page = await sessionRequest({
                         method: 'workspace_children',
                         params: { view_id: viewId, start: message.start, path: message.path },
-                    }) as { children?: unknown; next_start?: number | null } | undefined;
+                    }, sessionId) as { children?: unknown; next_start?: number | null } | undefined;
                     if (message.generation !== listViewGenerations.get(panel.webview)) {
                         return;
                     }
@@ -1121,17 +1129,6 @@ export async function showDataView(source: string, type: string, title: string, 
                         error: Array.isArray(page?.children) ? undefined : 'Unable to load items. Check the R session and try again.',
                     });
                 }
-            });
-            panel.onDidDispose(() => {
-                listViewGenerations.delete(panel.webview);
-                if (dynamicDataViewPanels.get(viewId) !== panel) {
-                    return;
-                }
-                dynamicDataViewPanels.delete(viewId);
-                void sessionRequest({
-                    method: 'dataview_dispose',
-                    params: { view_id: viewId },
-                });
             });
         }
         panel.webview.html = getListHtml(
@@ -2240,6 +2237,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                         viewer,
                         params.view_id ? String(params.view_id) : undefined,
                         params.navigation as ListViewNavigation | undefined,
+                        socket._sessionId ?? null,
                     );
                 }
             }
@@ -2383,10 +2381,14 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
     }
 }
 
-export async function sessionRequest(data: Record<string, unknown>, target = activeSession): Promise<unknown> {
+export async function sessionRequest(
+    data: Record<string, unknown>, target: Session | string | null | undefined = activeSession,
+): Promise<unknown> {
     try {
-        if (target?.requester) { return await target.requester(data); }
-        const socket = target?.socket ?? pipeClient;
+        const owner = typeof target === 'string' ? sessions.get(target) : target;
+        if (owner?.requester) { return await owner.requester(data); }
+        // An explicitly bound viewer must never fall back to the active session.
+        const socket = owner?.socket ?? (target === undefined ? pipeClient : undefined);
         if (!socket || socket.destroyed) {
             throw new Error('IPC socket is not connected');
         }

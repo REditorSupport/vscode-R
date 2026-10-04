@@ -9,7 +9,7 @@ export interface RuntimeMetadata {
     rPath?: string;
     libraryPaths?: string[];
 }
-export type InspectionMethod = 'workspace' | 'workspace_children' | 'hover' | 'completion' |
+export type InspectionMethod = 'workspace' | 'workspace_children' | 'workspace_view' | 'listview_navigate' | 'listview_view' | 'hover' | 'completion' |
     'dataview_init' | 'dataview_page' | 'dataview_dispose';
 export interface InspectionRequest { method: InspectionMethod; params: Record<string, unknown>; timeout?: number }
 export interface InputReply { value: string }
@@ -56,7 +56,7 @@ export interface SessionBackend {
 export type BackendFactory = (settings: AgentSettings) => SessionBackend;
 
 export function inspectionMethod(value: unknown): InspectionMethod {
-    if (!['workspace', 'workspace_children', 'hover', 'completion', 'dataview_init', 'dataview_page', 'dataview_dispose'].includes(String(value))) {
+    if (!['workspace', 'workspace_children', 'workspace_view', 'listview_navigate', 'listview_view', 'hover', 'completion', 'dataview_init', 'dataview_page', 'dataview_dispose'].includes(String(value))) {
         throw new Error('Unsupported inspection method');
     }
     return value as InspectionMethod;
