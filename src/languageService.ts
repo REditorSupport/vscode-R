@@ -1,7 +1,7 @@
 'use strict';
 
 import * as os from 'os';
-import { dirname } from 'path';
+import { basename, dirname } from 'path';
 import * as net from 'net';
 import { URL } from 'url';
 import * as fs from 'fs';
@@ -10,12 +10,18 @@ import { Disposable, workspace, Uri, TextDocument, WorkspaceConfiguration, Outpu
 import { config, DisposableProcess, getRLibPaths, getRpath, promptToInstallRPackage, spawn, substituteVariables } from './util';
 import { extensionContext } from './extension';
 import { CommonOptions } from 'child_process';
+import { boundSessionForDocument, onDidBindSessionDocument, Session } from './session';
+import { SessionSignatureHelpProvider } from './signatureHelp';
 
 export class LanguageService implements Disposable {
     private readonly clients: Map<string, LanguageClient> = new Map();
     private readonly initSet: Set<string> = new Set();
     private readonly config: WorkspaceConfiguration;
     private readonly outputChannel: OutputChannel;
+    private readonly sessionSignatures = new SessionSignatureHelpProvider();
+    private readonly clientUpdates = new Map<string, Promise<void>>();
+    private readonly listeners: Disposable[] = [];
+    private disposed = false;
 
     constructor() {
         this.outputChannel = window.createOutputChannel('R Language Server');
@@ -24,6 +30,8 @@ export class LanguageService implements Disposable {
     }
 
     dispose(): Thenable<void> {
+        this.disposed = true;
+        this.listeners.forEach(listener => { listener.dispose(); });
         return this.stopLanguageService();
     }
 
@@ -58,21 +66,34 @@ export class LanguageService implements Disposable {
 
     private async createClient(selector: DocumentFilter[],
         cwd: string, workspaceFolder: WorkspaceFolder | undefined, outputChannel: OutputChannel,
-        resource?: Uri): Promise<LanguageClient> {
+        resource?: Uri, target?: Session): Promise<LanguageClient> {
 
         let client: LanguageClient;
+        const virtualOnly = selector.every(filter => 'scheme' in filter
+            && (filter.scheme === 'vscode-notebook-cell' || filter.scheme === 'vscode-interactive-input'));
+        // An unrooted server resolves opaque document paths against cwd, which
+        // makes languageserver discard cells when the session lives under /tmp.
+        // Give virtual documents their actual working directory as the root.
+        const syntheticWorkspace = virtualOnly && !workspaceFolder;
+        if (syntheticWorkspace) {
+            workspaceFolder = { uri: Uri.file(cwd), name: basename(cwd), index: 0 };
+        }
+        const pathlessNotebook = selector.some(filter => 'scheme' in filter && filter.scheme === 'vscode-notebook-cell'
+            && typeof filter.pattern === 'string' && !fs.existsSync(filter.pattern));
 
         const resourceConfig = config(resource);
         const debug = this.config.get<boolean>('lsp.debug');
         const useRenvLibPath = this.config.get<boolean>('useRenvLibPath') ?? false;
-        const rPath = await getRpath(false, resource) || ''; // TODO: Abort gracefully
+        const rPath = target?.rPath || await getRpath(false, resource) || ''; // TODO: Abort gracefully
         if (debug) {
             console.log(`R path: ${rPath}`);
         }
         const use_stdio = this.config.get<boolean>('lsp.use_stdio');
         const env = Object.create(process.env) as NodeJS.ProcessEnv;
         env.VSCR_LSP_DEBUG = debug ? 'TRUE' : 'FALSE';
-        env.VSCR_LIB_PATHS = getRLibPaths();
+        env.VSCR_LSP_VIRTUAL_DOCUMENTS = virtualOnly ? 'TRUE' : 'FALSE';
+        env.VSCR_LSP_SYNTHETIC_WORKSPACE = syntheticWorkspace ? 'TRUE' : 'FALSE';
+        env.VSCR_LIB_PATHS = target?.libraryPaths?.join('\n') ?? getRLibPaths();
         env.VSCR_USE_RENV_LIB_PATH = useRenvLibPath ? 'TRUE' : 'FALSE';
 
         const lang = this.config.get<string>('lsp.lang');
@@ -129,8 +150,17 @@ export class LanguageService implements Disposable {
             uriConverters: {
                 // VS Code by default %-encodes even the colon after the drive letter
                 // NodeJS handles it much better
-                code2Protocol: uri => new URL(uri.toString(true)).toString(),
-                protocol2Code: str => Uri.parse(str)
+                // languageserver interprets vscode-notebook-cell paths as real files.
+                // Unsaved Interactive notebooks have no such file; namespace linters
+                // call normalizePath even with lint_cache disabled. Use an opaque
+                // scheme so the server lints the text like an unsaved input document.
+                // Preserve the full path/fragment and translate every result back.
+                code2Protocol: uri => new URL((uri.scheme === 'vscode-notebook-cell' && pathlessNotebook
+                    ? uri.with({ scheme: 'vscode-r-cell' }) : uri).toString(true)).toString(),
+                protocol2Code: str => {
+                    const uri = Uri.parse(str);
+                    return uri.scheme === 'vscode-r-cell' ? uri.with({ scheme: 'vscode-notebook-cell' }) : uri;
+                }
             },
             workspaceFolder: workspaceFolder,
             outputChannel: outputChannel,
@@ -140,8 +170,20 @@ export class LanguageService implements Disposable {
                 fileEvents: workspace.createFileSystemWatcher('**/*.{R,r}'),
             },
             middleware: {
+                provideSignatureHelp: async (document, position, context, token, next) => {
+                    const result = await next(document, position, context, token);
+                    // An empty LSP result still suppresses other VS Code providers.
+                    // Preserve source/package signatures, then consult this session.
+                    return result?.signatures.length ? result : this.sessionSignatures.provideSignatureHelp(document, position, token);
+                },
+                didChange: (event, next) => {
+                    if (event.document.uri.scheme === 'vscode-interactive-input' && !event.document.getText().trim()) {
+                        client.diagnostics?.delete(event.document.uri);
+                    }
+                    return next(event);
+                },
                 handleDiagnostics: (uri, diagnostics, next) => {
-                    const supportedSchemes = ['file', 'untitled', 'vscode-notebook-cell'];
+                    const supportedSchemes = ['file', 'untitled', 'vscode-notebook-cell', 'vscode-interactive-input'];
                     
                     // Drop diagnostics for unsupported schemes (like git://)
                     if (!supportedSchemes.includes(uri.scheme)) {
@@ -150,6 +192,12 @@ export class LanguageService implements Disposable {
                     
                     // Drop diagnostics for files that no longer exist on disk
                     if (uri.scheme === 'file' && !fs.existsSync(uri.fsPath)) {
+                        return next(uri, []);
+                    }
+                    // An empty prompt is ready for the next command, not an R source file
+                    // needing whitespace repairs. Also reject late replies after it clears.
+                    if (uri.scheme === 'vscode-interactive-input' && !workspace.textDocuments.find(document =>
+                        document.uri.toString() === uri.toString())?.getText().trim()) {
                         return next(uri, []);
                     }
                     
@@ -207,9 +255,11 @@ export class LanguageService implements Disposable {
         }
     }
 
-    private startMultiLanguageService(): void {
+    private startMultiLanguageService(virtualOnly = false): void {
+        const clientTargets = new Map<string, Session | undefined>();
         const didOpenTextDocument = async (document: TextDocument) => {
-            if (document.uri.scheme !== 'file' && document.uri.scheme !== 'untitled' && document.uri.scheme !== 'vscode-notebook-cell') {
+            if (virtualOnly && !['vscode-notebook-cell', 'vscode-interactive-input'].includes(document.uri.scheme)) { return; }
+            if (!['file', 'untitled', 'vscode-notebook-cell', 'vscode-interactive-input'].includes(document.uri.scheme)) {
                 return;
             }
 
@@ -217,7 +267,18 @@ export class LanguageService implements Disposable {
                 return;
             }
 
-            const folder = workspace.getWorkspaceFolder(document.uri);
+            const target = boundSessionForDocument(document.uri);
+            const folder = workspace.getWorkspaceFolder(target ? Uri.file(target.workingDir) : document.uri);
+
+            if (document.uri.scheme === 'vscode-interactive-input') {
+                const key = document.uri.toString();
+                if (!this.checkClient(key)) {
+                    const selector = [{ scheme: 'vscode-interactive-input', language: 'r', pattern: document.uri.fsPath }];
+                    const client = await this.createClient(selector, target?.workingDir ?? folder?.uri.fsPath ?? os.homedir(), folder, this.outputChannel, folder?.uri, target);
+                    this.clients.set(key, client); this.initSet.delete(key);
+                }
+                return;
+            }
 
             // Each notebook uses a server started from parent folder
             if (document.uri.scheme === 'vscode-notebook-cell') {
@@ -228,7 +289,7 @@ export class LanguageService implements Disposable {
                         { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}` },
                     ];
                     const client = await this.createClient(documentSelector,
-                        dirname(document.uri.fsPath), folder, this.outputChannel, folder?.uri ?? document.uri);
+                        target?.workingDir ?? folder?.uri.fsPath ?? dirname(document.uri.fsPath), folder, this.outputChannel, folder?.uri ?? document.uri, target);
                     this.clients.set(key, client);
                     this.initSet.delete(key);
                 }
@@ -307,6 +368,7 @@ export class LanguageService implements Disposable {
 
             // Stop the language server when single file outside workspace is closed, or the above cases.
             const key = this.getKey(document.uri);
+            clientTargets.delete(key);
             const client = this.clients.get(key);
             if (client) {
                 this.clients.delete(key);
@@ -315,10 +377,41 @@ export class LanguageService implements Disposable {
             }
         };
 
-        workspace.onDidOpenTextDocument(didOpenTextDocument);
-        workspace.onDidCloseTextDocument(didCloseTextDocument);
-        workspace.textDocuments.forEach((doc) => void didOpenTextDocument(doc));
-        workspace.onDidChangeWorkspaceFolders((event) => {
+        const updateDocument = (document: TextDocument, restart = false): void => {
+            const key = this.getKey(document.uri);
+            // A native input may already be R when interactive.open returns,
+            // before its owner is bound. Serialize startup and rebinding so its
+            // server uses the owner's R, library paths, and working directory.
+            const update = (this.clientUpdates.get(key) ?? Promise.resolve()).then(async () => {
+                if (this.disposed || document.isClosed) { return; }
+                const target = boundSessionForDocument(document.uri);
+                // Rebinding retained cells can report the same notebook owner
+                // repeatedly. Restart its shared server only once per owner.
+                if (restart && clientTargets.get(key) !== target) {
+                    const client = this.clients.get(key);
+                    this.clients.delete(key); this.initSet.delete(key);
+                    await client?.stop();
+                }
+                await didOpenTextDocument(document);
+                if (this.clients.has(key)) { clientTargets.set(key, target); }
+            }).catch((error: unknown) => {
+                this.initSet.delete(key);
+                this.outputChannel.appendLine(`Failed to start language server: ${String(error)}`);
+            });
+            this.clientUpdates.set(key, update);
+            void update.then(() => {
+                if (this.clientUpdates.get(key) === update) { this.clientUpdates.delete(key); }
+            });
+        };
+        this.listeners.push(onDidBindSessionDocument(uri => {
+            if (!['vscode-notebook-cell', 'vscode-interactive-input'].includes(uri.scheme)) { return; }
+            const document = workspace.textDocuments.find(doc => this.getKey(doc.uri) === this.getKey(uri));
+            if (document) { updateDocument(document, true); }
+        }));
+        this.listeners.push(workspace.onDidOpenTextDocument(document => updateDocument(document)));
+        this.listeners.push(workspace.onDidCloseTextDocument(didCloseTextDocument));
+        workspace.textDocuments.forEach(document => updateDocument(document));
+        this.listeners.push(workspace.onDidChangeWorkspaceFolders((event) => {
             for (const folder of event.removed) {
                 const key = this.getKey(folder.uri);
                 const client = this.clients.get(key);
@@ -328,7 +421,7 @@ export class LanguageService implements Disposable {
                     void client.stop();
                 }
             }
-        });
+        }));
     }
 
     private async startLanguageService(): Promise<void> {
@@ -347,17 +440,18 @@ export class LanguageService implements Disposable {
                 { scheme: 'file', language: 'rmd' },
                 { scheme: 'untitled', language: 'r' },
                 { scheme: 'untitled', language: 'rmd' },
-                { scheme: 'vscode-notebook-cell', language: 'r' },
             ];
 
             const workspaceFolder = workspace.workspaceFolders?.[0];
             const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : os.homedir();
             const client = await this.createClient(documentSelector, cwd, undefined, this.outputChannel, workspaceFolder?.uri);
             this.clients.set('global', client);
+            this.startMultiLanguageService(true);
         }
     }
 
-    private stopLanguageService(): Thenable<void> {
+    private async stopLanguageService(): Promise<void> {
+        await Promise.all(this.clientUpdates.values());
         const promises: Thenable<void>[] = [];
         for (const client of this.clients.values()) {
             promises.push(client.stop());

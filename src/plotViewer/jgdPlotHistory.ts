@@ -85,6 +85,7 @@ export class PlotHistory {
             latest.ops.push(op);
         }
         latest.device = plot.device;
+        if (plot.frameExt) { latest.frameExt = plot.frameExt; }
         this.activeSessionId = sessionId;
         this.emitter.emit('change');
         return true;
@@ -136,6 +137,10 @@ export class PlotHistory {
             return null;
         }
         return session.plots[session.currentIndex] ?? null;
+    }
+
+    latestPlot(sessionId: string): PlotFrame | undefined {
+        return this.sessions.get(sessionId)?.plots.at(-1);
     }
 
     navigatePrevious(): PlotFrame | null {

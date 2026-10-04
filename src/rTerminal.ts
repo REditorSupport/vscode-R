@@ -21,11 +21,14 @@ import {
 } from './session';
 import { config, delay, getRterm, getCurrentWorkspaceFolder, getRPathConfigEntry } from './util';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
+import { tryInteractiveExecution } from './interactive/executionTarget';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 
 export let rTerm: vscode.Terminal | undefined = undefined;
 let rTermResource: vscode.Uri | undefined;
+let startingExecutionTerminal: Promise<vscode.Terminal | undefined> | undefined;
+const terminalSends = new WeakMap<vscode.Terminal, Promise<void>>();
 
 let lastParamsRmdPath: string | undefined;
 let lastParamsRmdVersion: number | undefined;
@@ -96,6 +99,9 @@ export async function runSource(echo: boolean): Promise<void>  {
     if (!wad) {
         return;
     }
+    const target = await tryInteractiveExecution(wad.getText(), wad.uri, { uri: wad.uri.toString(), line: 0, version: wad.version }, !findTerminal());
+    if (target === 'executed' || target === 'cancelled') { return; }
+    if (target === 'createTerminal' && !await createExecutionTerminal(wad.uri)) { return; }
     const isSaved = await util.saveDocument(wad);
     if (!isSaved) {
         return;
@@ -239,7 +245,6 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
 export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri): Promise<boolean> {
     resource = resource ?? getCurrentWorkspaceFolder()?.uri;
     const termOptions = await makeTerminalOptions(resource);
-    void util.promptToInstallSessPackage(termOptions.cwd);
     const termPath = termOptions.shellPath;
     const discoveryFile = termOptions.env?.['SESS_DISCOVERY_FILE'];
     const discardDiscoveryFile = async () => {
@@ -264,6 +269,10 @@ export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri)
     }
     let createdTerminal: vscode.Terminal;
     try {
+        if (!await util.promptToInstallSessPackage(termOptions.cwd)) {
+            await discardDiscoveryFile();
+            return false;
+        }
         createdTerminal = vscode.window.createTerminal(termOptions);
     } catch (error) {
         await discardDiscoveryFile();
@@ -334,29 +343,18 @@ function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
         : getCurrentWorkspaceFolder()?.uri;
 }
 
-export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
+export function findTerminal(): vscode.Terminal | undefined {
     // VSCode Python's extension creates hidden terminal with string 'Deactivate'
     // For now ignore terminals with this string
-    const ignoreTermIdentifier = 'Deactivate';
+    const ignoreTermIdentifier = 'deactivate';
 
     // Filter out terminals to be ignored
     const visibleTerminals = vscode.window.terminals.filter(terminal => {
-        return !terminal.name.toLowerCase().includes(ignoreTermIdentifier);
+        return terminal.exitStatus === undefined && !terminal.name.toLowerCase().includes(ignoreTermIdentifier);
     });
 
     if (config().get('alwaysUseActiveTerminal')) {
-        if (visibleTerminals.length < 1) {
-            void vscode.window.showInformationMessage('There are no open terminals.');
-            return undefined;
-        }
-
-        return vscode.window.activeTerminal;
-    }
-
-    let msg = '[chooseTerminal] ';
-    msg += `A. There are ${vscode.window.terminals.length} terminals: `;
-    for (let i = 0; i < vscode.window.terminals.length; i++){
-        msg += `Terminal ${i}: ${vscode.window.terminals[i].name} `;
+        return visibleTerminals.find(terminal => terminal === vscode.window.activeTerminal);
     }
 
     const rTermNameOptions = ['R', 'R Interactive'];
@@ -367,22 +365,34 @@ export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
 
     if (validRTerminals.length > 0) {
         // If there is an active terminal that is an R terminal, use it
-        if (vscode.window.activeTerminal && rTermNameOptions.includes(vscode.window.activeTerminal.name)) {
+        if (vscode.window.activeTerminal && validRTerminals.includes(vscode.window.activeTerminal)) {
             return vscode.window.activeTerminal;
         }
         // Otherwise, use last valid R terminal
-        const rTerminal = validRTerminals[validRTerminals.length - 1];
-        rTerminal.show(true);
-        return rTerminal;
-    } else {
-        // If no valid R terminals are found, create a new one
-        console.info(msg);
-        await createRTerm(true);
-        await delay(200); // Let RTerm warm up
-        return rTerm;
+        return validRTerminals[validRTerminals.length - 1];
     }
 }
 
+export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
+    const terminal = findTerminal();
+    if (terminal) { terminal.show(true); return terminal; }
+    if (config().get('alwaysUseActiveTerminal')) {
+        void vscode.window.showInformationMessage('There are no open terminals.'); return;
+    }
+    if (!await createRTerm(true)) { return; }
+    await delay(200); // Let RTerm warm up
+    return rTerm;
+}
+
+async function createExecutionTerminal(resource?: vscode.Uri): Promise<vscode.Terminal | undefined> {
+    const pending = startingExecutionTerminal ??= (async () => {
+        if (!await createRTerm(true, resource)) { return; }
+        const terminal = rTerm;
+        await delay(200); return terminal;
+    })();
+    try { return await pending; }
+    finally { if (startingExecutionTerminal === pending) { startingExecutionTerminal = undefined; } }
+}
 
 export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): Promise<void> {
     const selection = getSelection();
@@ -390,6 +400,14 @@ export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): P
         return;
     }
     const textEditor = vscode.window.activeTextEditor;
+    if(useRepl && vscode.debug.activeDebugSession?.type === 'R-Debugger'){
+        await sendRangeToRepl(selection.range);
+    } else{
+        const paramsCmd = textEditor ? getRmdParamsCommand(textEditor.document) : undefined;
+        if (!await runTextInTerm(paramsCmd ? `${paramsCmd}\n${selection.selectedText}` : selection.selectedText)) { return; }
+    }
+    // Cancellation must preserve both the selected code and its cursor position.
+    if (vscode.window.activeTextEditor !== textEditor) { return; }
     if (moveCursor && selection.linesDownToMoveCursor > 0) {
         if (!textEditor) {
             return;
@@ -401,12 +419,6 @@ export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): P
         }
         await vscode.commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
         await vscode.commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
-    }
-    if(useRepl && vscode.debug.activeDebugSession?.type === 'R-Debugger'){
-        await sendRangeToRepl(selection.range);
-    } else{
-        const paramsCmd = textEditor ? getRmdParamsCommand(textEditor.document) : undefined;
-        await runTextInTerm(paramsCmd ? `${paramsCmd}\n${selection.selectedText}` : selection.selectedText);
     }
 }
 
@@ -421,16 +433,37 @@ export async function runChunksInTerm(chunks: vscode.Range[]): Promise<void> {
         .filter((chunk) => chunk.length > 0)
         .join('\n');
     if (text.length > 0) {
-        return runTextInTerm(paramsCmd ? `${paramsCmd}\n${text}` : text);
+        await runTextInTerm(paramsCmd ? `${paramsCmd}\n${text}` : text);
     }
 }
 
-export async function runTextInTerm(text: string, execute: boolean = true): Promise<void> {
-    deferWorkspaceRefresh();
-    const term = await chooseTerminal();
+export async function runTextInTerm(text: string, execute: boolean = true): Promise<boolean> {
+    const document = vscode.window.activeTextEditor?.document;
+    const target = execute && await tryInteractiveExecution(text, document?.uri, document ? {
+        uri: document.uri.toString(), line: vscode.window.activeTextEditor?.selection?.start.line ?? 0, version: document.version,
+    } : undefined, !findTerminal());
+    if (target === 'executed' || target === 'cancelled') { return target === 'executed'; }
+    let term: vscode.Terminal | undefined;
+    if (target === 'createTerminal') {
+        term = await createExecutionTerminal(document?.uri);
+    } else { term = await chooseTerminal(); }
     if (term === undefined) {
-        return;
+        return false;
     }
+    await runTextInTerminal(term, text, execute);
+    return true;
+}
+
+export async function runTextInTerminal(terminal: vscode.Terminal, text: string, execute = true): Promise<void> {
+    const pending = (terminalSends.get(terminal) ?? Promise.resolve()).catch(() => undefined)
+        .then(() => sendToTerminal(terminal, text, execute));
+    terminalSends.set(terminal, pending);
+    try { await pending; }
+    finally { if (terminalSends.get(terminal) === pending) { terminalSends.delete(terminal); } }
+}
+
+async function sendToTerminal(term: vscode.Terminal, text: string, execute: boolean): Promise<void> {
+    deferWorkspaceRefresh();
     if (config().get<boolean>('bracketedPaste')) {
         // Surround with ANSI control characters for bracketed paste mode
         text = `\x1b[200~${text}\x1b[201~`;

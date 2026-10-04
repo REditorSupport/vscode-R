@@ -54,6 +54,12 @@ interface IpcSocket extends net.Socket {
 }
 
 export class Session {
+    public label?: string;
+    public workspaceUnavailable?: string;
+    public execute?: (code: string) => Promise<void>;
+    public rPath?: string;
+    public libraryPaths?: string[];
+    public requester?: (data: Record<string, unknown>) => Promise<unknown>;
     public sessionId: string;
     public host: string;
     public sessVersion: string;
@@ -96,6 +102,82 @@ export let workspaceFile: string;
 const SESS_PROTOCOL_VERSION = 1;
 
 const sessions = new Map<string, Session>();
+const documentSessions = new Map<string, Session>();
+const sessionDocumentBound = new vscode.EventEmitter<Uri>();
+export const onDidBindSessionDocument = sessionDocumentBound.event;
+
+export function sessionForDocument(uri: Uri): Session | undefined {
+    return boundSessionForDocument(uri) ?? activeSession;
+}
+
+export function boundSessionForDocument(uri: Uri): Session | undefined {
+    return documentSessions.get(uri.toString()) ?? (uri.scheme === 'vscode-notebook-cell'
+        ? documentSessions.get(Uri.from({ scheme: uri.scheme, path: uri.path }).toString()) : undefined);
+}
+
+export function bindSessionDocument(uri: Uri, session: Session): void {
+    const previous = boundSessionForDocument(uri);
+    documentSessions.set(uri.toString(), session);
+    if (previous !== session) { sessionDocumentBound.fire(uri); }
+}
+
+export function unbindSessionDocument(uri: Uri): void { documentSessions.delete(uri.toString()); }
+
+export function unregisterSessionTransport(target: Session): void {
+    for (const [uri, owner] of documentSessions) { if (owner === target) { documentSessions.delete(uri); } }
+    sessions.delete(target.sessionId);
+    if (activeSession === target) { void clearActiveSession(); }
+}
+
+function clearActiveSession(): Promise<void> {
+    deferWorkspaceRefresh();
+    workspaceRefreshPending = false;
+    activeSession = undefined;
+    workspaceData = { search: [], loaded_namespaces: [], globalenv: {} };
+    workingDir = '';
+    resetStatusBar();
+    rWorkspace?.refresh();
+    return setContext('rSessionActive', false);
+}
+
+/** Workspace actions must use the process represented by the tree, even after focus changes. */
+export async function executeSessionCode(target: Session, code: string): Promise<void> {
+    if (sessions.get(target.sessionId) !== target || target.workspaceUnavailable) {
+        throw new Error(target.workspaceUnavailable ?? 'This R session is no longer attached. Select an attached session in the Workspace viewer.');
+    }
+    if (target.execute) { await target.execute(code); return; }
+    for (const terminal of window.terminals) {
+        const terminalPid = await terminal.processId;
+        if (terminalPid && terminalSessions.get(String(terminalPid)) === target) {
+            await rTerminal.runTextInTerminal(terminal, code);
+            return;
+        }
+    }
+    throw new Error('This R session has no attached terminal. Attach its terminal or open it in an Interactive window.');
+}
+
+export function updateSessionWorkspace(target: Session, data: WorkspaceData): void {
+    target.workspaceData = data;
+    if (activeSession === target) {
+        void refreshActiveSession(target);
+    }
+}
+
+/** Move document routing to a new process; existing data viewers keep their old owner. */
+export function replaceSessionTransport(previous: Session, next: Session): void {
+    for (const [uri, owner] of documentSessions) { if (owner === previous) { documentSessions.set(uri, next); } }
+    sessions.delete(previous.sessionId);
+    if (activeSession === previous) { activeSession = next; }
+}
+
+export function registerSessionTransport(id: string, host: string, directory: string,
+    requester: (data: Record<string, unknown>) => Promise<unknown>): Session {
+    const target = sessions.get(id) ?? new Session(id, host, '', '', new net.Socket());
+    target.requester = requester;
+    target.workingDir = directory;
+    sessions.set(id, target);
+    return target;
+}
 const terminalSessions = new Map<string, Session>();
 export let activeSession: Session | undefined;
 let activeBrowserUri: Uri | undefined;
@@ -150,7 +232,8 @@ function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, c => map[c]);
 }
 
-function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string): void {
+function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string, owner: Session | undefined): void {
+    const panelKey = `${owner?.sessionId ?? ''}:${viewId}`;
     const postResponse = (requestId: number, ok: boolean, result?: unknown, error?: string) => {
         void panel.webview.postMessage({
             message: 'dataview/response',
@@ -172,7 +255,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                 const result = await sessionRequest({
                     method: 'dataview_init',
                     params: { view_id: viewId },
-                }) as DataViewInitResult | undefined;
+                }, owner) as DataViewInitResult | undefined;
                 if (!result || !Array.isArray(result.columns) || typeof result.totalRows !== 'number') {
                     throw new Error('Invalid dataview_init response');
                 }
@@ -191,7 +274,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                         sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
                         filterModel: msg.filterModel ?? {},
                     },
-                }) as DataViewPageResult | undefined;
+                }, owner) as DataViewPageResult | undefined;
                 if (!result || !Array.isArray(result.rows) ||
                     typeof result.totalRows !== 'number' ||
                     typeof result.totalUnfiltered !== 'number') {
@@ -209,14 +292,16 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
     });
 
     panel.onDidDispose(() => {
-        if (dynamicDataViewPanels.get(viewId) !== panel) {
+        if (dynamicDataViewPanels.get(panelKey) !== panel) {
             return;
         }
-        dynamicDataViewPanels.delete(viewId);
+        dynamicDataViewPanels.delete(panelKey);
+        // Interactive transcripts retain this handle after the expanded viewer closes.
+        if (owner?.requester) { return; }
         void sessionRequest({
             method: 'dataview_dispose',
             params: { view_id: viewId },
-        });
+        }, owner);
     });
 }
 
@@ -662,20 +747,17 @@ function getAttachSessionScriptPath(pipePath: string): string {
 
 function buildAttachSessionScript(pipePath: string, sessPath: string, installSessScriptPath: string): string {
     const backend = resolveBackend();
-    const useHttpgd = backend === 'httpgd' || backend === 'auto' ? 'TRUE' : 'FALSE';
-    const jgd = jgdEnabled(backend);
-    const useJgd = jgd ? 'TRUE' : 'FALSE';
     const jgdSocket = getSessionJgdSocket();
     return [
         'local({',
         `  endpoint <- ${asRStringLiteral(pipePath)}`,
         `  sess_src <- ${asRStringLiteral(sessPath)}`,
         `  install_sess_script <- ${asRStringLiteral(installSessScriptPath)}`,
-        jgdSocket ? `  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})` : '  Sys.unsetenv("JGD_SOCKET")',
-        '  bundled_version <- tryCatch(read.dcf(file.path(sess_src, "DESCRIPTION"))[1, "Version"], error = function(e) NA_character_)',
-        '  installed_version <- suppressWarnings(tryCatch(as.character(utils::packageVersion("sess")), error = function(e) NA_character_))',
-        '  needs_install <- is.na(installed_version) || (!is.na(bundled_version) && utils::compareVersion(installed_version, bundled_version) < 0)',
-        '  if (needs_install) {',
+        ...(backend === 'native' ? [] : [
+            jgdSocket ? `  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})` : '  Sys.unsetenv("JGD_SOCKET")',
+        ]),
+        `  source(${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')).replace(/\\/g, '/'))}, local = TRUE)`,
+        '  if (sess_install_required(sess_src)) {',
         '    if (!file.exists(install_sess_script)) {',
         '      stop(sprintf("install_sess.R not found: %s", install_sess_script))',
         '    }',
@@ -683,7 +765,7 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, installSes
         '    on.exit(Sys.unsetenv(c("VSCODE_R_SESS_PKG_PATH", "VSCODE_R_SESS_REPO")), add = TRUE)',
         '    source(install_sess_script, local = TRUE)',
         '  }',
-        `  sess::connect(endpoint = endpoint, use_httpgd = ${useHttpgd}, use_jgd = ${useJgd})`,
+        `  sess::connect(endpoint = endpoint, plot_backend = ${asRStringLiteral(backend)})`,
         '})',
         '',
     ].join('\n');
@@ -691,7 +773,7 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, installSes
 
 export async function getAttachSessionCommand(): Promise<string> {
     const pipePath = await getGlobalPipePath();
-    const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
+    const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
     const installSessScriptPath = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
     const scriptPath = getAttachSessionScriptPath(pipePath);
     await fs.ensureDir(path.dirname(scriptPath));
@@ -886,13 +968,11 @@ async function runWorkspaceRefresh(): Promise<void> {
 
 export async function updateWorkspace() {
     const requestedSession = activeSession;
-    if (!globalPipePath || !requestedSession) {return;}
+    if ((!globalPipePath && !requestedSession?.requester) || !requestedSession || requestedSession.workspaceUnavailable) {return;}
     try {
-        const response = await sessionRequest({ method: 'workspace' });
-        if (response && activeSession === requestedSession) {
-            workspaceData = response as WorkspaceData;
-            requestedSession.workspaceData = workspaceData;
-            rWorkspace?.refresh();
+        const response = await sessionRequest({ method: 'workspace' }, requestedSession);
+        if (response && sessions.get(requestedSession.sessionId) === requestedSession) {
+            updateSessionWorkspace(requestedSession, response as WorkspaceData);
             console.info('[updateWorkspace] Done');
         }
     } catch (e) {
@@ -932,12 +1012,13 @@ export function openExternalBrowser(): void {
     }
 }
 
-export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, viewId?: string): Promise<void> {
+export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, viewId?: string, owner = activeSession): Promise<void> {
+    resDir ??= path.join(extensionContext.extensionPath, 'dist', 'resources');
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, viewId: ${String(viewId ?? '')}`);
 
     if (source === 'table') {
         if (viewId) {
-            const existing = dynamicDataViewPanels.get(viewId);
+            const existing = dynamicDataViewPanels.get(`${owner?.sessionId ?? ''}:${viewId}`);
             if (existing) {
                 existing.title = title;
                 existing.reveal(ViewColumn[viewer as keyof typeof ViewColumn], true);
@@ -960,8 +1041,8 @@ export async function showDataView(source: string, type: string, title: string, 
             });
         panel.iconPath = new UriIcon('open-preview');
         if (viewId) {
-            dynamicDataViewPanels.set(viewId, panel);
-            attachDynamicDataViewBridge(panel, viewId, title);
+            dynamicDataViewPanels.set(`${owner?.sessionId ?? ''}:${viewId}`, panel);
+            attachDynamicDataViewBridge(panel, viewId, title, owner);
         }
         const content = await getTableHtml(panel.webview, file || undefined, title);
         panel.webview.html = content;
@@ -1402,6 +1483,12 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
         const columns = Array.isArray(init.columns) ? init.columns : [];
         filteredRows = init.totalRows;
         totalRows = init.totalRows;
+        if (init.live) {
+            const info = document.createElement('span');
+            info.textContent = 'Full data';
+            info.title = 'This view retains the full object without a copy. Reference edits may appear here. Reopen from the cell to refresh after edits. Sorting and filtering scan the full data.';
+            document.querySelector('#viewerToolbar').append(info);
+        }
         const bigintFields = prepareViewerColumns(columns);
         updateViewerRowCount(filteredRows, totalRows);
         const rowIndexColumn = columns.find(column => column.field === '0');
@@ -1753,8 +1840,14 @@ import * as rstudioapi from './rstudioapi';
 
 export async function activateSession(session: Session): Promise<void> {
     activeSession = session;
+    const refreshed = refreshActiveSession(session);
+    if (!session.workspaceUnavailable) { scheduleWorkspaceRefresh(); }
+    await refreshed;
+}
+
+async function refreshActiveSession(session: Session): Promise<void> {
     pipeClient = session.socket;
-    globalPipePath = session.pipePath;
+    if (!session.requester) { globalPipePath = session.pipePath; }
     pid = session.pid;
     rVer = session.rVer;
     info = session.info;
@@ -1763,22 +1856,23 @@ export async function activateSession(session: Session): Promise<void> {
     workspaceData = session.workspaceData;
 
     if (sessionStatusBarItem) {
-        sessionStatusBarItem.text = `R ${rVer}: ${pid}`;
-        sessionStatusBarItem.tooltip = `${info.version}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
+        const version = rVer.replace(/^R (?:version )?/, '').replace(/\s+\(.*/, '');
+        sessionStatusBarItem.text = `R ${version}: ${pid}`;
+        sessionStatusBarItem.tooltip = `${info.version || rVer}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
         sessionStatusBarItem.show();
     }
-    await setContext('rSessionActive', true);
     rWorkspace?.refresh();
-    scheduleWorkspaceRefresh();
+    await setContext('rSessionActive', !session.workspaceUnavailable);
 }
 
 /** Activate a connected session by its stable protocol identity. */
 export async function activateSessionById(sessionId: string): Promise<boolean> {
-    if (!enableSessionWatcher || typeof sessionId !== 'string' || !sessionId.trim()) {
+    if (typeof sessionId !== 'string' || !sessionId.trim()) {
         return false;
     }
     const target = sessions.get(sessionId);
-    if (!target || !isCurrentSocket(target.socket) || target.socket.destroyed || !target.socket.writable) {
+    if (!enableSessionWatcher && !target?.requester) { return false; }
+    if (!target || (!target.requester && (!isCurrentSocket(target.socket) || target.socket.destroyed || !target.socket.writable))) {
         return false;
     }
     await activateSession(target);
@@ -2027,7 +2121,11 @@ export async function showHelpNotification(params: Record<string, unknown>): Pro
     }
 }
 
-async function handleRequest(message: Record<string, unknown>, socket: IpcSocket) {
+export async function handleEditorRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
+    return handleRequest({ method, params });
+}
+
+async function handleRequest(message: Record<string, unknown>, socket?: IpcSocket) {
     if (typeof message.method === 'string' && message.method) {
         const method = message.method;
         const params = (message.params as Record<string, unknown>) || {};
@@ -2094,6 +2192,10 @@ async function handleRequest(message: Record<string, unknown>, socket: IpcSocket
             error = { code: -32603, message: String(e) };
         }
 
+        if (!socket) {
+            if (error) { throw new Error(JSON.stringify(error)); }
+            return result;
+        }
         sendToSocket(socket, {
             jsonrpc: '2.0',
             id: message.id,
@@ -2125,21 +2227,14 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
         session.socket.destroy();
     }
     if (activeSession === session) {
-        deferWorkspaceRefresh();
-        workspaceRefreshPending = false;
-        resetStatusBar();
-        activeSession = undefined;
-        workspaceData.globalenv = {};
-        workspaceData.loaded_namespaces = [];
-        workspaceData.search = [];
-        rWorkspace?.refresh();
-        await setContext('rSessionActive', false);
+        await clearActiveSession();
     }
 }
 
-export async function sessionRequest(data: Record<string, unknown>): Promise<unknown> {
+export async function sessionRequest(data: Record<string, unknown>, target = activeSession): Promise<unknown> {
     try {
-        const socket = pipeClient;
+        if (target?.requester) { return await target.requester(data); }
+        const socket = target?.socket ?? pipeClient;
         if (!socket || socket.destroyed) {
             throw new Error('IPC socket is not connected');
         }

@@ -78,7 +78,9 @@ get_workspace_data <- function() {
       NULL
     }
     if (length(obj_names)) {
-      info$names <- obj_names
+      # Automatic workspace refresh should not serialize millions of list names.
+      # Explicit completion and child paging can still inspect the full object.
+      info$names <- head(obj_names, 1000L)
     }
     if (isS4(obj)) {
       info$slots <- methods::slotNames(obj)
@@ -333,7 +335,12 @@ get_column_def <- function(name, field, value) {
   if (!is.null(units)) {
     tooltip <- sprintf("%s, units: %s", tooltip, toString(units))
   }
-  if (inherits(value, "integer64")) {
+  if (!is.null(dim(value))) {
+    # A matrix/array column contains one composite cell per row. Treating its
+    # flattened elements as scalar sort/filter values invents out-of-range rows.
+    type <- "textColumn"
+    filter <- FALSE
+  } else if (inherits(value, "integer64")) {
     if (!requireNamespace("bit64", quietly = TRUE)) {
       stop("Viewing integer64 columns requires the optional 'bit64' package")
     }
@@ -356,7 +363,7 @@ get_column_def <- function(name, field, value) {
     type <- "textColumn"
     filter <- "agTextColumnFilter"
   }
-  sortable <- !is.complex(value) &&
+  sortable <- is.null(dim(value)) && !is.complex(value) &&
     !(is.list(value) && !inherits(value, "POSIXlt")) &&
     !is.raw(value)
   if (identical(field, "0")) {
@@ -419,7 +426,7 @@ dataview_slice <- function(data, row_idx) {
   }
   if (is.matrix(data) && is.object(data)) {
     page <- lapply(seq_len(ncol(data)), function(position) {
-      dataview_column(data, position)[row_idx]
+      data[row_idx, position]
     })
     names(page) <- colnames(data)
     return(as.data.frame(page, optional = TRUE))
@@ -461,8 +468,7 @@ dataview_to_state <- function(data) {
   row_index <- if (is.data.frame(data) && .row_names_info(data) > 0L) {
     rownames(data)
   } else if (is.matrix(data)) {
-    row_index <- rownames(data)
-    if (is.null(row_index)) NULL else trimws(row_index)
+    rownames(data)
   } else {
     NULL
   }
@@ -497,15 +503,16 @@ dataview_columns <- function(state) {
 
 dataview_new_id <- function() {
   repeat {
-    ts <- gsub("[^0-9]", "", format(Sys.time(), "%Y%m%d%H%M%OS6"), perl = TRUE)
-    view_id <- sprintf("dv_%s_%06d", ts, sample.int(999999L, 1L))
+    # Viewing data must neither advance nor initialize the analyst's RNG stream.
+    .sess_env$dataview_sequence <- (.sess_env$dataview_sequence %||% 0) + 1
+    view_id <- sprintf("dv_%d_%.0f", Sys.getpid(), .sess_env$dataview_sequence)
     if (is.null(.sess_env$dataviews) || is.null(.sess_env$dataviews[[view_id]])) {
       return(view_id)
     }
   }
 }
 
-dataview_register <- function(data, view_id = NULL) {
+dataview_register <- function(data, view_id = NULL, live = FALSE) {
   if (is.null(.sess_env$dataviews)) {
     .sess_env$dataviews <- list()
   }
@@ -515,6 +522,8 @@ dataview_register <- function(data, view_id = NULL) {
   }
 
   state <- dataview_to_state(data)
+  state$live <- live
+  state$revision <- .sess_env$dataview_revision %||% 0
   .sess_env$dataviews[[view_id]] <- state
   list(
     view_id = view_id,
@@ -523,11 +532,26 @@ dataview_register <- function(data, view_id = NULL) {
   )
 }
 
-dataview_get_state <- function(view_id) {
+dataview_get_state <- function(view_id, refresh = FALSE) {
   if (is.null(.sess_env$dataviews) || is.null(.sess_env$dataviews[[view_id]])) {
     stop(sprintf("Unknown dataview id: %s", view_id))
   }
-  .sess_env$dataviews[[view_id]]
+  state <- .sess_env$dataviews[[view_id]]
+  if (isTRUE(state$live)) {
+    current <- dataview_to_state(state$data)
+    if (!refresh && !identical(current$columns, state$columns)) {
+      stop("Table columns changed. Reopen Data viewer from the cell to refresh the full table.")
+    }
+    revision <- .sess_env$dataview_revision %||% 0
+    if (refresh || !identical(state$revision, revision) ||
+          !identical(state$total_rows, current$total_rows)) {
+      current$live <- TRUE
+      current$revision <- revision
+      state <- current
+      .sess_env$dataviews[[view_id]] <- state
+    }
+  }
+  state
 }
 
 dataview_column_values <- function(state, position, row_idx = NULL) {
@@ -535,27 +559,72 @@ dataview_column_values <- function(state, position, row_idx = NULL) {
     if (is.null(state$row_index)) {
       return(if (is.null(row_idx)) seq_len(state$total_rows) else row_idx)
     }
-    return(if (is.null(row_idx)) state$row_index else state$row_index[row_idx])
+    values <- if (is.null(row_idx)) state$row_index else state$row_index[row_idx]
+    return(if (is.matrix(state$data)) trimws(values) else values)
   }
 
+  if (!is.null(row_idx) && is.matrix(state$data)) {
+    return(state$data[row_idx, position - 1L])
+  }
   values <- dataview_column(state$data, position - 1L)
   if (is.null(row_idx)) values else values[row_idx]
 }
 
-dataview_format_column <- function(values) {
+# List cells can themselves contain millions of values. Bound traversal before
+# copying, class printing or JSON encoding, while retaining small useful values.
+dataview_preview_text <- function(value) {
+  prefix <- substr(value, 1L, 1001L)
+  long <- !is.na(prefix) & nchar(prefix) > 1000L
+  prefix[long] <- paste0(substr(prefix[long], 1L, 1000L), "… [truncated]")
+  prefix
+}
+
+dataview_cell_preview <- function(value, depth = 0L, budget = new.env(parent = emptyenv())) {
+  if (is.null(budget$remaining)) budget$remaining <- 100L
+  size <- if (is.null(dim(value))) length(value) else prod(dim(value))
+  if (size > budget$remaining || depth >= 3L ||
+        is.environment(value) || isS4(value) || is.function(value) ||
+        (is.list(value) && is.object(value) && !is.data.frame(value) &&
+           !inherits(value, "POSIXlt"))) {
+    shape <- if (is.null(dim(value))) length(value) else dim(value)
+    return(sprintf("<%s [%s]>", class(value)[[1L]], paste(shape, collapse = " x ")))
+  }
+  budget$remaining <- budget$remaining - max(1L, size)
+  if (is.data.frame(value)) {
+    value <- dataview_slice(value, seq_len(nrow(value)))
+    for (i in seq_len(ncol(value))) {
+      if (is.list(value[[i]]) && is.null(dim(value[[i]])) && !inherits(value[[i]], "POSIXlt")) {
+        value[[i]] <- lapply(value[[i]], dataview_cell_preview, depth = depth + 1L, budget = budget)
+      } else if (is.character(value[[i]])) {
+        value[[i]] <- dataview_preview_text(value[[i]])
+      }
+    }
+    return(value)
+  }
+  if (is.list(value) && !is.object(value)) {
+    return(lapply(value, dataview_cell_preview, depth = depth + 1L, budget = budget))
+  }
+  if (is.character(value)) {
+    return(dataview_preview_text(value))
+  }
+  if (is.complex(value)) {
+    formatted <- format(value, trim = TRUE, justify = "none")
+    formatted[is.na(value)] <- NA_character_
+    return(formatted)
+  }
+  value
+}
+
+dataview_format_column <- function(values, truncate = TRUE) {
+  if (is.character(values)) return(if (truncate) dataview_preview_text(values) else values)
   # jsonlite's complex formatter rejects the IPC precision setting, digits = NA.
   if (is.complex(values)) {
     formatted <- format(values, trim = TRUE, justify = "none")
     formatted[is.na(values)] <- NA_character_
     return(formatted)
   }
-  if (is.list(values) && !is.object(values)) {
-    return(lapply(values, function(value) {
-      if (is.complex(value) || (is.list(value) && !is.object(value))) {
-        return(dataview_format_column(value))
-      }
-      value
-    }))
+  if (is.list(values) && is.null(dim(values)) && !inherits(values, "POSIXlt")) {
+    return(lapply(values, dataview_cell_preview))
   }
   if (!is.object(values) || !is.null(dim(values))) {
     return(values)
@@ -700,7 +769,7 @@ dataview_apply_filter_model <- function(state, filter_model, row_idx) {
     return(row_idx)
   }
 
-  matched <- rep(TRUE, length(row_idx))
+  matched <- NULL
 
   for (col_id in names(filter_model)) {
     col_model <- filter_model[[col_id]]
@@ -714,14 +783,14 @@ dataview_apply_filter_model <- function(state, filter_model, row_idx) {
 
     values <- dataview_column_values(state, col_pos, row_idx)
     if (state$columns[[col_pos]]$type == "textColumn") {
-      values <- dataview_format_column(values)
+      values <- dataview_format_column(values, truncate = FALSE)
     }
     column_match <- dataview_filter_values(values, col_model)
     column_match[is.na(column_match)] <- FALSE
-    matched <- matched & column_match
+    matched <- if (is.null(matched)) column_match else matched & column_match
   }
 
-  row_idx[matched]
+  if (is.null(matched)) row_idx else if (is.null(row_idx)) which(matched) else row_idx[matched]
 }
 
 dataview_apply_sort_model <- function(state, sort_model, row_idx) {
@@ -759,10 +828,10 @@ dataview_apply_sort_model <- function(state, sort_model, row_idx) {
     return(row_idx)
   }
 
-  row_order <- seq_along(row_idx)
+  row_order <- NULL
   for (i in rev(seq_along(sort_specs))) {
     spec <- sort_specs[[i]]
-    values <- spec$values[row_order]
+    values <- if (is.null(row_order)) spec$values else spec$values[row_order]
     order_index <- if (inherits(values, "integer64")) {
       bit64::order(
         values,
@@ -777,9 +846,9 @@ dataview_apply_sort_model <- function(state, sort_model, row_idx) {
         method = "radix"
       )
     }
-    row_order <- row_order[order_index]
+    row_order <- if (is.null(row_order)) order_index else row_order[order_index]
   }
-  row_idx[row_order]
+  if (is.null(row_idx)) row_order else row_idx[row_order]
 }
 
 dataview_query_key <- function(sort_model, filter_model) {
@@ -801,8 +870,9 @@ dataview_query_indices <- function(state, sort_model, filter_model) {
     return(NULL)
   }
 
-  row_idx <- seq_len(state$total_rows)
-  row_idx <- dataview_apply_filter_model(state, filter_model, row_idx)
+  # NULL means the original order. Avoid materializing an identity index and
+  # subsetting every full column just to reproduce its existing values.
+  row_idx <- dataview_apply_filter_model(state, filter_model, NULL)
   dataview_apply_sort_model(state, sort_model, row_idx)
 }
 
@@ -837,10 +907,11 @@ dataview_rows <- function(state, row_idx) {
 
 handle_dataview_init <- function(params) {
   view_id <- as.character(params$view_id %||% "")
-  state <- dataview_get_state(view_id)
+  state <- dataview_get_state(view_id, refresh = TRUE)
   list(
     columns = dataview_columns(state),
-    totalRows = state$total_rows
+    totalRows = state$total_rows,
+    live = isTRUE(state$live)
   )
 }
 
@@ -884,12 +955,23 @@ handle_dataview_page <- function(params) {
     }
   }
 
-  list(
+  result <- list(
     rows = dataview_rows(state, page_idx),
     totalRows = total,
     totalUnfiltered = state$total_rows,
     lastRow = total
   )
+  if (isTRUE(params$formatNumbers)) {
+    # Format only the requested page, using the session's digits, scipen and OutDec.
+    # Keep raw rows unchanged for sorting, filtering and full-precision inspection.
+    numeric_fields <- vapply(state$columns, function(column) {
+      column$type == "numericColumn" && column$field != "0"
+    }, logical(1))
+    result$formattedColumns <- lapply(result$rows[numeric_fields], function(values) {
+      I(format(values, trim = TRUE, justify = "none"))
+    })
+  }
+  result
 }
 
 handle_dataview_dispose <- function(params) {

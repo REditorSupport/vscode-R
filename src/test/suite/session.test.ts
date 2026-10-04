@@ -77,6 +77,23 @@ suite('Session Communication', () => {
         sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Active');
     });
 
+    test('replacing an Interactive process moves document bindings while old viewers keep the old requester', async () => {
+        const previous = session.registerSessionTransport('restart-old', 'host', '/project', () => Promise.resolve('old'));
+        const next = session.registerSessionTransport('restart-new', 'host', '/project', () => Promise.resolve('new'));
+        const source = vscode.Uri.file('/project/restart.R');
+        const input = vscode.Uri.from({ scheme: 'vscode-interactive-input', path: '/restart' });
+        try {
+            session.bindSessionDocument(source, previous); session.bindSessionDocument(input, previous);
+            session.replaceSessionTransport(previous, next);
+            assert.strictEqual(session.boundSessionForDocument(source), next);
+            assert.strictEqual(session.boundSessionForDocument(input), next);
+            assert.strictEqual(await previous.requester?.({}), 'old');
+            assert.strictEqual(await next.requester?.({}), 'new');
+            session.unregisterSessionTransport(previous);
+            assert.strictEqual(session.boundSessionForDocument(source), next);
+        } finally { session.unregisterSessionTransport(previous); session.unregisterSessionTransport(next); }
+    });
+
     test('help notification does not open when help panel is disabled', async () => {
         const showHelpForPath = await showHelpWith({ helpPanel: 'Disable' });
 
@@ -105,6 +122,22 @@ suite('Session Communication', () => {
         });
 
         sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Active');
+    });
+
+    test('attached session status uses one R prefix for short and full version strings', async () => {
+        const status = vscode.window.createStatusBarItem();
+        sandbox.stub(extension, 'sessionStatusBarItem').value(status);
+        const target = session.registerSessionTransport('status-version-test', os.hostname(), process.cwd(), () => Promise.resolve({}));
+        target.pid = '92026';
+        target.info.version = 'R version 4.6.1 (2026-06-24)';
+        try {
+            for (const version of ['4.6.1', 'R version 4.6.1 (2026-06-24)']) {
+                target.rVer = version;
+                await session.activateSession(target);
+                assert.strictEqual(status.text, 'R 4.6.1: 92026');
+                assert.ok(String(status.tooltip).includes(target.info.version));
+            }
+        } finally { session.unregisterSessionTransport(target); status.dispose(); }
     });
 
     test('concurrent server initialization and public API calls share one endpoint', async () => {
@@ -243,8 +276,9 @@ suite('Session Communication', () => {
         assert.strictEqual(await api.getConnectionInfo(), undefined);
 
         watcher.value(true);
+        let backend = 'standard';
         const configStub = {
-            get: (key: string) => key === 'plot.backend' ? 'standard' : undefined,
+            get: (key: string) => key === 'plot.backend' ? backend : undefined,
         };
         sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
         await waitFor(() => session.globalPipePath);
@@ -255,6 +289,11 @@ suite('Session Communication', () => {
         assert.strictEqual(connection.endpoint, session.globalPipePath);
         assert.strictEqual(connection.plotBackend, 'standard');
         assert.ok(!('socket' in connection), 'connection info should contain plain contract data only');
+
+        backend = 'native';
+        const nativeConnection = await api.getConnectionInfo();
+        assert.strictEqual(nativeConnection?.plotBackend, 'native');
+        assert.strictEqual(nativeConnection?.jgdSocket, undefined);
     });
 
     test('public session API activates a connected session by id and rejects missing or disconnected sessions', async () => {
@@ -338,7 +377,7 @@ suite('Session Communication', () => {
         assert.ok(rPath, 'R path should be found');
         sandbox.stub(util, 'getRterm').resolves(rPath);
         
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const result = await rTerminal.createRTerm(true);
         assert.ok(result, 'createRTerm should return true');
@@ -441,7 +480,7 @@ suite('Session Communication', () => {
         const rPath = await util.getRterm();
         assert.ok(rPath, 'R path should be found');
         sandbox.stub(util, 'getRterm').resolves(rPath);
-        sandbox.stub(util, 'promptToInstallSessPackage').resolves();
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         // svglite is a Suggests (optional) dependency of the sess package, so it may or
         // may not be present. Detect it before stubbing so the format assertions below
@@ -583,6 +622,11 @@ suite('Session Communication', () => {
         const scriptPath = JSON.parse(commandMatch[1]) as string;
         const scriptContent = await fs.readFile(scriptPath, 'utf8');
         assert.match(scriptContent, /sess::connect\(endpoint = endpoint/);
+        assert.match(scriptContent, /sess_install_required\(sess_src\)/);
+        assert.match(scriptContent, /sess_source\.R/);
+        assert.ok(scriptContent.includes(extension.extensionContext.asAbsolutePath(
+            path.join('dist', 'resources', 'sess')).replace(/\\/g, '/')));
+        assert.doesNotMatch(scriptContent, /packageVersion|compareVersion/);
         assert.strictEqual(path.dirname(scriptPath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach'));
         const scriptStat = await fs.stat(scriptPath);
         if (process.platform !== 'win32') {
@@ -657,6 +701,19 @@ suite('Session Communication', () => {
                 }
             }
         }
+    });
+
+    test('attach script passes the native backend to sess', async () => {
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'plot.backend' ? 'native' : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
+        const command = await session.getAttachSessionCommand();
+        const commandMatch = command.match(/^source\((.*)\)$/);
+        assert.ok(commandMatch);
+        const scriptPath = JSON.parse(commandMatch[1]) as string;
+        const scriptContent = await fs.readFile(scriptPath, 'utf8');
+        assert.match(scriptContent, /sess::connect\(endpoint = endpoint, plot_backend = "native"\)/);
+        assert.doesNotMatch(scriptContent, /Sys\.(?:setenv|unsetenv)\(JGD_SOCKET/);
     });
 
     test('manual recovery targets the selected managed terminal while another session is active', async () => {

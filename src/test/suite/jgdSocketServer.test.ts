@@ -278,5 +278,17 @@ suite('JGD SocketServer', () => {
             assert.strictEqual(resp.width, 42);
             assert.strictEqual(measuredRequests.length, 1);
         });
+
+        test('font measurement uses each device DPI without leaking across connections', async () => {
+            const first = await connect();
+            const second = await connect();
+            server.setMeasureText((request, dpi) => Promise.resolve({ type: 'metrics_response', id: request.id, dpi }));
+            first.send({ type: 'frame', newPage: true, plot: { version: 1,
+                device: { width: 800, height: 600, dpi: 144, bg: 'white' }, ops: [] } });
+            first.send({ type: 'metrics_request', id: 1, kind: 'strWidth', str: 'hello' });
+            second.send({ type: 'metrics_request', id: 2, kind: 'strWidth', str: 'hello' });
+            assert.strictEqual((JSON.parse(await first.readLine()) as { dpi: number }).dpi, 144);
+            assert.strictEqual((JSON.parse(await second.readLine()) as { dpi: number }).dpi, 96);
+        });
     });
 });

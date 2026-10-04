@@ -3,8 +3,11 @@
 !README.md
 !CHANGELOG.md
 !LICENSE
-!R/**
-!sess/**
+!R/*.R
+!R/cppProperties/**
+!R/help/**
+!R/rmarkdown/**
+!R/template/**
 !html/**/*.ejs
 !html/**/*.css
 !html/**/*.js
@@ -15,3 +18,4 @@
 !dist/**/*.js
 !dist/**/*.css
 !dist/**/*.ejs
+!dist/resources/sess/**

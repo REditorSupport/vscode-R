@@ -212,27 +212,28 @@ export async function getConfirmation(prompt: string, confirmation?: string, det
 // executes a given command as shell task
 // is more transparent than background processes without littering the integrated terminals
 // is not intended for actual user interaction
-export async function executeAsTask(name: string, process: string, args?: string[], asProcess?: true): Promise<void>;
-export async function executeAsTask(name: string, command: string, args?: string[], asProcess?: false): Promise<void>;
-export async function executeAsTask(name: string, cmdOrProcess: string, args?: string[], asProcess: boolean = false): Promise<void> {
+export async function executeAsTask(name: string, process: string, args?: string[], asProcess?: true, cwd?: string): Promise<void>;
+export async function executeAsTask(name: string, command: string, args?: string[], asProcess?: false, cwd?: string): Promise<void>;
+export async function executeAsTask(name: string, cmdOrProcess: string, args?: string[], asProcess: boolean = false, cwd?: string): Promise<void> {
     let taskDefinition: vscode.TaskDefinition;
     let taskExecution: vscode.ShellExecution | vscode.ProcessExecution;
     if(asProcess){
         taskDefinition = { type: 'process'};
-        taskExecution = args ? new vscode.ProcessExecution(
+        taskExecution = new vscode.ProcessExecution(
             cmdOrProcess,
-            args
-        ) : new vscode.ProcessExecution(
-            cmdOrProcess
+            args ?? [],
+            { cwd }
         );
     } else {
         taskDefinition = { type: 'shell' };
         const quotedArgs = args && args.map<vscode.ShellQuotedString>(arg => { return { value: arg, quoting: vscode.ShellQuoting.Weak }; });
         taskExecution = quotedArgs ? new vscode.ShellExecution(
             cmdOrProcess,
-            quotedArgs
+            quotedArgs,
+            { cwd }
         ) : new vscode.ShellExecution(
-            cmdOrProcess
+            cmdOrProcess,
+            { cwd }
         );
     }
     const task = new vscode.Task(
@@ -246,8 +247,9 @@ export async function executeAsTask(name: string, cmdOrProcess: string, args?: s
     const taskExecutionRunning = await vscode.tasks.executeTask(task);
 
     const taskDonePromise = new Promise<void>((resolve) => {
-        vscode.tasks.onDidEndTask(e => {
+        const subscription = vscode.tasks.onDidEndTask(e => {
             if (e.execution === taskExecutionRunning) {
+                subscription.dispose();
                 resolve();
             }
         });
@@ -300,17 +302,25 @@ export async function getRPackageVersion(name: string, cwd?: string | URL): Prom
     return result || undefined;
 }
 
-export function compareVersions(v1: string, v2: string): number {
-    const parts1 = v1.split('.').map(Number);
-    const parts2 = v2.split('.').map(Number);
-    const len = Math.max(parts1.length, parts2.length);
-    for (let i = 0; i < len; i++) {
-        const num1 = parts1[i] || 0;
-        const num2 = parts2[i] || 0;
-        if (num1 > num2) {return 1;}
-        if (num1 < num2) {return -1;}
-    }
-    return 0;
+export function readSessSourceRevision(description: string | undefined): string | undefined {
+    const revision = description?.match(/^Config\/vscode-R\/source-revision:[ \t]*(\S+)[ \t]*\r?$/m)?.[1];
+    return revision && /^git-tree:(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision) ? revision : undefined;
+}
+
+export async function getInstalledSessSourceRevision(cwd?: string | URL): Promise<string | undefined> {
+    const helper = extensionContext.asAbsolutePath(path.join('R', 'sess_source.R'));
+    // Use single quotes so this -e expression also works with Windows R.exe.
+    const helperLiteral = `'${helper.replace(/\\/g, '/').replace(/'/g, '\\\'')}'`;
+    // Keep the -e argument on one line for the Windows R.exe launcher.
+    const command = [
+        'local({',
+        `source(${helperLiteral}, local = TRUE);`,
+        'revision <- sess_installed_source_revision();',
+        'if (!is.null(revision)) cat(revision)',
+        '})'
+    ].join(' ');
+    const result = await executeRCommand(command, cwd);
+    return result || undefined;
 }
 
 export function getRLibPaths(): string | undefined {
@@ -564,62 +574,71 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
 }
 
 /**
- * Prompt to install the bundled "sess" package
+ * Prompt to install bundled sess and wait for a requested installation.
+ * Return false if setup fails; declining installation still permits starting R.
  */
 export async function promptToInstallSessPackage(
     cwd?: string | vscode.Uri,
     _config = config,
-    _getRPackageVersion = getRPackageVersion,
-    _readFileSyncSafe = readFileSyncSafe
-): Promise<void> {
+    _getInstalledSessSourceRevision = getInstalledSessSourceRevision,
+    _readFileSyncSafe = readFileSyncSafe,
+    _executeAsTask: (name: string, process: string, args: string[], asProcess: true, cwd?: string) => Promise<void> = executeAsTask
+): Promise<boolean> {
     const resource = resourceFromCwd(cwd);
+    const workingDirectory = cwd instanceof vscode.Uri ? cwd.fsPath : cwd;
     const activeConfig = _config();
     const sessionWatcher = activeConfig.get<boolean>('sessionWatcher');
     if (!sessionWatcher) {
-        return;
+        return true;
     }
 
-    const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
+    const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
     const descriptionPath = path.join(sessPath, 'DESCRIPTION');
     const descriptionContent = _readFileSyncSafe(descriptionPath);
-    const match = descriptionContent?.match(/^Version:\s*(.+)$/m);
-    const bundledVersion = match ? match[1] : undefined;
+    const bundledRevision = readSessSourceRevision(descriptionContent);
+    if (!bundledRevision) {
+        void vscode.window.showErrorMessage('Bundled sess has no valid source revision. Rebuild or reinstall the vscode-R extension.');
+        return false;
+    }
 
-    const installedVersion = await _getRPackageVersion('sess', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
-
-    if (installedVersion && bundledVersion && compareVersions(installedVersion, bundledVersion) >= 0) {
-        return; // Already up to date
-    } else if (installedVersion && !bundledVersion) {
-        return; // Cannot determine bundled version, assume OK
+    const installedRevision = await _getInstalledSessSourceRevision(workingDirectory);
+    if (installedRevision === bundledRevision) {
+        return true;
     }
 
     const installSessScript = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
-    
-    let installMsg = 'R package "sess" (shipped with vscode-R) is required for the session watcher to work. Do you want to install it?';
-    if (installedVersion && bundledVersion && compareVersions(installedVersion, bundledVersion) < 0) {
-        installMsg = `A newer version of R package "sess" (${bundledVersion}) is available (installed: ${installedVersion}). Do you want to update it?`;
-    }
+    const installMsg = installedRevision
+        ? 'The installed "sess" package does not match this build of vscode-R. Install the bundled copy?'
+        : 'The R package "sess" bundled with this build of vscode-R is required for the session watcher to work. Do you want to install it?';
 
-    await vscode.window.showErrorMessage(installMsg, 'Yes', 'No')
-        .then(async function (select) {
-            if (select === 'Yes') {
-                const rPath = await getRpath(false, resource);
-                if (!rPath) {
-                    void vscode.window.showErrorMessage('R path not set', 'OK');
-                    return;
-                }
-                const repo = await getCranUrl('', cwd instanceof vscode.Uri ? cwd.fsPath : cwd);
-                const args = [
-                    '--silent',
-                    '--no-echo',
-                    '--no-save',
-                    '--no-restore',
-                    '-f', installSessScript,
-                    '--args', sessPath, repo
-                ];
-                void executeAsTask('Install "sess" package', rPath, args, true);
-            }
-        });
+    const select = await vscode.window.showWarningMessage(installMsg, 'Yes', 'No');
+    if (select !== 'Yes') {
+        return true;
+    }
+    const rPath = await getRpath(false, resource);
+    if (!rPath) {
+        return false;
+    }
+    const repo = await getCranUrl('', workingDirectory);
+    const args = [
+        '--silent',
+        '--no-echo',
+        '--no-save',
+        '--no-restore',
+        `--file=${installSessScript}`,
+        '--args', sessPath, repo
+    ];
+    try {
+        await _executeAsTask('Install "sess" package', rPath, args, true, workingDirectory);
+        if (await _getInstalledSessSourceRevision(workingDirectory) !== bundledRevision) {
+            void vscode.window.showErrorMessage('The bundled "sess" package was not installed successfully. Check the installation task output and try starting R again.');
+            return false;
+        }
+        return true;
+    } catch (error) {
+        void vscode.window.showErrorMessage(`Could not install the bundled "sess" package: ${catchAsError(error).message}`);
+        return false;
+    }
 }
 
 /**

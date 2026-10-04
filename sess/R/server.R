@@ -3,16 +3,32 @@
 #' @param endpoint Character. Local named pipe / Unix domain socket endpoint.
 #'   If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE.
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation. Defaults to TRUE.
-#' @param use_httpgd Logical. Use httpgd for plotting if available. Defaults to TRUE.
-#' @param use_jgd Logical. Use jgd for plotting if available. Defaults to FALSE.
+#' @param use_httpgd Deprecated. Logical. Use httpgd for plotting if available.
+#'   NULL means unspecified; legacy calls default to TRUE. Use `plot_backend` instead.
+#' @param use_jgd Deprecated. Logical. Use jgd for plotting if available.
+#'   NULL means unspecified; legacy calls default to FALSE. Use `plot_backend` instead.
+#' @param plot_backend Plot backend: `auto`, `jgd`, `httpgd`, `standard`, or
+#'   `native`. NULL also selects `auto`. Deprecated flags select the backend
+#'   only when this argument is omitted.
 #' @details When SESS_DISCOVERY_FILE describes the connected endpoint, an
 #'   unexpected disconnect waits for a replacement endpoint in that file and
 #'   reconnects with the same runtime options and session identity. The optional
-#'   discovery jgdSocket string updates JGD_SOCKET when use_jgd is TRUE; an empty
+#'   discovery jgdSocket string updates JGD_SOCKET when the resolved backend
+#'   includes jgd; an empty
 #'   string clears it, and an omitted field leaves it unchanged. Set
 #'   `options(sess.quiet = TRUE)` to suppress the successful connection message.
 #' @export
-connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
+connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = NULL,
+                    use_jgd = NULL,
+                    plot_backend = c("auto", "jgd", "httpgd", "standard", "native")) {
+  has_httpgd <- !is.null(use_httpgd)
+  has_jgd <- !is.null(use_jgd)
+  .warn_deprecated_plot_args(has_httpgd, has_jgd)
+  plot_backend <- if (missing(plot_backend) && (has_httpgd || has_jgd)) {
+    .legacy_plot_backend(use_httpgd, use_jgd)
+  } else {
+    .resolve_plot_backend(plot_backend)
+  }
   # Invalidate poll callbacks and restore a previous runtime before reconnecting.
   .transport_disconnect(silent = TRUE)
   .sess_env$con <- NULL
@@ -39,11 +55,10 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
   # endpoints from the generated attach script. Never redirect an unrelated client.
   discovery <- if (nzchar(discovery_file)) .read_discovery(discovery_file) else NULL
   if (!is.null(discovery) && identical(discovery$endpoint, endpoint)) {
-    .configure_discovery_jgd(discovery, use_jgd)
+    .configure_discovery_jgd(discovery, plot_backend %in% c("auto", "jgd"))
     .sess_env$reconnect <- list(
       path = discovery_file, endpoint = endpoint,
-      options = list(use_rstudioapi = use_rstudioapi,
-                     use_httpgd = use_httpgd, use_jgd = use_jgd)
+      options = list(use_rstudioapi = use_rstudioapi, plot_backend = plot_backend)
     )
   }
 
@@ -93,13 +108,9 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
   connected <- do_connect()
 
   if (is.na(use_rstudioapi)) use_rstudioapi <- TRUE
-  if (is.na(use_httpgd)) use_httpgd <- TRUE
-  if (is.na(use_jgd)) use_jgd <- FALSE
   if (isTRUE(connected) && !is.null(.sess_env$con)) {
     tryCatch(
-      runtime_start(use_rstudioapi = use_rstudioapi,
-                    use_httpgd = use_httpgd,
-                    use_jgd = use_jgd),
+      runtime_start(use_rstudioapi = use_rstudioapi, plot_backend = plot_backend),
       error = function(e) {
         phase <- .sess_env$runtime_start_phase
         error_call <- conditionCall(e)
@@ -231,8 +242,8 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
 }
 
 # Discovery configures only the optional JGD renderer, never arbitrary R state.
-.configure_discovery_jgd <- function(discovery, use_jgd) {
-  if (!isTRUE(use_jgd) || is.null(discovery$jgdSocket)) return(invisible(NULL))
+.configure_discovery_jgd <- function(discovery, jgd_enabled) {
+  if (!isTRUE(jgd_enabled) || is.null(discovery$jgdSocket)) return(invisible(NULL))
   if (nzchar(discovery$jgdSocket)) {
     Sys.setenv(JGD_SOCKET = discovery$jgdSocket)
   } else {
@@ -246,6 +257,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
   if (is.null(host) || is.na(host)) host <- ""
   list(
     protocol_version = 1L,
+    interactive_token = .sess_env$interactive_token,
     sess_version = as.character(utils::packageVersion("sess")),
     session_id = .session_id(),
     host = unname(host),
@@ -278,7 +290,8 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = TRUE, u
           !identical(endpoint, settings$endpoint)) {
       # Read endpoint and renderer from one snapshot, even if the file is
       # replaced again while connect() runs.
-      .configure_discovery_jgd(discovery, settings$options$use_jgd)
+      .configure_discovery_jgd(discovery,
+                               settings$options$plot_backend %in% c("auto", "jgd"))
       .sess_env$reconnecting <- TRUE
       tryCatch(
         do.call(connect, c(list(endpoint = endpoint), settings$options)),
@@ -426,6 +439,16 @@ dispatch_message <- function(line) {
   } else if (has_method && has_id) {
     # Request from vscode → R must reply
     handlers <- list(
+      "interactive_execute" = function(p) {
+        if (!isTRUE(.sess_env$interactive_worker)) stop("Not a managed worker")
+        .sess_env$interactive_queue <- c(.sess_env$interactive_queue, list(p))
+        TRUE
+      },
+      "interactive_stop" = function(p) {
+        if (!isTRUE(.sess_env$interactive_worker)) interactive_stop()
+        .sess_env$interactive_stop <- TRUE
+        TRUE
+      },
       "workspace" = function(p) get_workspace_data(),
       "workspace_children" = function(p) get_workspace_children(p$name, p$path, p$start),
       "hover" = function(p) handle_hover(p$expr),
@@ -445,6 +468,11 @@ dispatch_message <- function(line) {
         error = function(e) {
           rpc_reply(payload$id, error = list(code = -32603L, message = conditionMessage(e)))
           warning(sprintf("[sess] Error in handler for '%s': %s", payload$method, e$message))
+        },
+        interrupt = function(e) {
+          # Return a terminal reply without unwinding poll_connection(), which
+          # must reschedule itself and dispatch the remaining buffered requests.
+          rpc_reply(payload$id, error = list(code = -32000L, message = "R request interrupted"))
         }
       )
     } else {
