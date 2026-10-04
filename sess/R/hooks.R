@@ -2,17 +2,17 @@
 #'
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation.
 #' @param use_httpgd Deprecated. Logical. Enable httpgd plot device if available.
-#'   Use `plot_backend` instead.
+#'   NULL means unspecified; legacy calls default to TRUE. Use `plot_backend` instead.
 #' @param use_jgd Deprecated. Logical. Enable jgd plot device if available.
-#'   Use `plot_backend` instead.
+#'   NULL means unspecified; legacy calls default to FALSE. Use `plot_backend` instead.
 #' @param plot_backend Plot backend: `auto`, `jgd`, `httpgd`, `standard`, or
 #'   `native`. NULL also selects `auto`. Deprecated flags select the backend
 #'   only when this argument is omitted.
 #' @export
-register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE,
+register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = NULL, use_jgd = NULL,
                            plot_backend = c("auto", "jgd", "httpgd", "standard", "native")) {
-  has_httpgd <- !missing(use_httpgd)
-  has_jgd <- !missing(use_jgd)
+  has_httpgd <- !is.null(use_httpgd)
+  has_jgd <- !is.null(use_jgd)
   .warn_deprecated_plot_args(has_httpgd, has_jgd)
   backend <- if (missing(plot_backend) && (has_httpgd || has_jgd)) {
     .legacy_plot_backend(use_httpgd, use_jgd)
@@ -38,8 +38,8 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
 }
 
 .legacy_plot_backend <- function(use_httpgd, use_jgd) {
-  if (is.na(use_httpgd)) use_httpgd <- TRUE
-  if (is.na(use_jgd)) use_jgd <- FALSE
+  if (is.null(use_httpgd) || is.na(use_httpgd)) use_httpgd <- TRUE
+  if (is.null(use_jgd) || is.na(use_jgd)) use_jgd <- FALSE
   if (use_jgd && use_httpgd) "auto" else if (use_jgd) "jgd" else
     if (use_httpgd) "httpgd" else "standard"
 }

@@ -53,7 +53,9 @@ sess::connect(
 If `plot_backend` is omitted, `sess::connect()` uses `auto`. The VS Code extension
 passes its configured backend explicitly. Calls that supply the deprecated
 `use_httpgd` or `use_jgd` arguments still use those values when `plot_backend`
-is omitted.
+is omitted. These deprecated arguments default to `NULL`, meaning unspecified.
+When either is non-NULL, the unspecified flag uses its legacy default
+(`use_httpgd = TRUE`, `use_jgd = FALSE`). If both are NULL, the backend is `auto`.
 
 If `endpoint` is omitted, `connect()` resolves it in this order:
 
@@ -137,7 +139,8 @@ In VS Code, this is controlled by the `r.plot.backend` setting.
 hooks, plot task callbacks, and devices untouched. The `standard` backend continues
 to use the static plot viewer. When `plot_backend` is omitted, the existing
 `use_httpgd`/`use_jgd` arguments keep their previous meanings, but are
-deprecated and warn when supplied explicitly. Use `plot_backend` for new code.
+deprecated and warn when supplied with non-NULL values, including `FALSE`.
+Use `plot_backend` for new code.
 
 ### Options and environment variables
 

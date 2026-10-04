@@ -83,19 +83,71 @@ local({
 })
 
 local({
-  env <- new.env(parent = asNamespace("sess"))
-  env$connect <- sess::connect
-  environment(env$connect) <- env
-  env$.resolve_endpoint <- function(...) ""
-  warnings <- character()
-  invisible(capture.output(withCallingHandlers(
-    env$connect(use_httpgd = FALSE),
-    warning = function(w) {
-      warnings <<- c(warnings, conditionMessage(w))
-      invokeRestart("muffleWarning")
+  # Exercise both public entry points without starting graphics or connecting
+  # to a server. NULL can also be forwarded by wrappers as an unspecified flag.
+  cases <- list(
+    list(args = list(), backend = "auto", deprecated = character()),
+    list(args = list(use_httpgd = NULL, use_jgd = NULL), backend = "auto",
+         deprecated = character()),
+    list(args = list(use_httpgd = TRUE), backend = "httpgd", deprecated = "use_httpgd"),
+    list(args = list(use_httpgd = FALSE), backend = "standard", deprecated = "use_httpgd"),
+    list(args = list(use_jgd = TRUE), backend = "auto", deprecated = "use_jgd"),
+    list(args = list(use_jgd = FALSE), backend = "httpgd", deprecated = "use_jgd"),
+    list(args = list(use_httpgd = NULL, use_jgd = TRUE), backend = "auto",
+         deprecated = "use_jgd"),
+    list(args = list(use_httpgd = FALSE, use_jgd = NULL), backend = "standard",
+         deprecated = "use_httpgd"),
+    list(args = list(use_httpgd = FALSE, use_jgd = TRUE), backend = "jgd",
+         deprecated = c("use_httpgd", "use_jgd")),
+    list(args = list(use_httpgd = FALSE, use_jgd = FALSE), backend = "standard",
+         deprecated = c("use_httpgd", "use_jgd")),
+    list(args = list(use_httpgd = NA, use_jgd = NA), backend = "httpgd",
+         deprecated = c("use_httpgd", "use_jgd")),
+    list(args = list(use_httpgd = FALSE, plot_backend = "native"), backend = "native",
+         deprecated = "use_httpgd"),
+    list(args = list(use_httpgd = FALSE, plot_backend = NULL), backend = "auto",
+         deprecated = "use_httpgd")
+  )
+  for (entry_point in c("connect", "register_hooks")) {
+    env <- new.env(parent = asNamespace("sess"))
+    entry <- getExportedValue("sess", entry_point)
+    environment(entry) <- env
+    selected <- NULL
+    env$.legacy_plot_backend <- function(...) {
+      selected <<- sess:::.legacy_plot_backend(...)
+      selected
     }
-  )))
-  expect_true(any(grepl("use_httpgd is deprecated", warnings, fixed = TRUE)))
+    env$.resolve_plot_backend <- function(...) {
+      selected <<- sess:::.resolve_plot_backend(...)
+      selected
+    }
+    env$runtime_start <- function(use_rstudioapi, plot_backend) {
+      selected <<- plot_backend
+    }
+    env$.resolve_endpoint <- function(...) ""
+    for (case in cases) {
+      selected <- NULL
+      warnings <- character()
+      withCallingHandlers(
+        do.call(entry, c(list(use_rstudioapi = FALSE), case$args)),
+        warning = function(w) {
+          msg <- conditionMessage(w)
+          if (entry_point != "connect" ||
+                msg != "[sess] Connection info not available. Cannot connect to VS Code.") {
+            warnings <<- c(warnings, msg)
+          }
+          invokeRestart("muffleWarning")
+        }
+      )
+      expect_equal(selected, case$backend)
+      expect_length(warnings, as.integer(length(case$deprecated) > 0L))
+      if (length(case$deprecated)) {
+        expect_true(grepl(paste(case$deprecated, collapse = " and "),
+                         warnings[[1L]], fixed = TRUE))
+        expect_true(grepl("deprecated; use plot_backend", warnings[[1L]], fixed = TRUE))
+      }
+    }
+  }
 })
 
 # The public connection path stores native for discovery reconnects and still
