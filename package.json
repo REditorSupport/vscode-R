@@ -2506,14 +2506,14 @@
     "vscode:prepublish": "node esbuild.js --production",
     "changelog": "git-cliff v2.8.5.. -o",
     "compile": "node esbuild.js",
-    "build": "pnpm run compile && Rscript -e \"remotes::install_local('sess', dependencies=TRUE, force=TRUE)\"",
+    "build": "node esbuild.js && Rscript -e \"remotes::install_local('sess', dependencies=TRUE, force=TRUE)\"",
     "watch": "node esbuild.js --watch",
     "clean": "rimraf out",
-    "pretest": "pnpm run compile && pnpm run clean && tsc -p ./",
+    "pretest": "node esbuild.js && rimraf out && tsc -p ./",
     "test": "vscode-test",
     "lint": "eslint src --ext ts && Rscript -e \"lintr::lint_package('sess')\"",
-    "test:interactive": "pnpm run compile && tsc && mocha out/test/suite/arfExecutable.test.js out/test/suite/nodeExecutable.test.js out/test/suite/plotSvg.test.js out/test/suite/interactiveCore.test.js out/test/suite/interactiveBackend.test.js out/test/suite/interactiveLibraries.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000",
-    "test:interactive:examples": "pnpm run compile && tsc && node src/test/examples/run.cjs"
+    "test:interactive": "node esbuild.js && tsc && mocha out/test/suite/arfExecutable.test.js out/test/suite/nodeExecutable.test.js out/test/suite/plotSvg.test.js out/test/suite/interactiveCore.test.js out/test/suite/interactiveBackend.test.js out/test/suite/interactiveLibraries.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000",
+    "test:interactive:examples": "node esbuild.js && tsc && node src/test/examples/run.cjs"
   },
   "devDependencies": {
     "@types/cheerio": "^0.22.35",
