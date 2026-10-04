@@ -16,6 +16,7 @@ const rscript = process.env.RSCRIPT || 'Rscript';
 function fixture(t) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sess source test '));
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    fs.copyFileSync(path.join(root, '.gitattributes'), path.join(directory, '.gitattributes'));
     fs.cpSync(path.join(root, 'sess'), path.join(directory, 'sess'), { recursive: true });
     const descriptionPath = path.join(directory, 'sess', 'DESCRIPTION');
     fs.writeFileSync(descriptionPath, fs.readFileSync(descriptionPath, 'utf8')
@@ -31,6 +32,14 @@ function fixture(t) {
     return { directory, descriptionPath, git };
 }
 
+// A script file avoids passing multiline expressions through Windows command-line
+// quoting. Keep it outside sess/ so bootstrap's clean-source check is meaningful.
+function runRScript(directory, cwd, source) {
+    const script = path.join(directory, 'test-script.R');
+    fs.writeFileSync(script, source);
+    execFileSync(rscript, ['--vanilla', script], { cwd });
+}
+
 test('clean stamp equals Git subtree, is idempotent, and preserves the real index', t => {
     const { directory, git } = fixture(t);
     const index = git('ls-files', '--stage');
@@ -38,6 +47,25 @@ test('clean stamp equals Git subtree, is idempotent, and preserves the real inde
     assert.equal(stampSess(directory), expected);
     assert.equal(stampSess(directory), expected);
     assert.equal(git('ls-files', '--stage'), index);
+});
+
+test('LF checkouts and sess identity are independent of core.autocrlf', t => {
+    const { directory, descriptionPath, git } = fixture(t);
+    const expected = `git-tree:${git('rev-parse', 'HEAD:sess')}`;
+    for (const autocrlf of ['false', 'true', 'input']) {
+        git('config', 'core.autocrlf', autocrlf);
+        git('config', 'core.eol', 'crlf');
+        // Recreate this test fixture's files exactly as a checkout would.
+        git('checkout-index', '--all', '--force');
+        for (const source of [descriptionPath, path.join(directory, 'sess', 'R', 'server.R')]) {
+            assert.ok(!fs.readFileSync(source, 'utf8').includes('\r'), `${autocrlf}: checkout must use LF`);
+        }
+        assert.equal(stampSess(directory), expected);
+        assert.equal(stampSess(directory), expected);
+        // An editor's CRLF rewrite also normalizes to the same Git snapshot.
+        fs.writeFileSync(descriptionPath, fs.readFileSync(descriptionPath, 'utf8').replace(/\r?\n/g, '\r\n'));
+        assert.equal(stampSess(directory), expected);
+    }
 });
 
 test('extension changes preserve identity; same-version sess changes and reverting change it', t => {
@@ -77,12 +105,12 @@ test('R-universe bootstrap after DESCRIPTION normalization matches VSIX identity
     // R-universe normalizes DESCRIPTION and may append system requirement metadata
     // before invoking bootstrap.R from the package directory.
     const packageDirectory = path.join(directory, 'sess');
-    execFileSync(rscript, ['--vanilla', '-e', `
+    runRScript(directory, packageDirectory, `
         x <- read.dcf('DESCRIPTION', keep.white = 'Authors@R')
         x[1, '${field}'] <- '@VSCODE_R_SESS_SOURCE_REVISION@'
         write.dcf(x, 'DESCRIPTION', keep.white = 'Authors@R')
-        cat('Config/pak/sysreqs: test-build-metadata\\n', file = 'DESCRIPTION', append = TRUE)
-    `], { cwd: packageDirectory });
+        cat('Config/pak/sysreqs: test-build-metadata\n', file = 'DESCRIPTION', append = TRUE)
+    `);
     for (let i = 0; i < 2; i++) {
         execFileSync(rscript, ['--vanilla', 'bootstrap.R'], { cwd: packageDirectory });
         assert.match(fs.readFileSync(descriptionPath, 'utf8'), new RegExp(`${field}: ${expected}`));
@@ -91,11 +119,11 @@ test('R-universe bootstrap after DESCRIPTION normalization matches VSIX identity
     // The custom field must also survive R CMD build into the source tarball.
     execFileSync('R', ['--vanilla', 'CMD', 'build', '--no-manual', '--no-build-vignettes', 'sess'], { cwd: directory });
     const tarball = fs.readdirSync(directory).find(name => name.endsWith('.tar.gz'));
-    execFileSync(rscript, ['--vanilla', '-e', `
+    runRScript(directory, directory, `
         untar(${JSON.stringify(tarball)}, files = 'sess/DESCRIPTION', exdir = 'built')
         x <- read.dcf('built/sess/DESCRIPTION')
         stopifnot(x[1, '${field}'] == '${expected}')
-    `], { cwd: directory });
+    `);
 });
 
 test('failed bootstrap leaves no stale stamp, including dirty sources', t => {
@@ -104,6 +132,7 @@ test('failed bootstrap leaves no stale stamp, including dirty sources', t => {
     fs.appendFileSync(path.join(directory, 'sess', 'R', 'server.R'), '\n# dirty source\n');
     const failed = spawnSync(rscript, ['--vanilla', 'bootstrap.R'], { cwd: path.join(directory, 'sess') });
     assert.notEqual(failed.status, 0);
+    assert.match(failed.stderr.toString(), /bootstrap.R requires committed sess sources/);
     assert.ok(fs.readFileSync(descriptionPath, 'utf8').includes('@VSCODE_R_SESS_SOURCE_REVISION@'));
     // R-universe ignores this exit status; an unstamped package is a migration
     // candidate, never an apparently matching copy.
@@ -112,6 +141,7 @@ test('failed bootstrap leaves no stale stamp, including dirty sources', t => {
         .replace('@VSCODE_R_SESS_SOURCE_REVISION@', 'git-tree:' + 'a'.repeat(40)));
     const missingGit = spawnSync(rscript, ['--vanilla', 'bootstrap.R'], { cwd: path.join(directory, 'sess') });
     assert.notEqual(missingGit.status, 0);
+    assert.match(missingGit.stderr.toString(), /Cannot determine sess source revision from Git/);
     assert.ok(fs.readFileSync(descriptionPath, 'utf8').includes('@VSCODE_R_SESS_SOURCE_REVISION@'));
     assert.throws(() => stampSess(directory));
 });

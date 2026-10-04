@@ -155,8 +155,11 @@ The field is committed as `@VSCODE_R_SESS_SOURCE_REVISION@`. Every esbuild entry
 tree using a temporary Git index, restoring the placeholder for the calculation.
 It includes new, modified and deleted source files without changing the user's
 index. For a clean checkout this is exactly `git rev-parse HEAD:sess`; extension
-changes outside `sess/` do not cause another installation. Git and a checkout
-with HEAD are required to build the extension. The generated stamp should not
+changes outside `sess/` do not cause another installation. The repository's
+`.gitattributes` keeps text checkouts at LF across platforms, including when
+`core.autocrlf` is enabled. Git normalizes a developer's
+CRLF edits before calculating the snapshot. Git and a checkout with HEAD are
+required to build the extension. The generated stamp should not
 be committed; restore the placeholder before committing DESCRIPTION changes.
 Watch mode stamps at startup; restart the build after editing `sess/` sources.
 

@@ -30,10 +30,10 @@ stopifnot(sess_install_required(bundled)) # Legacy field missing, newer version.
 write_description(installed, "3.0.1", pre_release)
 stopifnot(sess_install_required(bundled)) # Same version, different source.
 write_description(installed, "3.0.2", pre_release)
-stopifnot(sess_install_required(bundled)) # Pre-release -> stable downgrade.
+stopifnot(sess_install_required(bundled)) # Switching from pre-release back to stable.
 write_description(bundled, "3.0.2", pre_release)
 write_description(installed, "3.0.1", stable)
-stopifnot(sess_install_required(bundled)) # Stable -> pre-release.
+stopifnot(sess_install_required(bundled)) # Switching from stable to pre-release.
 write_description(installed, "99.0.0", pre_release)
 stopifnot(!sess_install_required(bundled)) # Same source, irrelevant version.
 for (invalid in c("", "unknown", "git-tree:123")) {
