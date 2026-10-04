@@ -4,14 +4,21 @@
 \alias{register_hooks}
 \title{Register VS Code runtime integrations}
 \usage{
-register_hooks(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE)
+register_hooks(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE,
+  plot_backend = c("auto", "jgd", "httpgd", "standard", "native"))
 }
 \arguments{
 \item{use_rstudioapi}{Logical. Enable rstudioapi emulation.}
 
-\item{use_httpgd}{Logical. Enable httpgd plot device if available.}
+\item{use_httpgd}{Deprecated. Logical. Enable httpgd plot device if available.
+Use \code{plot_backend} instead.}
 
-\item{use_jgd}{Logical. Enable jgd plot device if available.}
+\item{use_jgd}{Deprecated. Logical. Enable jgd plot device if available.
+Use \code{plot_backend} instead.}
+
+\item{plot_backend}{Plot backend: \code{auto}, \code{jgd}, \code{httpgd},
+\code{standard}, or \code{native}. NULL also selects \code{auto}. Deprecated
+flags select the backend only when this argument is omitted.}
 }
 \description{
 Register VS Code runtime integrations

@@ -1,11 +1,54 @@
 #' Register VS Code runtime integrations
 #'
 #' @param use_rstudioapi Logical. Enable rstudioapi emulation.
-#' @param use_httpgd Logical. Enable httpgd plot device if available.
-#' @param use_jgd Logical. Enable jgd plot device if available.
+#' @param use_httpgd Deprecated. Logical. Enable httpgd plot device if available.
+#'   Use `plot_backend` instead.
+#' @param use_jgd Deprecated. Logical. Enable jgd plot device if available.
+#'   Use `plot_backend` instead.
+#' @param plot_backend Plot backend: `auto`, `jgd`, `httpgd`, `standard`, or
+#'   `native`. NULL also selects `auto`. Deprecated flags select the backend
+#'   only when this argument is omitted.
 #' @export
-register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
-  runtime_start(use_rstudioapi, use_httpgd, use_jgd)
+register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE,
+                           plot_backend = c("auto", "jgd", "httpgd", "standard", "native")) {
+  has_httpgd <- !missing(use_httpgd)
+  has_jgd <- !missing(use_jgd)
+  .warn_deprecated_plot_args(has_httpgd, has_jgd)
+  backend <- if (missing(plot_backend) && (has_httpgd || has_jgd)) {
+    .legacy_plot_backend(use_httpgd, use_jgd)
+  } else {
+    .resolve_plot_backend(plot_backend)
+  }
+  runtime_start(use_rstudioapi, backend)
+}
+
+.warn_deprecated_plot_args <- function(has_httpgd, has_jgd) {
+  old_args <- c(if (has_httpgd) "use_httpgd", if (has_jgd) "use_jgd")
+  if (length(old_args)) {
+    warning("[sess] ", paste(old_args, collapse = " and "),
+            if (length(old_args) == 1L) " is deprecated; use plot_backend instead." else
+              " are deprecated; use plot_backend instead.", call. = FALSE)
+  }
+  invisible(NULL)
+}
+
+.resolve_plot_backend <- function(plot_backend) {
+  if (is.null(plot_backend)) return("auto")
+  match.arg(plot_backend, c("auto", "jgd", "httpgd", "standard", "native"))
+}
+
+.legacy_plot_backend <- function(use_httpgd, use_jgd) {
+  if (is.na(use_httpgd)) use_httpgd <- TRUE
+  if (is.na(use_jgd)) use_jgd <- FALSE
+  if (use_jgd && use_httpgd) "auto" else if (use_jgd) "jgd" else
+    if (use_httpgd) "httpgd" else "standard"
+}
+
+.select_plot_backend <- function(plot_backend, has_httpgd, has_jgd) {
+  if (plot_backend == "native") return("native")
+  if (plot_backend %in% c("auto", "httpgd") && has_httpgd) return("httpgd")
+  if (plot_backend %in% c("auto", "jgd") && has_jgd) return("jgd")
+  "standard"
 }
 
 # Send runtime notifications after task callbacks return, so transport failure
@@ -31,7 +74,9 @@ register_hooks <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = F
 #' Start the VS Code runtime integration (internal)
 #'
 #' @keywords internal
-runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FALSE) {
+runtime_start <- function(use_rstudioapi = TRUE,
+                          plot_backend = c("auto", "jgd", "httpgd", "standard", "native")) {
+  plot_backend <- match.arg(plot_backend)
   .sess_env$runtime_start_phase <- "initialize"
   state <- .runtime_state()
   if (isTRUE(state$active)) {
@@ -168,9 +213,14 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
     }
     invisible(x)
   }
-  # 4. Plot device: JGD > httpgd > Standard
+  # 4. Plot device: httpgd > JGD > Standard, or no plot integration for native
   .sess_env$runtime_start_phase <- "plot"
-  if (use_jgd && nzchar(Sys.getenv("JGD_SOCKET")) && requireNamespace("jgd", quietly = TRUE)) {
+  has_httpgd <- plot_backend %in% c("auto", "httpgd") &&
+    requireNamespace("httpgd", quietly = TRUE)
+  has_jgd <- (plot_backend == "jgd" || (plot_backend == "auto" && !has_httpgd)) &&
+    nzchar(Sys.getenv("JGD_SOCKET")) && requireNamespace("jgd", quietly = TRUE)
+  selected_backend <- .select_plot_backend(plot_backend, has_httpgd, has_jgd)
+  if (selected_backend == "jgd") {
     .runtime_set_option("device", function(...) {
       jgd::jgd()
       .runtime_track_device()
@@ -202,26 +252,26 @@ runtime_start <- function(use_rstudioapi = TRUE, use_httpgd = TRUE, use_jgd = FA
       invisible(TRUE)
     }
     reconnect_jgd_device()
-  } else if (use_httpgd && requireNamespace("httpgd", quietly = TRUE)) {
+  } else if (selected_backend == "httpgd") {
     .runtime_set_option("device", function(...) {
       httpgd::hgd(silent = TRUE)
       .runtime_track_device()
       notify_client("httpgd", list(url = httpgd::hgd_url()))
     })
-  } else {
+  } else if (selected_backend == "standard") {
     # If a specific interactive backend was explicitly requested but is
     # unavailable, warn before silently degrading to the standard viewer.
-    # (use_jgd && use_httpgd means "auto", which is meant to degrade quietly.)
-    if (xor(use_jgd, use_httpgd)) {
-      if (use_jgd && !requireNamespace("jgd", quietly = TRUE)) {
+    # Auto is meant to degrade quietly.
+    if (plot_backend %in% c("jgd", "httpgd")) {
+      if (plot_backend == "jgd" && !requireNamespace("jgd", quietly = TRUE)) {
         warning("[sess] Plot backend \"jgd\" was requested but the jgd package ",
                 "is not installed. Falling back to the standard plot viewer. ",
                 "Install jgd, or change the r.plot.backend setting.", call. = FALSE)
-      } else if (use_jgd) {
+      } else if (plot_backend == "jgd") {
         warning("[sess] Plot backend \"jgd\" was requested but no renderer ",
                 "connection is available. Falling back to the standard plot ",
                 "viewer.", call. = FALSE)
-      } else if (use_httpgd) {
+      } else if (plot_backend == "httpgd") {
         warning("[sess] Plot backend \"httpgd\" was requested but the httpgd ",
                 "package is not installed. Falling back to the standard plot ",
                 "viewer. Install httpgd, or change the r.plot.backend setting.",

@@ -46,10 +46,14 @@ When you start an R terminal from VS Code, the extension's R profile calls
 sess::connect(
   endpoint = NULL,       # socket/pipe endpoint; see below
   use_rstudioapi = TRUE, # emulate rstudioapi functions
-  use_httpgd = TRUE,     # allow httpgd as the plot device
-  use_jgd = FALSE        # allow jgd as the plot device
+  plot_backend = "auto"  # or "standard", "httpgd", "jgd", "native"
 )
 ```
+
+If `plot_backend` is omitted, `sess::connect()` uses `auto`. The VS Code extension
+passes its configured backend explicitly. Calls that supply the deprecated
+`use_httpgd` or `use_jgd` arguments still use those values when `plot_backend`
+is omitted.
 
 If `endpoint` is omitted, `connect()` resolves it in this order:
 
@@ -81,11 +85,11 @@ a new schema version. This discovery schema version is separate from the IPC
 `protocol_version`.
 
 The optional `jgdSocket` string describes the JGD renderer belonging to that
-endpoint. When `use_jgd = TRUE`, `sess` applies it before runtime initialization,
+endpoint. When `plot_backend` resolves to `auto` or `jgd`, `sess` applies it before runtime initialization,
 including automatic reconnect: a nonempty string sets `JGD_SOCKET`, an empty
 string unsets it (renderer unavailable), and an omitted field leaves it untouched.
 A present value of another type is invalid. It does not enable JGD or override
-`use_jgd`; no arbitrary environment variables or R code are accepted. VS Code
+the selected backend; no arbitrary environment variables or R code are accepted. VS Code
 publishes endpoint and renderer together in one atomic file replacement, with
 an empty `jgdSocket` when its current backend does not provide JGD.
 
@@ -103,7 +107,7 @@ R's interactive features to the client:
 | `View()` | Data frames, matrices, Arrow tables and polars data frames open in a paged, sortable, filterable data viewer. Lists open as JSON; other objects as R code. |
 | `browseURL()`, `viewer`, `page_viewer` | URLs and local HTML files (e.g. htmlwidgets) open in the editor. |
 | `?topic`, `help.search()` | Help pages open in the editor's help panel, in the column configured by `r.session.viewers.viewColumn.helpPanel`. |
-| Graphics device | Plots appear in the editor's plot viewer (see below). |
+| Graphics device | Plots appear in the editor's plot viewer unless `plot_backend = "native"`. |
 | `rstudioapi` | Editor functions such as `getActiveDocumentContext()` and `insertText()` are emulated when `use_rstudioapi = TRUE`. |
 | Top-level task callback | The client is notified after each command so it can refresh the workspace view. |
 
@@ -116,18 +120,24 @@ stacking hooks.
 
 ### Graphics devices
 
-For displaying R plots, `sess` chooses a graphics device in this order:
+For displaying R plots, `sess` chooses a graphics device in this order when
+`plot_backend = "auto"`:
 
-1. **jgd**, if `use_jgd = TRUE`, the `JGD_SOCKET` environment variable is set,
-   and the [jgd](https://cran.r-project.org/package=jgd) package is installed.
-2. **httpgd**, if `use_httpgd = TRUE` and the
-   [httpgd](https://cran.r-project.org/package=httpgd) package is installed.
+1. **httpgd**, if the [httpgd](https://cran.r-project.org/package=httpgd)
+   package is installed.
+2. **jgd**, if `JGD_SOCKET` is set and the
+   [jgd](https://cran.r-project.org/package=jgd) package is installed.
 3. **Standard**: plots are recorded on a null device and re-rendered by the
    client on demand at the viewer's size (as SVG via
    [svglite](https://cran.r-project.org/package=svglite) if installed,
    otherwise PNG).
 
 In VS Code, this is controlled by the `r.plot.backend` setting.
+`plot_backend = "native"` leaves the existing R graphics device option, plot
+hooks, plot task callbacks, and devices untouched. The `standard` backend continues
+to use the static plot viewer. When `plot_backend` is omitted, the existing
+`use_httpgd`/`use_jgd` arguments keep their previous meanings, but are
+deprecated and warn when supplied explicitly. Use `plot_backend` for new code.
 
 ### Options and environment variables
 
@@ -135,7 +145,7 @@ In VS Code, this is controlled by the `r.plot.backend` setting.
 |---|---|---|
 | `SESS_ENDPOINT` | env var | Socket/pipe path used by `connect()`. |
 | `SESS_RSTUDIOAPI` | env var | `TRUE`/`FALSE`; passed as `use_rstudioapi` by the extension's R profile. |
-| `SESS_PLOT_BACKEND` | env var | `auto`, `standard`, `httpgd` or `jgd`; sets `use_httpgd`/`use_jgd` in the extension's R profile. |
+| `SESS_PLOT_BACKEND` | env var | `auto`, `standard`, `httpgd`, `jgd` or `native`; passed as `plot_backend` by the extension's R profile. |
 | `JGD_SOCKET` | env var | Socket used by the jgd device; set by the extension. |
 | `sess.quiet` | R option | Set to `TRUE` to suppress the successful connection message. Connection failures remain visible. |
 

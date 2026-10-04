@@ -9,7 +9,9 @@ import { extensionContext } from '../extension';
 import { config } from '../util';
 import { getMigratedSetting } from '../configuration';
 
-export function resolveBackend(): 'auto' | 'standard' | 'httpgd' | 'jgd' {
+export type PlotBackend = 'auto' | 'standard' | 'httpgd' | 'jgd' | 'native';
+
+export function resolveBackend(): PlotBackend {
     const selected = getMigratedSetting<string | boolean>(
         config(),
         'plot.backend',
@@ -19,7 +21,7 @@ export function resolveBackend(): 'auto' | 'standard' | 'httpgd' | 'jgd' {
     if (selected === true) {
         return 'httpgd';
     }
-    return typeof selected === 'string' ? selected as 'standard' | 'httpgd' | 'jgd' : 'auto';
+    return typeof selected === 'string' ? selected as PlotBackend : 'auto';
 }
 
 export function jgdEnabled(backend = resolveBackend()): boolean {
@@ -66,8 +68,12 @@ export class CommonPlotManager implements PlotManager {
     }
 
     get activeViewer(): PlotViewer | undefined {
-        if (jgdEnabled()) {
+        const backend = resolveBackend();
+        if (backend === 'jgd') {
             return this.jgdManager.getViewer() || this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
+        }
+        if (backend === 'auto') {
+            return this.httpgdManager.getRecentViewer() || this.jgdManager.getViewer() || this.standardPlotViewer;
         }
         return this.httpgdManager.getRecentViewer() || this.standardPlotViewer;
     }

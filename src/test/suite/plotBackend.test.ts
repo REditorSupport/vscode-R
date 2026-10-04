@@ -2,7 +2,9 @@ import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as util from '../../util';
-import { resolveBackend } from '../../plotViewer';
+import { resolveBackend, jgdEnabled, CommonPlotManager } from '../../plotViewer';
+import { HttpgdViewer } from '../../plotViewer/httpgdViewer';
+import { JgdViewer } from '../../plotViewer/jgdViewer';
 
 suite('Plot backend setting migration', () => {
     let sandbox: sinon.SinonSandbox;
@@ -43,5 +45,21 @@ suite('Plot backend setting migration', () => {
     test('defaults select auto', () => {
         settings();
         assert.strictEqual(resolveBackend(), 'auto');
+    });
+
+    test('native overrides the legacy httpgd preference and disables JGD', () => {
+        settings({ workspaceValue: 'native' }, { globalValue: true });
+        assert.strictEqual(resolveBackend(), 'native');
+        assert.strictEqual(jgdEnabled(resolveBackend()), false);
+    });
+
+    test('auto prefers an available httpgd viewer over JGD', () => {
+        settings({ workspaceValue: 'auto' });
+        const manager = new CommonPlotManager();
+        const httpgd = { id: 'httpgd' } as HttpgdViewer;
+        const jgd = { id: 'jgd' } as JgdViewer;
+        sandbox.stub(manager.httpgdManager, 'getRecentViewer').returns(httpgd);
+        sandbox.stub(manager.jgdManager, 'getViewer').returns(jgd);
+        assert.strictEqual(manager.activeViewer, httpgd);
     });
 });

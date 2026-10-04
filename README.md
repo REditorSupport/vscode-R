@@ -72,11 +72,15 @@ For example, assuming that you have installed `arf` and `jgd`, your user `settin
 {
     "r.consolePath": "arf",
     "r.bracketedPaste": true,  // recommended for arf (and radian)
-    "r.plot.backend": "jgd"    // "auto" already prefers jgd, then httpgd
+    "r.plot.backend": "jgd"    // "auto" prefers httpgd, then jgd
 }
 ```
 
 Please consult the relevant installation wiki pages for your OS ([Windows](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Windows) | [macOS](https://github.com/REditorSupport/vscode-R/wiki/Installation:-macOS) | [Linux](https://github.com/REditorSupport/vscode-R/wiki/Installation:-Linux)) for more detailed instructions.
+
+Set `r.plot.backend` to `"native"` to use R's configured graphics device without
+opening the VS Code plot viewer automatically. The `"standard"` backend continues
+to display static plots in VS Code.
 
 ## Features
 
