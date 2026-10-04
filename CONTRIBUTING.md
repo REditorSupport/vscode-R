@@ -19,7 +19,11 @@ If a command reports `pnpm: command not found`, ensure pnpm's installation direc
 
 For continuous rebuilding, run `pnpm run watch`. `pnpm run build` additionally installs the bundled `sess` R package; this is not required just to launch the extension debugger. **Extension Tests** builds both the bundle and the TypeScript test files before launching.
 
-VS Code 1.139 has a [JavaScript debugger regression](https://github.com/microsoft/vscode-js-debug/issues/2420) that can leave the development host paused before any extension activates. The launching window's extension host log shows `ECONNREFUSED ::1` and `Could not find any debuggable target`. The fix is included in [JavaScript Debugger 1.140](https://github.com/microsoft/vscode-js-debug/releases/tag/v1.140.0). Until your VS Code version includes it, use Microsoft's [JavaScript Debugger Nightly](https://marketplace.visualstudio.com/items?itemName=ms-vscode.js-debug-nightly): disable the built-in **JavaScript Debugger**, install Nightly, and reload VS Code. Switch back to the built-in debugger once VS Code includes the fix.
+VS Code 1.140.0 bundles [JavaScript Debugger 1.140.0](https://github.com/microsoft/vscode-js-debug/releases/tag/v1.140.0), which fixes the [extension host attach regression in VS Code 1.139](https://github.com/microsoft/vscode-js-debug/issues/2420). Use the built-in **JavaScript Debugger** on VS Code 1.140.0 or newer. If you previously used **JavaScript Debugger Nightly**, disable Nightly, re-enable the built-in debugger (`ms-vscode.js-debug`) in the Extensions view, and run **Developer: Reload Window**.
+
+If launching reports `Configured debug type 'extensionHost' is not supported`, ensure the built-in **JavaScript Debugger** is enabled in the launching window's profile and workspace. Disabling Nightly does not automatically re-enable the built-in debugger. To find it, search for `@builtin @id:ms-vscode.js-debug` in the Extensions view, select **Enable** (or **Enable (Workspace)** if it was disabled only for this workspace), and reload the window.
+
+On VS Code 1.139, the regression can leave the development host paused before any extension activates; the launching window's extension host log shows `ECONNREFUSED ::1` and `Could not find any debuggable target`. Upgrade to VS Code 1.140.0 or newer, or use Microsoft's [JavaScript Debugger Nightly](https://marketplace.visualstudio.com/items?itemName=ms-vscode.js-debug-nightly) as a temporary workaround: disable the built-in **JavaScript Debugger**, enable Nightly, and reload VS Code.
 
 ## Testing R Interactive
 
