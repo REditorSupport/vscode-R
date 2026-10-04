@@ -71,6 +71,28 @@ async function main() {
         logLevel: 'info',
     });
 
+    // A session agent remains alive after the extension host exits.
+    const agentCtx = await esbuild.context({
+        entryPoints: ['./src/interactive/agentMain.ts'],
+        bundle: true,
+        format: 'cjs',
+        platform: 'node',
+        target: 'node18',
+        outfile: 'dist/interactive-agent.js',
+        sourcemap: !production,
+        logLevel: 'info',
+    });
+
+    const interactiveRendererCtx = await esbuild.context({
+        entryPoints: ['./src/interactive/renderer.ts'],
+        bundle: true,
+        format: 'esm',
+        platform: 'browser',
+        outfile: 'dist/interactive-renderer.js',
+        minify: production,
+        sourcemap: !production,
+    });
+
     // Webview context (Browser)
     const webviewCtx = await esbuild.context({
         entryPoints: {
@@ -90,13 +112,19 @@ async function main() {
     if (watch) {
         await Promise.all([
             extensionCtx.watch(),
+            agentCtx.watch(),
+            interactiveRendererCtx.watch(),
             webviewCtx.watch()
         ]);
         console.log('Watching for changes...');
     } else {
         await extensionCtx.rebuild();
+        await agentCtx.rebuild();
+        await interactiveRendererCtx.rebuild();
         await webviewCtx.rebuild();
         await extensionCtx.dispose();
+        await agentCtx.dispose();
+        await interactiveRendererCtx.dispose();
         await webviewCtx.dispose();
     }
 }

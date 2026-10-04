@@ -31,7 +31,7 @@ suite('Session hover and completion', () => {
         const document = await openDocument();
         await new HoverProvider().provideHover(document, new vscode.Position(2, 0));
 
-        sinon.assert.calledOnceWithExactly(sessionRequest, { method: 'hover', params: { expr: 'x' } });
+        sinon.assert.calledOnceWithExactly(sessionRequest, { method: 'hover', params: { expr: 'x' } }, session.activeSession);
     });
 
     test('hover on punctuation sends no request', async () => {

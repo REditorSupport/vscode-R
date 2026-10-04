@@ -82,6 +82,9 @@ rpc_send <- function(method, params = list(), request = FALSE) {
 #' @param params A list containing the arguments for the command
 #' @export
 notify_client <- function(method, params = list()) {
+  if (isTRUE(.sess_env$interactive_connected) && method != "attach") {
+    return(.interactive_event("notification", list(method = method, params = params)))
+  }
   rpc_send(method, params, request = FALSE)
 }
 

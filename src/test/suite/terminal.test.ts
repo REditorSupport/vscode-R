@@ -8,6 +8,7 @@ import { mockExtensionContext } from '../common/mockvscode';
 import * as rTerminal from '../../rTerminal';
 import * as util from '../../util';
 import * as session from '../../session';
+import * as executionTarget from '../../interactive/executionTarget';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
@@ -79,13 +80,16 @@ suite('R Terminal', () => {
     });
 
     for (const scenario of [
-        { watcher: true, args: [], integrated: true },
+        { watcher: true, args: [], integrated: true, createTarget: false },
+        { watcher: true, args: [], integrated: true, createTarget: true },
         { watcher: false, args: [], integrated: false },
         { watcher: true, args: ['--vanilla'], integrated: false },
         { watcher: true, args: ['--no-init-file'], integrated: false },
     ]) {
         const { watcher, args, integrated } = scenario;
-        test(`initial sends share terminal creation and readiness (watcher: ${String(watcher)}, args: ${args.join(' ')})`, async () => {
+        const createTarget = scenario.createTarget ?? false;
+        test(`initial sends share terminal creation and readiness (watcher: ${String(watcher)}, args: ${args.join(' ')}, target picker: ${String(createTarget)})`, async () => {
+            sandbox.stub(executionTarget, 'tryInteractiveExecution').resolves(createTarget ? 'createTerminal' : false);
             let resolveReady!: (ready: boolean) => void;
             const readiness = new Promise<boolean>(resolve => { resolveReady = resolve; });
             const readyStub = sandbox.stub(session, 'waitForTerminalReady').returns(readiness);
@@ -154,9 +158,28 @@ suite('R Terminal', () => {
         await rTerminal.runTextInTerm('first');
         sinon.assert.notCalled(sendText);
         sinon.assert.calledOnce(warning);
+        assert.ok(String(warning.firstCall.args[0]).includes('r.sessionWatcher'),
+            'the warning should explain how to opt out of session integration');
+        assert.ok(String(warning.firstCall.args[0]).includes('reload VS Code'),
+            'the warning should explain how to apply the setting to an existing terminal');
         await rTerminal.runTextInTerm('retry');
         sinon.assert.calledOnceWithExactly(sendText, '\x1b[200~retry\x1b[201~', true);
         rTerminal.deleteTerminal(terminal);
+    });
+
+    test('execution target discovery ignores exited and hidden terminals without creating one', () => {
+        const stopped = { name: 'R', exitStatus: { code: 0 } } as vscode.Terminal;
+        const hidden = { name: 'R Deactivate' } as vscode.Terminal;
+        const live = { name: 'R Interactive' } as vscode.Terminal;
+        const terminals = sandbox.stub(vscode.window, 'terminals').value([stopped, hidden, live]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(stopped);
+        sandbox.stub(util, 'config').returns(configuration());
+        const create = sandbox.spy(vscode.window, 'createTerminal');
+        assert.strictEqual(rTerminal.findTerminal(), live);
+        terminals.value([stopped, hidden]);
+        assert.strictEqual(rTerminal.findTerminal(), undefined);
+        sinon.assert.notCalled(create);
+
     });
 
     test('makeTerminalOptions respects legacy plot.useHttpgd configurations', async () => {
@@ -421,6 +444,9 @@ suite('R Terminal', () => {
         test(`file resource uses workspace cwd (workspace present: ${String(hasWorkspace)})`, async () => {
             const folder = vscode.Uri.file(path.join(path.sep, 'workspace', 'project'));
             const file = vscode.Uri.file(path.join(folder.fsPath, 'script.R'));
+            // Variable substitution also inspects the active editor. Keep this
+            // explicit-resource test independent of preceding editor suites.
+            sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
             sandbox.stub(vscode.workspace, 'workspaceFolders').value(
                 hasWorkspace ? [{ uri: folder } as vscode.WorkspaceFolder] : undefined
             );

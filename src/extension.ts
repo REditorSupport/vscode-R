@@ -19,11 +19,13 @@ import * as workspaceViewer from './workspaceViewer';
 import * as apiImplementation from './apiImplementation';
 import * as rHelp from './helpViewer';
 import * as completions from './completions';
+import { SessionSignatureHelpProvider } from './signatureHelp';
 import * as plotViewer from './plotViewer';
 import { PlotManager } from './plotViewer/types';
 import * as languageService from './languageService';
 import { RTaskProvider } from './tasks';
 import { showRDebuggerCompatibilityWarningOnce } from './rDebuggerCompatibility';
+import { InteractiveManager } from './interactive/manager';
 
 
 // global objects used in other files
@@ -83,15 +85,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.thead': () => rTerminal.runSelectionOrWord(['t', 'head']),
         'r.names': () => rTerminal.runSelectionOrWord(['names']),
         'r.view': () => rTerminal.runSelectionOrWord(['View']),
-        'r.runSource': () => { void rTerminal.runSource(false); },
-        'r.runSelection':  (code?: string) => { code ? void rTerminal.runTextInTerm(code) : void rTerminal.runSelection(); },
+        'r.runSource': () => rTerminal.runSource(false),
+        'r.runSelection': (code?: string) => code ? rTerminal.runTextInTerm(code) : rTerminal.runSelection(),
         'r.runFromLineToEnd': rTerminal.runFromLineToEnd,
         'r.runFromBeginningToLine': rTerminal.runFromBeginningToLine,
         'r.runSelectionRetainCursor': rTerminal.runSelectionRetainCursor,
         'r.runCommandWithSelectionOrWord': rTerminal.runCommandWithSelectionOrWord,
         'r.runCommandWithEditorPath': rTerminal.runCommandWithEditorPath,
         'r.runCommand': rTerminal.runCommand,
-        'r.runSourcewithEcho': () => { void rTerminal.runSource(true); },
+        'r.runSourcewithEcho': () => rTerminal.runSource(true),
 
         // chunk related
         'r.selectCurrentChunk': rmarkdown.selectCurrentChunk,
@@ -150,9 +152,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.launchAddinPicker': rstudioapi.launchAddinPicker,
 
         // workspace viewer
-        'r.workspaceViewer.refreshEntry': () => rWorkspace?.refresh(),
-        'r.workspaceViewer.view': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.viewItem(node.label),
-        'r.workspaceViewer.remove': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.removeItem(node.label),
+        'r.workspaceViewer.refreshEntry': session.updateWorkspace,
+        'r.workspaceViewer.view': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.viewItem(node),
+        'r.workspaceViewer.remove': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.removeItem(node),
         'r.workspaceViewer.clear': workspaceViewer.clearWorkspace,
         'r.workspaceViewer.load': workspaceViewer.loadWorkspace,
         'r.workspaceViewer.save': workspaceViewer.saveWorkspace,
@@ -224,6 +226,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // initialize the package/help related functions
     globalRHelp = await rHelp.initializeHelp(context, rExtension);
+    context.subscriptions.push(new InteractiveManager(context));
 
     // register codelens and completion providers for r markdown and r files
     vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());
@@ -260,14 +263,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // only shows view when session watcher is enabled
         rWorkspace = new workspaceViewer.WorkspaceDataProvider();
 
-        // if session watcher is active, register dyamic completion provider
-        const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
-        vscode.languages.registerCompletionItemProvider(['r', 'rmd'], new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters);
     }
+
+    const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
+    context.subscriptions.push(vscode.languages.registerCompletionItemProvider(
+        ['r', 'rmd'], new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters));
+    // Lower selector priority lets languageserver retain source-local definitions
+    // and package documentation. Fall back to the owning session's live functions.
+    context.subscriptions.push(vscode.languages.registerSignatureHelpProvider('*', new SessionSignatureHelpProvider(), '(', ','));
 
     void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
 
     return rExtension;
+}
+
+export function ensureWorkspaceViewer(): void {
+    rWorkspace ??= new workspaceViewer.WorkspaceDataProvider();
 }
 
 export async function deactivate(): Promise<void> {
