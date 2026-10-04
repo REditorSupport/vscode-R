@@ -116,7 +116,8 @@ runtime_start <- function(use_rstudioapi = TRUE,
     }
     force(title)
 
-    if (isTRUE(.sess_env$interactive_connected) && .interactive_rich_value(x)) {
+    if (is.null(.sess_env$view_owner) && isTRUE(.sess_env$interactive_connected) &&
+          .interactive_rich_value(x)) {
       return(invisible(NULL))
     }
 

@@ -127,7 +127,7 @@ suite('Viewer session ownership', () => {
             socket.once('error', reject);
         });
         notify(client, 'attach', {
-            protocol_version: 1, session_id: id, host: 'viewer-test-host', pid: id,
+            protocol_version: 2, session_id: id, host: 'viewer-test-host', pid: id,
             version: '4.6.0', tempdir: '/tmp', wd: '/tmp',
         });
         await waitFor(() => session.activeSession?.sessionId === id &&
@@ -199,6 +199,28 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(viewerRequests(a).length, 5);
         await open(a, 'list', aList);
         await open(a, 'table', aTable);
+    });
+
+    test('Interactive viewers retain transcript tables and dispose standalone list state', async () => {
+        const request = sandbox.stub().resolves({ columns: [], totalRows: 1 });
+        const owner = session.registerSessionTransport('interactive-viewer', 'host', '/tmp', request);
+        try {
+            const other = await attach('other-viewer-session');
+            await session.showDataView('table', 'json', 'table', '', 'Two', 'transcript-table', undefined, owner.sessionId);
+            await send(panels[0], { message: 'dataview/request', action: 'init' });
+            sinon.assert.calledWithExactly(request, { method: 'dataview_init', params: { view_id: 'transcript-table' } });
+            request.resetHistory();
+            panels[0].panel.dispose();
+            sinon.assert.notCalled(request);
+            await session.showDataView('list', 'json', 'list', '', 'Two', 'standalone-list', undefined, owner.sessionId, 3);
+            panels[1].panel.dispose();
+            sinon.assert.calledOnceWithExactly(request, {
+                method: 'dataview_dispose', params: { view_id: 'standalone-list', state_generation: 3 },
+            });
+            assert.deepStrictEqual(viewerRequests(other), []);
+        } finally {
+            session.unregisterSessionTransport(owner);
+        }
     });
 
     test('viewers follow the same session on reconnect and never fall back after disconnect', async () => {

@@ -113,6 +113,25 @@ suite('Workspace Viewer', () => {
         sinon.assert.notCalled(second.execute as sinon.SinonStub);
     });
 
+    test('nested View keeps the originating session after focus changes', async () => {
+        session.updateSessionWorkspace(first, data('nested'));
+        const request = sandbox.stub().resolves({ children: [{
+            str: '$ table', class: 'data.frame', type: 'list', has_children: true,
+            viewable: true, selector: { kind: 'index', value: 1 },
+        }] });
+        first.requester = request;
+        const children = await provider.getChildren((await envNodes())[0]);
+        const child = children[0] as workspace.GlobalEnvItem;
+        assert.strictEqual(child.contextValue, 'viewableNode');
+        await session.activateSession(second);
+        request.resetHistory();
+        await workspace.viewItem(child);
+        sinon.assert.calledOnceWithExactly(request, {
+            method: 'workspace_view', params: { name: 'nested', path: [{ kind: 'index', value: 1 }] },
+        });
+        sinon.assert.notCalled(second.execute as sinon.SinonStub);
+    });
+
     test('clear confirmation captures the displayed session before switching', async () => {
         const prompt = sandbox.stub(vscode.window, 'showInformationMessage').callsFake(async () => {
             await session.activateSession(second);

@@ -845,7 +845,7 @@ dataview_get_state <- function(view_id, refresh = FALSE) {
           !identical(state$total_rows, current$total_rows)) {
       current$live <- TRUE
       current$revision <- revision
-      current$instance <- state$instance
+      current$state_generation <- state$state_generation
       state <- current
       .sess_env$dataviews[[view_id]] <- state
     }

@@ -256,7 +256,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = NULL,
   host <- Sys.info()[["nodename"]]
   if (is.null(host) || is.na(host)) host <- ""
   list(
-    protocol_version = 1L,
+    protocol_version = 2L,
     interactive_token = .sess_env$interactive_token,
     sess_version = as.character(utils::packageVersion("sess")),
     session_id = .session_id(),

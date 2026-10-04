@@ -13,7 +13,7 @@ local({
   first <- sess:::.session_attach_metadata()
   second <- sess:::.session_attach_metadata()
 
-  expect_equal(first$protocol_version, 1L)
+  expect_equal(first$protocol_version, 2L)
   expect_true(is.character(first$session_id) && nzchar(first$session_id))
   expect_equal(first$session_id, second$session_id)
   expect_false(identical(first$session_id, as.character(first$pid)))

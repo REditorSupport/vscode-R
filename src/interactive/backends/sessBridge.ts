@@ -55,7 +55,7 @@ export class SessBridge {
         this.parse(socket, message => {
             if (message.method === 'attach') {
                 const params = object(message.params);
-                if (params.protocol_version !== 1 || params.interactive_token !== this.token ||
+                if (params.protocol_version !== 2 || params.interactive_token !== this.token ||
                     (this.sess && this.sess !== socket)) { socket.destroy(); return; }
                 this.sess = socket; attached = true;
                 this.emit({ type: 'metadata', metadata: { rPid: Number(params.pid), rVersion: String(params.version),

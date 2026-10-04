@@ -276,7 +276,7 @@ suite('Session Communication', () => {
 
         const connection = await api.getConnectionInfo();
         assert.ok(connection);
-        assert.strictEqual(connection.protocolVersion, 1);
+        assert.strictEqual(connection.protocolVersion, 2);
         assert.strictEqual(connection.endpoint, session.globalPipePath);
         assert.strictEqual(connection.plotBackend, 'standard');
         assert.ok(!('socket' in connection), 'connection info should contain plain contract data only');
@@ -315,7 +315,7 @@ suite('Session Communication', () => {
                 jsonrpc: '2.0',
                 method: 'attach',
                 params: {
-                    protocol_version: 1,
+                    protocol_version: 2,
                     session_id: id,
                     host: 'test-remote-host',
                     version: '4.4.0',
@@ -651,7 +651,7 @@ suite('Session Communication', () => {
                     const id = `reconnected-${terminalPid}`;
                     client.write(`${JSON.stringify({
                         jsonrpc: '2.0', method: 'attach', params: {
-                            protocol_version: 1, session_id: id, host: os.hostname(),
+                            protocol_version: 2, session_id: id, host: os.hostname(),
                             pid: terminalPid, version: '4.4.0', tempdir: '/tmp', wd: '/tmp',
                         },
                     })}\n`);
@@ -709,7 +709,7 @@ suite('Session Communication', () => {
             });
             client.write(`${JSON.stringify({
                 jsonrpc: '2.0', method: 'attach', params: {
-                    protocol_version: 1, session_id: 'manual-recovery-first',
+                    protocol_version: 2, session_id: 'manual-recovery-first',
                     host: os.hostname(), pid: 45240, version: '4.5.0',
                     tempdir: os.tmpdir(), wd: os.tmpdir(),
                     info: { version: 'R 4.5.0', command: 'R', start_time: '' },
@@ -866,7 +866,7 @@ suite('Session Communication', () => {
                 jsonrpc: '2.0',
                 method: 'attach',
                 params: {
-                    protocol_version: 1,
+                    protocol_version: 2,
                     session_id: 'stable-session-id',
                     host: 'remote-compute-node',
                     sess_version: '3.0.0',
@@ -914,7 +914,7 @@ suite('Session Communication', () => {
                 jsonrpc: '2.0',
                 method: 'attach',
                 params: {
-                    protocol_version: 1,
+                    protocol_version: 2,
                     session_id: 'other-session-id',
                     host: 'other-compute-node',
                     sess_version: '3.0.0',
@@ -949,7 +949,7 @@ suite('Session Communication', () => {
             jsonrpc: '2.0',
             method: 'attach',
             params: {
-                protocol_version: 1,
+                protocol_version: 2,
                 session_id: sessionId,
                 host: 'remote-compute-node',
                 sess_version: '3.0.0',
@@ -997,11 +997,11 @@ suite('Session Communication', () => {
             client.write(`${JSON.stringify({
                 jsonrpc: '2.0',
                 method: 'attach',
-                params: { protocol_version: 2, session_id: 'future-session' }
+                params: { protocol_version: 1, session_id: 'legacy-session' }
             })}\n`);
             await waitFor(() => showError.called);
-            assert.match(String(showError.firstCall.args[0]), /unsupported sess protocol version 2/);
-            assert.notStrictEqual(session.activeSession?.sessionId, 'future-session');
+            assert.match(String(showError.firstCall.args[0]), /unsupported sess protocol version 1; this extension requires protocol version 2/);
+            assert.notStrictEqual(session.activeSession?.sessionId, 'legacy-session');
         } finally {
             client.destroy();
         }

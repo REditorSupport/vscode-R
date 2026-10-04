@@ -1179,6 +1179,34 @@ cat("\n")`;
             sinon.assert.notCalled(errors);
         } finally { errors.restore(); saved.restore(); format.restore(); }
     });
+    test('Interactive list viewers open nested tables in their original session', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const original = vscode.window.createWebviewPanel;
+        const panels: vscode.WebviewPanel[] = [];
+        const receivers: sinon.SinonSpy[] = [];
+        const create = sinon.stub(vscode.window, 'createWebviewPanel').callsFake((type, title, column, options) => {
+            const panel = original(type, title, column, options);
+            panels.push(panel);
+            receivers.push(sinon.spy(panel.webview, 'onDidReceiveMessage'));
+            return panel;
+        });
+        try {
+            await vscode.commands.executeCommand('r.runSelection', 'rebase_view <- list(table=data.frame(value=1:2)); View(rebase_view)');
+            await until(() => panels.length === 1 && receivers[0].calledOnce);
+            assert.strictEqual(panels[0].title, 'rebase_view');
+            await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
+            const receive = receivers[0].firstCall.args[0] as (message: unknown) => Promise<void>;
+            const documentGeneration = Number(/const documentGeneration = (\d+)/.exec(panels[0].webview.html)?.[1]);
+            await receive({ message: 'listview/view', documentGeneration, requestId: 1, path: [], index: 1 });
+            await until(() => panels.length === 2);
+            assert.strictEqual(panels[1].title, 'rebase_view$table');
+        } finally {
+            panels.forEach(panel => { panel.dispose(); });
+            receivers.forEach(receiver => { receiver.restore(); });
+            create.restore();
+        }
+    });
+
     test('large native cells export their snapshot scope and open the full data viewer', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id); assert.ok(notebook);

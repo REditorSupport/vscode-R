@@ -100,7 +100,7 @@ let info: SessionInfo;
 export let globalPipePath: string | undefined;
 export let workspaceFile: string;
 
-const SESS_PROTOCOL_VERSION = 1;
+const SESS_PROTOCOL_VERSION = 2;
 
 const sessions = new Map<string, Session>();
 const documentSessions = new Map<string, Session>();
@@ -255,7 +255,7 @@ function registerDataViewPanel(
         }
         dynamicDataViewPanels.delete(key);
         // Interactive transcripts retain this handle after the expanded viewer closes.
-        if (sessions.get(sessionId ?? '')?.requester) { return; }
+        if (currentStateGeneration === undefined && sessions.get(sessionId ?? '')?.requester) { return; }
         void sessionRequest({
             method: 'dataview_dispose',
             params: { view_id: viewId, state_generation: currentStateGeneration },

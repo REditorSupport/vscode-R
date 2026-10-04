@@ -496,6 +496,10 @@ export async function loadWorkspace(): Promise<void> {
 
 export async function viewItem(node: GlobalEnvItem): Promise<void> {
     if (node.owner && !node.owner.workspaceUnavailable && node.rootName) {
+        if (!node.objectPath.length) {
+            await runWorkspaceCode(`View(get(${JSON.stringify(node.rootName)}, envir = .GlobalEnv, inherits = FALSE), title = ${JSON.stringify(node.rootName)})`, node.owner);
+            return;
+        }
         await sessionRequest({
             method: 'workspace_view',
             params: { name: node.rootName, path: node.objectPath },

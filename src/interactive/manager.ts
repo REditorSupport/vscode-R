@@ -16,6 +16,7 @@ import { DISPLAY_MIME, InteractiveSerializer } from './notebook';
 import { setInteractiveExecutor } from './executionTarget';
 import * as session from '../session';
 import * as util from '../util';
+import type { ListViewNavigation } from '../listViewer';
 import { escapeXml } from './plotSvg';
 import { ensureWorkspaceViewer } from '../extension';
 import { queryTablePage } from './tableQuery';
@@ -951,6 +952,18 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             void this.prompt(view, event.data);
         } else if (event.type === 'clientRequest' && view.client.control) {
             void this.clientRequest(view, event.data);
+        } else if (event.type === 'viewer' && event.data.method === 'dataview') {
+            const params = object(event.data.params ?? {});
+            const viewer = util.config().get<Record<string, string>>('session.viewers.viewColumn')?.view ?? 'Two';
+            if (viewer !== 'Disable' && params.source && params.type && params.title) {
+                await session.showDataView(
+                    String(params.source), String(params.type), String(params.title), String(params.file ?? ''), viewer,
+                    params.view_id ? String(params.view_id) : undefined,
+                    params.navigation as ListViewNavigation | undefined,
+                    view.target.sessionId,
+                    typeof params.state_generation === 'number' ? params.state_generation : undefined,
+                );
+            }
         } else if (event.type === 'notification') {
             const params = object(event.data.params ?? {});
             if (event.data.method === 'help') { await session.showHelpNotification(params); }
