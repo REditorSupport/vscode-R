@@ -45,7 +45,7 @@ stopifnot(inherits(tryCatch(sess_install_required(bundled), error = identity), "
 
 # Exercise the real installer flow while replacing the package installation with
 # controlled success/failure (install.packages can return after a warning).
-extension <- file.path(root, "extension")
+extension <- file.path(root, "extension with spaces")
 dir.create(extension)
 dir.create(file.path(extension, "R"))
 stopifnot(file.copy("R/sess_source.R", file.path(extension, "R", "sess_source.R")))

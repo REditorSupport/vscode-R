@@ -29,6 +29,10 @@ local({
     script_files <- unlist(lapply(sys.frames(), function(frame) frame$ofile))
     if (!length(script_files)) {
         script_files <- sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE))
+        # The Unix R launcher encodes spaces in --file values before invoking R.
+        if (.Platform$OS.type == "unix") {
+            script_files <- gsub("~+~", " ", script_files, fixed = TRUE)
+        }
     }
     if (!length(script_files)) {
         stop("Cannot locate install_sess.R")

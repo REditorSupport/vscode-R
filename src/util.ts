@@ -309,8 +309,10 @@ export function readSessSourceRevision(description: string | undefined): string 
 
 export async function getInstalledSessSourceRevision(cwd?: string | URL): Promise<string | undefined> {
     const helper = extensionContext.asAbsolutePath(path.join('R', 'sess_source.R'));
+    // Use single quotes so this -e expression also works with Windows R.exe.
+    const helperLiteral = `'${helper.replace(/\\/g, '/').replace(/'/g, "\\'")}'`;
     const result = await executeRCommand(`local({
-        source(${JSON.stringify(helper.replace(/\\/g, '/'))}, local = TRUE)
+        source(${helperLiteral}, local = TRUE)
         revision <- sess_installed_source_revision()
         if (!is.null(revision)) cat(revision)
     })`, cwd);
