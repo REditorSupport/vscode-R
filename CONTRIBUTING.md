@@ -32,7 +32,7 @@ Run `pnpm run format` to format all files supported by Oxfmt, and
 same check for pull requests and pushes to `main`.
 
 The checked-in `.oxfmtrc.jsonc` is shared by the CLI and the recommended Oxc
-VS Code extension. JavaScript and TypeScript use four-space indentation and
+VS Code extension. JavaScript and TypeScript files use four-space indentation and
 single quotes; other supported formats use two-space indentation. Import and
 `package.json` sorting are disabled. Oxfmt respects the repository's `.gitignore`
 files and skips dependency lockfiles, so generated bundles, compiled tests, and
