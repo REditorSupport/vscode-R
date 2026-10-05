@@ -124,12 +124,12 @@ export class SessBackend implements SessionBackend {
                 if (this.current === executionId) { this.current = undefined; }
                 this.emit({ type: 'finished', executionId, state: message.state === 'success' || message.state === 'interrupted' ? message.state : 'error' });
                 break;
-            case 'stream': this.emit({ type: 'stream', executionId, text: String(message.text ?? ''),
-                channel: String(message.channel ?? 'stdout'), external: !executionId && this.options.frontend === 'arf' }); break;
+            case 'stream': this.emit({ type: 'stream', executionId, text: typeof message.text === 'string' ? message.text : '',
+                channel: typeof message.channel === 'string' ? message.channel : 'stdout', external: !executionId && this.options.frontend === 'arf' }); break;
             case 'condition': case 'input': case 'display': this.emit({ type: message.type, data: message, executionId }); break;
             case 'truncated': this.emit({ type: 'truncated', message: String(message.message), executionId }); break;
             case 'notification': this.notification(String(message.method), object(message.params ?? {}), executionId); break;
-            case 'external': this.emit({ type: 'external', code: String(message.code ?? '# Terminal output'), success: Boolean(message.success) }); break;
+            case 'external': this.emit({ type: 'external', code: typeof message.code === 'string' ? message.code : '# Terminal output', success: Boolean(message.success) }); break;
         }
     }
     private notification(method: string, params: Record<string, unknown>, executionId?: string): void {

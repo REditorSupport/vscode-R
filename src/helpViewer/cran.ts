@@ -30,7 +30,7 @@ export async function getPackagesFromCran(cranUrl: string): Promise<Package[]> {
 
             // parse html
             packages = site.parseFunction(html, site.url);
-        } catch(e) {
+        } catch {
             // These errors are expected, if the repo does not serve a specific URL
         }
 

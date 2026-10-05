@@ -2144,7 +2144,10 @@ function sendToSocket(socket: IpcSocket, data: Record<string, unknown>): void {
 }
 
 async function handleNotification(message: Record<string, unknown>, socket: IpcSocket) {
-    const method = String(message.method);
+    if (typeof message.method !== 'string') {
+        return;
+    }
+    const method = message.method;
     const params = (message.params as Record<string, unknown>) || {};
 
     switch (method) {
@@ -2153,7 +2156,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             const sessionId = typeof params.session_id === 'string' ? params.session_id.trim() : '';
             const host = typeof params.host === 'string' ? params.host : '';
             if (protocolVersion !== SESS_PROTOCOL_VERSION) {
-                const found = protocolVersion === undefined ? 'missing' : String(protocolVersion);
+                const found = protocolVersion === undefined ? 'missing' : JSON.stringify(protocolVersion);
                 void window.showErrorMessage(`Cannot attach R session: unsupported sess protocol version ${found}; this extension requires protocol version ${SESS_PROTOCOL_VERSION}.`);
                 socket.destroy();
                 return;
@@ -2163,8 +2166,8 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 socket.destroy();
                 return;
             }
-            if (!params.tempdir || !params.wd) {
-                void window.showErrorMessage('Cannot attach R session: the sess attach handshake is missing session paths. Update the sess package and try again.');
+            if (typeof params.tempdir !== 'string' || !params.tempdir || typeof params.wd !== 'string' || !params.wd) {
+                void window.showErrorMessage('Cannot attach R session: the sess attach handshake has missing or invalid session paths. Update the sess package and try again.');
                 socket.destroy();
                 return;
             }
@@ -2180,7 +2183,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 return;
             }
 
-            const rPid = params.pid === undefined || params.pid === null ? '' : String(params.pid);
+            const rPid = typeof params.pid === 'string' || typeof params.pid === 'number' ? String(params.pid) : '';
             const terminalPid = rPid && isLocalHost(host)
                 ? await findLocalTerminalPid(rPid)
                 : undefined;
@@ -2226,8 +2229,12 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             session.rVer = String(params.version);
             session.pid = rPid;
             session.info = (params.info as SessionInfo | undefined) ?? { version: session.rVer, command: '', start_time: '' };
-            session.sessionDir = String(params.tempdir);
-            session.workingDir = String(params.wd);
+            session.sessionDir = params.tempdir;
+            session.workingDir = params.wd;
+
+            if (terminalPid) {
+                terminalSessionAttached.fire(terminalPid);
+            }
 
             if (terminalPid) {
                 terminalSessionAttached.fire(terminalPid);
@@ -2242,8 +2249,8 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
 
             console.info(`[startSessionWatcher] attach session ${sessionId} (${host || 'unknown'}:${rPid || 'unknown'}), terminal PID: ${terminalPid ?? 'unassociated'}`);
             purgeAddinPickerItems();
-            if (params.plot_url) {
-                await globalPlotManager?.showHttpgdPlot(String(params.plot_url));
+            if (typeof params.plot_url === 'string' && params.plot_url) {
+                await globalPlotManager?.showHttpgdPlot(params.plot_url);
             }
             scheduleWorkspaceRefresh(0);
             break;
@@ -2260,17 +2267,17 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             break;
         }
         case 'httpgd': {
-            if (params.url) {
-                await globalPlotManager?.showHttpgdPlot(String(params.url));
+            if (typeof params.url === 'string' && params.url) {
+                await globalPlotManager?.showHttpgdPlot(params.url);
             }
             break;
         }
         case 'browser':
         case 'page_viewer':
         case 'webview': {
-            if (params.url) {
-                const url = String(params.url);
-                const title = String(params.title ?? (method === 'browser' ? 'Browser' : method === 'page_viewer' ? 'Page Viewer' : 'Viewer'));
+            if (typeof params.url === 'string' && params.url) {
+                const url = params.url;
+                const title = typeof params.title === 'string' ? params.title : (method === 'browser' ? 'Browser' : method === 'page_viewer' ? 'Page Viewer' : 'Viewer');
 
                 const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
                 const configKey = method === 'page_viewer' ? 'pageViewer' : (method === 'browser' ? 'browser' : 'viewer');
@@ -2342,13 +2349,13 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
 }
 
 export async function showHelpNotification(params: Record<string, unknown>): Promise<void> {
-    if (!globalRHelp || !params.requestPath) {
+    if (!globalRHelp || typeof params.requestPath !== 'string' || !params.requestPath) {
         return;
     }
 
     const viewer = config().get<Record<string, string>>('session.viewers.viewColumn')?.helpPanel ?? 'Two';
     if (viewer !== 'Disable') {
-        await globalRHelp.showHelpForPath(String(params.requestPath), viewer);
+        await globalRHelp.showHelpForPath(params.requestPath, viewer);
     }
 }
 
@@ -2357,8 +2364,8 @@ export async function handleEditorRequest(method: string, params: Record<string,
 }
 
 async function handleRequest(message: Record<string, unknown>, socket?: IpcSocket) {
-    if (message.method) {
-        const method = String(message.method);
+    if (typeof message.method === 'string' && message.method) {
+        const method = message.method;
         const params = (message.params as Record<string, unknown>) || {};
         let result: unknown = null;
         let error: unknown = null;

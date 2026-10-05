@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 import * as hljs from 'highlight.js';
@@ -263,7 +260,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
         this.aliasProvider = new AliasProvider(options);
         const previewListener = (previewer: RLocalHelpPreviewer) => {
             console.log(`Refreshing R Help preview: ${previewer.packageDir}`);
-            void this.refreshPreviewer(previewer);
+            this.refreshPreviewer(previewer);
         };
         this.helpPreviewerOptions = {
             indexTemplatePath: options.indexTemplatePath,
@@ -304,7 +301,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
             ) {
                 try {
                     child.dispose();
-                } catch (e) {}
+                } catch {}
             }
         }
     }
@@ -584,7 +581,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
     // shows help for request path as used by R's internal help server
     public async showHelpForPath(
         requestPath: string,
-        viewer?: string | any,
+        viewer?: vscode.ViewColumn | string,
         preserveFocus: boolean = false,
         panel?: HelpPanel,
     ): Promise<boolean> {
@@ -648,7 +645,7 @@ export class RHelp implements api.HelpPanel, vscode.WebviewPanelSerializer<strin
     // shows (internal) help file object in webview
     private async showHelpFile(
         helpFile: HelpFile | Promise<HelpFile>,
-        viewer?: string | any,
+        viewer?: vscode.ViewColumn | string,
         preserveFocus: boolean = false,
         panel?: HelpPanel,
     ): Promise<boolean> {

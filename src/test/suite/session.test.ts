@@ -109,6 +109,15 @@ suite('Session Communication', () => {
         sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Two');
     });
 
+    test('help notification ignores malformed request paths', async () => {
+        const showHelpForPath = await showHelpWith(undefined, { requestPath: { path: 'base/html/mean.html' } });
+        await session.showHelpNotification({ requestPath: ['base/html/mean.html'] });
+        await session.showHelpNotification({ requestPath: 42 });
+        await session.showHelpNotification({ requestPath: '' });
+
+        sinon.assert.notCalled(showHelpForPath);
+    });
+
     test('help notification ignores stale viewer parameter from sess', async () => {
         const showHelpForPath = await showHelpWith({ helpPanel: 'Active' }, {
             requestPath: 'base/html/mean.html',
@@ -129,7 +138,8 @@ suite('Session Communication', () => {
                 target.rVer = version;
                 await session.activateSession(target);
                 assert.strictEqual(status.text, 'R 4.6.1: 92026');
-                assert.ok(String(status.tooltip).includes(target.info.version));
+                assert.ok(typeof status.tooltip === 'string');
+                assert.ok(status.tooltip.includes(target.info.version));
             }
         } finally { session.unregisterSessionTransport(target); status.dispose(); }
     });
@@ -523,7 +533,7 @@ suite('Session Communication', () => {
                     params: { width: 800, height: 600, format: 'svglite' }
                 }) as { data?: string, format?: string, error?: unknown };
                 return svgliteResp && svgliteResp.data;
-            } catch (e) {
+            } catch {
                 return false;
             }
         }, 15000, 500);
@@ -561,7 +571,7 @@ suite('Session Communication', () => {
                     params: { width: 800, height: 600, format: 'png' }
                 }) as { data?: string, format?: string };
                 return pngResp && pngResp.data;
-            } catch (e) {
+            } catch {
                 return false;
             }
         }, 15000, 500);
@@ -575,13 +585,36 @@ suite('Session Communication', () => {
         
         assert.ok(createWebviewPanelSpy.calledWith('dataview'), 'dataview should be triggered');
 
+        // Preserve the title produced by String(array) for a multi-line deparse().
+        const multilineTitle = 'subset(mtcars, mpg > 15 & cyl == 6 & disp < 300 & hp < 150 & ,'
+            + '    drat > 3 & wt < 4 & qsec < 20)';
+        term.sendText('View(subset(mtcars, mpg > 15 & cyl == 6 & disp < 300 & hp < 150 & drat > 3 & wt < 4 & qsec < 20))\n');
+        await waitFor(() => createWebviewPanelSpy.calledWith('dataview', multilineTitle), 10000, 200);
+
+        term.sendText('View(list(value = 1L), title = c("List title", "second line"))\n');
+        await waitFor(() => createWebviewPanelSpy.calledWith('dataview', 'List title,second line'), 10000, 200);
+
+        const executeCommandSpy = sandbox.spy(vscode.commands, 'executeCommand');
+        term.sendText('View(1:3, title = c("Object title", "second line"))\n');
+        await waitFor(() => executeCommandSpy.calledWith('vscode.open'), 10000, 200);
+
+        // Objects and arrays containing non-string values must still be rejected.
+        const dataViewCount = createWebviewPanelSpy.withArgs('dataview').callCount;
+        term.sendText(
+            'for (title in list(list(invalid = TRUE), list("valid", 42L), 42L)) ' +
+            'sess::notify_client("dataview", list(source = "table", type = "json", title = title)); ' +
+            'View(mtcars, title = "Valid title after malformed notifications")\n'
+        );
+        await waitFor(() => createWebviewPanelSpy.calledWith('dataview', 'Valid title after malformed notifications'), 10000, 200);
+        assert.strictEqual(createWebviewPanelSpy.withArgs('dataview').callCount, dataViewCount + 1);
+
         // 4. Test webview
         term.sendText('tf <- tempfile(fileext=".html"); writeLines("test", tf); getOption("viewer")(tf)\n');
         await waitFor(() => createWebviewPanelSpy.calledWith('webview'), 10000, 200);
 
         assert.ok(createWebviewPanelSpy.calledWith('webview'), 'webview should be triggered for html file');
 
-    }).timeout(45000);
+    }).timeout(85000);
 
     test('attach session artifacts are owner-only', async () => {
         const command = await session.getAttachSessionCommand();
@@ -1108,6 +1141,33 @@ suite('Session Communication', () => {
             await waitFor(() => showError.called);
             assert.match(String(showError.firstCall.args[0]), /unsupported sess protocol version 1; this extension requires protocol version 2/);
             assert.notStrictEqual(session.activeSession?.sessionId, 'legacy-session');
+        } finally {
+            client.destroy();
+        }
+    }).timeout(10000);
+
+    test('rejects attach session paths that are not strings', async () => {
+        const showError = sandbox.stub(vscode.window, 'showErrorMessage');
+        const endpoint = await session.getGlobalPipePath();
+        const client = net.createConnection(endpoint);
+        try {
+            await new Promise<void>((resolve, reject) => {
+                client.once('connect', resolve);
+                client.once('error', reject);
+            });
+            client.write(`${JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'attach',
+                params: {
+                    protocol_version: 1,
+                    session_id: 'malformed-session',
+                    tempdir: { path: os.tmpdir() },
+                    wd: os.tmpdir()
+                }
+            })}\n`);
+            await waitFor(() => showError.called);
+            assert.match(String(showError.firstCall.args[0]), /missing or invalid session paths/);
+            assert.notStrictEqual(session.activeSession?.sessionId, 'malformed-session');
         } finally {
             client.destroy();
         }

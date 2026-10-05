@@ -32,7 +32,7 @@ export class AgentClient extends EventEmitter {
             const pending = this.pending.get(id);
             if (!pending) { return; }
             clearTimeout(pending.timer); this.pending.delete(id);
-            if (message.error) { pending.reject(new Error(String(message.error))); }
+            if (message.error) { pending.reject(new Error(typeof message.error === 'string' ? message.error : JSON.stringify(message.error))); }
             else { pending.resolve(message.result); }
         });
         socket.on('data', (chunk: Buffer) => {

@@ -95,7 +95,7 @@ export class SessionAgent {
 
     private saveManifest(): void { atomicJson(path.join(this.config.storage, 'manifest.json'), this.manifest); }
 
-    private event(type: string, data: Record<string, unknown> = {}, executionId: string | undefined = undefined, durable = false): SessionEvent {
+    private event(type: string, data: Record<string, unknown> = {}, executionId?: string, durable = false): SessionEvent {
         if (this.stopped) { return { seq: this.journal.seq, generation: this.config.generation, type, data, executionId, time: Date.now() }; }
         const event = this.journal.append(type, data, executionId, durable);
         for (const client of this.clients) {
@@ -314,7 +314,7 @@ export class SessionAgent {
                 const pending = this.frontendRequests.get(Number(params.id));
                 if (pending) {
                     this.frontendRequests.delete(Number(params.id));
-                    await this.backend.replyClientRequest(pending, { error: params.error ? String(params.error) : undefined, result: params.result });
+                    await this.backend.replyClientRequest(pending, { error: params.error ? (typeof params.error === 'string' ? params.error : JSON.stringify(params.error)) : undefined, result: params.result });
                 }
                 break;
             }

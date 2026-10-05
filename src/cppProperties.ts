@@ -22,7 +22,7 @@ export async function generateCppProperties(): Promise<void> {
         if (overwrite === 'No') {
             return;
         }
-        void fs.unlinkSync(outFilePath);
+        fs.unlinkSync(outFilePath);
     }
     return generateCppPropertiesProc(currentWorkspaceFolder);
 }

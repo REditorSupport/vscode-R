@@ -37,7 +37,8 @@ export class Transcript {
         } else if (event.type === 'stream') {
             const previous = cell.outputs.at(-1);
             if (previous?.type === 'stream' && previous.data.channel === event.data.channel) {
-                previous.data.text = String(previous.data.text ?? '') + String(event.data.text ?? '');
+                previous.data.text = (typeof previous.data.text === 'string' ? previous.data.text : '')
+                    + (typeof event.data.text === 'string' ? event.data.text : '');
             } else { cell.outputs.push({ type: 'stream', data: { ...event.data } }); }
         } else if (event.type === 'display') {
             const previous = cell.outputs.find(output => output.type === 'display' && output.data.displayId === event.data.displayId);

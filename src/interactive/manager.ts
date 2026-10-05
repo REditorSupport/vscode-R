@@ -470,7 +470,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     }
 
     private async openOutput(view: InteractiveView, data: Record<string, unknown>): Promise<void> {
-        let url = data.svg || data.asset ? view.base + String(data.svg ?? data.asset).split('/').map(encodeURIComponent).join('/') : String(data.url ?? '');
+        let url = data.svg || data.asset ? view.base + String(data.svg ?? data.asset).split('/').map(encodeURIComponent).join('/') : (typeof data.url === 'string' ? data.url : '');
         if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) { url = (await vscode.env.asExternalUri(vscode.Uri.parse(url))).toString(true); }
         if (data.kind === 'image' && !url) { url = `data:${String(data.mime)};base64,${String(data.data)}`; }
         const html = data.kind === 'mime' && data.mime === 'text/html';
@@ -935,7 +935,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             if (typeof event.data.rPath === 'string') { view.client.manifest.rPath = event.data.rPath; view.target.rPath = event.data.rPath; }
             if (Array.isArray(event.data.libraryPaths)) { view.client.manifest.libraryPaths = event.data.libraryPaths.map(String); view.target.libraryPaths = view.client.manifest.libraryPaths; }
             if (typeof event.data.runtimeSessionId === 'string') { view.client.manifest.runtimeSessionId = event.data.runtimeSessionId; }
-            view.target.pid = String(event.data.rPid ?? ''); view.target.rVer = String(event.data.rVersion ?? '');
+            view.target.pid = typeof event.data.rPid === 'number' ? String(event.data.rPid) : ''; view.target.rVer = typeof event.data.rVersion === 'string' ? event.data.rVersion : '';
             this.refresh();
             if (event.data.status === 'exited' && !view.restarting) {
                 await this.sessionNotice(view, 'stopped');
@@ -1064,7 +1064,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 }
                 if (data.kind === 'mime' && data.mime === 'text/html') { display.kind = 'htmlText'; }
                 items = [vscode.NotebookCellOutputItem.json(display, DISPLAY_MIME),
-                    vscode.NotebookCellOutputItem.text(data.kind === 'table' ? String(data.printedText ?? `${String(data.totalRows)} rows\n${JSON.stringify(data.rows, null, 2)}`) : `R ${String(data.kind)} output`)];
+                    vscode.NotebookCellOutputItem.text(data.kind === 'table' ? (typeof data.printedText === 'string' ? data.printedText : `${String(data.totalRows)} rows\n${JSON.stringify(data.rows, null, 2)}`) : `R ${String(data.kind)} output`)];
                 if (typeof data.svg === 'string') {
                     try {
                         const svg = portable ? readAsset(path.join(this.root, view.client.manifest.id, 'assets'), data.svg).toString('base64')
@@ -1146,7 +1146,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const id = Number(input.inputId);
         if (view.prompts.has(id) || view.disposed) { return; }
         view.prompts.add(id);
-        const value = await vscode.window.showInputBox({ title: `${view.client.manifest.label}: R input`, prompt: String(input.prompt ?? 'Input'), ignoreFocusOut: true });
+        const value = await vscode.window.showInputBox({ title: `${view.client.manifest.label}: R input`, prompt: typeof input.prompt === 'string' ? input.prompt : 'Input', ignoreFocusOut: true });
         if (view.client !== client) { return; }
         view.prompts.delete(id);
         if (value !== undefined && view.client === client && !view.restarting) {
@@ -1394,7 +1394,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             if (backend.kind === 'sess' && backend.options.frontend === 'arf' && backend.options.ownership === 'managed') {
                 // Preserve the original binary across PATH changes after a reload, but
                 // allow a repaired setting to replace a removed/moved executable.
-                const command = resolveArfExecutable(String(backend.options.arfPath ?? 'arf'), config.directory)
+                const command = resolveArfExecutable(typeof backend.options.arfPath === 'string' ? backend.options.arfPath : 'arf', config.directory)
                     ?? this.arfCommand(vscode.Uri.file(config.directory));
                 const arfPath = this.checkArfExecutable(command, config.directory, true);
                 if (!arfPath) { return; }
@@ -1408,7 +1408,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             config.generation = randomUUID();
             if (view.disposed) { return; }
             if (backend.kind === 'sess' && backend.options.frontend === 'arf' && backend.options.ownership === 'managed' &&
-                !this.checkArfExecutable(String(runtime.config.backend?.options.arfPath ?? 'arf'), config.directory, true)) { return; }
+                !this.checkArfExecutable(typeof runtime.config.backend?.options.arfPath === 'string' ? runtime.config.backend.options.arfPath : 'arf', config.directory, true)) { return; }
             prepareSupervisor(config.supervision, config.directory);
             clearTimeout(view.reconnectTimer);
             announced = true;

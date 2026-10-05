@@ -170,8 +170,6 @@ export class RMarkdownCompletionItemProvider implements vscode.CompletionItemPro
 
 // Fold code chunks
 export class RChunkFoldingProvider implements vscode.FoldingRangeProvider {
-    constructor() { this; }
-
     provideFoldingRanges(document: vscode.TextDocument): vscode.ProviderResult<vscode.FoldingRange[]> {
         const chunks = getChunks(document);
         if (chunks) {
