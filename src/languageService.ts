@@ -138,7 +138,7 @@ export class LanguageService implements Disposable {
         return childProcess;
     }
 
-    private async createClient(selector: DocumentFilter[],
+    private async createClient(key: string, selector: DocumentFilter[],
         cwd: string, workspaceFolder: WorkspaceFolder | undefined, outputChannel: OutputChannel,
         resource?: Uri, sessionScope: string = 'global', target?: Session): Promise<LanguageClient> {
 
@@ -301,17 +301,23 @@ export class LanguageService implements Disposable {
         }
 
         extensionContext.subscriptions.push(client);
-        await client.start();
         if (target) {
             this.syncSessionScope(sessionScope, target.workspaceData, target.sessionId);
         }
+        await client.start();
+        await this.registerClient(key, client, sessionScope);
+        return client;
+    }
+
+
+    private async registerClient(key: string, client: LanguageClient, sessionScope: string): Promise<void> {
+        this.clients.set(key, client);
+        this.clientScopes.set(key, sessionScope);
         const sessionState = this.sessionStates.get(sessionScope)?.state;
         if (sessionState) {
             await this.applySessionState(client, sessionState);
         }
-        return client;
     }
-
 
     private checkClient(name: string): boolean {
         if (this.initSet.has(name)) {
@@ -364,8 +370,8 @@ export class LanguageService implements Disposable {
                 const scope = target ? `session:${target.sessionId}` : this.getSessionScope(folder?.uri);
                 if (!this.checkClient(key)) {
                     const selector = [{ scheme: 'vscode-interactive-input', language: 'r', pattern: document.uri.fsPath }];
-                    const client = await this.createClient(selector, target?.workingDir ?? folder?.uri.fsPath ?? os.homedir(), folder, this.outputChannel, folder?.uri, scope, target);
-                    this.clients.set(key, client); this.clientScopes.set(key, scope); this.initSet.delete(key);
+                    await this.createClient(key, selector, target?.workingDir ?? folder?.uri.fsPath ?? os.homedir(), folder, this.outputChannel, folder?.uri, scope, target);
+                    this.initSet.delete(key);
                 }
                 return;
             }
@@ -379,10 +385,8 @@ export class LanguageService implements Disposable {
                     const documentSelector: DocumentFilter[] = [
                         { scheme: 'vscode-notebook-cell', language: 'r', pattern: `${document.uri.fsPath}` },
                     ];
-                    const client = await this.createClient(documentSelector,
+                    await this.createClient(key, documentSelector,
                         target?.workingDir ?? folder?.uri.fsPath ?? dirname(document.uri.fsPath), folder, this.outputChannel, folder?.uri ?? document.uri, scope, target);
-                    this.clients.set(key, client);
-                    this.clientScopes.set(key, scope);
                     this.initSet.delete(key);
                 }
                 return;
@@ -399,9 +403,7 @@ export class LanguageService implements Disposable {
                         { scheme: 'file', language: 'r', pattern: pattern },
                         { scheme: 'file', language: 'rmd', pattern: pattern },
                     ];
-                    const client = await this.createClient(documentSelector, folder.uri.fsPath, folder, this.outputChannel, folder.uri, key);
-                    this.clients.set(key, client);
-                    this.clientScopes.set(key, key);
+                    await this.createClient(key, documentSelector, folder.uri.fsPath, folder, this.outputChannel, folder.uri, key);
                     this.initSet.delete(key);
                 }
 
@@ -416,9 +418,7 @@ export class LanguageService implements Disposable {
                             { scheme: 'untitled', language: 'r' },
                             { scheme: 'untitled', language: 'rmd' },
                         ];
-                        const client = await this.createClient(documentSelector, os.homedir(), undefined, this.outputChannel, document.uri, 'unscoped');
-                        this.clients.set(key, client);
-                        this.clientScopes.set(key, 'unscoped');
+                        await this.createClient(key, documentSelector, os.homedir(), undefined, this.outputChannel, document.uri, 'unscoped');
                         this.initSet.delete(key);
                     }
                     return;
@@ -432,10 +432,8 @@ export class LanguageService implements Disposable {
                         const documentSelector: DocumentFilter[] = [
                             { scheme: 'file', pattern: document.uri.fsPath },
                         ];
-                        const client = await this.createClient(documentSelector,
+                        await this.createClient(key, documentSelector,
                             dirname(document.uri.fsPath), undefined, this.outputChannel, document.uri, 'unscoped');
-                        this.clients.set(key, client);
-                        this.clientScopes.set(key, 'unscoped');
                         this.initSet.delete(key);
                     }
                     return;
@@ -541,10 +539,8 @@ export class LanguageService implements Disposable {
 
             const workspaceFolder = workspace.workspaceFolders?.[0];
             const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : os.homedir();
-            const client = await this.createClient(documentSelector, cwd, undefined, this.outputChannel, workspaceFolder?.uri, 'global');
-            this.clients.set('global', client);
+            await this.createClient('global', documentSelector, cwd, undefined, this.outputChannel, workspaceFolder?.uri, 'global');
             this.startMultiLanguageService(true);
-            this.clientScopes.set('global', 'global');
         }
     }
 
