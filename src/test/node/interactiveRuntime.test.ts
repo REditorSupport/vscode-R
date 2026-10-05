@@ -83,7 +83,7 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         return events.filter(event => event.executionId === id && event.type === 'stream').map(event => event.data.text).join('');
     }
 
-    test('streams output before completion and keeps one R environment', async () => {
+    test('streams output before completion and keeps one R environment [smoke]', async () => {
         const id = await submit('answer <- 42; cat("early λ🙂\\n"); Sys.sleep(0.5); cat("late\\n"); answer');
         await until(() => text(id).includes('early'));
         assert.ok(!events.some(event => event.executionId === id && event.type === 'finished'));
@@ -173,7 +173,7 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         } finally { connection?.close(); await starting.close(); await startup.catch(() => undefined); }
     });
 
-    test('reconnects after output produced without any editor and deduplicates submission', async () => {
+    test('reconnects after output produced without any editor and deduplicates submission [smoke]', async () => {
         const code = 'counter <- 1; Sys.sleep(0.3); counter <- counter + 1; cat(counter)';
         const id = await submit(code);
         const after = events.at(-1)?.seq ?? 0;
@@ -200,7 +200,7 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         assert.strictEqual((await finished(id)).state, 'success'); assert.match(text(id), /Ada/); assert.match(text(id), /7/);
     });
 
-    test('interrupts evaluation without losing R and cancels queued code', async () => {
+    test('interrupts evaluation without losing R and cancels queued code [smoke]', async () => {
         const id = await submit('kept <- 17; Sys.sleep(30)');
         await until(() => events.some(event => event.executionId === id && event.type === 'started'));
         const queued = await submit('kept <- 0'); await client.request('cancel', { id: queued });
@@ -760,7 +760,7 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
         assert.strictEqual(config.maxAssetBytes, 64 * 1024 * 1024);
     });
 
-    test('standalone agent survives its launcher process exiting', async () => {
+    test('standalone agent survives its launcher process exiting [smoke]', async () => {
         const id = randomUUID();
         const config: AgentConfig = { id, generation: randomUUID(), label: 'Detached test', directory: root,
             storage: path.join(root, id), rPath: 'R', library, resources,
@@ -792,7 +792,7 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
 
     for (const supervision of ['detached', 'auto']) {
         const label = supervision === 'auto' ? `${process.platform === 'linux' ? 'Linux' : 'Desktop'} auto without tmux` : 'Detached';
-        test(`${label} session leaves the editor process tree and retains objects after its termination`, async () => {
+        test(`${label} session leaves the editor process tree and retains objects after its termination [smoke]`, async () => {
             const runtime = hostNodeRuntime();
             const node = runtime.executable;
             const rPath = resolveExecutable('R', root); assert.ok(rPath);

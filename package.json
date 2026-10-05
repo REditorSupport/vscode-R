@@ -2531,7 +2531,7 @@
     "clean": "node -e \"require('node:fs').rmSync('out', { recursive: true, force: true })\"",
     "pretest": "pnpm run compile && pnpm run clean && tsc -p ./",
     "test": "pnpm run test:node && pnpm run test:extension",
-    "test:node": "mocha \"out/test/node/**/*.test.js\" --ui tdd --timeout 60000",
+    "test:node": "mocha \"out/test/node/**/*.test.js\" --config .mocharc.interactive.cjs",
     "test:extension": "vscode-test",
     "lint": "oxlint src",
     "typecheck": "tsc --noEmit -p ./",

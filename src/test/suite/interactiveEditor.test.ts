@@ -262,7 +262,7 @@ function treeTooltip(item: vscode.TreeItem): string {
             sinon.assert.notCalled(errors);
         } finally { picker.restore(); errors.restore(); fs.rmSync(storage, { recursive: true, force: true }); }
     });
-    test('opens native Interactive without Jupyter and executes through its R kernel', async () => {
+    test('opens native Interactive without Jupyter and executes through its R kernel [smoke]', async () => {
         const created = sinon.spy(vscode.notebooks, 'createNotebookController');
         try {
             await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
@@ -570,7 +570,7 @@ function treeTooltip(item: vscode.TreeItem): string {
             assert.strictEqual(vscode.workspace.notebookDocuments.length, count);
         } finally { picker.restore(); errors.restore(); }
     });
-    test('lints Interactive cells and clears diagnostics after an edit', async () => {
+    test('lints Interactive cells and clears diagnostics after an edit [smoke]', async () => {
         const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id);
         assert.ok(notebook);
         const edit = new vscode.WorkspaceEdit();
@@ -1416,7 +1416,7 @@ par(mfrow=c(1,1))`);
         try { assert.ok((await client.snapshot()).executions.some(record => record.code.includes('editor_value <- 42'))); }
         finally { client.close(); }
     });
-    test('keeps independent notebooks and reconnects to the original R environment', async () => {
+    test('keeps independent notebooks and reconnects to the original R environment [smoke]', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
         const documents = vscode.workspace.notebookDocuments.filter(doc => manifests.some(m => m.id === doc.metadata.rSessionId));
         assert.strictEqual(documents.length, 2);
@@ -1576,7 +1576,7 @@ par(mfrow=c(1,1))`);
         } finally { confirmation.restore(); picker.restore(); info.restore(); }
     });
 
-    test('restart keeps the window, drafts, transcript, bindings and kernel through multiple R processes', async () => {
+    test('restart keeps the window, drafts, transcript, bindings and kernel through multiple R processes [smoke]', async () => {
         const original = manifests[1];
         await vscode.commands.executeCommand('r.interactive.detach', original);
         const created = sinon.spy(vscode.notebooks, 'createNotebookController');

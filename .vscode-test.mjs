@@ -1,4 +1,5 @@
 import { defineConfig } from '@vscode/test-cli';
+import interactiveTestOptions from './scripts/interactive-test-options.cjs';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -18,7 +19,8 @@ const common = {
 	mocha: {
 		ui: 'tdd',
 		color: true,
-		timeout: 20000
+		timeout: 20000,
+		...interactiveTestOptions
 	},
 	desktop: {
 		installExtensions: ['REditorSupport.r-syntax']
