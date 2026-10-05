@@ -16,6 +16,9 @@ export function getListViewerScript(documentGeneration: number, initial: ListVie
     window.addEventListener('focus', () => {
         vscode.postMessage({ message: 'dataview/focus', documentGeneration });
     });
+    window.addEventListener('blur', () => {
+        vscode.postMessage({ message: 'dataview/blur', documentGeneration });
+    });
     const pending = new Map();
     let nextRequestId = 0;
     const list = document.getElementById('list');

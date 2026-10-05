@@ -225,6 +225,8 @@ suite('Viewer session ownership', () => {
         const b = await attach('viewer-session-b', os.hostname(), terminalPid);
         const aList = await open(a, 'list');
         const aTable = await open(a, 'table');
+        assert.ok(aList.panel.webview.html.includes("window.addEventListener('blur'"));
+        assert.ok(aTable.panel.webview.html.includes("window.addEventListener('blur'"));
 
         aList.activate();
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
@@ -243,14 +245,18 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
         assert.strictEqual(session.activeSession?.sessionId, b.id);
 
-        await session.switchSessionByTerminal(terminal);
+        await send(aList, { message: 'dataview/blur' });
         assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
+        assert.strictEqual(session.activeSession?.sessionId, b.id);
 
         await send(aTable, { message: 'dataview/focus' });
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
         assert.strictEqual(session.activeSession?.sessionId, b.id);
 
-        await session.switchSessionByTerminal(terminal);
+        await send(aTable, { message: 'dataview/blur' });
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
+        assert.strictEqual(session.activeSession?.sessionId, b.id);
+
         await session.cleanupSession(b.id);
         assert.strictEqual(session.activeSession, undefined);
         assert.strictEqual(statusBar.text, 'R: (not attached)');

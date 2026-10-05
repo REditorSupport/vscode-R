@@ -292,6 +292,14 @@ function focusDataViewPanel(panel: vscode.WebviewPanel, sessionId: string | null
     updateSessionStatusFromFocus();
 }
 
+function blurDataViewPanel(panel: vscode.WebviewPanel): void {
+    if (focusedDataViewPanel === panel) {
+        focusedDataViewPanel = undefined;
+        focusedDataViewSessionId = null;
+        updateSessionStatusFromFocus();
+    }
+}
+
 function registerDataViewPanel(
     panel: vscode.WebviewPanel, key: string, viewId: string, sessionId: string | null,
     stateGeneration?: number,
@@ -304,22 +312,14 @@ function registerDataViewPanel(
     }
     panel.onDidChangeViewState(({ webviewPanel }) => {
         if (!webviewPanel.active) {
-            if (focusedDataViewPanel === panel) {
-                focusedDataViewPanel = undefined;
-                focusedDataViewSessionId = null;
-                updateSessionStatusFromFocus();
-            }
+            blurDataViewPanel(panel);
             return;
         }
 
         focusDataViewPanel(panel, sessionId);
     });
     panel.onDidDispose(() => {
-        if (focusedDataViewPanel === panel) {
-            focusedDataViewPanel = undefined;
-            focusedDataViewSessionId = null;
-            updateSessionStatusFromFocus();
-        }
+        blurDataViewPanel(panel);
         documentGenerations.delete(webview);
         const currentStateGeneration = dynamicDataViewStateGenerations.get(panel);
         dynamicDataViewStateGenerations.delete(panel);
@@ -356,9 +356,13 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
 
     webview.onDidReceiveMessage(async (raw: unknown) => {
         const focusMessage = raw as { message?: string; documentGeneration?: number };
-        if (focusMessage.message === 'dataview/focus') {
+        if (focusMessage.message === 'dataview/focus' || focusMessage.message === 'dataview/blur') {
             if (focusMessage.documentGeneration === documentGenerations.get(webview)) {
-                focusDataViewPanel(panel, sessionId);
+                if (focusMessage.message === 'dataview/focus') {
+                    focusDataViewPanel(panel, sessionId);
+                } else {
+                    blurDataViewPanel(panel);
+                }
             }
             return;
         }
@@ -1201,6 +1205,10 @@ export async function showDataView(
                     focusDataViewPanel(panel, sessionId);
                     return;
                 }
+                if (message.message === 'dataview/blur') {
+                    blurDataViewPanel(panel);
+                    return;
+                }
                 if (!Array.isArray(message.path) || !message.path.every(index => Number.isSafeInteger(index) && index > 0)) {
                     return;
                 }
@@ -1442,6 +1450,9 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     const documentGeneration = ${documentGeneration};
     window.addEventListener('focus', () => {
         vscode.postMessage({ message: 'dataview/focus', documentGeneration });
+    });
+    window.addEventListener('blur', () => {
+        vscode.postMessage({ message: 'dataview/blur', documentGeneration });
     });
     let requestIdSeq = 1;
     const pending = new Map();
