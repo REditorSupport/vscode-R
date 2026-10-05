@@ -4,77 +4,68 @@
     "source": "https://r-graph-gallery.com/272-basic-scatterplot-with-ggplot2.html",
     "adaptation": "Comments omitted; random seed and graphics parameters reset by the runner.",
     "code": "library(ggplot2)\n \n \nggplot(iris, aes(x=Sepal.Length, y=Sepal.Width)) + \n    geom_point()",
-    "kinds": [
-      "plot"
-    ]
+    "kinds": ["plot"]
   },
   {
     "id": "iris-rug",
     "source": "https://r-graph-gallery.com/276-scatterplot-with-rug-ggplot2.html",
     "adaptation": "Comments omitted; random seed and graphics parameters reset by the runner.",
     "code": "library(ggplot2)\n\nhead(iris)\n\nggplot(data=iris, aes(x=Sepal.Length, Petal.Length)) +\n  geom_point() +\n  geom_rug(col=\"steelblue\",alpha=0.1, size=1.5)",
-    "kinds": [
-      "table",
-      "plot"
-    ]
+    "kinds": ["table", "plot"]
   },
   {
     "id": "mtcars-heatmap",
     "source": "https://r-graph-gallery.com/215-the-heatmap-function.html",
     "adaptation": "Comments omitted; random seed and graphics parameters reset by the runner.",
     "code": "data <- as.matrix(mtcars)\n\nheatmap(data)",
-    "kinds": [
-      "plot"
-    ]
+    "kinds": ["plot"]
   },
   {
     "id": "polynomial-interval",
     "source": "https://r-graph-gallery.com/45-confidence-interval-around-polynomial-curve-fitting.html",
     "adaptation": "Comments omitted; random seed and graphics parameters reset by the runner.",
     "code": "x <- runif(300, min=-30, max=30) \ny <- -1.2*x^3 + 1.1 * x^2 - x + 10 + rnorm(length(x),0,100*abs(x)) \n\nplot(x,y,col=rgb(0.4,0.4,0.8,0.6), pch=16 , cex=1.3 , xlab=\"\" , ylab=\"\") \n\nmodel <- lm(y ~ x + I(x^2) + I(x^3))\n\n\nmyPredict <- predict( model , interval=\"predict\" )\n\nix <- sort(x,index.return=T)$ix\nlines(x[ix], myPredict[ix , 1], col=2, lwd=2 )\npolygon(c(rev(x[ix]), x[ix]), c(rev(myPredict[ ix,3]), myPredict[ ix,2]), col = rgb(0.7,0.7,0.7,0.4) , border = NA)",
-    "kinds": [
-      "plot"
-    ]
+    "kinds": ["plot"]
   },
   {
     "id": "four-panels",
     "source": "https://r-graph-gallery.com/71-split-screen-with-par-mfrow.html",
     "adaptation": "Comments omitted; random seed and graphics parameters reset by the runner.",
     "code": "a <- seq(1,29)+4*runif(29,0.4)\nb <- seq(1,29)^2+runif(29,0.98)\n \npar(mfrow=c(2,2))\n \nplot( a,b , pch=20)\nplot(a-b , pch=18)\nhist(a, border=F , col=rgb(0.2,0.2,0.8,0.7) , main=\"\")\nboxplot(a , col=\"grey\" , xlab=\"a\")",
-    "kinds": [
-      "plot"
-    ]
+    "kinds": ["plot"]
   },
   {
     "id": "tile-heatmap",
     "source": "https://r-graph-gallery.com/79-levelplot-with-ggplot2.html",
     "adaptation": "Comments omitted; random seed and graphics parameters reset by the runner.",
     "code": "library(ggplot2)\n\nx <- LETTERS[1:20]\ny <- paste0(\"var\", seq(1,20))\ndata <- expand.grid(X=x, Y=y)\ndata$Z <- runif(400, 0, 5)\n \nggplot(data, aes(X, Y, fill= Z)) + \n  geom_tile()",
-    "kinds": [
-      "plot"
-    ]
+    "kinds": ["plot"]
   },
   {
     "id": "raster-density",
     "source": "https://ggplot2.tidyverse.org/reference/geom_tile.html",
     "adaptation": "Load ggplot2 explicitly.",
     "code": "library(ggplot2)\nggplot(faithfuld, aes(waiting, eruptions)) + geom_raster(aes(fill = density), interpolate = TRUE)",
-    "kinds": [
-      "plot"
-    ]
+    "kinds": ["plot"]
   },
   {
     "id": "grouped-analysis",
     "source": "https://dplyr.tidyverse.org/reference/summarise.html",
     "adaptation": "Retain the result to check group sizes and means; the runner sets default numeric formatting.",
     "code": "library(dplyr)\nsummary_table <- mtcars |> group_by(cyl) |> summarise(mean = mean(disp), n = n())\nstopifnot(identical(summary_table$n, c(11L, 7L, 14L)), sum(summary_table$n) == nrow(mtcars))\nsummary_table",
-    "kinds": [
-      "table"
-    ],
+    "kinds": ["table"],
     "table": {
       "headers": ["cyl", "mean", "n"],
-      "rows": [[4, 105.136363636364, 11], [6, 183.314285714286, 7], [8, 353.1, 14]],
-      "formatted": [["4", "105.1364", "11"], ["6", "183.3143", "7"], ["8", "353.1000", "14"]]
+      "rows": [
+        [4, 105.136363636364, 11],
+        [6, 183.314285714286, 7],
+        [8, 353.1, 14]
+      ],
+      "formatted": [
+        ["4", "105.1364", "11"],
+        ["6", "183.3143", "7"],
+        ["8", "353.1000", "14"]
+      ]
     }
   },
   {
@@ -82,17 +73,13 @@
     "source": "https://rstudio.github.io/DT/",
     "adaptation": "Use the documented datatable(iris) example.",
     "code": "library(DT)\ndatatable(iris)",
-    "kinds": [
-      "html"
-    ]
+    "kinds": ["html"]
   },
   {
     "id": "interactive-heatmap",
     "source": "https://r-graph-gallery.com/79-levelplot-with-ggplot2.html",
     "adaptation": "Replace optional hrbrthemes styling with theme_minimal; use data columns in tooltip labels.",
     "code": "library(ggplot2)\nlibrary(plotly)\nx <- LETTERS[1:20]\ny <- paste0(\"var\", seq(1,20))\ndata <- expand.grid(X=x, Y=y)\ndata$Z <- runif(400, 0, 5)\ndata$text <- paste0(\"x: \", data$X, \"\\ny: \", data$Y, \"\\nValue: \", round(data$Z, 2))\np <- ggplot(data, aes(X, Y, fill=Z, text=text)) + geom_tile() + theme_minimal()\nggplotly(p, tooltip=\"text\")",
-    "kinds": [
-      "html"
-    ]
+    "kinds": ["html"]
   }
 ]

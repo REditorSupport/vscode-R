@@ -1,4 +1,3 @@
-
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
 
@@ -23,7 +22,6 @@ interface HistoryEntry {
 }
 
 export class HelpPanel {
-
     private readonly rHelp: RHelp;
 
     // the webview panel where the help is shown
@@ -68,19 +66,23 @@ export class HelpPanel {
         }
         await this.refreshCurrentEntry();
     }
-    
+
     public async refreshPreview(packageDir: string): Promise<void> {
-        if(this.currentEntry?.helpFile.packageDir === packageDir){
+        if (this.currentEntry?.helpFile.packageDir === packageDir) {
             await this.refreshCurrentEntry();
         }
     }
-    
+
     private async refreshCurrentEntry(): Promise<void> {
-        if(!this.currentEntry){
+        if (!this.currentEntry) {
             return;
         }
-        const newHelpFile = await this.rHelp.getHelpFileForPath(this.currentEntry.helpFile.requestPath, undefined, true);
-        if(!newHelpFile){
+        const newHelpFile = await this.rHelp.getHelpFileForPath(
+            this.currentEntry.helpFile.requestPath,
+            undefined,
+            true,
+        );
+        if (!newHelpFile) {
             return;
         }
         newHelpFile.scrollY = await this.getScrollY();
@@ -88,20 +90,28 @@ export class HelpPanel {
     }
 
     // retrieves the stored webview or creates a new one if the webview was closed
-    private getWebview(preserveFocus: boolean = false, viewColumn: vscode.ViewColumn = vscode.ViewColumn.Two): vscode.Webview {
+    private getWebview(
+        preserveFocus: boolean = false,
+        viewColumn: vscode.ViewColumn = vscode.ViewColumn.Two,
+    ): vscode.Webview {
         // create webview if necessary
         if (!this.panel) {
             const webViewOptions: vscode.WebviewOptions & vscode.WebviewPanelOptions = {
                 enableScripts: true,
                 enableFindWidget: true,
                 enableCommandUris: true,
-                retainContextWhenHidden: true // keep scroll position when not focussed
+                retainContextWhenHidden: true, // keep scroll position when not focussed
             };
             const showOptions = {
                 viewColumn: viewColumn,
-                preserveFocus: preserveFocus
+                preserveFocus: preserveFocus,
             };
-            this.panel = vscode.window.createWebviewPanel('rhelp', 'R Help', showOptions, webViewOptions);
+            this.panel = vscode.window.createWebviewPanel(
+                'rhelp',
+                'R Help',
+                showOptions,
+                webViewOptions,
+            );
             this.initializePanel();
         }
 
@@ -142,7 +152,6 @@ export class HelpPanel {
         });
     }
 
-
     public async setContextValues(): Promise<void> {
         await setContext('r.helpPanel.canOpenExternal', !!this.currentEntry?.helpFile.url);
         await setContext('r.helpPanel.active', !!this.panel?.active);
@@ -151,8 +160,13 @@ export class HelpPanel {
     }
 
     // shows (internal) help file object in webview
-    public async showHelpFile(helpFile: HelpFile | Promise<HelpFile>, updateHistory = true, currentScrollY = 0, viewer?: vscode.ViewColumn | string, preserveFocus: boolean = false): Promise<boolean> {
-
+    public async showHelpFile(
+        helpFile: HelpFile | Promise<HelpFile>,
+        updateHistory = true,
+        currentScrollY = 0,
+        viewer?: vscode.ViewColumn | string,
+        preserveFocus: boolean = false,
+    ): Promise<boolean> {
         viewer ||= config().get<string>('session.viewers.viewColumn.helpPanel');
         const viewColumn = asViewColumn(viewer);
 
@@ -180,7 +194,7 @@ export class HelpPanel {
         }
         this.currentEntry = {
             helpFile: helpFile,
-            isStale: helpFile.isPreview
+            isStale: helpFile.isPreview,
         };
 
         await this.setContextValues();
@@ -207,12 +221,12 @@ export class HelpPanel {
     public async goBack(): Promise<void> {
         const scrollY = await this.getScrollY();
         this._goBack(scrollY);
-
     }
     private _goBack(currentScrollY = 0): void {
         const entry = this.history.pop();
         if (entry) {
-            if (this.currentEntry) { // should always be true
+            if (this.currentEntry) {
+                // should always be true
                 this.currentEntry.helpFile.scrollY = currentScrollY;
                 this.forwardHistory.push(this.currentEntry);
             }
@@ -222,12 +236,12 @@ export class HelpPanel {
     public async goForward(): Promise<void> {
         const scrollY = await this.getScrollY();
         this._goForward(scrollY);
-
     }
     private _goForward(currentScrollY = 0): void {
         const entry = this.forwardHistory.pop();
         if (entry) {
-            if (this.currentEntry) { // should always be true
+            if (this.currentEntry) {
+                // should always be true
                 this.currentEntry.helpFile.scrollY = currentScrollY;
                 this.history.push(this.currentEntry);
             }
@@ -239,7 +253,11 @@ export class HelpPanel {
         if (entry.isStale) {
             // Fallback to stale helpFile.
             // Handle differently?
-            const newHelpFile = await this.rHelp.getHelpFileForPath(entry.helpFile.requestPath, true, true);
+            const newHelpFile = await this.rHelp.getHelpFileForPath(
+                entry.helpFile.requestPath,
+                true,
+                true,
+            );
             helpFile = newHelpFile || entry.helpFile;
             helpFile.scrollY = entry.helpFile.scrollY;
         } else {
@@ -301,14 +319,16 @@ export class HelpPanel {
                 } else if (uri.path.endsWith('.R')) {
                     const doc = await vscode.workspace.openTextDocument({
                         language: 'r',
-                        content: helpFile.html0
+                        content: helpFile.html0,
                     });
                     void vscode.window.showTextDocument(doc);
                 } else {
                     void this.showHelpFile(helpFile, true, currentScrollY);
                 }
-            } else{
-                void vscode.window.showWarningMessage(`Did not find help page for path ${requestPath}`);
+            } else {
+                void vscode.window.showWarningMessage(
+                    `Did not find help page for path ${requestPath}`,
+                );
             }
         } else if (msg.message === 'mouseClick') {
             // use the additional mouse buttons to go forward/backwards
@@ -330,16 +350,14 @@ export class HelpPanel {
 
             // Check wheter to copy or run the code (or both or none)
             const codeClickConfig = config().get<CodeClickConfig>('helpPanel.clickCodeExamples');
-            const runCode = (
-                isCtrlClick && codeClickConfig?.['Ctrl+Click'] === 'Run'
-                || isShiftClick && codeClickConfig?.['Shift+Click'] === 'Run'
-                || isNormalClick && codeClickConfig?.['Click'] === 'Run'
-            );
-            const copyCode = (
-                isCtrlClick && codeClickConfig?.['Ctrl+Click'] === 'Copy'
-                || isShiftClick && codeClickConfig?.['Shift+Click'] === 'Copy'
-                || isNormalClick && codeClickConfig?.['Click'] === 'Copy'
-            );
+            const runCode =
+                (isCtrlClick && codeClickConfig?.['Ctrl+Click'] === 'Run') ||
+                (isShiftClick && codeClickConfig?.['Shift+Click'] === 'Run') ||
+                (isNormalClick && codeClickConfig?.['Click'] === 'Run');
+            const copyCode =
+                (isCtrlClick && codeClickConfig?.['Ctrl+Click'] === 'Copy') ||
+                (isShiftClick && codeClickConfig?.['Shift+Click'] === 'Copy') ||
+                (isNormalClick && codeClickConfig?.['Click'] === 'Copy');
 
             // Execute action:
             if (copyCode) {
@@ -357,8 +375,11 @@ export class HelpPanel {
     }
 
     // improves the help display by applying syntax highlighting and adjusting hyperlinks:
-    private async pimpMyHelp(helpFile: HelpFile, styleUri?: vscode.Uri | string, scriptUri?: vscode.Uri | string): Promise<HelpFile> {
-
+    private async pimpMyHelp(
+        helpFile: HelpFile,
+        styleUri?: vscode.Uri | string,
+        scriptUri?: vscode.Uri | string,
+    ): Promise<HelpFile> {
         // get requestpath of helpfile
         const relPath = helpFile.requestPath + (helpFile.hash || '');
 
@@ -381,7 +402,9 @@ export class HelpPanel {
                 if (linkUrl) {
                     if (linkUrl.includes('katex')) {
                         const newUrl = new URL(linkUrl, url.origin);
-                        const newUri = await vscode.env.asExternalUri(vscode.Uri.parse(newUrl.toString()));
+                        const newUri = await vscode.env.asExternalUri(
+                            vscode.Uri.parse(newUrl.toString()),
+                        );
                         obj.attr('href', newUri.toString(true));
                     } else {
                         obj.remove();
@@ -395,7 +418,9 @@ export class HelpPanel {
                 if (scriptUrl) {
                     if (scriptUrl.includes('katex')) {
                         const newUrl = new URL(scriptUrl, url.origin);
-                        const newUri = await vscode.env.asExternalUri(vscode.Uri.parse(newUrl.toString()));
+                        const newUri = await vscode.env.asExternalUri(
+                            vscode.Uri.parse(newUrl.toString()),
+                        );
                         obj.attr('src', newUri.toString(true));
                     } else {
                         obj.remove();
@@ -411,12 +436,10 @@ export class HelpPanel {
             $('body').append(`\n<script src=${scriptUri.toString(true)}></script>`);
         }
 
-
         // convert to string
         helpFile.html = $.html();
 
         // return the html of the modified page:
         return helpFile;
     }
-
 }

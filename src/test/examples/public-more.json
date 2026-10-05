@@ -4,95 +4,24 @@
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/stats/html/prcomp.html",
     "adaptation": "Selected examples; added numerical assertions and explicit package qualification.",
     "code": "pca <- prcomp(USArrests, scale. = TRUE)\nsummary(pca)\npca$rotation\nstopifnot(all.equal(sum(pca$sdev^2), 4), all.equal(crossprod(pca$rotation), diag(4), check.attributes=FALSE))\nplot(pca)\nbiplot(pca)",
-    "kinds": [
-      "table",
-      "plot"
-    ],
+    "kinds": ["table", "plot"],
     "plotPages": 2,
-    "textIncludes": [
-      "Importance of components"
-    ]
+    "textIncludes": ["Importance of components"]
   },
   {
     "id": "aggregate-matrix-columns",
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/stats/html/aggregate.html",
     "adaptation": "Use quantile instead of mean in the documented multi-response grouping example to exercise matrix-valued summary columns.",
     "code": "grouped <- aggregate(cbind(Ozone, Temp) ~ Month, data=airquality, FUN=quantile, probs=c(.25,.5,.75))\nstopifnot(nrow(grouped)==5L, is.matrix(grouped$Ozone), ncol(grouped$Ozone)==3L)\ngrouped",
-    "kinds": [
-      "table"
-    ],
+    "kinds": ["table"],
     "table": {
-      "headers": [
-        "Month",
-        "Ozone",
-        "Temp"
-      ],
+      "headers": ["Month", "Ozone", "Temp"],
       "rows": [
-        [
-          5,
-          [
-            11,
-            18,
-            31.5
-          ],
-          [
-            61.25,
-            66,
-            71.25
-          ]
-        ],
-        [
-          6,
-          [
-            20,
-            23,
-            37
-          ],
-          [
-            73,
-            77,
-            82
-          ]
-        ],
-        [
-          7,
-          [
-            36.25,
-            60,
-            79.75
-          ],
-          [
-            81.25,
-            84,
-            86
-          ]
-        ],
-        [
-          8,
-          [
-            28.75,
-            52,
-            82.5
-          ],
-          [
-            79,
-            82,
-            88.5
-          ]
-        ],
-        [
-          9,
-          [
-            16,
-            23,
-            36
-          ],
-          [
-            71,
-            76,
-            81
-          ]
-        ]
+        [5, [11, 18, 31.5], [61.25, 66, 71.25]],
+        [6, [20, 23, 37], [73, 77, 82]],
+        [7, [36.25, 60, 79.75], [81.25, 84, 86]],
+        [8, [28.75, 52, 82.5], [79, 82, 88.5]],
+        [9, [16, 23, 36], [71, 76, 81]]
       ]
     }
   },
@@ -101,78 +30,52 @@
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/stats/html/kmeans.html",
     "adaptation": "Selected examples; added numerical assertions and explicit package qualification.",
     "code": "require(graphics)\n\n# a 2-dimensional example\nx <- rbind(matrix(rnorm(100, sd = 0.3), ncol = 2),\n           matrix(rnorm(100, mean = 1, sd = 0.3), ncol = 2))\ncolnames(x) <- c(\"x\", \"y\")\n(cl <- kmeans(x, 2))\nplot(x, col = cl$cluster)\npoints(cl$centers, col = 1:2, pch = 8, cex = 2)\n\n# sum of squares\nss <- function(x) sum(scale(x, scale = FALSE)^2)\n\n## cluster centers \"fitted\" to each obs.:\nfitted.x <- fitted(cl);  head(fitted.x)\nresid.x <- x - fitted(cl)\n\n## Equalities : ----------------------------------\ncbind(cl[c(\"betweenss\", \"tot.withinss\", \"totss\")], # the same two columns\n         c(ss(fitted.x), ss(resid.x),    ss(x)))\nstopifnot(all.equal(cl$ totss,        ss(x)),\n\t  all.equal(cl$ tot.withinss, ss(resid.x)),\n\t  ## these three are the same:\n\t  all.equal(cl$ betweenss,    ss(fitted.x)),\n\t  all.equal(cl$ betweenss, cl$totss - cl$tot.withinss),\n\t  ## and hence also\n\t  all.equal(ss(x), ss(fitted.x) + ss(resid.x))\n\t  )\n\nkmeans(x,1)$withinss # trivial one-cluster, (its W.SS == ss(x))\n\n## random starts do help here with too many clusters\n## (and are often recommended anyway!):\n## The ordering of the clusters may be platform-dependent.\n\n(cl <- kmeans(x, 5, nstart = 25))\n\nplot(x, col = cl$cluster)\npoints(cl$centers, col = 1:5, pch = 8)\n",
-    "kinds": [
-      "table",
-      "plot"
-    ],
+    "kinds": ["table", "plot"],
     "plotPages": 2,
-    "textIncludes": [
-      "K-means clustering"
-    ]
+    "textIncludes": ["K-means clustering"]
   },
   {
     "id": "arima-missing-observations",
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/stats/html/arima.html",
     "adaptation": "Selected examples; added numerical assertions and explicit package qualification.",
     "code": "fit1 <- arima(presidents, c(1,0,0))\nfit3 <- arima(presidents, c(3,0,0))\nfit3\nstopifnot(nobs(fit3)==sum(!is.na(presidents)), fit3$aic < fit1$aic)\ntsdiag(fit3)\nBIC(fit1, fit3)\nforecast <- predict(fit3, 3)\nstopifnot(length(forecast$pred)==3L, all(is.finite(forecast$pred)), all(forecast$se > 0))\nforecast",
-    "kinds": [
-      "table",
-      "plot"
-    ],
+    "kinds": ["table", "plot"],
     "plotPages": 1,
-    "textIncludes": [
-      "Coefficients:"
-    ]
+    "textIncludes": ["Coefficients:"]
   },
   {
     "id": "nonlinear-michaelis-menten",
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/stats/html/nls.html",
     "adaptation": "Selected examples; added numerical assertions and explicit package qualification.",
     "code": "Treated <- subset(Puromycin, state == \"treated\")\nfit <- nls(rate ~ Vm*conc/(K+conc), data=Treated, start=list(Vm=200, K=.05))\nsummary(fit)\nstopifnot(fit$convInfo$isConv, abs(coef(fit)[['Vm']]-212.6837)<.01)\nplot(rate ~ conc, data=Treated)\ncurve(coef(fit)[['Vm']]*x/(coef(fit)[['K']]+x), add=TRUE)\nconfint.default(fit)",
-    "kinds": [
-      "table",
-      "plot"
-    ],
+    "kinds": ["table", "plot"],
     "plotPages": 1,
-    "textIncludes": [
-      "Residual standard error:"
-    ]
+    "textIncludes": ["Residual standard error:"]
   },
   {
     "id": "holt-winters-seasonality",
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/stats/html/HoltWinters.html",
     "adaptation": "Selected examples; added numerical assertions and explicit package qualification.",
     "code": "m <- HoltWinters(co2)\nm\nplot(m)\nplot(fitted(m))\nhead(fitted(m))\nstopifnot(ncol(fitted(m))==4L, all(is.finite(fitted(m))))\nm <- HoltWinters(AirPassengers, seasonal=\"mult\")\nplot(m)",
-    "kinds": [
-      "table",
-      "plot"
-    ],
+    "kinds": ["table", "plot"],
     "plotPages": 3,
-    "textIncludes": [
-      "Holt-Winters exponential smoothing"
-    ]
+    "textIncludes": ["Holt-Winters exponential smoothing"]
   },
   {
     "id": "stl-seasonal-decomposition",
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/stats/html/stl.html",
     "adaptation": "Selected examples; added numerical assertions and explicit package qualification.",
     "code": "plot(stl(nottem, \"per\"))\nstllc <- stl(log(co2), s.window=21)\nplot(stllc)\nsummary(stllc)\nstopifnot(max(abs(rowSums(stllc$time.series)-log(co2))) < 1e-12)",
-    "kinds": [
-      "plot"
-    ],
+    "kinds": ["plot"],
     "plotPages": 2,
-    "textIncludes": [
-      "Call:"
-    ]
+    "textIncludes": ["Call:"]
   },
   {
     "id": "raster-rotation-interpolation",
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/graphics/html/rasterImage.html",
     "adaptation": "Complete public example, including the 15-degree raster and interpolation settings.",
     "code": "require(grDevices)\n## set up the plot region:\nop <- par(bg = \"thistle\")\nplot(c(100, 250), c(300, 450), type = \"n\", xlab = \"\", ylab = \"\")\nimage <- as.raster(matrix(0:1, ncol = 5, nrow = 3))\nrasterImage(image, 100, 300, 150, 350, interpolate = FALSE)\nrasterImage(image, 100, 400, 150, 450)\nrasterImage(image, 200, 300, 200 + xinch(.5), 300 + yinch(.3),\n            interpolate = FALSE)\nrasterImage(image, 200, 400, 250, 450, angle = 15, interpolate = FALSE)\npar(op)\n",
-    "kinds": [
-      "plot"
-    ],
+    "kinds": ["plot"],
     "plotPages": 1
   },
   {
@@ -180,9 +83,7 @@
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/graphics/html/rasterImage.html",
     "adaptation": "Asymmetric four-colour image with reversed x/y bounds to verify documented raster reflection.",
     "code": "par(mar=c(0,0,0,0))\nplot.new(); plot.window(xlim=c(0,1), ylim=c(0,1), xaxs=\"i\", yaxs=\"i\")\nimage <- as.raster(matrix(c(\"red\",\"green\",\"blue\",\"yellow\"), nrow=2, byrow=TRUE))\nrasterImage(image, .1,.1,.4,.4, interpolate=FALSE)\nrasterImage(image, .9,.1,.6,.4, interpolate=FALSE)\nrasterImage(image, .1,.9,.4,.6, interpolate=FALSE)\nrasterImage(image, .9,.9,.6,.6, interpolate=FALSE)",
-    "kinds": [
-      "plot"
-    ],
+    "kinds": ["plot"],
     "plotPages": 1
   },
   {
@@ -190,9 +91,7 @@
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/graphics/html/layout.html",
     "adaptation": "Complete public example; the runner fixes its random seed.",
     "code": "def.par <- par(no.readonly = TRUE) # save default, for resetting...\n\n## divide the device into two rows and two columns\n## allocate figure 1 all of row 1\n## allocate figure 2 the intersection of column 2 and row 2\nlayout(matrix(c(1,1,0,2), 2, 2, byrow = TRUE))\n## show the regions that have been allocated to each plot\nlayout.show(2)\n\n## divide device into two rows and two columns\n## allocate figure 1 and figure 2 as above\n## respect relations between widths and heights\nnf <- layout(matrix(c(1,1,0,2), 2, 2, byrow = TRUE), respect = TRUE)\nlayout.show(nf)\n\n## create single figure which is 5cm square\nnf <- layout(matrix(1), widths = lcm(5), heights = lcm(5))\nlayout.show(nf)\n\n\n##-- Create a scatterplot with marginal histograms -----\n\nx <- pmin(3, pmax(-3, stats::rnorm(50)))\ny <- pmin(3, pmax(-3, stats::rnorm(50)))\nxhist <- hist(x, breaks = seq(-3,3,0.5), plot = FALSE)\nyhist <- hist(y, breaks = seq(-3,3,0.5), plot = FALSE)\ntop <- max(c(xhist$counts, yhist$counts))\nxrange <- c(-3, 3)\nyrange <- c(-3, 3)\nnf <- layout(matrix(c(2,0,1,3),2,2,byrow = TRUE), c(3,1), c(1,3), TRUE)\nlayout.show(nf)\n\npar(mar = c(3,3,1,1))\nplot(x, y, xlim = xrange, ylim = yrange, xlab = \"\", ylab = \"\")\npar(mar = c(0,3,1,1))\nbarplot(xhist$counts, axes = FALSE, ylim = c(0, top), space = 0)\npar(mar = c(3,0,1,1))\nbarplot(yhist$counts, axes = FALSE, xlim = c(0, top), space = 0, horiz = TRUE)\n\npar(def.par)  #- reset to default\n",
-    "kinds": [
-      "plot"
-    ],
+    "kinds": ["plot"],
     "plotPages": 5
   },
   {
@@ -200,9 +99,7 @@
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/graphics/html/filled.contour.html",
     "adaptation": "Selected examples; added numerical assertions and explicit package qualification.",
     "code": "x <- 10*1:nrow(volcano)\ny <- 10*1:ncol(volcano)\nfilled.contour(x, y, volcano,\n color.palette=function(n) hcl.colors(n, \"terrain\"),\n plot.title=title(main=\"The Topography of Maunga Whau\", xlab=\"Meters North\", ylab=\"Meters West\"),\n plot.axes={axis(1, seq(100,800,by=100)); axis(2, seq(100,600,by=100))},\n key.title=title(main=\"Height\\n(meters)\"), key.axes=axis(4,seq(90,190,by=10)))",
-    "kinds": [
-      "plot"
-    ],
+    "kinds": ["plot"],
     "plotPages": 1
   },
   {
@@ -210,9 +107,7 @@
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/grid/html/grid.raster.html",
     "adaptation": "Complete public example with explicit grid attachment.",
     "code": "library(grid)\nredGradient <- matrix(hcl(0, 80, seq(50, 80, 10)),\n                      nrow=4, ncol=5)\n# interpolated\ngrid.newpage()\ngrid.raster(redGradient)\n# blocky\ngrid.newpage()\ngrid.raster(redGradient, interpolate=FALSE)\n# blocky and stretched\ngrid.newpage()\ngrid.raster(redGradient, interpolate=FALSE, height=unit(1, \"npc\"))\n\n# The same raster drawn several times\ngrid.newpage()\ngrid.raster(0, x=1:3/4, y=1:3/4, width=.1, interpolate=FALSE)\n",
-    "kinds": [
-      "plot"
-    ],
+    "kinds": ["plot"],
     "plotPages": 4
   },
   {
@@ -220,9 +115,7 @@
     "source": "https://stat.ethz.ch/R-manual/R-devel/library/lattice/html/xyplot.html",
     "adaptation": "Selected examples; added numerical assertions and explicit package qualification.",
     "code": "library(lattice)\nDepth <- equal.count(quakes$depth, number=8, overlap=.1)\nxyplot(lat ~ long | Depth, data=quakes)\nupdate(trellis.last.object(), strip=strip.custom(strip.names=TRUE, strip.levels=TRUE), par.strip.text=list(cex=.75), aspect=\"iso\")",
-    "kinds": [
-      "plot"
-    ],
+    "kinds": ["plot"],
     "plotPages": 2
   },
   {
@@ -231,9 +124,6 @@
     "adaptation": "Remove sleep delays from the complete public example and check the final value.",
     "code": "testit <- function(x=sort(runif(20)), ...) {\n pb <- txtProgressBar(...)\n for(i in c(0,x,1)) setTxtProgressBar(pb,i)\n stopifnot(getTxtProgressBar(pb)==1)\n close(pb)\n}\ntestit()\ntestit(runif(10))\ntestit(style=3)\ntestit(char=\" \\u27a4\")\ncat(\"progress-complete\\n\")",
     "kinds": [],
-    "textIncludes": [
-      "100%",
-      "progress-complete"
-    ]
+    "textIncludes": ["100%", "progress-complete"]
   }
 ]

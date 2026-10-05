@@ -82,7 +82,10 @@ export function getRmdParamsCommand(document: vscode.TextDocument): string | und
     lastParamsRmdPath = filePath;
     lastParamsRmdVersion = document.version;
     try {
-        const frontmatter = yaml.load(match[1], { schema: RMARKDOWN_SCHEMA }) as Record<string, unknown>;
+        const frontmatter = yaml.load(match[1], { schema: RMARKDOWN_SCHEMA }) as Record<
+            string,
+            unknown
+        >;
         const params = frontmatter?.['params'] as Record<string, unknown> | undefined;
         if (!params || typeof params !== 'object') {
             return undefined;
@@ -94,14 +97,23 @@ export function getRmdParamsCommand(document: vscode.TextDocument): string | und
     }
 }
 
-export async function runSource(echo: boolean): Promise<void>  {
+export async function runSource(echo: boolean): Promise<void> {
     const wad = vscode.window.activeTextEditor?.document;
     if (!wad) {
         return;
     }
-    const target = await tryInteractiveExecution(wad.getText(), wad.uri, { uri: wad.uri.toString(), line: 0, version: wad.version }, !findTerminal());
-    if (target === 'executed' || target === 'cancelled') { return; }
-    if (target === 'createTerminal' && !await createExecutionTerminal(wad.uri)) { return; }
+    const target = await tryInteractiveExecution(
+        wad.getText(),
+        wad.uri,
+        { uri: wad.uri.toString(), line: 0, version: wad.version },
+        !findTerminal(),
+    );
+    if (target === 'executed' || target === 'cancelled') {
+        return;
+    }
+    if (target === 'createTerminal' && !(await createExecutionTerminal(wad.uri))) {
+        return;
+    }
     const isSaved = await util.saveDocument(wad);
     if (!isSaved) {
         return;
@@ -140,7 +152,7 @@ export async function runSelectionOrWord(rFunctionName: string[]): Promise<void>
     await runTextInTerm(wrappedText);
 }
 
-export async function runCommandWithSelectionOrWord(rCommand: string): Promise<void>  {
+export async function runCommandWithSelectionOrWord(rCommand: string): Promise<void> {
     const text = selection.getWordOrSelection();
     if (!text) {
         return;
@@ -149,7 +161,7 @@ export async function runCommandWithSelectionOrWord(rCommand: string): Promise<v
     await runTextInTerm(call);
 }
 
-export async function runCommandWithEditorPath(rCommand: string): Promise<void>  {
+export async function runCommandWithEditorPath(rCommand: string): Promise<void> {
     const textEditor = vscode.window.activeTextEditor;
     if (!textEditor) {
         return;
@@ -163,11 +175,11 @@ export async function runCommandWithEditorPath(rCommand: string): Promise<void> 
     }
 }
 
-export async function runCommand(rCommand: string): Promise<void>  {
+export async function runCommand(rCommand: string): Promise<void> {
     await runTextInTerm(rCommand);
 }
 
-export async function runFromBeginningToLine(): Promise<void>  {
+export async function runFromBeginningToLine(): Promise<void> {
     const textEditor = vscode.window.activeTextEditor;
     if (!textEditor) {
         return;
@@ -183,7 +195,7 @@ export async function runFromBeginningToLine(): Promise<void>  {
     await runTextInTerm(text);
 }
 
-export async function runFromLineToEnd(): Promise<void>  {
+export async function runFromLineToEnd(): Promise<void> {
     const textEditor = vscode.window.activeTextEditor;
     if (!textEditor) {
         return;
@@ -197,22 +209,32 @@ export async function runFromLineToEnd(): Promise<void>  {
 }
 
 function getConsoleArgs(configuration: vscode.WorkspaceConfiguration): string[] {
-    return getMigratedSetting<string[]>(configuration, 'consoleArgs', 'rterm.option')?.value
-        ?? ['--no-save', '--no-restore'];
+    return (
+        getMigratedSetting<string[]>(configuration, 'consoleArgs', 'rterm.option')?.value ?? [
+            '--no-save',
+            '--no-restore',
+        ]
+    );
 }
 
 function getConsoleSendDelay(resource?: vscode.Uri): number {
-    return getMigratedSetting<number>(config(resource), 'consoleSendDelay', 'rtermSendDelay')?.value ?? 8;
+    return (
+        getMigratedSetting<number>(config(resource), 'consoleSendDelay', 'rtermSendDelay')?.value ??
+        8
+    );
 }
 
 export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode.TerminalOptions> {
-    const workspaceFolder = resource ? getCurrentWorkspaceFolder(resource) : getCurrentWorkspaceFolder();
+    const workspaceFolder = resource
+        ? getCurrentWorkspaceFolder(resource)
+        : getCurrentWorkspaceFolder();
     const configResource = resource ?? workspaceFolder?.uri;
     const workspaceFolderPath = workspaceFolder?.uri.fsPath;
     const currentConfig = config(configResource);
     const termPath = await getRterm(configResource);
-    const shellArgs = getConsoleArgs(currentConfig)
-        .map(value => util.substituteVariables(value, configResource));
+    const shellArgs = getConsoleArgs(currentConfig).map((value) =>
+        util.substituteVariables(value, configResource),
+    );
     const termOptions: vscode.TerminalOptions = {
         name: 'R Interactive',
         shellPath: termPath,
@@ -259,17 +281,19 @@ export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri)
             }
         }
     };
-    if(!termPath){
+    if (!termPath) {
         await discardDiscoveryFile();
         return false;
-    } else if(!fs.existsSync(termPath)){
-        void vscode.window.showErrorMessage(`Cannot find R console executable at ${termPath}. Please check r.consolePath, r.${getRPathConfigEntry(true)}, or r.executablePath.`);
+    } else if (!fs.existsSync(termPath)) {
+        void vscode.window.showErrorMessage(
+            `Cannot find R console executable at ${termPath}. Please check r.consolePath, r.${getRPathConfigEntry(true)}, or r.executablePath.`,
+        );
         await discardDiscoveryFile();
         return false;
     }
     let createdTerminal: vscode.Terminal;
     try {
-        if (!await util.promptToInstallSessPackage(termOptions.cwd)) {
+        if (!(await util.promptToInstallSessPackage(termOptions.cwd))) {
             await discardDiscoveryFile();
             return false;
         }
@@ -282,20 +306,27 @@ export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri)
     rTermResource = resource;
     createdTerminal.show(preserveshow);
 
-    void Promise.resolve(createdTerminal.processId).then(async (pid: number | undefined) => {
-        if (pid && typeof discoveryFile === 'string' && !isTerminalClosed(createdTerminal)) {
-            const pipePath = await getGlobalPipePath();
-            if (!isTerminalClosed(createdTerminal)) {
-                await updateTerminalSessionDiscoveryFile(createdTerminal, discoveryFile, pipePath, pid);
+    void Promise.resolve(createdTerminal.processId)
+        .then(async (pid: number | undefined) => {
+            if (pid && typeof discoveryFile === 'string' && !isTerminalClosed(createdTerminal)) {
+                const pipePath = await getGlobalPipePath();
+                if (!isTerminalClosed(createdTerminal)) {
+                    await updateTerminalSessionDiscoveryFile(
+                        createdTerminal,
+                        discoveryFile,
+                        pipePath,
+                        pid,
+                    );
+                }
             }
-        }
-    }).catch(error => console.error('Failed to update terminal session discovery file', error));
-    
+        })
+        .catch((error) => console.error('Failed to update terminal session discovery file', error));
+
     return true;
 }
 
-export async function restartRTerminal(): Promise<void>{
-    if (typeof rTerm !== 'undefined'){
+export async function restartRTerminal(): Promise<void> {
+    if (typeof rTerm !== 'undefined') {
         const resource = rTermResource;
         rTerm.dispose();
         deleteTerminal(rTerm);
@@ -305,10 +336,12 @@ export async function restartRTerminal(): Promise<void>{
 
 export function deleteTerminal(term: vscode.Terminal): void {
     const exitReason = term.exitStatus?.reason;
-    if (exitReason === vscode.TerminalExitReason.User
-        || exitReason === vscode.TerminalExitReason.Process
-        || exitReason === vscode.TerminalExitReason.Extension) {
-        void removeTerminalDiscoveryFile(term).catch(error => {
+    if (
+        exitReason === vscode.TerminalExitReason.User ||
+        exitReason === vscode.TerminalExitReason.Process ||
+        exitReason === vscode.TerminalExitReason.Extension
+    ) {
+        void removeTerminalDiscoveryFile(term).catch((error) => {
             console.error('Failed to remove terminal session discovery file', error);
         });
     }
@@ -335,11 +368,13 @@ function getTerminalResource(term: vscode.Terminal): vscode.Uri | undefined {
     const creationOptions = term.creationOptions;
     const cwd = creationOptions && 'cwd' in creationOptions ? creationOptions.cwd : undefined;
     // Profile terminals store cwd as a path; retain the matching remote URI.
-    const cwdResource = typeof cwd === 'string'
-        ? vscode.workspace.workspaceFolders?.find(folder => folder.uri.fsPath === cwd)?.uri ?? vscode.Uri.file(cwd)
-        : cwd;
+    const cwdResource =
+        typeof cwd === 'string'
+            ? (vscode.workspace.workspaceFolders?.find((folder) => folder.uri.fsPath === cwd)
+                  ?.uri ?? vscode.Uri.file(cwd))
+            : cwd;
     return cwdResource
-        ? getCurrentWorkspaceFolder(cwdResource)?.uri ?? cwdResource
+        ? (getCurrentWorkspaceFolder(cwdResource)?.uri ?? cwdResource)
         : getCurrentWorkspaceFolder()?.uri;
 }
 
@@ -349,23 +384,29 @@ export function findTerminal(): vscode.Terminal | undefined {
     const ignoreTermIdentifier = 'deactivate';
 
     // Filter out terminals to be ignored
-    const visibleTerminals = vscode.window.terminals.filter(terminal => {
-        return terminal.exitStatus === undefined && !terminal.name.toLowerCase().includes(ignoreTermIdentifier);
+    const visibleTerminals = vscode.window.terminals.filter((terminal) => {
+        return (
+            terminal.exitStatus === undefined &&
+            !terminal.name.toLowerCase().includes(ignoreTermIdentifier)
+        );
     });
 
     if (config().get('alwaysUseActiveTerminal')) {
-        return visibleTerminals.find(terminal => terminal === vscode.window.activeTerminal);
+        return visibleTerminals.find((terminal) => terminal === vscode.window.activeTerminal);
     }
 
     const rTermNameOptions = ['R', 'R Interactive'];
 
-    const validRTerminals = visibleTerminals.filter(terminal => {
+    const validRTerminals = visibleTerminals.filter((terminal) => {
         return rTermNameOptions.includes(terminal.name);
     });
 
     if (validRTerminals.length > 0) {
         // If there is an active terminal that is an R terminal, use it
-        if (vscode.window.activeTerminal && validRTerminals.includes(vscode.window.activeTerminal)) {
+        if (
+            vscode.window.activeTerminal &&
+            validRTerminals.includes(vscode.window.activeTerminal)
+        ) {
             return vscode.window.activeTerminal;
         }
         // Otherwise, use last valid R terminal
@@ -375,23 +416,39 @@ export function findTerminal(): vscode.Terminal | undefined {
 
 export async function chooseTerminal(): Promise<vscode.Terminal | undefined> {
     const terminal = findTerminal();
-    if (terminal) { terminal.show(true); return terminal; }
-    if (config().get('alwaysUseActiveTerminal')) {
-        void vscode.window.showInformationMessage('There are no open terminals.'); return;
+    if (terminal) {
+        terminal.show(true);
+        return terminal;
     }
-    if (!await createRTerm(true)) { return; }
+    if (config().get('alwaysUseActiveTerminal')) {
+        void vscode.window.showInformationMessage('There are no open terminals.');
+        return;
+    }
+    if (!(await createRTerm(true))) {
+        return;
+    }
     await delay(200); // Let RTerm warm up
     return rTerm;
 }
 
-async function createExecutionTerminal(resource?: vscode.Uri): Promise<vscode.Terminal | undefined> {
-    const pending = startingExecutionTerminal ??= (async () => {
-        if (!await createRTerm(true, resource)) { return; }
+async function createExecutionTerminal(
+    resource?: vscode.Uri,
+): Promise<vscode.Terminal | undefined> {
+    const pending = (startingExecutionTerminal ??= (async () => {
+        if (!(await createRTerm(true, resource))) {
+            return;
+        }
         const terminal = rTerm;
-        await delay(200); return terminal;
-    })();
-    try { return await pending; }
-    finally { if (startingExecutionTerminal === pending) { startingExecutionTerminal = undefined; } }
+        await delay(200);
+        return terminal;
+    })());
+    try {
+        return await pending;
+    } finally {
+        if (startingExecutionTerminal === pending) {
+            startingExecutionTerminal = undefined;
+        }
+    }
 }
 
 export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): Promise<void> {
@@ -400,25 +457,41 @@ export async function runSelectionInTerm(moveCursor: boolean, useRepl = true): P
         return;
     }
     const textEditor = vscode.window.activeTextEditor;
-    if(useRepl && vscode.debug.activeDebugSession?.type === 'R-Debugger'){
+    if (useRepl && vscode.debug.activeDebugSession?.type === 'R-Debugger') {
         await sendRangeToRepl(selection.range);
-    } else{
+    } else {
         const paramsCmd = textEditor ? getRmdParamsCommand(textEditor.document) : undefined;
-        if (!await runTextInTerm(paramsCmd ? `${paramsCmd}\n${selection.selectedText}` : selection.selectedText)) { return; }
+        if (
+            !(await runTextInTerm(
+                paramsCmd ? `${paramsCmd}\n${selection.selectedText}` : selection.selectedText,
+            ))
+        ) {
+            return;
+        }
     }
     // Cancellation must preserve both the selected code and its cursor position.
-    if (vscode.window.activeTextEditor !== textEditor) { return; }
+    if (vscode.window.activeTextEditor !== textEditor) {
+        return;
+    }
     if (moveCursor && selection.linesDownToMoveCursor > 0) {
         if (!textEditor) {
             return;
         }
         const lineCount = textEditor.document.lineCount;
         if (selection.linesDownToMoveCursor + textEditor.selection.end.line === lineCount) {
-            const endPos = new vscode.Position(lineCount, textEditor.document.lineAt(lineCount - 1).text.length);
-            await textEditor.edit(e => e.insert(endPos, '\n'));
+            const endPos = new vscode.Position(
+                lineCount,
+                textEditor.document.lineAt(lineCount - 1).text.length,
+            );
+            await textEditor.edit((e) => e.insert(endPos, '\n'));
         }
-        await vscode.commands.executeCommand('cursorMove', { to: 'down', value: selection.linesDownToMoveCursor });
-        await vscode.commands.executeCommand('cursorMove', { to: 'wrappedLineFirstNonWhitespaceCharacter' });
+        await vscode.commands.executeCommand('cursorMove', {
+            to: 'down',
+            value: selection.linesDownToMoveCursor,
+        });
+        await vscode.commands.executeCommand('cursorMove', {
+            to: 'wrappedLineFirstNonWhitespaceCharacter',
+        });
     }
 }
 
@@ -439,14 +512,29 @@ export async function runChunksInTerm(chunks: vscode.Range[]): Promise<void> {
 
 export async function runTextInTerm(text: string, execute: boolean = true): Promise<boolean> {
     const document = vscode.window.activeTextEditor?.document;
-    const target = execute && await tryInteractiveExecution(text, document?.uri, document ? {
-        uri: document.uri.toString(), line: vscode.window.activeTextEditor?.selection?.start.line ?? 0, version: document.version,
-    } : undefined, !findTerminal());
-    if (target === 'executed' || target === 'cancelled') { return target === 'executed'; }
+    const target =
+        execute &&
+        (await tryInteractiveExecution(
+            text,
+            document?.uri,
+            document
+                ? {
+                      uri: document.uri.toString(),
+                      line: vscode.window.activeTextEditor?.selection?.start.line ?? 0,
+                      version: document.version,
+                  }
+                : undefined,
+            !findTerminal(),
+        ));
+    if (target === 'executed' || target === 'cancelled') {
+        return target === 'executed';
+    }
     let term: vscode.Terminal | undefined;
     if (target === 'createTerminal') {
         term = await createExecutionTerminal(document?.uri);
-    } else { term = await chooseTerminal(); }
+    } else {
+        term = await chooseTerminal();
+    }
     if (term === undefined) {
         return false;
     }
@@ -454,15 +542,29 @@ export async function runTextInTerm(text: string, execute: boolean = true): Prom
     return true;
 }
 
-export async function runTextInTerminal(terminal: vscode.Terminal, text: string, execute = true): Promise<void> {
-    const pending = (terminalSends.get(terminal) ?? Promise.resolve()).catch(() => undefined)
+export async function runTextInTerminal(
+    terminal: vscode.Terminal,
+    text: string,
+    execute = true,
+): Promise<void> {
+    const pending = (terminalSends.get(terminal) ?? Promise.resolve())
+        .catch(() => undefined)
         .then(() => sendToTerminal(terminal, text, execute));
     terminalSends.set(terminal, pending);
-    try { await pending; }
-    finally { if (terminalSends.get(terminal) === pending) { terminalSends.delete(terminal); } }
+    try {
+        await pending;
+    } finally {
+        if (terminalSends.get(terminal) === pending) {
+            terminalSends.delete(terminal);
+        }
+    }
 }
 
-async function sendToTerminal(term: vscode.Terminal, text: string, execute: boolean): Promise<void> {
+async function sendToTerminal(
+    term: vscode.Terminal,
+    text: string,
+    execute: boolean,
+): Promise<void> {
     deferWorkspaceRefresh();
     if (config().get<boolean>('bracketedPaste')) {
         // Surround with ANSI control characters for bracketed paste mode
@@ -505,10 +607,10 @@ export async function sendRangeToRepl(rng: vscode.Range): Promise<void> {
     }
     const sel0 = editor.selections;
     let sel1 = new vscode.Selection(rng.start, rng.end);
-    while(/^[\r\n]/.exec(editor.document.getText(sel1))){
+    while (/^[\r\n]/.exec(editor.document.getText(sel1))) {
         sel1 = new vscode.Selection(sel1.start.translate(1), sel1.end);
     }
-    while(/\r?\n\r?\n$/.exec(editor.document.getText(sel1))){
+    while (/\r?\n\r?\n$/.exec(editor.document.getText(sel1))) {
         sel1 = new vscode.Selection(sel1.start, sel1.end.translate(-1));
     }
     editor.selections = [sel1];

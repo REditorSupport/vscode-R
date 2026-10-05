@@ -17,20 +17,41 @@ type Icon = keyof typeof paths;
 
 function icon(name: Icon): SVGSVGElement {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('width', '16'); svg.setAttribute('height', '16');
-    svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('focusable', 'false');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('width', '16');
+    svg.setAttribute('height', '16');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
     const path = document.createElementNS(svg.namespaceURI, 'path');
-    path.setAttribute('d', paths[name]); path.setAttribute('fill', 'none'); path.setAttribute('stroke', 'currentColor');
-    path.setAttribute('stroke-width', '1.3'); path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round');
-    svg.append(path); return svg;
+    path.setAttribute('d', paths[name]);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'currentColor');
+    path.setAttribute('stroke-width', '1.3');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.append(path);
+    return svg;
 }
 
-export function toolbarButton(label: string, glyph: Icon, action: () => void, text = label): HTMLButtonElement {
-    const button = document.createElement('button'); button.type = 'button';
-    button.className = 'r-interactive-button'; button.title = label; button.setAttribute('aria-label', label);
+export function toolbarButton(
+    label: string,
+    glyph: Icon,
+    action: () => void,
+    text = label,
+): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'r-interactive-button';
+    button.title = label;
+    button.setAttribute('aria-label', label);
     button.append(icon(glyph));
-    if (text) { const caption = document.createElement('span'); caption.textContent = text; button.append(caption); }
-    button.onclick = action; return button;
+    if (text) {
+        const caption = document.createElement('span');
+        caption.textContent = text;
+        button.append(caption);
+    }
+    button.onclick = action;
+    return button;
 }
 
 export const toolbarStyle = `

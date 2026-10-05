@@ -3,7 +3,7 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     commit-message:
-      prefix: "ci: "
+      prefix: 'ci: '
     schedule:
       interval: weekly
     cooldown:

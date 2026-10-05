@@ -21,7 +21,8 @@ export async function createGitignore(): Promise<void> {
     if (existsSync(ignorePath)) {
         const overwrite = await window.showWarningMessage(
             '".gitignore" file already exists. Do you want to overwrite?',
-            'Yes', 'No'
+            'Yes',
+            'No',
         );
         if (overwrite === 'No') {
             return;

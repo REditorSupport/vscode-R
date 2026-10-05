@@ -4,7 +4,12 @@ import { PlotHistory, PlotFrame } from '../../plotViewer/jgdPlotHistory';
 import { JgdSocketServer, JgdMessage } from '../../plotViewer/jgdSocketServer';
 
 let plotCounter = 0;
-function makePlotMsg(label: string, width = 400, height = 300, extra: Record<string, unknown> = {}): Record<string, unknown> {
+function makePlotMsg(
+    label: string,
+    width = 400,
+    height = 300,
+    extra: Record<string, unknown> = {},
+): Record<string, unknown> {
     const msg: Record<string, unknown> = {
         type: 'frame',
         plot: {
@@ -79,7 +84,9 @@ function connectClient(socketUri: string): Promise<ClientHelper> {
                     if (lineQueue.length > 0) {
                         return Promise.resolve(lineQueue.shift()!);
                     }
-                    return new Promise((res) => { lineResolve = res; });
+                    return new Promise((res) => {
+                        lineResolve = res;
+                    });
                 },
                 close: () => socket.destroy(),
             });
@@ -221,11 +228,16 @@ suite('JGD SocketServer', () => {
             assert.strictEqual(history.currentPlot()?.device.bg, 'RED');
 
             server.handleResize(1000, 700);
-            const resizeMsg = JSON.parse(await client.readLine()) as { type: string; plotIndex: number };
+            const resizeMsg = JSON.parse(await client.readLine()) as {
+                type: string;
+                plotIndex: number;
+            };
             assert.strictEqual(resizeMsg.type, 'resize');
             assert.strictEqual(resizeMsg.plotIndex, 0);
 
-            client.send(makePlotMsg('RED-resized', 1000, 700, { resizeReplay: true, plotIndex: 0 }));
+            client.send(
+                makePlotMsg('RED-resized', 1000, 700, { resizeReplay: true, plotIndex: 0 }),
+            );
             await waitMs(50);
 
             assert.strictEqual(history.count(), 1);
@@ -241,7 +253,11 @@ suite('JGD SocketServer', () => {
             client.send({ type: 'hello' });
             const info = JSON.parse(await client.readLine()) as { type: string };
             assert.strictEqual(info.type, 'server_info');
-            const msg = JSON.parse(await client.readLine()) as { type: string; width: number; height: number };
+            const msg = JSON.parse(await client.readLine()) as {
+                type: string;
+                width: number;
+                height: number;
+            };
             assert.strictEqual(msg.type, 'resize');
             assert.strictEqual(msg.width, 500);
             assert.strictEqual(msg.height, 400);
@@ -272,7 +288,11 @@ suite('JGD SocketServer', () => {
                 gc: { font: { size: 12, family: 'sans' } },
             });
 
-            const resp = JSON.parse(await client.readLine()) as { type: string; id: number; width: number };
+            const resp = JSON.parse(await client.readLine()) as {
+                type: string;
+                id: number;
+                width: number;
+            };
             assert.strictEqual(resp.type, 'metrics_response');
             assert.strictEqual(resp.id, 7);
             assert.strictEqual(resp.width, 42);
@@ -282,9 +302,18 @@ suite('JGD SocketServer', () => {
         test('font measurement uses each device DPI without leaking across connections', async () => {
             const first = await connect();
             const second = await connect();
-            server.setMeasureText((request, dpi) => Promise.resolve({ type: 'metrics_response', id: request.id, dpi }));
-            first.send({ type: 'frame', newPage: true, plot: { version: 1,
-                device: { width: 800, height: 600, dpi: 144, bg: 'white' }, ops: [] } });
+            server.setMeasureText((request, dpi) =>
+                Promise.resolve({ type: 'metrics_response', id: request.id, dpi }),
+            );
+            first.send({
+                type: 'frame',
+                newPage: true,
+                plot: {
+                    version: 1,
+                    device: { width: 800, height: 600, dpi: 144, bg: 'white' },
+                    ops: [],
+                },
+            });
             first.send({ type: 'metrics_request', id: 1, kind: 'strWidth', str: 'hello' });
             second.send({ type: 'metrics_request', id: 2, kind: 'strWidth', str: 'hello' });
             assert.strictEqual((JSON.parse(await first.readLine()) as { dpi: number }).dpi, 144);

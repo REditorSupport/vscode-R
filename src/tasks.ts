@@ -5,22 +5,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getRpath } from './util';
 
-
 const TYPE = 'R';
 
 interface RTaskDefinition extends vscode.TaskDefinition {
-    type: string,
-    code: string[],
-    options?: string[],
-    cwd?: string,
-    env?: { [key: string]: string }
+    type: string;
+    code: string[];
+    options?: string[];
+    cwd?: string;
+    env?: { [key: string]: string };
 }
 
 interface RTaskInfo {
-    definition: RTaskDefinition,
-    problemMatchers?: string | string[],
-    name?: string,
-    group?: vscode.TaskGroup
+    definition: RTaskDefinition;
+    problemMatchers?: string | string[];
+    name?: string;
+    group?: vscode.TaskGroup;
 }
 
 function makeRArgs(options: string[], code: string[]) {
@@ -38,90 +37,90 @@ const rtasks: RTaskInfo[] = [
     {
         definition: {
             type: TYPE,
-            code: ['devtools::test()']
+            code: ['devtools::test()'],
         },
         name: 'Test',
         group: vscode.TaskGroup.Test,
-        problemMatchers: '$testthat'
+        problemMatchers: '$testthat',
     },
 
     {
         definition: {
             type: TYPE,
-            code: ['testthat::test_file("${file}")']
+            code: ['testthat::test_file("${file}")'],
         },
         name: 'Test (Current File)',
         group: vscode.TaskGroup.Test,
-        problemMatchers: '$testthat'
+        problemMatchers: '$testthat',
     },
 
     {
         definition: {
             type: TYPE,
-            code: ['devtools::build()']
+            code: ['devtools::build()'],
         },
         name: 'Build',
         group: vscode.TaskGroup.Build,
-        problemMatchers: []
+        problemMatchers: [],
     },
 
     {
         definition: {
             type: TYPE,
-            code: ['devtools::build(binary = TRUE, args = c(\'--preclean\'))']
+            code: ["devtools::build(binary = TRUE, args = c('--preclean'))"],
         },
         name: 'Build Binary',
         group: vscode.TaskGroup.Build,
-        problemMatchers: []
+        problemMatchers: [],
     },
 
     {
         definition: {
             type: TYPE,
-            code: ['devtools::check()']
+            code: ['devtools::check()'],
         },
         name: 'Check',
         group: vscode.TaskGroup.Test,
-        problemMatchers: []
+        problemMatchers: [],
     },
 
     {
         definition: {
             type: TYPE,
-            code: ['devtools::document()']
+            code: ['devtools::document()'],
         },
         name: 'Document',
         group: vscode.TaskGroup.Build,
-        problemMatchers: []
+        problemMatchers: [],
     },
 
     {
         definition: {
             type: TYPE,
-            code: ['devtools::install()']
+            code: ['devtools::install()'],
         },
         name: 'Install',
         group: vscode.TaskGroup.Build,
-        problemMatchers: []
-    }
+        problemMatchers: [],
+    },
 ];
 
-function asRTask(rPath: string, folder: vscode.WorkspaceFolder | vscode.TaskScope, info: RTaskInfo): vscode.Task {
+function asRTask(
+    rPath: string,
+    folder: vscode.WorkspaceFolder | vscode.TaskScope,
+    info: RTaskInfo,
+): vscode.Task {
     const args = makeRArgs(info.definition.options ?? defaultOptions, info.definition.code);
     const rtask: vscode.Task = new vscode.Task(
         info.definition,
         folder,
         info.name ?? 'Unnamed',
         info.definition.type,
-        new vscode.ProcessExecution(
-            rPath,
-            args,
-            {
-                cwd: info.definition.cwd,
-                env: info.definition.env
-            }
-        ),
-        info.problemMatchers
+        new vscode.ProcessExecution(rPath, args, {
+            cwd: info.definition.cwd,
+            env: info.definition.env,
+        }),
+        info.problemMatchers,
     );
 
     rtask.group = info.group;
@@ -129,7 +128,6 @@ function asRTask(rPath: string, folder: vscode.WorkspaceFolder | vscode.TaskScop
 }
 
 export class RTaskProvider implements vscode.TaskProvider {
-
     public type = TYPE;
 
     public async provideTasks(): Promise<vscode.Task[]> {
@@ -160,7 +158,7 @@ export class RTaskProvider implements vscode.TaskProvider {
         const taskInfo: RTaskInfo = {
             definition: <RTaskDefinition>task.definition,
             group: task.group,
-            name: task.name
+            name: task.name,
         };
         const folder = task.scope && typeof task.scope !== 'number' ? task.scope : undefined;
         const rPath = await getRpath(false, folder?.uri);

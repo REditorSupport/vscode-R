@@ -14,10 +14,10 @@ const extension_root: string = path.join(__dirname, '..', '..', '..');
 async function waitForDiscoveryRemoval(filePath: string): Promise<void> {
     const deadline = Date.now() + 1000;
     while (Date.now() < deadline) {
-        if (!await fs.pathExists(filePath)) {
+        if (!(await fs.pathExists(filePath))) {
             return;
         }
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
     }
     assert.fail(`Timed out waiting for discovery file removal: ${filePath}`);
 }
@@ -27,12 +27,16 @@ async function waitForDiscoveryPid(filePath: string, expectedPid: number): Promi
     while (Date.now() < deadline) {
         if (await fs.pathExists(filePath)) {
             const discovery: unknown = await fs.readJson(filePath);
-            if (typeof discovery === 'object' && discovery !== null &&
-                'terminalPid' in discovery && discovery.terminalPid === expectedPid) {
+            if (
+                typeof discovery === 'object' &&
+                discovery !== null &&
+                'terminalPid' in discovery &&
+                discovery.terminalPid === expectedPid
+            ) {
                 return;
             }
         }
-        await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 10));
     }
     assert.fail(`Timed out waiting for terminal PID ${expectedPid} in discovery file: ${filePath}`);
 }
@@ -40,27 +44,37 @@ async function waitForDiscoveryPid(filePath: string, expectedPid: number): Promi
 suite('R Terminal', () => {
     let sandbox: sinon.SinonSandbox;
 
-    function configuration(values: Record<string, unknown> = {}, defaults: Record<string, unknown> = {}, workspaceFolderScope = false): vscode.WorkspaceConfiguration {
+    function configuration(
+        values: Record<string, unknown> = {},
+        defaults: Record<string, unknown> = {},
+        workspaceFolderScope = false,
+    ): vscode.WorkspaceConfiguration {
         return {
-            get: (key: string, defaultValue?: unknown) => values[key] ?? defaults[key] ?? defaultValue,
-            inspect: (key: string) => values[key] === undefined
-                ? undefined
-                : workspaceFolderScope ? { workspaceFolderValue: values[key] } : { globalValue: values[key] }
+            get: (key: string, defaultValue?: unknown) =>
+                values[key] ?? defaults[key] ?? defaultValue,
+            inspect: (key: string) =>
+                values[key] === undefined
+                    ? undefined
+                    : workspaceFolderScope
+                      ? { workspaceFolderValue: values[key] }
+                      : { globalValue: values[key] },
         } as unknown as vscode.WorkspaceConfiguration;
     }
 
     async function sendDelayFor(
         values: Record<string, unknown>,
         defaults: Record<string, unknown> = {},
-        settings = configuration(values, defaults)
+        settings = configuration(values, defaults),
     ): Promise<number> {
         const resource = vscode.Uri.file(path.join(path.sep, 'workspace', 'project'));
-        sandbox.stub(util, 'getCurrentWorkspaceFolder').returns({ uri: resource } as vscode.WorkspaceFolder);
+        sandbox
+            .stub(util, 'getCurrentWorkspaceFolder')
+            .returns({ uri: resource } as vscode.WorkspaceFolder);
         sandbox.stub(util, 'config').returns(settings);
         const terminal = {
             name: 'R Interactive',
             show: () => undefined,
-            sendText: () => undefined
+            sendText: () => undefined,
         };
         sandbox.stub(vscode.window, 'terminals').value([terminal as unknown as vscode.Terminal]);
         sandbox.stub(vscode.window, 'activeTerminal').value(terminal as unknown as vscode.Terminal);
@@ -109,9 +123,11 @@ suite('R Terminal', () => {
                     return ['--no-save'];
                 }
                 return defaultValue;
-            }
+            },
         };
-        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox
+            .stub(util, 'config')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
@@ -130,7 +146,11 @@ suite('R Terminal', () => {
                 throw new Error('SESS_DISCOVERY_FILE should be a string path');
             }
             const discovery: unknown = await fs.readJson(discoveryFile);
-            assert.deepStrictEqual(discovery, { version: 1, endpoint: session.globalPipePath, jgdSocket: '' });
+            assert.deepStrictEqual(discovery, {
+                version: 1,
+                endpoint: session.globalPipePath,
+                jgdSocket: '',
+            });
         } finally {
             if (typeof discoveryFile === 'string') {
                 await fs.remove(discoveryFile);
@@ -182,7 +202,7 @@ suite('R Terminal', () => {
         try {
             rTerminal.deleteTerminal(shutdownTerminal);
             rTerminal.deleteTerminal(unknownTerminal);
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             assert.strictEqual(await fs.pathExists(shutdownFile), true);
             assert.strictEqual(await fs.pathExists(unknownFile), true);
         } finally {
@@ -224,9 +244,11 @@ suite('R Terminal', () => {
                     return true;
                 }
                 return defaultValue;
-            }
+            },
         };
-        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox
+            .stub(util, 'config')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
@@ -237,11 +259,13 @@ suite('R Terminal', () => {
     });
 
     test('makeTerminalOptions passes native to sess without a JGD socket', async () => {
-        sandbox.stub(util, 'config').returns(configuration({
-            sessionWatcher: true,
-            'plot.backend': 'native',
-            'plot.useHttpgd': true,
-        }));
+        sandbox.stub(util, 'config').returns(
+            configuration({
+                sessionWatcher: true,
+                'plot.backend': 'native',
+                'plot.useHttpgd': true,
+            }),
+        );
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         const options = await rTerminal.makeTerminalOptions();
         const discoveryFile = options.env?.['SESS_DISCOVERY_FILE'];
@@ -262,9 +286,11 @@ suite('R Terminal', () => {
                     return false;
                 }
                 return undefined;
-            }
+            },
         };
-        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox
+            .stub(util, 'config')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
@@ -274,10 +300,12 @@ suite('R Terminal', () => {
     });
 
     test('makeTerminalOptions prefers canonical consoleArgs to legacy rterm.option', async () => {
-        sandbox.stub(util, 'config').returns(configuration({
-            consoleArgs: ['--vanilla'],
-            'rterm.option': ['--no-save']
-        }));
+        sandbox.stub(util, 'config').returns(
+            configuration({
+                consoleArgs: ['--vanilla'],
+                'rterm.option': ['--no-save'],
+            }),
+        );
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
@@ -287,9 +315,14 @@ suite('R Terminal', () => {
     });
 
     test('makeTerminalOptions uses customized legacy console args when canonical setting is unset', async () => {
-        sandbox.stub(util, 'config').returns(configuration({ 'rterm.option': ['--no-save', '--quiet'] }, {
-            consoleArgs: ['--no-save', '--no-restore']
-        }));
+        sandbox.stub(util, 'config').returns(
+            configuration(
+                { 'rterm.option': ['--no-save', '--quiet'] },
+                {
+                    consoleArgs: ['--no-save', '--no-restore'],
+                },
+            ),
+        );
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
@@ -311,7 +344,9 @@ suite('R Terminal', () => {
     });
 
     test('makeTerminalOptions keeps existing console args defaults when neither setting is explicit', async () => {
-        sandbox.stub(util, 'config').returns(configuration({}, { consoleArgs: ['--no-save', '--no-restore'] }));
+        sandbox
+            .stub(util, 'config')
+            .returns(configuration({}, { consoleArgs: ['--no-save', '--no-restore'] }));
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
@@ -333,15 +368,23 @@ suite('R Terminal', () => {
                     const settings = configuration();
                     sandbox.stub(settings, 'inspect').callsFake((key: string) => ({
                         key,
-                        ...(key === canonicalKey ? { [canonicalScope]: canonicalValue }
-                            : key === legacyKey ? { [legacyScope]: legacyValue } : {})
+                        ...(key === canonicalKey
+                            ? { [canonicalScope]: canonicalValue }
+                            : key === legacyKey
+                              ? { [legacyScope]: legacyValue }
+                              : {}),
                     }));
-                    const expected = scopes.indexOf(canonicalScope) >= scopes.indexOf(legacyScope)
-                        ? canonicalValue : legacyValue;
+                    const expected =
+                        scopes.indexOf(canonicalScope) >= scopes.indexOf(legacyScope)
+                            ? canonicalValue
+                            : legacyValue;
                     if (setting === 'args') {
                         sandbox.stub(util, 'config').returns(settings);
                         sandbox.stub(util, 'getRterm').resolves(process.execPath);
-                        assert.deepStrictEqual((await rTerminal.makeTerminalOptions()).shellArgs, expected);
+                        assert.deepStrictEqual(
+                            (await rTerminal.makeTerminalOptions()).shellArgs,
+                            expected,
+                        );
                     } else {
                         assert.strictEqual(await sendDelayFor({}, {}, settings), expected);
                     }
@@ -357,22 +400,27 @@ suite('R Terminal', () => {
             // Variable substitution also inspects the active editor. Keep this
             // explicit-resource test independent of preceding editor suites.
             sandbox.stub(vscode.window, 'activeTextEditor').value(undefined);
-            sandbox.stub(vscode.workspace, 'workspaceFolders').value(
-                hasWorkspace ? [{ uri: folder } as vscode.WorkspaceFolder] : undefined
-            );
-            sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake(resource => {
+            sandbox
+                .stub(vscode.workspace, 'workspaceFolders')
+                .value(hasWorkspace ? [{ uri: folder } as vscode.WorkspaceFolder] : undefined);
+            sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake((resource) => {
                 assert.strictEqual(resource, file);
-                return hasWorkspace ? { uri: folder } as vscode.WorkspaceFolder : undefined;
+                return hasWorkspace ? ({ uri: folder } as vscode.WorkspaceFolder) : undefined;
             });
-            const configStub = sandbox.stub(util, 'config').returns(configuration({
-                consoleArgs: hasWorkspace ? ['--project=${workspaceFolder}'] : ['--quiet']
-            }));
+            const configStub = sandbox.stub(util, 'config').returns(
+                configuration({
+                    consoleArgs: hasWorkspace ? ['--project=${workspaceFolder}'] : ['--quiet'],
+                }),
+            );
             const pathStub = sandbox.stub(util, 'getRterm').resolves(process.execPath);
 
             const options = await rTerminal.makeTerminalOptions(file);
 
             assert.strictEqual(options.cwd, hasWorkspace ? folder.fsPath : undefined);
-            assert.deepStrictEqual(options.shellArgs, hasWorkspace ? [`--project=${folder.fsPath}`] : ['--quiet']);
+            assert.deepStrictEqual(
+                options.shellArgs,
+                hasWorkspace ? [`--project=${folder.fsPath}`] : ['--quiet'],
+            );
             assert.ok(configStub.calledWithExactly(file));
             assert.ok(pathStub.calledWithExactly(file));
         });
@@ -380,11 +428,17 @@ suite('R Terminal', () => {
 
     test('createRTerm reports an invalid legacy console path setting only once', async () => {
         const legacySetting = util.getRPathConfigEntry(true);
-        const settings: Record<string, string> = { consolePath: '', [legacySetting]: '/missing/r-console', executablePath: '' };
-        const configStub = {
-            get: (key: string) => key === 'sessionWatcher' ? false : settings[key]
+        const settings: Record<string, string> = {
+            consolePath: '',
+            [legacySetting]: '/missing/r-console',
+            executablePath: '',
         };
-        sandbox.stub(vscode.workspace, 'getConfiguration').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        const configStub = {
+            get: (key: string) => (key === 'sessionWatcher' ? false : settings[key]),
+        };
+        sandbox
+            .stub(vscode.workspace, 'getConfiguration')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
         const errorStub = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
 
@@ -396,11 +450,16 @@ suite('R Terminal', () => {
 
     test('getRterm reports an invalid canonical consolePath setting clearly', async () => {
         const legacySetting = util.getRPathConfigEntry(true);
-        const settings: Record<string, string> = { consolePath: '/missing/canonical-console', [legacySetting]: '/legacy/r-console' };
-        const configStub = {
-            get: (key: string) => settings[key]
+        const settings: Record<string, string> = {
+            consolePath: '/missing/canonical-console',
+            [legacySetting]: '/legacy/r-console',
         };
-        sandbox.stub(vscode.workspace, 'getConfiguration').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        const configStub = {
+            get: (key: string) => settings[key],
+        };
+        sandbox
+            .stub(vscode.workspace, 'getConfiguration')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
         const errorStub = sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
 
         assert.strictEqual(await util.getRterm(), undefined);
@@ -411,19 +470,25 @@ suite('R Terminal', () => {
 
     test('console arguments, substitution, and send delay use the R terminal workspace resource', async () => {
         const resource = vscode.Uri.file(path.join(path.sep, 'workspace', 'project'));
-        sandbox.stub(util, 'getCurrentWorkspaceFolder').returns({ uri: resource } as vscode.WorkspaceFolder);
+        sandbox
+            .stub(util, 'getCurrentWorkspaceFolder')
+            .returns({ uri: resource } as vscode.WorkspaceFolder);
         const requestedResources: Array<vscode.Uri | undefined> = [];
-        const configStub = configuration({
-            consoleArgs: ['--project=${workspaceFolder}'],
-            'rterm.option': ['--legacy'],
-            consoleSendDelay: 17,
-            rtermSendDelay: 4
-        }, {}, true);
+        const configStub = configuration(
+            {
+                consoleArgs: ['--project=${workspaceFolder}'],
+                'rterm.option': ['--legacy'],
+                consoleSendDelay: 17,
+                rtermSendDelay: 4,
+            },
+            {},
+            true,
+        );
         sandbox.stub(util, 'config').callsFake((requestedResource?: vscode.Uri) => {
             requestedResources.push(requestedResource);
             return configStub;
         });
-        sandbox.stub(util, 'getRterm').callsFake(requestedResource => {
+        sandbox.stub(util, 'getRterm').callsFake((requestedResource) => {
             assert.strictEqual(requestedResource, resource);
             return Promise.resolve(process.execPath);
         });
@@ -438,11 +503,17 @@ suite('R Terminal', () => {
             processId: Promise.resolve(undefined),
             show: () => undefined,
             dispose: () => undefined,
-            sendText: (text: string) => sent.push(text)
+            sendText: (text: string) => sent.push(text),
         };
-        sandbox.stub(vscode.window, 'createTerminal').returns(fakeTerminal as unknown as vscode.Terminal);
-        sandbox.stub(vscode.window, 'terminals').value([fakeTerminal as unknown as vscode.Terminal]);
-        sandbox.stub(vscode.window, 'activeTerminal').value(fakeTerminal as unknown as vscode.Terminal);
+        sandbox
+            .stub(vscode.window, 'createTerminal')
+            .returns(fakeTerminal as unknown as vscode.Terminal);
+        sandbox
+            .stub(vscode.window, 'terminals')
+            .value([fakeTerminal as unknown as vscode.Terminal]);
+        sandbox
+            .stub(vscode.window, 'activeTerminal')
+            .value(fakeTerminal as unknown as vscode.Terminal);
         const delayStub = sandbox.stub(util, 'delay').resolves();
 
         assert.strictEqual(await rTerminal.createRTerm(), true);
@@ -450,8 +521,15 @@ suite('R Terminal', () => {
         await rTerminal.runTextInTerm('first\nsecond');
 
         assert.deepStrictEqual(options.shellArgs, [`--project=${resource.fsPath}`]);
-        assert.ok(requestedResources.includes(resource), 'configuration should be requested for the R terminal resource');
-        assert.strictEqual(delayStub.firstCall.args[0], 17, 'explicit canonical send delay should be used');
+        assert.ok(
+            requestedResources.includes(resource),
+            'configuration should be requested for the R terminal resource',
+        );
+        assert.strictEqual(
+            delayStub.firstCall.args[0],
+            17,
+            'explicit canonical send delay should be used',
+        );
         assert.deepStrictEqual(sent, ['first', 'second']);
         rTerminal.deleteTerminal(fakeTerminal as unknown as vscode.Terminal);
     });
@@ -459,12 +537,29 @@ suite('R Terminal', () => {
     for (const scheme of ['file', 'vscode-remote']) {
         const authority = scheme === 'vscode-remote' ? 'ssh-remote+test-host' : '';
         test(`profile R terminal send delay preserves its ${scheme} workspace URI`, async () => {
-            const folderA = { uri: vscode.Uri.file(path.join(path.sep, 'workspace', 'a')).with({ scheme, authority }) } as vscode.WorkspaceFolder;
-            const folderB = { uri: vscode.Uri.file(path.join(path.sep, 'workspace', 'b')).with({ scheme, authority }) } as vscode.WorkspaceFolder;
-            sandbox.stub(vscode.window, 'activeTextEditor').value({ document: { uri: folderB.uri } } as vscode.TextEditor);
+            const folderA = {
+                uri: vscode.Uri.file(path.join(path.sep, 'workspace', 'a')).with({
+                    scheme,
+                    authority,
+                }),
+            } as vscode.WorkspaceFolder;
+            const folderB = {
+                uri: vscode.Uri.file(path.join(path.sep, 'workspace', 'b')).with({
+                    scheme,
+                    authority,
+                }),
+            } as vscode.WorkspaceFolder;
+            sandbox
+                .stub(vscode.window, 'activeTextEditor')
+                .value({ document: { uri: folderB.uri } } as vscode.TextEditor);
             sandbox.stub(vscode.workspace, 'workspaceFolders').value([folderA, folderB]);
-            sandbox.stub(vscode.workspace, 'getWorkspaceFolder').callsFake(resource =>
-                [folderA, folderB].find(folder => folder.uri.toString() === resource.toString()));
+            sandbox
+                .stub(vscode.workspace, 'getWorkspaceFolder')
+                .callsFake((resource) =>
+                    [folderA, folderB].find(
+                        (folder) => folder.uri.toString() === resource.toString(),
+                    ),
+                );
             const requestedResources: Array<vscode.Uri | undefined> = [];
             sandbox.stub(util, 'config').callsFake((resource?: vscode.Uri) => {
                 requestedResources.push(resource);
@@ -480,15 +575,22 @@ suite('R Terminal', () => {
                 name: 'R Interactive',
                 creationOptions: { name: 'R Interactive', cwd: folderA.uri.fsPath },
                 show: () => undefined,
-                sendText: () => undefined
+                sendText: () => undefined,
             };
-            sandbox.stub(vscode.window, 'terminals').value([terminal as unknown as vscode.Terminal]);
-            sandbox.stub(vscode.window, 'activeTerminal').value(terminal as unknown as vscode.Terminal);
+            sandbox
+                .stub(vscode.window, 'terminals')
+                .value([terminal as unknown as vscode.Terminal]);
+            sandbox
+                .stub(vscode.window, 'activeTerminal')
+                .value(terminal as unknown as vscode.Terminal);
             const delayStub = sandbox.stub(util, 'delay').resolves();
 
             await rTerminal.runTextInTerm('first\nsecond');
 
-            assert.ok(requestedResources.includes(folderA.uri), 'configuration should use the workspace containing the profile terminal cwd');
+            assert.ok(
+                requestedResources.includes(folderA.uri),
+                'configuration should use the workspace containing the profile terminal cwd',
+            );
             assert.strictEqual(delayStub.firstCall.args[0], 31);
         });
     }
@@ -500,14 +602,20 @@ suite('R Terminal', () => {
                     return true;
                 }
                 return undefined;
-            }
+            },
         };
-        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox
+            .stub(util, 'config')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         let finishSetup!: (result: boolean) => void;
-        const setupFinished = new Promise<boolean>(resolve => { finishSetup = resolve; });
+        const setupFinished = new Promise<boolean>((resolve) => {
+            finishSetup = resolve;
+        });
         let setupStarted!: () => void;
-        const started = new Promise<void>(resolve => { setupStarted = resolve; });
+        const started = new Promise<void>((resolve) => {
+            setupStarted = resolve;
+        });
         sandbox.stub(util, 'promptToInstallSessPackage').callsFake(() => {
             setupStarted();
             return setupFinished;
@@ -529,15 +637,17 @@ suite('R Terminal', () => {
     test('createRTerm removes its discovery file when the configured executable is invalid', async () => {
         const createdDiscoveryFiles: string[] = [];
         const createDiscoveryFile = session.createSessionDiscoveryFile;
-        sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async endpoint => {
+        sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async (endpoint) => {
             const filePath = await createDiscoveryFile(endpoint);
             createdDiscoveryFiles.push(filePath);
             return filePath;
         });
         const configStub = {
-            get: (key: string) => key === 'sessionWatcher' ? true : undefined,
+            get: (key: string) => (key === 'sessionWatcher' ? true : undefined),
         };
-        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox
+            .stub(util, 'config')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(`${process.execPath}.does-not-exist`);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
@@ -546,22 +656,24 @@ suite('R Terminal', () => {
             assert.strictEqual(createdDiscoveryFiles.length, 1);
             assert.strictEqual(await fs.pathExists(createdDiscoveryFiles[0]), false);
         } finally {
-            await Promise.all(createdDiscoveryFiles.map(filePath => fs.remove(filePath)));
+            await Promise.all(createdDiscoveryFiles.map((filePath) => fs.remove(filePath)));
         }
     });
 
     test('createRTerm removes its discovery file when VS Code terminal creation throws', async () => {
         const createdDiscoveryFiles: string[] = [];
         const createDiscoveryFile = session.createSessionDiscoveryFile;
-        sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async endpoint => {
+        sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async (endpoint) => {
             const filePath = await createDiscoveryFile(endpoint);
             createdDiscoveryFiles.push(filePath);
             return filePath;
         });
         const configStub = {
-            get: (key: string) => key === 'sessionWatcher' ? true : undefined,
+            get: (key: string) => (key === 'sessionWatcher' ? true : undefined),
         };
-        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox
+            .stub(util, 'config')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
         sandbox.stub(vscode.window, 'createTerminal').throws(new Error('terminal creation failed'));
@@ -571,20 +683,20 @@ suite('R Terminal', () => {
             assert.strictEqual(createdDiscoveryFiles.length, 1);
             assert.strictEqual(await fs.pathExists(createdDiscoveryFiles[0]), false);
         } finally {
-            await Promise.all(createdDiscoveryFiles.map(filePath => fs.remove(filePath)));
+            await Promise.all(createdDiscoveryFiles.map((filePath) => fs.remove(filePath)));
         }
     });
 
     test('createRTerm removes its discovery file when sess installation fails', async () => {
         const createdDiscoveryFiles: string[] = [];
         const createDiscoveryFile = session.createSessionDiscoveryFile;
-        sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async endpoint => {
+        sandbox.stub(session, 'createSessionDiscoveryFile').callsFake(async (endpoint) => {
             const filePath = await createDiscoveryFile(endpoint);
             createdDiscoveryFiles.push(filePath);
             return filePath;
         });
         sandbox.stub(util, 'config').returns({
-            get: (key: string) => key === 'sessionWatcher' ? true : undefined,
+            get: (key: string) => (key === 'sessionWatcher' ? true : undefined),
         } as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(false);
@@ -595,27 +707,37 @@ suite('R Terminal', () => {
             assert.strictEqual(createdDiscoveryFiles.length, 1);
             assert.strictEqual(await fs.pathExists(createdDiscoveryFiles[0]), false);
         } finally {
-            await Promise.all(createdDiscoveryFiles.map(filePath => fs.remove(filePath)));
+            await Promise.all(createdDiscoveryFiles.map((filePath) => fs.remove(filePath)));
         }
     });
 
     test('createRTerm records process IDs for all managed terminals when they resolve out of order', async () => {
         let resolveFirst!: (pid: number | undefined) => void;
         let resolveSecond!: (pid: number | undefined) => void;
-        const firstProcessId = new Promise<number | undefined>(resolve => { resolveFirst = resolve; });
-        const secondProcessId = new Promise<number | undefined>(resolve => { resolveSecond = resolve; });
+        const firstProcessId = new Promise<number | undefined>((resolve) => {
+            resolveFirst = resolve;
+        });
+        const secondProcessId = new Promise<number | undefined>((resolve) => {
+            resolveSecond = resolve;
+        });
         const firstTerminal = {
-            name: 'R Interactive', processId: firstProcessId,
-            show: () => undefined, dispose: () => undefined,
+            name: 'R Interactive',
+            processId: firstProcessId,
+            show: () => undefined,
+            dispose: () => undefined,
         } as unknown as vscode.Terminal;
         const secondTerminal = {
-            name: 'R Interactive', processId: secondProcessId,
-            show: () => undefined, dispose: () => undefined,
+            name: 'R Interactive',
+            processId: secondProcessId,
+            show: () => undefined,
+            dispose: () => undefined,
         } as unknown as vscode.Terminal;
         const configStub = {
-            get: (key: string) => key === 'sessionWatcher' ? true : undefined,
+            get: (key: string) => (key === 'sessionWatcher' ? true : undefined),
         };
-        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox
+            .stub(util, 'config')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
         const createTerminalStub = sandbox.stub(vscode.window, 'createTerminal');
@@ -658,9 +780,11 @@ suite('R Terminal', () => {
                     return true;
                 }
                 return undefined;
-            }
+            },
         };
-        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox
+            .stub(util, 'config')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
         sandbox.stub(util, 'getRterm').resolves(process.execPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
@@ -668,11 +792,19 @@ suite('R Terminal', () => {
         const fakeTerminal = {
             name: 'R Interactive',
             processId: Promise.resolve(1234),
-            show: () => { /* empty */ },
-            dispose: () => { /* empty */ },
-            sendText: () => { /* empty */ }
+            show: () => {
+                /* empty */
+            },
+            dispose: () => {
+                /* empty */
+            },
+            sendText: () => {
+                /* empty */
+            },
         };
-        const createTerminalStub = sandbox.stub(vscode.window, 'createTerminal').returns(fakeTerminal as unknown as vscode.Terminal);
+        const createTerminalStub = sandbox
+            .stub(vscode.window, 'createTerminal')
+            .returns(fakeTerminal as unknown as vscode.Terminal);
 
         const result = await rTerminal.createRTerm(true);
         assert.ok(result);
@@ -686,7 +818,10 @@ suite('R Terminal', () => {
             workingDir: '',
             workspaceData: { search: [], loaded_namespaces: [], globalenv: {} },
             pipePath: '',
-            socket: { destroyed: true, destroy: () => undefined } as unknown as session.Session['socket']
+            socket: {
+                destroyed: true,
+                destroy: () => undefined,
+            } as unknown as session.Session['socket'],
         };
 
         await session.activateSession(fakeSession as unknown as session.Session);
@@ -694,7 +829,11 @@ suite('R Terminal', () => {
         assert.ok(session.activeSession, 'Active session should be defined');
         assert.ok(rTerminal.rTerm, 'rTerminal.rTerm should be defined');
         const terminalPid = await rTerminal.rTerm.processId;
-        assert.strictEqual(session.activeSession.pid, String(terminalPid), 'Session PID should match terminal PID');
+        assert.strictEqual(
+            session.activeSession.pid,
+            String(terminalPid),
+            'Session PID should match terminal PID',
+        );
 
         // Clean up
         rTerminal.rTerm?.dispose();

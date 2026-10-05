@@ -4,15 +4,15 @@ R Interactive keeps R execution independent of the VS Code extension host. Each 
 
 ## Component boundaries
 
-| Component | Responsibility |
-| --- | --- |
-| [manager.ts](manager.ts), [notebook.ts](notebook.ts), [client.ts](client.ts) | Session selection and source bindings, VS Code windows/controllers, agent connections, transcript reconciliation, and editor actions |
-| [agent.ts](agent.ts) | Editor authentication and control leases, admission and queues, execution identity/state, deduplication, replay, cached workspace policy, output limits, and event fan-out |
-| [journal.ts](journal.ts), [assets.ts](assets.ts) | Durable execution records and output, asset serving/compression, and retention |
-| [backend.ts](backend.ts) | Node-only `SessionBackend` contract and decoded application events; independent of VS Code and provider transports |
-| [backendRegistry.ts](backendRegistry.ts), [agentMain.ts](agentMain.ts) | Fixed backend definitions, preflight/preparation, and composition of the agent with its backend |
-| [launcher.ts](launcher.ts), [supervisor.ts](supervisor.ts), [nodeExecutable.ts](nodeExecutable.ts) | Agent bundle preparation, runtime selection, and independent process supervision |
-| [renderer.ts](renderer.ts) | Browser-side rich output and controls; live requests return through the editor to the owning session |
+| Component                                                                                          | Responsibility                                                                                                                                                             |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [manager.ts](manager.ts), [notebook.ts](notebook.ts), [client.ts](client.ts)                       | Session selection and source bindings, VS Code windows/controllers, agent connections, transcript reconciliation, and editor actions                                       |
+| [agent.ts](agent.ts)                                                                               | Editor authentication and control leases, admission and queues, execution identity/state, deduplication, replay, cached workspace policy, output limits, and event fan-out |
+| [journal.ts](journal.ts), [assets.ts](assets.ts)                                                   | Durable execution records and output, asset serving/compression, and retention                                                                                             |
+| [backend.ts](backend.ts)                                                                           | Node-only `SessionBackend` contract and decoded application events; independent of VS Code and provider transports                                                         |
+| [backendRegistry.ts](backendRegistry.ts), [agentMain.ts](agentMain.ts)                             | Fixed backend definitions, preflight/preparation, and composition of the agent with its backend                                                                            |
+| [launcher.ts](launcher.ts), [supervisor.ts](supervisor.ts), [nodeExecutable.ts](nodeExecutable.ts) | Agent bundle preparation, runtime selection, and independent process supervision                                                                                           |
+| [renderer.ts](renderer.ts)                                                                         | Browser-side rich output and controls; live requests return through the editor to the owning session                                                                       |
 
 `SessionAgent` receives a backend factory. It does not import sess, arf, R-process launch helpers, or JGD wire types. Backend definitions are internal; there is no public plugin registration API.
 
@@ -21,10 +21,10 @@ R Interactive keeps R execution independent of the VS Code extension host. Each 
 The shipped `sess` backend composes shared integration with one frontend adapter:
 
 | Public provider | Backend | Frontend | Ownership |
-| --- | --- | --- | --- |
-| `r` | `sess` | Plain R | Managed |
-| `arf` | `sess` | arf | Managed |
-| `arf-existing` | `sess` | arf | Adopted |
+| --------------- | ------- | -------- | --------- |
+| `r`             | `sess`  | Plain R  | Managed   |
+| `arf`           | `sess`  | arf      | Managed   |
+| `arf-existing`  | `sess`  | arf      | Adopted   |
 
 [SessBackend](backends/sessBackend.ts) owns runtime readiness, metadata, and capabilities. [SessBridge](backends/sessBridge.ts) owns sess authentication, JSON-RPC correlation/timeouts, native console framing, and event decoding. [PlainR](backends/plainR.ts) and [Arf](backends/arf.ts) own launch/adoption and dispatch; [process.ts](backends/process.ts) handles signals, ownership, and confirmed process exit. Shared arf discovery/HTTP helpers remain in [arf.ts](arf.ts).
 
@@ -48,12 +48,12 @@ Use the types in [backend.ts](backend.ts) as the source of truth. The essential 
 
 ## Lifecycle
 
-| Action | Contract |
-| --- | --- |
-| Close a view or disconnect the editor | Release the editor connection; keep the independent agent and R alive |
-| Explicit Stop | Authorize through the agent, cancel queued work, and wait for confirmed runtime exit; this can stop an adopted process |
-| Restart | Validate and prepare the replacement before stopping R, retain the transcript, and create a fresh generation; adopted arf is restarted externally |
-| Dispose the backend | Perform bounded, idempotent cleanup, reject pending calls, and suppress late callbacks; clean up managed processes, but leave adopted R alive and restore its hooks where possible |
+| Action                                | Contract                                                                                                                                                                           |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Close a view or disconnect the editor | Release the editor connection; keep the independent agent and R alive                                                                                                              |
+| Explicit Stop                         | Authorize through the agent, cancel queued work, and wait for confirmed runtime exit; this can stop an adopted process                                                             |
+| Restart                               | Validate and prepare the replacement before stopping R, retain the transcript, and create a fresh generation; adopted arf is restarted externally                                  |
+| Dispose the backend                   | Perform bounded, idempotent cleanup, reject pending calls, and suppress late callbacks; clean up managed processes, but leave adopted R alive and restore its hooks where possible |
 
 Graphics flushes already-buffered updates before reporting execution completion and preserves attribution for later updates. Restart invalidates live table/device handles from the previous R generation; retained static output remains usable. Reconnection replays history without evaluation. The execution ledger is not a transaction system or a checkpoint of R memory.
 

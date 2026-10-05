@@ -13,8 +13,12 @@ suite('Session hover and completion', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
-        sandbox.stub(session, 'workspaceData').value({ search: [], loaded_namespaces: [], globalenv: {} });
-        sandbox.stub(session, 'activeSession').value({ workspaceData: { search: [], loaded_namespaces: [], globalenv: {} } });
+        sandbox
+            .stub(session, 'workspaceData')
+            .value({ search: [], loaded_namespaces: [], globalenv: {} });
+        sandbox
+            .stub(session, 'activeSession')
+            .value({ workspaceData: { search: [], loaded_namespaces: [], globalenv: {} } });
         sandbox.stub(session, 'globalPipePath').value('/tmp/vscode-r-test.sock');
         sessionRequest = sandbox.stub(session, 'sessionRequest').resolves(undefined);
     });
@@ -31,7 +35,11 @@ suite('Session hover and completion', () => {
         const document = await openDocument();
         await new HoverProvider().provideHover(document, new vscode.Position(2, 0));
 
-        sinon.assert.calledOnceWithExactly(sessionRequest, { method: 'hover', params: { expr: 'x' } }, session.activeSession);
+        sinon.assert.calledOnceWithExactly(
+            sessionRequest,
+            { method: 'hover', params: { expr: 'x' } },
+            session.activeSession,
+        );
     });
 
     test('hover on punctuation sends no request', async () => {
@@ -49,7 +57,7 @@ suite('Session hover and completion', () => {
             document,
             new vscode.Position(3, 4),
             token,
-            { triggerKind: vscode.CompletionTriggerKind.TriggerCharacter, triggerCharacter: '$' }
+            { triggerKind: vscode.CompletionTriggerKind.TriggerCharacter, triggerCharacter: '$' },
         );
 
         assert.deepStrictEqual(items, []);

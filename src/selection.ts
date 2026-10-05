@@ -13,8 +13,10 @@ export function getWordOrSelection(): string | undefined {
     const selection = textEditor.selection;
     const currentDocument = textEditor.document;
     let text: string;
-    if ((selection.start.line === selection.end.line) &&
-        (selection.start.character === selection.end.character)) {
+    if (
+        selection.start.line === selection.end.line &&
+        selection.start.character === selection.end.character
+    ) {
         const wordRange = currentDocument.getWordRangeAtPosition(selection.start);
         text = currentDocument.getText(wordRange);
     } else {
@@ -57,14 +59,14 @@ export function getSelection(): RSelection | undefined {
         selectedText: '',
         startLine: start.line,
         endLine: end.line,
-        range: new Range(start, end)
+        range: new Range(start, end),
     };
 
     if (selection.range.isEmpty) {
-        const {startLine, endLine} = extendSelection(
+        const { startLine, endLine } = extendSelection(
             start.line,
             (x) => currentDocument.lineAt(x).text,
-            currentDocument.lineCount
+            currentDocument.lineCount,
         );
         const charactersOnLine = textEditor.document.lineAt(endLine).text.length;
         const newStart = new Position(startLine, 0);
@@ -97,20 +99,22 @@ class PositionNeg {
 }
 
 function doBracketsMatch(a: string, b: string): boolean {
-    const matches = new Map(Object.entries({ '(': ')', '[': ']', '{': '}', ')': '(', ']': '[', '}': '{' }));
+    const matches = new Map(
+        Object.entries({ '(': ')', '[': ']', '{': '}', ')': '(', ']': '[', '}': '{' }),
+    );
     return matches.get(a) === b;
 }
 
 function isBracket(c: string, lookingForward: boolean) {
     if (lookingForward) {
-        return ((c === '(') || (c === '[') || (c === '{'));
+        return c === '(' || c === '[' || c === '{';
     }
 
-    return ((c === ')') || (c === ']') || (c === '}'));
+    return c === ')' || c === ']' || c === '}';
 }
 
 function isQuote(c: string) {
-    return c === '"' || c === '\'' || c === '`';
+    return c === '"' || c === "'" || c === '`';
 }
 
 /**
@@ -128,8 +132,8 @@ function getNextChar(
     lookingForward: boolean,
     getLine: (x: number) => string,
     getEndsInOperator: (y: number) => boolean,
-    lineCount: number
-){
+    lineCount: number,
+) {
     const s = getLine(p.line);
     let nextPos: PositionNeg;
     let isEndOfCodeLine = false;
@@ -137,7 +141,7 @@ function getNextChar(
     if (lookingForward) {
         if (p.character !== s.length) {
             nextPos = new PositionNeg(p.line, p.character + 1);
-        } else if (p.line < (lineCount - 1)) {
+        } else if (p.line < lineCount - 1) {
             nextPos = new PositionNeg(p.line + 1, -1);
         } else {
             // At end of document. Return same character.
@@ -146,7 +150,7 @@ function getNextChar(
         }
         const nextLine: string = getLine(nextPos.line);
         if (nextPos.character === nextLine.length) {
-            if ((nextPos.line === (lineCount - 1)) || !getEndsInOperator(nextPos.line)) {
+            if (nextPos.line === lineCount - 1 || !getEndsInOperator(nextPos.line)) {
                 isEndOfCodeLine = true;
             }
         }
@@ -161,14 +165,14 @@ function getNextChar(
             nextPos = new PositionNeg(p.line, p.character);
         }
         if (nextPos.character === -1) {
-            if ((nextPos.line <= 0) || !getEndsInOperator(nextPos.line - 1)) {
+            if (nextPos.line <= 0 || !getEndsInOperator(nextPos.line - 1)) {
                 isEndOfCodeLine = true;
             }
         }
     }
     const nextChar = getLine(nextPos.line)[nextPos.character];
 
-    return ({ nextChar, nextPos, isEndOfCodeLine, isEndOfFile });
+    return { nextChar, nextPos, isEndOfCodeLine, isEndOfFile };
 }
 
 /**
@@ -206,7 +210,11 @@ function getNextChar(
  * @param getLine A function that returns the string at the given line of the document.
  * @param lineCount The number of lines in the document.
  */
-export function extendSelection(line: number, getLine: (line: number) => string, lineCount: number): {
+export function extendSelection(
+    line: number,
+    getLine: (line: number) => string,
+    lineCount: number,
+): {
     startLine: number;
     endLine: number;
 } {
@@ -228,7 +236,7 @@ export function extendSelection(line: number, getLine: (line: number) => string,
             lookingForward,
             getLineFromCache,
             getEndsInOperatorFromCache,
-            lineCount
+            lineCount,
         );
         poss[lookingForward ? 1 : 0] = nextPos;
         if (quoteChar === '') {
@@ -242,7 +250,9 @@ export function extendSelection(line: number, getLine: (line: number) => string,
                         lookingForward = !lookingForward;
                         unmatched[lookingForward ? 1 : 0].push(nextChar);
                         flagsFinish[lookingForward ? 1 : 0] = false;
-                    } else if (!doBracketsMatch(nextChar, unmatched[lookingForward ? 1 : 0].pop() ?? '')) {
+                    } else if (
+                        !doBracketsMatch(nextChar, unmatched[lookingForward ? 1 : 0].pop() ?? '')
+                    ) {
                         flagAbort = true;
                     }
                 }
@@ -254,11 +264,13 @@ export function extendSelection(line: number, getLine: (line: number) => string,
                         quoteChar = '';
                     }
                 } else {
-                    const next = getNextChar(poss[lookingForward ? 1 : 0],
+                    const next = getNextChar(
+                        poss[lookingForward ? 1 : 0],
                         lookingForward,
                         getLineFromCache,
                         getEndsInOperatorFromCache,
-                        lineCount);
+                        lineCount,
+                    );
                     if (next.nextChar !== '\\') {
                         quoteChar = '';
                     }
@@ -280,12 +292,11 @@ export function extendSelection(line: number, getLine: (line: number) => string,
         curChar = nextChar;
     }
     if (flagAbort) {
-        return ({ startLine: line, endLine: line });
+        return { startLine: line, endLine: line };
     }
 
-    return ({ startLine: poss[0].line, endLine: poss[1].line });
+    return { startLine: poss[0].line, endLine: poss[1].line };
 }
-
 
 /**
  * This function removes leading R comments from a block of code text

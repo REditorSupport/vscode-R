@@ -5,8 +5,16 @@ import * as cheerio from 'cheerio';
 import path = require('path');
 import crypto = require('crypto');
 
-
-import { config, readContent, setContext, escapeHtml, UriIcon, saveDocument, getRpath, DisposableProcess } from '../util';
+import {
+    config,
+    readContent,
+    setContext,
+    escapeHtml,
+    UriIcon,
+    saveDocument,
+    getRpath,
+    DisposableProcess,
+} from '../util';
 import { extensionContext, tmpDir } from '../extension';
 import { knitDir } from './knit';
 import { RMarkdownManager } from './manager';
@@ -24,9 +32,17 @@ class RMarkdownPreview extends vscode.Disposable {
     mtime: number;
     isRendering: boolean;
 
-    constructor(title: string, cp: DisposableProcess | undefined, panel: vscode.WebviewPanel,
-        resourceViewColumn: vscode.ViewColumn, outputUri: vscode.Uri, filePath: string,
-        RMarkdownPreviewManager: RMarkdownPreviewManager, useCodeTheme: boolean, autoRefresh: boolean) {
+    constructor(
+        title: string,
+        cp: DisposableProcess | undefined,
+        panel: vscode.WebviewPanel,
+        resourceViewColumn: vscode.ViewColumn,
+        outputUri: vscode.Uri,
+        filePath: string,
+        RMarkdownPreviewManager: RMarkdownPreviewManager,
+        useCodeTheme: boolean,
+        autoRefresh: boolean,
+    ) {
         super(() => {
             this.cp?.dispose();
             this.panel?.dispose();
@@ -55,7 +71,7 @@ class RMarkdownPreview extends vscode.Disposable {
     }
 
     public async refreshContent(useCodeTheme: boolean) {
-        this.getHtmlContent(await readContent(this.outputUri.fsPath, 'utf8') ?? '');
+        this.getHtmlContent((await readContent(this.outputUri.fsPath, 'utf8')) ?? '');
         this.styleHtml(useCodeTheme);
     }
 
@@ -64,7 +80,9 @@ class RMarkdownPreview extends vscode.Disposable {
         const fileWatcher = fs.watch(filePath, {}, () => {
             const mtime = fs.statSync(filePath).mtime.getTime();
             if (this.autoRefresh && !this.isRendering && !fsTimeout && mtime !== this.mtime) {
-                fsTimeout = setTimeout(() => { fsTimeout = null; }, 1000);
+                fsTimeout = setTimeout(() => {
+                    fsTimeout = null;
+                }, 1000);
                 this.mtime = mtime;
                 void RMarkdownPreviewManager.updatePreview(this);
             }
@@ -73,8 +91,10 @@ class RMarkdownPreview extends vscode.Disposable {
     }
 
     private getHtmlContent(htmlContent: string): void {
-        let content = htmlContent.replace(/<(\w+)\s+(href|src)="(?!(\w+:)|#)/g,
-            `<$1 $2="${String(this.panel.webview.asWebviewUri(vscode.Uri.file(tmpDir())))}/`);
+        let content = htmlContent.replace(
+            /<(\w+)\s+(href|src)="(?!(\w+:)|#)/g,
+            `<$1 $2="${String(this.panel.webview.asWebviewUri(vscode.Uri.file(tmpDir())))}/`,
+        );
 
         const re = new RegExp('<html[^\\n]*>.*</html>', 'ms');
         const isHtml = !!re.exec(content);
@@ -106,8 +126,7 @@ class RMarkdownPreview extends vscode.Disposable {
             outCol = 'rgba(128, 128, 128, 0.05)';
         }
 
-        const style =
-            `<style>
+        const style = `<style>
             body {
                 zoom: ${zoom};
                 color: var(--vscode-editor-foreground);
@@ -184,16 +203,19 @@ class RMarkdownPreviewStore extends vscode.Disposable {
 
 export class RMarkdownPreviewManager extends RMarkdownManager {
     // the currently selected RMarkdown preview
-    private activePreview: { filePath: string | null, preview: RMarkdownPreview | null, title: string | null } = { filePath: null, preview: null, title: null };
+    private activePreview: {
+        filePath: string | null;
+        preview: RMarkdownPreview | null;
+        title: string | null;
+    } = { filePath: null, preview: null, title: null };
     // store of all open RMarkdown previews
-    private previewStore: RMarkdownPreviewStore = new RMarkdownPreviewStore;
+    private previewStore: RMarkdownPreviewStore = new RMarkdownPreviewStore();
     private useCodeTheme = true;
 
     constructor() {
         super();
         extensionContext.subscriptions.push(this.previewStore);
     }
-
 
     public async previewRmd(viewer: vscode.ViewColumn, uri?: vscode.Uri): Promise<void> {
         const textEditor = vscode.window.activeTextEditor;
@@ -204,11 +226,16 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
 
         const filePath = uri ? uri.fsPath : textEditor.document.uri.fsPath;
         const fileName = path.basename(filePath);
-        const currentViewColumn: vscode.ViewColumn = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.Active ?? vscode.ViewColumn.One;
+        const currentViewColumn: vscode.ViewColumn =
+            vscode.window.activeTextEditor?.viewColumn ??
+            vscode.ViewColumn.Active ??
+            vscode.ViewColumn.One;
 
         // handle untitled rmd files
         if (!uri && textEditor.document.isUntitled) {
-            void vscode.window.showWarningMessage('Cannot knit an untitled file. Please save the document.');
+            void vscode.window.showWarningMessage(
+                'Cannot knit an untitled file. Please save the document.',
+            );
             await vscode.commands.executeCommand('workbench.action.files.save').then(() => {
                 if (!textEditor.document.isUntitled) {
                     void this.previewRmd(viewer);
@@ -217,9 +244,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             return;
         }
 
-        const isSaved = uri ?
-            true :
-            await saveDocument(textEditor.document);
+        const isSaved = uri ? true : await saveDocument(textEditor.document);
 
         if (!isSaved) {
             return;
@@ -271,11 +296,18 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     // (e.g., is an unopened tab)
     public async showSource(): Promise<void> {
         if (this.activePreview?.filePath) {
-            await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(this.activePreview.filePath), {
-                preserveFocus: false,
-                preview: false,
-                viewColumn: this.activePreview?.preview?.resourceViewColumn ?? this.activePreview?.preview?.panel.viewColumn ?? vscode.ViewColumn.Active
-            });
+            await vscode.commands.executeCommand(
+                'vscode.open',
+                vscode.Uri.file(this.activePreview.filePath),
+                {
+                    preserveFocus: false,
+                    preview: false,
+                    viewColumn:
+                        this.activePreview?.preview?.resourceViewColumn ??
+                        this.activePreview?.preview?.panel.viewColumn ??
+                        vscode.ViewColumn.Active,
+                },
+            );
         }
     }
 
@@ -292,8 +324,13 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
 
         if (toUpdate && previewUri) {
             toUpdate.isRendering = true;
-            const childProcess: DisposableProcess | void = await this.previewDocument(previewUri, toUpdate.title).catch(() => {
-                void vscode.window.showErrorMessage('There was an error in knitting the document. Please check the R Markdown output stream.');
+            const childProcess: DisposableProcess | void = await this.previewDocument(
+                previewUri,
+                toUpdate.title,
+            ).catch(() => {
+                void vscode.window.showErrorMessage(
+                    'There was an error in knitting the document. Please check the R Markdown output stream.',
+                );
                 this.rMarkdownOutput.show(true);
                 this.previewStore.delete(previewUri);
             });
@@ -305,31 +342,40 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             this.refreshPanel(toUpdate);
             toUpdate.isRendering = false;
         }
-
     }
 
-    private async previewDocument(filePath: string, fileName?: string, viewer?: vscode.ViewColumn, currentViewColumn?: vscode.ViewColumn): Promise<DisposableProcess | undefined> {
+    private async previewDocument(
+        filePath: string,
+        fileName?: string,
+        viewer?: vscode.ViewColumn,
+        currentViewColumn?: vscode.ViewColumn,
+    ): Promise<DisposableProcess | undefined> {
         const knitWorkingDir = this.getKnitDir(knitDir, filePath);
         const knitWorkingDirText = knitWorkingDir ? `${knitWorkingDir}` : '';
         this.rPath = await getRpath(false, vscode.Uri.file(filePath));
 
         const lim = '<<<vsc>>>';
         const re = new RegExp(`.*${lim}(.*)${lim}.*`, 'ms');
-        const outputFile = path.join(tmpDir(), crypto.createHash('sha256').update(filePath).digest('hex') + '.html');
+        const outputFile = path.join(
+            tmpDir(),
+            crypto.createHash('sha256').update(filePath).digest('hex') + '.html',
+        );
         const scriptValues = {
-            'VSCR_KNIT_DIR': knitWorkingDirText,
-            'VSCR_LIM': lim,
-            'VSCR_FILE_PATH': filePath.replace(/\\/g, '/'),
-            'VSCR_OUTPUT_FILE': outputFile.replace(/\\/g, '/'),
-            'VSCR_TMP_DIR': tmpDir().replace(/\\/g, '/')
+            VSCR_KNIT_DIR: knitWorkingDirText,
+            VSCR_LIM: lim,
+            VSCR_FILE_PATH: filePath.replace(/\\/g, '/'),
+            VSCR_OUTPUT_FILE: outputFile.replace(/\\/g, '/'),
+            VSCR_TMP_DIR: tmpDir().replace(/\\/g, '/'),
         };
-
 
         const callback = (dat: string, childProcess?: DisposableProcess) => {
             const outputUrl = re.exec(dat)?.[0]?.replace(re, '$1');
             if (outputUrl) {
                 if (viewer !== undefined && fileName) {
-                    const autoRefresh = config().get<boolean>('rmarkdown.preview.autoRefresh', false);
+                    const autoRefresh = config().get<boolean>(
+                        'rmarkdown.preview.autoRefresh',
+                        false,
+                    );
                     this.openPreview(
                         vscode.Uri.file(outputUrl),
                         filePath,
@@ -337,7 +383,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
                         childProcess,
                         viewer,
                         currentViewColumn ?? vscode.ViewColumn.Active,
-                        autoRefresh
+                        autoRefresh,
                     );
                 }
                 return true;
@@ -352,36 +398,42 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
         };
 
         if (knitWorkingDir && fileName) {
-            return await this.knitWithProgress(
-                {
-                    workingDirectory: knitWorkingDir,
-                    fileName: fileName,
-                    filePath: filePath,
-                    scriptPath: extensionContext.asAbsolutePath('R/rmarkdown/preview.R'),
-                    scriptArgs: scriptValues,
-                    rOutputFormat: 'html preview',
-                    callback: callback,
-                    onRejection: onRejected
-                }
-            );
+            return await this.knitWithProgress({
+                workingDirectory: knitWorkingDir,
+                fileName: fileName,
+                filePath: filePath,
+                scriptPath: extensionContext.asAbsolutePath('R/rmarkdown/preview.R'),
+                scriptArgs: scriptValues,
+                rOutputFormat: 'html preview',
+                callback: callback,
+                onRejection: onRejected,
+            });
         }
     }
 
-    private openPreview(outputUri: vscode.Uri, filePath: string, title: string, cp: DisposableProcess | undefined, viewer: vscode.ViewColumn, resourceViewColumn: vscode.ViewColumn, autoRefresh: boolean): void {
-
+    private openPreview(
+        outputUri: vscode.Uri,
+        filePath: string,
+        title: string,
+        cp: DisposableProcess | undefined,
+        viewer: vscode.ViewColumn,
+        resourceViewColumn: vscode.ViewColumn,
+        autoRefresh: boolean,
+    ): void {
         const panel = vscode.window.createWebviewPanel(
             'previewRmd',
             `Preview ${title}`,
             {
                 preserveFocus: true,
-                viewColumn: viewer
+                viewColumn: viewer,
             },
             {
                 enableFindWidget: true,
                 enableScripts: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [vscode.Uri.file(tmpDir())],
-            });
+            },
+        );
 
         panel.iconPath = new UriIcon('preview');
 
@@ -398,14 +450,17 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             filePath,
             this,
             this.useCodeTheme,
-            autoRefresh
+            autoRefresh,
         );
         this.previewStore.add(filePath, preview);
 
         // state change
         panel.onDidDispose(() => {
             // clear values
-            this.activePreview = this.activePreview?.preview === preview ? { filePath: null, preview: null, title: null } : this.activePreview;
+            this.activePreview =
+                this.activePreview?.preview === preview
+                    ? { filePath: null, preview: null, title: null }
+                    : this.activePreview;
             void setContext('r.rmarkdown.preview.active', false);
             this.previewStore.delete(filePath);
         });

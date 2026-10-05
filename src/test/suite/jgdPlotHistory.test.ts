@@ -244,7 +244,9 @@ suite('JGD PlotHistory', () => {
         test('appends ops to the latest plot', () => {
             history.addPlot('s1', makePlot('A'));
             const extra: PlotFrame = {
-                version: 1, sessionId: '', ops: [{ op: 'line', label: 'extra' }],
+                version: 1,
+                sessionId: '',
+                ops: [{ op: 'line', label: 'extra' }],
                 device: { width: 400, height: 300, dpi: 96, bg: 'A' },
             };
             history.appendOps('s1', extra);
@@ -260,7 +262,9 @@ suite('JGD PlotHistory', () => {
             history.addPlot('s1', makePlot('B'));
             history.navigatePrevious();
             const extra: PlotFrame = {
-                version: 1, sessionId: '', ops: [{ op: 'line' }],
+                version: 1,
+                sessionId: '',
+                ops: [{ op: 'line' }],
                 device: { width: 400, height: 300, dpi: 96, bg: 'B' },
             };
             history.appendOps('s1', extra);
@@ -274,7 +278,9 @@ suite('JGD PlotHistory', () => {
             history.addPlot('s1', makePlot('B'));
             history.removeCurrent();
             const extra: PlotFrame = {
-                version: 1, sessionId: '', ops: [{ op: 'line' }],
+                version: 1,
+                sessionId: '',
+                ops: [{ op: 'line' }],
                 device: { width: 400, height: 300, dpi: 96, bg: 'A' },
             };
             history.appendOps('s1', extra);

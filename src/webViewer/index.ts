@@ -5,13 +5,19 @@ import { Uri, ViewColumn, Webview, window, env } from 'vscode';
 import { readContent, UriIcon } from '../util';
 import { extensionContext } from '../extension';
 
-export async function showWebView(file: string, title: string, viewer: string | boolean): Promise<void> {
+export async function showWebView(
+    file: string,
+    title: string,
+    viewer: string | boolean,
+): Promise<void> {
     console.info(`[showWebView] file: ${file}, viewer: ${viewer.toString()}`);
     if (viewer === false) {
         void env.openExternal(Uri.file(file));
     } else {
         const dir = path.dirname(file);
-        const panel = window.createWebviewPanel('webview', title,
+        const panel = window.createWebviewPanel(
+            'webview',
+            title,
             {
                 preserveFocus: true,
                 viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn],
@@ -22,13 +28,14 @@ export async function showWebView(file: string, title: string, viewer: string | 
                 retainContextWhenHidden: true,
                 localResourceRoots: [
                     Uri.file(dir),
-                    Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview'))
+                    Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview')),
                 ],
-            });
+            },
+        );
         panel.iconPath = new UriIcon('globe');
         panel.webview.html = await getWebviewHtml(panel.webview, file, title, dir);
 
-        panel.webview.onDidReceiveMessage((msg: { message: string, href?: string }) => {
+        panel.webview.onDidReceiveMessage((msg: { message: string; href?: string }) => {
             if (msg.message === 'linkClicked' && msg.href) {
                 void env.openExternal(Uri.parse(msg.href));
             }
@@ -37,13 +44,25 @@ export async function showWebView(file: string, title: string, viewer: string | 
     console.info('[showWebView] Done');
 }
 
-export async function getWebviewHtml(webview: Webview, file: string, title: string, dir: string): Promise<string> {
-    const body = (await readContent(file, 'utf8') || '').toString()
-        .replace(/<(\w+)(.*)\s+(href|src)="(?!\w+:)/g,
-            `<$1 $2 $3="${String(webview.asWebviewUri(Uri.file(dir)))}/`);
+export async function getWebviewHtml(
+    webview: Webview,
+    file: string,
+    title: string,
+    dir: string,
+): Promise<string> {
+    const body = ((await readContent(file, 'utf8')) || '')
+        .toString()
+        .replace(
+            /<(\w+)(.*)\s+(href|src)="(?!\w+:)/g,
+            `<$1 $2 $3="${String(webview.asWebviewUri(Uri.file(dir)))}/`,
+        );
 
-    const scriptUri = webview.asWebviewUri(Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview/index.js')));
-    const styleUri = webview.asWebviewUri(Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview/style.css')));
+    const scriptUri = webview.asWebviewUri(
+        Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview/index.js')),
+    );
+    const styleUri = webview.asWebviewUri(
+        Uri.file(path.join(extensionContext.extensionPath, 'dist/webviews/webview/style.css')),
+    );
 
     // define the content security policy for the webview
     // * whilst it is recommended to be strict as possible,

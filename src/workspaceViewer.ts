@@ -2,19 +2,31 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { TreeDataProvider, EventEmitter, TreeItemCollapsibleState, TreeItem, Event, Uri, window, ThemeIcon } from 'vscode';
+import {
+    TreeDataProvider,
+    EventEmitter,
+    TreeItemCollapsibleState,
+    TreeItem,
+    Event,
+    Uri,
+    window,
+    ThemeIcon,
+} from 'vscode';
 import { runTextInTerm } from './rTerminal';
-import { workspaceData, WorkspaceData, GlobalEnv, sessionRequest, activeSession, Session, executeSessionCode } from './session';
+import {
+    workspaceData,
+    WorkspaceData,
+    GlobalEnv,
+    sessionRequest,
+    activeSession,
+    Session,
+    executeSessionCode,
+} from './session';
 import { config } from './util';
 import { extensionContext, globalRHelp, rWorkspace } from './extension';
 import { PackageNode } from './helpViewer/treeView';
 
-const collapsibleTypes: string[] = [
-    'list',
-    'environment',
-    'pairlist',
-    'S4'
-];
+const collapsibleTypes: string[] = ['list', 'environment', 'pairlist', 'S4'];
 
 interface WorkspaceChild {
     str: string;
@@ -35,7 +47,7 @@ interface WorkspaceChildPage {
 }
 
 function getFirstClass(rClass: string[] | string | undefined): string {
-    return Array.isArray(rClass) ? rClass[0] : rClass ?? '';
+    return Array.isArray(rClass) ? rClass[0] : (rClass ?? '');
 }
 
 async function populatePackageNodes(): Promise<void> {
@@ -50,7 +62,7 @@ async function populatePackageNodes(): Promise<void> {
 function getPackageNode(name: string): PackageNode | undefined {
     const rootNode = globalRHelp?.treeViewWrapper.helpViewProvider.rootItem;
     if (rootNode) {
-        return rootNode?.pkgRootNode?.children?.find(node => node.label === name);
+        return rootNode?.pkgRootNode?.children?.find((node) => node.label === name);
     }
 }
 
@@ -65,14 +77,21 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     private childPageGeneration = 0;
     private _onDidChangeTreeData: EventEmitter<TreeItem | undefined> = new EventEmitter();
 
-    public readonly onDidChangeTreeData: Event<TreeItem | undefined> = this._onDidChangeTreeData.event;
+    public readonly onDidChangeTreeData: Event<TreeItem | undefined> =
+        this._onDidChangeTreeData.event;
     public data: WorkspaceData | undefined;
 
     public refresh(): void {
         this.owner = activeSession;
         this.data = this.owner?.workspaceUnavailable ? undefined : workspaceData;
-        this.tree.description = this.owner ? `${this.owner.label ?? 'R'}${this.owner.pid ? ` · PID ${this.owner.pid}` : ''}` : undefined;
-        this.tree.message = this.owner?.workspaceUnavailable ?? (!this.owner ? 'Select an R Interactive window or attach an R terminal to inspect its workspace.' : undefined);
+        this.tree.description = this.owner
+            ? `${this.owner.label ?? 'R'}${this.owner.pid ? ` · PID ${this.owner.pid}` : ''}`
+            : undefined;
+        this.tree.message =
+            this.owner?.workspaceUnavailable ??
+            (!this.owner
+                ? 'Select an R Interactive window or attach an R terminal to inspect its workspace.'
+                : undefined);
         this.childPageGeneration++;
         this.childPages.clear();
         this.childPageLoads.clear();
@@ -80,15 +99,24 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     }
 
     public constructor() {
-        this.attachedNamespacesRootItem = new TreeItem('Attached Namespaces', TreeItemCollapsibleState.Collapsed);
+        this.attachedNamespacesRootItem = new TreeItem(
+            'Attached Namespaces',
+            TreeItemCollapsibleState.Collapsed,
+        );
         this.attachedNamespacesRootItem.id = 'attached-namespaces';
         this.attachedNamespacesRootItem.iconPath = new ThemeIcon('library');
 
-        this.loadedNamespacesRootItem = new TreeItem('Loaded Namespaces', TreeItemCollapsibleState.Collapsed);
+        this.loadedNamespacesRootItem = new TreeItem(
+            'Loaded Namespaces',
+            TreeItemCollapsibleState.Collapsed,
+        );
         this.loadedNamespacesRootItem.id = 'loaded-namespaces';
         this.loadedNamespacesRootItem.iconPath = new ThemeIcon('package');
 
-        this.globalEnvRootItem = new TreeItem('Global Environment', TreeItemCollapsibleState.Expanded);
+        this.globalEnvRootItem = new TreeItem(
+            'Global Environment',
+            TreeItemCollapsibleState.Expanded,
+        );
         this.globalEnvRootItem.id = 'globalenv';
         this.globalEnvRootItem.iconPath = new ThemeIcon('menu');
 
@@ -98,7 +126,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             }),
             vscode.commands.registerCommand(LoadMoreItem.command, async (node: LoadMoreItem) => {
                 await this.loadMore(node.parent, node.start);
-            })
+            }),
         );
 
         this.tree = vscode.window.createTreeView('workspaceViewer', { treeDataProvider: this });
@@ -120,8 +148,10 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             const generation = this.childPageGeneration;
             if (element.id === 'attached-namespaces') {
                 await populatePackageNodes();
-                if (generation !== this.childPageGeneration) { return []; }
-                return data.search.map(name => {
+                if (generation !== this.childPageGeneration) {
+                    return [];
+                }
+                return data.search.map((name) => {
                     if (name.startsWith(pkgPrefix)) {
                         const pkgName = name.substring(pkgPrefix.length);
                         const pkgNode = getPackageNode(pkgName);
@@ -134,11 +164,13 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                 });
             } else if (element.id === 'loaded-namespaces') {
                 await populatePackageNodes();
-                if (generation !== this.childPageGeneration) { return []; }
+                if (generation !== this.childPageGeneration) {
+                    return [];
+                }
                 const attached_packages = data.search
-                    .filter(name => name.startsWith(pkgPrefix))
-                    .map(name => name.substring(pkgPrefix.length));
-                return data.loaded_namespaces.map(name => {
+                    .filter((name) => name.startsWith(pkgPrefix))
+                    .map((name) => name.substring(pkgPrefix.length));
+                return data.loaded_namespaces.map((name) => {
                     const pkgNode = getPackageNode(name);
                     const item = new PackageItem(name, name, pkgNode);
                     if (attached_packages.includes(name)) {
@@ -150,19 +182,22 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
                 return this.getGlobalEnvItems(this.data.globalenv);
             } else if (element instanceof GlobalEnvItem) {
                 const page = await this.getGlobalEnvChildren(element);
-                const items: TreeItem[] = page.children.map(child =>
-                    new GlobalEnvItem(
-                        '',
-                        child.class,
-                        child.str.replace(/\s+/g, ' ').trim(),
-                        child.type,
-                        element.treeLevel + 1,
-                        undefined,
-                        child.has_children,
-                        element.rootName,
-                        child.selector ? [...element.objectPath, child.selector] : element.objectPath,
-                        element.owner
-                    )
+                const items: TreeItem[] = page.children.map(
+                    (child) =>
+                        new GlobalEnvItem(
+                            '',
+                            child.class,
+                            child.str.replace(/\s+/g, ' ').trim(),
+                            child.type,
+                            element.treeLevel + 1,
+                            undefined,
+                            child.has_children,
+                            element.rootName,
+                            child.selector
+                                ? [...element.objectPath, child.selector]
+                                : element.objectPath,
+                            element.owner,
+                        ),
                 );
                 if (page.nextStart !== undefined) {
                     items.push(new LoadMoreItem(element, page.nextStart));
@@ -187,7 +222,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             str: string,
             type: string,
             dim?: number[],
-            hasChildren?: boolean
+            hasChildren?: boolean,
         ): GlobalEnvItem => {
             return new GlobalEnvItem(
                 key,
@@ -203,15 +238,18 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             );
         };
 
-        const items = globalenv ? Object.keys(globalenv).map((key) =>
-            toItem(
-                key,
-                getFirstClass(globalenv[key].class),
-                globalenv[key].str,
-                globalenv[key].type,
-                globalenv[key].dim,
-                globalenv[key].has_children,
-            )) : [];
+        const items = globalenv
+            ? Object.keys(globalenv).map((key) =>
+                  toItem(
+                      key,
+                      getFirstClass(globalenv[key].class),
+                      globalenv[key].str,
+                      globalenv[key].type,
+                      globalenv[key].dim,
+                      globalenv[key].has_children,
+                  ),
+              )
+            : [];
 
         function sortItems(a: GlobalEnvItem, b: GlobalEnvItem) {
             if (a.priority > b.priority) {
@@ -219,7 +257,7 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             } else if (a.priority < b.priority) {
                 return 1;
             } else {
-                return (a.label && b.label) ? a.label.localeCompare(b.label) : 0;
+                return a.label && b.label ? a.label.localeCompare(b.label) : 0;
             }
         }
 
@@ -231,7 +269,9 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     }
 
     private async getGlobalEnvChildren(element: GlobalEnvItem): Promise<WorkspaceChildPage> {
-        if (element.owner !== this.owner) { return { children: [] }; }
+        if (element.owner !== this.owner) {
+            return { children: [] };
+        }
         const key = this.getChildPageKey(element);
         const cached = this.childPages.get(key);
         if (cached) {
@@ -247,28 +287,39 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
         return { children: [] };
     }
 
-    private async requestGlobalEnvChildren(element: GlobalEnvItem, start: number): Promise<WorkspaceChildPage> {
-        if (element.owner && element.owner === this.owner && !element.owner.workspaceUnavailable && element.rootName) {
+    private async requestGlobalEnvChildren(
+        element: GlobalEnvItem,
+        start: number,
+    ): Promise<WorkspaceChildPage> {
+        if (
+            element.owner &&
+            element.owner === this.owner &&
+            !element.owner.workspaceUnavailable &&
+            element.rootName
+        ) {
             try {
-                const response = await sessionRequest({
-                    method: 'workspace_children',
-                    params: {
-                        name: element.rootName,
-                        path: element.objectPath,
-                        start,
+                const response = (await sessionRequest(
+                    {
+                        method: 'workspace_children',
+                        params: {
+                            name: element.rootName,
+                            path: element.objectPath,
+                            start,
+                        },
                     },
-                }, element.owner) as { children?: unknown, next_start?: unknown } | undefined;
+                    element.owner,
+                )) as { children?: unknown; next_start?: unknown } | undefined;
                 if (response && Array.isArray(response.children)) {
-                    const children = response.children.filter((child): child is WorkspaceChild =>
-                        typeof child === 'object' &&
-                        child !== null &&
-                        'str' in child &&
-                        'type' in child &&
-                        'has_children' in child
+                    const children = response.children.filter(
+                        (child): child is WorkspaceChild =>
+                            typeof child === 'object' &&
+                            child !== null &&
+                            'str' in child &&
+                            'type' in child &&
+                            'has_children' in child,
                     );
-                    const nextStart = typeof response.next_start === 'number' ?
-                        response.next_start :
-                        undefined;
+                    const nextStart =
+                        typeof response.next_start === 'number' ? response.next_start : undefined;
                     return { children, nextStart };
                 }
             } catch {
@@ -280,7 +331,9 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
     }
 
     private async loadMore(parent: GlobalEnvItem, start: number): Promise<void> {
-        if (parent.owner !== this.owner || !this.data) { return; }
+        if (parent.owner !== this.owner || !this.data) {
+            return;
+        }
         const key = this.getChildPageKey(parent);
         const loadKey = `${key}:${start}`;
         if (this.childPageLoads.has(loadKey)) {
@@ -297,11 +350,13 @@ export class WorkspaceDataProvider implements TreeDataProvider<TreeItem> {
             }
             this.childPages.set(key, {
                 children: [...current.children, ...next.children],
-                nextStart: next.nextStart
+                nextStart: next.nextStart,
             });
             this._onDidChangeTreeData.fire(parent);
         } finally {
-            if (generation === this.childPageGeneration) { this.childPageLoads.delete(loadKey); }
+            if (generation === this.childPageGeneration) {
+                this.childPageLoads.delete(loadKey);
+            }
         }
     }
 }
@@ -321,7 +376,7 @@ class PackageItem extends TreeItem {
             this.command = {
                 command: PackageItem.command,
                 title: 'Show Quick Pick',
-                arguments: [pkgNode]
+                arguments: [pkgNode],
             };
         }
     }
@@ -332,7 +387,7 @@ class LoadMoreItem extends TreeItem {
 
     public constructor(
         public readonly parent: GlobalEnvItem,
-        public readonly start: number
+        public readonly start: number,
     ) {
         super('...', TreeItemCollapsibleState.None);
         this.tooltip = 'Load next 500 items';
@@ -340,14 +395,14 @@ class LoadMoreItem extends TreeItem {
         this.command = {
             command: LoadMoreItem.command,
             title: 'Load next 500 items',
-            arguments: [this]
+            arguments: [this],
         };
     }
 }
 
 enum TreeLevel {
     Parent = 0,
-    Scalar = 1
+    Scalar = 1,
 }
 
 export class GlobalEnvItem extends TreeItem {
@@ -370,27 +425,24 @@ export class GlobalEnvItem extends TreeItem {
         objectPath?: WorkspaceSelector[],
         public readonly owner?: Session,
     ) {
-        super(
-            label,
-            GlobalEnvItem.setCollapsibleState(type, hasChildren)
-        );
+        super(label, GlobalEnvItem.setCollapsibleState(type, hasChildren));
         this.treeLevel = treeLevel ?? TreeLevel.Scalar;
         this.priority = dim ? 1 : 0;
         this.rootName = rootName ?? label;
         this.objectPath = objectPath ?? [];
 
-        this.description = this.getDescription(
-            dim,
-            str,
-            rClass,
-            type
-        );
+        this.description = this.getDescription(dim, str, rClass, type);
         this.tooltip = this.getTooltip(label, rClass, treeLevel);
         this.iconPath = this.getIcon(type, dim);
         this.contextValue = treeLevel === 0 ? 'rootNode' : `childNode${this.treeLevel}`;
     }
 
-    private getDescription(dim: number[] | undefined, str: string, rClass: string, type: string): string {
+    private getDescription(
+        dim: number[] | undefined,
+        str: string,
+        rClass: string,
+        type: string,
+    ): string {
         if (dim && type === 'list') {
             if (dim[1] === 1) {
                 return `${rClass}: ${dim[0]} obs. of ${dim[1]} variable`;
@@ -402,11 +454,7 @@ export class GlobalEnvItem extends TreeItem {
         }
     }
 
-    private getTooltip(
-        label: string,
-        rClass: string,
-        treeLevel?: number
-    ): string {
+    private getTooltip(label: string, rClass: string, treeLevel?: number): string {
         if (treeLevel === TreeLevel.Scalar) {
             return '';
         } else {
@@ -434,7 +482,7 @@ export class GlobalEnvItem extends TreeItem {
     in the futere for more tree levels.*/
     private static setCollapsibleState(
         type: string,
-        hasChildren?: boolean
+        hasChildren?: boolean,
     ): vscode.TreeItemCollapsibleState {
         if (collapsibleTypes.includes(type) && hasChildren) {
             return TreeItemCollapsibleState.Collapsed;
@@ -450,55 +498,83 @@ function workspaceOwner(): Session | undefined {
 
 async function runWorkspaceCode(code: string, owner: Session | undefined): Promise<void> {
     try {
-        if (owner) { await executeSessionCode(owner, code); }
-        else { await runTextInTerm(code); }
+        if (owner) {
+            await executeSessionCode(owner, code);
+        } else {
+            await runTextInTerm(code);
+        }
     } catch (error) {
-        void window.showWarningMessage(`R Workspace: ${error instanceof Error ? error.message : String(error)}`);
+        void window.showWarningMessage(
+            `R Workspace: ${error instanceof Error ? error.message : String(error)}`,
+        );
     }
 }
 
 export async function clearWorkspace(): Promise<void> {
     const owner = workspaceOwner();
-    if (!owner || owner.workspaceUnavailable) { return; }
+    if (!owner || owner.workspaceUnavailable) {
+        return;
+    }
     const removeHiddenItems = config().get<boolean>('workspaceViewer.removeHiddenItems');
     if (config().get<boolean>('workspaceViewer.clearPrompt')) {
         const selection = await window.showInformationMessage(
             `Clear the workspace of “${owner.label ?? 'R'}” (PID ${owner.pid})? This cannot be reversed.`,
-            'Confirm', 'Cancel');
-        if (selection !== 'Confirm') { return; }
+            'Confirm',
+            'Cancel',
+        );
+        if (selection !== 'Confirm') {
+            return;
+        }
     }
-    await runWorkspaceCode(removeHiddenItems ? 'rm(list = ls(all.names = TRUE))' : 'rm(list = ls())', owner);
+    await runWorkspaceCode(
+        removeHiddenItems ? 'rm(list = ls(all.names = TRUE))' : 'rm(list = ls())',
+        owner,
+    );
 }
 
 export async function saveWorkspace(): Promise<void> {
     const owner = workspaceOwner();
-    if (!owner || owner.workspaceUnavailable) { return; }
+    if (!owner || owner.workspaceUnavailable) {
+        return;
+    }
     const uri = await window.showSaveDialog({
         defaultUri: Uri.file(path.join(owner.workingDir, 'workspace.RData')),
-        filters: { 'RData': ['RData'] },
-        title: `Save Workspace — ${owner.label ?? 'R'}`
+        filters: { RData: ['RData'] },
+        title: `Save Workspace — ${owner.label ?? 'R'}`,
     });
-    if (uri) { await runWorkspaceCode(`save.image(${JSON.stringify(uri.fsPath)})`, owner); }
+    if (uri) {
+        await runWorkspaceCode(`save.image(${JSON.stringify(uri.fsPath)})`, owner);
+    }
 }
 
 export async function loadWorkspace(): Promise<void> {
     const owner = workspaceOwner();
     const uri = await window.showOpenDialog({
-        defaultUri: owner?.workingDir ? Uri.file(owner.workingDir) : vscode.window.activeTextEditor?.document.uri,
-        filters: { 'Data': ['RData'] },
-        title: `Load Workspace${owner ? ` — ${owner.label ?? 'R'}` : ''}`
+        defaultUri: owner?.workingDir
+            ? Uri.file(owner.workingDir)
+            : vscode.window.activeTextEditor?.document.uri,
+        filters: { Data: ['RData'] },
+        title: `Load Workspace${owner ? ` — ${owner.label ?? 'R'}` : ''}`,
     });
-    if (uri?.length) { await runWorkspaceCode(`load(${JSON.stringify(uri[0].fsPath)})`, owner); }
+    if (uri?.length) {
+        await runWorkspaceCode(`load(${JSON.stringify(uri[0].fsPath)})`, owner);
+    }
 }
 
 export async function viewItem(node: GlobalEnvItem): Promise<void> {
     if (node.owner && node.label) {
-        await runWorkspaceCode(`View(get(${JSON.stringify(node.label)}, envir = .GlobalEnv, inherits = FALSE), title = ${JSON.stringify(node.label)})`, node.owner);
+        await runWorkspaceCode(
+            `View(get(${JSON.stringify(node.label)}, envir = .GlobalEnv, inherits = FALSE), title = ${JSON.stringify(node.label)})`,
+            node.owner,
+        );
     }
 }
 
 export async function removeItem(node: GlobalEnvItem): Promise<void> {
     if (node.owner && node.label) {
-        await runWorkspaceCode(`rm(list = ${JSON.stringify(node.label)}, envir = .GlobalEnv)`, node.owner);
+        await runWorkspaceCode(
+            `rm(list = ${JSON.stringify(node.label)}, envir = .GlobalEnv)`,
+            node.owner,
+        );
     }
 }

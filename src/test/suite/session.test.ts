@@ -17,14 +17,18 @@ import type { RSessionApi } from '../../api';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
-async function waitFor<T>(condition: () => T | Promise<T>, timeout = 10000, interval = 100): Promise<T> {
+async function waitFor<T>(
+    condition: () => T | Promise<T>,
+    timeout = 10000,
+    interval = 100,
+): Promise<T> {
     const start = Date.now();
     while (Date.now() - start < timeout) {
         const result = await condition();
         if (result) {
             return result;
         }
-        await new Promise(resolve => setTimeout(resolve, interval));
+        await new Promise((resolve) => setTimeout(resolve, interval));
     }
     throw new Error(`Timeout after ${timeout}ms waiting for condition`);
 }
@@ -45,7 +49,7 @@ suite('Session Communication', () => {
         const attachedSessionId = session.activeSession?.sessionId;
         if (rTerminal.rTerm) {
             rTerminal.rTerm.dispose();
-            
+
             // Explicitly invoke the extension's terminal cleanup logic
             // since the mocked VS Code environment won't fire onDidCloseTerminal
             rTerminal.deleteTerminal(rTerminal.rTerm);
@@ -60,11 +64,16 @@ suite('Session Communication', () => {
         sandbox.restore();
     });
 
-    async function showHelpWith(viewColumn: Record<string, string> | undefined, params: Record<string, unknown> = { requestPath: 'base/html/mean.html' }) {
+    async function showHelpWith(
+        viewColumn: Record<string, string> | undefined,
+        params: Record<string, unknown> = { requestPath: 'base/html/mean.html' },
+    ) {
         const showHelpForPath = sandbox.stub().resolves();
-        sandbox.stub(extension, 'globalRHelp').value({ showHelpForPath } as unknown as NonNullable<typeof extension.globalRHelp>);
+        sandbox
+            .stub(extension, 'globalRHelp')
+            .value({ showHelpForPath } as unknown as NonNullable<typeof extension.globalRHelp>);
         sandbox.stub(util, 'config').returns({
-            get: (key: string) => key === 'session.viewers.viewColumn' ? viewColumn : undefined
+            get: (key: string) => (key === 'session.viewers.viewColumn' ? viewColumn : undefined),
         } as unknown as vscode.WorkspaceConfiguration);
 
         await session.showHelpNotification(params);
@@ -78,12 +87,17 @@ suite('Session Communication', () => {
     });
 
     test('replacing an Interactive process moves document bindings while old viewers keep the old requester', async () => {
-        const previous = session.registerSessionTransport('restart-old', 'host', '/project', () => Promise.resolve('old'));
-        const next = session.registerSessionTransport('restart-new', 'host', '/project', () => Promise.resolve('new'));
+        const previous = session.registerSessionTransport('restart-old', 'host', '/project', () =>
+            Promise.resolve('old'),
+        );
+        const next = session.registerSessionTransport('restart-new', 'host', '/project', () =>
+            Promise.resolve('new'),
+        );
         const source = vscode.Uri.file('/project/restart.R');
         const input = vscode.Uri.from({ scheme: 'vscode-interactive-input', path: '/restart' });
         try {
-            session.bindSessionDocument(source, previous); session.bindSessionDocument(input, previous);
+            session.bindSessionDocument(source, previous);
+            session.bindSessionDocument(input, previous);
             session.replaceSessionTransport(previous, next);
             assert.strictEqual(session.boundSessionForDocument(source), next);
             assert.strictEqual(session.boundSessionForDocument(input), next);
@@ -91,7 +105,10 @@ suite('Session Communication', () => {
             assert.strictEqual(await next.requester?.({}), 'new');
             session.unregisterSessionTransport(previous);
             assert.strictEqual(session.boundSessionForDocument(source), next);
-        } finally { session.unregisterSessionTransport(previous); session.unregisterSessionTransport(next); }
+        } finally {
+            session.unregisterSessionTransport(previous);
+            session.unregisterSessionTransport(next);
+        }
     });
 
     test('help notification does not open when help panel is disabled', async () => {
@@ -107,7 +124,9 @@ suite('Session Communication', () => {
     });
 
     test('help notification ignores malformed request paths', async () => {
-        const showHelpForPath = await showHelpWith(undefined, { requestPath: { path: 'base/html/mean.html' } });
+        const showHelpForPath = await showHelpWith(undefined, {
+            requestPath: { path: 'base/html/mean.html' },
+        });
         await session.showHelpNotification({ requestPath: ['base/html/mean.html'] });
         await session.showHelpNotification({ requestPath: 42 });
         await session.showHelpNotification({ requestPath: '' });
@@ -116,10 +135,13 @@ suite('Session Communication', () => {
     });
 
     test('help notification ignores stale viewer parameter from sess', async () => {
-        const showHelpForPath = await showHelpWith({ helpPanel: 'Active' }, {
-            requestPath: 'base/html/mean.html',
-            viewer: 'Two'
-        });
+        const showHelpForPath = await showHelpWith(
+            { helpPanel: 'Active' },
+            {
+                requestPath: 'base/html/mean.html',
+                viewer: 'Two',
+            },
+        );
 
         sinon.assert.calledOnceWithExactly(showHelpForPath, 'base/html/mean.html', 'Active');
     });
@@ -127,7 +149,12 @@ suite('Session Communication', () => {
     test('attached session status uses one R prefix for short and full version strings', async () => {
         const status = vscode.window.createStatusBarItem();
         sandbox.stub(extension, 'sessionStatusBarItem').value(status);
-        const target = session.registerSessionTransport('status-version-test', os.hostname(), process.cwd(), () => Promise.resolve({}));
+        const target = session.registerSessionTransport(
+            'status-version-test',
+            os.hostname(),
+            process.cwd(),
+            () => Promise.resolve({}),
+        );
         target.pid = '92026';
         target.info.version = 'R version 4.6.1 (2026-06-24)';
         try {
@@ -138,7 +165,10 @@ suite('Session Communication', () => {
                 assert.ok(typeof status.tooltip === 'string');
                 assert.ok(status.tooltip.includes(target.info.version));
             }
-        } finally { session.unregisterSessionTransport(target); status.dispose(); }
+        } finally {
+            session.unregisterSessionTransport(target);
+            status.dispose();
+        }
     });
 
     test('concurrent server initialization and public API calls share one endpoint', async () => {
@@ -183,8 +213,8 @@ suite('Session Communication', () => {
         const first = session.getGlobalPipePath();
         const second = session.getGlobalPipePath();
         await Promise.all([
-            assert.rejects(first, error => error === failure),
-            assert.rejects(second, error => error === failure),
+            assert.rejects(first, (error) => error === failure),
+            assert.rejects(second, (error) => error === failure),
         ]);
         assert.strictEqual(listen.callCount, 1);
         assert.strictEqual(session.globalPipePath, undefined);
@@ -204,16 +234,21 @@ suite('Session Communication', () => {
         const close = sandbox.spy(net.Server.prototype, 'close');
         // Unix fails at chmod; Windows has no permission setup, so inject an
         // error immediately after listening, before initialization is published.
-        const fail = process.platform !== 'win32'
-            ? sandbox.stub(fs, 'chmod').rejects(failure)
-            : sandbox.stub(net.Server.prototype, 'emit').callsFake(function (this: net.Server, event: string, ...args: unknown[]) {
-                const result = EventEmitter.prototype.emit.call(this, event, ...args);
-                if (event === 'listening') {
-                    EventEmitter.prototype.emit.call(this, 'error', failure);
-                }
-                return result;
-            });
-        await assert.rejects(session.getGlobalPipePath(), error => error === failure);
+        const fail =
+            process.platform !== 'win32'
+                ? sandbox.stub(fs, 'chmod').rejects(failure)
+                : sandbox.stub(net.Server.prototype, 'emit').callsFake(function (
+                      this: net.Server,
+                      event: string,
+                      ...args: unknown[]
+                  ) {
+                      const result = EventEmitter.prototype.emit.call(this, event, ...args);
+                      if (event === 'listening') {
+                          EventEmitter.prototype.emit.call(this, 'error', failure);
+                      }
+                      return result;
+                  });
+        await assert.rejects(session.getGlobalPipePath(), (error) => error === failure);
         const endpoint = listen.firstCall.args[0] as unknown as string;
         const server = listen.firstCall.thisValue as net.Server;
         assert.strictEqual(server.listening, false);
@@ -223,10 +258,12 @@ suite('Session Communication', () => {
         }
         const client = net.createConnection(endpoint);
         try {
-            await assert.rejects(new Promise<void>((resolve, reject) => {
-                client.once('connect', resolve);
-                client.once('error', reject);
-            }));
+            await assert.rejects(
+                new Promise<void>((resolve, reject) => {
+                    client.once('connect', resolve);
+                    client.once('error', reject);
+                }),
+            );
         } finally {
             client.destroy();
         }
@@ -253,10 +290,12 @@ suite('Session Communication', () => {
         }
         const client = net.createConnection(endpoint);
         try {
-            await assert.rejects(new Promise<void>((resolve, reject) => {
-                client.once('connect', resolve);
-                client.once('error', reject);
-            }));
+            await assert.rejects(
+                new Promise<void>((resolve, reject) => {
+                    client.once('connect', resolve);
+                    client.once('error', reject);
+                }),
+            );
         } finally {
             client.destroy();
         }
@@ -279,9 +318,11 @@ suite('Session Communication', () => {
         watcher.value(true);
         let backend = 'standard';
         const configStub = {
-            get: (key: string) => key === 'plot.backend' ? backend : undefined,
+            get: (key: string) => (key === 'plot.backend' ? backend : undefined),
         };
-        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox
+            .stub(util, 'config')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
         await waitFor(() => session.globalPipePath);
 
         const connection = await api.getConnectionInfo();
@@ -289,7 +330,10 @@ suite('Session Communication', () => {
         assert.strictEqual(connection.protocolVersion, 1);
         assert.strictEqual(connection.endpoint, session.globalPipePath);
         assert.strictEqual(connection.plotBackend, 'standard');
-        assert.ok(!('socket' in connection), 'connection info should contain plain contract data only');
+        assert.ok(
+            !('socket' in connection),
+            'connection info should contain plain contract data only',
+        );
 
         backend = 'native';
         const nativeConnection = await api.getConnectionInfo();
@@ -317,24 +361,26 @@ suite('Session Communication', () => {
                 client.once('error', reject);
             });
             const server = await waitFor(() =>
-                [...session.activeConnections].find(socket => !existingSockets.has(socket))
+                [...session.activeConnections].find((socket) => !existingSockets.has(socket)),
             );
             assert.ok(server);
             attached.push({ id, client, server });
-            client.write(`${JSON.stringify({
-                jsonrpc: '2.0',
-                method: 'attach',
-                params: {
-                    protocol_version: 1,
-                    session_id: id,
-                    host: 'test-remote-host',
-                    version: '4.4.0',
-                    pid: id,
-                    tempdir: '/tmp',
-                    wd: '/tmp',
-                    info: { version: 'R version 4.4.0', command: 'R', start_time: '' },
-                },
-            })}\n`);
+            client.write(
+                `${JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'attach',
+                    params: {
+                        protocol_version: 1,
+                        session_id: id,
+                        host: 'test-remote-host',
+                        version: '4.4.0',
+                        pid: id,
+                        tempdir: '/tmp',
+                        wd: '/tmp',
+                        info: { version: 'R version 4.4.0', command: 'R', start_time: '' },
+                    },
+                })}\n`,
+            );
             await waitFor(() => session.activeSession?.sessionId === id);
         };
 
@@ -347,7 +393,7 @@ suite('Session Communication', () => {
             assert.strictEqual(await api.activate('session-api-first'), true);
             assert.strictEqual(session.activeSession?.sessionId, 'session-api-first');
 
-            const disconnected = attached.find(item => item.id === 'session-api-second');
+            const disconnected = attached.find((item) => item.id === 'session-api-second');
             assert.ok(disconnected);
             disconnected.server.destroy();
             assert.strictEqual(await api.activate('session-api-second'), false);
@@ -370,36 +416,38 @@ suite('Session Communication', () => {
                     return ['--no-save'];
                 }
                 return undefined;
-            }
+            },
         };
-        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
-        
+        sandbox
+            .stub(util, 'config')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
+
         const rPath = await util.getRterm();
         assert.ok(rPath, 'R path should be found');
         sandbox.stub(util, 'getRterm').resolves(rPath);
-        
+
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
         const result = await rTerminal.createRTerm(true);
         assert.ok(result, 'createRTerm should return true');
         assert.ok(rTerminal.rTerm, 'rTerminal.rTerm should be defined');
-        
+
         await waitFor(() => session.activeSession, 15000, 200);
         assert.ok(session.activeSession, 'activeSession should be established');
-        
+
         const term = rTerminal.rTerm;
-        
-        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         const markerPath = path.join(
             os.tmpdir(),
-            `vscode-r-command-marker-${process.pid}-${Date.now()}`
+            `vscode-r-command-marker-${process.pid}-${Date.now()}`,
         );
         commandMarkerPath = markerPath;
         await fs.remove(markerPath);
         term.sendText(
             `my_list <- list(hello_vscode = 12345); ` +
-            `writeLines("evaluated", ${JSON.stringify(markerPath)})\n`
+                `writeLines("evaluated", ${JSON.stringify(markerPath)})\n`,
         );
 
         // This filesystem marker is independent of the IPC path and confirms
@@ -409,44 +457,56 @@ suite('Session Communication', () => {
         // Verify the workspace request path after command execution, independently
         // from the pushed workspace refresh notification.
         let rpcWorkspace: { globalenv?: Record<string, unknown> } | undefined;
-        await waitFor(async () => {
-            rpcWorkspace = await session.sessionRequest({
-                method: 'workspace',
-                params: {}
-            }) as { globalenv?: Record<string, unknown> } | undefined;
-            return rpcWorkspace?.globalenv?.['my_list'];
-        }, 10000, 200);
+        await waitFor(
+            async () => {
+                rpcWorkspace = (await session.sessionRequest({
+                    method: 'workspace',
+                    params: {},
+                })) as { globalenv?: Record<string, unknown> } | undefined;
+                return rpcWorkspace?.globalenv?.['my_list'];
+            },
+            10000,
+            200,
+        );
         assert.ok(rpcWorkspace?.globalenv?.['my_list'], 'workspace RPC should include my_list');
-        
-        await waitFor(() => {
-            const ge = session.workspaceData?.globalenv;
-            return ge && ge['my_list'];
-        }, 15000, 200);
-        
+
+        await waitFor(
+            () => {
+                const ge = session.workspaceData?.globalenv;
+                return ge && ge['my_list'];
+            },
+            15000,
+            200,
+        );
+
         const listData = session.workspaceData.globalenv['my_list'];
         assert.ok(listData, 'my_list should be in workspaceData.globalenv');
         const className = Array.isArray(listData.class) ? listData.class[0] : listData.class;
         assert.strictEqual(className, 'list', 'my_list should be a list');
         assert.strictEqual(listData.has_children, true, 'my_list should be expandable');
 
-        const childrenResult = await session.sessionRequest({
+        const childrenResult = (await session.sessionRequest({
             method: 'workspace_children',
-            params: { name: 'my_list', path: [], start: 1 }
-        }) as { children: Record<string, unknown>[], next_start?: number };
+            params: { name: 'my_list', path: [], start: 1 },
+        })) as { children: Record<string, unknown>[]; next_start?: number };
 
         assert.ok(Array.isArray(childrenResult.children), 'workspace children should be an array');
-        assert.strictEqual(childrenResult.children.length, 1, 'my_list should have one workspace child');
+        assert.strictEqual(
+            childrenResult.children.length,
+            1,
+            'my_list should have one workspace child',
+        );
         assert.match(String(childrenResult.children[0].str), /hello_vscode/);
-        
+
         const completionRequestParams = {
             expr: 'my_list',
-            trigger: '$'
+            trigger: '$',
         };
-        const completionResult = await session.sessionRequest({
+        const completionResult = (await session.sessionRequest({
             method: 'completion',
-            params: completionRequestParams
-        }) as Record<string, unknown>[];
-        
+            params: completionRequestParams,
+        })) as Record<string, unknown>[];
+
         assert.ok(Array.isArray(completionResult), 'completion result should be an array');
         const hasHello = completionResult.some((item) => item.name === 'hello_vscode');
         assert.ok(hasHello, 'completion result should contain hello_vscode');
@@ -455,29 +515,45 @@ suite('Session Communication', () => {
     test('communication: plot() with various devices and View() events', async () => {
         const configStub = {
             get: (key: string, defaultValue?: unknown) => {
-                if (key === 'sessionWatcher') { return true; }
-                if (key === 'rterm.option') { return ['--no-save']; }
-                if (key === 'plot.useHttpgd') { return false; }
+                if (key === 'sessionWatcher') {
+                    return true;
+                }
+                if (key === 'rterm.option') {
+                    return ['--no-save'];
+                }
+                if (key === 'plot.useHttpgd') {
+                    return false;
+                }
                 // Pin the standard plot backend so this test is deterministic.
                 // Otherwise it resolves to 'auto', which prefers jgd when jgd is
                 // installed (now the case in CI since the build installs Suggests),
                 // and the r.standardPlot webview is never created.
-                if (key === 'plot.backend') { return 'standard'; }
-                if (key === 'session.data.pageSize') { return 500; }
-                if (key === 'session.viewers.viewColumn') { return {
-                    plot: 'Two',
-                    browser: 'Active',
-                    viewer: 'Two',
-                    pageViewer: 'Active',
-                    view: 'Two',
-                    helpPanel: 'Two'
-                }; }
-                if (key === 'session.viewers.viewColumn.plot') { return 'Two'; }
+                if (key === 'plot.backend') {
+                    return 'standard';
+                }
+                if (key === 'session.data.pageSize') {
+                    return 500;
+                }
+                if (key === 'session.viewers.viewColumn') {
+                    return {
+                        plot: 'Two',
+                        browser: 'Active',
+                        viewer: 'Two',
+                        pageViewer: 'Active',
+                        view: 'Two',
+                        helpPanel: 'Two',
+                    };
+                }
+                if (key === 'session.viewers.viewColumn.plot') {
+                    return 'Two';
+                }
                 return defaultValue;
-            }
+            },
         };
-        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
-        
+        sandbox
+            .stub(util, 'config')
+            .returns(configStub as unknown as vscode.WorkspaceConfiguration);
+
         const rPath = await util.getRterm();
         assert.ok(rPath, 'R path should be found');
         sandbox.stub(util, 'getRterm').resolves(rPath);
@@ -495,11 +571,11 @@ suite('Session Communication', () => {
         if (!activeSession) {
             throw new Error('activeSession is undefined');
         }
-        
+
         const term = rTerminal.rTerm;
         assert.ok(term, 'rTerminal.rTerm should be defined');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
         // Spy on WebviewPanel creation to catch plot / dataview / webview rendering attempts
         // Note: we set up the spy after activeSession to not intercept early setups if any.
         const createWebviewPanelSpy = sandbox.spy(vscode.window, 'createWebviewPanel');
@@ -507,42 +583,57 @@ suite('Session Communication', () => {
         // 1. Test svglite
         const plotMarkerPath = path.join(
             os.tmpdir(),
-            `vscode-r-plot-marker-${process.pid}-${Date.now()}`
+            `vscode-r-plot-marker-${process.pid}-${Date.now()}`,
         );
         commandMarkerPath = plotMarkerPath;
         await fs.remove(plotMarkerPath);
         term.sendText(
             `plot(0, main="svglite"); ` +
-            `writeLines("evaluated", ${JSON.stringify(plotMarkerPath)})\n`
+                `writeLines("evaluated", ${JSON.stringify(plotMarkerPath)})\n`,
         );
         await waitFor(() => fs.pathExists(plotMarkerPath), 10000, 200);
 
         await waitFor(() => createWebviewPanelSpy.calledWith('r.standardPlot'), 10000, 200);
-        assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be triggered for svglite');
+        assert.ok(
+            createWebviewPanelSpy.calledWith('r.standardPlot'),
+            'r.standardPlot should be triggered for svglite',
+        );
 
         assert.ok(session.activeSession, 'activeSession should be defined');
-        
-        let svgliteResp: { data?: string, format?: string, error?: unknown } | undefined;
-        await waitFor(async () => {
-            try {
-                svgliteResp = await session.sessionRequest({
-                    method: 'plot_latest',
-                    params: { width: 800, height: 600, format: 'svglite' }
-                }) as { data?: string, format?: string, error?: unknown };
-                return svgliteResp && svgliteResp.data;
-            } catch {
-                return false;
-            }
-        }, 15000, 500);
-        
+
+        let svgliteResp: { data?: string; format?: string; error?: unknown } | undefined;
+        await waitFor(
+            async () => {
+                try {
+                    svgliteResp = (await session.sessionRequest({
+                        method: 'plot_latest',
+                        params: { width: 800, height: 600, format: 'svglite' },
+                    })) as { data?: string; format?: string; error?: unknown };
+                    return svgliteResp && svgliteResp.data;
+                } catch {
+                    return false;
+                }
+            },
+            15000,
+            500,
+        );
+
         assert.ok(svgliteResp && svgliteResp.data, 'svglite data should be returned');
         // svglite is an optional (Suggests) dependency of the sess package. When it is
         // installed the handler renders SVG; otherwise it falls back to png. Assert the
         // path that actually applies to this environment so both branches are tested.
         if (svgliteInstalled) {
-            assert.strictEqual(svgliteResp.format, 'svglite', 'format should be svglite when svglite is installed');
+            assert.strictEqual(
+                svgliteResp.format,
+                'svglite',
+                'format should be svglite when svglite is installed',
+            );
         } else {
-            assert.strictEqual(svgliteResp.format, 'png', 'format should fall back to png when svglite is not installed');
+            assert.strictEqual(
+                svgliteResp.format,
+                'png',
+                'format should fall back to png when svglite is not installed',
+            );
         }
 
         // Reset history to ensure we track the next plot if we were to recreate the panel
@@ -552,26 +643,33 @@ suite('Session Communication', () => {
 
         // 2. Test png
         term.sendText('plot(1, main="png")\n');
-        
+
         // Wait for R to finish plotting
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         // The panel is reused, but we use the spy just in case it were recreated or as requested.
         await waitFor(() => createWebviewPanelSpy.calledWith('r.standardPlot'), 10000, 200);
-        assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be active for png');
+        assert.ok(
+            createWebviewPanelSpy.calledWith('r.standardPlot'),
+            'r.standardPlot should be active for png',
+        );
 
-        let pngResp: { data?: string, format?: string } | undefined;
-        await waitFor(async () => {
-            try {
-                pngResp = await session.sessionRequest({
-                    method: 'plot_latest',
-                    params: { width: 800, height: 600, format: 'png' }
-                }) as { data?: string, format?: string };
-                return pngResp && pngResp.data;
-            } catch {
-                return false;
-            }
-        }, 15000, 500);
+        let pngResp: { data?: string; format?: string } | undefined;
+        await waitFor(
+            async () => {
+                try {
+                    pngResp = (await session.sessionRequest({
+                        method: 'plot_latest',
+                        params: { width: 800, height: 600, format: 'png' },
+                    })) as { data?: string; format?: string };
+                    return pngResp && pngResp.data;
+                } catch {
+                    return false;
+                }
+            },
+            15000,
+            500,
+        );
 
         assert.ok(pngResp && pngResp.data, 'png data should be returned');
         assert.strictEqual(pngResp.format, 'png', 'format should be png');
@@ -579,17 +677,28 @@ suite('Session Communication', () => {
         // 3. Test View() -> dataview
         term.sendText('View(mtcars)\n');
         await waitFor(() => createWebviewPanelSpy.calledWith('dataview'), 10000, 200);
-        
+
         assert.ok(createWebviewPanelSpy.calledWith('dataview'), 'dataview should be triggered');
 
         // Preserve the title produced by String(array) for a multi-line deparse().
-        const multilineTitle = 'subset(mtcars, mpg > 15 & cyl == 6 & disp < 300 & hp < 150 & ,'
-            + '    drat > 3 & wt < 4 & qsec < 20)';
-        term.sendText('View(subset(mtcars, mpg > 15 & cyl == 6 & disp < 300 & hp < 150 & drat > 3 & wt < 4 & qsec < 20))\n');
-        await waitFor(() => createWebviewPanelSpy.calledWith('dataview', multilineTitle), 10000, 200);
+        const multilineTitle =
+            'subset(mtcars, mpg > 15 & cyl == 6 & disp < 300 & hp < 150 & ,' +
+            '    drat > 3 & wt < 4 & qsec < 20)';
+        term.sendText(
+            'View(subset(mtcars, mpg > 15 & cyl == 6 & disp < 300 & hp < 150 & drat > 3 & wt < 4 & qsec < 20))\n',
+        );
+        await waitFor(
+            () => createWebviewPanelSpy.calledWith('dataview', multilineTitle),
+            10000,
+            200,
+        );
 
         term.sendText('View(list(value = 1L), title = c("List title", "second line"))\n');
-        await waitFor(() => createWebviewPanelSpy.calledWith('dataview', 'List title,second line'), 10000, 200);
+        await waitFor(
+            () => createWebviewPanelSpy.calledWith('dataview', 'List title,second line'),
+            10000,
+            200,
+        );
 
         const executeCommandSpy = sandbox.spy(vscode.commands, 'executeCommand');
         term.sendText('View(1:3, title = c("Object title", "second line"))\n');
@@ -599,18 +708,30 @@ suite('Session Communication', () => {
         const dataViewCount = createWebviewPanelSpy.withArgs('dataview').callCount;
         term.sendText(
             'for (title in list(list(invalid = TRUE), list("valid", 42L), 42L)) ' +
-            'sess::notify_client("dataview", list(source = "table", type = "json", title = title)); ' +
-            'View(mtcars, title = "Valid title after malformed notifications")\n'
+                'sess::notify_client("dataview", list(source = "table", type = "json", title = title)); ' +
+                'View(mtcars, title = "Valid title after malformed notifications")\n',
         );
-        await waitFor(() => createWebviewPanelSpy.calledWith('dataview', 'Valid title after malformed notifications'), 10000, 200);
+        await waitFor(
+            () =>
+                createWebviewPanelSpy.calledWith(
+                    'dataview',
+                    'Valid title after malformed notifications',
+                ),
+            10000,
+            200,
+        );
         assert.strictEqual(createWebviewPanelSpy.withArgs('dataview').callCount, dataViewCount + 1);
 
         // 4. Test webview
-        term.sendText('tf <- tempfile(fileext=".html"); writeLines("test", tf); getOption("viewer")(tf)\n');
+        term.sendText(
+            'tf <- tempfile(fileext=".html"); writeLines("test", tf); getOption("viewer")(tf)\n',
+        );
         await waitFor(() => createWebviewPanelSpy.calledWith('webview'), 10000, 200);
 
-        assert.ok(createWebviewPanelSpy.calledWith('webview'), 'webview should be triggered for html file');
-
+        assert.ok(
+            createWebviewPanelSpy.calledWith('webview'),
+            'webview should be triggered for html file',
+        );
     }).timeout(85000);
 
     test('attach session artifacts are owner-only', async () => {
@@ -625,13 +746,25 @@ suite('Session Communication', () => {
         assert.match(scriptContent, /sess::connect\(endpoint = endpoint/);
         assert.match(scriptContent, /sess_install_required\(sess_src\)/);
         assert.match(scriptContent, /sess_source\.R/);
-        assert.ok(scriptContent.includes(extension.extensionContext.asAbsolutePath(
-            path.join('dist', 'resources', 'sess')).replace(/\\/g, '/')));
+        assert.ok(
+            scriptContent.includes(
+                extension.extensionContext
+                    .asAbsolutePath(path.join('dist', 'resources', 'sess'))
+                    .replace(/\\/g, '/'),
+            ),
+        );
         assert.doesNotMatch(scriptContent, /packageVersion|compareVersion/);
-        assert.strictEqual(path.dirname(scriptPath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach'));
+        assert.strictEqual(
+            path.dirname(scriptPath),
+            path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach'),
+        );
         const scriptStat = await fs.stat(scriptPath);
         if (process.platform !== 'win32') {
-            assert.strictEqual(scriptStat.mode & 0o777, 0o600, 'attach script should be owner-only');
+            assert.strictEqual(
+                scriptStat.mode & 0o777,
+                0o600,
+                'attach script should be owner-only',
+            );
         }
 
         const pipePath = session.globalPipePath;
@@ -643,16 +776,27 @@ suite('Session Communication', () => {
         }
 
         const sessionFilePath = await session.createSessionDiscoveryFile(pipePath ?? '');
-        assert.strictEqual(path.dirname(sessionFilePath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'sessions'));
+        assert.strictEqual(
+            path.dirname(sessionFilePath),
+            path.join(extension.extensionContext.globalStorageUri.fsPath, 'sessions'),
+        );
         assert.match(path.basename(sessionFilePath), /^[a-f0-9]{32}\.json$/);
         assert.deepStrictEqual(await fs.readJson(sessionFilePath), {
-            version: 1, endpoint: pipePath ?? '',
+            version: 1,
+            endpoint: pipePath ?? '',
             jgdSocket: plotViewer.jgdEnabled()
-                ? (extension.globalPlotManager as plotViewer.CommonPlotManager).getJgdEnvVars()['JGD_SOCKET'] : '',
+                ? (extension.globalPlotManager as plotViewer.CommonPlotManager).getJgdEnvVars()[
+                      'JGD_SOCKET'
+                  ]
+                : '',
         });
         const sessionFileStat = await fs.stat(sessionFilePath);
         if (process.platform !== 'win32') {
-            assert.strictEqual(sessionFileStat.mode & 0o777, 0o600, 'session handoff file should be owner-only');
+            assert.strictEqual(
+                sessionFileStat.mode & 0o777,
+                0o600,
+                'session handoff file should be owner-only',
+            );
         }
         await fs.remove(sessionFilePath);
 
@@ -666,7 +810,10 @@ suite('Session Communication', () => {
         sandbox.stub(vscode.window, 'terminals').value([selected, background]);
         sandbox.stub(vscode.window, 'activeTerminal').value(selected);
 
-        for (const order of [[46240, 46241], [46241, 46240]]) {
+        for (const order of [
+            [46240, 46241],
+            [46241, 46240],
+        ]) {
             const clients: net.Socket[] = [];
             const sockets: net.Socket[] = [];
             try {
@@ -678,16 +825,27 @@ suite('Session Communication', () => {
                         client.once('connect', resolve);
                         client.once('error', reject);
                     });
-                    const socket = await waitFor(() => [...session.activeConnections].find(s => !existing.has(s)));
+                    const socket = await waitFor(() =>
+                        [...session.activeConnections].find((s) => !existing.has(s)),
+                    );
                     assert.ok(socket);
                     sockets.push(socket);
                     const id = `reconnected-${terminalPid}`;
-                    client.write(`${JSON.stringify({
-                        jsonrpc: '2.0', method: 'attach', params: {
-                            protocol_version: 1, session_id: id, host: os.hostname(),
-                            pid: terminalPid, version: '4.4.0', tempdir: '/tmp', wd: '/tmp',
-                        },
-                    })}\n`);
+                    client.write(
+                        `${JSON.stringify({
+                            jsonrpc: '2.0',
+                            method: 'attach',
+                            params: {
+                                protocol_version: 1,
+                                session_id: id,
+                                host: os.hostname(),
+                                pid: terminalPid,
+                                version: '4.4.0',
+                                tempdir: '/tmp',
+                                wd: '/tmp',
+                            },
+                        })}\n`,
+                    );
                     await waitFor(() => socket._sessionId === id);
                     if (terminalPid === 46241 && order[0] === 46240) {
                         assert.strictEqual(session.activeSession?.sessionId, 'reconnected-46240');
@@ -695,8 +853,8 @@ suite('Session Communication', () => {
                 }
                 assert.strictEqual(session.activeSession?.sessionId, 'reconnected-46240');
             } finally {
-                clients.forEach(client => client.destroy());
-                sockets.forEach(socket => socket.destroy());
+                clients.forEach((client) => client.destroy());
+                sockets.forEach((socket) => socket.destroy());
                 for (const terminalPid of order) {
                     await session.cleanupSession(`reconnected-${terminalPid}`);
                 }
@@ -706,31 +864,40 @@ suite('Session Communication', () => {
 
     test('attach script passes the native backend to sess', async () => {
         sandbox.stub(util, 'config').returns({
-            get: (key: string) => key === 'plot.backend' ? 'native' : undefined,
+            get: (key: string) => (key === 'plot.backend' ? 'native' : undefined),
         } as unknown as vscode.WorkspaceConfiguration);
         const command = await session.getAttachSessionCommand();
         const commandMatch = command.match(/^source\((.*)\)$/);
         assert.ok(commandMatch);
         const scriptPath = JSON.parse(commandMatch[1]) as string;
         const scriptContent = await fs.readFile(scriptPath, 'utf8');
-        assert.match(scriptContent, /sess::connect\(endpoint = endpoint, plot_backend = "native"\)/);
+        assert.match(
+            scriptContent,
+            /sess::connect\(endpoint = endpoint, plot_backend = "native"\)/,
+        );
         assert.doesNotMatch(scriptContent, /Sys\.(?:setenv|unsetenv)\(JGD_SOCKET/);
     });
 
     test('manual recovery targets the selected managed terminal while another session is active', async () => {
         const endpoint = await session.getGlobalPipePath();
         const first = {
-            name: 'R Interactive', processId: Promise.resolve(45240),
-            creationOptions: { name: 'R Interactive' }, show: sandbox.spy(), sendText: sandbox.spy(),
+            name: 'R Interactive',
+            processId: Promise.resolve(45240),
+            creationOptions: { name: 'R Interactive' },
+            show: sandbox.spy(),
+            sendText: sandbox.spy(),
         };
         const second = {
-            name: 'Renamed R', processId: Promise.resolve(45241),
-            creationOptions: { name: 'R Interactive' }, show: sandbox.spy(), sendText: sandbox.spy(),
+            name: 'Renamed R',
+            processId: Promise.resolve(45241),
+            creationOptions: { name: 'R Interactive' },
+            show: sandbox.spy(),
+            sendText: sandbox.spy(),
         };
         sandbox.stub(vscode.window, 'terminals').value([first, second]);
         const activeTerminal = sandbox.stub(vscode.window, 'activeTerminal').value(second);
         sandbox.stub(util, 'config').returns({
-            get: (key: string) => key === 'sessionWatcher' ? true : undefined,
+            get: (key: string) => (key === 'sessionWatcher' ? true : undefined),
         } as unknown as vscode.WorkspaceConfiguration);
         const discoveryFile = await session.createSessionDiscoveryFile(endpoint);
         await session.updateSessionDiscoveryFile(discoveryFile, endpoint, 45241);
@@ -740,14 +907,22 @@ suite('Session Communication', () => {
                 client.once('connect', resolve);
                 client.once('error', reject);
             });
-            client.write(`${JSON.stringify({
-                jsonrpc: '2.0', method: 'attach', params: {
-                    protocol_version: 1, session_id: 'manual-recovery-first',
-                    host: os.hostname(), pid: 45240, version: '4.5.0',
-                    tempdir: os.tmpdir(), wd: os.tmpdir(),
-                    info: { version: 'R 4.5.0', command: 'R', start_time: '' },
-                },
-            })}\n`);
+            client.write(
+                `${JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'attach',
+                    params: {
+                        protocol_version: 1,
+                        session_id: 'manual-recovery-first',
+                        host: os.hostname(),
+                        pid: 45240,
+                        version: '4.5.0',
+                        tempdir: os.tmpdir(),
+                        wd: os.tmpdir(),
+                        info: { version: 'R 4.5.0', command: 'R', start_time: '' },
+                    },
+                })}\n`,
+            );
             await waitFor(() => session.activeSession?.sessionId === 'manual-recovery-first');
             await session.activateRSession();
             sinon.assert.calledOnce(second.sendText);
@@ -763,7 +938,11 @@ suite('Session Communication', () => {
 
             // The R Interactive name alone must not grant ownership of another terminal.
             first.show.resetHistory();
-            activeTerminal.value({ ...second, name: 'R Interactive', processId: Promise.resolve(45242) });
+            activeTerminal.value({
+                ...second,
+                name: 'R Interactive',
+                processId: Promise.resolve(45242),
+            });
             await session.activateRSession();
             sinon.assert.calledOnce(first.show);
             sinon.assert.calledOnce(second.sendText);
@@ -780,7 +959,7 @@ suite('Session Communication', () => {
         const terminalPid = 45231; // Deliberately distinct from any R process PID.
         await session.updateSessionDiscoveryFile(discoveryFile, oldEndpoint, terminalPid);
         const newEndpoint = `${oldEndpoint}.reload`;
-        const { jgdSocket } = await fs.readJson(discoveryFile) as { jgdSocket: string };
+        const { jgdSocket } = (await fs.readJson(discoveryFile)) as { jgdSocket: string };
         const terminal = {
             name: 'R Interactive',
             processId: Promise.resolve(terminalPid),
@@ -801,7 +980,11 @@ suite('Session Communication', () => {
             // extension-owned terminal PID metadata must still locate the same file.
             wrapperDiscoveryFile = await session.createSessionDiscoveryFile(oldEndpoint);
             const wrapperTerminalPid = 45233;
-            await session.updateSessionDiscoveryFile(wrapperDiscoveryFile, oldEndpoint, wrapperTerminalPid);
+            await session.updateSessionDiscoveryFile(
+                wrapperDiscoveryFile,
+                oldEndpoint,
+                wrapperTerminalPid,
+            );
             const wrapperTerminal = {
                 name: 'R Interactive',
                 processId: Promise.resolve(wrapperTerminalPid),
@@ -826,13 +1009,15 @@ suite('Session Communication', () => {
         let backend = 'jgd';
         let jgdSocket = 'old-jgd-socket';
         sandbox.stub(util, 'config').returns({
-            get: (key: string) => key === 'plot.backend' ? backend : undefined,
+            get: (key: string) => (key === 'plot.backend' ? backend : undefined),
         } as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(extension.globalPlotManager as plotViewer.CommonPlotManager, 'getJgdEnvVars')
+        sandbox
+            .stub(extension.globalPlotManager as plotViewer.CommonPlotManager, 'getJgdEnvVars')
             .callsFake(() => ({ JGD_SOCKET: jgdSocket }));
         const file = await session.createSessionDiscoveryFile('old-sess');
         const terminal = {
-            name: 'Renamed R', processId: Promise.resolve(45244),
+            name: 'Renamed R',
+            processId: Promise.resolve(45244),
             creationOptions: { name: 'R Interactive' },
         } as unknown as vscode.Terminal;
         try {
@@ -840,12 +1025,18 @@ suite('Session Communication', () => {
             jgdSocket = 'new-jgd-socket';
             await session.refreshTerminalDiscoveryFiles('new-sess', [terminal]);
             assert.deepStrictEqual(await fs.readJson(file), {
-                version: 1, endpoint: 'new-sess', terminalPid: 45244, jgdSocket,
+                version: 1,
+                endpoint: 'new-sess',
+                terminalPid: 45244,
+                jgdSocket,
             });
             backend = 'standard';
             await session.refreshTerminalDiscoveryFiles('next-sess', [terminal]);
             assert.deepStrictEqual(await fs.readJson(file), {
-                version: 1, endpoint: 'next-sess', terminalPid: 45244, jgdSocket: '',
+                version: 1,
+                endpoint: 'next-sess',
+                terminalPid: 45244,
+                jgdSocket: '',
             });
         } finally {
             await fs.remove(file);
@@ -875,8 +1066,16 @@ suite('Session Communication', () => {
 
             const olderDiscovery: unknown = await fs.readJson(olderFile);
             const newerDiscovery: unknown = await fs.readJson(newerFile);
-            assert.ok(typeof olderDiscovery === 'object' && olderDiscovery !== null && 'endpoint' in olderDiscovery);
-            assert.ok(typeof newerDiscovery === 'object' && newerDiscovery !== null && 'endpoint' in newerDiscovery);
+            assert.ok(
+                typeof olderDiscovery === 'object' &&
+                    olderDiscovery !== null &&
+                    'endpoint' in olderDiscovery,
+            );
+            assert.ok(
+                typeof newerDiscovery === 'object' &&
+                    newerDiscovery !== null &&
+                    'endpoint' in newerDiscovery,
+            );
             assert.strictEqual(olderDiscovery.endpoint, oldEndpoint);
             assert.strictEqual(newerDiscovery.endpoint, newEndpoint);
         } finally {
@@ -895,21 +1094,23 @@ suite('Session Communication', () => {
                 socket.once('connect', resolve);
                 socket.once('error', reject);
             });
-            socket.write(`${JSON.stringify({
-                jsonrpc: '2.0',
-                method: 'attach',
-                params: {
-                    protocol_version: 1,
-                    session_id: 'stable-session-id',
-                    host: 'remote-compute-node',
-                    sess_version: '3.0.0',
-                    pid,
-                    version: 'R 4.4.0',
-                    info: { version: '4.4.0', command: 'R', start_time: 'now' },
-                    tempdir: '/tmp/session',
-                    wd: '/workspace'
-                }
-            })}\n`);
+            socket.write(
+                `${JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'attach',
+                    params: {
+                        protocol_version: 1,
+                        session_id: 'stable-session-id',
+                        host: 'remote-compute-node',
+                        sess_version: '3.0.0',
+                        pid,
+                        version: 'R 4.4.0',
+                        info: { version: '4.4.0', command: 'R', start_time: 'now' },
+                        tempdir: '/tmp/session',
+                        wd: '/workspace',
+                    },
+                })}\n`,
+            );
         };
 
         try {
@@ -931,11 +1132,19 @@ suite('Session Communication', () => {
             const replacementSession = session.activeSession;
 
             await session.cleanupSession('stable-session-id', originalSession.socket);
-            assert.strictEqual(session.activeSession, replacementSession, 'cleanup from the old socket must not remove the replacement session');
+            assert.strictEqual(
+                session.activeSession,
+                replacementSession,
+                'cleanup from the old socket must not remove the replacement session',
+            );
 
             first.destroy();
-            await new Promise(resolve => setTimeout(resolve, 100));
-            assert.strictEqual(session.activeSession, replacementSession, 'old socket close must not clear the replacement session');
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            assert.strictEqual(
+                session.activeSession,
+                replacementSession,
+                'old socket close must not clear the replacement session',
+            );
 
             const otherSession = net.createConnection(endpoint);
             third = otherSession;
@@ -943,27 +1152,37 @@ suite('Session Communication', () => {
                 otherSession.once('connect', resolve);
                 otherSession.once('error', reject);
             });
-            otherSession.write(`${JSON.stringify({
-                jsonrpc: '2.0',
-                method: 'attach',
-                params: {
-                    protocol_version: 1,
-                    session_id: 'other-session-id',
-                    host: 'other-compute-node',
-                    sess_version: '3.0.0',
-                    pid: 9876,
-                    version: 'R 4.4.0',
-                    info: { version: '4.4.0', command: 'R', start_time: 'now' },
-                    tempdir: '/tmp/other-session',
-                    wd: '/workspace'
-                }
-            })}\n`);
+            otherSession.write(
+                `${JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'attach',
+                    params: {
+                        protocol_version: 1,
+                        session_id: 'other-session-id',
+                        host: 'other-compute-node',
+                        sess_version: '3.0.0',
+                        pid: 9876,
+                        version: 'R 4.4.0',
+                        info: { version: '4.4.0', command: 'R', start_time: 'now' },
+                        tempdir: '/tmp/other-session',
+                        wd: '/workspace',
+                    },
+                })}\n`,
+            );
             await waitFor(() => session.activeSession?.sessionId === 'other-session-id');
-            assert.strictEqual(session.activeSession?.pid, '9876', 'distinct session ids can share an R PID');
+            assert.strictEqual(
+                session.activeSession?.pid,
+                '9876',
+                'distinct session ids can share an R PID',
+            );
 
             second.destroy();
-            await new Promise(resolve => setTimeout(resolve, 100));
-            assert.strictEqual(session.activeSession?.sessionId, 'other-session-id', 'closing a different session must not affect the active session');
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            assert.strictEqual(
+                session.activeSession?.sessionId,
+                'other-session-id',
+                'closing a different session must not affect the active session',
+            );
 
             third.destroy();
             await waitFor(() => !session.activeSession);
@@ -978,21 +1197,24 @@ suite('Session Communication', () => {
         const showError = sandbox.stub(vscode.window, 'showErrorMessage');
         const endpoint = await session.getGlobalPipePath();
         const client = net.createConnection(endpoint);
-        const sendAttach = (sessionId: string) => client.write(`${JSON.stringify({
-            jsonrpc: '2.0',
-            method: 'attach',
-            params: {
-                protocol_version: 1,
-                session_id: sessionId,
-                host: 'remote-compute-node',
-                sess_version: '3.0.0',
-                pid: 1234,
-                version: 'R 4.4.0',
-                info: { version: '4.4.0', command: 'R', start_time: 'now' },
-                tempdir: '/tmp/session',
-                wd: '/workspace'
-            }
-        })}\n`);
+        const sendAttach = (sessionId: string) =>
+            client.write(
+                `${JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'attach',
+                    params: {
+                        protocol_version: 1,
+                        session_id: sessionId,
+                        host: 'remote-compute-node',
+                        sess_version: '3.0.0',
+                        pid: 1234,
+                        version: 'R 4.4.0',
+                        info: { version: '4.4.0', command: 'R', start_time: 'now' },
+                        tempdir: '/tmp/session',
+                        wd: '/workspace',
+                    },
+                })}\n`,
+            );
 
         try {
             await new Promise<void>((resolve, reject) => {
@@ -1027,13 +1249,18 @@ suite('Session Communication', () => {
                 client.once('connect', resolve);
                 client.once('error', reject);
             });
-            client.write(`${JSON.stringify({
-                jsonrpc: '2.0',
-                method: 'attach',
-                params: { protocol_version: 2, session_id: 'future-session' }
-            })}\n`);
+            client.write(
+                `${JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'attach',
+                    params: { protocol_version: 2, session_id: 'future-session' },
+                })}\n`,
+            );
             await waitFor(() => showError.called);
-            assert.match(String(showError.firstCall.args[0]), /unsupported sess protocol version 2/);
+            assert.match(
+                String(showError.firstCall.args[0]),
+                /unsupported sess protocol version 2/,
+            );
             assert.notStrictEqual(session.activeSession?.sessionId, 'future-session');
         } finally {
             client.destroy();
@@ -1049,16 +1276,18 @@ suite('Session Communication', () => {
                 client.once('connect', resolve);
                 client.once('error', reject);
             });
-            client.write(`${JSON.stringify({
-                jsonrpc: '2.0',
-                method: 'attach',
-                params: {
-                    protocol_version: 1,
-                    session_id: 'malformed-session',
-                    tempdir: { path: os.tmpdir() },
-                    wd: os.tmpdir()
-                }
-            })}\n`);
+            client.write(
+                `${JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'attach',
+                    params: {
+                        protocol_version: 1,
+                        session_id: 'malformed-session',
+                        tempdir: { path: os.tmpdir() },
+                        wd: os.tmpdir(),
+                    },
+                })}\n`,
+            );
             await waitFor(() => showError.called);
             assert.match(String(showError.firstCall.args[0]), /missing or invalid session paths/);
             assert.notStrictEqual(session.activeSession?.sessionId, 'malformed-session');

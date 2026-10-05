@@ -1,4 +1,3 @@
-
 import * as vscode from 'vscode';
 import { asViewColumn, config, UriIcon } from '../util';
 import { sessionRequest, globalPipePath } from '../session';
@@ -18,7 +17,10 @@ export class StandardPlotViewer implements PlotViewer {
     private plotFormat: string | undefined;
 
     public async update(): Promise<void> {
-        const viewColumn = asViewColumn(config().get<string>('session.viewers.viewColumn.plot'), vscode.ViewColumn.Two);
+        const viewColumn = asViewColumn(
+            config().get<string>('session.viewers.viewColumn.plot'),
+            vscode.ViewColumn.Two,
+        );
         if (!this.panel) {
             this.createPanel(viewColumn);
         } else {
@@ -47,24 +49,26 @@ export class StandardPlotViewer implements PlotViewer {
             'R Plot',
             {
                 viewColumn,
-                preserveFocus: true
+                preserveFocus: true,
             },
             {
                 enableScripts: true,
-                retainContextWhenHidden: true
-            }
+                retainContextWhenHidden: true,
+            },
         );
 
         this.panel.iconPath = new UriIcon('graph');
         this.panel.webview.html = this.getHtml();
 
-        this.panel.webview.onDidReceiveMessage(async (msg: { type: string, width?: number, height?: number }) => {
-            if (msg.type === 'resize') {
-                this.viewWidth = msg.width || this.viewWidth;
-                this.viewHeight = msg.height || this.viewHeight;
-                await this.requestPlot();
-            }
-        });
+        this.panel.webview.onDidReceiveMessage(
+            async (msg: { type: string; width?: number; height?: number }) => {
+                if (msg.type === 'resize') {
+                    this.viewWidth = msg.width || this.viewWidth;
+                    this.viewHeight = msg.height || this.viewHeight;
+                    await this.requestPlot();
+                }
+            },
+        );
 
         this.panel.onDidDispose(() => {
             this.panel = undefined;
@@ -78,15 +82,15 @@ export class StandardPlotViewer implements PlotViewer {
 
         const format = config().get<string>('plot.format', 'svglite');
         const devArgs = config().get<Record<string, unknown>>('plot.devArgs');
-        const response = await sessionRequest({
+        const response = (await sessionRequest({
             method: 'plot_latest',
             params: {
                 width: this.viewWidth,
                 height: this.viewHeight,
                 format: format,
-                devArgs: devArgs
-            }
-        }) as PlotResponse | undefined;
+                devArgs: devArgs,
+            },
+        })) as PlotResponse | undefined;
 
         if (response?.data) {
             this.plotData = response.data;
@@ -94,7 +98,7 @@ export class StandardPlotViewer implements PlotViewer {
             void this.panel.webview.postMessage({
                 type: 'update',
                 data: this.plotData,
-                format: this.plotFormat
+                format: this.plotFormat,
             });
         }
     }

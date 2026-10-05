@@ -27,7 +27,6 @@ import { RTaskProvider } from './tasks';
 import { showRDebuggerCompatibilityWarningOnce } from './rDebuggerCompatibility';
 import { InteractiveManager } from './interactive/manager';
 
-
 // global objects used in other files
 export const homeExtDir = (): string => util.getDir(path.join(os.homedir(), '.vscode-R'));
 // TODO(4.0): Migrate remaining extension temporary state out of ~/.vscode-R/tmp.
@@ -42,16 +41,22 @@ export let rmdKnitManager: rmarkdown.RMarkdownKnitManager | undefined = undefine
 export let sessionStatusBarItem: vscode.StatusBarItem | undefined = undefined;
 
 // Called (once) when the extension is activated
-export async function activate(context: vscode.ExtensionContext): Promise<apiImplementation.RExtensionImplementation> {
+export async function activate(
+    context: vscode.ExtensionContext,
+): Promise<apiImplementation.RExtensionImplementation> {
     const rDebugger = vscode.extensions.getExtension('RDebugger.r-debugger');
     if (rDebugger) {
-        void showRDebuggerCompatibilityWarningOnce(context.globalState, rDebugger.packageJSON, message =>
-            vscode.window.showWarningMessage(message)
+        void showRDebuggerCompatibilityWarningOnce(
+            context.globalState,
+            rDebugger.packageJSON,
+            (message) => vscode.window.showWarningMessage(message),
         );
     }
 
     if (vscode.extensions.getExtension('mikhail-arkhipov.r')) {
-        void vscode.window.showInformationMessage('The R Tools (Mikhail-Arkhipov.r) extension is enabled and will have conflicts with vscode-R. To use vscode-R, please disable or uninstall the extension.');
+        void vscode.window.showInformationMessage(
+            'The R Tools (Mikhail-Arkhipov.r) extension is enabled and will have conflicts with vscode-R. To use vscode-R, please disable or uninstall the extension.',
+        );
         void vscode.commands.executeCommand('workbench.extensions.search', '@installed R Tools');
     }
 
@@ -72,7 +77,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     rmdPreviewManager = new rmarkdown.RMarkdownPreviewManager();
     rmdKnitManager = new rmarkdown.RMarkdownKnitManager();
 
-
     // register commands specified in package.json
     const commands = {
         // create R terminal
@@ -86,7 +90,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.names': () => rTerminal.runSelectionOrWord(['names']),
         'r.view': () => rTerminal.runSelectionOrWord(['View']),
         'r.runSource': () => rTerminal.runSource(false),
-        'r.runSelection': (code?: string) => code ? rTerminal.runTextInTerm(code) : rTerminal.runSelection(),
+        'r.runSelection': (code?: string) =>
+            code ? rTerminal.runTextInTerm(code) : rTerminal.runSelection(),
         'r.runFromLineToEnd': rTerminal.runFromLineToEnd,
         'r.runFromBeginningToLine': rTerminal.runFromBeginningToLine,
         'r.runSelectionRetainCursor': rTerminal.runSelectionRetainCursor,
@@ -110,15 +115,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.runChunks': rTerminal.runChunksInTerm,
 
         // rmd related
-        'r.knitRmd': () => { void rmdKnitManager?.knitRmd(false, undefined); },
-        'r.knitRmdToPdf': () => { void rmdKnitManager?.knitRmd(false, 'pdf_document'); },
-        'r.knitRmdToHtml': () => { void rmdKnitManager?.knitRmd(false, 'html_document'); },
-        'r.knitRmdToAll': () => { void rmdKnitManager?.knitRmd(false, 'all'); },
+        'r.knitRmd': () => {
+            void rmdKnitManager?.knitRmd(false, undefined);
+        },
+        'r.knitRmdToPdf': () => {
+            void rmdKnitManager?.knitRmd(false, 'pdf_document');
+        },
+        'r.knitRmdToHtml': () => {
+            void rmdKnitManager?.knitRmd(false, 'html_document');
+        },
+        'r.knitRmdToAll': () => {
+            void rmdKnitManager?.knitRmd(false, 'all');
+        },
 
         'r.rmarkdown.newDraft': () => rmarkdown.newDraft(),
         'r.rmarkdown.setKnitDirectory': () => rmdKnitManager?.setKnitDir(),
-        'r.rmarkdown.showPreviewToSide': () => rmdPreviewManager?.previewRmd(vscode.ViewColumn.Beside),
-        'r.rmarkdown.showPreview': (uri: vscode.Uri) => rmdPreviewManager?.previewRmd(vscode.ViewColumn.Active, uri),
+        'r.rmarkdown.showPreviewToSide': () =>
+            rmdPreviewManager?.previewRmd(vscode.ViewColumn.Beside),
+        'r.rmarkdown.showPreview': (uri: vscode.Uri) =>
+            rmdPreviewManager?.previewRmd(vscode.ViewColumn.Active, uri),
         'r.rmarkdown.preview.refresh': () => rmdPreviewManager?.updatePreview(),
         'r.rmarkdown.preview.openExternal': () => void rmdPreviewManager?.openExternalBrowser(),
         'r.rmarkdown.preview.showSource': () => rmdPreviewManager?.showSource(),
@@ -128,7 +143,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // file creation (under file submenu)
         'r.rmarkdown.newFileDraft': () => rmarkdown.newDraft(),
-        'r.newFileDocument': () => vscode.workspace.openTextDocument({language: 'r'}).then((v) => vscode.window.showTextDocument(v)),
+        'r.newFileDocument': () =>
+            vscode.workspace
+                .openTextDocument({ language: 'r' })
+                .then((v) => vscode.window.showTextDocument(v)),
 
         // editor independent commands
         'r.createGitignore': rGitignore.createGitignore,
@@ -137,11 +155,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.loadAll': () => rTerminal.runTextInTerm('devtools::load_all()'),
 
         // environment independent commands. this is a workaround for using the Tasks API: https://github.com/microsoft/vscode/issues/40758
-        'r.build': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build'),
-        'r.buildBinary': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build Binary'),
-        'r.check': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Check'),
-        'r.document': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Document'),
-        'r.install': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Install'),
+        'r.build': () =>
+            vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build'),
+        'r.buildBinary': () =>
+            vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Build Binary'),
+        'r.check': () =>
+            vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Check'),
+        'r.document': () =>
+            vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Document'),
+        'r.install': () =>
+            vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Install'),
         'r.test': () => vscode.commands.executeCommand('workbench.action.tasks.runTask', 'R: Test'),
 
         // interaction with R sessions
@@ -153,8 +176,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
         // workspace viewer
         'r.workspaceViewer.refreshEntry': session.updateWorkspace,
-        'r.workspaceViewer.view': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.viewItem(node),
-        'r.workspaceViewer.remove': (node: workspaceViewer.GlobalEnvItem) => node?.label && workspaceViewer.removeItem(node),
+        'r.workspaceViewer.view': (node: workspaceViewer.GlobalEnvItem) =>
+            node?.label && workspaceViewer.viewItem(node),
+        'r.workspaceViewer.remove': (node: workspaceViewer.GlobalEnvItem) =>
+            node?.label && workspaceViewer.removeItem(node),
         'r.workspaceViewer.clear': workspaceViewer.clearWorkspace,
         'r.workspaceViewer.load': workspaceViewer.loadWorkspace,
         'r.workspaceViewer.save': workspaceViewer.saveWorkspace,
@@ -162,7 +187,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // browser controls
         'r.browser.refresh': session.refreshBrowser,
         'r.browser.openExternal': session.openExternalBrowser,
-        'r.webview.find': () => vscode.commands.executeCommand('editor.action.webvieweditor.showFind'),
+        'r.webview.find': () =>
+            vscode.commands.executeCommand('editor.action.webvieweditor.showFind'),
 
         // (help related commands are registered in rHelp.initializeHelp)
     };
@@ -170,21 +196,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         context.subscriptions.push(vscode.commands.registerCommand(key, value));
     }
 
-
     // keep track of terminals
     context.subscriptions.push(vscode.window.onDidCloseTerminal(rTerminal.deleteTerminal));
-    context.subscriptions.push(vscode.window.onDidOpenTerminal(terminal => {
-        void session.updateTerminalDiscovery(terminal).catch(error => {
-            console.warn('[session discovery] Failed to update terminal discovery file', error);
-        });
-    }));
-    context.subscriptions.push(vscode.window.onDidChangeActiveTerminal(session.switchSessionByTerminal));
+    context.subscriptions.push(
+        vscode.window.onDidOpenTerminal((terminal) => {
+            void session.updateTerminalDiscovery(terminal).catch((error) => {
+                console.warn('[session discovery] Failed to update terminal discovery file', error);
+            });
+        }),
+    );
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveTerminal(session.switchSessionByTerminal),
+    );
 
     // start language service
     if (util.config().get<boolean>('lsp.enabled')) {
         const lsp = vscode.extensions.getExtension('reditorsupport.r-lsp');
         if (lsp) {
-            void vscode.window.showInformationMessage('The R language server extension has been integrated into vscode-R. You need to disable or uninstall REditorSupport.r-lsp and reload window to use the new version.');
+            void vscode.window.showInformationMessage(
+                'The R language server extension has been integrated into vscode-R. You need to disable or uninstall REditorSupport.r-lsp and reload window to use the new version.',
+            );
             void vscode.commands.executeCommand('workbench.extensions.search', '@installed r-lsp');
         } else {
             context.subscriptions.push(new languageService.LanguageService());
@@ -197,12 +228,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         onEnterRules: [
             {
                 // Automatically continue roxygen comments: #'
-                action: { indentAction: vscode.IndentAction.None, appendText: '#\' ' },
+                action: { indentAction: vscode.IndentAction.None, appendText: "#' " },
                 beforeText: /^\s*#'\s*[^\s]/, // matches a non-empty roxygen line
             },
             {
                 // Automatically continue roxygen comments: #'
-                action: { indentAction: vscode.IndentAction.None, appendText: '#\' ' },
+                action: { indentAction: vscode.IndentAction.None, appendText: "#' " },
                 beforeText: /^\s*#'/, // matches any roxygen comment line, even an empty one
                 previousLineText: /^\s*([^#\s].*|#[^'\s].*|#'\s*[^\s].*|)$/, // matches everything but an empty roxygen line
             },
@@ -211,15 +242,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     });
 
     // register terminal-provider
-    context.subscriptions.push(vscode.window.registerTerminalProfileProvider('r.terminal-profile',
-        {
+    context.subscriptions.push(
+        vscode.window.registerTerminalProfileProvider('r.terminal-profile', {
             async provideTerminalProfile() {
                 return {
-                    options: await rTerminal.makeTerminalOptions()
+                    options: await rTerminal.makeTerminalOptions(),
                 };
-            }
-        }
-    ));
+            },
+        }),
+    );
 
     // initialize plot manager
     globalPlotManager = plotViewer.initializePlotManager();
@@ -229,14 +260,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     context.subscriptions.push(new InteractiveManager(context));
 
     // register codelens and completion providers for r markdown and r files
-    vscode.languages.registerCodeLensProvider(['r', 'rmd'], new rmarkdown.RMarkdownCodeLensProvider());
-    vscode.languages.registerCompletionItemProvider('rmd', new rmarkdown.RMarkdownCompletionItemProvider(), ' ', ',');
+    vscode.languages.registerCodeLensProvider(
+        ['r', 'rmd'],
+        new rmarkdown.RMarkdownCodeLensProvider(),
+    );
+    vscode.languages.registerCompletionItemProvider(
+        'rmd',
+        new rmarkdown.RMarkdownCompletionItemProvider(),
+        ' ',
+        ',',
+    );
     vscode.languages.registerFoldingRangeProvider('r', new rmarkdown.RChunkFoldingProvider());
 
     // register (session) hover and completion providers
     vscode.languages.registerHoverProvider(['r', 'rmd'], new completions.HoverProvider());
     vscode.languages.registerHoverProvider(['r', 'rmd'], new completions.HelpLinkHoverProvider());
-    vscode.languages.registerCompletionItemProvider(['r', 'rmd'], new completions.StaticCompletionItemProvider(), '@');
+    vscode.languages.registerCompletionItemProvider(
+        ['r', 'rmd'],
+        new completions.StaticCompletionItemProvider(),
+        '@',
+    );
 
     // register task provider
     const taskProvider = new RTaskProvider();
@@ -248,7 +291,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         session.deploySessionWatcher(context.extensionPath);
         // create status bar item that contains info about the session watcher
         console.info('Create sessionStatusBarItem');
-        sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
+        sessionStatusBarItem = vscode.window.createStatusBarItem(
+            vscode.StatusBarAlignment.Right,
+            1000,
+        );
         sessionStatusBarItem.command = 'r.activateRSession';
         session.resetStatusBar();
         sessionStatusBarItem.show();
@@ -262,17 +308,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         // creates a custom context value for the workspace view
         // only shows view when session watcher is enabled
         rWorkspace = new workspaceViewer.WorkspaceDataProvider();
-
     }
 
-    const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', '\''];
-    context.subscriptions.push(vscode.languages.registerCompletionItemProvider(
-        ['r', 'rmd'], new completions.LiveCompletionItemProvider(), ...liveTriggerCharacters));
+    const liveTriggerCharacters = ['', '[', '(', ',', '$', '@', '"', "'"];
+    context.subscriptions.push(
+        vscode.languages.registerCompletionItemProvider(
+            ['r', 'rmd'],
+            new completions.LiveCompletionItemProvider(),
+            ...liveTriggerCharacters,
+        ),
+    );
     // Lower selector priority lets languageserver retain source-local definitions
     // and package documentation. Fall back to the owning session's live functions.
-    context.subscriptions.push(vscode.languages.registerSignatureHelpProvider('*', new SessionSignatureHelpProvider(), '(', ','));
+    context.subscriptions.push(
+        vscode.languages.registerSignatureHelpProvider(
+            '*',
+            new SessionSignatureHelpProvider(),
+            '(',
+            ',',
+        ),
+    );
 
-    void vscode.commands.executeCommand('setContext', 'r.WorkspaceViewer:show', enableSessionWatcher);
+    void vscode.commands.executeCommand(
+        'setContext',
+        'r.WorkspaceViewer:show',
+        enableSessionWatcher,
+    );
 
     return rExtension;
 }

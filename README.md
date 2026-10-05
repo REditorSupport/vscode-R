@@ -25,28 +25,28 @@ for other changes and upgrade notes.
 
 2. Install the [`languageserver`](https://github.com/REditorSupport/languageserver) package from R.
 
-    ```r
-    install.packages("languageserver")
-    ```
+   ```r
+   install.packages("languageserver")
+   ```
 
 3. Install the stable release of this extension from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=reditorsupport.r) or the [Open VSX Registry](https://open-vsx.org/extension/reditorsupport/r). This release requires VS Code 1.110 or later.
 
-    ```sh
-    code --install-extension REditorSupport.r
-    ```
+   ```sh
+   code --install-extension REditorSupport.r
+   ```
 
-    Alternatively, you can test the latest development version by installing from GitHub:
+   Alternatively, you can test the latest development version by installing from GitHub:
 
     <details>
     <summary>Install the development version</summary>
 
-    The [`latest`](https://github.com/REditorSupport/vscode-R/releases/tag/latest)
-    pre-release is updated after successful verification of a push to `main`. Download and install it:
+   The [`latest`](https://github.com/REditorSupport/vscode-R/releases/tag/latest)
+   pre-release is updated after successful verification of a push to `main`. Download and install it:
 
-    ```sh
-    curl -fsSL -o vscode-R.vsix https://github.com/REditorSupport/vscode-R/releases/download/latest/vscode-R.vsix
-    code --install-extension vscode-R.vsix
-    ```
+   ```sh
+   curl -fsSL -o vscode-R.vsix https://github.com/REditorSupport/vscode-R/releases/download/latest/vscode-R.vsix
+   code --install-extension vscode-R.vsix
+   ```
 
     </details>
 
@@ -56,23 +56,23 @@ for other changes and upgrade notes.
 
 Steps 1–3 above are all that's required to get started with R in VS Code. But we also recommend the following software for a fully optimized R + VS Code experience:
 
-* Install an interactive plotting backend for a better R graphics experience:
-  * [jgd](https://github.com/grantmcdermott/jgd): Lightweight JSON graphics device with native vscode-R integration.
-  * [httpgd](https://github.com/nx10/httpgd): SVG-based graphics device served via HTTP and WebSockets.
+- Install an interactive plotting backend for a better R graphics experience:
+  - [jgd](https://github.com/grantmcdermott/jgd): Lightweight JSON graphics device with native vscode-R integration.
+  - [httpgd](https://github.com/nx10/httpgd): SVG-based graphics device served via HTTP and WebSockets.
 
-* [arf](https://github.com/eitsupi/arf): A modern R console with many features: syntax highlighting, multiline editing, vi/emacs keybindings, R version switching, etc. Successor to [radian](https://github.com/randy3k/radian) written in Rust.
+- [arf](https://github.com/eitsupi/arf): A modern R console with many features: syntax highlighting, multiline editing, vi/emacs keybindings, R version switching, etc. Successor to [radian](https://github.com/randy3k/radian) written in Rust.
 
-* Complementary VS Code extensions:
-  * [Quarto](https://marketplace.visualstudio.com/items?itemName=quarto.quarto): the official Quarto plugin for VS Code.
-  * [VSCode-R-Debugger](https://github.com/ManuelHentschel/VSCode-R-Debugger): enables VS Code's debugging facilities for R scripts.
+- Complementary VS Code extensions:
+  - [Quarto](https://marketplace.visualstudio.com/items?itemName=quarto.quarto): the official Quarto plugin for VS Code.
+  - [VSCode-R-Debugger](https://github.com/ManuelHentschel/VSCode-R-Debugger): enables VS Code's debugging facilities for R scripts.
 
 For example, assuming that you have installed `arf` and `jgd`, your user `settings.json` might include:
 
 ```jsonc
 {
-    "r.consolePath": "arf",
-    "r.bracketedPaste": true,  // recommended for arf (and radian)
-    "r.plot.backend": "jgd"    // "auto" already prefers jgd, then httpgd
+  "r.consolePath": "arf",
+  "r.bracketedPaste": true, // recommended for arf (and radian)
+  "r.plot.backend": "jgd", // "auto" already prefers jgd, then httpgd
 }
 ```
 
@@ -84,56 +84,56 @@ to display static plots in VS Code.
 
 ## Features
 
-* Snippets for R and R Markdown.
+- Snippets for R and R Markdown.
 
-* [R Language Service](https://github.com/REditorSupport/vscode-R/wiki/R-Language-Service): Code completion, function signature, symbol highlight, document outline, formatting, definition, diagnostics, references, and more.
+- [R Language Service](https://github.com/REditorSupport/vscode-R/wiki/R-Language-Service): Code completion, function signature, symbol highlight, document outline, formatting, definition, diagnostics, references, and more.
 
-* [Interacting with R terminals](https://github.com/REditorSupport/vscode-R/wiki/Interacting-with-R-terminals): Sending code to terminals, running multiple terminals, working with remote servers.
+- [Interacting with R terminals](https://github.com/REditorSupport/vscode-R/wiki/Interacting-with-R-terminals): Sending code to terminals, running multiple terminals, working with remote servers.
 
-* [Package development](https://github.com/REditorSupport/vscode-R/wiki/Package-development): Build, test, install, load all and other commands from devtools.
+- [Package development](https://github.com/REditorSupport/vscode-R/wiki/Package-development): Build, test, install, load all and other commands from devtools.
 
-* [Keyboard shortcuts](https://github.com/REditorSupport/vscode-R/wiki/Keyboard-shortcuts): Built-in and customizable keyboard shortcuts.
+- [Keyboard shortcuts](https://github.com/REditorSupport/vscode-R/wiki/Keyboard-shortcuts): Built-in and customizable keyboard shortcuts.
 
-* [Workspace viewer](https://github.com/REditorSupport/vscode-R/wiki/Sidebar-user-interface#workspace-viewer): Environment pane to show global variables in the attached R session.
+- [Workspace viewer](https://github.com/REditorSupport/vscode-R/wiki/Sidebar-user-interface#workspace-viewer): Environment pane to show global variables in the attached R session.
 
-* [Help pages viewer](https://github.com/REditorSupport/vscode-R/wiki/Sidebar-user-interface#help-pages-viewer): Viewing R help pages and searching help topics.
+- [Help pages viewer](https://github.com/REditorSupport/vscode-R/wiki/Sidebar-user-interface#help-pages-viewer): Viewing R help pages and searching help topics.
 
-* [Package management](https://github.com/REditorSupport/vscode-R/wiki/Sidebar-user-interface#package-management): Installing and removing R packages.
+- [Package management](https://github.com/REditorSupport/vscode-R/wiki/Sidebar-user-interface#package-management): Installing and removing R packages.
 
-* Session symbol hover and completion.
+- Session symbol hover and completion.
 
-* [Data viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#data-viewer): Viewing data frames, matrices, Arrow tables, and polars data frames in a paged, sortable, filterable grid; lists in a tree view.
+- [Data viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#data-viewer): Viewing data frames, matrices, Arrow tables, and polars data frames in a paged, sortable, filterable grid; lists in a tree view.
 
-* [Plot viewer](https://github.com/REditorSupport/vscode-R/wiki/Plot-viewer): Interactive plot viewer with support for [jgd](https://github.com/grantmcdermott/jgd) and [httpgd](https://github.com/nx10/httpgd) backends, plus a standard PNG/SVG fallback.
+- [Plot viewer](https://github.com/REditorSupport/vscode-R/wiki/Plot-viewer): Interactive plot viewer with support for [jgd](https://github.com/grantmcdermott/jgd) and [httpgd](https://github.com/nx10/httpgd) backends, plus a standard PNG/SVG fallback.
 
-* [Webpage viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#webpage-viewer): Viewing [htmlwidgets](https://www.htmlwidgets.org) such as interactive graphics and [visual profiling results](https://rstudio.github.io/profvis/).
+- [Webpage viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#webpage-viewer): Viewing [htmlwidgets](https://www.htmlwidgets.org) such as interactive graphics and [visual profiling results](https://rstudio.github.io/profvis/).
 
-* [Browser viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#browser-viewer): Viewing interactive [shiny](https://shiny.rstudio.com) apps.
+- [Browser viewer](https://github.com/REditorSupport/vscode-R/wiki/Interactive-viewers#browser-viewer): Viewing interactive [shiny](https://shiny.rstudio.com) apps.
 
-* [R Markdown support](https://github.com/REditorSupport/vscode-R/wiki/R-Markdown): R Markdown chunk highlighting, chunk navigation, execute commands, and preview.
+- [R Markdown support](https://github.com/REditorSupport/vscode-R/wiki/R-Markdown): R Markdown chunk highlighting, chunk navigation, execute commands, and preview.
 
-* [RStudio add-in support](https://github.com/REditorSupport/vscode-R/wiki/RStudio-addin-support): Run supported RStudio add-ins in VS Code with a live R session.
+- [RStudio add-in support](https://github.com/REditorSupport/vscode-R/wiki/RStudio-addin-support): Run supported RStudio add-ins in VS Code with a live R session.
 
-* Full support of [Remote Development](https://code.visualstudio.com/docs/remote/remote-overview) via [SSH](https://code.visualstudio.com/docs/remote/ssh), [Containers](https://code.visualstudio.com/docs/remote/containers) and [WSL](https://code.visualstudio.com/docs/remote/wsl).
+- Full support of [Remote Development](https://code.visualstudio.com/docs/remote/remote-overview) via [SSH](https://code.visualstudio.com/docs/remote/ssh), [Containers](https://code.visualstudio.com/docs/remote/containers) and [WSL](https://code.visualstudio.com/docs/remote/wsl).
 
 ## Exploring data
 
 Call `View(x)` to open a table. The viewer loads rows on demand and applies column filters and sorting in R across the full table.
 
-* **Columns** searches column names, shows or hides matching columns, and pins columns to either edge. Drag entries to reorder them. Row names stay pinned on the left.
-* **Filters** shows filter inputs below the headers. Press Enter to apply text and number filters; use the filter button for ranges, missing values, or combined conditions. **Clear filters** removes every column filter, including filters on hidden columns. The toolbar shows the matching and total row counts.
-* Columns fit the available width by default and adapt when the viewer is resized. **Size to content** sizes the currently displayed cells, up to 480 pixels, and keeps those widths; **Fit width** switches back to filling the viewer. Manually resized columns retain their widths while the remaining flexible columns share the space. Hover over a cell to see its full value.
-* Repeated `View()` calls for the same object retain the viewer's sizing mode, column layout, sorting, filters, and page size when the column names, order, and types are unchanged. Refreshed data starts on the first page. **Reset view** restores fit-width sizing, the default layout, filters, sorting, and configured page size.
+- **Columns** searches column names, shows or hides matching columns, and pins columns to either edge. Drag entries to reorder them. Row names stay pinned on the left.
+- **Filters** shows filter inputs below the headers. Press Enter to apply text and number filters; use the filter button for ranges, missing values, or combined conditions. **Clear filters** removes every column filter, including filters on hidden columns. The toolbar shows the matching and total row counts.
+- Columns fit the available width by default and adapt when the viewer is resized. **Size to content** sizes the currently displayed cells, up to 480 pixels, and keeps those widths; **Fit width** switches back to filling the viewer. Manually resized columns retain their widths while the remaining flexible columns share the space. Hover over a cell to see its full value.
+- Repeated `View()` calls for the same object retain the viewer's sizing mode, column layout, sorting, filters, and page size when the column names, order, and types are unchanged. Refreshed data starts on the first page. **Reset view** restores fit-width sizing, the default layout, filters, sorting, and configured page size.
 
 ## Questions, bug reports, ideas, and contributions
 
-* If you have a question, need help with setup or troubleshooting, or are unsure whether you have found a bug, please [start a Q&A discussion](https://github.com/REditorSupport/vscode-R/discussions/new?category=q-a).
+- If you have a question, need help with setup or troubleshooting, or are unsure whether you have found a bug, please [start a Q&A discussion](https://github.com/REditorSupport/vscode-R/discussions/new?category=q-a).
 
-* If you have an idea for a new feature or behavior change, please [start an Ideas discussion](https://github.com/REditorSupport/vscode-R/discussions/new?category=ideas).
+- If you have an idea for a new feature or behavior change, please [start an Ideas discussion](https://github.com/REditorSupport/vscode-R/discussions/new?category=ideas).
 
-* If you find a reproducible problem with the extension, please [check the existing issues](https://github.com/REditorSupport/vscode-R/issues) and then [file a bug report](https://github.com/REditorSupport/vscode-R/issues/new/choose).
+- If you find a reproducible problem with the extension, please [check the existing issues](https://github.com/REditorSupport/vscode-R/issues) and then [file a bug report](https://github.com/REditorSupport/vscode-R/issues/new/choose).
 
-* Contributions are always welcome! Please see the [contributing guide](https://github.com/REditorSupport/vscode-R/wiki/Contributing) for more details.
+- Contributions are always welcome! Please see the [contributing guide](https://github.com/REditorSupport/vscode-R/wiki/Contributing) for more details.
 
 ## Persistent R Interactive
 

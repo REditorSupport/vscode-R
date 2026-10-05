@@ -22,11 +22,7 @@
       "type": "shell",
       "problemMatcher": [],
       "command": "code",
-      "args": [
-        "--install-extension",
-        "${workspaceFolderBasename}.vsix",
-        "--force"
-      ],
+      "args": ["--install-extension", "${workspaceFolderBasename}.vsix", "--force"],
       "dependsOn": ["Package Extension"],
       "group": {
         "kind": "build",
@@ -47,7 +43,7 @@
       "args": ["run", "build"],
       "problemMatcher": "$tsc"
     },
-		{
+    {
       "label": "watch",
       "type": "shell",
       "command": "pnpm",
@@ -56,12 +52,10 @@
       // install https://marketplace.visualstudio.com/items?itemName=eamodio.tsl-problem-matcher
       "problemMatcher": ["$ts-webpack-watch"],
       "isBackground": true
-		},
+    },
     {
       "label": "watchAll",
-      "dependsOn": [
-        "watch"
-      ],
+      "dependsOn": ["watch"],
       "problemMatcher": []
     },
     {
@@ -76,7 +70,7 @@
       "group": {
         "kind": "test",
         "isDefault": true
-      },
+      }
     }
   ]
 }

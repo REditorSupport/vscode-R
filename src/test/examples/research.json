@@ -3,118 +3,77 @@
     "id": "import-clean-summarize",
     "source": "R datasets::airquality; CSV import, missing data, duplicate removal, dates and grouped summaries",
     "code": "raw <- transform(airquality, station = rep(c(\"Station α\", \"Station β\", \"Station γ\"), length.out = nrow(airquality)))\nwrite.csv(rbind(raw, raw[1:3, ]), \"airquality-raw.csv\", row.names = FALSE, fileEncoding = \"UTF-8\")\nimported <- read.csv(\"airquality-raw.csv\", fileEncoding = \"UTF-8\")\nstopifnot(nrow(imported) == 156)\nclean <- unique(imported)\nclean$date <- as.Date(sprintf(\"1973-%02d-%02d\", clean$Month, clean$Day))\nstopifnot(nrow(clean) == 153, sum(is.na(clean$Ozone)) == 37, length(unique(clean$date)) == 153)\nmissingness <- data.frame(variable = names(clean), missing = colSums(is.na(clean)))\nmissingness\naggregate(cbind(Temp, Wind) ~ station, clean, mean)\nstopifnot(all.equal(clean$Temp, airquality$Temp), all.equal(clean$Wind, airquality$Wind))",
-    "kinds": [
-      "table"
-    ]
+    "kinds": ["table"]
   },
   {
     "id": "wrangle-join-reshape",
     "source": "data.table using built-in iris: grouping, joins, long/wide reshape and Unicode labels",
     "code": "library(data.table)\nd <- as.data.table(iris)\nd[, id := .I]\nlookup <- data.table(Species = unique(d$Species), group_label = c(\"Group α\", \"Group β\", \"Group γ\"))\njoined <- merge(d, lookup, by = \"Species\", sort = FALSE)\nlong <- melt(joined, id.vars = c(\"id\", \"Species\", \"group_label\"), variable.name = \"measurement\")\nwide <- dcast(long, id + Species + group_label ~ measurement)\nstopifnot(nrow(joined) == 150, nrow(long) == 600, nrow(wide) == 150, !anyNA(wide))\nwide\njoined[, .(n = .N, mean_sepal = mean(Sepal.Length), sd_sepal = sd(Sepal.Length)), by = Species]",
-    "kinds": [
-      "table"
-    ]
+    "kinds": ["table"]
   },
   {
     "id": "tidy-grouped-analysis",
     "source": "dplyr and tidyr using datasets::ChickWeight",
     "code": "library(dplyr)\nlibrary(tidyr)\nsummaries <- ChickWeight |>\n  group_by(Diet, Time) |>\n  summarise(n = n(), mean_weight = mean(weight), se = sd(weight) / sqrt(n()), .groups = \"drop\")\nwide <- summaries |> select(Diet, Time, mean_weight) |> pivot_wider(names_from = Diet, values_from = mean_weight)\nstopifnot(nrow(summaries) == 48, nrow(wide) == 12, sum(summaries$n) == nrow(ChickWeight))\nsummaries\nwide",
-    "kinds": [
-      "table"
-    ]
+    "kinds": ["table"]
   },
   {
     "id": "descriptive-inference",
     "source": "stats::t.test, stats::chisq.test and summary statistics on built-in datasets",
     "code": "summary(iris)\nquantile(mtcars$mpg, probs = c(.025, .25, .5, .75, .975))\ntab <- table(mtcars$cyl, mtcars$am)\ntab\nprop.table(tab, margin = 1)\ntest <- t.test(mpg ~ am, data = mtcars)\nstopifnot(test$p.value > 0, test$p.value < .01, all(is.finite(test$conf.int)))\ntest\nsuppressWarnings(chisq.test(tab))",
-    "kinds": [
-      "table"
-    ],
-    "textIncludes": [
-      "Welch Two Sample t-test",
-      "Pearson's Chi-squared test",
-      "confidence interval"
-    ]
+    "kinds": ["table"],
+    "textIncludes": ["Welch Two Sample t-test", "Pearson's Chi-squared test", "confidence interval"]
   },
   {
     "id": "linear-model-inference",
     "source": "stats::lm, summary.lm, anova.lm, confint and predict",
     "code": "fit <- lm(mpg ~ wt + factor(cyl), data = mtcars)\nsummary(fit)\nintervals <- confint(fit)\nintervals\nanova(fit)\nnew <- data.frame(wt = c(2, 3, 4), cyl = c(4, 6, 8))\npredictions <- cbind(new, predict(fit, new, interval = \"prediction\"))\npredictions\nstopifnot(abs(coef(fit)[[\"wt\"]] + 3.205613256) < 1e-7, all(predictions$lwr < predictions$fit), all(predictions$fit < predictions$upr))",
-    "kinds": [
-      "table"
-    ],
-    "textIncludes": [
-      "Coefficients:",
-      "Residual standard error:",
-      "Multiple R-squared:"
-    ]
+    "kinds": ["table"],
+    "textIncludes": ["Coefficients:", "Residual standard error:", "Multiple R-squared:"]
   },
   {
     "id": "glm-classification",
     "source": "stats::glm, fitted probabilities, Wald intervals and confusion tables",
     "code": "fit <- glm(am ~ wt + hp, data = mtcars, family = binomial())\nsummary(fit)\nstopifnot(fit$converged, all(fitted(fit) > 0 & fitted(fit) < 1))\nexp(cbind(odds_ratio = coef(fit), confint.default(fit)))\nclassification <- table(observed = mtcars$am, predicted = as.integer(fitted(fit) > .5))\nclassification\nstopifnot(sum(diag(classification)) / sum(classification) > .85)",
-    "kinds": [
-      "table"
-    ],
-    "textIncludes": [
-      "Coefficients:",
-      "Null deviance:",
-      "AIC:"
-    ]
+    "kinds": ["table"],
+    "textIncludes": ["Coefficients:", "Null deviance:", "AIC:"]
   },
   {
     "id": "resampling-reproducibility",
     "source": "Reproducible bootstrap with intervening Interactive data inspection",
     "code": "set.seed(2026)\nexpected <- replicate(300, mean(sample(mtcars$mpg, replace = TRUE)))\nset.seed(2026)\nhead(mtcars)\nactual <- replicate(300, mean(sample(mtcars$mpg, replace = TRUE)))\nstopifnot(identical(expected, actual))\nresult <- data.frame(estimate = mean(mtcars$mpg), lower = unname(quantile(actual, .025)), upper = unname(quantile(actual, .975)))\nresult\nhist(actual, breaks = 20, main = \"Bootstrap means: reproducible after inspection\", xlab = \"Mean mpg\")\nabline(v = result[c(\"lower\", \"upper\")], col = \"red\", lty = 2)",
-    "kinds": [
-      "table",
-      "plot"
-    ]
+    "kinds": ["table", "plot"]
   },
   {
     "id": "regression-diagnostic-pages",
     "source": "stats::plot.lm diagnostic plots across multiple pages",
     "code": "fit <- lm(mpg ~ wt + hp, mtcars)\npar(mfrow = c(2, 2))\nplot(fit, which = 1:6, ask = FALSE)\nstopifnot(length(residuals(fit)) == nrow(mtcars))",
-    "kinds": [
-      "plot"
-    ],
+    "kinds": ["plot"],
     "plotPages": 2
   },
   {
     "id": "grouped-visualization",
     "source": "ggplot2 faceted distributions, fitted trends and confidence ribbons",
     "code": "library(ggplot2)\nggplot(iris, aes(Sepal.Length, Petal.Length, colour = Species)) +\n  geom_point(alpha = .6) + geom_smooth(method = \"lm\", formula = y ~ x) +\n  facet_wrap(~ Species) + theme_minimal() +\n  labs(title = \"Species-specific trends\", subtitle = \"Linear fits with 95% confidence bands\")",
-    "kinds": [
-      "plot"
-    ]
+    "kinds": ["plot"]
   },
   {
     "id": "survival-model",
     "source": "survival::coxph and survival::survfit with built-in lung data",
     "code": "library(survival)\nfit <- coxph(Surv(time, status) ~ age + sex, data = lung)\nsummary(fit)\nstopifnot(all(is.finite(coef(fit))))\nexp(cbind(hazard_ratio = coef(fit), confint(fit)))\ncurves <- survfit(Surv(time, status) ~ sex, data = lung)\nplot(curves, col = c(\"steelblue\", \"tomato\"), xlab = \"Days\", ylab = \"Survival probability\", main = \"Kaplan-Meier survival\")\nlegend(\"topright\", legend = c(\"Male\", \"Female\"), col = c(\"steelblue\", \"tomato\"), lty = 1)",
-    "kinds": [
-      "table",
-      "plot"
-    ],
-    "textIncludes": [
-      "Concordance=",
-      "Likelihood ratio test="
-    ]
+    "kinds": ["table", "plot"],
+    "textIncludes": ["Concordance=", "Likelihood ratio test="]
   },
   {
     "id": "data-model-file-output",
     "source": "Base R CSV/gzip/RDS round trips plus SVG/PDF plot export",
     "code": "output <- data.frame(id = sprintf(\"%04d\", 1:3), label = c(\"α, beta\", \"line\\nbreak\", \"quote \\\"value\\\"\"), value = c(pi, NA_real_, 1/3))\nwrite.csv(output, \"research-results.csv\", row.names = FALSE, fileEncoding = \"UTF-8\")\ncon <- gzfile(\"research-results.csv.gz\", \"wt\")\nwrite.csv(output, con, row.names = FALSE)\nclose(con)\nrestored <- read.csv(\"research-results.csv.gz\", colClasses = c(\"character\", \"character\", \"numeric\"))\nstopifnot(identical(output$id, restored$id), identical(output$label, restored$label), isTRUE(all.equal(output$value, restored$value)))\nfit <- lm(mpg ~ wt, mtcars)\nsaveRDS(list(data = output, model = fit, metadata = sessionInfo()), \"research-model.rds\")\nstopifnot(identical(coef(readRDS(\"research-model.rds\")$model), coef(fit)))\npdf(\"research-model.pdf\"); plot(mtcars$wt, mtcars$mpg); abline(fit); dev.off()\nsvglite::svglite(\"research-model.svg\"); plot(mtcars$wt, mtcars$mpg); abline(fit); dev.off()\nstopifnot(all(file.info(c(\"research-model.pdf\", \"research-model.svg\"))$size > 1000))\noutput",
-    "kinds": [
-      "table"
-    ]
+    "kinds": ["table"]
   },
   {
     "id": "large-data-research",
     "source": "data.table: responsive previews and grouped aggregation over 100,000 rows",
     "code": "library(data.table)\nd <- data.table(id = seq_len(100000), group = rep(letters[1:10], 10000), value = rnorm(100000))\nd\nresult <- d[, .(n = .N, mean = mean(value), sd = sd(value)), by = group]\nstopifnot(nrow(result) == 10, all(result$n == 10000), sum(result$n) == nrow(d))\nresult",
-    "kinds": [
-      "table"
-    ]
+    "kinds": ["table"]
   }
 ]

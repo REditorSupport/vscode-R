@@ -3,12 +3,12 @@
   "options": {
     "typeAware": true,
     "denyWarnings": true,
-    "reportUnusedDisableDirectives": "error"
+    "reportUnusedDisableDirectives": "error",
   },
   "rules": {
     "eqeqeq": "error",
     "curly": "warn",
-    "no-empty": ["warn", { "allowEmptyCatch": true }]
+    "no-empty": ["warn", { "allowEmptyCatch": true }],
   },
   "overrides": [
     {
@@ -26,9 +26,9 @@
           "error",
           {
             "checksVoidReturn": {
-              "inheritedMethods": false
-            }
-          }
+              "inheritedMethods": false,
+            },
+          },
         ],
         "typescript/no-unsafe-argument": "error",
         "typescript/no-unsafe-assignment": "error",
@@ -38,8 +38,8 @@
         "typescript/require-await": "error",
         "typescript/restrict-plus-operands": "error",
         "typescript/restrict-template-expressions": "error",
-        "typescript/unbound-method": "error"
-      }
-    }
-  ]
+        "typescript/unbound-method": "error",
+      },
+    },
+  ],
 }

@@ -1,4 +1,3 @@
-
 // declaration of the api exported by the extension
 // implemented in apiImplementation.ts
 // used e.g. by vscode-r-debugger to show the help panel from within debug sessions

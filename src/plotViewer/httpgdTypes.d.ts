@@ -1,5 +1,3 @@
-
-
 import { Httpgd } from 'httpgd';
 import { HttpgdPlotId } from 'httpgd/lib/types';
 import * as vscode from 'vscode';
@@ -9,7 +7,6 @@ import { PreviewPlotLayout } from './webviewMessages';
 export type MaybePromise<T> = T | Promise<T>;
 
 export interface HttpgdPlot<T> {
-
     // unique ID for this plot (w.r.t. this connection/device)
     id: HttpgdPlotId;
 
@@ -31,7 +28,7 @@ export interface HttpgdViewerOptions {
     htmlRoot: string;
     stripStyles?: boolean;
     fullWindow?: boolean;
-    previewPlotLayout?: PreviewPlotLayout,
+    previewPlotLayout?: PreviewPlotLayout;
     resizeTimeoutLength?: number;
     refreshTimeoutLength?: number;
 }
@@ -58,7 +55,6 @@ export class IHttpgdViewer {
     // constructor called by the session watcher if a corresponding function was called in R
     // creates a new api instance itself
     constructor(options: HttpgdViewerOptions);
-
 
     // Methods to interact with the webview
     // Can e.g. be called by vscode commands + menu items:

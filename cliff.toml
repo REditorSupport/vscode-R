@@ -59,18 +59,18 @@ postprocessors = []
 conventional_commits = false
 split_commits = false
 commit_parsers = [
-    { message = "(?i)^feat\\b", group = "Features" },
-    { message = "(?i)^fix\\b", group = "Bug Fixes" },
-    { message = "(?i)^docs\\b", group = "Documentation" },
-    { message = "(?i)^perf\\b", group = "Performance" },
-    { message = "(?i)^refactor\\b", group = "Refactor" },
-    { message = "(?i)^style\\b", group = "Styling" },
-    { message = "(?i)^test\\b", group = "Testing" },
-    { message = "(?i)^(chore|bump to|Merge branch)\\b", skip = true },
-    { body = ".*", group = "Other" },
+  { message = "(?i)^feat\\b", group = "Features" },
+  { message = "(?i)^fix\\b", group = "Bug Fixes" },
+  { message = "(?i)^docs\\b", group = "Documentation" },
+  { message = "(?i)^perf\\b", group = "Performance" },
+  { message = "(?i)^refactor\\b", group = "Refactor" },
+  { message = "(?i)^style\\b", group = "Styling" },
+  { message = "(?i)^test\\b", group = "Testing" },
+  { message = "(?i)^(chore|bump to|Merge branch)\\b", skip = true },
+  { body = ".*", group = "Other" },
 ]
 link_parsers = [
-    { pattern = "(?i)\\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved) #(\\d+)", href = "https://github.com/REditorSupport/vscode-R/issues/$1" },
+  { pattern = "(?i)\\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved) #(\\d+)", href = "https://github.com/REditorSupport/vscode-R/issues/$1" },
 ]
 filter_commits = true
 topo_order = false

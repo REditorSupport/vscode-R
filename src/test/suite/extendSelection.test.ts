@@ -12,7 +12,6 @@ import { extendSelection } from '../../selection';
 
 // Defines a Mocha test suite to group tests of similar kind together
 suite('extendSelection Tests', () => {
-
     test('Selecting multi-line {} bracketed expression', () => {
         const doc = `
         function (x) {
@@ -20,7 +19,9 @@ suite('extendSelection Tests', () => {
             y
         }
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 4);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
@@ -36,7 +37,9 @@ suite('extendSelection Tests', () => {
         a = list(x = 1,
             y = 2)
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -49,7 +52,9 @@ suite('extendSelection Tests', () => {
             y = 2,
             z = 3)
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -63,7 +68,9 @@ suite('extendSelection Tests', () => {
         1 + 1 %>%
             print()
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -76,7 +83,9 @@ suite('extendSelection Tests', () => {
 
             print()
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -91,7 +100,9 @@ suite('extendSelection Tests', () => {
             sum() %>%
             print()
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -108,7 +119,9 @@ suite('extendSelection Tests', () => {
             )
         )
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 5);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -128,7 +141,9 @@ suite('extendSelection Tests', () => {
                 2
             )}
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 4);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -148,7 +163,9 @@ suite('extendSelection Tests', () => {
                 2
             )
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 6);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
@@ -171,7 +188,9 @@ suite('extendSelection Tests', () => {
                 2
             )
         `.split('\n');
-        function f2(i: number) {return (doc2[i]); }
+        function f2(i: number) {
+            return doc2[i];
+        }
         assert.strictEqual(extendSelection(1, f2, doc2.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f2, doc2.length).endLine, 7);
         assert.strictEqual(extendSelection(2, f2, doc2.length).startLine, 2);
@@ -208,7 +227,9 @@ suite('extendSelection Tests', () => {
                                  # 16. RStudio sends lines 16-17; vscode-R sends 1-17
         }                        # 17. RStudio sends lines 1-17; vscode-R sends 1-17
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 17);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
@@ -253,7 +274,9 @@ suite('extendSelection Tests', () => {
                 2
             )
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
@@ -271,7 +294,9 @@ suite('extendSelection Tests', () => {
             c(
                 2
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 1);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
@@ -284,7 +309,9 @@ suite('extendSelection Tests', () => {
                 2
 
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 1);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
@@ -298,7 +325,9 @@ suite('extendSelection Tests', () => {
                 2
             )
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
@@ -311,7 +340,9 @@ suite('extendSelection Tests', () => {
                 2
             )
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -327,7 +358,9 @@ suite('extendSelection Tests', () => {
             )
 
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -351,7 +384,9 @@ suite('extendSelection Tests', () => {
                     ), ID = '2'))
                 )), data = data.frame(id = c(1,2))
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 1);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
     });
@@ -363,7 +398,9 @@ suite('extendSelection Tests', () => {
                 # }
             }
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 4);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 2);
@@ -379,7 +416,9 @@ suite('extendSelection Tests', () => {
         a[1
             ]
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -391,7 +430,9 @@ suite('extendSelection Tests', () => {
         ggplot(aes(speed, dist), data = cars) +
             geom_point()
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -405,7 +446,9 @@ suite('extendSelection Tests', () => {
             z = 3) %>%
             print()
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 4);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -428,7 +471,9 @@ suite('extendSelection Tests', () => {
             }                 # 8. RStudio and vscode-R send lines 1-9
         )                     # 9. RStudio and vscode-R send lines 1-9
         `.split('\n');
-        function f(i: number) {return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 9);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -454,7 +499,9 @@ suite('extendSelection Tests', () => {
         "hello"
         a + b
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
     });
@@ -464,7 +511,9 @@ suite('extendSelection Tests', () => {
         'hello'
         a + b
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
     });
@@ -474,7 +523,9 @@ suite('extendSelection Tests', () => {
         \`hello\`
         a + b
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 1);
     });
@@ -485,7 +536,9 @@ suite('extendSelection Tests', () => {
             paste0("[[", i)
         })
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
         assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
@@ -499,7 +552,9 @@ suite('extendSelection Tests', () => {
         3
         )
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 4);
         assert.strictEqual(extendSelection(4, f, doc.length).startLine, 0);
@@ -512,7 +567,9 @@ suite('extendSelection Tests', () => {
             x[i]
         }
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
         assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
@@ -525,7 +582,9 @@ suite('extendSelection Tests', () => {
             paste0('"', i)
         })
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
         assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
@@ -538,7 +597,9 @@ suite('extendSelection Tests', () => {
             y = "[") %>%
             print()
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -553,7 +614,9 @@ suite('extendSelection Tests', () => {
             paste0("\\"", i)
         })
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
         assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
@@ -566,7 +629,9 @@ suite('extendSelection Tests', () => {
         hello\\""
         )
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 3);
         assert.strictEqual(extendSelection(3, f, doc.length).startLine, 0);
@@ -581,7 +646,9 @@ suite('extendSelection Tests', () => {
             \`[[\` is also a function"
         )
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 5);
         assert.strictEqual(extendSelection(5, f, doc.length).startLine, 0);
@@ -593,7 +660,9 @@ suite('extendSelection Tests', () => {
         \`hello\\\`\` +
             1
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -608,7 +677,9 @@ suite('extendSelection Tests', () => {
         paste("'") %>%
         print() # } #
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 5);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -621,7 +692,9 @@ suite('extendSelection Tests', () => {
             print('a') # %>%
         print("hi there")
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -636,7 +709,9 @@ suite('extendSelection Tests', () => {
             print('a"inner comment"') # %>%
         print("hi there")
         `.split('\n');
-        function f(i: number) { return (doc[i]); }
+        function f(i: number) {
+            return doc[i];
+        }
         assert.strictEqual(extendSelection(1, f, doc.length).startLine, 0);
         assert.strictEqual(extendSelection(1, f, doc.length).endLine, 2);
         assert.strictEqual(extendSelection(2, f, doc.length).startLine, 0);
@@ -644,5 +719,4 @@ suite('extendSelection Tests', () => {
         assert.strictEqual(extendSelection(3, f, doc.length).startLine, 3);
         assert.strictEqual(extendSelection(3, f, doc.length).endLine, 3);
     });
-
 });

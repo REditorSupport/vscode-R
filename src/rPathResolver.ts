@@ -14,7 +14,7 @@ export interface PathVariables {
 export interface ExecutableResolution {
     path?: string;
     setting?: string;
-    quote?: '"' | '\'';
+    quote?: '"' | "'";
 }
 
 export interface RPathResolverDependencies {
@@ -42,13 +42,13 @@ export interface SystemRResolverDependencies {
 }
 
 export function createRPathResolverDependencies<Resource>(
-    options: RPathResolverAdapterOptions<Resource>
+    options: RPathResolverAdapterOptions<Resource>,
 ): RPathResolverDependencies {
     const currentConfig = options.getConfiguration(options.resource);
     return {
-        getSetting: setting => currentConfig.get(setting),
+        getSetting: (setting) => currentConfig.get(setting),
         inspectSetting: currentConfig.inspect?.bind(currentConfig),
-        substituteVariables: value => options.substituteVariables(value, options.resource),
+        substituteVariables: (value) => options.substituteVariables(value, options.resource),
         findExecutable: options.findExecutable,
         pathExists: options.pathExists,
         getSystemR: options.getSystemR,
@@ -79,7 +79,7 @@ export function substitutePathVariables(value: string, variables: PathVariables)
 export function selectWorkspaceFolder<T>(
     workspaceFolders: readonly T[] | undefined,
     activeFileWorkspaceFolder: T | undefined,
-    resourceWorkspaceFolder?: T
+    resourceWorkspaceFolder?: T,
 ): T | undefined {
     if (resourceWorkspaceFolder) {
         return resourceWorkspaceFolder;
@@ -97,7 +97,7 @@ export function findExecutableOnPath(
     executableName: string,
     platform: NodeJS.Platform,
     pathValue: string | undefined,
-    exists: (value: string) => boolean
+    exists: (value: string) => boolean,
 ): string | undefined {
     const pathImplementation = platform === 'win32' ? path.win32 : path.posix;
     const delimiter = platform === 'win32' ? ';' : ':';
@@ -112,7 +112,9 @@ export function findExecutableOnPath(
     return undefined;
 }
 
-export async function resolveSystemR(dependencies: SystemRResolverDependencies): Promise<string | undefined> {
+export async function resolveSystemR(
+    dependencies: SystemRResolverDependencies,
+): Promise<string | undefined> {
     const fromPath = dependencies.findExecutable('R');
     if (fromPath) {
         return fromPath;
@@ -129,24 +131,29 @@ export async function resolveSystemR(dependencies: SystemRResolverDependencies):
 
 export async function resolveBackgroundR(
     dependencies: RPathResolverDependencies,
-    legacySetting: string
+    legacySetting: string,
 ): Promise<ExecutableResolution> {
-    return resolveMigratedExecutable(dependencies, rExecutablePathSetting, legacySetting)
-        ?? { path: await dependencies.getSystemR() };
+    return (
+        resolveMigratedExecutable(dependencies, rExecutablePathSetting, legacySetting) ?? {
+            path: await dependencies.getSystemR(),
+        }
+    );
 }
 
 export async function resolveConsoleR(
     dependencies: RPathResolverDependencies,
-    legacySetting: string
+    legacySetting: string,
 ): Promise<ExecutableResolution> {
-    return resolveMigratedExecutable(dependencies, rConsolePathSetting, legacySetting)
-        ?? resolveWithFallback([rExecutablePathSetting], dependencies);
+    return (
+        resolveMigratedExecutable(dependencies, rConsolePathSetting, legacySetting) ??
+        resolveWithFallback([rExecutablePathSetting], dependencies)
+    );
 }
 
 function resolveMigratedExecutable(
     dependencies: RPathResolverDependencies,
     canonicalKey: string,
-    legacyKey: string
+    legacyKey: string,
 ): ConfiguredExecutableResolution | undefined {
     const configured = getMigratedSetting<string>(
         {
@@ -155,22 +162,24 @@ function resolveMigratedExecutable(
         },
         canonicalKey,
         legacyKey,
-        value => Boolean(removeWrappingQuotes(value.trim()).value)
+        (value) => Boolean(removeWrappingQuotes(value.trim()).value),
     );
-    return configured && resolveConfiguredExecutable(configured.key, dependencies, configured.value);
+    return (
+        configured && resolveConfiguredExecutable(configured.key, dependencies, configured.value)
+    );
 }
 
 export function formatRPath(
     resolution: ExecutableResolution,
     quote: boolean,
-    platform: NodeJS.Platform
+    platform: NodeJS.Platform,
 ): string | undefined {
     if (!resolution.path || !quote) {
         return resolution.path;
     }
 
     if (resolution.quote) {
-        if (platform === 'win32' && resolution.quote === '\'' && resolution.path.includes(' ')) {
+        if (platform === 'win32' && resolution.quote === "'" && resolution.path.includes(' ')) {
             return `"${resolution.path}"`;
         }
         return `${resolution.quote}${resolution.path}${resolution.quote}`;
@@ -181,7 +190,7 @@ export function formatRPath(
 
 async function resolveWithFallback(
     settings: readonly string[],
-    dependencies: RPathResolverDependencies
+    dependencies: RPathResolverDependencies,
 ): Promise<ExecutableResolution> {
     for (const setting of settings) {
         const configured = resolveConfiguredExecutable(setting, dependencies);
@@ -196,7 +205,7 @@ async function resolveWithFallback(
 function resolveConfiguredExecutable(
     setting: string,
     dependencies: RPathResolverDependencies,
-    rawValue = dependencies.getSetting(setting)
+    rawValue = dependencies.getSetting(setting),
 ): ConfiguredExecutableResolution | undefined {
     if (!rawValue?.trim()) {
         return undefined;
@@ -210,15 +219,17 @@ function resolveConfiguredExecutable(
 
     const resolvedPath = isExecutableName(value)
         ? dependencies.findExecutable(value)
-        : dependencies.pathExists(value) ? value : undefined;
+        : dependencies.pathExists(value)
+          ? value
+          : undefined;
 
     return { path: resolvedPath, setting, quote };
 }
 
-function removeWrappingQuotes(value: string): { value: string; quote?: '"' | '\'' } {
+function removeWrappingQuotes(value: string): { value: string; quote?: '"' | "'" } {
     if (value.length >= 2) {
         const first = value[0];
-        if ((first === '"' || first === '\'') && value.at(-1) === first) {
+        if ((first === '"' || first === "'") && value.at(-1) === first) {
             return { value: value.slice(1, -1), quote: first };
         }
     }

@@ -21,10 +21,14 @@ const manifest = JSON.parse(fs.readFileSync(path.join(extensionRoot, 'package.js
         menus: Record<string, MenuItem[]>;
     };
 };
-const plotCommands = manifest.contributes.commands.filter(item => item.command.startsWith('r.plot.'));
-const toolbarCommands = new Set(manifest.contributes.menus['editor/title']
-    .flatMap(item => [item.command, item.alt])
-    .filter((command): command is string => !!command?.startsWith('r.plot.')));
+const plotCommands = manifest.contributes.commands.filter((item) =>
+    item.command.startsWith('r.plot.'),
+);
+const toolbarCommands = new Set(
+    manifest.contributes.menus['editor/title']
+        .flatMap((item) => [item.command, item.alt])
+        .filter((command): command is string => !!command?.startsWith('r.plot.')),
+);
 
 suite('Contextual plot commands', () => {
     test('contextual plot commands are hidden while Show Viewers remains discoverable', () => {
@@ -33,21 +37,33 @@ suite('Contextual plot commands', () => {
             if (command === 'r.plot.showViewers') {
                 continue;
             }
-            const entries = manifest.contributes.menus.commandPalette.filter(item => item.command === command);
+            const entries = manifest.contributes.menus.commandPalette.filter(
+                (item) => item.command === command,
+            );
             assert.ok(entries.length > 0, `${command} needs a Command Palette rule`);
-            assert.ok(entries.every(item => item.when === 'false'), `${command} must remain contextual`);
+            assert.ok(
+                entries.every((item) => item.when === 'false'),
+                `${command} must remain contextual`,
+            );
         }
         for (const command of toolbarCommands) {
-            assert.ok(plotCommands.some(item => item.command === command), `${command} needs a contribution`);
+            assert.ok(
+                plotCommands.some((item) => item.command === command),
+                `${command} needs a contribution`,
+            );
         }
-        const showViewers = plotCommands.find(item => item.command === 'r.plot.showViewers');
+        const showViewers = plotCommands.find((item) => item.command === 'r.plot.showViewers');
         assert.deepStrictEqual(showViewers, {
             title: 'Show Viewers',
             category: 'R Plot',
             command: 'r.plot.showViewers',
-            icon: '$(versions)'
+            icon: '$(versions)',
         });
-        assert.ok(!manifest.contributes.menus.commandPalette.some(item => item.command === 'r.plot.showViewers'));
+        assert.ok(
+            !manifest.contributes.menus.commandPalette.some(
+                (item) => item.command === 'r.plot.showViewers',
+            ),
+        );
     });
 
     test('plot commands remain registered and route to the appropriate viewers', () => {
@@ -62,7 +78,10 @@ suite('Contextual plot commands', () => {
             sandbox.stub(manager.jgdManager, 'start');
             sandbox.stub(manager.jgdManager, 'getEnvVars').returns({});
             const showJgdViewer = sandbox.stub();
-            const jgdViewer = { show: showJgdViewer, handleCommand: sandbox.stub() } as unknown as JgdViewer;
+            const jgdViewer = {
+                show: showJgdViewer,
+                handleCommand: sandbox.stub(),
+            } as unknown as JgdViewer;
             sandbox.stub(manager.jgdManager, 'getViewer').returns(jgdViewer);
             const viewer = sandbox.createStubInstance(HttpgdViewer);
             Object.defineProperty(viewer, 'host', { value: 'localhost:1234' });
@@ -75,7 +94,7 @@ suite('Contextual plot commands', () => {
             manager.initialize();
 
             const invoke = (command: string, ...args: unknown[]) => {
-                const registration = register.getCalls().find(call => call.args[0] === command);
+                const registration = register.getCalls().find((call) => call.args[0] === command);
                 assert.ok(registration, `${command} must remain registered`);
                 (registration.args[1] as (...args: unknown[]) => void)(...args);
             };
@@ -86,7 +105,9 @@ suite('Contextual plot commands', () => {
                     sinon.assert.calledOnce(openUrl);
                 } else {
                     assert.strictEqual(viewer.handleCommand.callCount, 1);
-                    assert.deepStrictEqual(viewer.handleCommand.firstCall.args, [command.slice('r.plot.'.length)]);
+                    assert.deepStrictEqual(viewer.handleCommand.firstCall.args, [
+                        command.slice('r.plot.'.length),
+                    ]);
                 }
             }
             for (const command of ['showIndex', 'hidePlot']) {

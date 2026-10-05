@@ -138,9 +138,17 @@ export class JgdSocketServer {
             // Place the socket in a private 0o700 directory so other local
             // users cannot connect to it (mirrors the IPC pipe handling in #1705).
             this.socketDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jgd-'));
-            try { fs.chmodSync(this.socketDir, 0o700); } catch { /* ignore */ }
+            try {
+                fs.chmodSync(this.socketDir, 0o700);
+            } catch {
+                /* ignore */
+            }
             this.socketPath = path.join(this.socketDir, `${token}.sock`);
-            try { fs.unlinkSync(this.socketPath); } catch { /* ignore */ }
+            try {
+                fs.unlinkSync(this.socketPath);
+            } catch {
+                /* ignore */
+            }
 
             this.server.listen(this.socketPath, () => {
                 console.log('jgd: socket server listening at', this.socketPath);
@@ -166,9 +174,17 @@ export class JgdSocketServer {
         this.sessions.clear();
         this.server?.close();
         if (!isWindows) {
-            try { fs.unlinkSync(this.socketPath); } catch { /* ignore */ }
+            try {
+                fs.unlinkSync(this.socketPath);
+            } catch {
+                /* ignore */
+            }
             if (this.socketDir) {
-                try { fs.rmSync(this.socketDir, { recursive: true, force: true }); } catch { /* ignore */ }
+                try {
+                    fs.rmSync(this.socketDir, { recursive: true, force: true });
+                } catch {
+                    /* ignore */
+                }
                 this.socketDir = '';
             }
         }
@@ -179,8 +195,14 @@ export class JgdSocketServer {
         // Metrics requests omit DPI. Use JGD's default until a frame announces
         // the device's resolution, then keep it specific to this connection.
         const session: RSession = {
-            id: sessionId, socket, buffer: '', welcomeSent: false,
-            lastResizeW: 0, lastResizeH: 0, lastResizeHadPlotIndex: false, dpi: 96
+            id: sessionId,
+            socket,
+            buffer: '',
+            welcomeSent: false,
+            lastResizeW: 0,
+            lastResizeH: 0,
+            lastResizeHadPlotIndex: false,
+            dpi: 96,
         };
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange();
@@ -209,7 +231,13 @@ export class JgdSocketServer {
                     if (dims) {
                         session.lastResizeW = dims.width;
                         session.lastResizeH = dims.height;
-                        socket.write(JSON.stringify({ type: 'resize', width: dims.width, height: dims.height }) + '\n');
+                        socket.write(
+                            JSON.stringify({
+                                type: 'resize',
+                                width: dims.width,
+                                height: dims.height,
+                            }) + '\n',
+                        );
                     }
                 }
 
@@ -236,23 +264,43 @@ export class JgdSocketServer {
                 case 'frame': {
                     const plot = msg.plot;
                     if (plot) {
-                        if (Number.isFinite(plot.device?.dpi) && plot.device.dpi > 0) { session.dpi = plot.device.dpi; }
+                        if (Number.isFinite(plot.device?.dpi) && plot.device.dpi > 0) {
+                            session.dpi = plot.device.dpi;
+                        }
                         plot.sessionId = session.id;
                         plot.frameExt = msg.ext ?? null;
 
                         const isResizeReplay = !!msg.resizeReplay;
-                        const plotIndex = (typeof msg.plotIndex === 'number' && Number.isFinite(msg.plotIndex)) ? msg.plotIndex : undefined;
+                        const plotIndex =
+                            typeof msg.plotIndex === 'number' && Number.isFinite(msg.plotIndex)
+                                ? msg.plotIndex
+                                : undefined;
 
                         let accepted = true;
                         if (isResizeReplay && plotIndex !== undefined) {
-                            accepted = this.history.replaceAtIndex(session.id, plotIndex, plot as PlotFrame);
+                            accepted = this.history.replaceAtIndex(
+                                session.id,
+                                plotIndex,
+                                plot as PlotFrame,
+                            );
                         } else if (isResizeReplay) {
-                            const plotNumber = (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) ? msg.plotNumber : undefined;
-                            accepted = this.history.replaceLatest(session.id, plot as PlotFrame, plotNumber);
+                            const plotNumber =
+                                typeof msg.plotNumber === 'number' &&
+                                Number.isFinite(msg.plotNumber)
+                                    ? msg.plotNumber
+                                    : undefined;
+                            accepted = this.history.replaceLatest(
+                                session.id,
+                                plot as PlotFrame,
+                                plotNumber,
+                            );
                         } else if (msg.incremental) {
                             accepted = this.history.appendOps(session.id, plot as PlotFrame);
                         } else if (msg.newPage) {
-                            if (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) {
+                            if (
+                                typeof msg.plotNumber === 'number' &&
+                                Number.isFinite(msg.plotNumber)
+                            ) {
                                 plot.rIndex = msg.plotNumber;
                             }
                             this.history.addPlot(session.id, plot as PlotFrame);
@@ -268,12 +316,14 @@ export class JgdSocketServer {
 
                 case 'metrics_request':
                     if (this.measureTextFn) {
-                        void this.measureTextFn(msg, session.dpi).then((response: unknown) => {
-                            const resp = JSON.stringify(response) + '\n';
-                            session.socket.write(resp);
-                        }).catch((error: unknown) => {
-                            console.warn('jgd font measurement failed:', error);
-                        });
+                        void this.measureTextFn(msg, session.dpi)
+                            .then((response: unknown) => {
+                                const resp = JSON.stringify(response) + '\n';
+                                session.socket.write(resp);
+                            })
+                            .catch((error: unknown) => {
+                                console.warn('jgd font measurement failed:', error);
+                            });
                     }
                     break;
 

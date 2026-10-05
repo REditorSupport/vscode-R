@@ -9,30 +9,50 @@ export interface RuntimeMetadata {
     rPath?: string;
     libraryPaths?: string[];
 }
-export type InspectionMethod = 'workspace' | 'workspace_children' | 'hover' | 'completion' |
-    'dataview_init' | 'dataview_page' | 'dataview_dispose';
-export interface InspectionRequest { method: InspectionMethod; params: Record<string, unknown>; timeout?: number }
-export interface InputReply { value: string }
-export interface ClientReply { result?: unknown; error?: string }
-export interface ResizePlotRequest { device: string; plot: number; width: number; height: number }
+export type InspectionMethod =
+    | 'workspace'
+    | 'workspace_children'
+    | 'hover'
+    | 'completion'
+    | 'dataview_init'
+    | 'dataview_page'
+    | 'dataview_dispose';
+export interface InspectionRequest {
+    method: InspectionMethod;
+    params: Record<string, unknown>;
+    timeout?: number;
+}
+export interface InputReply {
+    value: string;
+}
+export interface ClientReply {
+    result?: unknown;
+    error?: string;
+}
+export interface ResizePlotRequest {
+    device: string;
+    plot: number;
+    width: number;
+    height: number;
+}
 
 /** Decoded application events; no provider sockets, wire packets or RPC identifiers. */
 export type BackendEvent = (
-    { type: 'ready'; metadata: RuntimeMetadata; capabilities: BackendCapabilities } |
-    { type: 'metadata'; metadata: RuntimeMetadata } |
-    { type: 'started' } |
-    { type: 'finished'; state: 'success' | 'error' | 'interrupted' } |
-    { type: 'stream'; text: string; channel: string; external?: boolean } |
-    { type: 'condition' | 'input' | 'display'; data: Record<string, unknown> } |
-    { type: 'workspaceChanged' } |
-    { type: 'notification' | 'viewer'; method: string; params: Record<string, unknown> } |
-    { type: 'clientRequest'; id: string; method: string; params: unknown } |
-    { type: 'clientRequestExpired'; id: string } |
-    { type: 'external'; code: string; success: boolean } |
-    { type: 'warning' | 'error' | 'truncated'; message: string } |
-    { type: 'provider'; data: Record<string, unknown> } |
-    { type: 'unavailable'; message: string } |
-    { type: 'exit'; code?: number | null; signal?: string | null }
+    | { type: 'ready'; metadata: RuntimeMetadata; capabilities: BackendCapabilities }
+    | { type: 'metadata'; metadata: RuntimeMetadata }
+    | { type: 'started' }
+    | { type: 'finished'; state: 'success' | 'error' | 'interrupted' }
+    | { type: 'stream'; text: string; channel: string; external?: boolean }
+    | { type: 'condition' | 'input' | 'display'; data: Record<string, unknown> }
+    | { type: 'workspaceChanged' }
+    | { type: 'notification' | 'viewer'; method: string; params: Record<string, unknown> }
+    | { type: 'clientRequest'; id: string; method: string; params: unknown }
+    | { type: 'clientRequestExpired'; id: string }
+    | { type: 'external'; code: string; success: boolean }
+    | { type: 'warning' | 'error' | 'truncated'; message: string }
+    | { type: 'provider'; data: Record<string, unknown> }
+    | { type: 'unavailable'; message: string }
+    | { type: 'exit'; code?: number | null; signal?: string | null }
 ) & { executionId?: string };
 
 export interface SessionBackend {
@@ -56,7 +76,17 @@ export interface SessionBackend {
 export type BackendFactory = (settings: AgentSettings) => SessionBackend;
 
 export function inspectionMethod(value: unknown): InspectionMethod {
-    if (!['workspace', 'workspace_children', 'hover', 'completion', 'dataview_init', 'dataview_page', 'dataview_dispose'].includes(String(value))) {
+    if (
+        ![
+            'workspace',
+            'workspace_children',
+            'hover',
+            'completion',
+            'dataview_init',
+            'dataview_page',
+            'dataview_dispose',
+        ].includes(String(value))
+    ) {
         throw new Error('Unsupported inspection method');
     }
     return value as InspectionMethod;

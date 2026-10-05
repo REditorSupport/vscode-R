@@ -1,18 +1,18 @@
-
 /* General styling */
 body {
   font-size: var(--vscode-editor-font-size);
 }
 
-body table:nth-child(1)[width="100%"] td:nth-child(2){
+body table:nth-child(1)[width='100%'] td:nth-child(2) {
   display: none;
 }
 
-body table:nth-child(1)[width="100%"] td:nth-child(1){
+body table:nth-child(1)[width='100%'] td:nth-child(1) {
   text-align: right;
 }
 
-h1, h2 {
+h1,
+h2 {
   text-align: center;
   margin-block-end: 0;
 }
@@ -46,7 +46,8 @@ a ~ div.header {
 }
 
 /* Styling for clickable code sections */
-pre, code {
+pre,
+code {
   font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);
 }
@@ -66,7 +67,7 @@ pre, code {
 
 /* Syntax highlighting in code sections */
 .hljs-link {
-  color: var(--vscode-textLink-foreground)
+  color: var(--vscode-textLink-foreground);
 }
 
 .vscode-light {
@@ -78,43 +79,42 @@ pre, code {
   --rhelp-function: #2074b1;
 }
 
-.vscode-dark, 
+.vscode-dark,
 .vscode-high-contrast {
   --rhelp-number: #b5cea8;
-  --rhelp-string: #CE9178;
-  --rhelp-symbol: #4EC9B0;
+  --rhelp-string: #ce9178;
+  --rhelp-symbol: #4ec9b0;
   --rhelp-keyword: #569cd6;
-  --rhelp-comment: #6A9955;
-  --rhelp-function: #DCDCAA;
+  --rhelp-comment: #6a9955;
+  --rhelp-function: #dcdcaa;
 }
 
 .hljs-number {
-  color: var(--rhelp-number)
+  color: var(--rhelp-number);
 }
 
 .hljs-regexp,
 .hljs-bullet,
 .hljs-string {
-  color: var(--rhelp-string)
+  color: var(--rhelp-string);
 }
 
 .hljs-symbol,
 .hljs-class {
-  color: var(--rhelp-symbol)
+  color: var(--rhelp-symbol);
 }
 
 .hljs-literal,
 .hljs-keyword {
-  color: var(--rhelp-keyword)
+  color: var(--rhelp-keyword);
 }
 
 .hljs-built_in,
 .hljs-function {
-  color: var(--rhelp-function)
+  color: var(--rhelp-function);
 }
 
 .hljs-quote,
 .hljs-comment {
-  color: var(--rhelp-comment)
+  color: var(--rhelp-comment);
 }
-

@@ -15,7 +15,8 @@ export async function createLintrConfig(): Promise<string | undefined> {
     if (existsSync(lintrFilePath)) {
         const overwrite = await window.showWarningMessage(
             '".lintr" file already exists. Do you want to overwrite?',
-            'Yes', 'No'
+            'Yes',
+            'No',
         );
         if (overwrite === 'No') {
             return;

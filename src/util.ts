@@ -41,13 +41,20 @@ export function substituteVariables(str: string, resource?: vscode.Uri): string 
 }
 
 function getRfromEnvPath(platform: string, executableName: string = 'R') {
-    return findExecutableOnPath(executableName, platform as NodeJS.Platform, process.env.PATH, fs.existsSync) ?? '';
+    return (
+        findExecutableOnPath(
+            executableName,
+            platform as NodeJS.Platform,
+            process.env.PATH,
+            fs.existsSync,
+        ) ?? ''
+    );
 }
 
 export async function getRpathFromSystem(): Promise<string> {
     const rpath = await resolveSystemR({
         platform: process.platform,
-        findExecutable: name => getRfromEnvPath(process.platform, name) || undefined,
+        findExecutable: (name) => getRfromEnvPath(process.platform, name) || undefined,
         getWindowsInstallPath: async () => {
             try {
                 const key = new winreg({
@@ -55,7 +62,8 @@ export async function getRpathFromSystem(): Promise<string> {
                     key: '\\Software\\R-Core\\R',
                 });
                 const item: winreg.RegistryItem = await new Promise((c, e) =>
-                    key.get('InstallPath', (err, result) => err === null ? c(result) : e(err)));
+                    key.get('InstallPath', (err, result) => (err === null ? c(result) : e(err))),
+                );
                 return item.value;
             } catch {
                 return undefined;
@@ -66,29 +74,25 @@ export async function getRpathFromSystem(): Promise<string> {
 }
 
 export function getRPathConfigEntry(term: boolean = false): string {
-    const trunc = (term ? 'rterm' : 'rpath');
-    const platform = (
-        process.platform === 'win32' ? 'windows' :
-            process.platform === 'darwin' ? 'mac' :
-                'linux'
-    );
+    const trunc = term ? 'rterm' : 'rpath';
+    const platform =
+        process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'mac' : 'linux';
     return `${trunc}.${platform}`;
 }
 
-export async function getRpath(
-    quote = false,
-    resource?: vscode.Uri
-): Promise<string | undefined> {
+export async function getRpath(quote = false, resource?: vscode.Uri): Promise<string | undefined> {
     const configEntry = getRPathConfigEntry();
     const resolution = await resolveBackgroundR(
         getRPathResolverDependencies(resource),
-        configEntry
+        configEntry,
     );
     const rpath = formatRPath(resolution, quote, process.platform);
 
     if (!rpath) {
         // inform user about missing R path:
-        void vscode.window.showErrorMessage(`Cannot find R to use for help, package installation etc. Change setting r.${rExecutablePathSetting} to an R executable.`);
+        void vscode.window.showErrorMessage(
+            `Cannot find R to use for help, package installation etc. Change setting r.${rExecutablePathSetting} to an R executable.`,
+        );
     }
 
     return rpath;
@@ -104,9 +108,13 @@ export async function getRterm(resource?: vscode.Uri): Promise<string | undefine
     }
 
     if (resolution.setting) {
-        void vscode.window.showErrorMessage(`Cannot find the R console executable configured by r.${resolution.setting}. Check the r.${resolution.setting} setting.`);
+        void vscode.window.showErrorMessage(
+            `Cannot find the R console executable configured by r.${resolution.setting}. Check the r.${resolution.setting} setting.`,
+        );
     } else {
-        void vscode.window.showErrorMessage(`Cannot find an R console executable. Configure r.${rConsolePathSetting}, r.${getRPathConfigEntry(true)}, or r.${rExecutablePathSetting}.`);
+        void vscode.window.showErrorMessage(
+            `Cannot find an R console executable. Configure r.${rConsolePathSetting}, r.${getRPathConfigEntry(true)}, or r.${rExecutablePathSetting}.`,
+        );
     }
     return undefined;
 }
@@ -116,7 +124,7 @@ function getRPathResolverDependencies(resource?: vscode.Uri) {
         resource,
         getConfiguration: config,
         substituteVariables,
-        findExecutable: name => getRfromEnvPath(process.platform, name) || undefined,
+        findExecutable: (name) => getRfromEnvPath(process.platform, name) || undefined,
         pathExists: fs.existsSync,
         getSystemR: getRpathFromSystem,
     });
@@ -127,8 +135,10 @@ export function ToRStringLiteral(s: string, quote: string): string {
         return 'NULL';
     }
 
-    return (quote +
-        s.replace(/\\/g, '\\\\')
+    return (
+        quote +
+        s
+            .replace(/\\/g, '\\\\')
             .replace(/"""/g, `\\${quote}`)
             .replace(/\\n/g, '\\n')
             .replace(/\\r/g, '\\r')
@@ -137,7 +147,8 @@ export function ToRStringLiteral(s: string, quote: string): string {
             .replace(/\\a/g, '\\a')
             .replace(/\\f/g, '\\f')
             .replace(/\\v/g, '\\v') +
-        quote);
+        quote
+    );
 }
 
 export async function delay(ms: number): Promise<unknown> {
@@ -159,30 +170,43 @@ function getActiveFileWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
     }
 }
 
-export function getCurrentWorkspaceFolder(resource?: vscode.Uri): vscode.WorkspaceFolder | undefined {
+export function getCurrentWorkspaceFolder(
+    resource?: vscode.Uri,
+): vscode.WorkspaceFolder | undefined {
     const workspaceFolders = vscode.workspace.workspaceFolders;
-    const resourceWorkspaceFolder = resource ? vscode.workspace.getWorkspaceFolder(resource) : undefined;
-    const activeFileWorkspaceFolder = !resourceWorkspaceFolder && workspaceFolders && workspaceFolders.length > 1
-        ? getActiveFileWorkspaceFolder()
+    const resourceWorkspaceFolder = resource
+        ? vscode.workspace.getWorkspaceFolder(resource)
         : undefined;
-    return selectWorkspaceFolder(workspaceFolders, activeFileWorkspaceFolder, resourceWorkspaceFolder);
+    const activeFileWorkspaceFolder =
+        !resourceWorkspaceFolder && workspaceFolders && workspaceFolders.length > 1
+            ? getActiveFileWorkspaceFolder()
+            : undefined;
+    return selectWorkspaceFolder(
+        workspaceFolders,
+        activeFileWorkspaceFolder,
+        resourceWorkspaceFolder,
+    );
 }
 
 export function readContent(file: PathLike | number): Promise<Buffer> | undefined;
 export function readContent(file: PathLike | number, encoding: string): Promise<string> | undefined;
-export function readContent(file: PathLike | number, encoding?: string): Promise<string | Buffer> | undefined {
+export function readContent(
+    file: PathLike | number,
+    encoding?: string,
+): Promise<string | Buffer> | undefined {
     return encoding === undefined ? readFile(file) : readFile(file, encoding);
 }
 
-
 export async function saveDocument(document: vscode.TextDocument): Promise<boolean> {
     if (document.isUntitled) {
-        void vscode.window.showErrorMessage('Document is unsaved. Please save and retry running R command.');
+        void vscode.window.showErrorMessage(
+            'Document is unsaved. Please save and retry running R command.',
+        );
 
         return false;
     }
 
-    const isSaved: boolean = document.isDirty ? (await document.save()) : true;
+    const isSaved: boolean = document.isDirty ? await document.save() : true;
     if (!isSaved) {
         void vscode.window.showErrorMessage('Cannot run R command: document could not be saved.');
     }
@@ -192,19 +216,23 @@ export async function saveDocument(document: vscode.TextDocument): Promise<boole
 
 // shows a quick pick asking the user for confirmation
 // returns true if the user confirms, false if they cancel or dismiss the quickpick
-export async function getConfirmation(prompt: string, confirmation?: string, detail?: string): Promise<boolean> {
+export async function getConfirmation(
+    prompt: string,
+    confirmation?: string,
+    detail?: string,
+): Promise<boolean> {
     confirmation ||= 'Yes';
     const items: vscode.QuickPickItem[] = [
         {
             label: confirmation,
-            detail: detail
+            detail: detail,
         },
         {
-            label: 'Cancel'
-        }
+            label: 'Cancel',
+        },
     ];
     const answer = await vscode.window.showQuickPick(items, {
-        placeHolder: prompt
+        placeHolder: prompt,
     });
     return answer === items[0];
 }
@@ -212,29 +240,42 @@ export async function getConfirmation(prompt: string, confirmation?: string, det
 // executes a given command as shell task
 // is more transparent than background processes without littering the integrated terminals
 // is not intended for actual user interaction
-export async function executeAsTask(name: string, process: string, args?: string[], asProcess?: true, cwd?: string): Promise<void>;
-export async function executeAsTask(name: string, command: string, args?: string[], asProcess?: false, cwd?: string): Promise<void>;
-export async function executeAsTask(name: string, cmdOrProcess: string, args?: string[], asProcess: boolean = false, cwd?: string): Promise<void> {
+export async function executeAsTask(
+    name: string,
+    process: string,
+    args?: string[],
+    asProcess?: true,
+    cwd?: string,
+): Promise<void>;
+export async function executeAsTask(
+    name: string,
+    command: string,
+    args?: string[],
+    asProcess?: false,
+    cwd?: string,
+): Promise<void>;
+export async function executeAsTask(
+    name: string,
+    cmdOrProcess: string,
+    args?: string[],
+    asProcess: boolean = false,
+    cwd?: string,
+): Promise<void> {
     let taskDefinition: vscode.TaskDefinition;
     let taskExecution: vscode.ShellExecution | vscode.ProcessExecution;
-    if(asProcess){
-        taskDefinition = { type: 'process'};
-        taskExecution = new vscode.ProcessExecution(
-            cmdOrProcess,
-            args ?? [],
-            { cwd }
-        );
+    if (asProcess) {
+        taskDefinition = { type: 'process' };
+        taskExecution = new vscode.ProcessExecution(cmdOrProcess, args ?? [], { cwd });
     } else {
         taskDefinition = { type: 'shell' };
-        const quotedArgs = args && args.map<vscode.ShellQuotedString>(arg => { return { value: arg, quoting: vscode.ShellQuoting.Weak }; });
-        taskExecution = quotedArgs ? new vscode.ShellExecution(
-            cmdOrProcess,
-            quotedArgs,
-            { cwd }
-        ) : new vscode.ShellExecution(
-            cmdOrProcess,
-            { cwd }
-        );
+        const quotedArgs =
+            args &&
+            args.map<vscode.ShellQuotedString>((arg) => {
+                return { value: arg, quoting: vscode.ShellQuoting.Weak };
+            });
+        taskExecution = quotedArgs
+            ? new vscode.ShellExecution(cmdOrProcess, quotedArgs, { cwd })
+            : new vscode.ShellExecution(cmdOrProcess, { cwd });
     }
     const task = new vscode.Task(
         taskDefinition,
@@ -242,12 +283,12 @@ export async function executeAsTask(name: string, cmdOrProcess: string, args?: s
         name,
         'R',
         taskExecution,
-        []
+        [],
     );
     const taskExecutionRunning = await vscode.tasks.executeTask(task);
 
     const taskDonePromise = new Promise<void>((resolve) => {
-        const subscription = vscode.tasks.onDidEndTask(e => {
+        const subscription = vscode.tasks.onDidEndTask((e) => {
             if (e.execution === taskExecutionRunning) {
                 subscription.dispose();
                 resolve();
@@ -261,18 +302,28 @@ export async function executeAsTask(name: string, cmdOrProcess: string, args?: s
 // executes a callback and shows a 'busy' progress bar during the execution
 // synchronous callbacks are converted to async to properly render the progress bar
 // default location is in the help pages tree view
-export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, progress?: vscode.Progress<{ message?: string; increment?: number }>) => T | Promise<T>, location: (string | vscode.ProgressLocation) = vscode.ProgressLocation.Window, title?: string, cancellable?: boolean): Promise<T> {
-    const location2 = (typeof location === 'string' ? { viewId: location } : location);
+export async function doWithProgress<T>(
+    cb: (
+        token?: vscode.CancellationToken,
+        progress?: vscode.Progress<{ message?: string; increment?: number }>,
+    ) => T | Promise<T>,
+    location: string | vscode.ProgressLocation = vscode.ProgressLocation.Window,
+    title?: string,
+    cancellable?: boolean,
+): Promise<T> {
+    const location2 = typeof location === 'string' ? { viewId: location } : location;
     const options: vscode.ProgressOptions = {
         location: location2,
         cancellable: cancellable ?? false,
-        title: title
+        title: title,
     };
     return await vscode.window.withProgress(options, async (progress, token) => {
-        return await new Promise<T>((resolve) => setTimeout(() => {
-            const ret = cb(token, progress);
-            resolve(ret);
-        }));
+        return await new Promise<T>((resolve) =>
+            setTimeout(() => {
+                const ret = cb(token, progress);
+                resolve(ret);
+            }),
+        );
     });
 }
 
@@ -283,7 +334,7 @@ export async function doWithProgress<T>(cb: (token?: vscode.CancellationToken, p
 export async function getCranUrl(path: string = '', cwd?: string | URL): Promise<string> {
     const defaultCranUrl = 'https://cran.r-project.org/';
     // get cran URL from R. Returns empty string if option is not set.
-    const baseUrl = await executeRCommand('cat(getOption(\'repos\')[\'CRAN\'])', cwd);
+    const baseUrl = await executeRCommand("cat(getOption('repos')['CRAN'])", cwd);
     let url: string;
     try {
         url = new URL(path, baseUrl).toString();
@@ -297,35 +348,48 @@ export async function getRVersion(cwd?: string | URL): Promise<string | undefine
     return await executeRCommand('cat(as.character(getRversion()))', cwd);
 }
 
-export async function getRPackageVersion(name: string, cwd?: string | URL): Promise<string | undefined> {
-    const result = await executeRCommand(`cat(if (requireNamespace('${name}', quietly = TRUE)) as.character(utils::packageVersion('${name}')) else '')`, cwd);
+export async function getRPackageVersion(
+    name: string,
+    cwd?: string | URL,
+): Promise<string | undefined> {
+    const result = await executeRCommand(
+        `cat(if (requireNamespace('${name}', quietly = TRUE)) as.character(utils::packageVersion('${name}')) else '')`,
+        cwd,
+    );
     return result || undefined;
 }
 
 export function readSessSourceRevision(description: string | undefined): string | undefined {
-    const revision = description?.match(/^Config\/vscode-R\/source-revision:[ \t]*(\S+)[ \t]*\r?$/m)?.[1];
-    return revision && /^git-tree:(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision) ? revision : undefined;
+    const revision = description?.match(
+        /^Config\/vscode-R\/source-revision:[ \t]*(\S+)[ \t]*\r?$/m,
+    )?.[1];
+    return revision && /^git-tree:(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision)
+        ? revision
+        : undefined;
 }
 
-export async function getInstalledSessSourceRevision(cwd?: string | URL): Promise<string | undefined> {
+export async function getInstalledSessSourceRevision(
+    cwd?: string | URL,
+): Promise<string | undefined> {
     const helper = extensionContext.asAbsolutePath(path.join('R', 'sess_source.R'));
     // Use single quotes so this -e expression also works with Windows R.exe.
-    const helperLiteral = `'${helper.replace(/\\/g, '/').replace(/'/g, '\\\'')}'`;
+    const helperLiteral = `'${helper.replace(/\\/g, '/').replace(/'/g, "\\'")}'`;
     // Keep the -e argument on one line for the Windows R.exe launcher.
     const command = [
         'local({',
         `source(${helperLiteral}, local = TRUE);`,
         'revision <- sess_installed_source_revision();',
         'if (!is.null(revision)) cat(revision)',
-        '})'
+        '})',
     ].join(' ');
     const result = await executeRCommand(command, cwd);
     return result || undefined;
 }
 
 export function getRLibPaths(): string | undefined {
-    return config().get<string[]>('libPaths')
-        ?.map(value => substituteVariables(value))
+    return config()
+        .get<string[]>('libPaths')
+        ?.map((value) => substituteVariables(value))
         .join('\n');
 }
 
@@ -336,7 +400,11 @@ export function getRLibPaths(): string | undefined {
 // WARNING: Cannot handle double quotes in the R command! (e.g. `print("hello world")`)
 // Single quotes are ok.
 //
-export async function executeRCommand(rCommand: string, cwd?: string | URL, fallback?: string | ((e: Error) => string)): Promise<string | undefined> {
+export async function executeRCommand(
+    rCommand: string,
+    cwd?: string | URL,
+    fallback?: string | ((e: Error) => string),
+): Promise<string | undefined> {
     const resource = resourceFromCwd(cwd);
     const rPath = await getRpath(false, resource);
     if (!rPath) {
@@ -353,9 +421,12 @@ export async function executeRCommand(rCommand: string, cwd?: string | URL, fall
         '--no-echo',
         '--no-save',
         '--no-restore',
-        '-e', `cat('${lim}')`,
-        '-e', rCommand,
-        '-e', `cat('${lim}')`
+        '-e',
+        `cat('${lim}')`,
+        '-e',
+        rCommand,
+        '-e',
+        `cat('${lim}')`,
     ];
 
     let ret: string | undefined = undefined;
@@ -373,7 +444,7 @@ export async function executeRCommand(rCommand: string, cwd?: string | URL, fall
         ret = match[1];
     } catch (e) {
         if (fallback) {
-            ret = (typeof fallback === 'function' ? fallback(catchAsError(e)) : fallback);
+            ret = typeof fallback === 'function' ? fallback(catchAsError(e)) : fallback;
         } else {
             console.warn(e);
         }
@@ -392,11 +463,10 @@ function resourceFromCwd(cwd?: string | URL | vscode.Uri): vscode.Uri | undefine
     return typeof cwd === 'string' ? vscode.Uri.file(cwd) : vscode.Uri.parse(cwd.toString());
 }
 
-
 // This class is a wrapper around Map<string, any> that implements vscode.Memento
 // Can be used in place of vscode.ExtensionContext.globalState or .workspaceState when no caching is desired
 export class DummyMemento implements vscode.Memento {
-    items = new Map<string, any>()
+    items = new Map<string, any>();
     public get<T>(key: string, defaultValue?: T): T | undefined {
         if (this.items.has(key)) {
             return <T>this.items.get(key) || defaultValue;
@@ -415,21 +485,21 @@ export class DummyMemento implements vscode.Memento {
 }
 
 export async function setContext(key: string, value: any): Promise<void> {
-    await vscode.commands.executeCommand(
-        'setContext', key, value
-    );
+    await vscode.commands.executeCommand('setContext', key, value);
 }
 
 // Helper function used to convert raw text files to html
 export function escapeHtml(source: string): string {
-    const entityMap = new Map<string, string>(Object.entries({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        '\'': '&#39;',
-        '/': '&#x2F;'
-    }));
+    const entityMap = new Map<string, string>(
+        Object.entries({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;',
+            '/': '&#x2F;',
+        }),
+    );
     return String(source).replace(/[&<>"'/]/g, (s: string) => entityMap.get(s) || '');
 }
 
@@ -462,7 +532,10 @@ export class UriIcon {
  * @param {Function} disposeFunction - the method called when the object is disposed
  * @returns returned object is considered types T and vscode.Disposable
  */
-export function asDisposable<T>(toDispose: T, disposeFunction: (...args: unknown[]) => unknown): T & vscode.Disposable {
+export function asDisposable<T>(
+    toDispose: T,
+    disposeFunction: (...args: unknown[]) => unknown,
+): T & vscode.Disposable {
     type disposeType = T & vscode.Disposable;
     (toDispose as disposeType).dispose = () => disposeFunction();
     extensionContext.subscriptions.push(toDispose as disposeType);
@@ -470,7 +543,12 @@ export function asDisposable<T>(toDispose: T, disposeFunction: (...args: unknown
 }
 
 export type DisposableProcess = cp.ChildProcessWithoutNullStreams & vscode.Disposable;
-export function spawn(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): DisposableProcess {
+export function spawn(
+    command: string,
+    args?: ReadonlyArray<string>,
+    options?: cp.CommonOptions,
+    onDisposed?: () => unknown,
+): DisposableProcess {
     const proc = cp.spawn(command, args, options);
     console.log(proc.pid ? `Process ${proc.pid} spawned` : 'Process failed to spawn');
     let running = true;
@@ -498,9 +576,13 @@ export function spawn(command: string, args?: ReadonlyArray<string>, options?: c
     return disposable;
 }
 
-export async function spawnAsync(command: string, args?: ReadonlyArray<string>, options?: cp.CommonOptions, onDisposed?: () => unknown): Promise<cp.SpawnSyncReturns<string>> {
+export async function spawnAsync(
+    command: string,
+    args?: ReadonlyArray<string>,
+    options?: cp.CommonOptions,
+    onDisposed?: () => unknown,
+): Promise<cp.SpawnSyncReturns<string>> {
     return new Promise((resolve) => {
-
         const result: cp.SpawnSyncReturns<string> = {
             error: undefined,
             pid: -1,
@@ -508,7 +590,7 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
             stdout: '',
             stderr: '',
             status: null,
-            signal: null
+            signal: null,
         };
 
         try {
@@ -531,7 +613,7 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
                 resolve(result);
             });
         } catch (e) {
-            result.error = (e instanceof Error) ? e : undefined;
+            result.error = e instanceof Error ? e : undefined;
             resolve(result);
         }
     });
@@ -543,7 +625,13 @@ export async function spawnAsync(command: string, args?: ReadonlyArray<string>, 
  * @param name the R package name to ask user to install
  * @returns a boolean Promise
  */
-export async function promptToInstallRPackage(name: string, section: string, cwd: string | URL, installMsg?: string, postInstallMsg?: string): Promise<void> {
+export async function promptToInstallRPackage(
+    name: string,
+    section: string,
+    cwd: string | URL,
+    installMsg?: string,
+    postInstallMsg?: string,
+): Promise<void> {
     const resource = resourceFromCwd(cwd);
     const _config = config();
     const prompt = _config.get<boolean>(section);
@@ -553,7 +641,8 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
     if (installMsg === undefined) {
         installMsg = `R package {${name}} is not installed. Do you want to install it?`;
     }
-    await vscode.window.showErrorMessage(installMsg, 'Yes', 'No', 'Never ask again')
+    await vscode.window
+        .showErrorMessage(installMsg, 'Yes', 'No', 'Never ask again')
         .then(async function (select) {
             if (select === 'Yes') {
                 const repo = await getCranUrl('', cwd);
@@ -562,7 +651,14 @@ export async function promptToInstallRPackage(name: string, section: string, cwd
                     void vscode.window.showErrorMessage('R path not set', 'OK');
                     return;
                 }
-                const args = ['--silent', '--no-echo', '--no-save', '--no-restore', '-e', `install.packages('${name}', repos='${repo}')`];
+                const args = [
+                    '--silent',
+                    '--no-echo',
+                    '--no-save',
+                    '--no-restore',
+                    '-e',
+                    `install.packages('${name}', repos='${repo}')`,
+                ];
                 void executeAsTask('Install Package', rPath, args, true);
                 if (postInstallMsg) {
                     void vscode.window.showInformationMessage(postInstallMsg, 'OK');
@@ -582,7 +678,13 @@ export async function promptToInstallSessPackage(
     _config = config,
     _getInstalledSessSourceRevision = getInstalledSessSourceRevision,
     _readFileSyncSafe = readFileSyncSafe,
-    _executeAsTask: (name: string, process: string, args: string[], asProcess: true, cwd?: string) => Promise<void> = executeAsTask
+    _executeAsTask: (
+        name: string,
+        process: string,
+        args: string[],
+        asProcess: true,
+        cwd?: string,
+    ) => Promise<void> = executeAsTask,
 ): Promise<boolean> {
     const resource = resourceFromCwd(cwd);
     const workingDirectory = cwd instanceof vscode.Uri ? cwd.fsPath : cwd;
@@ -592,12 +694,16 @@ export async function promptToInstallSessPackage(
         return true;
     }
 
-    const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
+    const sessPath = extensionContext
+        .asAbsolutePath(path.join('dist', 'resources', 'sess'))
+        .replace(/\\/g, '/');
     const descriptionPath = path.join(sessPath, 'DESCRIPTION');
     const descriptionContent = _readFileSyncSafe(descriptionPath);
     const bundledRevision = readSessSourceRevision(descriptionContent);
     if (!bundledRevision) {
-        void vscode.window.showErrorMessage('Bundled sess has no valid source revision. Rebuild or reinstall the vscode-R extension.');
+        void vscode.window.showErrorMessage(
+            'Bundled sess has no valid source revision. Rebuild or reinstall the vscode-R extension.',
+        );
         return false;
     }
 
@@ -606,7 +712,9 @@ export async function promptToInstallSessPackage(
         return true;
     }
 
-    const installSessScript = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
+    const installSessScript = extensionContext
+        .asAbsolutePath(path.join('R', 'install_sess.R'))
+        .replace(/\\/g, '/');
     const installMsg = installedRevision
         ? 'The installed "sess" package does not match this build of vscode-R. Install the bundled copy?'
         : 'The R package "sess" bundled with this build of vscode-R is required for the session watcher to work. Do you want to install it?';
@@ -626,17 +734,23 @@ export async function promptToInstallSessPackage(
         '--no-save',
         '--no-restore',
         `--file=${installSessScript}`,
-        '--args', sessPath, repo
+        '--args',
+        sessPath,
+        repo,
     ];
     try {
         await _executeAsTask('Install "sess" package', rPath, args, true, workingDirectory);
-        if (await _getInstalledSessSourceRevision(workingDirectory) !== bundledRevision) {
-            void vscode.window.showErrorMessage('The bundled "sess" package was not installed successfully. Check the installation task output and try starting R again.');
+        if ((await _getInstalledSessSourceRevision(workingDirectory)) !== bundledRevision) {
+            void vscode.window.showErrorMessage(
+                'The bundled "sess" package was not installed successfully. Check the installation task output and try starting R again.',
+            );
             return false;
         }
         return true;
     } catch (error) {
-        void vscode.window.showErrorMessage(`Could not install the bundled "sess" package: ${catchAsError(error).message}`);
+        void vscode.window.showErrorMessage(
+            `Could not install the bundled "sess" package: ${catchAsError(error).message}`,
+        );
         return false;
     }
 }
@@ -649,9 +763,15 @@ export async function promptToInstallSessPackage(
  * @returns Path to the temporary directory.
  */
 export function createTempDir(root: string, hidden?: boolean): string {
-    const hidePrefix = (!hidden || process.platform === 'win32') ? '' : '.';
+    const hidePrefix = !hidden || process.platform === 'win32' ? '' : '.';
     let tempDir: string;
-    while (fs.existsSync(tempDir = path.join(root, `${hidePrefix}___temp_${randomBytes(8).toString('hex')}`))) { /* Name clash */ }
+    while (
+        fs.existsSync(
+            (tempDir = path.join(root, `${hidePrefix}___temp_${randomBytes(8).toString('hex')}`)),
+        )
+    ) {
+        /* Name clash */
+    }
     fs.mkdirSync(tempDir);
     return tempDir;
 }
@@ -672,16 +792,22 @@ export function createTempDir(root: string, hidden?: boolean): string {
  * @returns
  */
 export function catchAsError(err: unknown, fallbackMessage?: string): Error {
-    return (err instanceof Error) ? err : Error(fallbackMessage ?? 'Unknown error');
+    return err instanceof Error ? err : Error(fallbackMessage ?? 'Unknown error');
 }
 
+const VIEW_COLUMN_KEYS = Object.keys(vscode.ViewColumn).filter((x) => isNaN(parseInt(x)));
 
-
-const VIEW_COLUMN_KEYS = Object.keys(vscode.ViewColumn).filter(x => isNaN(parseInt(x)));
-
-export function asViewColumn(s: string | undefined | vscode.ViewColumn): vscode.ViewColumn | undefined;
-export function asViewColumn(s: string | undefined | vscode.ViewColumn, fallback: vscode.ViewColumn): vscode.ViewColumn;
-export function asViewColumn(s: string | undefined | vscode.ViewColumn, fallback?: vscode.ViewColumn): vscode.ViewColumn | undefined {
+export function asViewColumn(
+    s: string | undefined | vscode.ViewColumn,
+): vscode.ViewColumn | undefined;
+export function asViewColumn(
+    s: string | undefined | vscode.ViewColumn,
+    fallback: vscode.ViewColumn,
+): vscode.ViewColumn;
+export function asViewColumn(
+    s: string | undefined | vscode.ViewColumn,
+    fallback?: vscode.ViewColumn,
+): vscode.ViewColumn | undefined {
     if (!s) {
         return fallback;
     }
@@ -695,7 +821,6 @@ export function asViewColumn(s: string | undefined | vscode.ViewColumn, fallback
     return fallback;
 }
 
-
 export function makeWebviewCommandUriString(command: string, ...args: any[]): string {
     const argString = encodeURIComponent(JSON.stringify(args));
     return `command:${command}?${argString}`;
@@ -704,22 +829,19 @@ export function makeWebviewCommandUriString(command: string, ...args: any[]): st
 // Tries to read a file, returns undefined if an error occurs (e.g. the file does not exist)
 export function readFileSyncSafe(
     path: fs.PathOrFileDescriptor,
-    encoding: BufferEncoding = 'utf-8'
+    encoding: BufferEncoding = 'utf-8',
 ): string | undefined {
     try {
-        return fs.readFileSync(path, {encoding:encoding});
+        return fs.readFileSync(path, { encoding: encoding });
     } catch {
         return undefined;
     }
 }
 
 // Tries to read a dir, returns undefined if an error occurs (e.g. the dir does not exist)
-export function readdirSyncSafe(
-    path: fs.PathLike,
-    encoding: BufferEncoding = 'utf-8'
-){
+export function readdirSyncSafe(path: fs.PathLike, encoding: BufferEncoding = 'utf-8') {
     try {
-        return fs.readdirSync(path, {encoding: encoding});
+        return fs.readdirSync(path, { encoding: encoding });
     } catch {
         return undefined;
     }
@@ -742,9 +864,12 @@ export function isFileSafe(path: fs.PathLike): boolean {
 }
 
 // Keeps only the unique entries in an array, optionally with a custom comparison function
-export function uniqueEntries<T>(array: T[], isIdentical: (x: T, y: T) => boolean = (x, y) => (x === y)){
+export function uniqueEntries<T>(
+    array: T[],
+    isIdentical: (x: T, y: T) => boolean = (x, y) => x === y,
+) {
     function uniqueFunction(v: T, index: number, array: T[]): boolean {
-        return array.findIndex(v2 => isIdentical(v2, v)) === index;
+        return array.findIndex((v2) => isIdentical(v2, v)) === index;
     }
     return array.filter(uniqueFunction);
 }

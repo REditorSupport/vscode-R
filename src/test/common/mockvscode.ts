@@ -6,33 +6,39 @@ import * as ext from '../../extension';
 
 export function mockActiveTextEditor(document: vscode.TextDocument, sandbox: sinon.SinonSandbox) {
     return sandbox.stub(vscode.window, 'activeTextEditor').value({
-        document
+        document,
     });
 }
 
 export function mockExtensionContext(extension_root: string, sandbox: sinon.SinonSandbox) {
     const mockExtensionContext = {
-        environmentVariableCollection: { persistent: false, replace: sandbox.stub(), delete: sandbox.stub() },
+        environmentVariableCollection: {
+            persistent: false,
+            replace: sandbox.stub(),
+            delete: sandbox.stub(),
+        },
         extension: sandbox.stub(),
         extensionMode: sandbox.stub(),
         extensionPath: extension_root,
         extensionUri: vscode.Uri.file(extension_root),
         globalState: {
             get: sinon.stub().callsFake((key: string, defaultValue?: unknown) => defaultValue),
-            set: sinon.stub()
+            set: sinon.stub(),
         },
-        globalStorageUri: vscode.Uri.file(path.join(os.tmpdir(), 'vscode-r-test-global-storage', String(process.pid))),
+        globalStorageUri: vscode.Uri.file(
+            path.join(os.tmpdir(), 'vscode-r-test-global-storage', String(process.pid)),
+        ),
         logUri: sandbox.stub(),
         secrets: sandbox.stub(),
         storageUri: sandbox.stub(),
         subscriptions: [],
         workspaceState: {
             get: sinon.stub().callsFake((key: string, defaultValue?: unknown) => defaultValue),
-            update: sinon.stub()
+            update: sinon.stub(),
         },
         asAbsolutePath: (relativePath: string) => {
             return path.join(extension_root, relativePath);
-        }
+        },
     };
     return sandbox.stub(ext, 'extensionContext').value(mockExtensionContext);
 }

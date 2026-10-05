@@ -91,7 +91,7 @@ metadata even when a wrapper's PID differs from R's. Unknown fields are ignored.
 ### Discovery schema and extensions
 
 ```json
-{"version":1,"endpoint":"/path/to/sess.sock","jgdSocket":"/path/to/jgd.sock"}
+{ "version": 1, "endpoint": "/path/to/sess.sock", "jgdSocket": "/path/to/jgd.sock" }
 ```
 
 Only `version` and `endpoint` are required. Consumers must ignore unknown fields.
@@ -119,14 +119,14 @@ finding managed terminal discovery files; `sess` does not use it as identity.
 Once connected, `sess` registers hooks (via `register_hooks()`) that redirect
 R's interactive features to the client:
 
-| R feature | Behavior |
-|---|---|
-| `View()` | Data frames, matrices, Arrow tables and polars data frames open in a paged, sortable, filterable data viewer. Lists open as JSON; other objects as R code. |
-| `browseURL()`, `viewer`, `page_viewer` | URLs and local HTML files (e.g. htmlwidgets) open in the editor. |
-| `?topic`, `help.search()` | Help pages open in the editor's help panel, in the column configured by `r.session.viewers.viewColumn.helpPanel`. |
-| Graphics device | Plots appear in the editor's plot viewer unless `plot_backend = "native"`. |
-| `rstudioapi` | Editor functions such as `getActiveDocumentContext()` and `insertText()` are emulated when `use_rstudioapi = TRUE`. |
-| Top-level task callback | The client is notified after each command so it can refresh the workspace view. |
+| R feature                              | Behavior                                                                                                                                                   |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `View()`                               | Data frames, matrices, Arrow tables and polars data frames open in a paged, sortable, filterable data viewer. Lists open as JSON; other objects as R code. |
+| `browseURL()`, `viewer`, `page_viewer` | URLs and local HTML files (e.g. htmlwidgets) open in the editor.                                                                                           |
+| `?topic`, `help.search()`              | Help pages open in the editor's help panel, in the column configured by `r.session.viewers.viewColumn.helpPanel`.                                          |
+| Graphics device                        | Plots appear in the editor's plot viewer unless `plot_backend = "native"`.                                                                                 |
+| `rstudioapi`                           | Editor functions such as `getActiveDocumentContext()` and `insertText()` are emulated when `use_rstudioapi = TRUE`.                                        |
+| Top-level task callback                | The client is notified after each command so it can refresh the workspace view.                                                                            |
 
 These changes are undone when the connection closes. `sess` removes its task
 callbacks, closes its graphics devices, and restores any options, bindings, S3
@@ -159,13 +159,13 @@ Use `plot_backend` for new code.
 
 ### Options and environment variables
 
-| Name | Type | Purpose |
-|---|---|---|
-| `SESS_ENDPOINT` | env var | Socket/pipe path used by `connect()`. |
-| `SESS_RSTUDIOAPI` | env var | `TRUE`/`FALSE`; passed as `use_rstudioapi` by the extension's R profile. |
-| `SESS_PLOT_BACKEND` | env var | `auto`, `standard`, `httpgd`, `jgd` or `native`; passed as `plot_backend` by the extension's R profile. |
-| `JGD_SOCKET` | env var | Socket used by the jgd device; set by the extension. |
-| `sess.quiet` | R option | Set to `TRUE` to suppress the successful connection message. Connection failures remain visible. |
+| Name                | Type     | Purpose                                                                                                 |
+| ------------------- | -------- | ------------------------------------------------------------------------------------------------------- |
+| `SESS_ENDPOINT`     | env var  | Socket/pipe path used by `connect()`.                                                                   |
+| `SESS_RSTUDIOAPI`   | env var  | `TRUE`/`FALSE`; passed as `use_rstudioapi` by the extension's R profile.                                |
+| `SESS_PLOT_BACKEND` | env var  | `auto`, `standard`, `httpgd`, `jgd` or `native`; passed as `plot_backend` by the extension's R profile. |
+| `JGD_SOCKET`        | env var  | Socket used by the jgd device; set by the extension.                                                    |
+| `sess.quiet`        | R option | Set to `TRUE` to suppress the successful connection message. Connection failures remain visible.        |
 
 ## Protocol reference
 
@@ -221,17 +221,17 @@ A fork child receives its own identity. Terminal PID association is local-only.
 
 Sent with `notify_client()`.
 
-| Method | Params | Sent when |
-|---|---|---|
-| `attach` | see above | Connection is established. |
-| `workspace_updated` | none | A top-level command completes. |
-| `dataview` | `title`, `source`, `type`, and `view_id` (tables) or `file` (other objects) | `View()` is called. |
-| `plot_updated` | none | The standard device records a new or changed plot. |
-| `httpgd` | `url` | An httpgd device is opened. |
-| `help` | `requestPath` | A help page or help search is printed. |
-| `browser` / `webview` / `page_viewer` | `url` | The corresponding R viewer option is invoked. |
-| `restart_r` | `command`, `clean` | `rstudioapi::restartSession()` is called. |
-| `rstudioapi/send_to_console` | `code`, `execute`, `focus`, `animate` | `rstudioapi::sendToConsole()` is called. |
+| Method                                | Params                                                                      | Sent when                                          |
+| ------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------- |
+| `attach`                              | see above                                                                   | Connection is established.                         |
+| `workspace_updated`                   | none                                                                        | A top-level command completes.                     |
+| `dataview`                            | `title`, `source`, `type`, and `view_id` (tables) or `file` (other objects) | `View()` is called.                                |
+| `plot_updated`                        | none                                                                        | The standard device records a new or changed plot. |
+| `httpgd`                              | `url`                                                                       | An httpgd device is opened.                        |
+| `help`                                | `requestPath`                                                               | A help page or help search is printed.             |
+| `browser` / `webview` / `page_viewer` | `url`                                                                       | The corresponding R viewer option is invoked.      |
+| `restart_r`                           | `command`, `clean`                                                          | `rstudioapi::restartSession()` is called.          |
+| `rstudioapi/send_to_console`          | `code`, `execute`, `focus`, `animate`                                       | `rstudioapi::sendToConsole()` is called.           |
 
 ### Requests from R to client
 
@@ -249,16 +249,16 @@ arrives. All are used by `rstudioapi` emulation:
 
 ### Requests from client to R
 
-| Method | Params | Result |
-|---|---|---|
-| `workspace` | none | `globalenv` (objects with `class`, `type`, `length`, ...), `search`, `loaded_namespaces` |
-| `workspace_children` | `name`, `path`, `start` | `children`, `next_start` (paged expansion of lists, environments, S4/R6 objects) |
-| `hover` | `expr` | `str`: the `str()` output of the evaluated expression |
-| `completion` | `expr`, `trigger` (`$` or `@`) | Array of `{name, type, str}`, where `str` is the element's class |
-| `plot_latest` | `width`, `height`, `format` (`svglite` or `png`), `devArgs` | `format`, `data` (base64) |
-| `dataview_init` | `view_id` | `columns`, `totalRows` |
-| `dataview_page` | `view_id`, `startRow`, `endRow`, `sortModel`, `filterModel` | `rows`, `totalRows`, `totalUnfiltered`, `lastRow` |
-| `dataview_dispose` | `view_id` | `true` |
+| Method               | Params                                                      | Result                                                                                   |
+| -------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `workspace`          | none                                                        | `globalenv` (objects with `class`, `type`, `length`, ...), `search`, `loaded_namespaces` |
+| `workspace_children` | `name`, `path`, `start`                                     | `children`, `next_start` (paged expansion of lists, environments, S4/R6 objects)         |
+| `hover`              | `expr`                                                      | `str`: the `str()` output of the evaluated expression                                    |
+| `completion`         | `expr`, `trigger` (`$` or `@`)                              | Array of `{name, type, str}`, where `str` is the element's class                         |
+| `plot_latest`        | `width`, `height`, `format` (`svglite` or `png`), `devArgs` | `format`, `data` (base64)                                                                |
+| `dataview_init`      | `view_id`                                                   | `columns`, `totalRows`                                                                   |
+| `dataview_page`      | `view_id`, `startRow`, `endRow`, `sortModel`, `filterModel` | `rows`, `totalRows`, `totalUnfiltered`, `lastRow`                                        |
+| `dataview_dispose`   | `view_id`                                                   | `true`                                                                                   |
 
 Example exchange:
 

@@ -1,9 +1,18 @@
 'use strict';
 
 import {
-    window, TextEditor, TextDocument, Uri,
-    workspace, WorkspaceEdit, Position, Range, Selection,
-    QuickPickItem, QuickPickOptions, ViewColumn
+    window,
+    TextEditor,
+    TextDocument,
+    Uri,
+    workspace,
+    WorkspaceEdit,
+    Position,
+    Range,
+    Selection,
+    QuickPickItem,
+    QuickPickOptions,
+    ViewColumn,
 } from 'vscode';
 import { readJSON } from 'fs-extra';
 import * as path from 'path';
@@ -60,10 +69,10 @@ export function activeEditorContext(): RSDocumentContext {
         id: { external: currentDocument.uri.toString() },
         contents: currentDocument.getText(),
         path: currentDocument.fileName,
-        selection: currentEditor.selections.map(s => ({
+        selection: currentEditor.selections.map((s) => ({
             start: { line: s.start.line + 1, character: s.start.character + 1 },
-            end: { line: s.end.line + 1, character: s.end.character + 1 }
-        }))
+            end: { line: s.end.line + 1, character: s.end.character + 1 },
+        })),
     };
 }
 
@@ -74,31 +83,36 @@ export async function documentContext(id: string | null): Promise<RSDocumentCont
 
     let selections: RSSelection[] = [];
     const knownEditors = [getLastActiveTextEditor(), ...window.visibleTextEditors];
-    const editor = knownEditors.find(e => e?.document?.uri.toString() === targetDocument.uri.toString());
-    
+    const editor = knownEditors.find(
+        (e) => e?.document?.uri.toString() === targetDocument.uri.toString(),
+    );
+
     if (editor) {
-        selections = editor.selections.map(s => ({
+        selections = editor.selections.map((s) => ({
             start: { line: s.start.line + 1, character: s.start.character + 1 },
-            end: { line: s.end.line + 1, character: s.end.character + 1 }
+            end: { line: s.end.line + 1, character: s.end.character + 1 },
         }));
     } else {
-        selections = [{
-            start: { line: 1, character: 1 },
-            end: { line: 1, character: 1 }
-        }];
+        selections = [
+            {
+                start: { line: 1, character: 1 },
+                end: { line: 1, character: 1 },
+            },
+        ];
     }
 
     return {
         id: { external: targetDocument.uri.toString() },
         contents: targetDocument.getText(),
         path: targetDocument.fileName,
-        selection: selections
+        selection: selections,
     };
 }
 
-export async function insertOrModifyText(query: RSEditOperation[], id: string | null = null): Promise<void> {
-
-
+export async function insertOrModifyText(
+    query: RSEditOperation[],
+    id: string | null = null,
+): Promise<void> {
     const target = findTargetUri(id);
     const targetDocument = await workspace.openTextDocument(target);
     console.info(`[insertTextAtPosition] inserting text into: ${target.path}`);
@@ -126,26 +140,25 @@ export async function insertOrModifyText(query: RSEditOperation[], id: string | 
     void workspace.applyEdit(edit);
 }
 
-export async function replaceTextInCurrentSelection(text: string, id: string | null): Promise<void> {
+export async function replaceTextInCurrentSelection(
+    text: string,
+    id: string | null,
+): Promise<void> {
     const target = findTargetUri(id);
     console.info(`[replaceTextInCurrentSelection] inserting: ${text} into ${target.path}`);
     const edit = new WorkspaceEdit();
-    edit.replace(
-        target,
-        getLastActiveTextEditor().selection,
-        text
-    );
+    edit.replace(target, getLastActiveTextEditor().selection, text);
     await workspace.applyEdit(edit);
 }
 
 export function showDialog(message: string): void {
-
     void window.showInformationMessage(message);
-
 }
 
 export async function showPrompt(
-    title: string, message: string, defaultValue?: string
+    title: string,
+    message: string,
+    defaultValue?: string,
 ): Promise<{ response: string | null }> {
     const result = await window.showInputBox({
         title: title,
@@ -155,9 +168,7 @@ export async function showPrompt(
     return { response: result ?? null };
 }
 
-export async function askForPassword(
-    prompt: string
-): Promise<{ response: string | null }> {
+export async function askForPassword(prompt: string): Promise<{ response: string | null }> {
     const result = await window.showInputBox({
         prompt: prompt,
         password: true,
@@ -165,8 +176,7 @@ export async function askForPassword(
     return { response: result ?? null };
 }
 
-export async function navigateToFile(file: string, line: number, column: number): Promise<void>{
-
+export async function navigateToFile(file: string, line: number, column: number): Promise<void> {
     const targetDocument = await workspace.openTextDocument(Uri.file(file));
     const editor = await window.showTextDocument(targetDocument);
     const targetPosition = parsePosition([line, column], targetDocument);
@@ -200,10 +210,10 @@ export async function setSelections(ranges: RSRange[], id: string | null): Promi
     const targetDocument = await workspace.openTextDocument(target);
     const editor = await reuseOrCreateEditor(targetDocument);
 
-    const selectionObjects = ranges.map(x => {
+    const selectionObjects = ranges.map((x) => {
         const newRange = parseRange(x, targetDocument);
         const newSelection = new Selection(newRange.start, newRange.end);
-        return (newSelection);
+        return newSelection;
     });
 
     editor.selections = selectionObjects;
@@ -225,21 +235,22 @@ export async function documentClose(id: string | null, save: boolean): Promise<v
         const targetDocument = await workspace.openTextDocument(target);
         await targetDocument.save();
     }
-    const tabs = window.tabGroups.all.flatMap(g => g.tabs);
-    const targetTabs = tabs.filter(t => (t.input as { uri?: Uri })?.uri?.toString() === target.toString());
+    const tabs = window.tabGroups.all.flatMap((g) => g.tabs);
+    const targetTabs = tabs.filter(
+        (t) => (t.input as { uri?: Uri })?.uri?.toString() === target.toString(),
+    );
     await window.tabGroups.close(targetTabs);
 }
 
 // TODO: very similar to ./utils.getCurrentWorkspaceFolder()
-export function projectPath(): { path: string | undefined; } {
-
+export function projectPath(): { path: string | undefined } {
     if (typeof workspace.workspaceFolders !== 'undefined') {
         // Is there a root folder open?
 
         if (workspace.workspaceFolders.length === 1) {
             // In single root common case, this will always work.
             return {
-                path: workspace.workspaceFolders[0].uri.path
+                path: workspace.workspaceFolders[0].uri.path,
             };
         } else if (workspace.workspaceFolders.length > 1) {
             // In less common multi-root folder case is a bit tricky. If the active
@@ -250,7 +261,7 @@ export function projectPath(): { path: string | undefined; } {
             const currentDocFolder = workspace.getWorkspaceFolder(currentDocument.uri);
             if (typeof currentDocFolder !== 'undefined') {
                 return {
-                    path: currentDocFolder.uri.path
+                    path: currentDocFolder.uri.path,
                 };
             }
         }
@@ -261,32 +272,35 @@ export function projectPath(): { path: string | undefined; } {
     //     - the activeText editor was an unsaved document, which has undefined workspace folder.
     // return undefined and handle with a message in R.
     return {
-        path: undefined
+        path: undefined,
     };
 }
 
 export async function documentNew(text: string, type: string, position: number[]): Promise<void> {
-    const currentProjectPath = projectPath().path; 
+    const currentProjectPath = projectPath().path;
     if (!currentProjectPath) {
         return; // TODO: Report failure
     }
-    const documentUri = Uri.parse('untitled:' + path.join(currentProjectPath, 'new_document.' + type));
+    const documentUri = Uri.parse(
+        'untitled:' + path.join(currentProjectPath, 'new_document.' + type),
+    );
     const targetDocument = await workspace.openTextDocument(documentUri);
     const edit = new WorkspaceEdit();
     const docLines = targetDocument.lineCount;
-    edit.replace(documentUri,
-        targetDocument.validateRange(new Range(
-            new Position(0, 0),
-            new Position(docLines + 1, 0)
-        )),
-        text);
+    edit.replace(
+        documentUri,
+        targetDocument.validateRange(new Range(new Position(0, 0), new Position(docLines + 1, 0))),
+        text,
+    );
 
     void workspace.applyEdit(edit).then(async () => {
         const editor = await window.showTextDocument(targetDocument);
-        editor.selections = [new Selection(
-            parsePosition(position, targetDocument),
-            parsePosition(position, targetDocument)
-        )];
+        editor.selections = [
+            new Selection(
+                parsePosition(position, targetDocument),
+                parsePosition(position, targetDocument),
+            ),
+        ];
     });
 }
 
@@ -307,17 +321,17 @@ interface RawAddin {
 }
 
 export async function getAddinPickerItems(): Promise<AddinItem[]> {
-
     if (typeof addinQuickPicks === 'undefined') {
-        const addins: RawAddin[] = await readJSON(path.join(sessionDir, 'addins.json')).
-            then(
-                (result: RawAddin[]) => result,
-                () => {
-                    throw ('Could not find list of installed addins.' +
-                        ' options(vsc.rstudioapi = TRUE) must be set in your .Rprofile to use ' +
-                        ' RStudio Addins');
-                }
-            );
+        const addins: RawAddin[] = await readJSON(path.join(sessionDir, 'addins.json')).then(
+            (result: RawAddin[]) => result,
+            () => {
+                throw (
+                    'Could not find list of installed addins.' +
+                    ' options(vsc.rstudioapi = TRUE) must be set in your .Rprofile to use ' +
+                    ' RStudio Addins'
+                );
+            },
+        );
 
         const addinItems = addins.map((x) => {
             return {
@@ -340,13 +354,16 @@ export function purgeAddinPickerItems(): void {
 }
 
 export async function launchAddinPicker(): Promise<void> {
-
     if (!config().get<boolean>('sessionWatcher')) {
-        void window.showErrorMessage('{rstudioapi} emulation requires session watcher to be enabled in extension config.');
+        void window.showErrorMessage(
+            '{rstudioapi} emulation requires session watcher to be enabled in extension config.',
+        );
         return;
     }
     if (!sessionDirectoryExists()) {
-        void window.showErrorMessage('No active R terminal session, attach one to use RStudio addins.');
+        void window.showErrorMessage(
+            'No active R terminal session, attach one to use RStudio addins.',
+        );
         return;
     }
 
@@ -356,10 +373,12 @@ export async function launchAddinPicker(): Promise<void> {
         canPickMany: false,
         ignoreFocusOut: false,
         placeHolder: '',
-        onDidSelectItem: undefined
+        onDidSelectItem: undefined,
     };
-    const addinSelection: AddinItem | undefined =
-        await window.showQuickPick<AddinItem>(getAddinPickerItems(), addinPickerOptions);
+    const addinSelection: AddinItem | undefined = await window.showQuickPick<AddinItem>(
+        getAddinPickerItems(),
+        addinPickerOptions,
+    );
 
     if (!(typeof addinSelection === 'undefined')) {
         await runTextInTerm(addinSelection.package + ':::' + addinSelection.binding + '()');
@@ -396,55 +415,61 @@ function toVSCCoord(coord: RSCoord) {
         coord_value = 0;
     } else if (typeof coord === 'number' && coord <= 0) {
         coord_value = 0;
-    }
-    else { // coord > 0
+    } else {
+        // coord > 0
         coord_value = coord - 1; // positions in the rstudioapi are 1 indexed.
     }
 
     return coord_value;
-
 }
 
 function parsePosition(rs_position: RSPosition, targetDocument: TextDocument) {
     if (rs_position.length !== 2) {
-        throw ('an rstudioapi position must be an array of 2 numbers');
+        throw 'an rstudioapi position must be an array of 2 numbers';
     }
-    return (
-        targetDocument.validatePosition(
-            new Position(toVSCCoord(rs_position[0]), toVSCCoord(rs_position[1]))
-        ));
+    return targetDocument.validatePosition(
+        new Position(toVSCCoord(rs_position[0]), toVSCCoord(rs_position[1])),
+    );
 }
 
 function parseRange(rs_range: RSRange, targetDocument: TextDocument) {
     if (rs_range.start.length !== 2 || rs_range.end.length !== 2) {
-        throw ('an rstudioapi range must be an object containing two numeric arrays');
+        throw 'an rstudioapi range must be an object containing two numeric arrays';
     }
-    return (
-        targetDocument.validateRange(
-            new Range(
-                new Position(toVSCCoord(rs_range.start[0]), toVSCCoord(rs_range.start[1])),
-                new Position(toVSCCoord(rs_range.end[0]), toVSCCoord(rs_range.end[1]))
-            )
-        ));
+    return targetDocument.validateRange(
+        new Range(
+            new Position(toVSCCoord(rs_range.start[0]), toVSCCoord(rs_range.start[1])),
+            new Position(toVSCCoord(rs_range.end[0]), toVSCCoord(rs_range.end[1])),
+        ),
+    );
 }
 
 function assertSupportedEditOperation(operation: string) {
     if (operation !== 'insertText' && operation !== 'modifyRange') {
-        throw ('Operation: ' + operation + ' not supported by VSCode-R API');
+        throw 'Operation: ' + operation + ' not supported by VSCode-R API';
     }
 }
 
-function normaliseEditText(text: string, editLocation: RSPosition | RSRange,
-    operation: string, targetDocument: TextDocument) {
+function normaliseEditText(
+    text: string,
+    editLocation: RSPosition | RSRange,
+    operation: string,
+    targetDocument: TextDocument,
+) {
     // in a document with lines, does the line position extend past the existing
     // lines in the document? rstudioapi adds a newline in this case, so must we.
     // n_lines is a count, line is 0 indexed position hence + 1
-    const editStartLine = operation === 'insertText' ?
-        (editLocation as RSPosition)[0] :
-        (editLocation as RSRange).start[0];
-    if (editStartLine === 'Inf' ||
-        (typeof editStartLine === 'number' && editStartLine + 1 > targetDocument.lineCount && targetDocument.lineCount > 0)) {
-        return (text + '\n');
+    const editStartLine =
+        operation === 'insertText'
+            ? (editLocation as RSPosition)[0]
+            : (editLocation as RSRange).start[0];
+    if (
+        editStartLine === 'Inf' ||
+        (typeof editStartLine === 'number' &&
+            editStartLine + 1 > targetDocument.lineCount &&
+            targetDocument.lineCount > 0)
+    ) {
+        return text + '\n';
     } else {
         return text;
     }
@@ -458,13 +483,13 @@ export function trackLastActiveTextEditor(editor?: TextEditor): void {
 }
 
 function getLastActiveTextEditor() {
-    return (typeof window.activeTextEditor === 'undefined' ?
-        lastActiveTextEditor : window.activeTextEditor);
+    return typeof window.activeTextEditor === 'undefined'
+        ? lastActiveTextEditor
+        : window.activeTextEditor;
 }
 
 function findTargetUri(id: string | null) {
-    return (id === null ?
-        getLastActiveTextEditor().document.uri : Uri.parse(id));
+    return id === null ? getLastActiveTextEditor().document.uri : Uri.parse(id);
 }
 
 async function reuseOrCreateEditor(targetDocument: TextDocument) {
@@ -478,18 +503,14 @@ async function reuseOrCreateEditor(targetDocument: TextDocument) {
     KnownEditors.push(lastActiveTextEditor);
     KnownEditors.push(...window.visibleTextEditors);
 
-
-    const matchingTextEditors = KnownEditors.filter((editor) =>
-        editor.document.uri.toString() === targetDocument.uri.toString());
+    const matchingTextEditors = KnownEditors.filter(
+        (editor) => editor.document.uri.toString() === targetDocument.uri.toString(),
+    );
 
     if (matchingTextEditors.length === 0) {
-        const newEditor = await window.showTextDocument(
-            targetDocument,
-            ViewColumn.Beside
-        );
-        return (newEditor);
-    }
-    else {
-        return (matchingTextEditors[0]);
+        const newEditor = await window.showTextDocument(targetDocument, ViewColumn.Beside);
+        return newEditor;
+    } else {
+        return matchingTextEditors[0];
     }
 }

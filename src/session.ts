@@ -13,13 +13,24 @@ import { config, readContent, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
-import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
+import {
+    extensionContext,
+    rWorkspace,
+    globalRHelp,
+    globalPlotManager,
+    sessionStatusBarItem,
+    enableSessionWatcher,
+} from './extension';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import type { RSessionConnectionInfo } from './api';
 
 import { showWebView } from './webViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
-import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
+import {
+    getDataViewerColumnPanelHtml,
+    getDataViewerColumnPanelScript,
+    getDataViewerColumnPanelStyle,
+} from './dataViewerColumnPanel';
 
 export interface SessionInfo {
     version: string;
@@ -33,11 +44,11 @@ export interface GlobalEnv {
         type: string;
         length: number;
         str: string;
-        dim?: number[],
-        names?: string[],
-        slots?: string[],
-        has_children?: boolean
-    }
+        dim?: number[];
+        names?: string[];
+        slots?: string[];
+        has_children?: boolean;
+    };
 }
 
 export interface WorkspaceData {
@@ -72,7 +83,13 @@ export class Session {
     public workingDir: string;
     public workspaceData: WorkspaceData;
 
-    constructor(sessionId: string, host: string, sessVersion: string, pipePath: string, socket: IpcSocket) {
+    constructor(
+        sessionId: string,
+        host: string,
+        sessVersion: string,
+        pipePath: string,
+        socket: IpcSocket,
+    ) {
         this.sessionId = sessionId;
         this.host = host;
         this.sessVersion = sessVersion;
@@ -111,22 +128,36 @@ export function sessionForDocument(uri: Uri): Session | undefined {
 }
 
 export function boundSessionForDocument(uri: Uri): Session | undefined {
-    return documentSessions.get(uri.toString()) ?? (uri.scheme === 'vscode-notebook-cell'
-        ? documentSessions.get(Uri.from({ scheme: uri.scheme, path: uri.path }).toString()) : undefined);
+    return (
+        documentSessions.get(uri.toString()) ??
+        (uri.scheme === 'vscode-notebook-cell'
+            ? documentSessions.get(Uri.from({ scheme: uri.scheme, path: uri.path }).toString())
+            : undefined)
+    );
 }
 
 export function bindSessionDocument(uri: Uri, session: Session): void {
     const previous = boundSessionForDocument(uri);
     documentSessions.set(uri.toString(), session);
-    if (previous !== session) { sessionDocumentBound.fire(uri); }
+    if (previous !== session) {
+        sessionDocumentBound.fire(uri);
+    }
 }
 
-export function unbindSessionDocument(uri: Uri): void { documentSessions.delete(uri.toString()); }
+export function unbindSessionDocument(uri: Uri): void {
+    documentSessions.delete(uri.toString());
+}
 
 export function unregisterSessionTransport(target: Session): void {
-    for (const [uri, owner] of documentSessions) { if (owner === target) { documentSessions.delete(uri); } }
+    for (const [uri, owner] of documentSessions) {
+        if (owner === target) {
+            documentSessions.delete(uri);
+        }
+    }
     sessions.delete(target.sessionId);
-    if (activeSession === target) { void clearActiveSession(); }
+    if (activeSession === target) {
+        void clearActiveSession();
+    }
 }
 
 function clearActiveSession(): Promise<void> {
@@ -143,9 +174,15 @@ function clearActiveSession(): Promise<void> {
 /** Workspace actions must use the process represented by the tree, even after focus changes. */
 export async function executeSessionCode(target: Session, code: string): Promise<void> {
     if (sessions.get(target.sessionId) !== target || target.workspaceUnavailable) {
-        throw new Error(target.workspaceUnavailable ?? 'This R session is no longer attached. Select an attached session in the Workspace viewer.');
+        throw new Error(
+            target.workspaceUnavailable ??
+                'This R session is no longer attached. Select an attached session in the Workspace viewer.',
+        );
     }
-    if (target.execute) { await target.execute(code); return; }
+    if (target.execute) {
+        await target.execute(code);
+        return;
+    }
     for (const terminal of window.terminals) {
         const terminalPid = await terminal.processId;
         if (terminalPid && terminalSessions.get(String(terminalPid)) === target) {
@@ -153,7 +190,9 @@ export async function executeSessionCode(target: Session, code: string): Promise
             return;
         }
     }
-    throw new Error('This R session has no attached terminal. Attach its terminal or open it in an Interactive window.');
+    throw new Error(
+        'This R session has no attached terminal. Attach its terminal or open it in an Interactive window.',
+    );
 }
 
 export function updateSessionWorkspace(target: Session, data: WorkspaceData): void {
@@ -165,13 +204,23 @@ export function updateSessionWorkspace(target: Session, data: WorkspaceData): vo
 
 /** Move document routing to a new process; existing data viewers keep their old owner. */
 export function replaceSessionTransport(previous: Session, next: Session): void {
-    for (const [uri, owner] of documentSessions) { if (owner === previous) { documentSessions.set(uri, next); } }
+    for (const [uri, owner] of documentSessions) {
+        if (owner === previous) {
+            documentSessions.set(uri, next);
+        }
+    }
     sessions.delete(previous.sessionId);
-    if (activeSession === previous) { activeSession = next; }
+    if (activeSession === previous) {
+        activeSession = next;
+    }
 }
 
-export function registerSessionTransport(id: string, host: string, directory: string,
-    requester: (data: Record<string, unknown>) => Promise<unknown>): Session {
+export function registerSessionTransport(
+    id: string,
+    host: string,
+    directory: string,
+    requester: (data: Record<string, unknown>) => Promise<unknown>,
+): Session {
     const target = sessions.get(id) ?? new Session(id, host, '', '', new net.Socket());
     target.requester = requester;
     target.workingDir = directory;
@@ -227,12 +276,17 @@ function escapeHtml(text: string): string {
         '<': '&lt;',
         '>': '&gt;',
         '"': '&quot;',
-        '\'': '&#39;',
+        "'": '&#39;',
     };
-    return text.replace(/[&<>"']/g, c => map[c]);
+    return text.replace(/[&<>"']/g, (c) => map[c]);
 }
 
-function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string, owner: Session | undefined): void {
+function attachDynamicDataViewBridge(
+    panel: vscode.WebviewPanel,
+    viewId: string,
+    baseTitle: string,
+    owner: Session | undefined,
+): void {
     const panelKey = `${owner?.sessionId ?? ''}:${viewId}`;
     const postResponse = (requestId: number, ok: boolean, result?: unknown, error?: string) => {
         void panel.webview.postMessage({
@@ -252,11 +306,18 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
 
         try {
             if (msg.action === 'init') {
-                const result = await sessionRequest({
-                    method: 'dataview_init',
-                    params: { view_id: viewId },
-                }, owner) as DataViewInitResult | undefined;
-                if (!result || !Array.isArray(result.columns) || typeof result.totalRows !== 'number') {
+                const result = (await sessionRequest(
+                    {
+                        method: 'dataview_init',
+                        params: { view_id: viewId },
+                    },
+                    owner,
+                )) as DataViewInitResult | undefined;
+                if (
+                    !result ||
+                    !Array.isArray(result.columns) ||
+                    typeof result.totalRows !== 'number'
+                ) {
                     throw new Error('Invalid dataview_init response');
                 }
                 panel.title = baseTitle;
@@ -265,19 +326,25 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
             }
 
             if (msg.action === 'page') {
-                const result = await sessionRequest({
-                    method: 'dataview_page',
-                    params: {
-                        view_id: viewId,
-                        startRow: Number(msg.startRow ?? 0),
-                        endRow: Number(msg.endRow ?? 0),
-                        sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
-                        filterModel: msg.filterModel ?? {},
+                const result = (await sessionRequest(
+                    {
+                        method: 'dataview_page',
+                        params: {
+                            view_id: viewId,
+                            startRow: Number(msg.startRow ?? 0),
+                            endRow: Number(msg.endRow ?? 0),
+                            sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
+                            filterModel: msg.filterModel ?? {},
+                        },
                     },
-                }, owner) as DataViewPageResult | undefined;
-                if (!result || !Array.isArray(result.rows) ||
+                    owner,
+                )) as DataViewPageResult | undefined;
+                if (
+                    !result ||
+                    !Array.isArray(result.rows) ||
                     typeof result.totalRows !== 'number' ||
-                    typeof result.totalUnfiltered !== 'number') {
+                    typeof result.totalUnfiltered !== 'number'
+                ) {
                     throw new Error('Invalid dataview_page response');
                 }
                 panel.title = baseTitle;
@@ -285,9 +352,19 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                 return;
             }
 
-            postResponse(msg.requestId, false, undefined, `Unsupported dataview action: ${String(msg.action)}`);
+            postResponse(
+                msg.requestId,
+                false,
+                undefined,
+                `Unsupported dataview action: ${String(msg.action)}`,
+            );
         } catch (e) {
-            postResponse(msg.requestId, false, undefined, e instanceof Error ? e.message : String(e));
+            postResponse(
+                msg.requestId,
+                false,
+                undefined,
+                e instanceof Error ? e.message : String(e),
+            );
         }
     });
 
@@ -297,11 +374,16 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
         }
         dynamicDataViewPanels.delete(panelKey);
         // Interactive transcripts retain this handle after the expanded viewer closes.
-        if (owner?.requester) { return; }
-        void sessionRequest({
-            method: 'dataview_dispose',
-            params: { view_id: viewId },
-        }, owner);
+        if (owner?.requester) {
+            return;
+        }
+        void sessionRequest(
+            {
+                method: 'dataview_dispose',
+                params: { view_id: viewId },
+            },
+            owner,
+        );
     });
 }
 
@@ -309,12 +391,13 @@ export function deploySessionWatcher(extensionPath: string): void {
     console.info(`[deploySessionWatcher] extensionPath: ${extensionPath}`);
     resDir = path.join(extensionPath, 'dist', 'resources');
 
-    void getGlobalPipePath().then(async (pipePath) => {
-        await refreshTerminalDiscoveryFiles(pipePath);
-    }).catch(err => {
-        console.error('Failed to initialize global session server', err);
-    });
-
+    void getGlobalPipePath()
+        .then(async (pipePath) => {
+            await refreshTerminalDiscoveryFiles(pipePath);
+        })
+        .catch((err) => {
+            console.error('Failed to initialize global session server', err);
+        });
 }
 
 let pipeClient: IpcSocket | undefined;
@@ -324,28 +407,37 @@ function isCurrentSocket(socket: IpcSocket): boolean {
     return !!socket._sessionId && sessions.get(socket._sessionId)?.socket === socket;
 }
 
-const pendingRequests = new Map<number, {
-    resolve: (value: unknown) => void;
-    reject: (reason?: unknown) => void;
-    socket: IpcSocket;
-}>();
+const pendingRequests = new Map<
+    number,
+    {
+        resolve: (value: unknown) => void;
+        reject: (reason?: unknown) => void;
+        socket: IpcSocket;
+    }
+>();
 
 const closedTerminals = new WeakSet<vscode.Terminal>();
 const terminalDiscoveryOperations = new WeakMap<vscode.Terminal, Promise<void>>();
 
-function queueTerminalDiscoveryOperation(terminal: vscode.Terminal, operation: () => Promise<void>): Promise<void> {
+function queueTerminalDiscoveryOperation(
+    terminal: vscode.Terminal,
+    operation: () => Promise<void>,
+): Promise<void> {
     const previous = terminalDiscoveryOperations.get(terminal) ?? Promise.resolve();
     const current = previous.catch(() => undefined).then(operation);
     terminalDiscoveryOperations.set(terminal, current);
-    void current.then(() => {
-        if (terminalDiscoveryOperations.get(terminal) === current) {
-            terminalDiscoveryOperations.delete(terminal);
-        }
-    }, () => {
-        if (terminalDiscoveryOperations.get(terminal) === current) {
-            terminalDiscoveryOperations.delete(terminal);
-        }
-    });
+    void current.then(
+        () => {
+            if (terminalDiscoveryOperations.get(terminal) === current) {
+                terminalDiscoveryOperations.delete(terminal);
+            }
+        },
+        () => {
+            if (terminalDiscoveryOperations.get(terminal) === current) {
+                terminalDiscoveryOperations.delete(terminal);
+            }
+        },
+    );
     return current;
 }
 
@@ -368,13 +460,18 @@ function getSessionDiscoveryDir(): string {
 function isExtensionDiscoveryPath(filePath: string): boolean {
     const discoveryDir = path.resolve(getSessionDiscoveryDir());
     const resolvedPath = path.resolve(filePath);
-    return path.dirname(resolvedPath) === discoveryDir && /^[a-f0-9]{32}\.json$/i.test(path.basename(resolvedPath));
+    return (
+        path.dirname(resolvedPath) === discoveryDir &&
+        /^[a-f0-9]{32}\.json$/i.test(path.basename(resolvedPath))
+    );
 }
 
 function terminalDiscoveryPath(terminal: vscode.Terminal): string | undefined {
     const creationOptions = terminal.creationOptions as vscode.TerminalOptions | undefined;
     const candidate = creationOptions?.env?.['SESS_DISCOVERY_FILE'];
-    return typeof candidate === 'string' && candidate.length > 0 && isExtensionDiscoveryPath(candidate)
+    return typeof candidate === 'string' &&
+        candidate.length > 0 &&
+        isExtensionDiscoveryPath(candidate)
         ? candidate
         : undefined;
 }
@@ -414,15 +511,21 @@ export async function createSessionDiscoveryFile(endpoint: string): Promise<stri
     return filePath;
 }
 
-async function writeSessionDiscoveryFile(filePath: string, endpoint: string, terminalPid?: number): Promise<void> {
+async function writeSessionDiscoveryFile(
+    filePath: string,
+    endpoint: string,
+    terminalPid?: number,
+): Promise<void> {
     if (!isExtensionDiscoveryPath(filePath)) {
-        throw new Error('Refusing to write session discovery data outside extension global storage');
+        throw new Error(
+            'Refusing to write session discovery data outside extension global storage',
+        );
     }
     const data: SessionDiscoveryFile = { version: 1, endpoint, jgdSocket: getSessionJgdSocket() };
     if (terminalPid !== undefined) {
         data.terminalPid = terminalPid;
     } else if (await fs.pathExists(filePath)) {
-        const existing = await fs.readJson(filePath) as Partial<SessionDiscoveryFile>;
+        const existing = (await fs.readJson(filePath)) as Partial<SessionDiscoveryFile>;
         if (typeof existing.terminalPid === 'number') {
             data.terminalPid = existing.terminalPid;
         }
@@ -440,7 +543,11 @@ async function writeSessionDiscoveryFile(filePath: string, endpoint: string, ter
     }
 }
 
-export async function updateSessionDiscoveryFile(filePath: string, endpoint: string, terminalPid?: number): Promise<void> {
+export async function updateSessionDiscoveryFile(
+    filePath: string,
+    endpoint: string,
+    terminalPid?: number,
+): Promise<void> {
     await writeSessionDiscoveryFile(filePath, endpoint, terminalPid);
 }
 
@@ -459,7 +566,7 @@ export async function updateTerminalSessionDiscoveryFile(
 
 async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string | undefined> {
     const discoveryDir = getSessionDiscoveryDir();
-    if (!await fs.pathExists(discoveryDir)) {
+    if (!(await fs.pathExists(discoveryDir))) {
         return undefined;
     }
     const candidates: Array<{ filePath: string; mtimeMs: number }> = [];
@@ -472,8 +579,12 @@ async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string
             continue;
         }
         try {
-            const discovery = await fs.readJson(filePath) as Partial<SessionDiscoveryFile>;
-            if (discovery.version === 1 && discovery.terminalPid === terminalPid && typeof discovery.endpoint === 'string') {
+            const discovery = (await fs.readJson(filePath)) as Partial<SessionDiscoveryFile>;
+            if (
+                discovery.version === 1 &&
+                discovery.terminalPid === terminalPid &&
+                typeof discovery.endpoint === 'string'
+            ) {
                 const stat = await fs.stat(filePath);
                 candidates.push({ filePath, mtimeMs: stat.mtimeMs });
             }
@@ -517,7 +628,12 @@ export async function updateTerminalDiscovery(terminal: vscode.Terminal): Promis
     let discoveryPath = terminalDiscoveryPath(terminal);
     discoveryPath ??= await findDiscoveryFileForTerminal(terminalPid);
     if (discoveryPath && !isTerminalClosed(terminal)) {
-        await updateTerminalSessionDiscoveryFile(terminal, discoveryPath, globalPipePath, terminalPid);
+        await updateTerminalSessionDiscoveryFile(
+            terminal,
+            discoveryPath,
+            globalPipePath,
+            terminalPid,
+        );
     }
 }
 
@@ -626,9 +742,10 @@ function startGlobalSessionServer(): Promise<string> {
                             readBuffers.push(incoming);
                             readBufferLength += incoming.length;
                         }
-                        buf = readBuffers.length === 1
-                            ? readBuffers[0]
-                            : Buffer.concat(readBuffers, readBufferLength);
+                        buf =
+                            readBuffers.length === 1
+                                ? readBuffers[0]
+                                : Buffer.concat(readBuffers, readBufferLength);
                         readBuffers = [];
                         readBufferLength = 0;
                     }
@@ -694,17 +811,19 @@ function startGlobalSessionServer(): Promise<string> {
         try {
             server.listen(pipePath, () => {
                 listening = true;
-                void setOwnerOnlyPermissions(pipePath).then(() => {
-                    if (settled) {
-                        return;
-                    }
-                    settled = true;
-                    initialized = true;
-                    globalPipePath = pipePath;
-                    globalSessionServer = server;
-                    console.info(`[SessionServer] Listening on ${pipePath}`);
-                    resolve(pipePath);
-                }).catch(failStartup);
+                void setOwnerOnlyPermissions(pipePath)
+                    .then(() => {
+                        if (settled) {
+                            return;
+                        }
+                        settled = true;
+                        initialized = true;
+                        globalPipePath = pipePath;
+                        globalSessionServer = server;
+                        console.info(`[SessionServer] Listening on ${pipePath}`);
+                        resolve(pipePath);
+                    })
+                    .catch(failStartup);
             });
         } catch (err) {
             failStartup(err);
@@ -715,7 +834,7 @@ function startGlobalSessionServer(): Promise<string> {
 // Keep managed discovery, the public API, and manual attach on the same renderer.
 function getSessionJgdSocket(): string {
     return jgdEnabled()
-        ? (globalPlotManager as CommonPlotManager)?.getJgdEnvVars()?.['JGD_SOCKET'] ?? ''
+        ? ((globalPlotManager as CommonPlotManager)?.getJgdEnvVars()?.['JGD_SOCKET'] ?? '')
         : '';
 }
 
@@ -745,7 +864,11 @@ function getAttachSessionScriptPath(pipePath: string): string {
     return path.join(extensionContext.globalStorageUri.fsPath, 'tmp', 'attach', `${scriptBase}.R`);
 }
 
-function buildAttachSessionScript(pipePath: string, sessPath: string, installSessScriptPath: string): string {
+function buildAttachSessionScript(
+    pipePath: string,
+    sessPath: string,
+    installSessScriptPath: string,
+): string {
     const backend = resolveBackend();
     const jgdSocket = getSessionJgdSocket();
     return [
@@ -753,9 +876,13 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, installSes
         `  endpoint <- ${asRStringLiteral(pipePath)}`,
         `  sess_src <- ${asRStringLiteral(sessPath)}`,
         `  install_sess_script <- ${asRStringLiteral(installSessScriptPath)}`,
-        ...(backend === 'native' ? [] : [
-            jgdSocket ? `  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})` : '  Sys.unsetenv("JGD_SOCKET")',
-        ]),
+        ...(backend === 'native'
+            ? []
+            : [
+                  jgdSocket
+                      ? `  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})`
+                      : '  Sys.unsetenv("JGD_SOCKET")',
+              ]),
         `  source(${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')).replace(/\\/g, '/'))}, local = TRUE)`,
         '  if (sess_install_required(sess_src)) {',
         '    if (!file.exists(install_sess_script)) {',
@@ -773,11 +900,19 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, installSes
 
 export async function getAttachSessionCommand(): Promise<string> {
     const pipePath = await getGlobalPipePath();
-    const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
-    const installSessScriptPath = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
+    const sessPath = extensionContext
+        .asAbsolutePath(path.join('dist', 'resources', 'sess'))
+        .replace(/\\/g, '/');
+    const installSessScriptPath = extensionContext
+        .asAbsolutePath(path.join('R', 'install_sess.R'))
+        .replace(/\\/g, '/');
     const scriptPath = getAttachSessionScriptPath(pipePath);
     await fs.ensureDir(path.dirname(scriptPath));
-    await fs.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, installSessScriptPath), { encoding: 'utf-8', mode: 0o600 });
+    await fs.writeFile(
+        scriptPath,
+        buildAttachSessionScript(pipePath, sessPath, installSessScriptPath),
+        { encoding: 'utf-8', mode: 0o600 },
+    );
     await setOwnerOnlyPermissions(scriptPath);
     attachSessionScriptPath = scriptPath;
 
@@ -848,8 +983,10 @@ export async function activateRSession(): Promise<void> {
         }
 
         // Restore the selected managed terminal before focusing another session.
-        const discoveryPath = terminal && (terminalDiscoveryPath(terminal) ||
-            (pidArg ? await findDiscoveryFileForTerminal(pidArg) : undefined));
+        const discoveryPath =
+            terminal &&
+            (terminalDiscoveryPath(terminal) ||
+                (pidArg ? await findDiscoveryFileForTerminal(pidArg) : undefined));
         if (terminal && discoveryPath && !isTerminalClosed(terminal)) {
             const command = await getAttachSessionCommand();
             terminal.sendText(command, true);
@@ -879,7 +1016,7 @@ export async function activateRSession(): Promise<void> {
             const action = await window.showInformationMessage(
                 'No active terminal is available. You can copy the attach command or create a managed R terminal.',
                 'Copy Attach Command',
-                'Create R Terminal'
+                'Create R Terminal',
             );
 
             if (action === 'Copy Attach Command') {
@@ -895,7 +1032,9 @@ export async function activateRSession(): Promise<void> {
         console.info('[activateRSession] Creating new R terminal');
         await rTerminal.createRTerm();
     } else {
-        void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
+        void window.showInformationMessage(
+            'This command requires that r.sessionWatcher be enabled.',
+        );
     }
 }
 
@@ -903,12 +1042,11 @@ export function removeDirectory(dir: string): void {
     console.info(`[removeDirectory] dir: ${dir}`);
     if (fs.existsSync(dir)) {
         console.info('[removeDirectory] dir exists');
-        fs.readdirSync(dir)
-            .forEach((file) => {
-                const curPath = path.join(dir, file);
-                console.info(`[removeDirectory] Remove ${curPath}`);
-                fs.unlinkSync(curPath);
-            });
+        fs.readdirSync(dir).forEach((file) => {
+            const curPath = path.join(dir, file);
+            console.info(`[removeDirectory] Remove ${curPath}`);
+            fs.unlinkSync(curPath);
+        });
         console.info(`[removeDirectory] Remove dir ${dir}`);
         fs.rmdirSync(dir);
     }
@@ -916,7 +1054,7 @@ export function removeDirectory(dir: string): void {
 }
 
 export function sessionDirectoryExists(): boolean {
-    return (fs.existsSync(sessionDir));
+    return fs.existsSync(sessionDir);
 }
 
 export function removeSessionFiles(): void {
@@ -928,7 +1066,9 @@ export function removeSessionFiles(): void {
 }
 
 async function updatePlot() {
-    if (!globalPipePath) {return;}
+    if (!globalPipePath) {
+        return;
+    }
     await globalPlotManager?.showStandardPlot();
 }
 
@@ -968,7 +1108,13 @@ async function runWorkspaceRefresh(): Promise<void> {
 
 export async function updateWorkspace() {
     const requestedSession = activeSession;
-    if ((!globalPipePath && !requestedSession?.requester) || !requestedSession || requestedSession.workspaceUnavailable) {return;}
+    if (
+        (!globalPipePath && !requestedSession?.requester) ||
+        !requestedSession ||
+        requestedSession.workspaceUnavailable
+    ) {
+        return;
+    }
     try {
         const response = await sessionRequest({ method: 'workspace' }, requestedSession);
         if (response && sessions.get(requestedSession.sessionId) === requestedSession) {
@@ -980,7 +1126,11 @@ export async function updateWorkspace() {
     }
 }
 
-export async function showBrowser(url: string, title: string, viewer: string | boolean): Promise<void> {
+export async function showBrowser(
+    url: string,
+    title: string,
+    viewer: string | boolean,
+): Promise<void> {
     console.info(`[showBrowser] uri: ${url}, viewer: ${viewer.toString()}`);
     const uri = Uri.parse(url);
     if (viewer === false) {
@@ -1012,9 +1162,19 @@ export function openExternalBrowser(): void {
     }
 }
 
-export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, viewId?: string, owner = activeSession): Promise<void> {
+export async function showDataView(
+    source: string,
+    type: string,
+    title: string,
+    file: string,
+    viewer: string,
+    viewId?: string,
+    owner = activeSession,
+): Promise<void> {
     resDir ??= path.join(extensionContext.extensionPath, 'dist', 'resources');
-    console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, viewId: ${String(viewId ?? '')}`);
+    console.info(
+        `[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, viewId: ${String(viewId ?? '')}`,
+    );
 
     if (source === 'table') {
         if (viewId) {
@@ -1028,7 +1188,9 @@ export async function showDataView(source: string, type: string, title: string, 
             }
         }
 
-        const panel = window.createWebviewPanel('dataview', title,
+        const panel = window.createWebviewPanel(
+            'dataview',
+            title,
             {
                 preserveFocus: true,
                 viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
@@ -1038,7 +1200,8 @@ export async function showDataView(source: string, type: string, title: string, 
                 enableFindWidget: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
-            });
+            },
+        );
         panel.iconPath = new UriIcon('open-preview');
         if (viewId) {
             dynamicDataViewPanels.set(`${owner?.sessionId ?? ''}:${viewId}`, panel);
@@ -1047,7 +1210,9 @@ export async function showDataView(source: string, type: string, title: string, 
         const content = await getTableHtml(panel.webview, file || undefined, title);
         panel.webview.html = content;
     } else if (source === 'list') {
-        const panel = window.createWebviewPanel('dataview', title,
+        const panel = window.createWebviewPanel(
+            'dataview',
+            title,
             {
                 preserveFocus: true,
                 viewColumn: ViewColumn[viewer as keyof typeof ViewColumn],
@@ -1057,7 +1222,8 @@ export async function showDataView(source: string, type: string, title: string, 
                 enableFindWidget: true,
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
-            });
+            },
+        );
         const content = await getListHtml(panel.webview, file, title);
         panel.iconPath = new UriIcon('open-preview');
         panel.webview.html = content;
@@ -1071,7 +1237,11 @@ export async function showDataView(source: string, type: string, title: string, 
     console.info('[showDataView] Done');
 }
 
-export async function getTableHtml(webview: Webview, file: string | undefined, title: string): Promise<string> {
+export async function getTableHtml(
+    webview: Webview,
+    file: string | undefined,
+    title: string,
+): Promise<string> {
     const pageSize = config().get<number>('session.data.pageSize', 500);
     if (!file) {
         return `
@@ -1841,13 +2011,17 @@ import * as rstudioapi from './rstudioapi';
 export async function activateSession(session: Session): Promise<void> {
     activeSession = session;
     const refreshed = refreshActiveSession(session);
-    if (!session.workspaceUnavailable) { scheduleWorkspaceRefresh(); }
+    if (!session.workspaceUnavailable) {
+        scheduleWorkspaceRefresh();
+    }
     await refreshed;
 }
 
 async function refreshActiveSession(session: Session): Promise<void> {
     pipeClient = session.socket;
-    if (!session.requester) { globalPipePath = session.pipePath; }
+    if (!session.requester) {
+        globalPipePath = session.pipePath;
+    }
     pid = session.pid;
     rVer = session.rVer;
     info = session.info;
@@ -1871,8 +2045,14 @@ export async function activateSessionById(sessionId: string): Promise<boolean> {
         return false;
     }
     const target = sessions.get(sessionId);
-    if (!enableSessionWatcher && !target?.requester) { return false; }
-    if (!target || (!target.requester && (!isCurrentSocket(target.socket) || target.socket.destroyed || !target.socket.writable))) {
+    if (!enableSessionWatcher && !target?.requester) {
+        return false;
+    }
+    if (
+        !target ||
+        (!target.requester &&
+            (!isCurrentSocket(target.socket) || target.socket.destroyed || !target.socket.writable))
+    ) {
         return false;
     }
     await activateSession(target);
@@ -1900,7 +2080,9 @@ async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
     return undefined;
 }
 
-export async function switchSessionByTerminal(terminal: vscode.Terminal | undefined): Promise<void> {
+export async function switchSessionByTerminal(
+    terminal: vscode.Terminal | undefined,
+): Promise<void> {
     const terminalPid = await terminal?.processId;
     const session = terminalPid ? terminalSessions.get(String(terminalPid)) : undefined;
     if (session) {
@@ -1929,18 +2111,30 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             const sessionId = typeof params.session_id === 'string' ? params.session_id.trim() : '';
             const host = typeof params.host === 'string' ? params.host : '';
             if (protocolVersion !== SESS_PROTOCOL_VERSION) {
-                const found = protocolVersion === undefined ? 'missing' : JSON.stringify(protocolVersion);
-                void window.showErrorMessage(`Cannot attach R session: unsupported sess protocol version ${found}; this extension requires protocol version ${SESS_PROTOCOL_VERSION}.`);
+                const found =
+                    protocolVersion === undefined ? 'missing' : JSON.stringify(protocolVersion);
+                void window.showErrorMessage(
+                    `Cannot attach R session: unsupported sess protocol version ${found}; this extension requires protocol version ${SESS_PROTOCOL_VERSION}.`,
+                );
                 socket.destroy();
                 return;
             }
             if (!sessionId) {
-                void window.showErrorMessage('Cannot attach R session: the sess attach handshake has no session_id. Update the sess package and try again.');
+                void window.showErrorMessage(
+                    'Cannot attach R session: the sess attach handshake has no session_id. Update the sess package and try again.',
+                );
                 socket.destroy();
                 return;
             }
-            if (typeof params.tempdir !== 'string' || !params.tempdir || typeof params.wd !== 'string' || !params.wd) {
-                void window.showErrorMessage('Cannot attach R session: the sess attach handshake has missing or invalid session paths. Update the sess package and try again.');
+            if (
+                typeof params.tempdir !== 'string' ||
+                !params.tempdir ||
+                typeof params.wd !== 'string' ||
+                !params.wd
+            ) {
+                void window.showErrorMessage(
+                    'Cannot attach R session: the sess attach handshake has missing or invalid session paths. Update the sess package and try again.',
+                );
                 socket.destroy();
                 return;
             }
@@ -1948,7 +2142,9 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             const boundSessionId = socket._sessionId;
             if (boundSessionId) {
                 if (boundSessionId !== sessionId) {
-                    void window.showErrorMessage(`Cannot attach R session ${sessionId}: this IPC connection is already bound to session ${boundSessionId}. Reconnect using a new IPC connection.`);
+                    void window.showErrorMessage(
+                        `Cannot attach R session ${sessionId}: this IPC connection is already bound to session ${boundSessionId}. Reconnect using a new IPC connection.`,
+                    );
                     socket.destroy();
                 }
                 // An attach notification is only accepted once per socket. Treat a
@@ -1956,10 +2152,12 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 return;
             }
 
-            const rPid = typeof params.pid === 'string' || typeof params.pid === 'number' ? String(params.pid) : '';
-            const terminalPid = rPid && isLocalHost(host)
-                ? await findLocalTerminalPid(rPid)
-                : undefined;
+            const rPid =
+                typeof params.pid === 'string' || typeof params.pid === 'number'
+                    ? String(params.pid)
+                    : '';
+            const terminalPid =
+                rPid && isLocalHost(host) ? await findLocalTerminalPid(rPid) : undefined;
             const selectedTerminal = window.activeTerminal;
             const selectedTerminalPid = terminalPid ? await selectedTerminal?.processId : undefined;
             if (socket.destroyed) {
@@ -1970,7 +2168,9 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             const attachedSessionId = socket._sessionId;
             if (attachedSessionId) {
                 if (attachedSessionId !== sessionId) {
-                    void window.showErrorMessage(`Cannot attach R session ${sessionId}: this IPC connection is already bound to session ${attachedSessionId}. Reconnect using a new IPC connection.`);
+                    void window.showErrorMessage(
+                        `Cannot attach R session ${sessionId}: this IPC connection is already bound to session ${attachedSessionId}. Reconnect using a new IPC connection.`,
+                    );
                     socket.destroy();
                 }
                 return;
@@ -2001,18 +2201,27 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             }
             session.rVer = String(params.version);
             session.pid = rPid;
-            session.info = (params.info as SessionInfo | undefined) ?? { version: session.rVer, command: '', start_time: '' };
+            session.info = (params.info as SessionInfo | undefined) ?? {
+                version: session.rVer,
+                command: '',
+                start_time: '',
+            };
             session.sessionDir = params.tempdir;
             session.workingDir = params.wd;
 
             // Reload does not trigger a terminal-selection event after every attach.
             // Prefer its connected session when a terminal reconnects in the background.
-            const selectedSession = terminalPid && selectedTerminal === window.activeTerminal && selectedTerminalPid
-                ? terminalSessions.get(String(selectedTerminalPid))
-                : undefined;
-            await activateSession(selectedSession && !selectedSession.socket.destroyed ? selectedSession : session);
+            const selectedSession =
+                terminalPid && selectedTerminal === window.activeTerminal && selectedTerminalPid
+                    ? terminalSessions.get(String(selectedTerminalPid))
+                    : undefined;
+            await activateSession(
+                selectedSession && !selectedSession.socket.destroyed ? selectedSession : session,
+            );
 
-            console.info(`[startSessionWatcher] attach session ${sessionId} (${host || 'unknown'}:${rPid || 'unknown'}), terminal PID: ${terminalPid ?? 'unassociated'}`);
+            console.info(
+                `[startSessionWatcher] attach session ${sessionId} (${host || 'unknown'}:${rPid || 'unknown'}), terminal PID: ${terminalPid ?? 'unassociated'}`,
+            );
             purgeAddinPickerItems();
             if (typeof params.plot_url === 'string' && params.plot_url) {
                 await globalPlotManager?.showHttpgdPlot(params.plot_url);
@@ -2042,10 +2251,23 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
         case 'webview': {
             if (typeof params.url === 'string' && params.url) {
                 const url = params.url;
-                const title = typeof params.title === 'string' ? params.title : (method === 'browser' ? 'Browser' : method === 'page_viewer' ? 'Page Viewer' : 'Viewer');
+                const title =
+                    typeof params.title === 'string'
+                        ? params.title
+                        : method === 'browser'
+                          ? 'Browser'
+                          : method === 'page_viewer'
+                            ? 'Page Viewer'
+                            : 'Viewer';
 
-                const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
-                const configKey = method === 'page_viewer' ? 'pageViewer' : (method === 'browser' ? 'browser' : 'viewer');
+                const viewColumnConfig =
+                    config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
+                const configKey =
+                    method === 'page_viewer'
+                        ? 'pageViewer'
+                        : method === 'browser'
+                          ? 'browser'
+                          : 'viewer';
                 const viewerChoice = viewColumnConfig[configKey] ?? 'Active';
                 const viewColumn = viewerChoice === 'Disable' ? false : viewerChoice;
 
@@ -2070,15 +2292,28 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
         case 'dataview': {
             // R's deparse() can return several title lines. Preserve the
             // comma-separated title previously produced by String(array).
-            const title = typeof params.title === 'string' ? params.title
-                : Array.isArray(params.title) && params.title.every((line: unknown) => typeof line === 'string')
-                    ? params.title.join(',') : undefined;
-            if (typeof params.source === 'string' && params.source
-                && typeof params.type === 'string' && params.type
-                && title
-                && (params.file === undefined || params.file === null || typeof params.file === 'string')
-                && (params.view_id === undefined || params.view_id === null || typeof params.view_id === 'string')) {
-                const viewColumnConfig = config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
+            const title =
+                typeof params.title === 'string'
+                    ? params.title
+                    : Array.isArray(params.title) &&
+                        params.title.every((line: unknown) => typeof line === 'string')
+                      ? params.title.join(',')
+                      : undefined;
+            if (
+                typeof params.source === 'string' &&
+                params.source &&
+                typeof params.type === 'string' &&
+                params.type &&
+                title &&
+                (params.file === undefined ||
+                    params.file === null ||
+                    typeof params.file === 'string') &&
+                (params.view_id === undefined ||
+                    params.view_id === null ||
+                    typeof params.view_id === 'string')
+            ) {
+                const viewColumnConfig =
+                    config().get<Record<string, string>>('session.viewers.viewColumn') ?? {};
                 const viewer = viewColumnConfig['view'] ?? 'Two';
                 if (viewer !== 'Disable') {
                     await showDataView(
@@ -2102,7 +2337,11 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             break;
         }
         case 'rstudioapi/send_to_console': {
-            await rstudioapi.sendCodeToRTerminal(String(params.code), Boolean(params.execute), Boolean(params.focus));
+            await rstudioapi.sendCodeToRTerminal(
+                String(params.code),
+                Boolean(params.execute),
+                Boolean(params.focus),
+            );
             break;
         }
         default:
@@ -2115,13 +2354,17 @@ export async function showHelpNotification(params: Record<string, unknown>): Pro
         return;
     }
 
-    const viewer = config().get<Record<string, string>>('session.viewers.viewColumn')?.helpPanel ?? 'Two';
+    const viewer =
+        config().get<Record<string, string>>('session.viewers.viewColumn')?.helpPanel ?? 'Two';
     if (viewer !== 'Disable') {
         await globalRHelp.showHelpForPath(params.requestPath, viewer);
     }
 }
 
-export async function handleEditorRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
+export async function handleEditorRequest(
+    method: string,
+    params: Record<string, unknown>,
+): Promise<unknown> {
     return handleRequest({ method, params });
 }
 
@@ -2138,11 +2381,17 @@ async function handleRequest(message: Record<string, unknown>, socket?: IpcSocke
                     result = rstudioapi.activeEditorContext();
                     break;
                 case 'rstudioapi/insert_or_modify_text':
-                    await rstudioapi.insertOrModifyText(params.query as RSEditOperation[], params.id as string | null);
+                    await rstudioapi.insertOrModifyText(
+                        params.query as RSEditOperation[],
+                        params.id as string | null,
+                    );
                     result = true;
                     break;
                 case 'rstudioapi/replace_text_in_current_selection':
-                    await rstudioapi.replaceTextInCurrentSelection(String(params.text), params.id as string | null);
+                    await rstudioapi.replaceTextInCurrentSelection(
+                        String(params.text),
+                        params.id as string | null,
+                    );
                     result = true;
                     break;
                 case 'rstudioapi/show_dialog':
@@ -2150,17 +2399,28 @@ async function handleRequest(message: Record<string, unknown>, socket?: IpcSocke
                     result = true;
                     break;
                 case 'rstudioapi/show_prompt':
-                    result = await rstudioapi.showPrompt(String(params.title), String(params.message), params.default as string | undefined);
+                    result = await rstudioapi.showPrompt(
+                        String(params.title),
+                        String(params.message),
+                        params.default as string | undefined,
+                    );
                     break;
                 case 'rstudioapi/ask_for_password':
                     result = await rstudioapi.askForPassword(String(params.prompt));
                     break;
                 case 'rstudioapi/navigate_to_file':
-                    await rstudioapi.navigateToFile(String(params.file), Number(params.line), Number(params.column));
+                    await rstudioapi.navigateToFile(
+                        String(params.file),
+                        Number(params.line),
+                        Number(params.column),
+                    );
                     result = true;
                     break;
                 case 'rstudioapi/set_selection_ranges':
-                    await rstudioapi.setSelections(params.ranges as RSRange[], params.id as string | null);
+                    await rstudioapi.setSelections(
+                        params.ranges as RSRange[],
+                        params.id as string | null,
+                    );
                     result = true;
                     break;
                 case 'rstudioapi/document_save':
@@ -2178,11 +2438,18 @@ async function handleRequest(message: Record<string, unknown>, socket?: IpcSocke
                     result = await rstudioapi.documentContext(params.id as string | null);
                     break;
                 case 'rstudioapi/document_new':
-                    await rstudioapi.documentNew(String(params.text), String(params.type), params.position as number[]);
+                    await rstudioapi.documentNew(
+                        String(params.text),
+                        String(params.type),
+                        params.position as number[],
+                    );
                     result = true;
                     break;
                 case 'rstudioapi/document_close':
-                    await rstudioapi.documentClose(params.id as string | null, Boolean(params.save));
+                    await rstudioapi.documentClose(
+                        params.id as string | null,
+                        Boolean(params.save),
+                    );
                     result = true;
                     break;
                 default:
@@ -2193,14 +2460,16 @@ async function handleRequest(message: Record<string, unknown>, socket?: IpcSocke
         }
 
         if (!socket) {
-            if (error) { throw new Error(JSON.stringify(error)); }
+            if (error) {
+                throw new Error(JSON.stringify(error));
+            }
             return result;
         }
         sendToSocket(socket, {
             jsonrpc: '2.0',
             id: message.id,
             result: result,
-            error: error
+            error: error,
         });
     }
 }
@@ -2231,21 +2500,29 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
     }
 }
 
-export async function sessionRequest(data: Record<string, unknown>, target = activeSession): Promise<unknown> {
+export async function sessionRequest(
+    data: Record<string, unknown>,
+    target = activeSession,
+): Promise<unknown> {
     try {
-        if (target?.requester) { return await target.requester(data); }
+        if (target?.requester) {
+            return await target.requester(data);
+        }
         const socket = target?.socket ?? pipeClient;
         if (!socket || socket.destroyed) {
             throw new Error('IPC socket is not connected');
         }
 
         return await new Promise((resolve, reject) => {
-            const id = data.id !== undefined ? Number(data.id) : Math.floor(Math.random() * 1000000);
-            const payload = data.jsonrpc ? data : {
-                jsonrpc: '2.0',
-                id,
-                ...data
-            };
+            const id =
+                data.id !== undefined ? Number(data.id) : Math.floor(Math.random() * 1000000);
+            const payload = data.jsonrpc
+                ? data
+                : {
+                      jsonrpc: '2.0',
+                      id,
+                      ...data,
+                  };
 
             pendingRequests.set(id, { resolve, reject, socket });
 

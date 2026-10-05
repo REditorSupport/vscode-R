@@ -4,12 +4,7 @@ const vscode: VsCode = acquireVsCodeApi();
 
 const replaceReg = /vscode-webview:\/\//;
 const testReg = /vscode-webview:\/\/.*\.[A-Za-z/0-9_-]*?\/.+/;
-const watchedTags = [
-    'IMG',
-    'A',
-    'LINK',
-    'SCRIPT'
-];
+const watchedTags = ['IMG', 'A', 'LINK', 'SCRIPT'];
 
 function handleMutation(mutation: MutationRecord) {
     for (const node of Array.from(mutation.addedNodes)) {
@@ -53,7 +48,7 @@ function setupLinks() {
                 vscode.postMessage({
                     message: 'linkClicked',
                     href: hrefAbs,
-                    scrollY: window.scrollY
+                    scrollY: window.scrollY,
                 });
             };
         }
@@ -65,7 +60,7 @@ window.onmousedown = (ev) => {
     vscode.postMessage({
         message: 'mouseClick',
         button: Number(ev.button),
-        scrollY: window.scrollY
+        scrollY: window.scrollY,
     });
 };
 
@@ -79,6 +74,6 @@ window.addEventListener('load', () => {
 
     observer.observe(document.body, {
         childList: true,
-        subtree: true
+        subtree: true,
     });
 });

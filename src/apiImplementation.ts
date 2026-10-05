@@ -3,12 +3,10 @@ import { RExtension, RSessionApi } from './api';
 import { getRpath } from './util';
 import * as vscode from 'vscode';
 
-export class RExtensionImplementation implements RExtension  {
+export class RExtensionImplementation implements RExtension {
     public helpPanel?: RHelp;
     public session!: RSessionApi;
     public async getRExecutablePath(resource?: vscode.Uri): Promise<string | undefined> {
         return getRpath(false, resource);
     }
 }
-
-

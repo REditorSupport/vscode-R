@@ -15,7 +15,7 @@ function copyResources() {
         './node_modules/jquery.json-viewer/json-viewer/jquery.json-viewer.css',
         './node_modules/ag-grid-community/dist/ag-grid-community.min.noStyle.js',
         './node_modules/ag-grid-community/styles/ag-grid.min.css',
-        './node_modules/ag-grid-community/styles/ag-theme-balham.min.css'
+        './node_modules/ag-grid-community/styles/ag-theme-balham.min.css',
     ];
 
     for (const res of resources) {
@@ -35,7 +35,7 @@ function copyWebviewAssets() {
     const views = [
         { name: 'help', src: 'src/helpViewer/webview' },
         { name: 'httpgd', src: 'src/plotViewer/webview' },
-        { name: 'webview', src: 'src/webViewer/webview' }
+        { name: 'webview', src: 'src/webViewer/webview' },
     ];
 
     for (const view of views) {
@@ -99,7 +99,7 @@ async function main() {
         entryPoints: {
             'help/index': './src/helpViewer/webview/index.ts',
             'httpgd/index': './src/plotViewer/webview/index.ts',
-            'webview/index': './src/webViewer/webview/index.ts'
+            'webview/index': './src/webViewer/webview/index.ts',
         },
         bundle: true,
         minify: production,
@@ -115,7 +115,7 @@ async function main() {
             extensionCtx.watch(),
             agentCtx.watch(),
             interactiveRendererCtx.watch(),
-            webviewCtx.watch()
+            webviewCtx.watch(),
         ]);
         console.log('Watching for changes...');
     } else {
@@ -130,7 +130,7 @@ async function main() {
     }
 }
 
-main().catch(e => {
+main().catch((e) => {
     console.error(e);
     process.exit(1);
 });

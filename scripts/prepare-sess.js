@@ -27,9 +27,16 @@ function prepareBundledSess(root = path.join(__dirname, '..')) {
         }
         git('read-tree', 'HEAD');
         git('add', '--all', '--', 'sess');
-        const blob = execFileSync('git', ['hash-object', '-w', '--path=sess/DESCRIPTION', '--stdin'], {
-            cwd: root, env, input: description, encoding: 'utf8'
-        }).trim();
+        const blob = execFileSync(
+            'git',
+            ['hash-object', '-w', '--path=sess/DESCRIPTION', '--stdin'],
+            {
+                cwd: root,
+                env,
+                input: description,
+                encoding: 'utf8',
+            },
+        ).trim();
         git('update-index', '--add', '--cacheinfo', `100644,${blob},sess/DESCRIPTION`);
         const tree = git('write-tree');
         const revision = `git-tree:${git('rev-parse', `${tree}:sess`)}`;
@@ -43,12 +50,16 @@ function prepareBundledSess(root = path.join(__dirname, '..')) {
         const files = execFileSync('git', ['ls-files', '-z', '--', 'sess'], { cwd: root, env });
         const prefix = `${path.dirname(bundledPath).replace(/\\/g, '/')}/`;
         execFileSync('git', ['checkout-index', `--prefix=${prefix}`, '-z', '--stdin'], {
-            cwd: root, env, input: files
+            cwd: root,
+            env,
+            input: files,
         });
         // This copy is already prepared. pkgbuild (also used by remotes) must
         // not rerun the Git-dependent bootstrap from a staging/temporary path.
         const bundledDescriptionPath = path.join(bundledPath, 'DESCRIPTION');
-        const preparedDescription = fs.readFileSync(bundledDescriptionPath, 'utf8').replace(/\r\n/g, '\n')
+        const preparedDescription = fs
+            .readFileSync(bundledDescriptionPath, 'utf8')
+            .replace(/\r\n/g, '\n')
             .replace(placeholder, `${field}: ${revision}`)
             .replace(/^Config\/build\/bootstrap:[^\r\n]*$/m, 'Config/build/bootstrap: FALSE');
         fs.writeFileSync(bundledDescriptionPath, preparedDescription);

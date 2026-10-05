@@ -1,12 +1,11 @@
-
 import * as cheerio from 'cheerio';
-import { Package} from './packages';
+import { Package } from './packages';
 import fetch from 'node-fetch';
 
 type ParseFunction = (html: string, baseUrl: string) => Package[];
 
 export async function getPackagesFromCran(cranUrl: string): Promise<Package[]> {
-    const cranSites: {url: string, parseFunction: ParseFunction}[] = [
+    const cranSites: { url: string; parseFunction: ParseFunction }[] = [
         // NOTE: Not working any more
         // {
         //     url: new URL('stats/descriptions', cranUrl).toString(),
@@ -14,19 +13,19 @@ export async function getPackagesFromCran(cranUrl: string): Promise<Package[]> {
         // },
         {
             url: new URL('web/packages/available_packages_by_date.html', cranUrl).toString(),
-            parseFunction: parseCranTable
+            parseFunction: parseCranTable,
         },
         {
             url: new URL('src/contrib/PACKAGES', cranUrl).toString(),
-            parseFunction: parseCranPackagesFile
-        }
+            parseFunction: parseCranPackagesFile,
+        },
     ];
     let packages: Package[] = [];
-    for(const site of cranSites){
-        try{
+    for (const site of cranSites) {
+        try {
             // fetch html
             const res = await fetch(site.url);
-            const html = await (res).text();
+            const html = await res.text();
 
             // parse html
             packages = site.parseFunction(html, site.url);
@@ -35,7 +34,7 @@ export async function getPackagesFromCran(cranUrl: string): Promise<Package[]> {
         }
 
         // break if successfully fetched & parsed
-        if(packages?.length){
+        if (packages?.length) {
             break;
         }
     }
@@ -43,18 +42,18 @@ export async function getPackagesFromCran(cranUrl: string): Promise<Package[]> {
 }
 
 function parseCranPackagesFile(html: string): Package[] {
-    const packageNames = html.match(/^Package: .*$/gm)?.map(s => s.replace(/^Package: /, '')) || [];
-    const packages: Package[] = packageNames.map(s => ({
+    const packageNames =
+        html.match(/^Package: .*$/gm)?.map((s) => s.replace(/^Package: /, '')) || [];
+    const packages: Package[] = packageNames.map((s) => ({
         name: s,
         description: '',
-        isCran: true
+        isCran: true,
     }));
     return packages;
 }
 
-
 function parseCranTable(html: string, baseUrl: string): Package[] {
-    if(!html){
+    if (!html) {
         return [];
     }
     const $ = cheerio.load(html);
@@ -66,7 +65,9 @@ function parseCranTable(html: string, baseUrl: string): Package[] {
     tables.each((tableIndex, table) => {
         const rows = $('tr', table);
         rows.each((rowIndex, row) => {
-            if (rowIndex === 0) {return;} // Skip the header row
+            if (rowIndex === 0) {
+                return;
+            } // Skip the header row
             const date = $(row).find('td:nth-child(1)').text().trim();
             const href = $(row).find('td:nth-child(2) a').attr('href');
             const url = href ? new URL(href, baseUrl).toString() : undefined;
@@ -77,7 +78,7 @@ function parseCranTable(html: string, baseUrl: string): Package[] {
                 name: name,
                 href: url,
                 description: title,
-                isCran: true
+                isCran: true,
             });
         });
     });

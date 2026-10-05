@@ -6,8 +6,10 @@ export class JsonLines {
     private decoder = new StringDecoder('utf8');
     private buffer = '';
 
-    constructor(private readonly receive: (message: Record<string, unknown>) => void,
-        private readonly limit = MAX_MESSAGE_BYTES) {}
+    constructor(
+        private readonly receive: (message: Record<string, unknown>) => void,
+        private readonly limit = MAX_MESSAGE_BYTES,
+    ) {}
 
     push(chunk: Buffer): void {
         this.buffer += this.decoder.write(chunk);
