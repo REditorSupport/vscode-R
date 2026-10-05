@@ -363,7 +363,9 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
         if (focusMessage.message === 'dataview/focus' || focusMessage.message === 'dataview/blur') {
             if (focusMessage.documentGeneration === documentGenerations.get(webview)) {
                 if (focusMessage.message === 'dataview/focus') {
-                    focusDataViewPanel(panel, sessionId);
+                    if (panel.active) {
+                        focusDataViewPanel(panel, sessionId);
+                    }
                 } else {
                     blurDataViewPanel(panel, true);
                 }
@@ -1206,7 +1208,9 @@ export async function showDataView(
                     return;
                 }
                 if (message.message === 'dataview/focus') {
-                    focusDataViewPanel(panel, sessionId);
+                    if (panel.active) {
+                        focusDataViewPanel(panel, sessionId);
+                    }
                     return;
                 }
                 if (message.message === 'dataview/blur') {

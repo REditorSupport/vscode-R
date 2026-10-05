@@ -213,6 +213,32 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(session.activeSession, active);
     });
 
+    test('delayed focus messages from inactive viewers do not restore stale PIDs', async () => {
+        const a = await attach('viewer-session-a');
+        const b = await attach('viewer-session-b');
+        const aList = await open(a, 'list');
+        const aTable = await open(a, 'table');
+        const bList = await open(b, 'list');
+        const bTable = await open(b, 'table');
+
+        aList.activate();
+        aList.deactivate();
+        bTable.activate();
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
+
+        await send(aList, { message: 'dataview/focus' });
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
+
+        bTable.deactivate();
+        aTable.activate();
+        aTable.deactivate();
+        bList.activate();
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
+
+        await send(aTable, { message: 'dataview/focus' });
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
+    });
+
     test('terminal selection overrides a focused viewer PID without an editor transition', async () => {
         const terminalPid = 46250;
         const terminal = {
