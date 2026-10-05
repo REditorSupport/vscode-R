@@ -246,16 +246,20 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(session.activeSession?.sessionId, b.id);
 
         await send(aList, { message: 'dataview/blur' });
-        assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+        await waitFor(() => statusBar.text === 'R 4.6.0: 46250');
         assert.strictEqual(session.activeSession?.sessionId, b.id);
 
+        assert.strictEqual(await session.activateSessionById(a.id), true);
         await send(aTable, { message: 'dataview/focus' });
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
-        assert.strictEqual(session.activeSession?.sessionId, b.id);
 
         await send(aTable, { message: 'dataview/blur' });
+        await session.switchSessionByTerminal(terminal);
         assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
         assert.strictEqual(session.activeSession?.sessionId, b.id);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
 
         await session.cleanupSession(b.id);
         assert.strictEqual(session.activeSession, undefined);

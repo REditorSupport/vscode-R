@@ -292,11 +292,15 @@ function focusDataViewPanel(panel: vscode.WebviewPanel, sessionId: string | null
     updateSessionStatusFromFocus();
 }
 
-function blurDataViewPanel(panel: vscode.WebviewPanel): void {
+function blurDataViewPanel(panel: vscode.WebviewPanel, deferStatus = false): void {
     if (focusedDataViewPanel === panel) {
         focusedDataViewPanel = undefined;
         focusedDataViewSessionId = null;
-        updateSessionStatusFromFocus();
+        if (deferStatus) {
+            setTimeout(updateSessionStatusFromFocus, 0);
+        } else {
+            updateSessionStatusFromFocus();
+        }
     }
 }
 
@@ -361,7 +365,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                 if (focusMessage.message === 'dataview/focus') {
                     focusDataViewPanel(panel, sessionId);
                 } else {
-                    blurDataViewPanel(panel);
+                    blurDataViewPanel(panel, true);
                 }
             }
             return;
@@ -1206,7 +1210,7 @@ export async function showDataView(
                     return;
                 }
                 if (message.message === 'dataview/blur') {
-                    blurDataViewPanel(panel);
+                    blurDataViewPanel(panel, true);
                     return;
                 }
                 if (!Array.isArray(message.path) || !message.path.every(index => Number.isSafeInteger(index) && index > 0)) {
