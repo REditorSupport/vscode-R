@@ -51,13 +51,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y tmux
-          VSCR_TEST_TMUX=1 pnpm exec mocha out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000 --grep "^Interactive real R runtime standalone agent survives its launcher process exiting$"
-      - name: Run tests (Linux)
+          VSCR_TEST_TMUX=1 pnpm exec mocha out/test/node/interactiveRuntime.test.js --ui tdd --timeout 60000 --grep "^Interactive real R runtime standalone agent survives its launcher process exiting$"
+      - name: Run Node tests
+        run: pnpm run test:node
+      - name: Run extension tests (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a pnpm exec vscode-test
-      - name: Run tests
+        run: xvfb-run -a pnpm run test:extension
+      - name: Run extension tests
         if: runner.os != 'Linux'
-        run: pnpm exec vscode-test
+        run: pnpm run test:extension
       - name: Preserve extension test failure logs
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

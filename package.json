@@ -2530,11 +2530,13 @@
     "watch": "node esbuild.js --watch",
     "clean": "node -e \"require('node:fs').rmSync('out', { recursive: true, force: true })\"",
     "pretest": "pnpm run compile && pnpm run clean && tsc -p ./",
-    "test": "vscode-test",
+    "test": "pnpm run test:node && pnpm run test:extension",
+    "test:node": "mocha \"out/test/node/**/*.test.js\" --ui tdd --timeout 60000",
+    "test:extension": "vscode-test",
     "lint": "oxlint src",
     "typecheck": "tsc --noEmit -p ./",
     "test:sess-source": "node --test scripts/sess-source.test.js && Rscript --vanilla R/tests/sess_source.R",
-    "test:interactive": "pnpm run compile && tsc && mocha out/test/suite/arfExecutable.test.js out/test/suite/nodeExecutable.test.js out/test/suite/plotSvg.test.js out/test/suite/interactiveCore.test.js out/test/suite/interactiveBackend.test.js out/test/suite/interactiveLibraries.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000",
+    "test:interactive": "pnpm run pretest && pnpm run test:node",
     "test:interactive:examples": "pnpm run compile && tsc && node src/test/examples/run.cjs"
   },
   "devDependencies": {
