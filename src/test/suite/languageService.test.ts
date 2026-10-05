@@ -15,6 +15,7 @@ suite('Session package completion', () => {
     // Keep the tests independent of installed R packages and server processes.
     type ServiceInternals = {
         startLanguageService(): Promise<void>;
+        registerClient(key: string, client: { sendRequest: sinon.SinonStub; stop: sinon.SinonStub }, scope: string): Promise<void>;
         clients: Map<string, { sendRequest: sinon.SinonStub; stop: sinon.SinonStub }>;
         clientScopes: Map<string, string>;
     };
@@ -55,6 +56,41 @@ suite('Session package completion', () => {
         assert.strictEqual(request.callCount, 2, 'closing an older session must not clear the active packages');
         service.syncSessionState(undefined, undefined, 'second');
         sinon.assert.calledWithExactly(request, 'r/syncSessionState', { attachedPackages: [], loadedNamespaces: [] });
+    });
+
+    test('client receives session updates while initial synchronization is pending', async () => {
+        let resolveInitial!: () => void;
+        const initial = new Promise<void>(resolve => { resolveInitial = resolve; });
+        const request = sandbox.stub();
+        request.onFirstCall().returns(initial);
+        request.resolves(true);
+        const fakeClient = { sendRequest: request, stop: sandbox.stub().resolves() };
+        const internals = service as unknown as ServiceInternals;
+
+        service.syncSessionState({
+            search: ['.GlobalEnv', 'package:base'],
+            loaded_namespaces: ['base'],
+            globalenv: {},
+        }, folder.uri, 'session');
+
+        const registering = internals.registerClient('global', fakeClient, 'global');
+        await Promise.resolve();
+
+        service.syncSessionState(packages('dplyr'), folder.uri, 'session');
+        service.syncSessionState(undefined, folder.uri, 'session');
+
+        sinon.assert.calledWithExactly(request, 'r/syncSessionState', {
+            attachedPackages: ['base'], loadedNamespaces: ['base']
+        });
+        sinon.assert.calledWithExactly(request, 'r/syncSessionState', {
+            attachedPackages: ['dplyr', 'base'], loadedNamespaces: ['dplyr', 'base']
+        });
+        sinon.assert.calledWithExactly(request, 'r/syncSessionState', {
+            attachedPackages: [], loadedNamespaces: []
+        });
+
+        resolveInitial();
+        await registering;
     });
 
     test('multi-server mode separates workspace and unscoped documents', () => {
