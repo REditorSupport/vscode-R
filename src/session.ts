@@ -268,7 +268,6 @@ const dynamicDataViewPanels = new Map<string, vscode.WebviewPanel>();
 const dynamicDataViewStateGenerations = new WeakMap<vscode.WebviewPanel, number>();
 const documentGenerations = new WeakMap<Webview, number>();
 let focusedDataViewPanel: vscode.WebviewPanel | undefined;
-let focusedDataViewSessionId: string | null = null;
 let documentGenerationRevision = 0;
 
 function escapeHtml(text: string): string {
@@ -296,7 +295,6 @@ function registerDataViewPanel(
         if (!webviewPanel.active) {
             if (focusedDataViewPanel === panel) {
                 focusedDataViewPanel = undefined;
-                focusedDataViewSessionId = null;
                 if (activeSession) {
                     updateSessionStatusBar(activeSession);
                 } else {
@@ -307,7 +305,6 @@ function registerDataViewPanel(
         }
 
         focusedDataViewPanel = panel;
-        focusedDataViewSessionId = sessionId;
 
         const session = sessions.get(sessionId ?? '');
         if (session) {
@@ -317,7 +314,6 @@ function registerDataViewPanel(
     panel.onDidDispose(() => {
         if (focusedDataViewPanel === panel) {
             focusedDataViewPanel = undefined;
-            focusedDataViewSessionId = null;
             if (activeSession) {
                 updateSessionStatusBar(activeSession);
             } else {
