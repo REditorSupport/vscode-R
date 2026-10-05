@@ -84,6 +84,7 @@ suite('List viewer panels', () => {
                     html: '', asWebviewUri: (uri: vscode.Uri) => uri,
                     onDidReceiveMessage: sandbox.stub(),
                 },
+                onDidChangeViewState: sandbox.stub(),
                 onDidDispose: disposed.event,
                 dispose: () => { disposed.fire(); disposed.dispose(); },
             } as unknown as vscode.WebviewPanel;
@@ -137,6 +138,7 @@ suite('List viewer panels', () => {
                 html: '', asWebviewUri: (uri: vscode.Uri) => uri, postMessage,
                 onDidReceiveMessage: (listener: typeof receive) => { receive = listener; },
             },
+            onDidChangeViewState: sandbox.stub(),
             onDidDispose: disposed.event,
             dispose: () => { disposed.fire(); disposed.dispose(); },
         } as unknown as vscode.WebviewPanel;
@@ -172,6 +174,7 @@ suite('List viewer panels', () => {
                 html: '', asWebviewUri: (uri: vscode.Uri) => uri, postMessage,
                 onDidReceiveMessage: (listener: typeof receive) => { receive = listener; },
             },
+            onDidChangeViewState: sandbox.stub(),
             onDidDispose: disposed.event,
             dispose: () => { disposed.fire(); disposed.dispose(); },
         } as unknown as vscode.WebviewPanel;
