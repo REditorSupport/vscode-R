@@ -245,7 +245,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // deploy session watcher (if configured by user)
     if (enableSessionWatcher) {
         console.info('Initialize session watcher');
-        void session.deploySessionWatcher(context.extensionPath);
+        session.deploySessionWatcher(context.extensionPath);
         // create status bar item that contains info about the session watcher
         console.info('Create sessionStatusBarItem');
         sessionStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);

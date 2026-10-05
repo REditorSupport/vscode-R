@@ -257,7 +257,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
     public toggleTheme(): void {
         this.useCodeTheme = !this.useCodeTheme;
         for (const preview of this.previewStore) {
-            void preview[1].styleHtml(this.useCodeTheme);
+            preview[1].styleHtml(this.useCodeTheme);
         }
     }
 
@@ -330,7 +330,7 @@ export class RMarkdownPreviewManager extends RMarkdownManager {
             if (outputUrl) {
                 if (viewer !== undefined && fileName) {
                     const autoRefresh = config().get<boolean>('rmarkdown.preview.autoRefresh', false);
-                    void this.openPreview(
+                    this.openPreview(
                         vscode.Uri.file(outputUrl),
                         filePath,
                         fileName,

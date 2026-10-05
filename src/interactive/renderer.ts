@@ -46,17 +46,17 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                 output.saveButton.focus({ preventScroll: true });
             }
             output.updatePlotPaging?.();
-            if (message.error && status) { status.textContent = String(message.error); }
+            if (message.error && status) { status.textContent = typeof message.error === 'string' ? message.error : JSON.stringify(message.error); }
             else if (typeof message.result === 'string') { output.savePlot?.(message.result); }
         } else if (message.error && status) {
-            status.textContent = String(message.error);
+            status.textContent = typeof message.error === 'string' ? message.error : JSON.stringify(message.error);
         }
     });
     return {
         renderOutputItem(item, element) {
             outputs.get(item.id)?.dispose?.();
             const data = item.json(); element.replaceChildren();
-            const choiceKey = `${String(data.generation ?? '')}:${String(data.displayId ?? item.id)}`;
+            const choiceKey = `${typeof data.generation === 'string' ? data.generation : ''}:${typeof data.displayId === 'string' ? data.displayId : item.id}`;
             const choice = choices.get(choiceKey);
             const connected = data.connected !== false;
             const live = connected && data.archived !== true && data.running !== false;
@@ -95,7 +95,7 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                     toggle.replaceChildren(...Array.from(button('', text ? 'table' : 'text', () => undefined, text ? 'Table' : 'Text').childNodes));
                     toggle.title = text ? 'Show table preview' : 'Show R printed output';
                     toggle.setAttribute('aria-label', toggle.title); toggle.disabled = !hasText;
-                    if (!hasText) { toggle.title = data.printError ? `R printout unavailable: ${String(data.printError)}` : 'Printed output unavailable. Run the code in a session started with the current extension.'; }
+                    if (!hasText) { toggle.title = data.printError ? `R printout unavailable: ${typeof data.printError === 'string' ? data.printError : JSON.stringify(data.printError)}` : 'Printed output unavailable. Run the code in a session started with the current extension.'; }
                 };
                 const toggle = button('Show R printed output', 'text', () => {
                     state.data.tableView = state.data.tableView === 'text' ? 'table' : 'text';
@@ -156,8 +156,8 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                         image.width = Number(page.width); image.height = Number(page.height);
                     }
                     image.alt = pages.length > 1 ? `R plot ${index + 1} of ${pages.length}` : 'R plot';
-                    image.src = page.url ? String(page.url) : page.imageData
-                        ? `data:${String(page.mime)};base64,${String(page.imageData)}` : `data:image/svg+xml;base64,${String(page.svgData ?? '')}`;
+                    image.src = typeof page.url === 'string' && page.url ? page.url : typeof page.imageData === 'string' && page.imageData
+                        ? `data:${String(page.mime)};base64,${page.imageData}` : `data:image/svg+xml;base64,${typeof page.svgData === 'string' ? page.svgData : ''}`;
                     state.updatePlotPaging?.();
                 };
                 const select = (page: number): void => {
@@ -180,14 +180,14 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                 iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-downloads');
                 iframe.style.cssText = 'width:100%;height:500px;border:0;background:white';
                 if (data.kind === 'html') {
-                    if (data.url) { iframe.src = String(data.url); }
+                    if (typeof data.url === 'string' && data.url) { iframe.src = data.url; }
                     else { iframe.srcdoc = '<p>Reconnect to view this widget, or use the portable HTML export.</p>'; }
                 }
                 else { iframe.srcdoc = String(data.text); }
                 element.append(iframe);
                 toolbar.append(button('Open viewer', 'open', () => send(item, data, 'open')));
             } else if (data.kind === 'url') {
-                const label = document.createElement('span'); label.textContent = String(data.url); element.append(label);
+                const label = document.createElement('span'); label.textContent = typeof data.url === 'string' ? data.url : ''; element.append(label);
                 toolbar.append(button('Open application', 'open', () => send(item, data, 'open')));
             } else {
                 const pre = document.createElement('pre'); pre.textContent = JSON.stringify(data, null, 2); element.append(pre);
