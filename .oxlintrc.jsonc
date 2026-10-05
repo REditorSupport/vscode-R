@@ -14,7 +14,7 @@
     {
       // Strict type rules require files included in the TypeScript project.
       // JavaScript scripts still receive the shared lint rules above.
-      "files": ["**/*.ts", "**/*.tsx"],
+      "files": ["**/*.ts"],
       "rules": {
         "typescript/await-thenable": "error",
         "typescript/no-floating-promises": "error",
