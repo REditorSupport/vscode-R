@@ -49,7 +49,7 @@ base-R identity checks with `pnpm run test:sess-identity`.
 
 The [architecture and backend contract](src/interactive/README.md) live beside the implementation. User setup and behavior belong in the [R Interactive wiki page](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive).
 
-Use Linux or macOS for native Interactive runtime tests, with R and a C compiler for R packages. Windows runs the remaining extension checks but does not support the native Interactive console bridge. From the repository root, after installing pnpm dependencies, prepare a test library:
+Use Linux or macOS for Interactive runtime tests, with R and an installed arf 0.5.3 executable. Bundled sess is pure R and needs no compiler; its dependencies can use repository binaries. Windows runs the remaining extension checks; persistent Interactive supervision remains limited to Linux/macOS. From the repository root, after installing pnpm dependencies, prepare a test library:
 
 ```sh
 export R_LIBS=/path/to/test-library
@@ -59,17 +59,17 @@ pnpm run build
 Rscript -e 'tinytest::test_package("sess")'
 ```
 
-`pnpm run build` installs the bundled sess and its dependencies, including suggested packages, into the selected R library. JGD checks need `jgd` and `systemfonts`; standard graphics uses `svglite` or PNG. Runtime suites build private bridge installations and use disposable sessions/libraries. Keep `R_LIBS` set for the commands below.
+`pnpm run build` installs the bundled sess and its dependencies, including suggested packages, into the selected R library. JGD checks need `jgd` and `systemfonts`; standard graphics uses `svglite` or PNG. Runtime suites build private pure R sess installations and use disposable sessions/libraries. Keep `R_LIBS` set for the commands below.
 
 ```sh
 pnpm run test:interactive
-VSCR_TEST_PROVIDER=arf ARF_PATH=/path/to/arf pnpm run test:interactive
+ARF_PATH=/path/to/arf pnpm run test:interactive
 VSCR_TEST_STATIC=1 pnpm run test:interactive
 pnpm run pretest
 VSCR_TEST_TMUX=1 pnpm exec mocha out/test/node/interactiveRuntime.test.js --ui tdd --timeout 60000 --grep "standalone agent survives its launcher process exiting"
 ```
 
-The default provider is plain R. The arf run needs an installed arf executable; `VSCR_TEST_STATIC=1` selects standard graphics. The tmux variant needs tmux and exercises a real supervised agent, as Linux CI does. These variables can be combined. Check skipped tests when assessing coverage: a missing optional runtime or package is not a verified pass for that feature.
+The provider is arf. `ARF_PATH` selects its executable; `VSCR_TEST_STATIC=1` selects standard graphics. The tmux variant needs tmux and exercises a real supervised agent, as Linux CI does. These variables can be combined. Check skipped tests when assessing coverage: a missing optional runtime or package is not a verified pass for that feature.
 
 `pnpm run test` prepares the bundle and test files, runs `src/test/node/` directly
 in Node/Mocha, then runs the extension-host suites and isolated sess task tests.
@@ -83,8 +83,8 @@ PR CI, main pushes and manual runs execute the full supported suites on every
 OS. Linux and macOS run the same Node, Interactive editor and isolated sess task
 tests, including the actual VS Code Electron runtime check with no Node executable
 on PATH and successful session creation using the default VS Code runtime.
-Windows skips the native Interactive runtime/editor suites because its console
-bridge is not supported. Linux additionally runs the tmux launcher survival case
+Windows skips the Interactive runtime/editor suites because persistent
+supervision currently requires Linux/macOS. Linux additionally runs the tmux launcher survival case
 once with tmux enabled and uses Xvfb for extension-host tests. Source/bootstrap
 checks, installed identity verification and sess package tests run on every OS.
 
@@ -111,4 +111,4 @@ Open <http://127.0.0.1:8765/src/test/browser/interactiveRenderer.html>. The harn
 
 The [analysis fixtures](src/test/examples/README.md) document public/research examples, reference plots, widget checks, and large-table allocation measurements. Keep repeatable procedures there; record dated results and environment-specific limitations in the PR discussion.
 
-For changes to persistence or supervision, also exercise the intended Remote SSH host: create managed plain-R and arf sessions, adopt an existing terminal arf, create distinct objects, and submit jobs that stream text and plots. Close VS Code and disconnect SSH during execution, then reconnect. Verify the same R PIDs and objects, retained output, session isolation, usable plots, and no duplicate evaluation. Check that the adopted terminal remains usable and that stop/restart targets only the selected session. Local process tests do not establish server-specific logout, systemd, or network behavior.
+For changes to persistence or supervision, also exercise the intended Remote SSH host: create managed arf sessions, adopt an existing terminal arf, create distinct objects, and submit jobs that stream text and plots. Close VS Code and disconnect SSH during execution, then reconnect. Verify the same R PIDs and objects, retained output, session isolation, usable plots, and no duplicate evaluation. Check that the adopted terminal remains usable and that stop/restart targets only the selected session. Local process tests do not establish server-specific logout, systemd, or network behavior.
