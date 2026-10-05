@@ -189,6 +189,10 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
         assert.strictEqual(session.activeSession, active);
 
+        await session.updateWorkspace();
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+        assert.strictEqual(session.activeSession, active);
+
         bTable.activate();
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
         assert.strictEqual(session.activeSession, active);
