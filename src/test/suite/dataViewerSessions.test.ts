@@ -24,6 +24,7 @@ interface Panel {
     panel: vscode.WebviewPanel;
     receive: (message: unknown) => Promise<void>;
     replies: Array<{ ok?: boolean; error?: string }>;
+    activate: () => void;
 }
 
 async function waitFor(condition: () => boolean): Promise<void> {
@@ -38,6 +39,7 @@ async function waitFor(condition: () => boolean): Promise<void> {
 
 suite('Viewer session ownership', () => {
     let sandbox: sinon.SinonSandbox;
+    let statusBar: vscode.StatusBarItem;
     const clients: Client[] = [];
     const panels: Panel[] = [];
 
@@ -46,19 +48,26 @@ suite('Viewer session ownership', () => {
         const root = path.join(__dirname, '..', '..', '..');
         mockExtensionContext(root, sandbox);
         sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        statusBar = {
+            text: '', tooltip: '', show: sandbox.stub(),
+        } as unknown as vscode.StatusBarItem;
+        sandbox.stub(extension, 'sessionStatusBarItem').value(statusBar);
         sandbox.stub(util, 'config').returns({
             get: (_key: string, defaultValue: unknown) => defaultValue,
         } as vscode.WorkspaceConfiguration);
         session.deploySessionWatcher(root);
         sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title) => {
             const disposed = new vscode.EventEmitter<void>();
+            const viewState = new vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>();
             let closed = false;
+            let active = false;
             const item: Panel = {
                 panel: undefined as unknown as vscode.WebviewPanel,
-                receive: () => Promise.resolve(), replies: [],
+                receive: () => Promise.resolve(), replies: [], activate: () => undefined,
             };
             item.panel = {
                 title, viewColumn: vscode.ViewColumn.Two, reveal: sandbox.stub(),
+                get active() { return active; },
                 webview: {
                     html: '', asWebviewUri: (uri: vscode.Uri) => uri,
                     onDidReceiveMessage: (listener: Panel['receive']) => { item.receive = listener; },
@@ -67,15 +76,21 @@ suite('Viewer session ownership', () => {
                         return Promise.resolve(true);
                     },
                 },
+                onDidChangeViewState: viewState.event,
                 onDidDispose: disposed.event,
                 dispose: () => {
                     if (!closed) {
                         closed = true;
                         disposed.fire();
                         disposed.dispose();
+                        viewState.dispose();
                     }
                 },
             } as unknown as vscode.WebviewPanel;
+            item.activate = () => {
+                active = true;
+                viewState.fire({ webviewPanel: item.panel });
+            };
             panels.push(item);
             return item.panel;
         });
@@ -159,6 +174,25 @@ suite('Viewer session ownership', () => {
     }
 
     const viewerRequests = (client: Client) => client.requests.filter(request => request.method !== 'workspace');
+
+    test('viewer focus updates the displayed PID without activating its session', async () => {
+        const a = await attach('viewer-session-a');
+        const b = await attach('viewer-session-b');
+        const aList = await open(a, 'list');
+        const bTable = await open(b, 'table');
+        const active = session.activeSession;
+
+        assert.strictEqual(active?.sessionId, b.id);
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
+
+        aList.activate();
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+        assert.strictEqual(session.activeSession, active);
+
+        bTable.activate();
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
+        assert.strictEqual(session.activeSession, active);
+    });
 
     test('identical viewer ids stay separate and background views keep their originating session', async () => {
         const a = await attach('viewer-session-a');
