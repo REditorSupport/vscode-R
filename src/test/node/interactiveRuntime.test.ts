@@ -807,10 +807,10 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             const arfPath = resolveExecutable(process.env.ARF_PATH ?? 'arf', root);
             const environment = nodeEnvironment(runtime);
             if (supervision === 'auto') {
-                // A real restricted PATH, including the shell utilities used by R but
-                // deliberately excluding tmux even on CI hosts where it is installed.
+                // arf discovers R via PATH on Linux. Keep R and its shell utilities
+                // available while excluding tmux even on CI hosts where it is installed.
                 const bin = path.join(temporary, 'without-tmux'); fs.mkdirSync(bin);
-                for (const name of ['uname', 'rm', 'mkdir', 'which', 'sed', 'sh', 'env']) {
+                for (const name of ['R', 'uname', 'rm', 'mkdir', 'which', 'sed', 'sh', 'env']) {
                     const executable = resolveExecutable(name, root); assert.ok(executable);
                     fs.symlinkSync(executable, path.join(bin, name));
                 }
