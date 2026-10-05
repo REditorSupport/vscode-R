@@ -158,7 +158,7 @@ export async function executeSessionCode(target: Session, code: string): Promise
 export function updateSessionWorkspace(target: Session, data: WorkspaceData): void {
     target.workspaceData = data;
     if (activeSession === target) {
-        void refreshActiveSession(target);
+        void refreshActiveSession(target, false);
     }
 }
 
@@ -2084,14 +2084,16 @@ export async function activateSession(session: Session): Promise<void> {
     await refreshed;
 }
 
-async function refreshActiveSession(session: Session): Promise<void> {
+async function refreshActiveSession(session: Session, updateStatus = true): Promise<void> {
     pipeClient = session.socket;
     if (!session.requester) { globalPipePath = session.pipePath; }
     sessionDir = session.sessionDir;
     workingDir = session.workingDir;
     workspaceData = session.workspaceData;
 
-    updateSessionStatusBar(sessions.get(focusedDataViewSessionId ?? '') ?? session);
+    if (updateStatus) {
+        updateSessionStatusBar(session);
+    }
     rWorkspace?.refresh();
     await setContext('rSessionActive', !session.workspaceUnavailable);
 }

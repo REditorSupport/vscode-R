@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import * as net from 'net';
+import * as os from 'os';
 import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
@@ -116,7 +117,9 @@ suite('Viewer session ownership', () => {
         client.socket.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n');
     }
 
-    async function attach(id: string): Promise<Client> {
+    async function attach(
+        id: string, host = 'viewer-test-host', pid: string | number = id,
+    ): Promise<Client> {
         const previousSocket = session.activeSession?.socket;
         const socket = net.createConnection(await session.getGlobalPipePath());
         const client = { id, socket, requests: [] as Request[] };
@@ -148,7 +151,7 @@ suite('Viewer session ownership', () => {
             socket.once('error', reject);
         });
         notify(client, 'attach', {
-            protocol_version: 2, session_id: id, host: 'viewer-test-host', pid: id,
+            protocol_version: 2, session_id: id, host, pid,
             version: '4.6.0', tempdir: '/tmp', wd: '/tmp',
         });
         await waitFor(() => session.activeSession?.sessionId === id &&
@@ -208,6 +211,32 @@ suite('Viewer session ownership', () => {
         aList.deactivate();
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
         assert.strictEqual(session.activeSession, active);
+    });
+
+    test('terminal selection overrides a focused viewer PID without an editor transition', async () => {
+        const terminalPid = 46250;
+        const terminal = {
+            processId: Promise.resolve(terminalPid),
+        } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+
+        const a = await attach('viewer-session-a');
+        const b = await attach('viewer-session-b', os.hostname(), terminalPid);
+        const aList = await open(a, 'list');
+
+        aList.activate();
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+
+        await session.updateWorkspace();
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+
+        await session.switchSessionByTerminal(terminal);
+        assert.strictEqual(session.activeSession?.sessionId, b.id);
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
+
+        await session.updateWorkspace();
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
     });
 
     test('identical viewer ids stay separate and background views keep their originating session', async () => {
