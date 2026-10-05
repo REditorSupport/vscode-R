@@ -135,7 +135,8 @@ suite('Session Communication', () => {
                 target.rVer = version;
                 await session.activateSession(target);
                 assert.strictEqual(status.text, 'R 4.6.1: 92026');
-                assert.ok(String(status.tooltip).includes(target.info.version));
+                assert.ok(typeof status.tooltip === 'string');
+                assert.ok(status.tooltip.includes(target.info.version));
             }
         } finally { session.unregisterSessionTransport(target); status.dispose(); }
     });

@@ -15,7 +15,10 @@ interface Operation {
 }
 
 export function escapeXml(value: unknown): string {
-    return String(value ?? '').replace(/[&<>"']/g, character => ({
+    const text = value === null || value === undefined ? ''
+        : typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+            || typeof value === 'bigint' || typeof value === 'symbol' ? String(value) : JSON.stringify(value);
+    return text.replace(/[&<>"']/g, character => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&apos;',
     }[character]!));
 }

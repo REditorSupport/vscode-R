@@ -112,7 +112,7 @@ export interface Request {
 
 export function sessionLabel(value: unknown): string {
     const label = typeof value === 'string' ? value.trim() : '';
-    if (!label || label.length > 80 || [...label].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) {
+    if (!label || label.length > 80 || label.split('').some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) {
         throw new Error('Use a session name of 1–80 characters without control characters');
     }
     return label;

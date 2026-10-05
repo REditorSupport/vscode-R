@@ -2531,7 +2531,7 @@
     "clean": "node -e \"require('node:fs').rmSync('out', { recursive: true, force: true })\"",
     "pretest": "pnpm run compile && pnpm run clean && tsc -p ./",
     "test": "vscode-test",
-    "lint": "oxlint src",
+    "lint": "oxlint src --ignore-pattern \"**/*.cjs\"",
     "typecheck": "tsc --noEmit -p ./",
     "test:sess-source": "node --test scripts/sess-source.test.js && Rscript --vanilla R/tests/sess_source.R",
     "test:interactive": "pnpm run compile && tsc && mocha out/test/suite/arfExecutable.test.js out/test/suite/nodeExecutable.test.js out/test/suite/plotSvg.test.js out/test/suite/interactiveCore.test.js out/test/suite/interactiveBackend.test.js out/test/suite/interactiveLibraries.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000",

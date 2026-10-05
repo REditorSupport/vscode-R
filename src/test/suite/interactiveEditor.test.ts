@@ -20,6 +20,10 @@ import type { GlobalEnvItem, WorkspaceDataProvider } from '../../workspaceViewer
 import type { WorkspaceData } from '../../session';
 import type { LanguageClient } from 'vscode-languageclient/node';
 
+function treeTooltip(item: vscode.TreeItem): string {
+    return typeof item.tooltip === 'string' ? item.tooltip : item.tooltip?.value ?? '';
+}
+
 (process.platform === 'win32' ? suite.skip : suite)('Interactive VS Code integration', function () {
     this.timeout(60000);
     let root: string;
@@ -479,11 +483,11 @@ import type { LanguageClient } from 'vscode-languageclient/node';
                 const matching = vscode.workspace.notebookDocuments.filter(doc => doc.metadata.rSessionId === manifests[i].id);
                 assert.deepStrictEqual(matching.map(doc => doc.uri.toString()), [originalUris[i]]);
                 const item = restoredManager.getTreeItem(manifests[i]);
-                assert.match(String(item.tooltip), /Connection: Connected · controlling/);
-                assert.match(String(item.tooltip), /Process supervision: Independent process/);
+                assert.match(treeTooltip(item), /Connection: Connected · controlling/);
+                assert.match(treeTooltip(item), /Process supervision: Independent process/);
                 assert.match(String(item.description), / · (<1m|\d+[mhd])/);
-                assert.match(String(item.tooltip), /Started: /);
-                assert.ok(!String(item.tooltip).includes('detached'));
+                assert.match(treeTooltip(item), /Started: /);
+                assert.ok(!treeTooltip(item).includes('detached'));
             }
             sinon.assert.notCalled(errors);
         } finally {
@@ -502,13 +506,13 @@ import type { LanguageClient } from 'vscode-languageclient/node';
             await other.connect(); await other.request('claim', { force: true });
             await view.client.connect();
             assert.ok(refreshes > 0, 'Connecting updates the session tree even without a state event');
-            assert.match(String(manager.getTreeItem(manifests[0]).tooltip), /Connection: Connected · observing/);
+            assert.match(treeTooltip(manager.getTreeItem(manifests[0])), /Connection: Connected · observing/);
             refreshes = 0;
             await vscode.commands.executeCommand('r.interactive.takeControl', manifests[0]);
             assert.ok(refreshes > 0, 'Taking control updates the tree immediately');
-            assert.match(String(manager.getTreeItem(manifests[0]).tooltip), /Connection: Connected · controlling/);
+            assert.match(treeTooltip(manager.getTreeItem(manifests[0])), /Connection: Connected · controlling/);
             view.client.close();
-            assert.match(String(manager.getTreeItem(manifests[0]).tooltip), /Connection: Disconnected/);
+            assert.match(treeTooltip(manager.getTreeItem(manifests[0])), /Connection: Disconnected/);
         } finally {
             other.close(); await view.client.connect(); await view.client.subscribe(0); listener.dispose();
         }
