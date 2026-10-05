@@ -42,7 +42,8 @@ it to avoid repeating preparation when installed through remotes.
 `Config/vscode-R/source-revision` controls installation independently of package
 versions and the runtime `protocol_version` handshake. Missing or different
 installed metadata requires the bundle; installation verifies it is visible
-through `.libPaths()`. Run the lightweight checks with `pnpm run test:sess-source`.
+through `.libPaths()`. Run the source/bootstrap checks with `pnpm run test:sess-source`, or just the
+base-R identity checks with `pnpm run test:sess-identity`.
 
 ## Testing R Interactive
 
@@ -64,12 +65,30 @@ Rscript -e 'tinytest::test_package("sess")'
 pnpm run test:interactive
 VSCR_TEST_PROVIDER=arf ARF_PATH=/path/to/arf pnpm run test:interactive
 VSCR_TEST_STATIC=1 pnpm run test:interactive
-VSCR_TEST_TMUX=1 pnpm run test:interactive
+pnpm run pretest
+VSCR_TEST_TMUX=1 pnpm exec mocha out/test/node/interactiveRuntime.test.js --ui tdd --timeout 60000 --grep "standalone agent survives its launcher process exiting"
 ```
 
 The default provider is plain R. The arf run needs an installed arf executable; `VSCR_TEST_STATIC=1` selects standard graphics. The tmux variant needs tmux and exercises a real supervised agent, as Linux CI does. These variables can be combined. Check skipped tests when assessing coverage: a missing optional runtime or package is not a verified pass for that feature.
 
-For VS Code integration, compile the tests and run the editor suite, or use `pnpm run test` for the full extension suite:
+`pnpm run test` prepares the bundle and test files, runs `src/test/node/` directly
+in Node/Mocha, then runs the extension-host suites and isolated sess task tests.
+`pnpm run test:interactive` prepares and runs only the Node suites, including
+supervision. After preparing once with `pnpm run pretest`, use `pnpm run test:node`
+and `pnpm run test:extension` to rerun either layer without rebuilding. The
+**Extension Tests** debugger configuration runs only `src/test/suite/`; use the
+CLI for the isolated multi-folder sess task tests.
+
+PR CI, main pushes and manual runs execute the full supported suites on every
+OS. Linux and macOS run the same Node, Interactive editor and isolated sess task
+tests, including the actual VS Code Electron runtime check with no Node executable
+on PATH and successful session creation using the default VS Code runtime.
+Windows skips the native Interactive runtime/editor suites because its console
+bridge is not supported. Linux additionally runs the tmux launcher survival case
+once with tmux enabled and uses Xvfb for extension-host tests. Source/bootstrap
+checks, installed identity verification and sess package tests run on every OS.
+
+For just the Interactive editor suite, compile the tests and run:
 
 ```sh
 pnpm run pretest

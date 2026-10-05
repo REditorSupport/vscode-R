@@ -982,6 +982,8 @@ cat("\n")`;
     });
 
     test('Run Selection can create a persistent Interactive session and ordinary R exit leaves a restored notice', async () => {
+        const settings = vscode.workspace.getConfiguration('r');
+        const previousNode = settings.inspect<string>('interactive.nodePath')?.globalValue;
         await vscode.commands.executeCommand('r.interactive.useTerminal');
         const terminals = sinon.stub(vscode.window, 'terminals').value([]);
         const picker = sinon.stub(vscode.window, 'showQuickPick').callsFake((_items, options) => Promise.resolve(
@@ -991,6 +993,8 @@ cat("\n")`;
         let client: AgentClient | undefined;
         let notebook: vscode.NotebookDocument | undefined;
         try {
+            // Exercise successful agent creation with the default VS Code runtime.
+            await settings.update('interactive.nodePath', '', vscode.ConfigurationTarget.Global);
             await vscode.commands.executeCommand('r.runSelection', 'created_target_value <- 123');
             notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId && !manifests.some(item => item.id === doc.metadata.rSessionId));
             assert.ok(notebook);
@@ -1014,6 +1018,7 @@ cat("\n")`;
                 'Notice body must keep breakable spaces so it wraps in narrow windows');
         } finally {
             terminals.restore(); picker.restore(); input.restore();
+            await settings.update('interactive.nodePath', previousNode, vscode.ConfigurationTarget.Global);
             if (notebook) { await vscode.commands.executeCommand('r.interactive.detach', notebook.uri); }
             if (client) {
                 await client.request('claim', { force: true });
@@ -1616,6 +1621,9 @@ par(mfrow=c(1,1))`);
         });
         const confirmation = sinon.stub(vscode.window, 'showWarningMessage').resolves('Restart Session' as unknown as vscode.MessageItem);
         const errors = sinon.stub(vscode.window, 'showErrorMessage').resolves(undefined);
+        // R shutdown can also emit Language Server notifications; assert only
+        // the errors reported by the Interactive manager.
+        const interactiveErrors = errors.withArgs(sinon.match(/^R Interactive:/));
         const kernels = sinon.spy(vscode.notebooks, 'createNotebookController');
         let client: AgentClient | undefined;
         let executable: sinon.SinonStub | undefined;
@@ -1650,7 +1658,7 @@ par(mfrow=c(1,1))`);
                 assert.strictEqual(notebook.cellCount, oldCount);
                 assert.ok(restartController.label.endsWith(' · idle'), 'An undismissed setup warning must not keep R in Restarting');
                 assert.ok(original.rPid); process.kill(original.rPid, 0);
-                sinon.assert.notCalled(errors);
+                sinon.assert.notCalled(interactiveErrors);
             } finally {
                 fs.writeFileSync(launchFile, savedLaunch);
                 await vscode.workspace.getConfiguration('r').update('interactive.arfPath', arfSetting, vscode.ConfigurationTarget.Global);
@@ -1659,8 +1667,8 @@ par(mfrow=c(1,1))`);
             // A missing Node runtime must be detected before stopping the current R.
             executable = sinon.stub(process, 'execPath').value(path.join(root, 'removed-host-runtime'));
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
-            sinon.assert.calledOnce(errors);
-            assert.match(errors.firstCall.args[0], /Reload VS Code/);
+            sinon.assert.calledOnce(interactiveErrors);
+            assert.match(interactiveErrors.firstCall.args[0], /Reload VS Code/);
             assert.strictEqual(notebook.cellCount, oldCount);
             assert.strictEqual(notebook.metadata.rGeneration, original.generation);
             assert.ok(restartController.label.endsWith(' · idle'));
@@ -1670,8 +1678,8 @@ par(mfrow=c(1,1))`);
             // An explicit missing override must also leave the current R process alone.
             await vscode.workspace.getConfiguration('r').update('interactive.nodePath', path.join(root, 'missing-restart-node'), vscode.ConfigurationTarget.Global);
             await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
-            sinon.assert.calledOnce(errors);
-            assert.match(errors.firstCall.args[0], /r\.interactive\.nodePath/);
+            sinon.assert.calledOnce(interactiveErrors);
+            assert.match(interactiveErrors.firstCall.args[0], /r\.interactive\.nodePath/);
             assert.strictEqual(notebook.cellCount, oldCount);
             assert.strictEqual(notebook.metadata.rGeneration, original.generation);
             assert.ok(restartController.label.endsWith(' · idle'));
@@ -1686,8 +1694,8 @@ par(mfrow=c(1,1))`);
                 process.env.PATH = root;
                 await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
             } finally { process.env.PATH = previousPath; }
-            sinon.assert.calledOnce(errors);
-            assert.match(errors.firstCall.args[0], /Cannot find an executable tmux.*r\.interactive\.supervision/);
+            sinon.assert.calledOnce(interactiveErrors);
+            assert.match(interactiveErrors.firstCall.args[0], /Cannot find an executable tmux.*r\.interactive\.supervision/);
             assert.strictEqual(notebook.cellCount, oldCount);
             assert.strictEqual(notebook.metadata.rGeneration, original.generation);
             assert.strictEqual(fs.readFileSync(launchFile, 'utf8'), savedLaunch);
@@ -1701,8 +1709,8 @@ par(mfrow=c(1,1))`);
                 process.env.PATH = `${supervisorBin}${path.delimiter}${previousPath ?? ''}`;
                 await vscode.commands.executeCommand('r.interactive.restart', notebook.uri);
             } finally { process.env.PATH = previousPath; }
-            sinon.assert.calledOnce(errors);
-            assert.match(errors.firstCall.args[0], /Could not start the tmux.*test tmux launch failure/s);
+            sinon.assert.calledOnce(interactiveErrors);
+            assert.match(interactiveErrors.firstCall.args[0], /Could not start the tmux.*test tmux launch failure/s);
             assert.ok(notebook.getCells().some(cell => cell.metadata.rNoticeKind === 'restartFailed'));
             assert.strictEqual(oldCell.document.uri.toString(), oldUri);
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
@@ -1718,7 +1726,7 @@ par(mfrow=c(1,1))`);
                 vscode.commands.executeCommand('r.interactive.restart', notebook.uri),
             ]);
             sinon.assert.calledOnce(confirmation);
-            sinon.assert.notCalled(errors); sinon.assert.notCalled(kernels);
+            sinon.assert.notCalled(interactiveErrors); sinon.assert.notCalled(kernels);
             assertNodeLaunched(override.log);
             assert.ok(sawRestarting);
             assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
@@ -1802,7 +1810,7 @@ par(mfrow=c(1,1))`);
             assert.strictEqual(draft.getText(), 'unsent_draft <- 99');
             await vscode.commands.executeCommand('r.interactive.clear', notebook.uri);
             assert.ok(!notebook.getCells().some(cell => cell.metadata.rExecutionId === oldId));
-            sinon.assert.notCalled(errors);
+            sinon.assert.notCalled(interactiveErrors);
         } finally {
             confirmation.restore(); errors.restore(); kernels.restore(); change.dispose();
             executable?.restore();

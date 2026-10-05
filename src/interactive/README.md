@@ -61,6 +61,6 @@ The agent uses the extension host runtime by default: Electron in Node mode on d
 
 ## Validation and design history
 
-[interactiveBackend.test.ts](../test/suite/interactiveBackend.test.ts) uses a scripted backend without sess configuration to exercise agent policy, event ordering, ambiguity, input, and lifecycle rules. Real-runtime, library-isolation, supervisor, editor, and renderer checks cover the integration; see the [test instructions](../../CONTRIBUTING.md#testing-r-interactive) and [analysis fixtures](../test/examples/README.md).
+[interactiveBackend.test.ts](../test/node/interactiveBackend.test.ts) uses a scripted backend without sess configuration to exercise agent policy, event ordering, ambiguity, input, and lifecycle rules. Real-runtime, library-isolation, supervisor, editor, and renderer checks cover the integration; see the [test instructions](../../CONTRIBUTING.md#testing-r-interactive) and [analysis fixtures](../test/examples/README.md).
 
 The [original plans and dated review reports](https://github.com/REditorSupport/vscode-R/tree/c2167d2cdb403375fa10ad3e29cde73a49cfc014/docs) are preserved at a fixed revision of [PR #1805](https://github.com/REditorSupport/vscode-R/pull/1805). They describe development history, not the current contract. The backend boundary originated in [this review](https://github.com/REditorSupport/vscode-R/pull/1805#pullrequestreview-5392223174).
