@@ -267,6 +267,8 @@ interface DataViewRequestMessage {
 const dynamicDataViewPanels = new Map<string, vscode.WebviewPanel>();
 const dynamicDataViewStateGenerations = new WeakMap<vscode.WebviewPanel, number>();
 const documentGenerations = new WeakMap<Webview, number>();
+let focusedDataViewPanel: vscode.WebviewPanel | undefined;
+let focusedDataViewSessionId: string | null = null;
 let documentGenerationRevision = 0;
 
 function escapeHtml(text: string): string {
@@ -291,15 +293,27 @@ function registerDataViewPanel(
         dynamicDataViewStateGenerations.set(panel, stateGeneration);
     }
     panel.onDidChangeViewState(({ webviewPanel }) => {
-        if (!webviewPanel.active || !sessionId) {
+        if (!webviewPanel.active) {
+            if (focusedDataViewPanel === panel) {
+                focusedDataViewPanel = undefined;
+                focusedDataViewSessionId = null;
+            }
             return;
         }
-        const session = sessions.get(sessionId);
+
+        focusedDataViewPanel = panel;
+        focusedDataViewSessionId = sessionId;
+
+        const session = sessions.get(sessionId ?? '');
         if (session) {
             updateSessionStatusBar(session);
         }
     });
     panel.onDidDispose(() => {
+        if (focusedDataViewPanel === panel) {
+            focusedDataViewPanel = undefined;
+            focusedDataViewSessionId = null;
+        }
         documentGenerations.delete(webview);
         const currentStateGeneration = dynamicDataViewStateGenerations.get(panel);
         dynamicDataViewStateGenerations.delete(panel);
@@ -2067,7 +2081,7 @@ async function refreshActiveSession(session: Session): Promise<void> {
     workingDir = session.workingDir;
     workspaceData = session.workspaceData;
 
-    updateSessionStatusBar(session);
+    updateSessionStatusBar(sessions.get(focusedDataViewSessionId ?? '') ?? session);
     rWorkspace?.refresh();
     await setContext('rSessionActive', !session.workspaceUnavailable);
 }
