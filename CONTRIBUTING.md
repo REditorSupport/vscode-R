@@ -25,6 +25,24 @@ If launching reports `Configured debug type 'extensionHost' is not supported`, e
 
 On VS Code 1.139, the regression can leave the development host paused before any extension activates; the launching window's extension host log shows `ECONNREFUSED ::1` and `Could not find any debuggable target`. Upgrade to VS Code 1.140.0 or newer, or use Microsoft's [JavaScript Debugger Nightly](https://marketplace.visualstudio.com/items?itemName=ms-vscode.js-debug-nightly) as a temporary workaround: disable the built-in **JavaScript Debugger**, enable Nightly, and reload VS Code.
 
+## Formatting and linting
+
+Run `pnpm run format` to format all files supported by Oxfmt, and
+`pnpm run format:check` to check formatting without changing files. CI runs the
+same check for pull requests and pushes to `main`.
+
+The checked-in `.oxfmtrc.jsonc` is shared by the CLI and the recommended Oxc
+VS Code extension. JavaScript and TypeScript use four-space indentation and
+single quotes; other supported formats use two-space indentation. Import and
+`package.json` sorting are disabled. Oxfmt respects the repository's `.gitignore`
+files and skips dependency lockfiles, so generated bundles, compiled tests, and
+dependencies are excluded. R, C, and EJS files are outside Oxfmt's supported
+formats.
+
+Workspace settings select Oxc as the formatter and enable format on save for
+JavaScript, TypeScript, JSON/JSONC, CSS, HTML, Markdown, YAML, and TOML. Run
+`pnpm run lint` and `pnpm run typecheck` separately to check TypeScript code.
+
 ## Building bundled sess
 
 Builds require Git and a checkout with HEAD. `scripts/prepare-sess.js` fingerprints

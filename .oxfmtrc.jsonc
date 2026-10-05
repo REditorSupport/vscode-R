@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "tabWidth": 2,
+  "singleQuote": true,
+  "endOfLine": "lf",
+  // Keep imports and package metadata in their existing order.
+  "sortImports": false,
+  "sortPackageJson": false,
+  "overrides": [
+    {
+      "files": ["**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}"],
+      "options": {
+        "tabWidth": 4,
+      },
+    },
+  ],
+}
