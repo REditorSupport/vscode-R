@@ -11,6 +11,7 @@ import { commands, Uri, ViewColumn, Webview, window, env } from 'vscode';
 import { restartRTerminal } from './rTerminal';
 import { config, readContent, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
+import { getProcessAncestors } from './processTree';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
@@ -1939,10 +1940,22 @@ function isLocalHost(host: string): boolean {
 }
 
 async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
+    const candidates = new Map<number, vscode.Terminal>();
     for (const terminal of window.terminals) {
         const terminalPid = await terminal.processId;
-        if (terminalPid !== undefined && String(terminalPid) === rPid) {
+        if (terminalPid === undefined || isTerminalClosed(terminal) || terminal.exitStatus) { continue; }
+        if (String(terminalPid) === rPid) {
             return String(terminalPid);
+        }
+        candidates.set(terminalPid, terminal);
+    }
+    if (!candidates.size) { return undefined; }
+    // R.exe and other launchers may keep running while R attaches from a child.
+    // Prefer the nearest terminal ancestor; never associate a sibling process.
+    for (const pid of await getProcessAncestors(Number(rPid))) {
+        const terminal = candidates.get(pid);
+        if (terminal && !isTerminalClosed(terminal) && !terminal.exitStatus && window.terminals.includes(terminal)) {
+            return String(pid);
         }
     }
     return undefined;

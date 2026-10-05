@@ -11,6 +11,7 @@ import { mockExtensionContext } from '../common/mockvscode';
 import * as rTerminal from '../../rTerminal';
 import * as util from '../../util';
 import * as session from '../../session';
+import * as processTree from '../../processTree';
 import * as extension from '../../extension';
 import * as plotViewer from '../../plotViewer';
 import type { RSessionApi } from '../../api';
@@ -32,9 +33,11 @@ async function waitFor<T>(condition: () => T | Promise<T>, timeout = 10000, inte
 suite('Session Communication', () => {
     let sandbox: sinon.SinonSandbox;
     let commandMarkerPath: string | undefined;
+    let ancestors: sinon.SinonStub;
 
     setup(() => {
         sandbox = sinon.createSandbox();
+        ancestors = sandbox.stub(processTree, 'getProcessAncestors').resolves([]);
         sandbox.stub(vscode.commands, 'registerCommand'); // prevent "command already exists" error
         mockExtensionContext(extension_root, sandbox);
         session.deploySessionWatcher(extension_root);
@@ -621,8 +624,17 @@ suite('Session Communication', () => {
         await session.shutdownSessionWatcher();
     }).timeout(15000);
 
-    for (const delayedPid of [false, true]) {
-        test(`terminal readiness waits for its own valid attach (delayed PID: ${String(delayedPid)})`, async () => {
+    for (const { delayedPid, parents } of [
+        { delayedPid: false, parents: [] },
+        { delayedPid: true, parents: [] },
+        { delayedPid: false, parents: [46250] },
+        { delayedPid: true, parents: [46299, 46250] },
+    ]) {
+        test(`terminal readiness waits for its own valid attach (delayed PID: ${String(delayedPid)}, ancestors: ${parents.length})`, async () => {
+            const rPid = parents.length ? 46252 : 46250;
+            ancestors.withArgs(rPid).resolves(parents);
+            const otherRPid = parents.length ? 46253 : 46251;
+            ancestors.withArgs(otherRPid).resolves([46251]);
             const endpoint = await session.getGlobalPipePath();
             let resolvePid!: (pid: number) => void;
             const terminal = {
@@ -657,18 +669,20 @@ suite('Session Communication', () => {
                 await waitFor(() => socket._sessionId === `readiness-${terminalPid}`);
             };
             try {
-                await attach(46251);
+                await attach(otherRPid);
                 assert.strictEqual(ready, false, 'another terminal must not release the wait');
                 terminals.value([terminal, other]);
                 if (delayedPid) { resolvePid(46250); }
-                await attach(46250);
+                await attach(rPid);
                 assert.strictEqual(await waiting, true);
+                assert.strictEqual(sockets[1]._terminalPid, 46250);
+                if (!parents.length) { sinon.assert.notCalled(ancestors); }
                 assert.strictEqual(await session.waitForTerminalReady(terminal), true, 'already attached terminals resolve immediately');
             } finally {
                 clients.forEach(client => client.destroy());
                 sockets.forEach(socket => socket.destroy());
-                await session.cleanupSession('readiness-46250');
-                await session.cleanupSession('readiness-46251');
+                await session.cleanupSession(`readiness-${rPid}`);
+                await session.cleanupSession(`readiness-${otherRPid}`);
             }
         });
     }
