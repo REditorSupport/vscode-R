@@ -7,6 +7,8 @@ on:
     branches:
       - main
   workflow_call:
+  # main pushes, reusable calls and manual runs retain the full OS matrix.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
