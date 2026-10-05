@@ -85,14 +85,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         'r.thead': () => rTerminal.runSelectionOrWord(['t', 'head']),
         'r.names': () => rTerminal.runSelectionOrWord(['names']),
         'r.view': () => rTerminal.runSelectionOrWord(['View']),
-        'r.runSource': () => { void rTerminal.runSource(false); },
-        'r.runSelection': (code?: string) => {
-            if (code) {
-                void rTerminal.runTextInTerm(code);
-            } else {
-                void rTerminal.runSelection();
-            }
-        },
+        'r.runSource': () => rTerminal.runSource(false),
+        'r.runSelection': (code?: string) => code ? rTerminal.runTextInTerm(code) : rTerminal.runSelection(),
         'r.runFromLineToEnd': rTerminal.runFromLineToEnd,
         'r.runFromBeginningToLine': rTerminal.runFromBeginningToLine,
         'r.runSelectionRetainCursor': rTerminal.runSelectionRetainCursor,
