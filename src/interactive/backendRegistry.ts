@@ -21,8 +21,9 @@ function sessOptions(descriptor: BackendDescriptor, prepared = true): SessOption
     for (const key of prepared ? ['rPath', 'library', 'resources'] : ['rPath']) {
         if (typeof options[key] !== 'string' || !options[key]) { throw new Error(`Missing sess backend ${key}`); }
     }
-    if (!['r', 'arf'].includes(String(options.frontend)) || !['managed', 'adopted'].includes(String(options.ownership)) ||
-        !['auto', 'jgd', 'standard'].includes(String(options.plotBackend)) || (options.frontend === 'r' && options.ownership !== 'managed')) {
+    if (options.frontend === 'r') { throw new Error('R Interactive now requires arf. Start an arf session or use an ordinary R terminal.'); }
+    if (options.frontend !== 'arf' || !['managed', 'adopted'].includes(String(options.ownership)) ||
+        !['auto', 'jgd', 'standard'].includes(String(options.plotBackend))) {
         throw new Error('Invalid sess backend configuration');
     }
     if (options.ownership === 'adopted' && (typeof options.arfEndpoint !== 'string' || !options.arfEndpoint)) {

@@ -1,18 +1,26 @@
 import { arfRequest } from '../arf';
 import { BackendEvent } from '../backend';
 import { object, Submission } from '../protocol';
-import { SessFrontend } from './plainR';
 import { RuntimeProcess } from './process';
 import { rString } from './rCode';
+import { ArfOutput } from './arfOutput';
 
-export class Arf implements SessFrontend {
+export class Arf {
     readonly process: RuntimeProcess;
     ready = false;
     private abort = new AbortController();
+    private started = false;
     constructor(private command: string, private directory: string, private endpoint: string | undefined,
-        adopted: boolean, private emit: (event: BackendEvent) => void) { this.process = new RuntimeProcess(adopted, emit); }
+        adopted: boolean, private emit: (event: BackendEvent) => void,
+        private token: string, private event: (message: Record<string, unknown>, channel: string) => void) {
+        this.process = new RuntimeProcess(adopted, emit);
+    }
+    markStarted(): void { this.started = true; }
     async start(bootstrap: string, env: NodeJS.ProcessEnv): Promise<void> {
         if (!this.process.adopted) {
+            const output = new Map(['stdout', 'stderr'].map(channel => [channel, new ArfOutput(this.token,
+                text => { if (text) { this.emit({ type: 'stream', text, channel }); } },
+                message => this.event(message, channel))]));
             this.endpoint = await new Promise<string>((resolve, reject) => {
                 let readiness = '';
                 const timer = setTimeout(() => reject(new Error('arf did not report its IPC endpoint')), 30000);
@@ -29,10 +37,13 @@ export class Arf implements SessFrontend {
                             } else { this.emit({ type: 'stream', text: line + '\n', channel }); }
                         }
                         if (this.endpoint || readiness.length > 65536) {
-                            if (readiness) { this.emit({ type: 'stream', text: readiness, channel }); }
+                            if (readiness) { output.get(channel)!.push(readiness); }
                             readiness = '';
                         }
-                    } else if (!this.ready) { this.emit({ type: 'stream', text, channel }); }
+                    } else {
+                        try { output.get(channel)!.push(text); }
+                        catch (error) { this.emit({ type: 'unavailable', message: String(error) }); }
+                    }
                 });
                 child.once('error', error => { clearTimeout(timer); reject(error); });
                 child.once('exit', () => { clearTimeout(timer); reject(new Error('arf exited during startup')); });
@@ -48,7 +59,28 @@ export class Arf implements SessFrontend {
     dispose(): void { this.abort.abort(); this.process.dispose(); }
     async dispatch(submission: Submission): Promise<void> {
         const code = `sess:::interactive_execute(${rString(submission.id)}, ${rString(submission.code)}, jsonlite::fromJSON(${rString(JSON.stringify(submission.source ?? null))}, simplifyVector=FALSE))`;
-        const result = object(await arfRequest(this.endpoint!, 'evaluate', { code, visible: true }, 0, this.abort.signal));
-        if (result.error) { throw new Error(typeof result.error === 'string' ? result.error : JSON.stringify(result.error)); }
+        this.started = false;
+        // Managed sessions use send to avoid arf's unbounded evaluation capture.
+        // R's ordered events establish the outcome even if arf's reply times out.
+        let result: Record<string, unknown>;
+        try {
+            result = object(await arfRequest(this.endpoint!, this.process.adopted ? 'evaluate' : 'user_input',
+                { code, visible: true, timeout_ms: 86400000 }, 0, this.abort.signal));
+        } catch (error) {
+            // A server timeout does not cancel R. Keep accepting its event stream.
+            // Other transport failures remain ambiguous and must block dispatch.
+            if (!this.process.adopted && this.started && /timed out|timeout/i.test(String(error))) { return; }
+            throw error;
+        }
+        if (this.process.adopted) {
+            for (const channel of ['stdout', 'stderr']) {
+                if (typeof result[channel] === 'string' && result[channel]) {
+                    this.emit({ type: 'stream', text: result[channel], channel });
+                }
+            }
+        }
+        if (result.error || result.accepted === false) {
+            throw new Error(typeof result.error === 'string' ? result.error : 'arf rejected Interactive execution');
+        }
     }
 }

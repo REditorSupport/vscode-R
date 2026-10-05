@@ -525,12 +525,11 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         if (!rPath) { throw new Error('Configure an R executable before starting Interactive'); }
         const arfCommand = this.arfCommand(resource);
         let arfPath = adopt ? undefined : resolveArfExecutable(arfCommand, directory);
-        const provider = adopt ? 'arf-existing' : await vscode.window.showQuickPick([
-            { label: 'R', detail: rPath, value: 'r' as const },
-            ...(arfPath ? [{ label: 'arf', detail: arfPath, value: 'arf' as const }]
-                : [{ label: '$(gear) Configure arf…', description: 'Optional · executable unavailable',
-                    detail: `Use R, or install arf on this host and set its path. Checked: ${arfCommand}`, value: 'configure' as const }]),
-        ], { title: 'R Interactive session provider' });
+        const provider = adopt ? 'arf-existing' : await vscode.window.showQuickPick(
+            arfPath ? [{ label: 'arf', detail: arfPath, value: 'arf' as const }]
+                : [{ label: '$(gear) Configure arf…', description: 'Required for Interactive · executable unavailable',
+                    detail: `Install arf on this host and set its path. Ordinary R terminals remain available. Checked: ${arfCommand}`, value: 'configure' as const }],
+        { title: 'R Interactive session provider' });
         if (!provider) { return; }
         const kind = typeof provider === 'string' ? provider : provider.value;
         if (kind === 'configure') { await this.configureArf(); return; }

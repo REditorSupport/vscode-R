@@ -1,4 +1,4 @@
-function(library, config, support_libraries = character(), worker = TRUE) {
+function(library, config, support_libraries = character(), managed = TRUE) {
     # Load the bridge explicitly without making its private directory a default
     # install target or changing the library order established by R/renv startup.
     if ("sess" %in% loadedNamespaces() &&
@@ -28,9 +28,5 @@ function(library, config, support_libraries = character(), worker = TRUE) {
              error = function(e) {
                  if (isTRUE(cfg$useJgd)) stop(e)
              })
-    if (worker) {
-        sess:::run_worker(config)
-    } else {
-        sess:::interactive_start(config, mirror = TRUE)
-    }
+    sess:::interactive_start(config, managed = managed)
 }

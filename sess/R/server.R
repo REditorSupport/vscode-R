@@ -350,6 +350,8 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = NULL,
 #' Runs as a recurring later callback; dispatches NDJSON messages from vscode.
 #' @keywords internal
 poll_connection <- function(generation = .sess_env$transport_generation) {
+  if (isTRUE(.sess_env$interactive_connected) &&
+        !identical(.sess_env$interactive_pid, Sys.getpid())) return()
   con <- .sess_env$con
   if (is.null(con) || !identical(generation, .sess_env$transport_generation)) return()
 
@@ -439,14 +441,8 @@ dispatch_message <- function(line) {
   } else if (has_method && has_id) {
     # Request from vscode → R must reply
     handlers <- list(
-      "interactive_execute" = function(p) {
-        if (!isTRUE(.sess_env$interactive_worker)) stop("Not a managed worker")
-        .sess_env$interactive_queue <- c(.sess_env$interactive_queue, list(p))
-        TRUE
-      },
       "interactive_stop" = function(p) {
-        if (!isTRUE(.sess_env$interactive_worker)) interactive_stop()
-        .sess_env$interactive_stop <- TRUE
+        interactive_stop()
         TRUE
       },
       "workspace" = function(p) get_workspace_data(),
