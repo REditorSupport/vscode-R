@@ -2149,8 +2149,12 @@ function updateSessionStatusBar(session: Session): void {
 
 function updateSessionStatusFromFocus(): void {
     const focusedSession = sessions.get(focusedDataViewSessionId ?? '');
-    if (focusedSession) {
-        updateSessionStatusBar(focusedSession);
+    if (focusedDataViewPanel) {
+        if (focusedSession) {
+            updateSessionStatusBar(focusedSession);
+        } else {
+            resetStatusBar();
+        }
     } else if (activeSession) {
         updateSessionStatusBar(activeSession);
     } else {

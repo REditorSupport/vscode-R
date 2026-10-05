@@ -280,7 +280,7 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
     });
 
-    test('focused viewer disconnect falls back to the active session PID', async () => {
+    test('disconnected viewer stays detached until focus leaves it', async () => {
         const a = await attach('viewer-session-a');
         const b = await attach('viewer-session-b');
         const aList = await open(a, 'list');
@@ -291,7 +291,14 @@ suite('Viewer session ownership', () => {
 
         await session.cleanupSession(a.id);
         assert.strictEqual(session.activeSession?.sessionId, b.id);
-        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
+        assert.strictEqual(statusBar.text, 'R: (not attached)');
+
+        await send(aList, { message: 'dataview/focus' });
+        assert.strictEqual(statusBar.text, 'R: (not attached)');
+
+        await send(aList, { message: 'dataview/blur' });
+        await waitFor(() => statusBar.text === 'R 4.6.0: viewer-session-b');
+        assert.strictEqual(session.activeSession?.sessionId, b.id);
     });
 
     test('identical viewer ids stay separate and background views keep their originating session', async () => {
