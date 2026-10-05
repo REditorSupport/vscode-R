@@ -95,9 +95,6 @@ export let requestFile: string;
 export let requestLockFile: string;
 export let sessionDir: string;
 export let workingDir: string;
-let rVer: string;
-let pid: string;
-let info: SessionInfo;
 export let globalPipePath: string | undefined;
 export let workspaceFile: string;
 
@@ -2066,9 +2063,6 @@ export async function activateSession(session: Session): Promise<void> {
 async function refreshActiveSession(session: Session): Promise<void> {
     pipeClient = session.socket;
     if (!session.requester) { globalPipePath = session.pipePath; }
-    pid = session.pid;
-    rVer = session.rVer;
-    info = session.info;
     sessionDir = session.sessionDir;
     workingDir = session.workingDir;
     workspaceData = session.workspaceData;
