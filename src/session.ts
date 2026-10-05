@@ -297,6 +297,11 @@ function registerDataViewPanel(
             if (focusedDataViewPanel === panel) {
                 focusedDataViewPanel = undefined;
                 focusedDataViewSessionId = null;
+                if (activeSession) {
+                    updateSessionStatusBar(activeSession);
+                } else {
+                    resetStatusBar();
+                }
             }
             return;
         }
@@ -313,6 +318,11 @@ function registerDataViewPanel(
         if (focusedDataViewPanel === panel) {
             focusedDataViewPanel = undefined;
             focusedDataViewSessionId = null;
+            if (activeSession) {
+                updateSessionStatusBar(activeSession);
+            } else {
+                resetStatusBar();
+            }
         }
         documentGenerations.delete(webview);
         const currentStateGeneration = dynamicDataViewStateGenerations.get(panel);
