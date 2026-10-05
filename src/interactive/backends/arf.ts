@@ -43,12 +43,12 @@ export class Arf implements SessFrontend {
         this.emit({ type: 'provider', data: { provider: this.process.adopted ? 'arf-existing' : 'arf', policy: metadata.ipc_policy } });
         // Visible evaluation respects arf's advertised IPC policy, including bootstrap.
         const result = object(await arfRequest(this.endpoint, 'evaluate', { code: bootstrap, visible: true }, 30000, this.abort.signal));
-        if (result.error) { throw new Error(String(result.error)); }
+        if (result.error) { throw new Error(typeof result.error === 'string' ? result.error : JSON.stringify(result.error)); }
     }
     dispose(): void { this.abort.abort(); this.process.dispose(); }
     async dispatch(submission: Submission): Promise<void> {
         const code = `sess:::interactive_execute(${rString(submission.id)}, ${rString(submission.code)}, jsonlite::fromJSON(${rString(JSON.stringify(submission.source ?? null))}, simplifyVector=FALSE))`;
         const result = object(await arfRequest(this.endpoint!, 'evaluate', { code, visible: true }, 0, this.abort.signal));
-        if (result.error) { throw new Error(String(result.error)); }
+        if (result.error) { throw new Error(typeof result.error === 'string' ? result.error : JSON.stringify(result.error)); }
     }
 }

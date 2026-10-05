@@ -69,7 +69,7 @@ export class SessBridge {
                 clearTimeout(pending.timer); this.pending.delete(message.id);
                 if (message.error) { pending.reject(new Error(JSON.stringify(message.error))); }
                 else { pending.resolve(message.result); }
-            } else if (message.method && message.id !== undefined) {
+            } else if (typeof message.method === 'string' && message.method && message.id !== undefined) {
                 const id = randomUUID();
                 const timer = setTimeout(() => {
                     this.requests.delete(id);
@@ -78,8 +78,8 @@ export class SessBridge {
                         error: { code: -32000, message: 'No controlling editor replied within 30 seconds' } });
                 }, 30000);
                 this.requests.set(id, { socket, id: message.id, timer });
-                this.emit({ type: 'clientRequest', id, method: String(message.method), params: message.params });
-            } else if (message.method) { this.notification(String(message.method), object(message.params ?? {})); }
+                this.emit({ type: 'clientRequest', id, method: message.method, params: message.params });
+            } else if (typeof message.method === 'string' && message.method) { this.notification(message.method, object(message.params ?? {})); }
         });
         socket.on('close', () => {
             if (this.sess !== socket) { return; }
@@ -119,11 +119,11 @@ export class SessBridge {
             if (this.console !== socket) { return; }
             if (message.type === 'stream') {
                 const executionId = typeof message.executionId === 'string' && message.executionId ? message.executionId : undefined;
-                const key = `${executionId ?? 'external'}:${String(message.channel ?? 'stdout')}`;
+                const key = `${executionId ?? 'external'}:${typeof message.channel === 'string' ? message.channel : 'stdout'}`;
                 let decoder = this.decoders.get(key);
                 if (!decoder) { decoder = new StringDecoder('utf8'); this.decoders.set(key, decoder); }
                 message = { ...message, text: typeof message.bytes === 'string'
-                    ? decoder.write(Buffer.from(message.bytes, 'base64')) : String(message.text ?? '') };
+                    ? decoder.write(Buffer.from(message.bytes, 'base64')) : typeof message.text === 'string' ? message.text : '' };
             } else if (message.type === 'finished') {
                 for (const channel of ['stdout', 'stderr']) { this.decoders.delete(`${String(message.executionId)}:${channel}`); }
             }

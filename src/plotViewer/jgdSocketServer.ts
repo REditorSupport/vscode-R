@@ -117,7 +117,9 @@ export class JgdSocketServer {
 
     private notifyConnectionChange() {
         const count = this.sessions.size;
-        for (const l of this.connectionListeners) l(count);
+        for (const l of this.connectionListeners) {
+            l(count);
+        }
     }
 
     start() {
@@ -152,7 +154,9 @@ export class JgdSocketServer {
     }
 
     private notifyReady() {
-        for (const l of this.readyListeners) l();
+        for (const l of this.readyListeners) {
+            l();
+        }
     }
 
     stop() {
@@ -187,7 +191,9 @@ export class JgdSocketServer {
             while ((newlineIdx = session.buffer.indexOf('\n')) !== -1) {
                 const line = session.buffer.substring(0, newlineIdx);
                 session.buffer = session.buffer.substring(newlineIdx + 1);
-                if (line.length === 0) continue;
+                if (line.length === 0) {
+                    continue;
+                }
 
                 if (!session.welcomeSent) {
                     session.welcomeSent = true;
@@ -293,9 +299,13 @@ export class JgdSocketServer {
 
     private broadcastResize(w: number, h: number, plotIndex?: number, sessionId?: string) {
         if (plotIndex !== undefined) {
-            if (!sessionId) return;
+            if (!sessionId) {
+                return;
+            }
             const session = this.sessions.get(sessionId);
-            if (!session) return;
+            if (!session) {
+                return;
+            }
             session.lastResizeW = w;
             session.lastResizeH = h;
             session.lastResizeHadPlotIndex = true;
@@ -307,7 +317,9 @@ export class JgdSocketServer {
         const data = JSON.stringify({ type: 'resize', width: w, height: h }) + '\n';
         for (const session of this.sessions.values()) {
             if (session.lastResizeW === w && session.lastResizeH === h) {
-                if (!session.lastResizeHadPlotIndex) continue;
+                if (!session.lastResizeHadPlotIndex) {
+                    continue;
+                }
             }
             session.lastResizeHadPlotIndex = false;
             session.lastResizeW = w;

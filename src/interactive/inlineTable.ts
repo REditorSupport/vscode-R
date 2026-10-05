@@ -222,7 +222,7 @@ export function createInlineTable(parent: HTMLElement, toolbar: HTMLElement, sta
         reply(message) {
             if (!active || !pending || message.requestId !== pending.id) { return; }
             const query = pending; pending = undefined;
-            if (message.error) { error = `${String(message.error)} Use Reset to restore the saved preview.`; update(); return; }
+            if (message.error) { error = `${typeof message.error === 'string' ? message.error : JSON.stringify(message.error)} Use Reset to restore the saved preview.`; update(); return; }
             const result = message.result as Record<string, unknown>;
             state = { ...state, data: { ...state.data, formattedColumns: undefined, ...result }, start: Number(result.startRow ?? query.start),
                 size: query.size, live: result.live === true || query.live,

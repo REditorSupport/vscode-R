@@ -104,7 +104,6 @@ export class LanguageService implements Disposable {
         }
 
         if (debug) {
-            // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
             console.log(`LANG: ${env.LANG}`);
         }
 

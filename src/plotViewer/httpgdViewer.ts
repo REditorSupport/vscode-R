@@ -561,7 +561,7 @@ export class HttpgdViewer implements IHttpgdViewer, PlotViewer {
         if (msg.message === 'log') {
             console.log(msg.body);
         } else if (msg.message === 'resize') {
-            void this.handleResize(msg.height, msg.width, msg.userTriggered);
+            this.handleResize(msg.height, msg.width, msg.userTriggered);
         }
     }
 

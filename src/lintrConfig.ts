@@ -20,7 +20,7 @@ export async function createLintrConfig(): Promise<string | undefined> {
         if (overwrite === 'No') {
             return;
         }
-        void unlinkSync(lintrFilePath);
+        unlinkSync(lintrFilePath);
     }
     return await executeRCommand(`lintr::use_lintr()`, currentWorkspaceFolder, (e: Error) => {
         void window.showErrorMessage(e.message);

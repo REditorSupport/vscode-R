@@ -1,3 +1,7 @@
+overrides:
+  # Fix serializer RCE and DoS in Mocha 11, also used by @vscode/test-cli.
+  mocha>serialize-javascript: ^7.0.5
+
 # esbuild's postinstall selects the platform-specific binary used by esbuild.js.
 # vsce-sign and keytar are intentionally denied: the repository's package and
 # publish commands do not sign VSIX files or use vsce's credential store.

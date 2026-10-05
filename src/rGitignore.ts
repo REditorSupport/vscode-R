@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
 'use strict';
 
 import { writeFile } from 'fs-extra';
