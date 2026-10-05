@@ -11,6 +11,7 @@ import { mockExtensionContext } from '../common/mockvscode';
 import * as rTerminal from '../../rTerminal';
 import * as util from '../../util';
 import * as session from '../../session';
+import * as processTree from '../../processTree';
 import * as extension from '../../extension';
 import * as plotViewer from '../../plotViewer';
 import type { RSessionApi } from '../../api';
@@ -32,9 +33,11 @@ async function waitFor<T>(condition: () => T | Promise<T>, timeout = 10000, inte
 suite('Session Communication', () => {
     let sandbox: sinon.SinonSandbox;
     let commandMarkerPath: string | undefined;
+    let ancestors: sinon.SinonStub;
 
     setup(() => {
         sandbox = sinon.createSandbox();
+        ancestors = sandbox.stub(processTree, 'getProcessAncestors').resolves([]);
         sandbox.stub(vscode.commands, 'registerCommand'); // prevent "command already exists" error
         mockExtensionContext(extension_root, sandbox);
         session.deploySessionWatcher(extension_root);
@@ -658,6 +661,109 @@ suite('Session Communication', () => {
 
         await session.shutdownSessionWatcher();
     }).timeout(15000);
+
+    for (const { delayedPid, parents } of [
+        { delayedPid: false, parents: [] },
+        { delayedPid: true, parents: [] },
+        { delayedPid: false, parents: [46250] },
+        { delayedPid: true, parents: [46299, 46250] },
+    ]) {
+        test(`terminal readiness waits for its own valid attach (delayed PID: ${String(delayedPid)}, ancestors: ${parents.length})`, async () => {
+            const rPid = parents.length ? 46252 : 46250;
+            ancestors.withArgs(rPid).resolves(parents);
+            const otherRPid = parents.length ? 46253 : 46251;
+            ancestors.withArgs(otherRPid).resolves([46251]);
+            const backgroundPid = 46254;
+            ancestors.withArgs(backgroundPid).resolves([rPid, ...parents]);
+            const endpoint = await session.getGlobalPipePath();
+            const sendText = sandbox.stub();
+            let resolvePid!: (pid: number) => void;
+            const terminal = {
+                processId: delayedPid ? new Promise<number>(resolve => { resolvePid = resolve; }) : Promise.resolve(46250),
+                sendText, show: () => undefined,
+            } as unknown as vscode.Terminal;
+            const other = { processId: Promise.resolve(46251) } as unknown as vscode.Terminal;
+            // Keep the unresolved PID out of terminal enumeration until attach
+            // association runs, to avoid blocking an unrelated handshake.
+            const terminals = sandbox.stub(vscode.window, 'terminals').value([other]);
+            sandbox.stub(vscode.window, 'activeTerminal').value(other);
+            let ready = false;
+            const waiting = session.waitForTerminalReady(terminal).then(value => { ready = value; return value; });
+            const clients: net.Socket[] = [];
+            const sockets: session.Session['socket'][] = [];
+            const attach = async (terminalPid: number) => {
+                const existing = new Set(session.activeConnections);
+                const client = net.createConnection(endpoint);
+                clients.push(client);
+                await new Promise<void>((resolve, reject) => {
+                    client.once('connect', resolve);
+                    client.once('error', reject);
+                });
+                const socket = await waitFor(() => [...session.activeConnections].find(s => !existing.has(s)));
+                assert.ok(socket);
+                sockets.push(socket);
+                client.write(`${JSON.stringify({
+                    jsonrpc: '2.0', method: 'attach', params: {
+                        protocol_version: 1, session_id: `readiness-${terminalPid}`, host: os.hostname(),
+                        pid: terminalPid, version: '4.4.0', tempdir: '/tmp', wd: '/tmp',
+                    },
+                })}\n`);
+                await waitFor(() => socket._sessionId === `readiness-${terminalPid}`);
+            };
+            try {
+                await attach(otherRPid);
+                assert.strictEqual(ready, false, 'another terminal must not release the wait');
+                terminals.value([terminal, other]);
+                if (delayedPid) { resolvePid(46250); }
+                await attach(rPid);
+                assert.strictEqual(await waiting, true);
+                assert.strictEqual(sockets[1]._terminalPid, 46250);
+                if (!parents.length) { sinon.assert.notCalled(ancestors); }
+                assert.strictEqual(await session.waitForTerminalReady(terminal), true, 'already attached terminals resolve immediately');
+                await session.switchSessionByTerminal(terminal);
+                const foreground = session.activeSession;
+                assert.strictEqual(foreground?.pid, String(rPid));
+                assert.ok(foreground);
+
+                await attach(backgroundPid);
+                const background = await waitFor(() => session.activeSession?.pid === String(backgroundPid)
+                    ? session.activeSession : undefined);
+                assert.ok(background);
+                assert.strictEqual(sockets[2]._terminalPid, undefined, 'background R must remain unassociated');
+                await assert.rejects(session.executeSessionCode(background, 'Sys.getpid()'), /no attached terminal/);
+                sinon.assert.notCalled(sendText);
+                await session.switchSessionByTerminal(terminal);
+                assert.strictEqual(session.activeSession, foreground, 'terminal selection must retain the foreground workspace');
+                await session.executeSessionCode(foreground, 'Sys.getpid()');
+                sinon.assert.calledOnce(sendText);
+            } finally {
+                clients.forEach(client => client.destroy());
+                sockets.forEach(socket => socket.destroy());
+                await session.cleanupSession(`readiness-${backgroundPid}`);
+                await session.cleanupSession(`readiness-${rPid}`);
+                await session.cleanupSession(`readiness-${otherRPid}`);
+            }
+        });
+    }
+
+    test('terminal readiness aborts on close even before processId resolves', async () => {
+        const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;
+        const close = new vscode.EventEmitter<vscode.Terminal>();
+        sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
+        const waiting = session.waitForTerminalReady(terminal);
+        close.fire(terminal);
+        assert.strictEqual(await waiting, false);
+        close.dispose();
+    });
+
+    test('terminal readiness timeout does not declare the terminal ready', async () => {
+        const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;
+        const clock = sandbox.useFakeTimers();
+        const waiting = session.waitForTerminalReady(terminal, 100);
+        await clock.tickAsync(100);
+        assert.strictEqual(await waiting, false);
+        assert.strictEqual(clock.countTimers(), 0);
+    });
 
     test('reconnecting terminals preserve the selected terminal in either attach order', async () => {
         const endpoint = await session.getGlobalPipePath();

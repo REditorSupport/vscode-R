@@ -8,6 +8,7 @@ import { mockExtensionContext } from '../common/mockvscode';
 import * as rTerminal from '../../rTerminal';
 import * as util from '../../util';
 import * as session from '../../session';
+import * as executionTarget from '../../interactive/executionTarget';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 
@@ -78,6 +79,108 @@ suite('R Terminal', () => {
         sandbox.restore();
     });
 
+    for (const scenario of [
+        { watcher: true, args: [], integrated: true, createTarget: false },
+        { watcher: true, args: [], integrated: true, createTarget: true },
+        { watcher: false, args: [], integrated: false },
+        { watcher: true, args: ['--vanilla'], integrated: false },
+        { watcher: true, args: ['--no-init-file'], integrated: false },
+    ]) {
+        const { watcher, args, integrated } = scenario;
+        const createTarget = scenario.createTarget ?? false;
+        test(`initial sends share terminal creation and readiness (watcher: ${String(watcher)}, args: ${args.join(' ')}, target picker: ${String(createTarget)})`, async () => {
+            // Offer creation only while no terminal exists, as the default
+            // execution target picker does after choosing a terminal.
+            const target = sandbox.stub(executionTarget, 'tryInteractiveExecution')
+                .callsFake((_code, _resource, _source, offerTarget) => Promise.resolve(createTarget && offerTarget ? 'createTerminal' : false));
+            let resolveReady!: (ready: boolean) => void;
+            const readiness = new Promise<boolean>(resolve => { resolveReady = resolve; });
+            let startedWaiting!: () => void;
+            const waiting = new Promise<void>(resolve => { startedWaiting = resolve; });
+            const readyStub = sandbox.stub(session, 'waitForTerminalReady').callsFake(() => {
+                startedWaiting();
+                return readiness;
+            });
+            const delayStub = sandbox.stub(util, 'delay').callsFake(async () => {
+                startedWaiting();
+                await readiness;
+            });
+            sandbox.stub(util, 'config').returns(configuration({
+                sessionWatcher: watcher, consoleArgs: args, bracketedPaste: true, 'source.focus': 'none'
+            }));
+            sandbox.stub(util, 'getRterm').resolves(process.execPath);
+            sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
+            sandbox.stub(session, 'getGlobalPipePath').resolves('unused-test-endpoint');
+            sandbox.stub(session, 'createSessionDiscoveryFile').resolves('/unused-test-discovery');
+            const sent: string[] = [];
+            const terminal = {
+                name: 'R Interactive', processId: Promise.resolve(undefined),
+                show: () => undefined, dispose: () => undefined,
+                sendText: (text: string) => sent.push(text),
+            } as unknown as vscode.Terminal;
+            const create = sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+            const terminals = sandbox.stub(vscode.window, 'terminals').value([]);
+            sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+            const first = rTerminal.runTextInTerm('first');
+            const second = rTerminal.runTextInTerm('second');
+            // Let both commands reach the shared wait, then expose the terminal
+            // as VS Code would before a third Ctrl+Enter.
+            await waiting;
+            terminals.value([terminal]);
+            const third = rTerminal.runTextInTerm('third');
+            for (let i = 0; i < 20; i++) { await Promise.resolve(); }
+            assert.deepStrictEqual(sent, []);
+            sinon.assert.calledOnce(create);
+            if (integrated) {
+                sinon.assert.calledOnceWithExactly(readyStub, terminal);
+                sinon.assert.notCalled(delayStub);
+            } else {
+                sinon.assert.notCalled(readyStub);
+                sinon.assert.calledOnceWithExactly(delayStub, 200);
+            }
+            resolveReady(true);
+            await Promise.all([first, second, third]);
+            assert.deepStrictEqual(sent, ['\x1b[200~first\x1b[201~', '\x1b[200~second\x1b[201~', '\x1b[200~third\x1b[201~']);
+            await rTerminal.runTextInTerm('fourth');
+            assert.strictEqual(sent.length, 4);
+            sinon.assert.calledOnce(create);
+            assert.strictEqual(target.thirdCall.args[3], false);
+            assert.strictEqual(target.lastCall.args[3], false);
+            rTerminal.deleteTerminal(terminal);
+        });
+    }
+
+    test('failed readiness does not send code and allows retry', async () => {
+        sandbox.stub(util, 'config').returns(configuration({ sessionWatcher: true, bracketedPaste: true, 'source.focus': 'none' }));
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
+        sandbox.stub(session, 'getGlobalPipePath').resolves('unused-test-endpoint');
+        sandbox.stub(session, 'createSessionDiscoveryFile').resolves('/unused-test-discovery');
+        const ready = sandbox.stub(session, 'waitForTerminalReady');
+        ready.onFirstCall().resolves(false);
+        ready.onSecondCall().resolves(true);
+        const sendText = sandbox.stub();
+        const terminal = {
+            name: 'R Interactive', processId: Promise.resolve(undefined),
+            show: () => undefined, sendText,
+        } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        await rTerminal.createRTerm();
+        await rTerminal.runTextInTerm('first');
+        sinon.assert.notCalled(sendText);
+        sinon.assert.calledOnce(warning);
+        assert.ok(String(warning.firstCall.args[0]).includes('r.sessionWatcher'),
+            'the warning should explain how to opt out of session integration');
+        assert.ok(String(warning.firstCall.args[0]).includes('reload VS Code'),
+            'the warning should explain how to apply the setting to an existing terminal');
+        await rTerminal.runTextInTerm('retry');
+        sinon.assert.calledOnceWithExactly(sendText, '\x1b[200~retry\x1b[201~', true);
+        rTerminal.deleteTerminal(terminal);
+    });
+
     test('execution target discovery ignores exited and hidden terminals without creating one', () => {
         const stopped = { name: 'R', exitStatus: { code: 0 } } as vscode.Terminal;
         const hidden = { name: 'R Deactivate' } as vscode.Terminal;
@@ -90,6 +193,7 @@ suite('R Terminal', () => {
         terminals.value([stopped, hidden]);
         assert.strictEqual(rTerminal.findTerminal(), undefined);
         sinon.assert.notCalled(create);
+
     });
 
     test('makeTerminalOptions respects legacy plot.useHttpgd configurations', async () => {
@@ -410,13 +514,14 @@ suite('R Terminal', () => {
     });
 
     test('console arguments, substitution, and send delay use the R terminal workspace resource', async () => {
+        const consoleSendDelay = 17;
         const resource = vscode.Uri.file(path.join(path.sep, 'workspace', 'project'));
         sandbox.stub(util, 'getCurrentWorkspaceFolder').returns({ uri: resource } as vscode.WorkspaceFolder);
         const requestedResources: Array<vscode.Uri | undefined> = [];
         const configStub = configuration({
             consoleArgs: ['--project=${workspaceFolder}'],
             'rterm.option': ['--legacy'],
-            consoleSendDelay: 17,
+            consoleSendDelay,
             rtermSendDelay: 4
         }, {}, true);
         sandbox.stub(util, 'config').callsFake((requestedResource?: vscode.Uri) => {
@@ -451,7 +556,8 @@ suite('R Terminal', () => {
 
         assert.deepStrictEqual(options.shellArgs, [`--project=${resource.fsPath}`]);
         assert.ok(requestedResources.includes(resource), 'configuration should be requested for the R terminal resource');
-        assert.strictEqual(delayStub.firstCall.args[0], 17, 'explicit canonical send delay should be used');
+        assert.deepStrictEqual(delayStub.args, [[200], [consoleSendDelay]],
+            'startup fallback should be followed by the explicit canonical per-line send delay');
         assert.deepStrictEqual(sent, ['first', 'second']);
         rTerminal.deleteTerminal(fakeTerminal as unknown as vscode.Terminal);
     });

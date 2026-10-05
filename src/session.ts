@@ -11,6 +11,7 @@ import { commands, Uri, ViewColumn, Webview, window, env } from 'vscode';
 import { restartRTerminal } from './rTerminal';
 import { config, readContent, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
+import { getProcessAncestors } from './processTree';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
@@ -179,6 +180,52 @@ export function registerSessionTransport(id: string, host: string, directory: st
     return target;
 }
 const terminalSessions = new Map<string, Session>();
+const terminalSessionAttached = new vscode.EventEmitter<string>();
+
+/** Wait for this terminal's session handshake, not just process creation. */
+export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000): Promise<boolean> {
+    return new Promise(resolve => {
+        let terminalPid: string | undefined;
+        let settled = false;
+        const finish = (ready: boolean) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            attached.dispose();
+            closed.dispose();
+            resolve(ready);
+        };
+        const attached = terminalSessionAttached.event(pid => {
+            if (pid === terminalPid) {
+                finish(true);
+            }
+        });
+        const closed = window.onDidCloseTerminal(closedTerminal => {
+            if (closedTerminal === terminal) {
+                finish(false);
+            }
+        });
+        // This bounds a failed integration; it never authorizes sending input.
+        const timer = setTimeout(() => finish(false), timeout);
+        void Promise.resolve(terminal.processId).then(pid => {
+            if (settled) {
+                return;
+            }
+            if (pid === undefined || isTerminalClosed(terminal) || terminal.exitStatus) {
+                finish(false);
+                return;
+            }
+            terminalPid = String(pid);
+            // Also covers a handshake received before processId resolved.
+            const session = terminalSessions.get(terminalPid);
+            if (session && !session.socket.destroyed) {
+                finish(true);
+            }
+        }, () => finish(false));
+    });
+}
 export let activeSession: Session | undefined;
 let activeBrowserUri: Uri | undefined;
 let workspaceRefreshTimer: NodeJS.Timeout | undefined;
@@ -1891,10 +1938,28 @@ function isLocalHost(host: string): boolean {
 }
 
 async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
+    const candidates = new Map<number, vscode.Terminal>();
     for (const terminal of window.terminals) {
         const terminalPid = await terminal.processId;
-        if (terminalPid !== undefined && String(terminalPid) === rPid) {
+        if (terminalPid === undefined || isTerminalClosed(terminal) || terminal.exitStatus) { continue; }
+        if (String(terminalPid) === rPid) {
             return String(terminalPid);
+        }
+        candidates.set(terminalPid, terminal);
+    }
+    if (!candidates.size) { return undefined; }
+    // R.exe and other launchers may keep running while R attaches from a child.
+    // Prefer the nearest terminal ancestor; never associate a sibling process.
+    const ancestors = await getProcessAncestors(Number(rPid));
+    const attachedRPids = new Set([...sessions.values()]
+        .filter(session => isLocalHost(session.host) && !session.socket.destroyed)
+        .map(session => session.pid));
+    for (const pid of ancestors) {
+        // A connected R owns its descendants; they must not take over its console.
+        if (attachedRPids.has(String(pid))) { return undefined; }
+        const terminal = candidates.get(pid);
+        if (terminal && !isTerminalClosed(terminal) && !terminal.exitStatus && window.terminals.includes(terminal)) {
+            return String(pid);
         }
     }
     return undefined;
@@ -2004,6 +2069,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             session.info = (params.info as SessionInfo | undefined) ?? { version: session.rVer, command: '', start_time: '' };
             session.sessionDir = params.tempdir;
             session.workingDir = params.wd;
+
+            if (terminalPid) {
+                terminalSessionAttached.fire(terminalPid);
+            }
 
             // Reload does not trigger a terminal-selection event after every attach.
             // Prefer its connected session when a terminal reconnects in the background.
