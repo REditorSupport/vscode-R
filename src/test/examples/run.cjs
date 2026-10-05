@@ -13,7 +13,9 @@ const { AgentClient } = require('../../../out/interactive/client');
 const { installRuntime } = require('../../../out/interactive/launcher');
 const { AssetStore, readAsset } = require('../../../out/interactive/assets');
 const exampleSuite = process.env.VSCR_EXAMPLE_SUITE || 'public';
-if (!['public', 'public-more', 'research'].includes(exampleSuite)) throw new Error('VSCR_EXAMPLE_SUITE must be public, public-more or research');
+if (!['public', 'public-more', 'research'].includes(exampleSuite)) {
+    throw new Error('VSCR_EXAMPLE_SUITE must be public, public-more or research');
+}
 const examples = require('./' + exampleSuite + '.json');
 const run = promisify(execFile);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -39,7 +41,7 @@ const backend = process.env.VSCR_TEST_STATIC ? 'standard' : 'jgd';
         const until = async predicate => {
             const deadline = Date.now() + 30000;
             while (!predicate()) {
-                if (Date.now() > deadline) throw new Error(JSON.stringify(events.slice(-8)));
+                if (Date.now() > deadline) { throw new Error(JSON.stringify(events.slice(-8))); }
                 await delay(25);
             }
         };
@@ -95,7 +97,8 @@ dev.off()`;
             assert.ok(!result.warnings.some(message => /jgd:.*unclosed group/.test(message)), JSON.stringify(result));
             // Static graphics uses the image MIME instead of the retained JGD plot type.
             const expected = example.kinds.map(kind => backend === 'standard' && kind === 'plot' ? 'image' : kind);
-            assert.deepStrictEqual([...kinds].sort(), expected.sort(), JSON.stringify(result));
+            const compareKinds = (left, right) => left < right ? -1 : left > right ? 1 : 0;
+            assert.deepStrictEqual([...kinds].sort(compareKinds), expected.sort(compareKinds), JSON.stringify(result));
             const consoleText = captured.filter(event => event.type === 'stream').map(event => event.data.text).join('');
             for (const text of example.textIncludes || []) {
                 assert.ok(consoleText.includes(text), `${example.id}: missing printed result ${text}`);
