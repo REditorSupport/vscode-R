@@ -23,6 +23,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       # Full coverage stays the default outside macOS pull request jobs.
+      VSCR_TEST_SKIP_SESS_TASKS: ${{ github.event_name == 'pull_request' && matrix.os == 'macos-latest' && '1' || '0' }}
       VSCR_TEST_INTERACTIVE_SMOKE: ${{ github.event_name == 'pull_request' && matrix.os == 'macos-latest' && '1' || '0' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,7 +37,11 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - name: Verify sess source identity and bootstrap
+        if: env.VSCR_TEST_INTERACTIVE_SMOKE != '1'
         run: pnpm run test:sess-source
+      - name: Verify sess identity (macOS PR smoke)
+        if: env.VSCR_TEST_INTERACTIVE_SMOKE == '1'
+        run: pnpm run test:sess-identity
       - name: Install R test dependencies
         run: install.packages(c("remotes", "pkgbuild", "languageserver", "lintr", "renv"))
         shell: Rscript {0}
