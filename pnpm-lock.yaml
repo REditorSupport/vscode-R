@@ -11,6 +11,9 @@ importers:
 
   .:
     dependencies:
+      '@vscode/codicons':
+        specifier: 0.0.46-24
+        version: 0.0.46-24
       ag-grid-community:
         specifier: ^36.2.0
         version: 36.2.0
@@ -29,12 +32,6 @@ importers:
       httpgd:
         specifier: 0.1.6
         version: 0.1.6
-      jquery:
-        specifier: ^3.7.1
-        version: 3.7.1
-      jquery.json-viewer:
-        specifier: ^1.5.0
-        version: 1.5.0
       js-yaml:
         specifier: ^4.3.2
         version: 4.3.2
@@ -867,6 +864,9 @@ packages:
     resolution: {integrity: sha512-edSdeAqkdxBVzA1yL1LrLCml1YjyCVvPMtMqJpbF+6K609tHe8V6sQUzFQSGcYNhcuhOceZtjvN32+mpIth30A==}
     engines: {node: '>=22.0.0'}
 
+  '@vscode/codicons@0.0.46-24':
+    resolution: {integrity: sha512-KIDWUYxG6eh+DHRg+3G4bS487T+g1ZkLfB4HylOBbCcHsvLdfLMRM/m92DS1Ljhi8nglLr9ucwwWhHTEAC+DpA==}
+
   '@vscode/test-cli@0.0.12':
     resolution: {integrity: sha512-iYN0fDg29+a2Xelle/Y56Xvv7Nc8Thzq4VwpzAF/SIE6918rDicqfsQxV6w1ttr2+SOm+10laGuY9FG2ptEKsQ==}
     engines: {node: '>=18'}
@@ -1641,12 +1641,6 @@ packages:
     resolution: {integrity: sha512-wpHYzhxiVQL+IV05BLE2Xn34zW1S223hvjtqk0+gsPrwd/8JNLXJgZZM/iPFsYc1xyphF+6M6EvdE5E9MBGkDA==}
     engines: {node: '>=10'}
     hasBin: true
-
-  jquery.json-viewer@1.5.0:
-    resolution: {integrity: sha512-M/mRFXg14V/UUAlz7TBNBIDmQdWt05BunsqC/UjEx5BoFdQpNpfkfDdVn+VtjX951n/an/T9GWB3apBp02x8Mg==}
-
-  jquery@3.7.1:
-    resolution: {integrity: sha512-m4avr8yL8kmFN8psrbFFFmB/If14iN5o9nw/NgnnM+kybDJpRsAynV2BsfpTYrTRysYUdADVD7CkUUizgkpLfg==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -3013,6 +3007,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@vscode/codicons@0.0.46-24': {}
+
   '@vscode/test-cli@0.0.12':
     dependencies:
       '@types/mocha': 10.0.10
@@ -3849,10 +3845,6 @@ snapshots:
       async: 3.2.6
       filelist: 1.0.6
       picocolors: 1.1.1
-
-  jquery.json-viewer@1.5.0: {}
-
-  jquery@3.7.1: {}
 
   js-tokens@4.0.0: {}
 

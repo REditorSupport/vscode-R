@@ -158,7 +158,10 @@ local({
   response <- jsonlite::fromJSON(processx::conn_read_chars(pipe[[1L]]))
   expect_true(all(abs(response$result$rows[["1"]] - expected) <= abs(expected) * 1e-14))
 
-  disposed <- sess:::handle_dataview_dispose(list(view_id = registration$view_id))
+  disposed <- sess:::handle_dataview_dispose(list(
+    view_id = registration$view_id,
+    state_generation = registration$state_generation
+  ))
   expect_true(isTRUE(disposed))
   expect_error(
     sess:::handle_dataview_init(list(view_id = registration$view_id)),
@@ -264,10 +267,10 @@ local({
   expect_false(identical(getHook("grid.newpage"), old_grid_hook))
 
   dataview_data <- data.frame(value = 1:2)
-  assign("lifecycle dataview", "runtime_view_before_restart",
+  assign("table:lifecycle dataview", "runtime_view_before_restart",
          envir = .sess_env$dataview_registry)
   utils::View(dataview_data, title = "lifecycle dataview")
-  first_view_id <- get("lifecycle dataview", envir = .sess_env$dataview_registry)
+  first_view_id <- get("table:lifecycle dataview", envir = .sess_env$dataview_registry)
   expect_identical(first_view_id, "runtime_view_before_restart")
   expect_true(first_view_id %in% names(.sess_env$dataviews))
 
@@ -284,7 +287,7 @@ local({
                length(grep("^sess.plot$", callbacks_after_first_start)))
 
   utils::View(dataview_data, title = "lifecycle dataview")
-  second_view_id <- get("lifecycle dataview", envir = .sess_env$dataview_registry)
+  second_view_id <- get("table:lifecycle dataview", envir = .sess_env$dataview_registry)
   expect_false(identical(first_view_id, second_view_id))
   expect_true(second_view_id %in% names(.sess_env$dataviews))
 

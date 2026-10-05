@@ -256,7 +256,7 @@ connect <- function(endpoint = NULL, use_rstudioapi = TRUE, use_httpgd = NULL,
   host <- Sys.info()[["nodename"]]
   if (is.null(host) || is.na(host)) host <- ""
   list(
-    protocol_version = 1L,
+    protocol_version = 2L,
     interactive_token = .sess_env$interactive_token,
     sess_version = as.character(utils::packageVersion("sess")),
     session_id = .session_id(),
@@ -450,10 +450,13 @@ dispatch_message <- function(line) {
         TRUE
       },
       "workspace" = function(p) get_workspace_data(),
-      "workspace_children" = function(p) get_workspace_children(p$name, p$path, p$start),
+      "workspace_children" = function(p) get_workspace_children(p$name, p$path, p$start, p$view_id),
+      "workspace_view" = function(p) handle_workspace_view(p$name, p$path),
       "hover" = function(p) handle_hover(p$expr),
       "completion" = function(p) handle_complete(p$expr, p$trigger),
       "plot_latest" = function(p) handle_plot_latest(p),
+      "listview_navigate" = function(p) handle_listview_navigate(p$view_id, p$path),
+      "listview_view" = function(p) handle_listview_view(p$view_id, p$index, p$path),
       "dataview_init" = function(p) handle_dataview_init(p),
       "dataview_page" = function(p) handle_dataview_page(p),
       "dataview_dispose" = function(p) handle_dataview_dispose(p)

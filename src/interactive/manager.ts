@@ -16,6 +16,7 @@ import { DISPLAY_MIME, InteractiveSerializer } from './notebook';
 import { setInteractiveExecutor } from './executionTarget';
 import * as session from '../session';
 import * as util from '../util';
+import type { ListViewNavigation } from '../listViewer';
 import { escapeXml } from './plotSvg';
 import { ensureWorkspaceViewer } from '../extension';
 import { queryTablePage } from './tableQuery';
@@ -951,6 +952,26 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             void this.prompt(view, event.data);
         } else if (event.type === 'clientRequest' && view.client.control) {
             void this.clientRequest(view, event.data);
+        } else if (event.type === 'viewer' && event.data.method === 'dataview') {
+            const params = object(event.data.params ?? {});
+            const title = typeof params.title === 'string' ? params.title
+                : Array.isArray(params.title) && params.title.every((line: unknown) => typeof line === 'string')
+                    ? params.title.join(',') : undefined;
+            const viewer = util.config().get<Record<string, string>>('session.viewers.viewColumn')?.view ?? 'Two';
+            if (viewer !== 'Disable'
+                && typeof params.source === 'string' && params.source
+                && typeof params.type === 'string' && params.type
+                && title
+                && (params.file === undefined || params.file === null || typeof params.file === 'string')
+                && (params.view_id === undefined || params.view_id === null || typeof params.view_id === 'string')) {
+                await session.showDataView(
+                    params.source, params.type, title, params.file ?? '', viewer,
+                    params.view_id || undefined,
+                    params.navigation as ListViewNavigation | undefined,
+                    view.target.sessionId,
+                    typeof params.state_generation === 'number' ? params.state_generation : undefined,
+                );
+            }
         } else if (event.type === 'notification') {
             const params = object(event.data.params ?? {});
             if (event.data.method === 'help') { await session.showHelpNotification(params); }
@@ -1184,7 +1205,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             switch (message.action) {
                 case 'table':
                     if (data.kind !== 'table') { return; }
-                    await session.showDataView('table', 'json', `${view.client.manifest.label}: ${data.fullViewId ? 'full table' : 'table'}`, '', 'Beside', String(data.fullViewId ?? data.viewId), view.target); break;
+                    await session.showDataView('table', 'json', `${view.client.manifest.label}: ${data.fullViewId ? 'full table' : 'table'}`, '', 'Beside', String(data.fullViewId ?? data.viewId), undefined, view.target?.sessionId ?? null); break;
                 case 'page': {
                     if (data.kind !== 'table') { return; }
                     result = await queryTablePage(data, message, request => view.client.request('inspect', request)); break;

@@ -1354,7 +1354,7 @@
         {
           "command": "r.workspaceViewer.view",
           "group": "inline",
-          "when": "view == workspaceViewer && viewItem == rootNode"
+          "when": "view == workspaceViewer && (viewItem == rootNode || viewItem == viewableNode)"
         },
         {
           "command": "r.workspaceViewer.remove",
@@ -2561,14 +2561,13 @@
     "oxlint-tsgolint": "~7.0.2003"
   },
   "dependencies": {
+    "@vscode/codicons": "0.0.46-24",
     "ag-grid-community": "^36.2.0",
     "cheerio": "1.0.0-rc.12",
     "ejs": "^3.1.10",
     "fs-extra": "^10.1.0",
     "highlight.js": "^11.11.1",
     "httpgd": "0.1.6",
-    "jquery": "^3.7.1",
-    "jquery.json-viewer": "^1.5.0",
     "js-yaml": "^4.3.2",
     "node-fetch": "^2.7.0",
     "vscode-languageclient": "^9.0.1",

@@ -22,6 +22,9 @@ local({
   expect_identical(small$value$x1, 1:1000)
   expect_true(as.numeric(object.size(small$value)) < 200000)
   full <- register(large, live = TRUE)$view_id
+  generation <- env$dataviews[[full]]$state_generation
+  sess:::handle_dataview_init(list(view_id = full))
+  expect_identical(env$dataviews[[full]]$state_generation, generation)
   expect_identical(page(full, startRow = n - 2L, endRow = n)$rows[["1"]], (n - 1L):n)
   expect_null(env$dataviews[[full]]$query_indices)
 

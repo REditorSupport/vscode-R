@@ -3,6 +3,7 @@
 !README.md
 !CHANGELOG.md
 !LICENSE
+!ThirdPartyNotices.txt
 !R/*.R
 !R/cppProperties/**
 !R/help/**
@@ -19,3 +20,6 @@
 !dist/**/*.css
 !dist/**/*.ejs
 !dist/resources/sess/**
+!dist/resources/codicon.ttf
+!dist/resources/LICENSE
+!dist/resources/LICENSE-CODE

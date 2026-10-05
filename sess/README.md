@@ -193,7 +193,7 @@ On connecting, `sess` sends an `attach` notification:
   "jsonrpc": "2.0",
   "method": "attach",
   "params": {
-    "protocol_version": 1,
+    "protocol_version": 2,
     "sess_version": "3.0.0",
     "session_id": "sess-session-...",
     "host": "compute42",
@@ -217,6 +217,12 @@ The attached socket's lifetime controls cleanup. A replacement socket with the
 same identity supersedes the old one; a late close cannot remove its replacement.
 A fork child receives its own identity. Terminal PID association is local-only.
 
+Protocol version 2 includes the viewer-state generation contract: dynamic table
+and list `dataview` notifications provide `state_generation`, and
+`dataview_dispose` requires it. Both the extension and `sess` must support version
+2. The extension/webview `documentGeneration` field is internal to the client
+and is not part of the `sess` IPC contract.
+
 ### Notifications from R to client
 
 Sent with `notify_client()`.
@@ -225,7 +231,7 @@ Sent with `notify_client()`.
 |---|---|---|
 | `attach` | see above | Connection is established. |
 | `workspace_updated` | none | A top-level command completes. |
-| `dataview` | `title`, `source`, `type`, and `view_id` (tables) or `file` (other objects) | `View()` is called. |
+| `dataview` | `title`, `source`, `type`; `view_id` and `state_generation` for tables/lists, plus `navigation` for lists; `file` for other objects | `View()` is called. |
 | `plot_updated` | none | The standard device records a new or changed plot. |
 | `httpgd` | `url` | An httpgd device is opened. |
 | `help` | `requestPath` | A help page or help search is printed. |
@@ -258,7 +264,14 @@ arrives. All are used by `rstudioapi` emulation:
 | `plot_latest` | `width`, `height`, `format` (`svglite` or `png`), `devArgs` | `format`, `data` (base64) |
 | `dataview_init` | `view_id` | `columns`, `totalRows` |
 | `dataview_page` | `view_id`, `startRow`, `endRow`, `sortModel`, `filterModel` | `rows`, `totalRows`, `totalUnfiltered`, `lastRow` |
-| `dataview_dispose` | `view_id` | `true` |
+| `dataview_dispose` | `view_id`, `state_generation` | `true` |
+
+`state_generation` is an integer issued by `sess` when viewer data is registered.
+It changes when data for an existing `view_id` is replaced. When closing a viewer,
+the client sends the `state_generation` from its latest `dataview` notification.
+Disposal deletes data only if the generation matches the current registration;
+a missing or mismatched generation leaves the data intact and still returns
+`true`. This prevents a delayed close request from deleting replacement data.
 
 Example exchange:
 

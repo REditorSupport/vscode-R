@@ -19,6 +19,7 @@ import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import type { RSessionConnectionInfo } from './api';
 
 import { showWebView } from './webViewer';
+import { getListViewerScript, ListViewNavigation } from './listViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
 
@@ -100,7 +101,7 @@ let info: SessionInfo;
 export let globalPipePath: string | undefined;
 export let workspaceFile: string;
 
-const SESS_PROTOCOL_VERSION = 1;
+const SESS_PROTOCOL_VERSION = 2;
 
 const sessions = new Map<string, Session>();
 const documentSessions = new Map<string, Session>();
@@ -259,6 +260,7 @@ interface DataViewRequestMessage {
     message: 'dataview/request';
     action: 'init' | 'page';
     requestId: number;
+    documentGeneration: number;
     startRow?: number;
     endRow?: number;
     sortModel?: unknown[];
@@ -266,7 +268,9 @@ interface DataViewRequestMessage {
 }
 
 const dynamicDataViewPanels = new Map<string, vscode.WebviewPanel>();
-let dynamicDataViewReloadRevision = 0;
+const dynamicDataViewStateGenerations = new WeakMap<vscode.WebviewPanel, number>();
+const documentGenerations = new WeakMap<Webview, number>();
+let documentGenerationRevision = 0;
 
 function escapeHtml(text: string): string {
     const map: Record<string, string> = {
@@ -279,11 +283,44 @@ function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, c => map[c]);
 }
 
-function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, baseTitle: string, owner: Session | undefined): void {
-    const panelKey = `${owner?.sessionId ?? ''}:${viewId}`;
-    const postResponse = (requestId: number, ok: boolean, result?: unknown, error?: string) => {
-        void panel.webview.postMessage({
+function registerDataViewPanel(
+    panel: vscode.WebviewPanel, key: string, viewId: string, sessionId: string | null,
+    stateGeneration?: number,
+): void {
+    // The panel's webview getter throws once onDidDispose fires.
+    const webview = panel.webview;
+    dynamicDataViewPanels.set(key, panel);
+    if (stateGeneration !== undefined) {
+        dynamicDataViewStateGenerations.set(panel, stateGeneration);
+    }
+    panel.onDidDispose(() => {
+        documentGenerations.delete(webview);
+        const currentStateGeneration = dynamicDataViewStateGenerations.get(panel);
+        dynamicDataViewStateGenerations.delete(panel);
+        if (dynamicDataViewPanels.get(key) !== panel) {
+            return;
+        }
+        dynamicDataViewPanels.delete(key);
+        // Interactive transcripts retain this handle after the expanded viewer closes.
+        if (currentStateGeneration === undefined && sessions.get(sessionId ?? '')?.requester) { return; }
+        void sessionRequest({
+            method: 'dataview_dispose',
+            params: { view_id: viewId, state_generation: currentStateGeneration },
+        }, sessionId);
+    });
+}
+
+function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string, sessionId: string | null): void {
+    const webview = panel.webview;
+    const postResponse = (
+        documentGeneration: number, requestId: number, ok: boolean, result?: unknown, error?: string
+    ) => {
+        if (documentGeneration !== documentGenerations.get(webview)) {
+            return;
+        }
+        void webview.postMessage({
             message: 'dataview/response',
+            documentGeneration,
             requestId,
             ok,
             result,
@@ -291,9 +328,11 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
         });
     };
 
-    panel.webview.onDidReceiveMessage(async (raw: unknown) => {
+    webview.onDidReceiveMessage(async (raw: unknown) => {
         const msg = raw as Partial<DataViewRequestMessage>;
-        if (msg.message !== 'dataview/request' || typeof msg.requestId !== 'number') {
+        if (msg.message !== 'dataview/request' || typeof msg.requestId !== 'number' ||
+            typeof msg.documentGeneration !== 'number' ||
+            msg.documentGeneration !== documentGenerations.get(webview)) {
             return;
         }
 
@@ -302,12 +341,11 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                 const result = await sessionRequest({
                     method: 'dataview_init',
                     params: { view_id: viewId },
-                }, owner) as DataViewInitResult | undefined;
+                }, sessionId) as DataViewInitResult | undefined;
                 if (!result || !Array.isArray(result.columns) || typeof result.totalRows !== 'number') {
                     throw new Error('Invalid dataview_init response');
                 }
-                panel.title = baseTitle;
-                postResponse(msg.requestId, true, result);
+                postResponse(msg.documentGeneration, msg.requestId, true, result);
                 return;
             }
 
@@ -321,34 +359,20 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                         sortModel: Array.isArray(msg.sortModel) ? msg.sortModel : [],
                         filterModel: msg.filterModel ?? {},
                     },
-                }, owner) as DataViewPageResult | undefined;
+                }, sessionId) as DataViewPageResult | undefined;
                 if (!result || !Array.isArray(result.rows) ||
                     typeof result.totalRows !== 'number' ||
                     typeof result.totalUnfiltered !== 'number') {
                     throw new Error('Invalid dataview_page response');
                 }
-                panel.title = baseTitle;
-                postResponse(msg.requestId, true, result);
+                postResponse(msg.documentGeneration, msg.requestId, true, result);
                 return;
             }
 
-            postResponse(msg.requestId, false, undefined, `Unsupported dataview action: ${String(msg.action)}`);
+            postResponse(msg.documentGeneration, msg.requestId, false, undefined, `Unsupported dataview action: ${String(msg.action)}`);
         } catch (e) {
-            postResponse(msg.requestId, false, undefined, e instanceof Error ? e.message : String(e));
+            postResponse(msg.documentGeneration, msg.requestId, false, undefined, e instanceof Error ? e.message : String(e));
         }
-    });
-
-    panel.onDidDispose(() => {
-        if (dynamicDataViewPanels.get(panelKey) !== panel) {
-            return;
-        }
-        dynamicDataViewPanels.delete(panelKey);
-        // Interactive transcripts retain this handle after the expanded viewer closes.
-        if (owner?.requester) { return; }
-        void sessionRequest({
-            method: 'dataview_dispose',
-            params: { view_id: viewId },
-        }, owner);
     });
 }
 
@@ -1059,18 +1083,26 @@ export function openExternalBrowser(): void {
     }
 }
 
-export async function showDataView(source: string, type: string, title: string, file: string, viewer: string, viewId?: string, owner = activeSession): Promise<void> {
+export async function showDataView(
+    source: string, type: string, title: string, file: string, viewer: string,
+    viewId?: string, navigation?: ListViewNavigation,
+    sessionId: string | null = activeSession?.sessionId ?? null,
+    stateGeneration?: number,
+): Promise<void> {
     resDir ??= path.join(extensionContext.extensionPath, 'dist', 'resources');
     console.info(`[showDataView] source: ${source}, type: ${type}, title: ${title}, file: ${file}, viewer: ${viewer}, viewId: ${String(viewId ?? '')}`);
+    const panelKey = JSON.stringify([sessionId, viewId]);
 
     if (source === 'table') {
         if (viewId) {
-            const existing = dynamicDataViewPanels.get(`${owner?.sessionId ?? ''}:${viewId}`);
+            const existing = dynamicDataViewPanels.get(panelKey);
             if (existing) {
+                if (stateGeneration !== undefined) {
+                    dynamicDataViewStateGenerations.set(existing, stateGeneration);
+                }
                 existing.title = title;
-                existing.reveal(ViewColumn[viewer as keyof typeof ViewColumn], true);
-                const content = await getTableHtml(existing.webview, undefined, title);
-                existing.webview.html = `${content}\n<!-- dataview-reload:${++dynamicDataViewReloadRevision} -->`;
+                existing.reveal(existing.viewColumn, true);
+                existing.webview.html = await getTableHtml(existing.webview, undefined, title);
                 return;
             }
         }
@@ -1088,12 +1120,27 @@ export async function showDataView(source: string, type: string, title: string, 
             });
         panel.iconPath = new UriIcon('open-preview');
         if (viewId) {
-            dynamicDataViewPanels.set(`${owner?.sessionId ?? ''}:${viewId}`, panel);
-            attachDynamicDataViewBridge(panel, viewId, title, owner);
+            registerDataViewPanel(panel, panelKey, viewId, sessionId, stateGeneration);
+            attachDynamicDataViewBridge(panel, viewId, sessionId);
         }
         const content = await getTableHtml(panel.webview, file || undefined, title);
         panel.webview.html = content;
     } else if (source === 'list') {
+        if (viewId) {
+            const existing = dynamicDataViewPanels.get(panelKey);
+            if (existing) {
+                if (stateGeneration !== undefined) {
+                    dynamicDataViewStateGenerations.set(existing, stateGeneration);
+                }
+                existing.title = title;
+                existing.reveal(existing.viewColumn, true);
+                existing.webview.html = getListHtml(
+                    existing.webview, title, navigation
+                );
+                return;
+            }
+        }
+
         const panel = window.createWebviewPanel('dataview', title,
             {
                 preserveFocus: true,
@@ -1105,9 +1152,63 @@ export async function showDataView(source: string, type: string, title: string, 
                 retainContextWhenHidden: true,
                 localResourceRoots: [Uri.file(resDir)],
             });
-        const content = await getListHtml(panel.webview, file, title);
-        panel.iconPath = new UriIcon('open-preview');
-        panel.webview.html = content;
+        panel.iconPath = new UriIcon('preview');
+        if (viewId) {
+            registerDataViewPanel(panel, panelKey, viewId, sessionId, stateGeneration);
+            const webview = panel.webview;
+            webview.onDidReceiveMessage(async (message: {
+                message?: string; index?: number; start?: number; requestId?: number;
+                path?: number[]; documentGeneration?: number;
+            }) => {
+                if (message.documentGeneration !== documentGenerations.get(webview)) {
+                    return;
+                }
+                if (!Array.isArray(message.path) || !message.path.every(index => Number.isSafeInteger(index) && index > 0)) {
+                    return;
+                }
+                if (message.message === 'listview/navigate' ||
+                    (message.message === 'listview/view' && Number.isSafeInteger(message.index))) {
+                    const result = await sessionRequest({
+                        method: message.message === 'listview/navigate' ? 'listview_navigate' : 'listview_view',
+                        params: { view_id: viewId, index: message.index, path: message.path },
+                    }, sessionId) as ListViewNavigation | boolean | undefined;
+                    if (message.documentGeneration !== documentGenerations.get(webview)) {
+                        return;
+                    }
+                    const navigation = result && typeof result === 'object' && Array.isArray(result.breadcrumbs)
+                        ? result : undefined;
+                    if (navigation) {
+                        panel.title = navigation.title;
+                    }
+                    void webview.postMessage({
+                        message: 'listview/navigation',
+                        documentGeneration: message.documentGeneration,
+                        requestId: message.requestId,
+                        navigation,
+                        error: result ? undefined : 'Unable to open this item. Check the R session and try again.',
+                    });
+                } else if (message.message === 'listview/page' && typeof message.start === 'number' &&
+                    Number.isInteger(message.start) && typeof message.requestId === 'number') {
+                    const page = await sessionRequest({
+                        method: 'workspace_children',
+                        params: { view_id: viewId, start: message.start, path: message.path },
+                    }, sessionId) as { children?: unknown; next_start?: number | null } | undefined;
+                    if (message.documentGeneration !== documentGenerations.get(webview)) {
+                        return;
+                    }
+                    void webview.postMessage({
+                        message: 'listview/page',
+                        documentGeneration: message.documentGeneration,
+                        requestId: message.requestId,
+                        ...page,
+                        error: Array.isArray(page?.children) ? undefined : 'Unable to load items. Check the R session and try again.',
+                    });
+                }
+            });
+        }
+        panel.webview.html = getListHtml(
+            panel.webview, title, navigation
+        );
     } else {
         await commands.executeCommand('vscode.open', Uri.file(file), {
             preserveFocus: true,
@@ -1121,6 +1222,8 @@ export async function showDataView(source: string, type: string, title: string, 
 export async function getTableHtml(webview: Webview, file: string | undefined, title: string): Promise<string> {
     const pageSize = config().get<number>('session.data.pageSize', 500);
     if (!file) {
+        const documentGeneration = ++documentGenerationRevision;
+        documentGenerations.set(webview, documentGeneration);
         return `
 <!DOCTYPE html>
 <html lang="en">
@@ -1298,6 +1401,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'ag-grid-community.min.noStyle.js'))))}"></script>
     <script>
     const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : { postMessage: () => {} };
+    const documentGeneration = ${documentGeneration};
     let requestIdSeq = 1;
     const pending = new Map();
     let gridApi;
@@ -1479,6 +1583,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
                 console.log('[dataview] Sending request:', action, 'with payload:', payload);
                 vscode.postMessage({
                     message: 'dataview/request',
+                    documentGeneration,
                     action,
                     requestId,
                     ...payload,
@@ -1493,7 +1598,8 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 
     window.addEventListener('message', (event) => {
         const data = event.data;
-        if (!data || data.message !== 'dataview/response') {
+        if (!data || data.message !== 'dataview/response' ||
+            data.documentGeneration !== documentGeneration) {
             return;
         }
         const entry = pending.get(data.requestId);
@@ -1810,8 +1916,16 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 `;
 }
 
-export async function getListHtml(webview: Webview, file: string, title: string): Promise<string> {
-    const content = await readContent(file, 'utf8');
+export function getListHtml(
+    webview: Webview,
+    title: string,
+    navigation?: ListViewNavigation
+): string {
+    const documentGeneration = ++documentGenerationRevision;
+    documentGenerations.set(webview, documentGeneration);
+    const codicons = webview.asWebviewUri(
+        Uri.file(path.join(resDir, 'codicon.css'))
+    ).toString();
 
     return `
 <!doctype HTML>
@@ -1820,64 +1934,112 @@ export async function getListHtml(webview: Webview, file: string, title: string)
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(title)}</title>
-    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.min.js'))))}"></script>
-    <script src="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.js'))))}"></script>
-    <link href="${String(webview.asWebviewUri(Uri.file(path.join(resDir, 'jquery.json-viewer.css'))))}" rel="stylesheet">
-    <style type="text/css">
+    <link rel="stylesheet" href="${codicons}">
+    <style>
     body {
-        color: var(--vscode-editor-foreground);
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        color: var(--vscode-foreground);
         background-color: var(--vscode-editor-background);
+        font-family: var(--vscode-font-family);
+        font-size: var(--vscode-font-size);
     }
-
-    .json-document {
-        padding: 0 0;
+    #list { flex: 1; min-height: 0; overflow: auto; }
+    .navigation {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 6px 8px;
+        min-height: 28px;
+        border-bottom: 1px solid var(--vscode-panel-border);
+        background: var(--vscode-breadcrumb-background, var(--vscode-editor-background));
     }
-
-    pre#json-renderer {
-        font-family: var(--vscode-editor-font-family);
-        border: 0;
+    #back { gap: 4px; padding: 4px 6px; flex-shrink: 0; border-radius: 3px; }
+    #back:disabled { opacity: 0.4; cursor: default; background: transparent; }
+    .codicon { flex-shrink: 0; }
+    #breadcrumbs {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        overflow-x: auto;
+        color: var(--vscode-breadcrumb-foreground);
     }
-
-    ul.json-dict, ol.json-array {
+    .breadcrumb { padding: 4px; white-space: nowrap; border-radius: 3px; }
+    button.breadcrumb:hover { color: var(--vscode-breadcrumb-focusForeground); }
+    .breadcrumb[aria-current] { color: var(--vscode-breadcrumb-activeSelectionForeground); }
+    #navigation-status { padding: 0 8px; color: var(--vscode-errorForeground); }
+    .item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 28px;
+        padding: 2px 8px;
+    }
+    .item:hover {
+        background-color: var(--vscode-list-hoverBackground);
+        color: var(--vscode-list-hoverForeground);
+    }
+    summary.item { cursor: pointer; list-style: none; }
+    summary.item::-webkit-details-marker { display: none; }
+    .arrow { width: 16px; height: 16px; flex-shrink: 0; }
+    summary > .arrow {
+        color: var(--vscode-icon-foreground, currentColor);
+    }
+    details[open] > summary > .arrow { transform: rotate(90deg); }
+    .children { margin-left: 24px; }
+    button:focus-visible, summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
+    .label {
+        min-width: 140px;
         color: var(--vscode-symbolIcon-fieldForeground);
-        border-left: 1px dotted var(--vscode-editorLineNumber-foreground);
+        white-space: nowrap;
     }
-
-    .json-literal {
-        color: var(--vscode-symbolIcon-variableForeground);
+    body.vector .label {
+        min-width: 64px;
     }
-
-    .json-string {
-        color: var(--vscode-symbolIcon-stringForeground);
+    body.vector .item {
+        gap: 8px;
     }
-
-    a.json-toggle:before {
-        color: var(--vscode-button-secondaryBackground);
+    .str {
+        flex: 1;
+        color: var(--vscode-descriptionForeground);
+        white-space: pre-wrap;
     }
-
-    a.json-toggle:hover:before {
-        color: var(--vscode-button-secondaryHoverBackground);
+    button {
+        display: flex;
+        align-items: center;
+        border: 0;
+        padding: 2px;
+        color: var(--vscode-foreground);
+        background: transparent;
+        cursor: pointer;
+        font: inherit;
     }
-
-    a.json-placeholder {
-        color: var(--vscode-input-placeholderForeground);
+    button:hover {
+        background-color: var(--vscode-toolbar-hoverBackground);
+    }
+    .load-more {
+        margin: 8px;
+    }
+    .load-more[hidden] {
+        display: none;
     }
     </style>
-    <script>
-    var data = ${String(content)};
-    $(document).ready(function() {
-      var options = {
-        collapsed: false,
-        rootCollapsable: false,
-        withQuotes: false,
-        withLinks: true
-      };
-      $("#json-renderer").jsonViewer(data, options);
-    });
-    </script>
 </head>
 <body>
-    <pre id="json-renderer"></pre>
+    <div class="navigation">
+        <button id="back" title="Back" aria-label="Back" disabled><span class="codicon codicon-arrow-left" aria-hidden="true"></span>Back</button>
+        <nav id="breadcrumbs" aria-label="Object path"></nav>
+    </div>
+    <div id="navigation-status" role="status"></div>
+    <div id="list"></div>
+    <script>
+    ${getListViewerScript(documentGeneration, navigation ?? {
+        title, path: [], breadcrumbs: [{ label: title, path: [] }],
+    })}
+    </script>
 </body>
 </html>
 `;
@@ -2074,6 +2236,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 terminalSessionAttached.fire(terminalPid);
             }
 
+            if (terminalPid) {
+                terminalSessionAttached.fire(terminalPid);
+            }
+
             // Reload does not trigger a terminal-selection event after every attach.
             // Prefer its connected session when a terminal reconnects in the background.
             const selectedSession = terminalPid && selectedTerminal === window.activeTerminal && selectedTerminalPid
@@ -2157,6 +2323,9 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                         params.file ?? '',
                         viewer,
                         params.view_id || undefined,
+                        params.navigation as ListViewNavigation | undefined,
+                        socket._sessionId ?? null,
+                        typeof params.state_generation === 'number' ? params.state_generation : undefined,
                     );
                 }
             }
@@ -2300,10 +2469,14 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
     }
 }
 
-export async function sessionRequest(data: Record<string, unknown>, target = activeSession): Promise<unknown> {
+export async function sessionRequest(
+    data: Record<string, unknown>, target: Session | string | null | undefined = activeSession,
+): Promise<unknown> {
     try {
-        if (target?.requester) { return await target.requester(data); }
-        const socket = target?.socket ?? pipeClient;
+        const owner = typeof target === 'string' ? sessions.get(target) : target;
+        if (owner?.requester) { return await owner.requester(data); }
+        // An explicitly bound viewer must never fall back to the active session.
+        const socket = owner?.socket ?? (target === undefined ? pipeClient : undefined);
         if (!socket || socket.destroyed) {
             throw new Error('IPC socket is not connected');
         }
