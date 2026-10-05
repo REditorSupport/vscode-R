@@ -594,9 +594,8 @@ suite('Session Communication', () => {
         term.sendText('View(list(value = 1L), title = c("List title", "second line"))\n');
         await waitFor(() => createWebviewPanelSpy.calledWith('dataview', 'List title,second line'), 10000, 200);
 
-        const executeCommandSpy = sandbox.spy(vscode.commands, 'executeCommand');
         term.sendText('View(1:3, title = c("Object title", "second line"))\n');
-        await waitFor(() => executeCommandSpy.calledWith('vscode.open'), 10000, 200);
+        await waitFor(() => createWebviewPanelSpy.calledWith('dataview', 'Object title,second line'), 10000, 200);
 
         // Objects and arrays containing non-string values must still be rejected.
         const dataViewCount = createWebviewPanelSpy.withArgs('dataview').callCount;
@@ -1159,7 +1158,7 @@ suite('Session Communication', () => {
                 jsonrpc: '2.0',
                 method: 'attach',
                 params: {
-                    protocol_version: 1,
+                    protocol_version: 2,
                     session_id: 'malformed-session',
                     tempdir: { path: os.tmpdir() },
                     wd: os.tmpdir()
