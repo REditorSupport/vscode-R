@@ -102,6 +102,7 @@ const SESS_PROTOCOL_VERSION = 2;
 
 const sessions = new Map<string, Session>();
 const documentSessions = new Map<string, Session>();
+let focusedDataViewSessionId: string | null = null;
 const sessionDocumentBound = new vscode.EventEmitter<Uri>();
 export const onDidBindSessionDocument = sessionDocumentBound.event;
 
@@ -125,7 +126,11 @@ export function unbindSessionDocument(uri: Uri): void { documentSessions.delete(
 export function unregisterSessionTransport(target: Session): void {
     for (const [uri, owner] of documentSessions) { if (owner === target) { documentSessions.delete(uri); } }
     sessions.delete(target.sessionId);
-    if (activeSession === target) { void clearActiveSession(); }
+    if (activeSession === target) {
+        void clearActiveSession();
+    } else {
+        updateSessionStatusFromFocus();
+    }
 }
 
 function clearActiveSession(): Promise<void> {
@@ -134,7 +139,7 @@ function clearActiveSession(): Promise<void> {
     activeSession = undefined;
     workspaceData = { search: [], loaded_namespaces: [], globalenv: {} };
     workingDir = '';
-    resetStatusBar();
+    updateSessionStatusFromFocus();
     rWorkspace?.refresh();
     return setContext('rSessionActive', false);
 }
@@ -283,10 +288,8 @@ function escapeHtml(text: string): string {
 
 function focusDataViewPanel(panel: vscode.WebviewPanel, sessionId: string | null): void {
     focusedDataViewPanel = panel;
-    const session = sessions.get(sessionId ?? '');
-    if (session) {
-        updateSessionStatusBar(session);
-    }
+    focusedDataViewSessionId = sessionId;
+    updateSessionStatusFromFocus();
 }
 
 function registerDataViewPanel(
@@ -303,11 +306,8 @@ function registerDataViewPanel(
         if (!webviewPanel.active) {
             if (focusedDataViewPanel === panel) {
                 focusedDataViewPanel = undefined;
-                if (activeSession) {
-                    updateSessionStatusBar(activeSession);
-                } else {
-                    resetStatusBar();
-                }
+                focusedDataViewSessionId = null;
+                updateSessionStatusFromFocus();
             }
             return;
         }
@@ -317,11 +317,8 @@ function registerDataViewPanel(
     panel.onDidDispose(() => {
         if (focusedDataViewPanel === panel) {
             focusedDataViewPanel = undefined;
-            if (activeSession) {
-                updateSessionStatusBar(activeSession);
-            } else {
-                resetStatusBar();
-            }
+            focusedDataViewSessionId = null;
+            updateSessionStatusFromFocus();
         }
         documentGenerations.delete(webview);
         const currentStateGeneration = dynamicDataViewStateGenerations.get(panel);
@@ -2135,6 +2132,17 @@ function updateSessionStatusBar(session: Session): void {
     }
 }
 
+function updateSessionStatusFromFocus(): void {
+    const focusedSession = sessions.get(focusedDataViewSessionId ?? '');
+    if (focusedSession) {
+        updateSessionStatusBar(focusedSession);
+    } else if (activeSession) {
+        updateSessionStatusBar(activeSession);
+    } else {
+        resetStatusBar();
+    }
+}
+
 export function resetStatusBar(): void {
     if (sessionStatusBarItem) {
         sessionStatusBarItem.text = 'R: (not attached)';
@@ -2175,6 +2183,9 @@ async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
 }
 
 export async function switchSessionByTerminal(terminal: vscode.Terminal | undefined): Promise<void> {
+    if (terminal) {
+        focusedDataViewSessionId = null;
+    }
     const terminalPid = await terminal?.processId;
     const session = terminalPid ? terminalSessions.get(String(terminalPid)) : undefined;
     if (session) {
@@ -2513,6 +2524,8 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
     }
     if (activeSession === session) {
         await clearActiveSession();
+    } else {
+        updateSessionStatusFromFocus();
     }
 }
 
