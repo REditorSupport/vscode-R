@@ -13,6 +13,9 @@ export function getListViewerScript(documentGeneration: number, initial: ListVie
     return `
     const vscode = acquireVsCodeApi();
     const documentGeneration = ${documentGeneration};
+    window.addEventListener('focus', () => {
+        vscode.postMessage({ message: 'dataview/focus', documentGeneration });
+    });
     const pending = new Map();
     let nextRequestId = 0;
     const list = document.getElementById('list');

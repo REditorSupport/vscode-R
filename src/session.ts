@@ -281,6 +281,14 @@ function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, c => map[c]);
 }
 
+function focusDataViewPanel(panel: vscode.WebviewPanel, sessionId: string | null): void {
+    focusedDataViewPanel = panel;
+    const session = sessions.get(sessionId ?? '');
+    if (session) {
+        updateSessionStatusBar(session);
+    }
+}
+
 function registerDataViewPanel(
     panel: vscode.WebviewPanel, key: string, viewId: string, sessionId: string | null,
     stateGeneration?: number,
@@ -304,12 +312,7 @@ function registerDataViewPanel(
             return;
         }
 
-        focusedDataViewPanel = panel;
-
-        const session = sessions.get(sessionId ?? '');
-        if (session) {
-            updateSessionStatusBar(session);
-        }
+        focusDataViewPanel(panel, sessionId);
     });
     panel.onDidDispose(() => {
         if (focusedDataViewPanel === panel) {
@@ -355,6 +358,14 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
     };
 
     webview.onDidReceiveMessage(async (raw: unknown) => {
+        const focusMessage = raw as { message?: string; documentGeneration?: number };
+        if (focusMessage.message === 'dataview/focus') {
+            if (focusMessage.documentGeneration === documentGenerations.get(webview)) {
+                focusDataViewPanel(panel, sessionId);
+            }
+            return;
+        }
+
         const msg = raw as Partial<DataViewRequestMessage>;
         if (msg.message !== 'dataview/request' || typeof msg.requestId !== 'number' ||
             typeof msg.documentGeneration !== 'number' ||
@@ -1189,6 +1200,10 @@ export async function showDataView(
                 if (message.documentGeneration !== documentGenerations.get(webview)) {
                     return;
                 }
+                if (message.message === 'dataview/focus') {
+                    focusDataViewPanel(panel, sessionId);
+                    return;
+                }
                 if (!Array.isArray(message.path) || !message.path.every(index => Number.isSafeInteger(index) && index > 0)) {
                     return;
                 }
@@ -1428,6 +1443,9 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     <script>
     const vscode = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : { postMessage: () => {} };
     const documentGeneration = ${documentGeneration};
+    window.addEventListener('focus', () => {
+        vscode.postMessage({ message: 'dataview/focus', documentGeneration });
+    });
     let requestIdSeq = 1;
     const pending = new Map();
     let gridApi;

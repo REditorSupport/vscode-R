@@ -224,6 +224,7 @@ suite('Viewer session ownership', () => {
         const a = await attach('viewer-session-a');
         const b = await attach('viewer-session-b', os.hostname(), terminalPid);
         const aList = await open(a, 'list');
+        const aTable = await open(a, 'table');
 
         aList.activate();
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
@@ -237,6 +238,17 @@ suite('Viewer session ownership', () => {
 
         await session.updateWorkspace();
         assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
+
+        await send(aList, { message: 'dataview/focus' });
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+        assert.strictEqual(session.activeSession?.sessionId, b.id);
+
+        await session.switchSessionByTerminal(terminal);
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
+
+        await send(aTable, { message: 'dataview/focus' });
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+        assert.strictEqual(session.activeSession?.sessionId, b.id);
     });
 
     test('identical viewer ids stay separate and background views keep their originating session', async () => {
