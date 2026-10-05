@@ -803,10 +803,8 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, installSes
         ...(backend === 'native' ? [] : [
             jgdSocket ? `  Sys.setenv(JGD_SOCKET = ${asRStringLiteral(jgdSocket)})` : '  Sys.unsetenv("JGD_SOCKET")',
         ]),
-        '  bundled_version <- tryCatch(read.dcf(file.path(sess_src, "DESCRIPTION"))[1, "Version"], error = function(e) NA_character_)',
-        '  installed_version <- suppressWarnings(tryCatch(as.character(utils::packageVersion("sess")), error = function(e) NA_character_))',
-        '  needs_install <- is.na(installed_version) || (!is.na(bundled_version) && utils::compareVersion(installed_version, bundled_version) < 0)',
-        '  if (needs_install) {',
+        `  source(${asRStringLiteral(extensionContext.asAbsolutePath(path.join('R', 'sess_source.R')).replace(/\\/g, '/'))}, local = TRUE)`,
+        '  if (sess_install_required(sess_src)) {',
         '    if (!file.exists(install_sess_script)) {',
         '      stop(sprintf("install_sess.R not found: %s", install_sess_script))',
         '    }',
@@ -822,7 +820,7 @@ function buildAttachSessionScript(pipePath: string, sessPath: string, installSes
 
 export async function getAttachSessionCommand(): Promise<string> {
     const pipePath = await getGlobalPipePath();
-    const sessPath = extensionContext.asAbsolutePath('sess').replace(/\\/g, '/');
+    const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
     const installSessScriptPath = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
     const scriptPath = getAttachSessionScriptPath(pipePath);
     await fs.ensureDir(path.dirname(scriptPath));

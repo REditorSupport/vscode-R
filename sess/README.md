@@ -24,9 +24,12 @@ socket on macOS/Linux, named pipe on Windows) using
 >
 > Users of the VS Code R extension (>=v3.0.0) do not need to install `sess`
 > manually. The extension bundles its own copy of `sess` and will install it
-> for you (along with any missing CRAN dependencies) if it is missing or
-> outdated. Managed R terminals ask first; attaching an existing session
-> installs without prompting.
+> for you (along with any missing CRAN dependencies) if the installed package
+> does not match the bundled source snapshot, including when switching between
+> stable and pre-release builds. Managed R terminals ask first; attaching an
+> existing session installs without prompting. When accepted, installation
+> finishes before the managed terminal starts. If sess is already loaded,
+> restart R after updating to use the new copy.
 
 The installer first tries the bundled source. If that fails (for example, because
 no C compiler is installed), it checks R-universe for a compatible pre-built

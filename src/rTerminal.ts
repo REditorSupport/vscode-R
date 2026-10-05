@@ -278,7 +278,6 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
 export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri): Promise<boolean> {
     resource = resource ?? getCurrentWorkspaceFolder()?.uri;
     const termOptions = await makeTerminalOptions(resource);
-    void util.promptToInstallSessPackage(termOptions.cwd);
     const termPath = termOptions.shellPath;
     const discoveryFile = termOptions.env?.['SESS_DISCOVERY_FILE'];
     const discardDiscoveryFile = async () => {
@@ -303,6 +302,10 @@ export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri)
     }
     let createdTerminal: vscode.Terminal;
     try {
+        if (!await util.promptToInstallSessPackage(termOptions.cwd)) {
+            await discardDiscoveryFile();
+            return false;
+        }
         createdTerminal = vscode.window.createTerminal(termOptions);
     } catch (error) {
         await discardDiscoveryFile();
