@@ -954,11 +954,19 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
             void this.clientRequest(view, event.data);
         } else if (event.type === 'viewer' && event.data.method === 'dataview') {
             const params = object(event.data.params ?? {});
+            const title = typeof params.title === 'string' ? params.title
+                : Array.isArray(params.title) && params.title.every((line: unknown) => typeof line === 'string')
+                    ? params.title.join(',') : undefined;
             const viewer = util.config().get<Record<string, string>>('session.viewers.viewColumn')?.view ?? 'Two';
-            if (viewer !== 'Disable' && params.source && params.type && params.title) {
+            if (viewer !== 'Disable'
+                && typeof params.source === 'string' && params.source
+                && typeof params.type === 'string' && params.type
+                && title
+                && (params.file === undefined || params.file === null || typeof params.file === 'string')
+                && (params.view_id === undefined || params.view_id === null || typeof params.view_id === 'string')) {
                 await session.showDataView(
-                    String(params.source), String(params.type), String(params.title), String(params.file ?? ''), viewer,
-                    params.view_id ? String(params.view_id) : undefined,
+                    params.source, params.type, title, params.file ?? '', viewer,
+                    params.view_id || undefined,
                     params.navigation as ListViewNavigation | undefined,
                     view.target.sessionId,
                     typeof params.state_generation === 'number' ? params.state_generation : undefined,
