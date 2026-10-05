@@ -244,6 +244,17 @@ export class LanguageService implements Disposable {
                 fileEvents: workspace.createFileSystemWatcher('**/*.{R,r}'),
             },
             middleware: {
+                workspace: {
+                    didChangeWorkspaceFolders: async (event, next) => {
+                        await next(event);
+                        if (sessionScope === 'global') {
+                            const sessionState = this.sessionStates.get(sessionScope)?.state;
+                            if (sessionState) {
+                                await this.applySessionState(client, sessionState);
+                            }
+                        }
+                    },
+                },
                 provideSignatureHelp: async (document, position, context, token, next) => {
                     const result = await next(document, position, context, token);
                     // An empty LSP result still suppresses other VS Code providers.
