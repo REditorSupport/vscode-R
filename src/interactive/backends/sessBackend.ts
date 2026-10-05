@@ -156,7 +156,13 @@ export class SessBackend implements SessionBackend {
                 channel: typeof message.channel === 'string' ? message.channel : 'stdout', external: !executionId && this.options.frontend === 'arf' }); break;
             case 'condition': case 'input': case 'display': this.emit({ type: message.type, data: message, executionId }); break;
             case 'truncated': this.emit({ type: 'truncated', message: String(message.message), executionId }); break;
-            case 'notification': this.notification(String(message.method), object(message.params ?? {}), executionId); break;
+            case 'notification': {
+                // R encodes an empty list as []; task callbacks send notifications
+                // such as workspace_updated without any parameters.
+                const params = message.params;
+                this.notification(String(message.method), object(Array.isArray(params) && !params.length ? {} : params ?? {}), executionId);
+                break;
+            }
             case 'external': this.emit({ type: 'external', code: typeof message.code === 'string' ? message.code : '# Terminal output', success: Boolean(message.success) }); break;
         }
     }

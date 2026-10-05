@@ -959,6 +959,12 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             assert.ok(completion >= 0 && captured.every((event, index) => event.type !== 'stream' || index < completion));
             assert.ok(await connection.request('inspect', { method: 'workspace' }));
 
+            // A real arf terminal runs task callbacks after the adoption bootstrap
+            // and ordinary console commands; headless arf does not run them.
+            await completed('sess:::.workspace_update_task_callback(); later::run_now()');
+            assert.ok(await connection.request('inspect', { method: 'workspace' }));
+            await completed('stopifnot(kept_before_adoption == 73)');
+
             const running = randomUUID();
             await connection.request('submit', { submission: { id: running, code: 'kept_during_adoption <- 81; cat("before interrupt"); Sys.sleep(30)' } });
             await until(() => observed.some(event => event.executionId === running && event.type === 'started'));
