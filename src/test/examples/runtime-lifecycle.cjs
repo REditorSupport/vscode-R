@@ -36,8 +36,10 @@ async function main() {
     const rPath = resolveExecutable('R', repository);
     assert.ok(rPath, 'R must be installed');
     const runtime = await installRuntime(repository, registry, rPath, () => {});
+    const arfPath = resolveExecutable(process.env.ARF_PATH ?? 'arf', repository);
+    assert.ok(arfPath, 'arf must be installed');
     const config = { id: randomUUID(), generation: randomUUID(), label: 'Editor lifecycle test', directory: root,
-        storage: '', rPath, library: runtime.library, resources: runtime.resources, provider: 'r', supervision: 'detached',
+        storage: '', rPath, library: runtime.library, resources: runtime.resources, provider: 'arf', arfPath, supervision: 'detached',
         plotBackend: 'standard', historyLimit: 10, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
     config.storage = path.join(registry, config.id);
     fs.writeFileSync(state, JSON.stringify({ config, agent: runtime.agent }));

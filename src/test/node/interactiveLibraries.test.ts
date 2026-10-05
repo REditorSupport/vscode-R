@@ -50,7 +50,7 @@ const run = promisify(execFile);
         const id = randomUUID();
         const agent = new SessionAgent({ id, generation: randomUUID(), label: 'Library test', directory,
             storage: path.join(root, id), rPath: 'R', library: runtime.library, resources: runtime.resources,
-            provider: process.env.VSCR_TEST_PROVIDER === 'arf' ? 'arf' : 'r', arfPath: process.env.ARF_PATH ?? 'arf',
+            provider: 'arf', arfPath: process.env.ARF_PATH ?? 'arf',
             supervision: 'test', plotBackend: 'auto', historyLimit: 10, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
         let client: AgentClient | undefined;
         const events: SessionEvent[] = [];
