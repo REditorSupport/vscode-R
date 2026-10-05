@@ -981,7 +981,9 @@ cat("\n")`;
         }
     });
 
-    test('Run Selection can create a persistent Interactive session and ordinary R exit leaves a restored notice', async () => {
+    test('Run Selection can create a persistent Interactive session and ordinary R exit leaves a restored notice [smoke]', async () => {
+        const settings = vscode.workspace.getConfiguration('r');
+        const previousNode = settings.inspect<string>('interactive.nodePath')?.globalValue;
         await vscode.commands.executeCommand('r.interactive.useTerminal');
         const terminals = sinon.stub(vscode.window, 'terminals').value([]);
         const picker = sinon.stub(vscode.window, 'showQuickPick').callsFake((_items, options) => Promise.resolve(
@@ -991,6 +993,8 @@ cat("\n")`;
         let client: AgentClient | undefined;
         let notebook: vscode.NotebookDocument | undefined;
         try {
+            // Exercise successful agent creation with the default VS Code runtime.
+            await settings.update('interactive.nodePath', '', vscode.ConfigurationTarget.Global);
             await vscode.commands.executeCommand('r.runSelection', 'created_target_value <- 123');
             notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId && !manifests.some(item => item.id === doc.metadata.rSessionId));
             assert.ok(notebook);
@@ -1014,6 +1018,7 @@ cat("\n")`;
                 'Notice body must keep breakable spaces so it wraps in narrow windows');
         } finally {
             terminals.restore(); picker.restore(); input.restore();
+            await settings.update('interactive.nodePath', previousNode, vscode.ConfigurationTarget.Global);
             if (notebook) { await vscode.commands.executeCommand('r.interactive.detach', notebook.uri); }
             if (client) {
                 await client.request('claim', { force: true });

@@ -83,7 +83,9 @@ PR CI runs the full supported suites on Linux and Windows. On macOS it runs the
 full Node unit/supervisor/library-isolation checks and existing extension suites,
 but selects `[smoke]` tests from the real-R runtime and Interactive editor suites.
 These cover evaluation, reconnect, interrupt, detached process survival, language
-server diagnostics and editor restart. Linux additionally runs the tmux launcher
+server diagnostics, session creation with the default VS Code runtime and editor
+restart. The extension-host layer also checks the actual Electron runtime with no
+Node executable on PATH. Linux additionally runs the tmux launcher
 survival case once with tmux enabled. To reproduce the reduced selection locally:
 
 ```sh
