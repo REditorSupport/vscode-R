@@ -2240,7 +2240,8 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             session.info = (params.info as SessionInfo | undefined) ?? { version: session.rVer, command: '', start_time: '' };
             session.sessionDir = params.tempdir;
             session.workingDir = params.wd;
-            session.resource = terminal ? rTerminal.getTerminalResource(terminal) : undefined;
+            session.resource = (terminal ? rTerminal.getTerminalResource(terminal) : undefined)
+                ?? (isLocalHost(host) ? vscode.workspace.getWorkspaceFolder(Uri.file(params.wd))?.uri : undefined);
 
             if (terminalPid) {
                 terminalSessionAttached.fire(terminalPid);
