@@ -293,6 +293,15 @@ function registerDataViewPanel(
     if (stateGeneration !== undefined) {
         dynamicDataViewStateGenerations.set(panel, stateGeneration);
     }
+    panel.onDidChangeViewState(({ webviewPanel }) => {
+        if (!webviewPanel.active || !sessionId) {
+            return;
+        }
+        const session = sessions.get(sessionId);
+        if (session) {
+            updateSessionStatusBar(session);
+        }
+    });
     panel.onDidDispose(() => {
         documentGenerations.delete(webview);
         const currentStateGeneration = dynamicDataViewStateGenerations.get(panel);
@@ -2064,12 +2073,7 @@ async function refreshActiveSession(session: Session): Promise<void> {
     workingDir = session.workingDir;
     workspaceData = session.workspaceData;
 
-    if (sessionStatusBarItem) {
-        const version = rVer.replace(/^R (?:version )?/, '').replace(/\s+\(.*/, '');
-        sessionStatusBarItem.text = `R ${version}: ${pid}`;
-        sessionStatusBarItem.tooltip = `${info.version || rVer}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
-        sessionStatusBarItem.show();
-    }
+    updateSessionStatusBar(session);
     rWorkspace?.refresh();
     await setContext('rSessionActive', !session.workspaceUnavailable);
 }
@@ -2086,6 +2090,15 @@ export async function activateSessionById(sessionId: string): Promise<boolean> {
     }
     await activateSession(target);
     return true;
+}
+
+function updateSessionStatusBar(session: Session): void {
+    if (sessionStatusBarItem) {
+        const version = session.rVer.replace(/^R (?:version )?/, '').replace(/\s+\(.*/, '');
+        sessionStatusBarItem.text = `R ${version}: ${session.pid}`;
+        sessionStatusBarItem.tooltip = `${session.info.version || session.rVer}\nProcess ID: ${session.pid}\nCommand: ${session.info.command}\nStart time: ${session.info.start_time}\nClick to attach to active terminal.`;
+        sessionStatusBarItem.show();
+    }
 }
 
 export function resetStatusBar(): void {
