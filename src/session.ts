@@ -128,6 +128,7 @@ export function bindSessionDocument(uri: Uri, session: Session): void {
 export function unbindSessionDocument(uri: Uri): void { documentSessions.delete(uri.toString()); }
 
 export function unregisterSessionTransport(target: Session): void {
+    rLanguageService?.syncSessionState(undefined, target.resource, target.sessionId);
     for (const [uri, owner] of documentSessions) { if (owner === target) { documentSessions.delete(uri); } }
     sessions.delete(target.sessionId);
     if (activeSession === target) { void clearActiveSession(); }
@@ -162,6 +163,7 @@ export async function executeSessionCode(target: Session, code: string): Promise
 
 export function updateSessionWorkspace(target: Session, data: WorkspaceData): void {
     target.workspaceData = data;
+    rLanguageService?.syncSessionState(data, target.resource, target.sessionId, false);
     if (activeSession === target) {
         void refreshActiveSession(target);
     }
@@ -169,6 +171,7 @@ export function updateSessionWorkspace(target: Session, data: WorkspaceData): vo
 
 /** Move document routing to a new process; existing data viewers keep their old owner. */
 export function replaceSessionTransport(previous: Session, next: Session): void {
+    rLanguageService?.syncSessionState(undefined, previous.resource, previous.sessionId);
     for (const [uri, owner] of documentSessions) { if (owner === previous) { documentSessions.set(uri, next); } }
     sessions.delete(previous.sessionId);
     if (activeSession === previous) { activeSession = next; }
@@ -179,6 +182,7 @@ export function registerSessionTransport(id: string, host: string, directory: st
     const target = sessions.get(id) ?? new Session(id, host, '', '', new net.Socket());
     target.requester = requester;
     target.workingDir = directory;
+    target.resource = vscode.workspace.getWorkspaceFolder(Uri.file(directory))?.uri;
     sessions.set(id, target);
     return target;
 }

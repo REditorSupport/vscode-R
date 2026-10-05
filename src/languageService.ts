@@ -47,8 +47,17 @@ export class LanguageService implements Disposable {
         return this.stopLanguageService();
     }
 
-    syncSessionState(data?: SessionWorkspaceData, resource?: Uri, sessionId = ''): void {
-        const scope = this.getSessionScope(resource);
+    syncSessionState(data?: SessionWorkspaceData, resource?: Uri, sessionId = '', active = true): void {
+        // Bound virtual documents keep their owner's packages when focus moves.
+        if (sessionId) {
+            this.syncSessionScope(`session:${sessionId}`, data, sessionId);
+        }
+        if (active || !data) {
+            this.syncSessionScope(this.getSessionScope(resource), data, sessionId);
+        }
+    }
+
+    private syncSessionScope(scope: string, data: SessionWorkspaceData | undefined, sessionId: string): void {
         const current = this.sessionStates.get(scope);
         if (!data) {
             if (!current || (sessionId && current.sessionId !== sessionId)) {
@@ -293,6 +302,9 @@ export class LanguageService implements Disposable {
 
         extensionContext.subscriptions.push(client);
         await client.start();
+        if (target) {
+            this.syncSessionScope(sessionScope, target.workspaceData, target.sessionId);
+        }
         const sessionState = this.sessionStates.get(sessionScope)?.state;
         if (sessionState) {
             await this.applySessionState(client, sessionState);
@@ -349,7 +361,7 @@ export class LanguageService implements Disposable {
 
             if (document.uri.scheme === 'vscode-interactive-input') {
                 const key = document.uri.toString();
-                const scope = this.getSessionScope(folder?.uri);
+                const scope = target ? `session:${target.sessionId}` : this.getSessionScope(folder?.uri);
                 if (!this.checkClient(key)) {
                     const selector = [{ scheme: 'vscode-interactive-input', language: 'r', pattern: document.uri.fsPath }];
                     const client = await this.createClient(selector, target?.workingDir ?? folder?.uri.fsPath ?? os.homedir(), folder, this.outputChannel, folder?.uri, scope, target);
@@ -361,7 +373,7 @@ export class LanguageService implements Disposable {
             // Each notebook uses a server started from parent folder
             if (document.uri.scheme === 'vscode-notebook-cell') {
                 const key = this.getKey(document.uri);
-                const scope = this.getSessionScope(folder?.uri);
+                const scope = target ? `session:${target.sessionId}` : this.getSessionScope(folder?.uri);
                 if (!this.checkClient(key)) {
                     console.log(`Start language server for ${document.uri.toString(true)}`);
                     const documentSelector: DocumentFilter[] = [
