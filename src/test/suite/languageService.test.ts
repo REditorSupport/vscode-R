@@ -1,9 +1,11 @@
 import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+import { LanguageClient } from 'vscode-languageclient/node';
 import { LanguageService } from '../../languageService';
 import * as session from '../../session';
 import * as extension from '../../extension';
+import * as util from '../../util';
 
 suite('Session package completion', () => {
     let sandbox: sinon.SinonSandbox;
@@ -15,9 +17,13 @@ suite('Session package completion', () => {
     // Keep the tests independent of installed R packages and server processes.
     type ServiceInternals = {
         startLanguageService(): Promise<void>;
+        createClient(key: string, selector: vscode.DocumentFilter[], cwd: string,
+            workspaceFolder: vscode.WorkspaceFolder | undefined, outputChannel: vscode.OutputChannel,
+            resource?: vscode.Uri, sessionScope?: string): Promise<LanguageClient>;
         registerClient(key: string, client: { sendRequest: sinon.SinonStub; stop: sinon.SinonStub }, scope: string): Promise<void>;
         clients: Map<string, { sendRequest: sinon.SinonStub; stop: sinon.SinonStub }>;
         clientScopes: Map<string, string>;
+        outputChannel: vscode.OutputChannel;
     };
     function client(key: string, scope: string): sinon.SinonStub {
         const sendRequest = sandbox.stub().resolves(true);
@@ -70,7 +76,6 @@ suite('Session package completion', () => {
         service.syncSessionState({
             search: ['.GlobalEnv', 'package:base'],
             loaded_namespaces: ['base'],
-            globalenv: {},
         }, folder.uri, 'session');
 
         const registering = internals.registerClient('global', fakeClient, 'global');
@@ -91,6 +96,32 @@ suite('Session package completion', () => {
 
         resolveInitial();
         await registering;
+    });
+
+    test('global server replays current packages after workspace folders change', async () => {
+        sandbox.stub(util, 'getRpath').resolves('/usr/bin/R');
+        sandbox.stub(LanguageClient.prototype, 'start').resolves();
+        const request = sandbox.stub(LanguageClient.prototype, 'sendRequest').resolves(true);
+        const internals = service as unknown as ServiceInternals;
+        const client = await internals.createClient(
+            'global', [{ scheme: 'file', language: 'r' }], '/project',
+            undefined, internals.outputChannel, folder.uri, 'global'
+        );
+
+        service.syncSessionState(packages('dplyr'), folder.uri, 'session');
+        request.resetHistory();
+
+        const middleware = client.middleware.workspace?.didChangeWorkspaceFolders;
+        assert.ok(middleware);
+        const event = { added: [folder], removed: [] };
+        const next = sandbox.stub().resolves();
+        await middleware(event, next);
+
+        sinon.assert.calledOnceWithExactly(next, event);
+        sinon.assert.calledOnceWithExactly(request, 'r/syncSessionState', {
+            attachedPackages: ['dplyr', 'base'], loadedNamespaces: ['dplyr', 'base']
+        });
+        sinon.assert.callOrder(next, request);
     });
 
     test('multi-server mode separates workspace and unscoped documents', () => {

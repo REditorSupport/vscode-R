@@ -776,6 +776,7 @@ suite('Session Communication', () => {
             })}\n`);
             const attached = await waitFor(() => session.activeSession?.sessionId === 'workspace-fallback'
                 ? session.activeSession : undefined);
+            assert.ok(attached);
             assert.strictEqual(attached.resource?.toString(), workspaceUri.toString());
             assert.strictEqual(socket._terminalPid, undefined);
         } finally {
