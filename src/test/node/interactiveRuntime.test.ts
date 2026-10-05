@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { execFile, spawn } from 'child_process';
-import { promisify } from 'util';
+import { promisify, stripVTControlCharacters } from 'util';
 import { randomUUID } from 'crypto';
 import { arfRequest, probeArfSession } from '../../interactive/arf';
 import { SessionAgent } from '../../interactive/agentMain';
@@ -116,6 +116,24 @@ cat(readLines(${redirected}))`);
         assert.strictEqual(text(id).match(/saved to file/g)?.length, 1);
         const next = await submit('cat("next cell")');
         assert.strictEqual((await finished(next)).state, 'success'); assert.strictEqual(text(next), 'next cell');
+    });
+
+    test('drains both console pipes before completing back-to-back cells', async () => {
+        for (let cell = 0; cell < 3; cell++) {
+            const id = await submit(`cat("stdout-${cell}\\n"); cat(strrep("λ", 200000), file=stderr())
+sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=stderr()); cat("tail-${cell}\\n")`);
+            assert.strictEqual((await finished(id)).state, 'success');
+            const captured = events.filter(event => event.executionId === id);
+            const stdout = captured.filter(event => event.type === 'stream' && event.data.channel === 'stdout').map(event => event.data.text).join('');
+            const stderr = captured.filter(event => event.type === 'stream' && event.data.channel === 'stderr').map(event => event.data.text).join('');
+            assert.strictEqual(stdout, `stdout-${cell}\ntail-${cell}\n`);
+            // arf styles errors on its owned stderr pipe; compare console content.
+            assert.strictEqual(stripVTControlCharacters(stderr), 'λ'.repeat(200000) + `stderr-${cell}\n`);
+            assert.ok(captured.some(event => event.type === 'display' && event.data.text === `display-${cell}`));
+            const completion = captured.findIndex(event => event.type === 'finished');
+            assert.ok(completion >= 0 && captured.every((event, index) =>
+                !['stream', 'display'].includes(event.type) || index < completion));
+        }
     });
 
     test('searches durable history beyond the reconnect window without executing code', async () => {
@@ -922,6 +940,32 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             assert.strictEqual(connection.manifest.capabilities.streaming, false);
             // Output of notebook submissions is returned on completion. Arbitrary
             // terminal output has no subscription in the current arf protocol.
+
+            const completed = async (code: string): Promise<string> => {
+                assert.ok(connection);
+                const id = randomUUID();
+                await connection.request('submit', { submission: { id, code } });
+                await until(() => observed.some(event => event.executionId === id && event.type === 'finished'));
+                assert.strictEqual((await connection.request<ExecutionRecord>('execution', { id })).state, 'success');
+                return id;
+            };
+            const rich = await completed('cat("adopted stdout"); cat("adopted stderr", file=stderr()); head(iris); plot(1:3)');
+            const captured = observed.filter(event => event.executionId === rich);
+            assert.strictEqual(captured.filter(event => event.type === 'stream' && event.data.channel === 'stdout').map(event => event.data.text).join(''), 'adopted stdout');
+            assert.strictEqual(captured.filter(event => event.type === 'stream' && event.data.channel === 'stderr').map(event => event.data.text).join(''), 'adopted stderr');
+            assert.ok(captured.some(event => event.type === 'display' && event.data.kind === 'table'));
+            assert.ok(captured.some(event => event.type === 'display' && event.data.kind === 'image'));
+            const completion = captured.findIndex(event => event.type === 'finished');
+            assert.ok(completion >= 0 && captured.every((event, index) => event.type !== 'stream' || index < completion));
+            assert.ok(await connection.request('inspect', { method: 'workspace' }));
+
+            const running = randomUUID();
+            await connection.request('submit', { submission: { id: running, code: 'kept_during_adoption <- 81; cat("before interrupt"); Sys.sleep(30)' } });
+            await until(() => observed.some(event => event.executionId === running && event.type === 'started'));
+            await connection.request('interrupt', { id: running });
+            await until(() => observed.some(event => event.executionId === running && event.type === 'finished'));
+            assert.strictEqual((await connection.request<ExecutionRecord>('execution', { id: running })).state, 'interrupted');
+            await completed('stopifnot(kept_during_adoption == 81, kept_before_adoption == 73)');
 
             connection.close(); await adopted.close();
             assert.strictEqual(child.exitCode, null);

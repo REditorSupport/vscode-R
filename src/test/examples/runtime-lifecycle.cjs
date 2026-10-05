@@ -45,7 +45,7 @@ async function main() {
     fs.writeFileSync(state, JSON.stringify({ config, agent: runtime.agent }));
     const bin = path.join(root, 'bin');
     fs.mkdirSync(bin);
-    for (const name of ['uname', 'rm', 'mkdir', 'which', 'sed', 'sh', 'env', 'cat', 'cut', 'basename', 'dirname']) {
+    for (const name of ['R', 'uname', 'rm', 'mkdir', 'which', 'sed', 'sh', 'env', 'cat', 'cut', 'basename', 'dirname']) {
         const executable = resolveExecutable(name, repository);
         if (executable) { fs.symlinkSync(executable, path.join(bin, name)); }
     }
