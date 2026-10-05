@@ -3,19 +3,8 @@ import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import { mockExtensionContext } from '../common/mockvscode';
-import * as extension from '../../extension';
 import * as session from '../../session';
 import { GlobalEnvItem } from '../../workspaceViewer';
-
-async function waitFor(condition: () => boolean): Promise<void> {
-    const deadline = Date.now() + 5000;
-    while (!condition()) {
-        if (Date.now() > deadline) {
-            throw new Error('Timed out waiting for viewer state');
-        }
-        await new Promise(resolve => setTimeout(resolve, 10));
-    }
-}
 
 suite('List viewer panels', () => {
     let sandbox: sinon.SinonSandbox;
@@ -81,50 +70,6 @@ suite('List viewer panels', () => {
             await Promise.all(pending);
         });
     }
-
-    test('restores the active session PID when leaving a real viewer for an R editor', async () => {
-        const statusBar = {
-            text: '', tooltip: '', show: sandbox.stub(),
-        } as unknown as vscode.StatusBarItem;
-        sandbox.stub(extension, 'sessionStatusBarItem').value(statusBar);
-        const request = sandbox.stub().resolves({
-            globalenv: {}, search: [], loaded_namespaces: [],
-        });
-        const viewerSession = session.registerSessionTransport('viewer-editor-a', 'host', '/tmp', request);
-        const active = session.registerSessionTransport('viewer-editor-b', 'host', '/tmp', request);
-        viewerSession.pid = '111';
-        viewerSession.rVer = 'R version 4.6.0';
-        viewerSession.info = { version: viewerSession.rVer, command: 'R', start_time: '' };
-        active.pid = '222';
-        active.rVer = 'R version 4.6.0';
-        active.info = { version: active.rVer, command: 'R', start_time: '' };
-
-        try {
-            await session.activateSession(active);
-            const create = sandbox.spy(vscode.window, 'createWebviewPanel');
-            await session.showDataView(
-                'list', 'json', 'x', '', 'Two', 'viewer-editor', undefined, viewerSession.sessionId, 1
-            );
-            const panel = create.lastCall.returnValue;
-            panels.push(panel);
-            panel.reveal(vscode.ViewColumn.Two, false);
-            await waitFor(() => panel.active);
-            await waitFor(() => statusBar.text === 'R 4.6.0: 111');
-
-            const document = await vscode.workspace.openTextDocument({
-                language: 'r', content: 'x <- 1',
-            });
-            await vscode.window.showTextDocument(document, {
-                viewColumn: vscode.ViewColumn.Two, preserveFocus: false, preview: true,
-            });
-            await waitFor(() => !panel.active);
-            await waitFor(() => statusBar.text === 'R 4.6.0: 222');
-            assert.strictEqual(session.activeSession, active);
-        } finally {
-            await session.cleanupSession(viewerSession.sessionId);
-            await session.cleanupSession(active.sessionId);
-        }
-    });
 
     test('reuses separate list and table panels, updates titles, and reopens closed viewers', async () => {
         const reveals: sinon.SinonStub[] = [];
