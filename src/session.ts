@@ -2209,6 +2209,8 @@ export async function switchSessionByTerminal(terminal: vscode.Terminal | undefi
     const session = terminalPid ? terminalSessions.get(String(terminalPid)) : undefined;
     if (session) {
         await activateSession(session);
+    } else if (!terminal) {
+        updateSessionStatusFromFocus();
     } else {
         resetStatusBar();
     }

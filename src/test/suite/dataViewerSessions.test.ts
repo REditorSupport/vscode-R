@@ -301,6 +301,28 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(session.activeSession?.sessionId, b.id);
     });
 
+    test('closing the last terminal preserves a connected viewer until its session disconnects', async () => {
+        const terminalPid = 46251;
+        const terminal = {
+            processId: Promise.resolve(terminalPid),
+        } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+
+        const a = await attach('viewer-session-a', os.hostname(), terminalPid);
+        const aList = await open(a, 'list');
+
+        aList.activate();
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46251');
+
+        await session.switchSessionByTerminal(undefined);
+        assert.strictEqual(session.activeSession?.sessionId, a.id);
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46251');
+
+        await session.cleanupSession(a.id);
+        assert.strictEqual(session.activeSession, undefined);
+        assert.strictEqual(statusBar.text, 'R: (not attached)');
+    });
+
     test('identical viewer ids stay separate and background views keep their originating session', async () => {
         const a = await attach('viewer-session-a');
         const b = await attach('viewer-session-b');
