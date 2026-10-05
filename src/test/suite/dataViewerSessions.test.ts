@@ -25,6 +25,7 @@ interface Panel {
     receive: (message: unknown) => Promise<void>;
     replies: Array<{ ok?: boolean; error?: string }>;
     activate: () => void;
+    deactivate: () => void;
 }
 
 async function waitFor(condition: () => boolean): Promise<void> {
@@ -63,7 +64,8 @@ suite('Viewer session ownership', () => {
             let active = false;
             const item: Panel = {
                 panel: undefined as unknown as vscode.WebviewPanel,
-                receive: () => Promise.resolve(), replies: [], activate: () => undefined,
+                receive: () => Promise.resolve(), replies: [],
+                activate: () => undefined, deactivate: () => undefined,
             };
             item.panel = {
                 title, viewColumn: vscode.ViewColumn.Two, reveal: sandbox.stub(),
@@ -89,6 +91,10 @@ suite('Viewer session ownership', () => {
             } as unknown as vscode.WebviewPanel;
             item.activate = () => {
                 active = true;
+                viewState.fire({ webviewPanel: item.panel });
+            };
+            item.deactivate = () => {
+                active = false;
                 viewState.fire({ webviewPanel: item.panel });
             };
             panels.push(item);
@@ -193,7 +199,13 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
         assert.strictEqual(session.activeSession, active);
 
+        aList.deactivate();
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
+        assert.strictEqual(session.activeSession, active);
+
+        aList.activate();
         bTable.activate();
+        aList.deactivate();
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
         assert.strictEqual(session.activeSession, active);
     });
