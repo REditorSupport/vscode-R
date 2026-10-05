@@ -79,26 +79,14 @@ and `pnpm run test:extension` to rerun either layer without rebuilding. The
 **Extension Tests** debugger configuration runs only `src/test/suite/`; use the
 CLI for the isolated multi-folder sess task tests.
 
-PR CI runs the full supported suites on Linux and Windows. On macOS it runs the
-full Node unit/supervisor/library-isolation checks and existing extension suites,
-but selects `[smoke]` tests from the real-R runtime and Interactive editor suites.
-These cover evaluation, reconnect, interrupt, detached process survival, language
-server diagnostics, session creation with the default VS Code runtime and editor
-restart. The extension-host layer also checks the actual Electron runtime with no
-Node executable on PATH. Linux additionally runs the tmux launcher
-survival case once with tmux enabled. To reproduce the reduced selection locally:
-
-```sh
-pnpm run pretest
-VSCR_TEST_INTERACTIVE_SMOKE=1 pnpm run test:node
-VSCR_TEST_INTERACTIVE_SMOKE=1 VSCR_TEST_SKIP_SESS_TASKS=1 pnpm run test:extension
-```
-
-Only macOS PR jobs omit the isolated sess task host and exhaustive source/bootstrap
-checks; Linux and Windows keep both. Base-R identity checks, installed identity
-verification and sess package tests remain on every OS. Main pushes and manual
-runs of the `main` workflow run the exhaustive matrix, including macOS. Local
-commands also run everything by default; neither smoke variable is needed.
+PR CI, main pushes and manual runs execute the full supported suites on every
+OS. Linux and macOS run the same Node, Interactive editor and isolated sess task
+tests, including the actual VS Code Electron runtime check with no Node executable
+on PATH and successful session creation using the default VS Code runtime.
+Windows skips the native Interactive runtime/editor suites because its console
+bridge is not supported. Linux additionally runs the tmux launcher survival case
+once with tmux enabled and uses Xvfb for extension-host tests. Source/bootstrap
+checks, installed identity verification and sess package tests run on every OS.
 
 For just the Interactive editor suite, compile the tests and run:
 
