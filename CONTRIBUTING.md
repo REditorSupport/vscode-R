@@ -112,3 +112,31 @@ Open <http://127.0.0.1:8765/src/test/browser/interactiveRenderer.html>. The harn
 The [analysis fixtures](src/test/examples/README.md) document public/research examples, reference plots, widget checks, and large-table allocation measurements. Keep repeatable procedures there; record dated results and environment-specific limitations in the PR discussion.
 
 For changes to persistence or supervision, also exercise the intended Remote SSH host: create managed arf sessions, adopt an existing terminal arf, create distinct objects, and submit jobs that stream text and plots. Close VS Code and disconnect SSH during execution, then reconnect. Verify the same R PIDs and objects, retained output, session isolation, usable plots, and no duplicate evaluation. Check that the adopted terminal remains usable and that stop/restart targets only the selected session. Local process tests do not establish server-specific logout, systemd, or network behavior.
+
+## Release versioning
+
+Stable releases use an even minor version (for example, `3.0.2` or `3.2.0`).
+The release workflow rejects odd minors, non-numeric versions, and tags that do
+not match `package.json`. Stable patch releases remain independent of daily
+pre-releases.
+
+The Marketplace pre-release workflow runs daily at 03:23 UTC. It skips commits
+already covered by a successful daily run, runs the existing build, lint and
+all-OS tests, and publishes only the verified pre-release VSIX. The GitHub
+`latest` development VSIX continues to update on every verified push.
+
+`scripts/extension-version.js prerelease YYYY-MM-DD` rewrites `package.json`
+only in the packaging checkout. It uses the next odd minor after an even minor,
+or keeps an explicitly selected odd minor, with a UTC `YYYYMMDD` patch:
+`3.0.1` → `3.1.20261006`; after releasing `3.2.0`, builds use `3.3.YYYYMMDD`.
+Keep the base version in `package.json`; do not commit generated daily versions.
+For development toward `4.0.0`, maintainers can explicitly set the base version
+to `3.999.0`, then change it to `4.0.0` for the stable release.
+
+The workflow reuses `VSCE_TOKEN` and publishes only to the VS Code Marketplace.
+Retries retain the original run's UTC date and tolerate an already-published
+version. A retry older than a successful daily run is skipped. No Git tags or
+version-bump commits are created by daily publishing.
+
+Run `node --test scripts/extension-version.test.js` to test version generation
+and stable-release validation without installing dependencies.

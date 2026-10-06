@@ -7,6 +7,11 @@ on:
     branches:
       - main
   workflow_call:
+    inputs:
+      prerelease-date:
+        description: UTC date for the Marketplace pre-release (YYYY-MM-DD)
+        type: string
+        default: ''
   workflow_dispatch:
 
 concurrency:
@@ -104,7 +109,18 @@ jobs:
           node-version: 24
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
+      - name: Test extension versioning
+        run: node --test scripts/extension-version.test.js
+      - name: Set Marketplace pre-release version
+        if: inputs.prerelease-date
+        env:
+          PRERELEASE_DATE: ${{ inputs.prerelease-date }}
+        run: node scripts/extension-version.js prerelease "$PRERELEASE_DATE"
+      - name: Package Marketplace pre-release
+        if: inputs.prerelease-date
+        run: pnpm exec vsce package --pre-release --no-dependencies -o $VSIX_FILE
       - name: Package extension
+        if: ${{ !inputs.prerelease-date }}
         run: pnpm exec vsce package --no-dependencies -o $VSIX_FILE
       - name: Verify packaged sess identity
         run: node .github/scripts/verify-sess-vsix.js

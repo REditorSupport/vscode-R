@@ -12,7 +12,22 @@ env:
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Check stable version and release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/extension-version.js check-stable "$RELEASE_TAG"
+
   verify:
+    needs: check-version
     uses: ./.github/workflows/main.yml
 
   release:
