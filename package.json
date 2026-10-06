@@ -2573,7 +2573,7 @@
     "httpgd": "0.1.6",
     "js-yaml": "^4.3.2",
     "node-fetch": "^2.7.0",
-    "vscode-languageclient": "^9.0.1",
+    "vscode-languageclient": "^10.1.2",
     "winreg": "^1.2.5"
   },
   "extensionDependencies": [
