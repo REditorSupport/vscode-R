@@ -51,15 +51,72 @@ suite('Terminal session registry', () => {
         assert.strictEqual(registry.forSession(second), undefined);
     });
 
-    test('explicit binding is exclusive per session and takes priority over its native terminal', () => {
+    test('explicit binding replaces the session native terminal and is exclusive per session', () => {
         registry.attachNative(other, first);
+        const native = registry.forSession(first);
+        assert.ok(native);
         registry.bindExplicit(terminal, first);
         assert.strictEqual(registry.forSession(first)?.terminal, terminal);
+        assert.strictEqual(registry.ownerOf(other), undefined);
+        assert.strictEqual(registry.isCurrent(native), false);
         registry.bindExplicit(other, first);
         assert.strictEqual(registry.ownerOf(terminal), undefined);
         assert.strictEqual(registry.forSession(first)?.terminal, other);
         registry.bindExplicit(other, second);
         assert.strictEqual(registry.forSession(first), undefined);
+    });
+
+    test('closing a different explicit terminal cannot restore the session old native terminal', () => {
+        registry.attachNative(terminal, first);
+        registry.bindExplicit(other, first);
+        registry.closeTerminal(other);
+        assert.strictEqual(registry.forSession(first), undefined);
+        assert.strictEqual(registry.ownerOf(terminal), undefined);
+        assert.strictEqual(registry.attachNative(terminal, first), true, 'only a fresh attach may restore native routing');
+        assert.strictEqual(registry.forSession(first)?.terminal, terminal);
+    });
+
+    test('native attach cannot give an explicitly bound session a second terminal', () => {
+        registry.bindExplicit(terminal, first);
+        registry.attachNative(other, second);
+        const explicit = registry.forSession(first);
+        const native = registry.forSession(second);
+        assert.ok(explicit && native);
+        assert.strictEqual(registry.attachNative(other, first), false);
+        assert.strictEqual(registry.forSession(first), explicit);
+        assert.strictEqual(registry.forSession(second), native);
+        assert.strictEqual(registry.ownerOf(other), second);
+    });
+
+    test('moving native ownership invalidates the previous terminal and queued association', () => {
+        registry.attachNative(terminal, first);
+        const old = registry.forSession(first);
+        assert.ok(old);
+        registry.attachNative(other, first);
+        assert.strictEqual(registry.ownerOf(terminal), undefined);
+        assert.strictEqual(registry.forSession(first)?.terminal, other);
+        assert.strictEqual(registry.isCurrent(old), false);
+        registry.closeTerminal(terminal);
+        assert.strictEqual(registry.forSession(first)?.terminal, other, 'closing the former terminal must not remove the new target');
+    });
+
+    test('replacing both endpoints updates reverse ownership before notifying subscribers', () => {
+        registry.attachNative(terminal, first);
+        registry.bindExplicit(other, second);
+        const oldNative = registry.snapshot(terminal);
+        const oldExplicit = registry.snapshot(other);
+        const changed: Terminal[] = [];
+        registry.onDidChange(target => {
+            changed.push(target);
+            assert.strictEqual(registry.ownerOf(terminal), undefined);
+            assert.strictEqual(registry.ownerOf(other), first);
+            assert.strictEqual(registry.forSession(first)?.terminal, other);
+            assert.strictEqual(registry.forSession(second), undefined);
+            assert.strictEqual(oldNative(), false);
+            assert.strictEqual(oldExplicit(), false);
+        });
+        registry.bindExplicit(other, first);
+        assert.deepStrictEqual(new Set(changed), new Set([terminal, other]));
     });
 
     test('rebinding away and back invalidates previously queued input', () => {

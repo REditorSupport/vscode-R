@@ -192,6 +192,55 @@ suite('Session Terminal Lifecycle', () => {
         });
     }
 
+    test('moving a native session to an explicit terminal requires a fresh attach after close', async () => {
+        const sendText = sandbox.stub();
+        const explicitSend = sandbox.stub();
+        const terminal = { processId: Promise.resolve(46280), sendText, show: sandbox.stub() } as unknown as vscode.Terminal;
+        const other = { processId: Promise.resolve(undefined), sendText: explicitSend, show: sandbox.stub() } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal, other]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'source.focus' ? 'none' : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
+        const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, activate: session.activateSessionById };
+        await connections.attach('native-moved-to-explicit', 46280);
+        const owner = session.activeSession;
+        assert.ok(owner);
+        await session.executeSessionCode(owner, 'View(iris)');
+        sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
+        sendText.resetHistory();
+
+        // Input already queued for the native terminal is invalidated by the move.
+        const queued = session.executeSessionCode(owner, 'rm(iris)');
+        const rejected = assert.rejects(queued, /no longer owns/);
+        await api.activate(owner.sessionId, { terminal: other });
+        await rejected;
+        assert.strictEqual(await session.waitForTerminalReady(terminal, 1), false);
+        assert.strictEqual(await session.waitForTerminalReady(other, 100), true);
+        await session.executeSessionCode(owner, 'View(iris)');
+        sinon.assert.calledOnceWithExactly(explicitSend, 'View(iris)');
+
+        // The old terminal must not select this session or become its execution fallback.
+        await connections.attach('native-move-unrelated', 46281);
+        const selected = session.activeSession;
+        assert.strictEqual(selected?.sessionId, 'native-move-unrelated');
+        await session.switchSessionByTerminal(terminal);
+        assert.strictEqual(session.activeSession, selected);
+        rTerminal.deleteTerminal(other);
+        await assert.rejects(session.executeSessionCode(owner, 'rm(iris)'), /no attached terminal/);
+        assert.strictEqual(await session.waitForTerminalReady(terminal, 1), false);
+        sinon.assert.notCalled(sendText);
+
+        await connections.attach(owner.sessionId, 46280);
+        await session.switchSessionByTerminal(terminal);
+        const reattached = session.activeSession;
+        assert.ok(reattached);
+        assert.notStrictEqual(reattached, owner);
+        assert.strictEqual(await session.waitForTerminalReady(terminal, 100), true);
+        await session.executeSessionCode(reattached, 'View(iris)');
+        sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
+    });
+
     test('an older pending handshake cannot replace a newer connection with the same session ID', async () => {
         const entered = deferred<void>();
         const ancestorsResolved = deferred<number[]>();
