@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
-const { createGhApi, decidePublication, pagesToItems } = require('./marketplace-pre-release-history');
+const { createGhApi, decidePublication, pagesToItems, completePagesToItems } = require('./marketplace-pre-release-history');
 
 const marketplace = 'Publish to Visual Studio Marketplace';
 const openVsx = 'Publish to Open VSX Registry';
@@ -27,30 +27,38 @@ function publishJob({ attempt = 1, marketplaceConclusion, openVsxConclusion, mar
 }
 
 function harness(current, runs, jobsByRun) {
-    const eventsQueried = [];
+    let historyQueries = 0;
+    const jobsQueried = [];
     return {
-        eventsQueried,
+        get historyQueries() { return historyQueries; },
+        jobsQueried,
         api: {
             async getRun(_repository, id) {
                 assert.equal(String(id), String(current.id));
                 return current;
             },
-            async listRuns(_repository, event) {
-                eventsQueried.push(event);
-                return runs.filter((item) => item.event === event);
+            async listRuns() {
+                historyQueries += 1;
+                return runs;
             },
             async listJobs(_repository, id) {
+                jobsQueried.push(String(id));
                 return jobsByRun.get(String(id)) || [];
             },
         },
     };
 }
 
-async function decide(current, runs, jobsByRun) {
-    const { api, eventsQueried } = harness(current, runs, jobsByRun);
+async function evaluate(current, runs, jobsByRun) {
+    const state = harness(current, runs, jobsByRun);
+    const { api, jobsQueried } = state;
     const result = await decidePublication({ api, repository: 'owner/repo', runId: current.id, sha: current.head_sha });
-    assert.deepEqual(eventsQueried.sort(), ['schedule', 'workflow_dispatch']);
-    return result;
+    assert.equal(state.historyQueries, 1);
+    return { result, jobsQueried, historyQueries: state.historyQueries };
+}
+
+async function decide(current, runs, jobsByRun) {
+    return (await evaluate(current, runs, jobsByRun)).result;
 }
 
 test('manual publication consumes the date for a scheduled run, then allows the next date', async () => {
@@ -147,6 +155,82 @@ test('all attempts from all paginated job pages are considered', async () => {
     });
 });
 
+test('hundreds of unchanged no-op runs require only one publication-history job lookup', async () => {
+    const published = run(100, '2026-01-01', 'sha-a');
+    const noops = Array.from({ length: 250 }, (_, index) => {
+        const date = new Date(Date.parse('2026-01-02T03:23:00Z') + index * 24 * 60 * 60 * 1000)
+            .toISOString().slice(0, 10);
+        return run(101 + index, date, 'sha-a', index % 2 === 0 ? 'schedule' : 'workflow_dispatch');
+    });
+    const current = run(500, '2026-10-06', 'sha-a');
+    const jobs = new Map([['100', [publishJob()]]]);
+    const { result, jobsQueried } = await evaluate(current, [published, ...noops, current], jobs);
+    assert.deepEqual(result, { publish: false, date: '2026-10-06', reason: 'unchanged' });
+    assert.deepEqual(jobsQueried, ['100']);
+});
+
+test('same-day publication attempts still reserve a date among many same-SHA no-ops', async () => {
+    const current = run(600, '2026-10-06', 'sha-a');
+    const noops = Array.from({ length: 12 }, (_, index) =>
+        run(601 + index, '2026-10-06', 'sha-a', index % 2 === 0 ? 'schedule' : 'workflow_dispatch'));
+    const attempted = noops[7];
+    const jobs = new Map([[String(attempted.id), [publishJob({ openVsxConclusion: 'failure' })]]]);
+    const { result, jobsQueried } = await evaluate(current, [...noops, current], jobs);
+    assert.deepEqual(result, { publish: false, date: '2026-10-06', reason: 'date-reserved' });
+    assert.ok(jobsQueried.includes(String(attempted.id)));
+    assert.ok(jobsQueried.length < noops.length);
+});
+
+test('a newest SHA group without a publication searches an older SHA group', async () => {
+    const published = run(700, '2026-10-01', 'sha-a');
+    const latestNoop = run(701, '2026-10-04', 'sha-b', 'workflow_dispatch');
+    const current = run(702, '2026-10-06', 'sha-b');
+    const jobs = new Map([['700', [publishJob()]], ['701', []], ['702', []]]);
+    assert.deepEqual(await decide(current, [published, latestNoop, current], jobs), {
+        publish: true, date: '2026-10-06', reason: 'new-sha',
+    });
+});
+
+test('only main schedule and manual runs participate in publication history', async () => {
+    const unrelated = { ...run(705, '2026-10-05', 'sha-a'), event: 'push' };
+    const otherBranch = { ...run(706, '2026-10-05', 'sha-a'), head_branch: 'feature' };
+    const current = run(707, '2026-10-06', 'sha-a');
+    const jobs = new Map([['705', [publishJob()]], ['706', [publishJob()]], ['707', []]]);
+    assert.deepEqual(await decide(current, [unrelated, otherBranch, current], jobs), {
+        publish: true, date: '2026-10-06', reason: 'no-prior-publication',
+    });
+});
+
+test('non-contiguous repeated SHAs do not substitute an older publication for the latest SHA', async () => {
+    const oldA = run(710, '2026-10-01', 'sha-a');
+    const publishedB = run(711, '2026-10-03', 'sha-b', 'workflow_dispatch');
+    const latestA = run(712, '2026-10-05', 'sha-a');
+    const current = run(713, '2026-10-06', 'sha-a');
+    const jobs = new Map([
+        ['710', [publishJob()]],
+        ['711', [publishJob()]],
+        ['712', []],
+        ['713', []],
+    ]);
+    assert.deepEqual(await decide(current, [oldA, publishedB, latestA, current], jobs), {
+        publish: true, date: '2026-10-06', reason: 'new-sha',
+    });
+});
+
+test('a later successful run in the same SHA group proves publication after an earlier partial run', async () => {
+    const partial = run(720, '2026-10-01', 'sha-a');
+    const success = run(721, '2026-10-02', 'sha-a', 'workflow_dispatch');
+    const current = run(722, '2026-10-06', 'sha-a');
+    const jobs = new Map([
+        ['720', [publishJob({ openVsxConclusion: 'failure' })]],
+        ['721', [publishJob()]],
+        ['722', []],
+    ]);
+    assert.deepEqual(await decide(current, [partial, success, current], jobs), {
+        publish: false, date: '2026-10-06', reason: 'unchanged',
+    });
+});
+
 test('API errors fail closed', async () => {
     const current = run(70, '2026-10-05', 'sha-a');
     const api = {
@@ -159,38 +243,79 @@ test('API errors fail closed', async () => {
 
     const jobsApi = {
         async getRun() { return current; },
-        async listRuns(_repository, event) { return event === 'schedule' ? [current] : []; },
+        async listRuns() { return [current]; },
         async listJobs() { throw new Error('Job history unavailable'); },
     };
     await assert.rejects(decidePublication({ api: jobsApi, repository: 'owner/repo', runId: current.id, sha: current.head_sha }), /Job history unavailable/);
 });
 
-test('GitHub API adapter uses GET with pagination for run and all-attempt job queries', () => {
+test('GitHub API adapter pages through more than 1,000 unfiltered runs and paginates compact job history', () => {
     const calls = [];
     const api = createGhApi((_command, args) => {
         calls.push(args);
         if (args.some((arg) => arg.includes('/actions/runs/70/jobs'))) {
-            return JSON.stringify([{ jobs: [] }]);
+            return `${JSON.stringify({ total_count: 0, jobs: [] })}\n`;
         }
         if (args.some((arg) => arg.includes('/actions/workflows/'))) {
-            return JSON.stringify([{ workflow_runs: [] }]);
+            const page = Number(args.find((arg) => arg.startsWith('page='))?.slice('page='.length));
+            const start = (page - 1) * 100;
+            const count = Math.min(100, 1201 - start);
+            const runs = Array.from({ length: count }, (_, index) => ({
+                    id: start + index + 1,
+                    created_at: '2026-01-01T03:23:00Z',
+                    head_sha: `sha-${start + index}`,
+                    head_branch: 'main',
+                    event: start + index === 1200 ? 'workflow_dispatch' : 'schedule',
+                }));
+            return `${JSON.stringify({ total_count: 1201, workflow_runs: runs })}\n`;
         }
         return JSON.stringify([{ id: 70, head_sha: 'sha-a', head_branch: 'main' }]);
     });
     api.getRun('owner/repo', 70);
-    api.listRuns('owner/repo', 'schedule');
-    api.listRuns('owner/repo', 'workflow_dispatch');
+    const runs = api.listRuns('owner/repo');
     api.listJobs('owner/repo', 70);
-    assert.equal(calls.length, 4);
+    assert.equal(runs.length, 1201);
+    assert.equal(calls.length, 15);
     for (const args of calls) {
         assert.ok(args.includes('--method'));
         assert.equal(args[args.indexOf('--method') + 1], 'GET');
-        assert.ok(args.includes('--paginate'));
-        assert.ok(args.includes('--slurp'));
     }
-    assert.ok(calls[1].includes('event=schedule'));
-    assert.ok(calls[2].includes('event=workflow_dispatch'));
-    assert.ok(calls[3].includes('filter=all'));
+    assert.ok(calls[0].includes('--slurp'));
+    assert.ok(calls[1].includes('page=1'));
+    assert.ok(calls[13].includes('page=13'));
+    assert.ok(calls.slice(1).every((args) => args.includes('--jq')));
+    assert.ok(calls.slice(1).every((args) => !args.includes('--slurp')));
+    assert.ok(calls.slice(1, 14).every((args) => !args.some((arg) => arg.startsWith('event=') || arg.startsWith('branch='))));
+    assert.ok(calls[1][calls[1].indexOf('--jq') + 1].includes('workflow_runs:'));
+    assert.ok(calls[1][calls[1].indexOf('--jq') + 1].includes('head_sha'));
+    assert.ok(calls[1][calls[1].indexOf('--jq') + 1].includes('event'));
+    assert.ok(calls[1][calls[1].indexOf('--jq') + 1].endsWith('| tojson'));
+    assert.ok(calls[14].includes('--paginate'));
+    assert.ok(calls[14][calls[14].indexOf('--jq') + 1].includes('steps:'));
+    assert.ok(calls[14][calls[14].indexOf('--jq') + 1].endsWith('| tojson'));
+    assert.ok(calls[14].includes('filter=all'));
+    assert.throws(() => completePagesToItems([{ total_count: 2, workflow_runs: [{ id: 1 }] }], 'workflow_runs'), /incomplete/);
+});
+
+test('run pagination fails closed on empty, inconsistent, or duplicate pages', () => {
+    const item = (id) => ({ id, created_at: '2026-01-01T03:23:00Z', head_sha: `sha-${id}`, head_branch: 'main', event: 'schedule' });
+    function apiFor(responseForPage) {
+        return createGhApi((_command, args) => {
+            const page = Number(args.find((arg) => arg.startsWith('page='))?.slice('page='.length));
+            return `${JSON.stringify(responseForPage(page))}\n`;
+        });
+    }
+
+    assert.throws(() => apiFor(() => ({ total_count: 1001, workflow_runs: [] })).listRuns('owner/repo'), /incomplete/);
+
+    const firstHundred = Array.from({ length: 100 }, (_, index) => item(index + 1));
+    assert.throws(() => apiFor((page) => page === 1
+        ? { total_count: 101, workflow_runs: firstHundred }
+        : { total_count: 102, workflow_runs: [item(101), item(102)] }).listRuns('owner/repo'), /changing workflow run total_count/);
+
+    assert.throws(() => apiFor((page) => page === 1
+        ? { total_count: 101, workflow_runs: firstHundred }
+        : { total_count: 101, workflow_runs: [item(100)] }).listRuns('owner/repo'), /duplicate workflow runs/);
 });
 
 test('workflow rechecks eligibility in the publishing job and gates both registries', () => {
