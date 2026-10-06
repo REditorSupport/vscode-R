@@ -272,29 +272,28 @@ suite('Viewer session ownership', () => {
         aList.activate();
         await send(aList, { message: 'dataview/focus' });
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+
         await send(aList, { message: 'dataview/blur' });
-        assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
+        await waitFor(() => statusBar.text === 'R 4.6.0: 46250');
         assert.strictEqual(session.activeSession?.sessionId, b.id);
 
         aTable.activate();
         await send(aTable, { message: 'dataview/focus' });
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+
         activeTerminal = terminalD;
         await send(aTable, { message: 'dataview/blur' });
-        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
-        await session.switchSessionByTerminal(terminalD);
+        await waitFor(() => statusBar.text === 'R 4.6.0: 46252');
         assert.strictEqual(session.activeSession?.sessionId, d.id);
-        assert.strictEqual(statusBar.text, 'R 4.6.0: 46252');
 
         aList.activate();
         await send(aList, { message: 'dataview/focus' });
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+
         activeTerminal = unattachedTerminal;
         await send(aList, { message: 'dataview/blur' });
-        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
-        await session.switchSessionByTerminal(unattachedTerminal);
+        await waitFor(() => statusBar.text === 'R: (not attached)');
         assert.strictEqual(session.activeSession?.sessionId, d.id);
-        assert.strictEqual(statusBar.text, 'R: (not attached)');
 
         await session.updateWorkspace();
         assert.strictEqual(statusBar.text, 'R: (not attached)');
