@@ -213,8 +213,6 @@ interactive_execute <- function(id, code, source = NULL) {
     .sess_env$interactive_id <- NULL
     .interactive_plot_context()
   }, add = TRUE)
-  .interactive_event("started")
-  .interactive_plot_context()
   state <- "success"
   trace_state <- new.env(parent = emptyenv())
   trace_state$depth <- 0L
@@ -253,6 +251,10 @@ interactive_execute <- function(id, code, source = NULL) {
   }
   on_error <- function(cnd) diagnostic(cnd, "error")
   evaluate <- function() {
+    # The agent can interrupt as soon as started arrives. Install the condition
+    # handlers before publishing it or doing any interruptible setup work.
+    .interactive_event("started")
+    .interactive_plot_context()
     trace_state$depth <- sys.nframe()
     filename <- if (is.null(source$uri)) "<R Interactive>" else source$uri
     text <- strsplit(code, "\n", fixed = TRUE)[[1L]]

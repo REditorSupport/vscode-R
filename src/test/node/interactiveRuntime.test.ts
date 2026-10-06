@@ -66,10 +66,10 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
     });
     teardown(async () => { client?.close(); await agent?.close(); await delay(100); });
 
-    async function until(predicate: () => boolean, timeout = 10000): Promise<void> {
+    async function until(predicate: () => boolean, timeout = 10000, observed = events): Promise<void> {
         const deadline = Date.now() + timeout;
         while (!predicate()) {
-            if (Date.now() >= deadline) { throw new Error(`Timed out. Recent events: ${JSON.stringify(events.slice(-8))}`); }
+            if (Date.now() >= deadline) { throw new Error(`Timed out. Recent events: ${JSON.stringify(observed.slice(-8))}`); }
             await delay(20);
         }
     }
@@ -932,9 +932,10 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             connection = new AgentClient(adoptedManifest); await connection.connect();
             const observed: SessionEvent[] = [];
             connection.on('event', event => observed.push(event as SessionEvent)); await connection.subscribe(0);
+            const waitFor = (predicate: () => boolean): Promise<void> => until(predicate, 10000, observed);
             const execution = randomUUID();
             await connection.request('submit', { submission: { id: execution, code: 'kept_before_adoption' } });
-            await until(() => observed.some(event => event.executionId === execution && event.type === 'finished'));
+            await waitFor(() => observed.some(event => event.executionId === execution && event.type === 'finished'));
             assert.match(observed.filter(event => event.executionId === execution && event.type === 'stream').map(event => event.data.text).join(''), /73/);
             assert.strictEqual(connection.manifest.rPid, child.pid);
             assert.strictEqual(connection.manifest.capabilities.streaming, false);
@@ -945,7 +946,7 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
                 assert.ok(connection);
                 const id = randomUUID();
                 await connection.request('submit', { submission: { id, code } });
-                await until(() => observed.some(event => event.executionId === id && event.type === 'finished'));
+                await waitFor(() => observed.some(event => event.executionId === id && event.type === 'finished'));
                 assert.strictEqual((await connection.request<ExecutionRecord>('execution', { id })).state, 'success');
                 return id;
             };
@@ -965,11 +966,33 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             assert.ok(await connection.request('inspect', { method: 'workspace' }));
             await completed('stopifnot(kept_before_adoption == 73)');
 
+            // Pause startup after its started event so immediate interruption does
+            // not depend on the runner winning a short race before user evaluation.
+            await arfRequest(endpoint, 'evaluate', { visible: true, code: `local({
+ns <- asNamespace("sess"); original <- get(".interactive_plot_context", ns)
+replacement <- local({ inner <- original; first <- TRUE; function(...) {
+    if (first && !is.null(sess:::.sess_env$interactive_id)) {
+        first <<- FALSE; Sys.sleep(30)
+    }
+    inner(...)
+} })
+unlockBinding(".interactive_plot_context", ns)
+assign(".interactive_plot_context", replacement, ns)
+lockBinding(".interactive_plot_context", ns)
+})` });
+            const starting = randomUUID();
+            await connection.request('submit', { submission: { id: starting, code: 'stop("Startup interruption must prevent user evaluation")' } });
+            await waitFor(() => observed.some(event => event.executionId === starting && event.type === 'started'));
+            await connection.request('interrupt', { id: starting });
+            await waitFor(() => observed.some(event => event.executionId === starting && event.type === 'finished'));
+            assert.strictEqual((await connection.request<ExecutionRecord>('execution', { id: starting })).state, 'interrupted');
+            await completed('stopifnot(kept_before_adoption == 73)');
+
             const running = randomUUID();
-            await connection.request('submit', { submission: { id: running, code: 'kept_during_adoption <- 81; cat("before interrupt"); Sys.sleep(30)' } });
-            await until(() => observed.some(event => event.executionId === running && event.type === 'started'));
+            await connection.request('submit', { submission: { id: running, code: 'kept_during_adoption <- 81; cat("before interrupt"); sess::display("interrupt ready", "text/plain"); Sys.sleep(30)' } });
+            await waitFor(() => observed.some(event => event.executionId === running && event.type === 'display' && event.data.text === 'interrupt ready'));
             await connection.request('interrupt', { id: running });
-            await until(() => observed.some(event => event.executionId === running && event.type === 'finished'));
+            await waitFor(() => observed.some(event => event.executionId === running && event.type === 'finished'));
             assert.strictEqual((await connection.request<ExecutionRecord>('execution', { id: running })).state, 'interrupted');
             await completed('stopifnot(kept_during_adoption == 81, kept_before_adoption == 73)');
 
@@ -990,7 +1013,7 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
                 historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
             connection = new AgentClient(await adopted.start()); await connection.connect();
             await connection.request('stop');
-            await until(() => child.exitCode !== null || child.signalCode !== null);
+            await waitFor(() => child.exitCode !== null || child.signalCode !== null);
             assert.strictEqual((await connection.snapshot()).manifest.status, 'exited');
         } finally { connection?.close(); await adopted?.close(); child.kill(); }
     });
