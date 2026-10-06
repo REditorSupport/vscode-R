@@ -58,6 +58,7 @@ suite('Viewer session ownership', () => {
             get: (_key: string, defaultValue: unknown) => defaultValue,
         } as vscode.WorkspaceConfiguration);
         session.deploySessionWatcher(root);
+        void session.switchSessionByTerminal(undefined);
         sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((_type, title) => {
             const disposed = new vscode.EventEmitter<void>();
             const viewState = new vscode.EventEmitter<vscode.WebviewPanelOnDidChangeViewStateEvent>();
@@ -239,56 +240,81 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
     });
 
-    test('terminal selection overrides a focused viewer PID without an editor transition', async () => {
-        const terminalPid = 46250;
-        const terminal = {
-            processId: Promise.resolve(terminalPid),
+    test('terminal selection deterministically restores attached and unattached status after viewer blur', async () => {
+        const terminalBPid = 46250;
+        const terminalDPid = 46252;
+        const terminalB = {
+            processId: Promise.resolve(terminalBPid),
         } as unknown as vscode.Terminal;
-        sandbox.stub(vscode.window, 'terminals').value([terminal]);
-        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        const terminalD = {
+            processId: Promise.resolve(terminalDPid),
+        } as unknown as vscode.Terminal;
+        const unattachedTerminal = {
+            processId: Promise.resolve(46253),
+        } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminalB, terminalD, unattachedTerminal]);
+        let activeTerminal: vscode.Terminal | undefined;
+        sandbox.stub(vscode.window, 'activeTerminal').get(() => activeTerminal);
 
         const a = await attach('viewer-session-a');
-        const b = await attach('viewer-session-b', os.hostname(), terminalPid);
+        const b = await attach('viewer-session-b', os.hostname(), terminalBPid);
+        const d = await attach('viewer-session-d', os.hostname(), terminalDPid);
+        activeTerminal = terminalB;
         const aList = await open(a, 'list');
         const aTable = await open(a, 'table');
         assert.ok(aList.panel.webview.html.includes("window.addEventListener('blur'"));
         assert.ok(aTable.panel.webview.html.includes("window.addEventListener('blur'"));
 
-        aList.activate();
-        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
-
-        await session.updateWorkspace();
-        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
-
-        await session.switchSessionByTerminal(terminal);
+        await session.switchSessionByTerminal(terminalB);
         assert.strictEqual(session.activeSession?.sessionId, b.id);
         assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
 
-        await session.updateWorkspace();
-        assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
-
+        aList.activate();
         await send(aList, { message: 'dataview/focus' });
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
-        assert.strictEqual(session.activeSession?.sessionId, b.id);
-
         await send(aList, { message: 'dataview/blur' });
-        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
-        await waitFor(() => statusBar.text === 'R 4.6.0: 46250');
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
         assert.strictEqual(session.activeSession?.sessionId, b.id);
 
-        assert.strictEqual(await session.activateSessionById(a.id), true);
+        aTable.activate();
         await send(aTable, { message: 'dataview/focus' });
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
-
+        activeTerminal = terminalD;
         await send(aTable, { message: 'dataview/blur' });
-        await session.switchSessionByTerminal(terminal);
-        assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
-        assert.strictEqual(session.activeSession?.sessionId, b.id);
-        await new Promise(resolve => setTimeout(resolve, 0));
-        assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+        await session.switchSessionByTerminal(terminalD);
+        assert.strictEqual(session.activeSession?.sessionId, d.id);
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46252');
 
-        await session.cleanupSession(b.id);
-        assert.strictEqual(session.activeSession, undefined);
+        aList.activate();
+        await send(aList, { message: 'dataview/focus' });
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+        activeTerminal = unattachedTerminal;
+        await send(aList, { message: 'dataview/blur' });
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+        await session.switchSessionByTerminal(unattachedTerminal);
+        assert.strictEqual(session.activeSession?.sessionId, d.id);
+        assert.strictEqual(statusBar.text, 'R: (not attached)');
+
+        await session.updateWorkspace();
+        assert.strictEqual(statusBar.text, 'R: (not attached)');
+    });
+
+    test('stale terminal lookup cannot overwrite a newer terminal selection', async () => {
+        let resolvePid: ((pid: number) => void) | undefined;
+        const slowTerminal = {
+            processId: new Promise<number>(resolve => { resolvePid = resolve; }),
+        } as unknown as vscode.Terminal;
+        const unattachedTerminal = {
+            processId: Promise.resolve(46254),
+        } as unknown as vscode.Terminal;
+
+        const staleSwitch = session.switchSessionByTerminal(slowTerminal);
+        await session.switchSessionByTerminal(unattachedTerminal);
+        assert.strictEqual(statusBar.text, 'R: (not attached)');
+
+        resolvePid?.(46255);
+        await staleSwitch;
         assert.strictEqual(statusBar.text, 'R: (not attached)');
     });
 
@@ -323,7 +349,7 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(statusBar.text, 'R: (not attached)');
 
         await send(aList, { message: 'dataview/blur' });
-        await waitFor(() => statusBar.text === 'R 4.6.0: viewer-session-b');
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
         assert.strictEqual(session.activeSession?.sessionId, b.id);
     });
 

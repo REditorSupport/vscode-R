@@ -179,6 +179,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
         });
     }));
     context.subscriptions.push(vscode.window.onDidChangeActiveTerminal(session.switchSessionByTerminal));
+    void session.switchSessionByTerminal(vscode.window.activeTerminal);
 
     // start language service
     if (util.config().get<boolean>('lsp.enabled')) {

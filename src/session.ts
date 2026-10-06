@@ -184,6 +184,10 @@ export function registerSessionTransport(id: string, host: string, directory: st
 }
 const terminalSessions = new Map<string, Session>();
 const terminalSessionAttached = new vscode.EventEmitter<string>();
+let statusTerminal: vscode.Terminal | undefined;
+let statusTerminalPid: string | undefined;
+let statusTerminalSessionId: string | null | undefined;
+let statusTerminalRevision = 0;
 
 /** Wait for this terminal's session handshake, not just process creation. */
 export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000): Promise<boolean> {
@@ -292,13 +296,11 @@ function focusDataViewPanel(panel: vscode.WebviewPanel, sessionId: string | null
     updateSessionStatusFromFocus();
 }
 
-function blurDataViewPanel(panel: vscode.WebviewPanel, deferStatus = false): void {
+function blurDataViewPanel(panel: vscode.WebviewPanel): void {
     if (focusedDataViewPanel === panel) {
         focusedDataViewPanel = undefined;
         focusedDataViewSessionId = null;
-        if (deferStatus) {
-            setTimeout(updateSessionStatusFromFocus, 0);
-        } else {
+        if (window.activeTerminal === statusTerminal) {
             updateSessionStatusFromFocus();
         }
     }
@@ -367,7 +369,7 @@ function attachDynamicDataViewBridge(panel: vscode.WebviewPanel, viewId: string,
                         focusDataViewPanel(panel, sessionId);
                     }
                 } else {
-                    blurDataViewPanel(panel, true);
+                    blurDataViewPanel(panel);
                 }
             }
             return;
@@ -920,6 +922,10 @@ export async function shutdownSessionWatcher(): Promise<void> {
     }
     activeConnections.clear();
     pipeClient = undefined;
+    statusTerminal = undefined;
+    statusTerminalPid = undefined;
+    statusTerminalSessionId = undefined;
+    statusTerminalRevision++;
 
     if (globalSessionServer) {
         await new Promise<void>((resolve) => {
@@ -1214,7 +1220,7 @@ export async function showDataView(
                     return;
                 }
                 if (message.message === 'dataview/blur') {
-                    blurDataViewPanel(panel, true);
+                    blurDataViewPanel(panel);
                     return;
                 }
                 if (!Array.isArray(message.path) || !message.path.every(index => Number.isSafeInteger(index) && index > 0)) {
@@ -2107,9 +2113,9 @@ export function getListHtml(
 
 import * as rstudioapi from './rstudioapi';
 
-export async function activateSession(session: Session): Promise<void> {
+export async function activateSession(session: Session, updateStatus = true): Promise<void> {
     activeSession = session;
-    const refreshed = refreshActiveSession(session);
+    const refreshed = refreshActiveSession(session, updateStatus);
     if (!session.workspaceUnavailable) { scheduleWorkspaceRefresh(); }
     await refreshed;
 }
@@ -2156,6 +2162,16 @@ function updateSessionStatusFromFocus(): void {
     if (focusedDataViewPanel) {
         if (focusedSession) {
             updateSessionStatusBar(focusedSession);
+        } else {
+            resetStatusBar();
+        }
+    } else if (statusTerminal) {
+        if (statusTerminalSessionId === undefined) {
+            return;
+        }
+        const terminalSession = statusTerminalSessionId ? sessions.get(statusTerminalSessionId) : undefined;
+        if (terminalSession) {
+            updateSessionStatusBar(terminalSession);
         } else {
             resetStatusBar();
         }
@@ -2206,18 +2222,35 @@ async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
 }
 
 export async function switchSessionByTerminal(terminal: vscode.Terminal | undefined): Promise<void> {
-    if (terminal) {
-        focusedDataViewSessionId = null;
-    }
-    const terminalPid = await terminal?.processId;
-    const session = terminalPid ? terminalSessions.get(String(terminalPid)) : undefined;
-    if (session) {
-        await activateSession(session);
-    } else if (!terminal) {
+    const revision = ++statusTerminalRevision;
+    if (!terminal) {
+        statusTerminal = undefined;
+        statusTerminalPid = undefined;
+        statusTerminalSessionId = undefined;
         updateSessionStatusFromFocus();
-    } else {
-        resetStatusBar();
+        return;
     }
+
+    focusedDataViewPanel = undefined;
+    focusedDataViewSessionId = null;
+    statusTerminal = terminal;
+    statusTerminalPid = undefined;
+    statusTerminalSessionId = undefined;
+
+    const terminalPid = await terminal.processId;
+    if (revision !== statusTerminalRevision || statusTerminal !== terminal) {
+        return;
+    }
+    statusTerminalPid = terminalPid ? String(terminalPid) : undefined;
+    const session = statusTerminalPid ? terminalSessions.get(statusTerminalPid) : undefined;
+    statusTerminalSessionId = session?.sessionId ?? null;
+    if (session) {
+        await activateSession(session, false);
+        if (revision !== statusTerminalRevision || statusTerminal !== terminal) {
+            return;
+        }
+    }
+    updateSessionStatusFromFocus();
 }
 
 function sendToSocket(socket: IpcSocket, data: Record<string, unknown>): void {
@@ -2304,6 +2337,9 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             if (terminalPid) {
                 socket._terminalPid = Number(terminalPid);
                 terminalSessions.set(terminalPid, session);
+                if (statusTerminalPid === terminalPid) {
+                    statusTerminalSessionId = sessionId;
+                }
             }
             sessions.set(sessionId, session);
             if (previous && previous.socket !== socket) {
@@ -2328,7 +2364,8 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             const selectedSession = terminalPid && selectedTerminal === window.activeTerminal && selectedTerminalPid
                 ? terminalSessions.get(String(selectedTerminalPid))
                 : undefined;
-            await activateSession(selectedSession && !selectedSession.socket.destroyed ? selectedSession : session);
+            await activateSession(selectedSession && !selectedSession.socket.destroyed ? selectedSession : session, false);
+            updateSessionStatusFromFocus();
 
             console.info(`[startSessionWatcher] attach session ${sessionId} (${host || 'unknown'}:${rPid || 'unknown'}), terminal PID: ${terminalPid ?? 'unassociated'}`);
             purgeAddinPickerItems();
