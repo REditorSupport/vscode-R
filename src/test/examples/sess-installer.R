@@ -18,13 +18,17 @@ local({
     stopifnot(length(installer$sess_binary_repositories("Linux", "unknown", "source",
                                                         c("ID=ubuntu", "VERSION_CODENAME=resolute"))) == 1L)
     stopifnot(installer$sess_binary_repositories("Windows", "x86_64", "win.binary")[[1L]]$type == "win.binary")
-    description <- matrix(c("sess", "3.0.1", "2"), nrow = 1L,
-                           dimnames = list(NULL, c("Package", "Version", "Config/vscode-R/Interactive")))
+    description <- matrix(c("sess", "3.0.1", "1", "no"), nrow = 1L,
+                           dimnames = list(NULL, c("Package", "Version", "Config/vscode-R/Interactive", "NeedsCompilation")))
     stopifnot(installer$sess_package_compatible(description, "3.0.1", TRUE))
     fail(installer$sess_package_compatible(description, "3.1.0", FALSE), "older")
     legacy <- description[, c("Package", "Version"), drop = FALSE]
     stopifnot(installer$sess_package_compatible(legacy, "3.0.1", FALSE))
     fail(installer$sess_package_compatible(legacy, "3.0.1", TRUE), "does not support")
+    native <- description
+    native[1L, "NeedsCompilation"] <- "yes"
+    fail(installer$sess_package_compatible(native, "3.0.1", TRUE), "does not support")
+    stopifnot(installer$sess_package_compatible(native, "3.0.1", FALSE))
 
     temporary <- tempfile("sess installer ")
     dir.create(temporary)

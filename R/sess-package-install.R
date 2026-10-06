@@ -42,7 +42,8 @@ sess_package_compatible <- function(description, required, interactive) {
     }
     # Version alone cannot distinguish the released sess from this development
     # branch, which initially shares its version but adds the Interactive API.
-    if (interactive && get("Config/vscode-R/Interactive") != "2") {
+    if (interactive && (get("Config/vscode-R/Interactive") != "1" ||
+                            get("NeedsCompilation") != "no")) {
         stop("The published sess package does not support this Interactive runtime yet.")
     }
     invisible(TRUE)
@@ -66,7 +67,7 @@ sess_verify_package <- function(library, required, interactive) {
         "stopifnot(all(c('interactive_stop','display') %in% getNamespaceExports(ns)));",
         "stopifnot(all(vapply(c('interactive_start','interactive_execute'),",
         "function(n) exists(n, ns, mode='function', inherits=FALSE), FALSE)));",
-        "stopifnot(packageDescription('sess',lib.loc=a[1],fields='Config/vscode-R/Interactive') == '2');",
+        "stopifnot(packageDescription('sess',lib.loc=a[1],fields='Config/vscode-R/Interactive') == '1');",
         "stopifnot(packageDescription('sess',lib.loc=a[1],fields='NeedsCompilation') == 'no'); }"
     )
     status <- system2(file.path(R.home("bin"), "R"),
