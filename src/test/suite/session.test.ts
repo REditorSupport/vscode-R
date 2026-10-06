@@ -766,6 +766,49 @@ suite('Session Communication', () => {
                 sinon.assert.notCalled(sendText);
                 await session.executeSessionCode(background, 'View(iris)');
                 sinon.assert.calledOnce(sendText);
+
+                // Moving the explicit owner away must not revive old native ownership.
+                sendText.resetHistory();
+                assert.strictEqual(await session.activateSessionById(background.sessionId, { terminal: other }), true);
+                await assert.rejects(session.executeSessionCode(foreground, 'rm(iris)'), /no attached terminal/);
+                await session.switchSessionByTerminal(terminal);
+                assert.strictEqual(session.activeSession, background);
+                assert.strictEqual(await session.waitForTerminalReady(terminal, 1), false);
+                sinon.assert.notCalled(sendText);
+
+                // IPC disconnect also leaves the superseded PID association retired.
+                assert.strictEqual(await session.activateSessionById(background.sessionId, { terminal }), true);
+                await session.cleanupSession(background.sessionId);
+                assert.strictEqual(await session.activateSessionById(`readiness-${otherRPid}`), true);
+                const selected = session.activeSession;
+                await assert.rejects(session.executeSessionCode(foreground, 'rm(iris)'), /no attached terminal/);
+                await session.switchSessionByTerminal(terminal);
+                assert.strictEqual(session.activeSession, selected);
+                sinon.assert.notCalled(sendText);
+
+                // Only a fresh native handshake establishes terminal ownership again.
+                await attach(rPid);
+                await session.switchSessionByTerminal(terminal);
+                const reattached = session.activeSession;
+                assert.ok(reattached);
+                assert.notStrictEqual(reattached, foreground);
+                assert.strictEqual(reattached.pid, String(rPid));
+                assert.strictEqual(await session.waitForTerminalReady(terminal), true);
+                await session.executeSessionCode(reattached, 'View(iris)');
+                sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
+
+                // A slow native PID lookup must not override a newer API selection.
+                let resolveSelectionPid!: (pid: number) => void;
+                const slowTerminal = {
+                    ...terminal,
+                    processId: new Promise<number>(resolve => { resolveSelectionPid = resolve; }),
+                } as vscode.Terminal;
+                terminals.value([slowTerminal, other]);
+                const pendingSelection = session.switchSessionByTerminal(slowTerminal);
+                assert.strictEqual(await session.activateSessionById(`readiness-${otherRPid}`), true);
+                resolveSelectionPid(46250);
+                await pendingSelection;
+                assert.strictEqual(session.activeSession, selected);
             } finally {
                 clients.forEach(client => client.destroy());
                 sockets.forEach(socket => socket.destroy());

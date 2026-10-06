@@ -84,6 +84,52 @@ suite('Session Terminal Binding', () => {
         sinon.assert.calledOnce(show);
     });
 
+    for (const selection of ['terminal selection', 'manual activation'] as const) {
+        for (const rebind of [false, true]) {
+            test(`pending ${selection} cannot overwrite a newer public activation (rebind: ${String(rebind)})`, async () => {
+                await api.activate(first.sessionId, { terminal });
+                activeTerminal.value(terminal);
+                configuration.returns({ get: (key: string) => key === 'sessionWatcher' } as unknown as vscode.WorkspaceConfiguration);
+                const pending = selection === 'terminal selection'
+                    ? session.switchSessionByTerminal(terminal) : session.activateRSession();
+                assert.strictEqual(await api.activate(second.sessionId, rebind ? { terminal } : undefined), true);
+                await pending;
+                assert.strictEqual(session.activeSession, second);
+                sinon.assert.notCalled(show);
+                if (rebind) {
+                    await session.executeSessionCode(second, 'View(iris)');
+                    sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
+                    await assert.rejects(session.executeSessionCode(first, 'rm(iris)'), /no attached terminal/);
+                }
+            });
+        }
+    }
+
+    test('newer terminal selection wins over an older pending selection', async () => {
+        await api.activate(first.sessionId, { terminal });
+        await api.activate(second.sessionId, { terminal: other });
+        await api.activate(first.sessionId);
+        const older = session.switchSessionByTerminal(terminal);
+        const newer = session.switchSessionByTerminal(other);
+        await Promise.all([older, newer]);
+        assert.strictEqual(session.activeSession, second);
+    });
+
+    for (const change of ['close', 'disconnect'] as const) {
+        test(`pending manual activation does not focus a terminal after ${change}`, async () => {
+            await api.activate(first.sessionId, { terminal });
+            activeTerminal.value(terminal);
+            configuration.returns({ get: (key: string) => key === 'sessionWatcher' } as unknown as vscode.WorkspaceConfiguration);
+            const pending = session.activateRSession();
+            if (change === 'close') { rTerminal.deleteTerminal(terminal); }
+            else { session.unregisterSessionTransport(first); }
+            await pending;
+            sinon.assert.notCalled(show);
+            sinon.assert.notCalled(sendText);
+            if (change === 'disconnect') { assert.strictEqual(session.activeSession, undefined); }
+        });
+    }
+
     test('rebinding is exclusive for both the session and terminal', async () => {
         await api.activate(first.sessionId, { terminal });
         await api.activate(first.sessionId, { terminal: other });

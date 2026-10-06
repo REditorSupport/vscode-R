@@ -26,6 +26,7 @@ export interface RSessionActivationOptions {
      * Replaces any previous binding for this session or terminal. The binding
      * lasts until terminal close, session disconnect, or connection replacement;
      * call activate with the terminal again after reconnecting.
+     * Superseded native PID associations require a fresh native attach to resume.
      */
     terminal?: vscode.Terminal;
 }
