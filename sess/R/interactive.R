@@ -401,6 +401,16 @@ interactive_execute <- function(id, code, source = NULL) {
                                     printed))
     return(TRUE)
   }
+  if (is.list(value) && !is.object(value)) {
+    view_id <- dataview_new_id()
+    root <- listview_state(value, "List", "List")
+    dataview_set_state(view_id, root)
+    preview <- get_workspace_children(view_id = view_id)
+    .interactive_event("display", c(list(kind = "list", viewId = view_id,
+                                         navigation = listview_navigation(listview_location(root))),
+                                    preview, .interactive_table_text(value)))
+    return(TRUE)
+  }
   if (inherits(value, "htmlwidget") && requireNamespace("htmlwidgets", quietly = TRUE)) {
     directory <- tempfile("widget-")
     dir.create(directory)

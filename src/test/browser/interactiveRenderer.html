@@ -17,6 +17,7 @@ body.light #result { background:#dcf0e4; }
 <section><h2>Numeric precision</h2><div id="numeric"></div></section>
 <section><h2>Large dataset preview</h2><div id="large"></div></section>
 <section><h2>Data preview</h2><div id="table"></div></section>
+<section><h2>List preview</h2><div id="list"></div></section>
 <section><h2>Plot export</h2><div id="plot"></div></section>
 <section><h2>Saved table</h2><div id="offline"></div></section>
 <section><h2>Saved plot</h2><div id="offline-plot"></div></section>
@@ -47,6 +48,49 @@ const loaded = img => new Promise((resolve,reject) => {
  img.addEventListener('error',()=>{ clearTimeout(timeout); reject(new Error('Plot load failed')); },{ once:true });
 });
 try {
+ const listHost = document.querySelector('#list');
+ const listData = {kind:'list',displayId:'list',generation:'r1',navigation:{title:'List',path:[],breadcrumbs:[{label:'List',path:[]}]},
+   children:[{label:'$ nested',str:'List of 1',index:1,viewable:true,has_children:true},{label:'[[2]]',str:'chr "<tag> λ"',index:2,viewable:true}],next_start:501,
+   printedText:'$nested\n$nested$value\n[1] 1 2\n\n[[2]]\n[1] "<tag> λ"\n'};
+ render('list',listData,listHost);
+ check(listHost.querySelectorAll('.item').length===2 && listHost.querySelector('.str').textContent==='List of 1','List preview must use saved rows');
+ check(control(listHost,'Open list viewer').textContent.includes('List viewer'),'List viewer action must be below the tree');
+ const nested = listHost.querySelector('details'); nested.open=true;
+ await new Promise(resolve=>setTimeout(resolve,0));
+ const expansion = messages.at(-1);
+ check(expansion.action==='listPage' && expansion.path.join(',')==='1','List expansion must load only the selected branch');
+ reply(expansion,{result:{children:[{label:'$ value',str:'num [1:2] 1 ...',index:1,viewable:true}],next_start:null}});
+ check(nested.querySelector('.children .item').textContent.includes('$ value'),'Expanded rows must render the live response');
+ control(listHost,'View $ nested').click(); const navigate=messages.at(-1);
+ check(navigate.action==='listItem' && navigate.index===1,'View must navigate the retained root');
+ reply(navigate,{result:{navigation:{title:'List$nested',path:[1],breadcrumbs:[{label:'List',path:[]},{label:'nested',path:[1]}]}}});
+ reply(messages.at(-1),{result:{children:[{label:'$ value',str:'num [1:2] 1 ...',index:1}],next_start:null}});
+ control(listHost,'Back').click(); const backRequest=messages.at(-1);
+ reply(backRequest,{result:{navigation:listData.navigation}});
+ check(listHost.querySelector('details')===nested && nested.open,'Back must retain expanded list rows');
+ listHost.querySelector('.list > div > .load-more').click(); const more=messages.at(-1);
+ check(more.action==='listPage' && more.start===501,'Load more must request the next list page');
+ reply(more,{error:'Temporary failure'});
+ check(listHost.querySelector('.list > div > .load-more').textContent==='Retry','List pages must offer retry after errors');
+ listHost.querySelector('.list > div > .load-more').click(); reply(messages.at(-1),{result:{children:[],next_start:null}});
+ control(listHost,'Open list viewer').click();
+ check(messages.at(-1).action==='list' && messages.at(-1).path.length===0,'Expanded viewer must open the current path');
+ control(listHost,'Show R printed output').click();
+ check(listHost.querySelector('[data-list]').hidden && listHost.querySelector('[data-printed]').textContent===listData.printedText,'List Text must preserve exact R printing');
+ render('list-replaced',{...listData,connected:false},listHost);
+ check(!listHost.querySelector('[data-printed]').hidden && control(listHost,'Open list viewer').disabled,'List choices must survive replacement and offline controls must disable');
+ control(listHost,'Show list preview').click();
+ check(!listHost.querySelector('[data-list]').hidden && listHost.querySelectorAll('.item').length===2,'Saved lists must allow local preview switching');
+ const offlineCount=messages.length;
+ listHost.querySelector('details').open=true; await new Promise(resolve=>setTimeout(resolve,0));
+ check(messages.length===offlineCount && !listHost.querySelector('details').open,'Offline expansion must avoid live requests');
+ render('list-archived',{...listData,archived:true},listHost);
+ control(listHost,'Show R printed output').click();
+ check(!listHost.querySelector('[data-printed]').hidden && control(listHost,'Open list viewer').disabled,'Archived list text must remain available');
+ render('list-stopped',{...listData,running:false},listHost);
+ control(listHost,'Show list preview').click();
+ check(!listHost.querySelector('[data-list]').hidden && control(listHost,'Open list viewer').disabled,'Stopped lists must retain saved previews');
+ render('list',listData,listHost);
  const numeric = document.querySelector('#numeric');
  const numericData = { kind:'table', columns:[{ field:'0',headerName:'Row' },{ field:'1',headerName:'price_per_carat' },{ field:'2',headerName:'Integer64 ID',type:'bigintColumn' }],
    rows:[{ '0':1,'1':326/0.23,'2':'9007199254740993' },{ '0':2,'1':326/0.21,'2':'9007199254740994' },{ '0':3,'1':1400,'2':'9007199254740995' }],
@@ -304,6 +348,7 @@ try {
  renderer.disposeOutputItem();
  // Restore usable examples for manual pointer, Tab/Shift+Tab, and visual checks.
  render('plot',galleryData,plot);
+ render('list',listData,listHost);
  render('table',printedData,table);
  render('large-demo',{ ...largeData,displayId:'large-demo',totalRows:1000 },document.querySelector('#large'));
  document.querySelector('#result').scrollIntoView();

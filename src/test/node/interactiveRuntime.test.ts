@@ -290,6 +290,34 @@ stopifnot(identical(actual, expected))`);
         assert.strictEqual((await finished(current)).state, 'success');
     });
 
+    test('unclassed lists retain printable previews and lazy pages across reconnects', async () => {
+        const id = await submit('x <- list(nested=list(value=c(1,2)), table=data.frame(id=1:2), "λ <tag>"); x');
+        assert.strictEqual((await finished(id)).state, 'success');
+        const output = events.find(event => event.executionId === id && event.data.kind === 'list'); assert.ok(output);
+        const children = output.data.children as { label: string; has_children: boolean }[];
+        assert.deepStrictEqual(children.map(child => child.label), ['$ nested', '$ table', '[[3]]']);
+        assert.strictEqual(children[0].has_children, true);
+        assert.match(String(output.data.printedText), /\$nested\$value/);
+        assert.ok(!text(id).includes('$nested'), 'The rich list replaces automatic console printing');
+        const expected = await submit('print(x)'); await finished(expected);
+        assert.strictEqual(output.data.printedText, text(expected));
+        await finished(await submit('x$nested$value <- 99; invisible(NULL)'));
+        const page = await client.request<{ children: { str: string }[] }>('inspect', { method: 'workspace_children', params: {
+            view_id: output.data.viewId, path: [1], start: 1,
+        } });
+        assert.match(page.children[0].str, /1/); assert.ok(!page.children[0].str.includes('99'));
+        const explicit = await submit('sess::display(list()); View(list(a=1)); structure(list(a=2), class="custom_list")');
+        assert.strictEqual((await finished(explicit)).state, 'success');
+        assert.strictEqual(events.filter(event => event.executionId === explicit && event.data.kind === 'list').length, 2);
+        assert.match(text(explicit), /custom_list/);
+        const large = await submit('as.list(seq_len(501))'); await finished(large);
+        const largeList = events.find(event => event.executionId === large && event.data.kind === 'list'); assert.ok(largeList);
+        assert.strictEqual((largeList.data.children as unknown[]).length, 500);
+        assert.strictEqual(largeList.data.next_start, 501);
+        client.close(); await client.connect(); await client.subscribe(0);
+        assert.deepStrictEqual((await client.snapshot()).events.find(event => event.seq === output.seq)?.data, output.data);
+    });
+
     test('huge tables keep bounded snapshots and page the full data without materializing it', async () => {
         const id = await submit(`n <- 832976871L
 huge <- structure(rep(list(seq_len(n)), 23L), names=paste0("x", 1:23),
