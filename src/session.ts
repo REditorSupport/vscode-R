@@ -16,7 +16,7 @@ import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
 import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
-import type { RSessionConnectionInfo } from './api';
+import type { RSessionActivationOptions, RSessionConnectionInfo } from './api';
 
 import { showWebView } from './webViewer';
 import { getListViewerScript, ListViewNavigation } from './listViewer';
@@ -104,6 +104,8 @@ export let workspaceFile: string;
 const SESS_PROTOCOL_VERSION = 2;
 
 const sessions = new Map<string, Session>();
+// Terminal object identity also works for pseudoterminals without a native PID.
+const boundTerminalSessions = new Map<vscode.Terminal, Session>();
 const documentSessions = new Map<string, Session>();
 const sessionDocumentBound = new vscode.EventEmitter<Uri>();
 export const onDidBindSessionDocument = sessionDocumentBound.event;
@@ -127,7 +129,8 @@ export function unbindSessionDocument(uri: Uri): void { documentSessions.delete(
 
 export function unregisterSessionTransport(target: Session): void {
     for (const [uri, owner] of documentSessions) { if (owner === target) { documentSessions.delete(uri); } }
-    sessions.delete(target.sessionId);
+    clearSessionTerminalAssociations(target);
+    if (sessions.get(target.sessionId) === target) { sessions.delete(target.sessionId); }
     if (activeSession === target) { void clearActiveSession(); }
 }
 
@@ -142,16 +145,41 @@ function clearActiveSession(): Promise<void> {
     return setContext('rSessionActive', false);
 }
 
-/** Workspace actions must use the process represented by the tree, even after focus changes. */
-export async function executeSessionCode(target: Session, code: string): Promise<void> {
-    if (sessions.get(target.sessionId) !== target || target.workspaceUnavailable) {
+function isConnectedSession(target: Session): boolean {
+    return Boolean(target.requester) || (isCurrentSocket(target.socket) && !target.socket.destroyed && target.socket.writable);
+}
+
+function assertExecutableSession(target: Session): void {
+    if (sessions.get(target.sessionId) !== target || !isConnectedSession(target) || target.workspaceUnavailable) {
         throw new Error(target.workspaceUnavailable ?? 'This R session is no longer attached. Select an attached session in the Workspace viewer.');
     }
+}
+
+/** Workspace actions must use the process represented by the tree, even after focus changes. */
+export async function executeSessionCode(target: Session, code: string): Promise<void> {
+    assertExecutableSession(target);
     if (target.execute) { await target.execute(code); return; }
+    const send = async (terminal: vscode.Terminal, associated: () => boolean): Promise<void> => {
+        await rTerminal.runTextInTerminal(terminal, code, true, () => {
+            assertExecutableSession(target);
+            if (!isLiveTerminal(terminal) || !associated()) {
+                throw new Error('This R session no longer owns its attached terminal. Activate it with its terminal again.');
+            }
+        });
+    };
+    for (const [terminal, owner] of boundTerminalSessions) {
+        if (owner === target && isLiveTerminal(terminal)) {
+            await send(terminal, () => boundTerminalSessions.get(terminal) === target);
+            return;
+        }
+    }
     for (const terminal of window.terminals) {
+        if (!isLiveTerminal(terminal) || boundTerminalSessions.has(terminal)) { continue; }
         const terminalPid = await terminal.processId;
-        if (terminalPid && terminalSessions.get(String(terminalPid)) === target) {
-            await rTerminal.runTextInTerminal(terminal, code);
+        if (terminalPid && terminalSessions.get(String(terminalPid)) === target
+            && !boundTerminalSessions.has(terminal) && isLiveTerminal(terminal)) {
+            await send(terminal, () => !boundTerminalSessions.has(terminal)
+                && terminalSessions.get(String(terminalPid)) === target);
             return;
         }
     }
@@ -168,7 +196,8 @@ export function updateSessionWorkspace(target: Session, data: WorkspaceData): vo
 /** Move document routing to a new process; existing data viewers keep their old owner. */
 export function replaceSessionTransport(previous: Session, next: Session): void {
     for (const [uri, owner] of documentSessions) { if (owner === previous) { documentSessions.set(uri, next); } }
-    sessions.delete(previous.sessionId);
+    clearSessionTerminalAssociations(previous);
+    if (sessions.get(previous.sessionId) === previous) { sessions.delete(previous.sessionId); }
     if (activeSession === previous) { activeSession = next; }
 }
 
@@ -452,6 +481,36 @@ function terminalDiscoveryPath(terminal: vscode.Terminal): string | undefined {
 
 export function isTerminalClosed(terminal: vscode.Terminal): boolean {
     return closedTerminals.has(terminal);
+}
+
+function isLiveTerminal(terminal: vscode.Terminal): boolean {
+    return !isTerminalClosed(terminal) && !terminal.exitStatus && window.terminals.includes(terminal);
+}
+
+/** Called for every terminal close, including extension-owned pseudoterminals. */
+export function cleanupTerminalBinding(terminal: vscode.Terminal): void {
+    closedTerminals.add(terminal);
+    boundTerminalSessions.delete(terminal);
+}
+
+function clearSessionTerminalAssociations(target: Session): void {
+    for (const [terminal, owner] of boundTerminalSessions) {
+        if (owner === target) { boundTerminalSessions.delete(terminal); }
+    }
+    for (const [terminalPid, owner] of terminalSessions) {
+        if (owner === target) { terminalSessions.delete(terminalPid); }
+    }
+}
+
+async function sessionForTerminal(terminal: vscode.Terminal | undefined): Promise<Session | undefined> {
+    if (!terminal || !isLiveTerminal(terminal)) { return undefined; }
+    const bound = boundTerminalSessions.get(terminal);
+    const terminalPid = bound ? undefined : await terminal.processId;
+    // A close, rebind or disconnect may have happened while processId resolved.
+    const target = boundTerminalSessions.get(terminal)
+        ?? (terminalPid ? terminalSessions.get(String(terminalPid)) : undefined);
+    return target && sessions.get(target.sessionId) === target && isConnectedSession(target) && isLiveTerminal(terminal)
+        ? target : undefined;
 }
 
 /**
@@ -905,18 +964,13 @@ export async function activateRSession(): Promise<void> {
     if (config().get<boolean>('sessionWatcher')) {
         console.info('[activateRSession]');
         const terminal = window.activeTerminal;
-        const pidArg = await terminal?.processId;
-        if (terminal) {
-            if (pidArg) {
-                const session = terminalSessions.get(String(pidArg));
-                if (session) {
-                    console.info(`[activateRSession] Found existing session for PID: ${pidArg}`);
-                    await activateSession(session);
-                    terminal.show();
-                    return;
-                }
-            }
+        const session = await sessionForTerminal(terminal);
+        if (terminal && session) {
+            await activateSession(session);
+            terminal.show();
+            return;
         }
+        const pidArg = await terminal?.processId;
 
         // Restore the selected managed terminal before focusing another session.
         const discoveryPath = terminal && (terminalDiscoveryPath(terminal) ||
@@ -2075,14 +2129,22 @@ async function refreshActiveSession(session: Session): Promise<void> {
 }
 
 /** Activate a connected session by its stable protocol identity. */
-export async function activateSessionById(sessionId: string): Promise<boolean> {
+export async function activateSessionById(sessionId: string, options?: RSessionActivationOptions): Promise<boolean> {
     if (typeof sessionId !== 'string' || !sessionId.trim()) {
         return false;
     }
     const target = sessions.get(sessionId);
     if (!enableSessionWatcher && !target?.requester) { return false; }
-    if (!target || (!target.requester && (!isCurrentSocket(target.socket) || target.socket.destroyed || !target.socket.writable))) {
+    if (!target || !isConnectedSession(target)) {
         return false;
+    }
+    const terminal = options?.terminal;
+    if (terminal) {
+        if (!isLiveTerminal(terminal)) { return false; }
+        for (const [previousTerminal, owner] of boundTerminalSessions) {
+            if (owner === target) { boundTerminalSessions.delete(previousTerminal); }
+        }
+        boundTerminalSessions.set(terminal, target);
     }
     await activateSession(target);
     return true;
@@ -2128,8 +2190,7 @@ async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
 }
 
 export async function switchSessionByTerminal(terminal: vscode.Terminal | undefined): Promise<void> {
-    const terminalPid = await terminal?.processId;
-    const session = terminalPid ? terminalSessions.get(String(terminalPid)) : undefined;
+    const session = await sessionForTerminal(terminal);
     if (session) {
         await activateSession(session);
     } else {
@@ -2204,11 +2265,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             }
             const previous = sessions.get(sessionId);
             if (previous) {
-                for (const [key, associated] of terminalSessions.entries()) {
-                    if (associated === previous) {
-                        terminalSessions.delete(key);
-                    }
-                }
+                clearSessionTerminalAssociations(previous);
             }
             const session = new Session(
                 sessionId,
@@ -2453,11 +2510,7 @@ export async function cleanupSession(sessionId: string, closingSocket?: IpcSocke
         return;
     }
     sessions.delete(sessionId);
-    for (const [terminalPid, associated] of terminalSessions.entries()) {
-        if (associated === session) {
-            terminalSessions.delete(terminalPid);
-        }
-    }
+    clearSessionTerminalAssociations(session);
     if (pipeClient === session.socket) {
         pipeClient = undefined;
     }

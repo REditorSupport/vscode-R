@@ -8,6 +8,9 @@ import { mockExtensionContext } from '../common';
 import * as session from '../../session';
 import * as workspace from '../../workspaceViewer';
 import * as extension from '../../extension';
+import * as rTerminal from '../../rTerminal';
+import * as util from '../../util';
+import type { RSessionApi } from '../../api';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
 const workspaceFile = path.join(extension_root, 'src', 'test', 'testdata', 'session', 'workspace.json');
@@ -111,6 +114,40 @@ suite('Workspace Viewer', () => {
         sinon.assert.calledWithExactly(first.execute as sinon.SinonStub, String.raw`View(get("odd \" name", envir = .GlobalEnv, inherits = FALSE), title = "odd \" name")`);
         sinon.assert.calledWithExactly(first.execute as sinon.SinonStub, 'rm(list = "odd \\" name", envir = .GlobalEnv)');
         sinon.assert.notCalled(second.execute as sinon.SinonStub);
+    });
+
+    test('View and Remove send to a public API bound pseudoterminal after terminal focus changes', async () => {
+        first.execute = undefined;
+        second.execute = undefined;
+        const sendText = sandbox.stub();
+        const otherSendText = sandbox.stub();
+        const terminal = { processId: Promise.resolve(undefined), sendText } as unknown as vscode.Terminal;
+        const otherTerminal = { processId: Promise.resolve(99999), sendText: otherSendText } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal, otherTerminal]);
+        const activeTerminal = sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'source.focus' ? 'none' : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
+        const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, activate: session.activateSessionById };
+        assert.strictEqual(await api.activate(first.sessionId, { terminal }), true);
+        session.updateSessionWorkspace(first, data('table'));
+        const node = (await envNodes())[0];
+        assert.strictEqual(await api.activate(second.sessionId, { terminal: otherTerminal }), true);
+        activeTerminal.value(otherTerminal);
+        await session.switchSessionByTerminal(otherTerminal);
+
+        await workspace.viewItem(node);
+        await workspace.removeItem(node);
+        sinon.assert.calledWithExactly(sendText, 'View(get("table", envir = .GlobalEnv, inherits = FALSE), title = "table")');
+        sinon.assert.calledWithExactly(sendText, 'rm(list = "table", envir = .GlobalEnv)');
+        sinon.assert.notCalled(otherSendText);
+
+        rTerminal.deleteTerminal(terminal);
+        const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+        await workspace.viewItem(node);
+        sinon.assert.calledOnce(warning);
+        sinon.assert.calledTwice(sendText);
+        sinon.assert.notCalled(otherSendText);
     });
 
     test('nested View keeps the originating session after focus changes', async () => {

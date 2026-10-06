@@ -312,6 +312,15 @@ suite('Session Communication', () => {
         }
 
         const attached: Array<{ id: string; client: net.Socket; server: net.Socket }> = [];
+        const sendText = sandbox.stub();
+        const otherSendText = sandbox.stub();
+        const terminal = { processId: Promise.resolve(undefined), sendText } as unknown as vscode.Terminal;
+        const otherTerminal = { processId: Promise.resolve(99999), sendText: otherSendText } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal, otherTerminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(otherTerminal);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'source.focus' ? 'none' : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
         const attach = async (id: string): Promise<void> => {
             const existingSockets = new Set(session.activeConnections);
             const client = net.createConnection(endpoint);
@@ -349,6 +358,19 @@ suite('Session Communication', () => {
             assert.strictEqual(session.activeSession?.sessionId, 'session-api-second');
             assert.strictEqual(await api.activate('session-api-first'), true);
             assert.strictEqual(session.activeSession?.sessionId, 'session-api-first');
+            const owner = session.activeSession;
+            assert.ok(owner);
+            await assert.rejects(session.executeSessionCode(owner, 'View(iris)'), /no attached terminal/);
+            assert.strictEqual(await api.activate(owner.sessionId, { terminal }), true);
+            assert.strictEqual(await api.activate('session-api-second'), true);
+            await session.executeSessionCode(owner, 'View(iris)');
+            sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
+            sinon.assert.notCalled(otherSendText);
+            await session.switchSessionByTerminal(terminal);
+            assert.strictEqual(session.activeSession, owner);
+            assert.strictEqual(await api.activate(owner.sessionId), true);
+            await session.executeSessionCode(owner, 'rm(iris)');
+            sinon.assert.calledWithExactly(sendText, 'rm(iris)');
 
             const disconnected = attached.find(item => item.id === 'session-api-second');
             assert.ok(disconnected);
@@ -668,6 +690,7 @@ suite('Session Communication', () => {
         { delayedPid: true, parents: [46299, 46250] },
     ]) {
         test(`terminal readiness waits for its own valid attach (delayed PID: ${String(delayedPid)}, ancestors: ${parents.length})`, async () => {
+            sandbox.stub(extension, 'enableSessionWatcher').value(true);
             const rPid = parents.length ? 46252 : 46250;
             ancestors.withArgs(rPid).resolves(parents);
             const otherRPid = parents.length ? 46253 : 46251;
@@ -734,6 +757,14 @@ suite('Session Communication', () => {
                 await session.switchSessionByTerminal(terminal);
                 assert.strictEqual(session.activeSession, foreground, 'terminal selection must retain the foreground workspace');
                 await session.executeSessionCode(foreground, 'Sys.getpid()');
+                sinon.assert.calledOnce(sendText);
+
+                // An explicit owner takes precedence even over a matching native PID.
+                sendText.resetHistory();
+                assert.strictEqual(await session.activateSessionById(background.sessionId, { terminal }), true);
+                await assert.rejects(session.executeSessionCode(foreground, 'rm(iris)'), /no attached terminal/);
+                sinon.assert.notCalled(sendText);
+                await session.executeSessionCode(background, 'View(iris)');
                 sinon.assert.calledOnce(sendText);
             } finally {
                 clients.forEach(client => client.destroy());
@@ -991,6 +1022,13 @@ suite('Session Communication', () => {
     });
 
     test('IPC protocol keys sessions by session_id and ignores close from a replaced socket', async () => {
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        const sendText = sandbox.stub();
+        const terminal = { processId: Promise.resolve(undefined), sendText } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'source.focus' ? 'none' : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
         const endpoint = await session.getGlobalPipePath();
         const first = net.createConnection(endpoint);
         let second: net.Socket | undefined;
@@ -1026,6 +1064,7 @@ suite('Session Communication', () => {
             if (!originalSession) {
                 throw new Error('original session should have attached');
             }
+            assert.strictEqual(await session.activateSessionById(originalSession.sessionId, { terminal }), true);
 
             const reconnect = net.createConnection(endpoint);
             second = reconnect;
@@ -1034,6 +1073,9 @@ suite('Session Communication', () => {
             assert.strictEqual(session.activeSession?.sessionId, 'stable-session-id');
             assert.strictEqual(session.activeSession?.pid, '9876');
             const replacementSession = session.activeSession;
+            assert.ok(replacementSession);
+            await assert.rejects(session.executeSessionCode(replacementSession, 'View(iris)'), /no attached terminal/);
+            assert.strictEqual(await session.activateSessionById(replacementSession.sessionId, { terminal }), true);
 
             await session.cleanupSession('stable-session-id', originalSession.socket);
             assert.strictEqual(session.activeSession, replacementSession, 'cleanup from the old socket must not remove the replacement session');
@@ -1041,6 +1083,8 @@ suite('Session Communication', () => {
             first.destroy();
             await new Promise(resolve => setTimeout(resolve, 100));
             assert.strictEqual(session.activeSession, replacementSession, 'old socket close must not clear the replacement session');
+            await session.executeSessionCode(replacementSession, 'View(iris)');
+            sinon.assert.calledOnce(sendText);
 
             const otherSession = net.createConnection(endpoint);
             third = otherSession;

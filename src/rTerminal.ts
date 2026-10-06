@@ -12,6 +12,7 @@ import * as selection from './selection';
 import { getSelection } from './selection';
 import {
     cleanupTerminalAssociation,
+    cleanupTerminalBinding,
     createSessionDiscoveryFile,
     deferWorkspaceRefresh,
     getGlobalPipePath,
@@ -343,6 +344,7 @@ export async function restartRTerminal(): Promise<void>{
 }
 
 export function deleteTerminal(term: vscode.Terminal): void {
+    cleanupTerminalBinding(term);
     const exitReason = term.exitStatus?.reason;
     if (exitReason === vscode.TerminalExitReason.User
         || exitReason === vscode.TerminalExitReason.Process
@@ -490,15 +492,19 @@ export async function runTextInTerm(text: string, execute: boolean = true): Prom
     return true;
 }
 
-export async function runTextInTerminal(terminal: vscode.Terminal, text: string, execute = true): Promise<void> {
+/** The optional guard rechecks session ownership after queue and per-line waits. */
+export async function runTextInTerminal(
+    terminal: vscode.Terminal, text: string, execute = true, validate?: () => void,
+): Promise<void> {
     const pending = (terminalSends.get(terminal) ?? Promise.resolve()).catch(() => undefined)
-        .then(() => sendToTerminal(terminal, text, execute));
+        .then(() => sendToTerminal(terminal, text, execute, validate));
     terminalSends.set(terminal, pending);
     try { await pending; }
     finally { if (terminalSends.get(terminal) === pending) { terminalSends.delete(terminal); } }
 }
 
-async function sendToTerminal(term: vscode.Terminal, text: string, execute: boolean): Promise<void> {
+async function sendToTerminal(term: vscode.Terminal, text: string, execute: boolean, validate?: () => void): Promise<void> {
+    validate?.();
     deferWorkspaceRefresh();
     if (config().get<boolean>('bracketedPaste')) {
         // Surround with ANSI control characters for bracketed paste mode
@@ -513,6 +519,8 @@ async function sendToTerminal(term: vscode.Terminal, text: string, execute: bool
             if (count > 0) {
                 await delay(rtermSendDelay); // Increase delay if RTerm can't handle speed.
             }
+
+            validate?.();
 
             // Avoid sending newline on last line
             if (count === last_split && !execute) {
