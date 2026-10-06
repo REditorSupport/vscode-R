@@ -1191,6 +1191,51 @@ cat("\n")`;
             sinon.assert.notCalled(errors);
         } finally { errors.restore(); saved.restore(); format.restore(); }
     });
+    test('unclassed list cells route browsing to their owner and save text preferences', async () => {
+        await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
+        const notebook = vscode.workspace.notebookDocuments.find(doc => doc.metadata.rSessionId === manifests[0].id); assert.ok(notebook);
+        const index = notebook.cellCount;
+        await vscode.commands.executeCommand('r.runSelection', 'list(nested=list(value=1:2), table=data.frame(value=1:2))');
+        await until(() => notebook.cellCount > index && notebook.cellAt(index).executionSummary?.success === true);
+        const custom = notebook.cellAt(index).outputs.flatMap(output => output.items).find(item => item.mime === DISPLAY_MIME); assert.ok(custom);
+        const list = JSON.parse(Buffer.from(custom.data).toString()) as Record<string, unknown>;
+        assert.strictEqual(list.kind, 'list'); assert.strictEqual((list.children as unknown[]).length, 2);
+        const plain = notebook.cellAt(index).outputs.flatMap(output => output.items).find(item => item.mime === 'text/plain'); assert.ok(plain);
+        assert.strictEqual(Buffer.from(plain.data).toString(), list.printedText);
+        const context = bundleContext();
+        const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+            messages: vscode.NotebookRendererMessaging;
+            rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
+        };
+        const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
+        const replies = sinon.spy(manager.messages, 'postMessage');
+        const panels = sinon.spy(vscode.window, 'createWebviewPanel');
+        const saved = sinon.stub(vscode.window, 'showSaveDialog').resolves(vscode.Uri.file(path.join(root, 'list.rnb')));
+        const format = sinon.stub(vscode.window, 'showQuickPick').resolves({label:'Notebook',format:'rnb'} as vscode.QuickPickItem);
+        const message = {displayId:list.displayId,generation:list.generation,outputId:'list-test'};
+        try {
+            await vscode.commands.executeCommand('r.interactive.open', manifests[1]);
+            await manager.rendererMessage(editor, {...message,action:'listPage',path:[1],start:1,requestId:1});
+            const page = replies.lastCall.args[0] as {result:{children:{label:string}[]}};
+            assert.strictEqual(page.result.children[0].label, '$ value');
+            await manager.rendererMessage(editor, {...message,action:'listItem',path:[],index:2,requestId:2});
+            await until(() => panels.calledOnce); assert.strictEqual(panels.firstCall.args[1], 'List$table');
+            await manager.rendererMessage(editor, {...message,action:'list',path:[]});
+            assert.strictEqual(panels.callCount, 2);
+            assert.strictEqual(notebook.cellCount, index+1, 'Browsing must not run another cell');
+            await manager.rendererMessage(editor, {...message,action:'listView',mode:'text'});
+            await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
+            const report = new InteractiveSerializer().deserializeNotebook(fs.readFileSync(path.join(root,'list.rnb')));
+            const item = report.cells.at(-1)?.outputs?.flatMap(output=>output.items).find(item=>item.mime===DISPLAY_MIME); assert.ok(item);
+            const exported = JSON.parse(Buffer.from(item.data).toString()) as Record<string,unknown>;
+            assert.strictEqual(exported.listView,'text'); assert.strictEqual(exported.connected,false);
+            assert.strictEqual(exported.printedText,list.printedText);
+        } finally {
+            replies.restore();
+            panels.returnValues.forEach(panel => { panel.dispose(); }); panels.restore(); saved.restore(); format.restore();
+        }
+    });
+
     test('Interactive list viewers open nested tables in their original session', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
         const original = vscode.window.createWebviewPanel;
@@ -1203,7 +1248,7 @@ cat("\n")`;
             return panel;
         });
         try {
-            await vscode.commands.executeCommand('r.runSelection', 'rebase_view <- list(table=data.frame(value=1:2)); View(rebase_view)');
+            await vscode.commands.executeCommand('r.runSelection', 'rebase_view <- structure(list(table=data.frame(value=1:2)), class="test_list"); View(rebase_view)');
             await until(() => panels.length === 1 && receivers[0].calledOnce);
             assert.strictEqual(panels[0].title, 'rebase_view');
             await vscode.commands.executeCommand('r.interactive.open', manifests[1]);

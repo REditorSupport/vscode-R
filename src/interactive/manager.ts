@@ -68,7 +68,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
     private closed = false;
     private clientId: string;
     private savedConnections: Map<string, SavedConnection>;
-    private outputViews: Map<string, { tableView?: string; selectedPlot?: string }>;
+    private outputViews: Map<string, { tableView?: string; listView?: string; selectedPlot?: string }>;
     private status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 20);
 
     constructor(private context: vscode.ExtensionContext) {
@@ -1064,6 +1064,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                     archived: cell.generation !== view.model.generation, connected: view.client.connected,
                     running: !['exited', 'stopping'].includes(view.client.manifest.status) };
                 const preference = this.outputViews.get(`${view.client.manifest.id}:${cell.generation}:${String(data.displayId)}`);
+                if (data.kind === 'list') { display.listView = preference?.listView ?? 'list'; }
                 if (data.kind === 'table') { display.tableView = preference?.tableView ?? util.config().get('interactive.tableView', 'table'); }
                 if (data.svg || data.asset) { display.url = view.base + String(data.svg ?? data.asset).split('/').map(encodeURIComponent).join('/'); }
                 else if (typeof data.url === 'string' && /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(data.url)) {
@@ -1071,7 +1072,7 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 }
                 if (data.kind === 'mime' && data.mime === 'text/html') { display.kind = 'htmlText'; }
                 items = [vscode.NotebookCellOutputItem.json(display, DISPLAY_MIME),
-                    vscode.NotebookCellOutputItem.text(data.kind === 'table' ? (typeof data.printedText === 'string' ? data.printedText : `${String(data.totalRows)} rows\n${JSON.stringify(data.rows, null, 2)}`) : `R ${String(data.kind)} output`)];
+                    vscode.NotebookCellOutputItem.text(typeof data.printedText === 'string' ? data.printedText : data.kind === 'table' ? `${String(data.totalRows)} rows\n${JSON.stringify(data.rows, null, 2)}` : data.kind === 'list' ? JSON.stringify(data.children, null, 2) : `R ${String(data.kind)} output`)];
                 if (typeof data.svg === 'string') {
                     try {
                         const svg = portable ? readAsset(path.join(this.root, view.client.manifest.id, 'assets'), data.svg).toString('base64')
@@ -1185,19 +1186,20 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
         const data = output.data;
         try {
             if ((message.action === 'tableView' && data.kind === 'table' && ['table', 'text'].includes(String(message.mode))) ||
+                (message.action === 'listView' && data.kind === 'list' && ['list', 'text'].includes(String(message.mode))) ||
                 (message.action === 'plotPage' && ['plot', 'image'].includes(String(data.kind)) && owner?.outputs.some(item => item.type === 'display' &&
                     ['plot', 'image'].includes(String(item.data.kind)) && item.data.displayId === message.selectedPlot))) {
                 const key = `${view.client.manifest.id}:${owner.generation}:${String(data.displayId)}`;
-                const preference = message.action === 'tableView' ? { tableView: String(message.mode) } : { selectedPlot: String(message.selectedPlot) };
+                const preference = message.action === 'tableView' ? { tableView: String(message.mode) } : message.action === 'listView' ? { listView: String(message.mode) } : { selectedPlot: String(message.selectedPlot) };
                 this.outputViews.delete(key); this.outputViews.set(key, preference);
                 while (this.outputViews.size > 1000) { this.outputViews.delete(this.outputViews.keys().next().value as string); }
                 await this.context.workspaceState.update('r.interactive.outputViews', [...this.outputViews]);
                 return;
             }
-            if (['table', 'page', 'resize'].includes(String(message.action)) && ['exited', 'stopping'].includes(view.client.manifest.status)) {
+            if (['table', 'page', 'list', 'listPage', 'listNavigate', 'listItem', 'resize'].includes(String(message.action)) && ['exited', 'stopping'].includes(view.client.manifest.status)) {
                 throw new Error('R has stopped. Start a new session and run the code again to use live controls.');
             }
-            if (['table', 'page', 'resize'].includes(String(message.action)) && (view.restarting || owner?.generation !== view.model.generation)) {
+            if (['table', 'page', 'list', 'listPage', 'listNavigate', 'listItem', 'resize'].includes(String(message.action)) && (view.restarting || owner?.generation !== view.model.generation)) {
                 throw new Error('This output belongs to a previous R process. Run its code again to use live controls.');
             }
             let result: unknown;
@@ -1208,6 +1210,28 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                 case 'page': {
                     if (data.kind !== 'table') { return; }
                     result = await queryTablePage(data, message, request => view.client.request('inspect', request)); break;
+                }
+                case 'list': case 'listPage': case 'listNavigate': case 'listItem': {
+                    if (data.kind !== 'list') { return; }
+                    const listPath = message.path ?? [];
+                    if (!Array.isArray(listPath) || !listPath.every(index => Number.isSafeInteger(index) && index > 0)) { throw new Error('Invalid list path'); }
+                    const params = { view_id: data.viewId, path: listPath };
+                    if (message.action === 'listPage') {
+                        if (!Number.isSafeInteger(message.start) || Number(message.start) < 1) { throw new Error('Invalid list page'); }
+                        result = await view.client.request('inspect', { method: 'workspace_children', params: { ...params, start: message.start } });
+                    } else {
+                        if (message.action === 'listItem' && (!Number.isSafeInteger(message.index) || Number(message.index) < 1)) { throw new Error('Invalid list index'); }
+                        const navigation = await view.client.request<ListViewNavigation | boolean>('inspect', {
+                            method: message.action === 'listItem' ? 'listview_view' : 'listview_navigate', params: { ...params, index: message.index },
+                        });
+                        if (!navigation) { throw new Error('Unable to open this item. Check the R session and try again.'); }
+                        if (typeof navigation === 'object' && Array.isArray(navigation.breadcrumbs)) {
+                            if (message.action === 'list') {
+                                await session.showDataView('list', 'json', `${view.client.manifest.label}: ${navigation.title}`, '', 'Beside', String(data.viewId), navigation, view.target.sessionId);
+                            } else { result = { navigation }; }
+                        }
+                    }
+                    break;
                 }
                 case 'resize':
                     if (data.kind !== 'plot') { return; }
@@ -1534,6 +1558,8 @@ export class InteractiveManager implements vscode.Disposable, vscode.TreeDataPro
                         const columns = data.columns as { field: string; headerName: string; type?: unknown }[];
                         const rows = data.rows as Record<string, unknown>[];
                         sections.push(`<table><tr>${columns.map(column => `<th style="text-align:${tableColumnAlignment(data, column)}">${escapeXml(column.headerName)}</th>`).join('')}</tr>${rows.map((row, rowIndex) => `<tr>${columns.map(column => `<td style="text-align:${tableColumnAlignment(data, column)}">${escapeXml(tableDisplayValue(data, row, column.field, rowIndex))}</td>`).join('')}</tr>`).join('')}</table><p>${tableSnapshotSummary(data) || `${String(data.totalRows)} rows (preview)`}</p>`);
+                    } else if (data.kind === 'list') {
+                        sections.push(`<pre>${escapeXml(data.printedText ?? JSON.stringify(data.children, null, 2))}</pre>`);
                     } else if (data.kind === 'mime' && data.mime === 'text/html') {
                         sections.push(`<iframe sandbox="allow-scripts" srcdoc="${escapeXml(String(data.text))}" style="width:100%;height:500px;border:0"></iframe>`);
                     } else { sections.push(`<pre>${escapeXml(data.text ?? data.message ?? JSON.stringify(data, null, 2))}</pre>`); }

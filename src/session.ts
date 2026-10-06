@@ -19,7 +19,7 @@ import { resolveBackend, jgdEnabled, CommonPlotManager } from './plotViewer';
 import type { RSessionConnectionInfo } from './api';
 
 import { showWebView } from './webViewer';
-import { getListViewerScript, ListViewNavigation } from './listViewer';
+import { getListViewerScript, listViewerStyle, ListViewNavigation } from './listViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
 
@@ -1947,94 +1947,17 @@ export function getListHtml(
         font-family: var(--vscode-font-family);
         font-size: var(--vscode-font-size);
     }
-    #list { flex: 1; min-height: 0; overflow: auto; }
-    .navigation {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 6px 8px;
-        min-height: 28px;
-        border-bottom: 1px solid var(--vscode-panel-border);
-        background: var(--vscode-breadcrumb-background, var(--vscode-editor-background));
-    }
-    #back { gap: 4px; padding: 4px 6px; flex-shrink: 0; border-radius: 3px; }
-    #back:disabled { opacity: 0.4; cursor: default; background: transparent; }
-    .codicon { flex-shrink: 0; }
-    #breadcrumbs {
-        display: flex;
-        align-items: center;
-        gap: 2px;
-        overflow-x: auto;
-        color: var(--vscode-breadcrumb-foreground);
-    }
-    .breadcrumb { padding: 4px; white-space: nowrap; border-radius: 3px; }
-    button.breadcrumb:hover { color: var(--vscode-breadcrumb-focusForeground); }
-    .breadcrumb[aria-current] { color: var(--vscode-breadcrumb-activeSelectionForeground); }
-    #navigation-status { padding: 0 8px; color: var(--vscode-errorForeground); }
-    .item {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        min-height: 28px;
-        padding: 2px 8px;
-    }
-    .item:hover {
-        background-color: var(--vscode-list-hoverBackground);
-        color: var(--vscode-list-hoverForeground);
-    }
-    summary.item { cursor: pointer; list-style: none; }
-    summary.item::-webkit-details-marker { display: none; }
-    .arrow { width: 16px; height: 16px; flex-shrink: 0; }
-    summary > .arrow {
-        color: var(--vscode-icon-foreground, currentColor);
-    }
-    details[open] > summary > .arrow { transform: rotate(90deg); }
-    .children { margin-left: 24px; }
-    button:focus-visible, summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
-    .label {
-        min-width: 140px;
-        color: var(--vscode-symbolIcon-fieldForeground);
-        white-space: nowrap;
-    }
-    body.vector .label {
-        min-width: 64px;
-    }
-    body.vector .item {
-        gap: 8px;
-    }
-    .str {
-        flex: 1;
-        color: var(--vscode-descriptionForeground);
-        white-space: pre-wrap;
-    }
-    button {
-        display: flex;
-        align-items: center;
-        border: 0;
-        padding: 2px;
-        color: var(--vscode-foreground);
-        background: transparent;
-        cursor: pointer;
-        font: inherit;
-    }
-    button:hover {
-        background-color: var(--vscode-toolbar-hoverBackground);
-    }
-    .load-more {
-        margin: 8px;
-    }
-    .load-more[hidden] {
-        display: none;
-    }
+    ${listViewerStyle}
     </style>
 </head>
-<body>
+<body class="r-list-viewer">
     <div class="navigation">
-        <button id="back" title="Back" aria-label="Back" disabled><span class="codicon codicon-arrow-left" aria-hidden="true"></span>Back</button>
-        <nav id="breadcrumbs" aria-label="Object path"></nav>
+        <button id="back" class="back" title="Back" aria-label="Back" disabled><span class="codicon codicon-arrow-left" aria-hidden="true"></span>Back</button>
+        <nav id="breadcrumbs" class="breadcrumbs" aria-label="Object path"></nav>
+        <button id="reset" class="reset" title="Reset to initial view" aria-label="Reset to initial view"><span class="codicon codicon-discard" aria-hidden="true"></span>Reset</button>
     </div>
-    <div id="navigation-status" role="status"></div>
-    <div id="list"></div>
+    <div id="navigation-status" class="navigation-status" role="status"></div>
+    <div id="list" class="list"></div>
     <script>
     ${getListViewerScript(documentGeneration, navigation ?? {
         title, path: [], breadcrumbs: [{ label: title, path: [] }],
