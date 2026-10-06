@@ -1,5 +1,5 @@
 local({
-    # Offline installer regressions: build a binary once, then disable the compiler.
+    # Offline installer regressions: pure R source works with the compiler disabled.
     root <- normalizePath(commandArgs(TRUE)[[1L]])
     installer <- new.env(parent = baseenv())
     sys.source(file.path(root, "R", "sess-package-install.R"), installer)
@@ -18,13 +18,17 @@ local({
     stopifnot(length(installer$sess_binary_repositories("Linux", "unknown", "source",
                                                         c("ID=ubuntu", "VERSION_CODENAME=resolute"))) == 1L)
     stopifnot(installer$sess_binary_repositories("Windows", "x86_64", "win.binary")[[1L]]$type == "win.binary")
-    description <- matrix(c("sess", "3.0.1", "1"), nrow = 1L,
-                           dimnames = list(NULL, c("Package", "Version", "Config/vscode-R/Interactive")))
+    description <- matrix(c("sess", "3.0.1", "1", "no"), nrow = 1L,
+                           dimnames = list(NULL, c("Package", "Version", "Config/vscode-R/Interactive", "NeedsCompilation")))
     stopifnot(installer$sess_package_compatible(description, "3.0.1", TRUE))
     fail(installer$sess_package_compatible(description, "3.1.0", FALSE), "older")
     legacy <- description[, c("Package", "Version"), drop = FALSE]
     stopifnot(installer$sess_package_compatible(legacy, "3.0.1", FALSE))
     fail(installer$sess_package_compatible(legacy, "3.0.1", TRUE), "does not support")
+    native <- description
+    native[1L, "NeedsCompilation"] <- "yes"
+    fail(installer$sess_package_compatible(native, "3.0.1", TRUE), "does not support")
+    stopifnot(installer$sess_package_compatible(native, "3.0.1", FALSE))
 
     temporary <- tempfile("sess installer ")
     dir.create(temporary)
@@ -68,7 +72,10 @@ local({
     stopifnot(identical(environment_before,
                         Sys.getenv(c("R_LIBS", "R_PROFILE_USER", "R_ENVIRON_USER"), unset = NA_character_)))
     stopifnot(file.exists(file.path(target, "sess", "DESCRIPTION")))
-    cat("Compiler-free binary fallback and native API verification passed.\n")
+    cat("Pure R source installation and Interactive API verification passed.\n")
+
+    installer$sess_install_binary(target, version, TRUE)
+    cat("Compiler-free repository installation passed.\n")
 
     if (.Platform$OS.type != "windows") {
         linux_layout <- file.path(temporary, "linux-layout")

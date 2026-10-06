@@ -14,7 +14,7 @@ export async function installSessRuntime(extensionPath: string, root: string, rP
     const bundledSess = 'dist/resources/sess';
     const sources = [`${bundledSess}/DESCRIPTION`, `${bundledSess}/NAMESPACE`,
         'R/interactive-worker.R', 'R/interactive-metrics.R', 'R/install_sess.R', 'R/sess-package-install.R', 'R/sess_source.R'];
-    for (const directory of [`${bundledSess}/R`, `${bundledSess}/src`]) {
+    for (const directory of [`${bundledSess}/R`]) {
         for (const name of fs.readdirSync(path.join(extensionPath, directory)).sort()) {
             if (/\.(R|c|h)$/.test(name)) { sources.push(`${directory}/${name}`); }
         }

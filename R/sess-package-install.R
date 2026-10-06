@@ -42,7 +42,8 @@ sess_package_compatible <- function(description, required, interactive) {
     }
     # Version alone cannot distinguish the released sess from this development
     # branch, which initially shares its version but adds the Interactive API.
-    if (interactive && get("Config/vscode-R/Interactive") != "1") {
+    if (interactive && (get("Config/vscode-R/Interactive") != "1" ||
+                            get("NeedsCompilation") != "no")) {
         stop("The published sess package does not support this Interactive runtime yet.")
     }
     invisible(TRUE)
@@ -64,12 +65,10 @@ sess_verify_package <- function(library, required, interactive) {
         "stopifnot(all(c('connect','notify_client','register_hooks','request_client') %in% getNamespaceExports(ns)));",
         "if (a[3] == 'TRUE') {",
         "stopifnot(all(c('interactive_stop','display') %in% getNamespaceExports(ns)));",
-        "stopifnot(all(vapply(c('interactive_start','interactive_execute','run_worker'),",
+        "stopifnot(all(vapply(c('interactive_start','interactive_execute'),",
         "function(n) exists(n, ns, mode='function', inherits=FALSE), FALSE)));",
-        "r <- getDLLRegisteredRoutines(getLoadedDLLs()[['sess']])[['.Call']];",
-        "n <- c(sess_bridge_start=3L,sess_bridge_send=1L,sess_bridge_context=1L,sess_bridge_stop=0L);",
-        "stopifnot(all(names(n) %in% names(r)));",
-        "stopifnot(all(vapply(r[names(n)], function(x) x$numParameters, 0L) == n)); }"
+        "stopifnot(packageDescription('sess',lib.loc=a[1],fields='Config/vscode-R/Interactive') == '1');",
+        "stopifnot(packageDescription('sess',lib.loc=a[1],fields='NeedsCompilation') == 'no'); }"
     )
     status <- system2(file.path(R.home("bin"), "R"),
                       c("--vanilla", "--slave", "-e", shQuote(code), "--args",
@@ -143,7 +142,7 @@ sess_install_binary <- function(library, required, interactive) {
         errors <- c(errors, paste(repository$urls[[1L]], error, sep = ": "))
     }
     stop(paste(c("Bundled sess could not be built, and no compatible compiler-free fallback was usable.",
-                 errors, "Install R build tools or use a compatible R-universe build of sess and its dependencies."),
+                 errors, "Check the installation log, library permissions, and availability of sess dependencies."),
                collapse = "\n"), call. = FALSE)
 }
 

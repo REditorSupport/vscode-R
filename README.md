@@ -137,4 +137,4 @@ Call `View(x)` to open a table. The viewer loads rows on demand and applies colu
 
 ## Persistent R Interactive
 
-This experimental feature provides native VS Code Interactive windows with independent plain-R or arf sessions, including adoption of existing arf sessions over Remote SSH. See the [setup and usage guide](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive) for session switching, persistence, rich outputs, and platform requirements.
+This experimental feature provides native VS Code Interactive windows with independent arf sessions, including adoption of existing arf sessions over Remote SSH. Bundled sess is pure R and needs no compiler. Managed sessions retain streaming output, interruption, rich tables, HTML, and plots; notebook console input and debugger prompts are currently unavailable. See the [setup and usage guide](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive) for session switching, persistence, rich outputs, and platform requirements.

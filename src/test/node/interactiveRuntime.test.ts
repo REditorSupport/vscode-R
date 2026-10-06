@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { execFile, spawn } from 'child_process';
-import { promisify } from 'util';
+import { promisify, stripVTControlCharacters } from 'util';
 import { randomUUID } from 'crypto';
 import { arfRequest, probeArfSession } from '../../interactive/arf';
 import { SessionAgent } from '../../interactive/agentMain';
@@ -16,6 +16,7 @@ import { HistoryPage } from '../../interactive/history';
 import { queryTablePage, TableColumn, tableSchema } from '../../interactive/tableQuery';
 import { AssetStorageStats, readAsset } from '../../interactive/assets';
 import { assertSvgTextVisible } from '../svgAssertions';
+import { rString } from '../../interactive/backends/rCode';
 
 const run = promisify(execFile);
 const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
@@ -54,7 +55,7 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         const id = randomUUID();
         const config: AgentConfig = { id, generation: randomUUID(), label: 'Integration test',
             directory: process.cwd(), storage: path.join(root, id), rPath: 'R', library,
-            resources, provider: process.env.VSCR_TEST_PROVIDER === 'arf' ? 'arf' : 'r', arfPath: process.env.ARF_PATH ?? 'arf', supervision: 'test',
+            resources, provider: 'arf', arfPath: process.env.ARF_PATH ?? 'arf', supervision: 'test',
             plotBackend: process.env.VSCR_TEST_STATIC || this.currentTest?.title.startsWith('standard graphics') ? 'standard' : 'auto',
             historyLimit: 50, maxOutputBytes: 1024 * 1024, maxJournalBytes: 16 * 1024 * 1024 };
         agent = new SessionAgent(config); manifest = await agent.start();
@@ -65,10 +66,10 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
     });
     teardown(async () => { client?.close(); await agent?.close(); await delay(100); });
 
-    async function until(predicate: () => boolean, timeout = 10000): Promise<void> {
+    async function until(predicate: () => boolean, timeout = 10000, observed = events): Promise<void> {
         const deadline = Date.now() + timeout;
         while (!predicate()) {
-            if (Date.now() >= deadline) { throw new Error(`Timed out. Recent events: ${JSON.stringify(events.slice(-8))}`); }
+            if (Date.now() >= deadline) { throw new Error(`Timed out. Recent events: ${JSON.stringify(observed.slice(-8))}`); }
             await delay(20);
         }
     }
@@ -98,6 +99,41 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         const next = await submit('cat("namespace dispatch works")');
         assert.strictEqual((await finished(next)).state, 'success');
         assert.match(text(next), /namespace dispatch works/);
+    });
+
+    test('keeps rich output ordered and completion usable when code redirects console output', async () => {
+        const redirected = rString(path.join(root, 'redirected.txt'));
+        const id = await submit(`cat("before"); sess::display("middle", "text/plain"); cat("after")
+sink(${redirected}); cat("saved to file"); sess::display(head(iris)); sink()
+cat(readLines(${redirected}))`);
+        assert.strictEqual((await finished(id)).state, 'success');
+        const ordered = events.filter(event => event.executionId === id && ['stream', 'display'].includes(event.type));
+        const middle = ordered.findIndex(event => event.type === 'display' && event.data.kind === 'mime');
+        assert.ok(middle > 0);
+        assert.match(ordered.slice(0, middle).map(event => typeof event.data.text === 'string' ? event.data.text : '').join(''), /before/);
+        assert.match(ordered.slice(middle + 1).map(event => typeof event.data.text === 'string' ? event.data.text : '').join(''), /after/);
+        assert.ok(ordered.some(event => event.data.kind === 'table'));
+        assert.strictEqual(text(id).match(/saved to file/g)?.length, 1);
+        const next = await submit('cat("next cell")');
+        assert.strictEqual((await finished(next)).state, 'success'); assert.strictEqual(text(next), 'next cell');
+    });
+
+    test('drains both console pipes before completing back-to-back cells', async () => {
+        for (let cell = 0; cell < 3; cell++) {
+            const id = await submit(`cat("stdout-${cell}\\n"); cat(strrep("λ", 200000), file=stderr())
+sess::display("display-${cell}", "text/plain"); cat("stderr-${cell}\\n", file=stderr()); cat("tail-${cell}\\n")`);
+            assert.strictEqual((await finished(id)).state, 'success');
+            const captured = events.filter(event => event.executionId === id);
+            const stdout = captured.filter(event => event.type === 'stream' && event.data.channel === 'stdout').map(event => event.data.text).join('');
+            const stderr = captured.filter(event => event.type === 'stream' && event.data.channel === 'stderr').map(event => event.data.text).join('');
+            assert.strictEqual(stdout, `stdout-${cell}\ntail-${cell}\n`);
+            // arf styles errors on its owned stderr pipe; compare console content.
+            assert.strictEqual(stripVTControlCharacters(stderr), 'λ'.repeat(200000) + `stderr-${cell}\n`);
+            assert.ok(captured.some(event => event.type === 'display' && event.data.text === `display-${cell}`));
+            const completion = captured.findIndex(event => event.type === 'finished');
+            assert.ok(completion >= 0 && captured.every((event, index) =>
+                !['stream', 'display'].includes(event.type) || index < completion));
+        }
     });
 
     test('searches durable history beyond the reconnect window without executing code', async () => {
@@ -159,7 +195,7 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
     test('Stop during startup waits for the runtime and confirms exit', async () => {
         const id = randomUUID(), storage = path.join(root, id);
         const starting = new SessionAgent({ id, generation: randomUUID(), label: 'Stop during startup', directory: root, storage,
-            rPath: 'R', library, resources, provider: 'r', supervision: 'test', plotBackend: 'standard',
+            rPath: 'R', library, resources, provider: 'arf', arfPath: process.env.ARF_PATH ?? 'arf', supervision: 'test', plotBackend: 'standard',
             historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
         const startup = starting.start();
         let connection: AgentClient | undefined;
@@ -188,16 +224,13 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
         assert.strictEqual((await client.snapshot()).executions.filter(record => record.id === id).length, 1);
     });
 
-    test('native readline and scan receive execution-scoped replies', async () => {
-        const id = await submit('name <- readline("Name: "); cat("hello", name); scan(n=1, quiet=TRUE)');
-        await until(() => events.some(event => event.executionId === id && event.type === 'input'));
-        const first = events.find(event => event.executionId === id && event.type === 'input')!;
-        await client.request('input', { id: first.data.inputId, executionId: id, value: 'Ada' });
-        await until(() => events.filter(event => event.executionId === id && event.type === 'input').length > 1);
-        const second = events.filter(event => event.executionId === id && event.type === 'input')[1];
-        await assert.rejects(client.request('input', { id: first.data.inputId, executionId: id, value: 'stale' }), /no longer active/);
-        await client.request('input', { id: second.data.inputId, executionId: id, value: '7' });
-        assert.strictEqual((await finished(id)).state, 'success'); assert.match(text(id), /Ada/); assert.match(text(id), /7/);
+    test('reports unsupported notebook input without claiming native console support', async () => {
+        assert.strictEqual(client.manifest.capabilities.stdin, false);
+        assert.strictEqual(client.manifest.capabilities.debugger, false);
+        await assert.rejects(client.request('input', { id: 1, executionId: randomUUID(), value: 'Ada' }), /no longer active/);
+        const next = await submit('cat("headless session usable")');
+        assert.strictEqual((await finished(next)).state, 'success');
+        assert.match(text(next), /headless session usable/);
     });
 
     test('interrupts evaluation without losing R and cancels queued code', async () => {
@@ -455,13 +488,6 @@ dt`);
         assert.deepStrictEqual(saved?.data.formattedColumns, labels);
     });
 
-    test('browser prompts remain usable through the native console', async () => {
-        const id = await submit('browser(); 99');
-        await until(() => events.some(event => event.executionId === id && event.type === 'input'));
-        const input = events.find(event => event.executionId === id && event.type === 'input')!;
-        await client.request('input', { id: input.data.inputId, executionId: id, value: 'c' });
-        assert.strictEqual((await finished(id)).state, 'success'); assert.match(text(id), /99/);
-    });
     test('bounds large Unicode output without corrupting it or disconnecting R', async () => {
         const id = await submit('cat(strrep("λ🙂", 900000))');
         assert.strictEqual((await finished(id)).state, 'success');
@@ -471,7 +497,7 @@ dt`);
         const next = await submit('21 * 2'); await finished(next); assert.match(text(next), /42/);
     });
 
-    test('bounds oversized rich events before they can disconnect the native bridge', async () => {
+    test('bounds oversized rich events before they can disconnect the arf event transport', async () => {
         for (const value of ['strrep("λ", 3000000)', 'strrep(intToUtf8(1L), 1000000)']) {
             const id = await submit(`sess::display(${value}, "text/html"); cat("still running")`);
             assert.strictEqual((await finished(id)).state, 'success');
@@ -764,7 +790,7 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
         const id = randomUUID();
         const config: AgentConfig = { id, generation: randomUUID(), label: 'Detached test', directory: root,
             storage: path.join(root, id), rPath: 'R', library, resources,
-            provider: 'r', supervision: process.env.VSCR_TEST_TMUX ? 'tmux' : 'detached', plotBackend: 'standard',
+            provider: 'arf', arfPath: process.env.ARF_PATH ?? 'arf', supervision: process.env.VSCR_TEST_TMUX ? 'tmux' : 'detached', plotBackend: 'standard',
             historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
         const script = `const {launchAgent} = require(${JSON.stringify(require.resolve('../../interactive/launcher'))});
             launchAgent(${JSON.stringify(config)}, ${JSON.stringify(agentBundle)})
@@ -799,10 +825,10 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             const arfPath = resolveExecutable(process.env.ARF_PATH ?? 'arf', root);
             const environment = nodeEnvironment(runtime);
             if (supervision === 'auto') {
-                // A real restricted PATH, including the shell utilities used by R but
-                // deliberately excluding tmux even on CI hosts where it is installed.
+                // arf discovers R via PATH on Linux. Keep R and its shell utilities
+                // available while excluding tmux even on CI hosts where it is installed.
                 const bin = path.join(temporary, 'without-tmux'); fs.mkdirSync(bin);
-                for (const name of ['uname', 'rm', 'mkdir', 'which', 'sed', 'sh', 'env']) {
+                for (const name of ['R', 'uname', 'rm', 'mkdir', 'which', 'sed', 'sh', 'env']) {
                     const executable = resolveExecutable(name, root); assert.ok(executable);
                     fs.symlinkSync(executable, path.join(bin, name));
                 }
@@ -811,7 +837,7 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             const id = randomUUID();
             const config: AgentConfig = { id, generation: randomUUID(), label: 'Editor termination test', directory: root,
                 storage: path.join(root, id), rPath, library, resources,
-                provider: process.env.VSCR_TEST_PROVIDER === 'arf' ? 'arf' : 'r', arfPath,
+                provider: 'arf', arfPath,
                 supervision, plotBackend: 'standard', historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 };
             const script = `const {launchAgent} = require(${JSON.stringify(require.resolve('../../interactive/launcher'))});
             process.env.VSCODE_INSPECTOR_OPTIONS = '{}';
@@ -906,16 +932,69 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
             connection = new AgentClient(adoptedManifest); await connection.connect();
             const observed: SessionEvent[] = [];
             connection.on('event', event => observed.push(event as SessionEvent)); await connection.subscribe(0);
+            const waitFor = (predicate: () => boolean): Promise<void> => until(predicate, 10000, observed);
             const execution = randomUUID();
             await connection.request('submit', { submission: { id: execution, code: 'kept_before_adoption' } });
-            await until(() => observed.some(event => event.executionId === execution && event.type === 'finished'));
+            await waitFor(() => observed.some(event => event.executionId === execution && event.type === 'finished'));
             assert.match(observed.filter(event => event.executionId === execution && event.type === 'stream').map(event => event.data.text).join(''), /73/);
             assert.strictEqual(connection.manifest.rPid, child.pid);
-            await arfRequest(endpoint, 'evaluate', { code: 'cat("terminal-origin")', visible: true });
-            await until(() => observed.some(event => event.type === 'accepted' && event.data.origin === 'terminal'));
-            const terminal = observed.find(event => event.type === 'accepted' && event.data.origin === 'terminal');
-            assert.ok(terminal);
-            assert.match(observed.filter(event => event.executionId === terminal.executionId && event.type === 'stream').map(event => event.data.text).join(''), /terminal-origin/);
+            assert.strictEqual(connection.manifest.capabilities.streaming, false);
+            // Output of notebook submissions is returned on completion. Arbitrary
+            // terminal output has no subscription in the current arf protocol.
+
+            const completed = async (code: string): Promise<string> => {
+                assert.ok(connection);
+                const id = randomUUID();
+                await connection.request('submit', { submission: { id, code } });
+                await waitFor(() => observed.some(event => event.executionId === id && event.type === 'finished'));
+                assert.strictEqual((await connection.request<ExecutionRecord>('execution', { id })).state, 'success');
+                return id;
+            };
+            const rich = await completed('cat("adopted stdout"); cat("adopted stderr", file=stderr()); head(iris); plot(1:3)');
+            const captured = observed.filter(event => event.executionId === rich);
+            assert.strictEqual(captured.filter(event => event.type === 'stream' && event.data.channel === 'stdout').map(event => event.data.text).join(''), 'adopted stdout');
+            assert.strictEqual(captured.filter(event => event.type === 'stream' && event.data.channel === 'stderr').map(event => event.data.text).join(''), 'adopted stderr');
+            assert.ok(captured.some(event => event.type === 'display' && event.data.kind === 'table'));
+            assert.ok(captured.some(event => event.type === 'display' && event.data.kind === 'image'));
+            const completion = captured.findIndex(event => event.type === 'finished');
+            assert.ok(completion >= 0 && captured.every((event, index) => event.type !== 'stream' || index < completion));
+            assert.ok(await connection.request('inspect', { method: 'workspace' }));
+
+            // A real arf terminal runs task callbacks after the adoption bootstrap
+            // and ordinary console commands; headless arf does not run them.
+            await completed('sess:::.workspace_update_task_callback(); later::run_now()');
+            assert.ok(await connection.request('inspect', { method: 'workspace' }));
+            await completed('stopifnot(kept_before_adoption == 73)');
+
+            // Pause startup after its started event so immediate interruption does
+            // not depend on the runner winning a short race before user evaluation.
+            await arfRequest(endpoint, 'evaluate', { visible: true, code: `local({
+ns <- asNamespace("sess"); original <- get(".interactive_plot_context", ns)
+replacement <- local({ inner <- original; first <- TRUE; function(...) {
+    if (first && !is.null(sess:::.sess_env$interactive_id)) {
+        first <<- FALSE; Sys.sleep(30)
+    }
+    inner(...)
+} })
+unlockBinding(".interactive_plot_context", ns)
+assign(".interactive_plot_context", replacement, ns)
+lockBinding(".interactive_plot_context", ns)
+})` });
+            const starting = randomUUID();
+            await connection.request('submit', { submission: { id: starting, code: 'stop("Startup interruption must prevent user evaluation")' } });
+            await waitFor(() => observed.some(event => event.executionId === starting && event.type === 'started'));
+            await connection.request('interrupt', { id: starting });
+            await waitFor(() => observed.some(event => event.executionId === starting && event.type === 'finished'));
+            assert.strictEqual((await connection.request<ExecutionRecord>('execution', { id: starting })).state, 'interrupted');
+            await completed('stopifnot(kept_before_adoption == 73)');
+
+            const running = randomUUID();
+            await connection.request('submit', { submission: { id: running, code: 'kept_during_adoption <- 81; cat("before interrupt"); sess::display("interrupt ready", "text/plain"); Sys.sleep(30)' } });
+            await waitFor(() => observed.some(event => event.executionId === running && event.type === 'display' && event.data.text === 'interrupt ready'));
+            await connection.request('interrupt', { id: running });
+            await waitFor(() => observed.some(event => event.executionId === running && event.type === 'finished'));
+            assert.strictEqual((await connection.request<ExecutionRecord>('execution', { id: running })).state, 'interrupted');
+            await completed('stopifnot(kept_during_adoption == 81, kept_before_adoption == 73)');
 
             connection.close(); await adopted.close();
             assert.strictEqual(child.exitCode, null);
@@ -934,7 +1013,7 @@ ggplot(diamonds, aes(x = carat, y = price, color = cut)) +
                 historyLimit: 50, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
             connection = new AgentClient(await adopted.start()); await connection.connect();
             await connection.request('stop');
-            await until(() => child.exitCode !== null || child.signalCode !== null);
+            await waitFor(() => child.exitCode !== null || child.signalCode !== null);
             assert.strictEqual((await connection.snapshot()).manifest.status, 'exited');
         } finally { connection?.close(); await adopted?.close(); child.kill(); }
     });

@@ -47,6 +47,28 @@ jobs:
         shell: Rscript {0}
       - name: Compile test files
         run: pnpm run clean && pnpm exec tsc
+      - name: Install arf binary for Interactive tests
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          ARF_ARCH="$(uname -m)"
+          if [ "${ARF_ARCH}" = "arm64" ]; then ARF_ARCH="aarch64"; fi
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            ARF_TARGET="${ARF_ARCH}-apple-darwin"
+          else
+            ARF_TARGET="${ARF_ARCH}-unknown-linux-gnu"
+          fi
+          ARF_ARCHIVE="arf-console-${ARF_TARGET}.tar.xz"
+          ARF_RELEASE="https://github.com/eitsupi/arf/releases/download/v0.5.3"
+          curl -fsSL "${ARF_RELEASE}/${ARF_ARCHIVE}" -o "${RUNNER_TEMP}/${ARF_ARCHIVE}"
+          curl -fsSL "${ARF_RELEASE}/sha256.sum" -o "${RUNNER_TEMP}/arf.sha256"
+          (cd "${RUNNER_TEMP}" && awk -v name="${ARF_ARCHIVE}" '$2 == name || $2 == "*" name' arf.sha256 > arf-selected.sha256 && test -s arf-selected.sha256 && shasum -a 256 -c arf-selected.sha256)
+          mkdir -p "${RUNNER_TEMP}/arf"
+          tar -xJf "${RUNNER_TEMP}/${ARF_ARCHIVE}" -C "${RUNNER_TEMP}/arf"
+          ARF_EXECUTABLE=$(find "${RUNNER_TEMP}/arf" -type f -name arf | head -n 1)
+          test -n "${ARF_EXECUTABLE}"
+          echo "$(dirname "${ARF_EXECUTABLE}")" >> "$GITHUB_PATH"
+          echo "ARF_PATH=${ARF_EXECUTABLE}" >> "$GITHUB_ENV"
       - name: Test persistent tmux sessions (Linux)
         if: runner.os == 'Linux'
         run: |

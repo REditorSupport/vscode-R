@@ -18,17 +18,43 @@ R Interactive keeps R execution independent of the VS Code extension host. Each 
 
 ## Current backend
 
-The shipped `sess` backend composes shared integration with one frontend adapter:
+The shipped `sess` backend uses arf with pure R sess helpers:
 
 | Public provider | Backend | Frontend | Ownership |
 | --- | --- | --- | --- |
-| `r` | `sess` | Plain R | Managed |
-| `arf` | `sess` | arf | Managed |
+| `arf` | `sess` | arf headless | Managed |
 | `arf-existing` | `sess` | arf | Adopted |
 
-[SessBackend](backends/sessBackend.ts) owns runtime readiness, metadata, and capabilities. [SessBridge](backends/sessBridge.ts) owns sess authentication, JSON-RPC correlation/timeouts, native console framing, and event decoding. [PlainR](backends/plainR.ts) and [Arf](backends/arf.ts) own launch/adoption and dispatch; [process.ts](backends/process.ts) handles signals, ownership, and confirmed process exit. Shared arf discovery/HTTP helpers remain in [arf.ts](arf.ts).
+[SessBackend](backends/sessBackend.ts) owns readiness, metadata, capabilities, and
+ordered output. [SessBridge](backends/sessBridge.ts) owns authenticated sess
+JSON-RPC, inspection, rich events, and requests to the editor. [Arf](backends/arf.ts)
+owns launch/adoption and dispatch; [process.ts](backends/process.ts) handles
+signals, ownership, and confirmed process exit. Shared discovery/HTTP helpers
+remain in [arf.ts](arf.ts). Plain R Interactive creation is unavailable; ordinary
+R terminals are unaffected, and existing agents can still be reconnected.
 
-Plain R dispatches execution through sess RPC. The arf adapter uses visible arf evaluation of the private `sess:::interactive_execute` entry point; arf's IPC send policy still applies. Both use the sess console bridge and inspection methods. A future native arf backend can implement the same contract without copying or inheriting sess transport behavior.
+Managed sessions dispatch the private `sess:::interactive_execute` entry point
+through arf `user_input` (send), respecting arf's visible-operation policy and
+avoiding its unbounded evaluation-output capture. Console output comes from the
+owned process pipes. Rich events use sess RPC and small authenticated stdout
+references; the backend waits for each event before emitting subsequent stdout.
+A stderr fence and the stdout completion reference ensure both output pipes are
+drained before completion. Protocol writes use processx descriptor wrappers, so
+R sinks, frontend styling, and forked workers cannot rewrite those frames. A
+server reply timeout after execution started does not cancel R; its events still
+establish completion. Other transport failures remain ambiguous without retries.
+
+Adopted sessions use visible arf evaluation and return captured console output on
+completion, while rich events use sess RPC. The backend waits for both completion
+and the captured response. There is no subscription for arbitrary terminal console
+output. Terminal task notifications and rich viewers still work. Disposal restores
+sess hooks without changing frontend console callbacks or killing adopted R.
+
+Both providers report notebook stdin/debugger support as unavailable: arf IPC
+`user_input` submits code, rather than answering nested R prompts. Use ordinary
+R terminals for `readline`, `scan`, and debugger interaction. arf IPC is
+experimental; the integration is tested against arf 0.5.3. Persistent supervision
+currently remains limited to Linux/macOS.
 
 [SessGraphics](backends/sessGraphics.ts) owns JGD negotiation, its font-metrics worker, plot attribution/coalescing, SVG production, and resize transport. It emits display payloads with stable identities. The agent stores assets and journals references. Static graphics remains available without JGD; another backend can supply SVG/PNG directly.
 

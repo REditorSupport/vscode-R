@@ -441,7 +441,7 @@ export class SessionAgent {
         }
         const bytes = Buffer.from(text);
         this.outputBytes.set(key, previous + bytes.length);
-        // Bound event sizes even for a single very large native console write.
+        // Bound event sizes even for a single very large console write.
         const decoder = new StringDecoder('utf8');
         for (let start = 0; start < Math.min(bytes.length, remaining); start += 32768) {
             this.event('stream', { text: decoder.write(bytes.subarray(start, Math.min(start + 32768, remaining))), channel }, executionId);

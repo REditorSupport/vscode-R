@@ -20,7 +20,7 @@ const examples = require('./' + exampleSuite + '.json');
 const run = promisify(execFile);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const output = process.env.VSCR_EXAMPLE_OUTPUT || fs.mkdtempSync(path.join(os.tmpdir(), `r-${exampleSuite}-examples-`));
-const provider = process.env.VSCR_TEST_PROVIDER === 'arf' ? 'arf' : 'r';
+const provider = 'arf';
 const backend = process.env.VSCR_TEST_STATIC ? 'standard' : 'jgd';
 
 (async () => {

@@ -40,7 +40,7 @@ Suggests:
     jgd,
     svglite,
     tinytest
-SystemRequirements: C compiler for source builds (native Interactive console requires Unix)
+NeedsCompilation: no
 Config/vscode-R/Interactive: 1
 Config/roxygen2/version: 8.1.0
 Config/build/bootstrap: TRUE
