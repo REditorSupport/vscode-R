@@ -11,7 +11,6 @@ import * as util from './util';
 import * as selection from './selection';
 import { getSelection } from './selection';
 import {
-    cleanupTerminalAssociation,
     cleanupTerminalBinding,
     createSessionDiscoveryFile,
     deferWorkspaceRefresh,
@@ -358,13 +357,6 @@ export function deleteTerminal(term: vscode.Terminal): void {
     if (isDeepStrictEqual(term, rTerm)) {
         rTerm = undefined;
         rTermResource = undefined;
-        if (config().get<boolean>('sessionWatcher')) {
-            void term.processId.then((v) => {
-                if (v) {
-                    cleanupTerminalAssociation(v.toString());
-                }
-            });
-        }
     }
 }
 

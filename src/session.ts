@@ -12,6 +12,7 @@ import { restartRTerminal } from './rTerminal';
 import { config, readContent, setContext, UriIcon } from './util';
 import * as rTerminal from './rTerminal';
 import { getProcessAncestors } from './processTree';
+import { TerminalSessionRegistry } from './terminalSessionRegistry';
 import { purgeAddinPickerItems, RSEditOperation, RSRange } from './rstudioapi';
 
 import { extensionContext, rWorkspace, globalRHelp, globalPlotManager, sessionStatusBarItem, enableSessionWatcher } from './extension';
@@ -104,10 +105,12 @@ export let workspaceFile: string;
 const SESS_PROTOCOL_VERSION = 2;
 
 const sessions = new Map<string, Session>();
-// Terminal object identity also works for pseudoterminals without a native PID.
-const boundTerminalSessions = new Map<vscode.Terminal, Session>();
-// Keep superseded PID associations retired even after an explicit binding ends.
-const retiredNativeTerminalRevisions = new WeakMap<vscode.Terminal, number>();
+// Only the newest handshake for a stable ID may commit after terminal discovery.
+const pendingSessionAttachments = new Map<string, IpcSocket>();
+const terminalRegistry = new TerminalSessionRegistry<Session, vscode.Terminal>(
+    target => sessions.get(target.sessionId) === target && isConnectedSession(target),
+    terminal => !terminal.exitStatus && window.terminals.includes(terminal),
+);
 const documentSessions = new Map<string, Session>();
 const sessionDocumentBound = new vscode.EventEmitter<Uri>();
 export const onDidBindSessionDocument = sessionDocumentBound.event;
@@ -131,7 +134,7 @@ export function unbindSessionDocument(uri: Uri): void { documentSessions.delete(
 
 export function unregisterSessionTransport(target: Session): void {
     for (const [uri, owner] of documentSessions) { if (owner === target) { documentSessions.delete(uri); } }
-    clearSessionTerminalAssociations(target);
+    terminalRegistry.releaseSession(target);
     if (sessions.get(target.sessionId) === target) { sessions.delete(target.sessionId); }
     if (activeSession === target) { void clearActiveSession(); }
 }
@@ -162,29 +165,15 @@ function assertExecutableSession(target: Session): void {
 export async function executeSessionCode(target: Session, code: string): Promise<void> {
     assertExecutableSession(target);
     if (target.execute) { await target.execute(code); return; }
-    const send = async (terminal: vscode.Terminal, associated: () => boolean): Promise<void> => {
-        await rTerminal.runTextInTerminal(terminal, code, true, () => {
+    const association = terminalRegistry.forSession(target);
+    if (association) {
+        await rTerminal.runTextInTerminal(association.terminal, code, true, () => {
             assertExecutableSession(target);
-            if (!isLiveTerminal(terminal) || !associated()) {
+            if (!terminalRegistry.isCurrent(association)) {
                 throw new Error('This R session no longer owns its attached terminal. Activate it with its terminal again.');
             }
         });
-    };
-    for (const [terminal, owner] of boundTerminalSessions) {
-        if (owner === target && isLiveTerminal(terminal)) {
-            await send(terminal, () => boundTerminalSessions.get(terminal) === target);
-            return;
-        }
-    }
-    for (const terminal of window.terminals) {
-        if (!isLiveTerminal(terminal) || boundTerminalSessions.has(terminal)) { continue; }
-        const terminalPid = await terminal.processId;
-        if (terminalPid && nativeSessionForTerminal(terminal, String(terminalPid)) === target
-            && !boundTerminalSessions.has(terminal) && isLiveTerminal(terminal)) {
-            await send(terminal, () => !boundTerminalSessions.has(terminal)
-                && nativeSessionForTerminal(terminal, String(terminalPid)) === target);
-            return;
-        }
+        return;
     }
     throw new Error('This R session has no attached terminal. Attach its terminal or open it in an Interactive window.');
 }
@@ -199,7 +188,7 @@ export function updateSessionWorkspace(target: Session, data: WorkspaceData): vo
 /** Move document routing to a new process; existing data viewers keep their old owner. */
 export function replaceSessionTransport(previous: Session, next: Session): void {
     for (const [uri, owner] of documentSessions) { if (owner === previous) { documentSessions.set(uri, next); } }
-    clearSessionTerminalAssociations(previous);
+    terminalRegistry.releaseSession(previous);
     if (sessions.get(previous.sessionId) === previous) { sessions.delete(previous.sessionId); }
     if (activeSession === previous) { sessionSelectionRevision++; activeSession = next; }
 }
@@ -212,73 +201,27 @@ export function registerSessionTransport(id: string, host: string, directory: st
     sessions.set(id, target);
     return target;
 }
-const terminalSessions = new Map<string, { session: Session; revision: number }>();
-let nativeTerminalRevision = 0;
-const terminalSessionAttached = new vscode.EventEmitter<string | vscode.Terminal>();
-
-function nativeSessionForTerminal(terminal: vscode.Terminal, terminalPid: string): Session | undefined {
-    const association = terminalSessions.get(terminalPid);
-    return association && association.revision > (retiredNativeTerminalRevisions.get(terminal) ?? -1)
-        ? association.session : undefined;
-}
-
-function connectedSessionForTerminal(terminal: vscode.Terminal, terminalPid?: string): Session | undefined {
-    if (!isLiveTerminal(terminal)) { return undefined; }
-    const target = boundTerminalSessions.get(terminal)
-        ?? (terminalPid ? nativeSessionForTerminal(terminal, terminalPid) : undefined);
-    return target && sessions.get(target.sessionId) === target && isConnectedSession(target) ? target : undefined;
-}
-
-/** Wait for this terminal's connected owner, not just process creation. */
+/** Wait for the same connected owner used by execution and terminal selection. */
 export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000): Promise<boolean> {
     return new Promise(resolve => {
-        let terminalPid: string | undefined;
         let settled = false;
         const finish = (ready: boolean) => {
-            if (settled) {
-                return;
-            }
+            if (settled) { return; }
             settled = true;
             clearTimeout(timer);
             attached.dispose();
             closed.dispose();
             resolve(ready);
         };
-        const attached = terminalSessionAttached.event(target => {
-            if ((target === terminal || target === terminalPid) && connectedSessionForTerminal(terminal, terminalPid)) {
-                finish(true);
-            }
-        });
-        const closed = window.onDidCloseTerminal(closedTerminal => {
-            if (closedTerminal === terminal) {
-                finish(false);
-            }
-        });
-        // This bounds a failed integration; it never authorizes sending input.
+        const check = () => {
+            if (terminalRegistry.isClosed(terminal) || terminal.exitStatus) { finish(false); }
+            else if (terminalRegistry.ownerOf(terminal)) { finish(true); }
+        };
+        const attached = terminalRegistry.onDidChange(changed => { if (changed === terminal) { check(); } });
+        const closed = window.onDidCloseTerminal(changed => { if (changed === terminal) { finish(false); } });
+        // A timeout rejects startup; it never authorizes sending input.
         const timer = setTimeout(() => finish(false), timeout);
-        if (isTerminalClosed(terminal) || terminal.exitStatus) {
-            finish(false);
-            return;
-        }
-        if (connectedSessionForTerminal(terminal)) {
-            finish(true);
-            return;
-        }
-        void Promise.resolve(terminal.processId).then(pid => {
-            if (settled) {
-                return;
-            }
-            if (isTerminalClosed(terminal) || terminal.exitStatus) {
-                finish(false);
-                return;
-            }
-            // Pseudoterminals may still receive an explicit binding without a PID.
-            terminalPid = pid === undefined ? undefined : String(pid);
-            // Also covers a handshake received before processId resolved.
-            if (connectedSessionForTerminal(terminal, terminalPid)) {
-                finish(true);
-            }
-        }, () => finish(false));
+        check();
     });
 }
 export let activeSession: Session | undefined;
@@ -457,7 +400,6 @@ const pendingRequests = new Map<number, {
     socket: IpcSocket;
 }>();
 
-const closedTerminals = new WeakSet<vscode.Terminal>();
 const terminalDiscoveryOperations = new WeakMap<vscode.Terminal, Promise<void>>();
 
 function queueTerminalDiscoveryOperation(terminal: vscode.Terminal, operation: () => Promise<void>): Promise<void> {
@@ -507,34 +449,16 @@ function terminalDiscoveryPath(terminal: vscode.Terminal): string | undefined {
 }
 
 export function isTerminalClosed(terminal: vscode.Terminal): boolean {
-    return closedTerminals.has(terminal);
+    return terminalRegistry.isClosed(terminal);
 }
 
 function isLiveTerminal(terminal: vscode.Terminal): boolean {
-    return !isTerminalClosed(terminal) && !terminal.exitStatus && window.terminals.includes(terminal);
+    return terminalRegistry.isLive(terminal);
 }
 
 /** Called for every terminal close, including extension-owned pseudoterminals. */
 export function cleanupTerminalBinding(terminal: vscode.Terminal): void {
-    closedTerminals.add(terminal);
-    boundTerminalSessions.delete(terminal);
-}
-
-function clearSessionTerminalAssociations(target: Session): void {
-    for (const [terminal, owner] of boundTerminalSessions) {
-        if (owner === target) { boundTerminalSessions.delete(terminal); }
-    }
-    for (const [terminalPid, association] of terminalSessions) {
-        if (association.session === target) { terminalSessions.delete(terminalPid); }
-    }
-}
-
-async function sessionForTerminal(terminal: vscode.Terminal | undefined): Promise<Session | undefined> {
-    if (!terminal || !isLiveTerminal(terminal)) { return undefined; }
-    const bound = boundTerminalSessions.get(terminal);
-    const terminalPid = bound ? undefined : await terminal.processId;
-    // A close, rebind or disconnect may have happened while processId resolved.
-    return connectedSessionForTerminal(terminal, terminalPid === undefined ? undefined : String(terminalPid));
+    terminalRegistry.closeTerminal(terminal);
 }
 
 /**
@@ -543,7 +467,7 @@ async function sessionForTerminal(terminal: vscode.Terminal | undefined): Promis
  * VS Code also closes terminals while preserving them for a window reload.
  */
 export async function removeTerminalDiscoveryFile(terminal: vscode.Terminal): Promise<void> {
-    closedTerminals.add(terminal);
+    terminalRegistry.closeTerminal(terminal);
 
     await queueTerminalDiscoveryOperation(terminal, async () => {
         let discoveryPath = terminalDiscoveryPath(terminal);
@@ -804,6 +728,9 @@ function startGlobalSessionServer(): Promise<string> {
                 readBuffers = [];
                 readBufferLength = 0;
                 activeConnections.delete(socket);
+                for (const [id, pending] of pendingSessionAttachments) {
+                    if (pending === socket) { pendingSessionAttachments.delete(id); }
+                }
                 for (const [id, pending] of pendingRequests.entries()) {
                     if (pending.socket === socket) {
                         pendingRequests.delete(id);
@@ -958,6 +885,7 @@ export async function shutdownSessionWatcher(): Promise<void> {
         socket.destroy();
     }
     activeConnections.clear();
+    pendingSessionAttachments.clear();
     pipeClient = undefined;
 
     if (globalSessionServer) {
@@ -985,74 +913,68 @@ export async function shutdownSessionWatcher(): Promise<void> {
 }
 
 export async function activateRSession(): Promise<void> {
-    if (config().get<boolean>('sessionWatcher')) {
-        console.info('[activateRSession]');
-        const terminal = window.activeTerminal;
-        const selectionRevision = ++sessionSelectionRevision;
-        const session = await sessionForTerminal(terminal);
-        if (selectionRevision !== sessionSelectionRevision
-            || (session && (!terminal || !isLiveTerminal(terminal)
-                || sessions.get(session.sessionId) !== session || !isConnectedSession(session)))) {
-            return;
-        }
-        if (terminal && session) {
-            await activateSession(session);
-            terminal.show();
-            return;
-        }
-        const pidArg = await terminal?.processId;
+    if (!config().get<boolean>('sessionWatcher')) {
+        void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
+        return;
+    }
+    const terminal = window.activeTerminal;
+    const selectionRevision = ++sessionSelectionRevision;
+    const isCurrent = () => selectionRevision === sessionSelectionRevision && terminal === window.activeTerminal
+        && (!terminal || (!isTerminalClosed(terminal) && !terminal.exitStatus));
+    const focusOwner = (): Promise<void> | undefined => {
+        const owner = terminalRegistry.ownerOf(terminal);
+        if (!terminal || !owner) { return undefined; }
+        const activating = activateSession(owner);
+        const activationRevision = sessionSelectionRevision;
+        return activating.then(() => {
+            if (activationRevision === sessionSelectionRevision && terminalRegistry.ownerOf(terminal) === owner) {
+                terminal.show();
+            }
+        });
+    };
+    const focused = focusOwner();
+    if (focused) { await focused; return; }
 
-        // Restore the selected managed terminal before focusing another session.
-        const discoveryPath = terminal && (terminalDiscoveryPath(terminal) ||
-            (pidArg ? await findDiscoveryFileForTerminal(pidArg) : undefined));
-        if (terminal && discoveryPath && !isTerminalClosed(terminal)) {
-            const command = await getAttachSessionCommand();
+    let discoveryPath = terminal && terminalDiscoveryPath(terminal);
+    if (terminal && !discoveryPath) {
+        const terminalPid = await terminal.processId;
+        if (!isCurrent()) { return; }
+        const focused = focusOwner();
+        if (focused) { await focused; return; }
+        discoveryPath = terminalPid ? await findDiscoveryFileForTerminal(terminalPid) : undefined;
+        if (!isCurrent()) { return; }
+    }
+    const sendAttachCommand = async (): Promise<void> => {
+        const command = await getAttachSessionCommand();
+        if (!isCurrent()) { return; }
+        const focused = focusOwner();
+        if (focused) { await focused; return; }
+        if (terminal && isLiveTerminal(terminal)) {
             terminal.sendText(command, true);
             terminal.show();
-            return;
         }
+    };
+    if (!isCurrent()) { return; }
+    const recovered = focusOwner();
+    if (recovered) { await recovered; return; }
+    if (terminal && discoveryPath) { await sendAttachCommand(); return; }
 
-        if (activeSession) {
-            console.info('[activateRSession] Focusing terminal of the active session');
-            for (const term of window.terminals) {
-                const termPid = await term.processId;
-                if (termPid && !boundTerminalSessions.has(term)
-                    && nativeSessionForTerminal(term, String(termPid)) === activeSession) {
-                    term.show();
-                    return;
-                }
-            }
-        }
+    // Focus the same association that execution and readiness recognize.
+    const active = activeSession && terminalRegistry.forSession(activeSession);
+    if (active) { active.terminal.show(); return; }
 
-        if (config().get<boolean>('alwaysUseActiveTerminal')) {
-            if (terminal) {
-                const command = await getAttachSessionCommand();
-                terminal.sendText(command, true);
-                terminal.show();
-                return;
-            }
-
-            const action = await window.showInformationMessage(
-                'No active terminal is available. You can copy the attach command or create a managed R terminal.',
-                'Copy Attach Command',
-                'Create R Terminal'
-            );
-
-            if (action === 'Copy Attach Command') {
-                await connectToSession();
-                return;
-            }
-            if (action === 'Create R Terminal') {
-                await rTerminal.createRTerm();
-            }
-            return;
-        }
-
-        console.info('[activateRSession] Creating new R terminal');
-        await rTerminal.createRTerm();
-    } else {
-        void window.showInformationMessage('This command requires that r.sessionWatcher be enabled.');
+    if (config().get<boolean>('alwaysUseActiveTerminal')) {
+        if (terminal) { await sendAttachCommand(); return; }
+        const action = await window.showInformationMessage(
+            'No active terminal is available. You can copy the attach command or create a managed R terminal.',
+            'Copy Attach Command', 'Create R Terminal'
+        );
+        if (!isCurrent()) { return; }
+        if (action === 'Copy Attach Command') { await connectToSession(); }
+        else if (action === 'Create R Terminal') { await rTerminal.createRTerm(); }
+        return;
     }
+    await rTerminal.createRTerm();
 }
 
 export function removeDirectory(dir: string): void {
@@ -2171,17 +2093,7 @@ export async function activateSessionById(sessionId: string, options?: RSessionA
         return false;
     }
     const terminal = options?.terminal;
-    if (terminal) {
-        if (!isLiveTerminal(terminal)) { return false; }
-        for (const [previousTerminal, owner] of boundTerminalSessions) {
-            if (owner === target) { boundTerminalSessions.delete(previousTerminal); }
-        }
-        boundTerminalSessions.set(terminal, target);
-        // Do not await processId: pseudoterminals may never resolve it. A fresh
-        // native attach is required before PID ownership can be used again.
-        retiredNativeTerminalRevisions.set(terminal, nativeTerminalRevision);
-        terminalSessionAttached.fire(terminal);
-    }
+    if (terminal && !terminalRegistry.bindExplicit(terminal, target)) { return false; }
     await activateSession(target);
     return true;
 }
@@ -2197,18 +2109,23 @@ function isLocalHost(host: string): boolean {
     return host.length > 0 && host.toLocaleLowerCase() === os.hostname().toLocaleLowerCase();
 }
 
-async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
-    const candidates = new Map<number, vscode.Terminal>();
+interface NativeTerminalCandidate {
+    terminal: vscode.Terminal;
+    pid: string;
+    isCurrent: () => boolean;
+}
+
+async function findLocalTerminal(rPid: string): Promise<NativeTerminalCandidate | undefined> {
+    const candidates = new Map<number, NativeTerminalCandidate>();
     for (const terminal of window.terminals) {
+        const isCurrent = terminalRegistry.snapshot(terminal);
         const terminalPid = await terminal.processId;
-        if (terminalPid === undefined || isTerminalClosed(terminal) || terminal.exitStatus) { continue; }
-        if (String(terminalPid) === rPid) {
-            return String(terminalPid);
-        }
-        candidates.set(terminalPid, terminal);
+        if (terminalPid === undefined || !isCurrent()) { continue; }
+        const candidate = { terminal, pid: String(terminalPid), isCurrent };
+        if (candidate.pid === rPid) { return candidate; }
+        candidates.set(terminalPid, candidate);
     }
     if (!candidates.size) { return undefined; }
-    // R.exe and other launchers may keep running while R attaches from a child.
     // Prefer the nearest terminal ancestor; never associate a sibling process.
     const ancestors = await getProcessAncestors(Number(rPid));
     const attachedRPids = new Set([...sessions.values()]
@@ -2217,24 +2134,17 @@ async function findLocalTerminalPid(rPid: string): Promise<string | undefined> {
     for (const pid of ancestors) {
         // A connected R owns its descendants; they must not take over its console.
         if (attachedRPids.has(String(pid))) { return undefined; }
-        const terminal = candidates.get(pid);
-        if (terminal && !isTerminalClosed(terminal) && !terminal.exitStatus && window.terminals.includes(terminal)) {
-            return String(pid);
-        }
+        const candidate = candidates.get(pid);
+        if (candidate?.isCurrent()) { return candidate; }
     }
     return undefined;
 }
 
 export async function switchSessionByTerminal(terminal: vscode.Terminal | undefined): Promise<void> {
-    const selectionRevision = ++sessionSelectionRevision;
-    const session = await sessionForTerminal(terminal);
-    if (selectionRevision !== sessionSelectionRevision) { return; }
-    if (session && terminal && isLiveTerminal(terminal)
-        && sessions.get(session.sessionId) === session && isConnectedSession(session)) {
-        await activateSession(session);
-    } else {
-        resetStatusBar();
-    }
+    sessionSelectionRevision++;
+    const owner = terminalRegistry.ownerOf(terminal);
+    if (owner) { await activateSession(owner); }
+    else { resetStatusBar(); }
 }
 
 function sendToSocket(socket: IpcSocket, data: Record<string, unknown>): void {
@@ -2284,11 +2194,10 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             }
 
             const rPid = typeof params.pid === 'string' || typeof params.pid === 'number' ? String(params.pid) : '';
-            const terminalPid = rPid && isLocalHost(host)
-                ? await findLocalTerminalPid(rPid)
-                : undefined;
+            pendingSessionAttachments.set(sessionId, socket);
+            const selectionRevision = sessionSelectionRevision;
             const selectedTerminal = window.activeTerminal;
-            const selectedTerminalPid = terminalPid ? await selectedTerminal?.processId : undefined;
+            const candidate = rPid && isLocalHost(host) ? await findLocalTerminal(rPid) : undefined;
             if (socket.destroyed) {
                 return;
             }
@@ -2302,9 +2211,15 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 }
                 return;
             }
+            if (pendingSessionAttachments.get(sessionId) !== socket) {
+                socket.destroy();
+                return;
+            }
+            pendingSessionAttachments.delete(sessionId);
+            const native = candidate?.isCurrent() ? candidate : undefined;
             const previous = sessions.get(sessionId);
             if (previous) {
-                clearSessionTerminalAssociations(previous);
+                terminalRegistry.releaseSession(previous);
             }
             const session = new Session(
                 sessionId,
@@ -2314,10 +2229,6 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
                 socket,
             );
             socket._sessionId = sessionId;
-            if (terminalPid) {
-                socket._terminalPid = Number(terminalPid);
-                terminalSessions.set(terminalPid, { session, revision: ++nativeTerminalRevision });
-            }
             sessions.set(sessionId, session);
             if (previous && previous.socket !== socket) {
                 previous.socket.destroy();
@@ -2328,20 +2239,15 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             session.sessionDir = params.tempdir;
             session.workingDir = params.wd;
 
-            if (terminalPid) {
-                terminalSessionAttached.fire(terminalPid);
-            }
+            const terminalPid = native && terminalRegistry.attachNative(native.terminal, session) ? native.pid : undefined;
+            if (terminalPid) { socket._terminalPid = Number(terminalPid); }
 
-            if (terminalPid) {
-                terminalSessionAttached.fire(terminalPid);
+            // Attaching a process must not undo a newer user/API selection.
+            if (selectionRevision === sessionSelectionRevision && selectedTerminal === window.activeTerminal) {
+                const selected = terminalRegistry.associationFor(selectedTerminal);
+                const preferred = terminalPid || selected?.kind === 'explicit' ? selected?.session : undefined;
+                await activateSession(preferred ?? session);
             }
-
-            // Reload does not trigger a terminal-selection event after every attach.
-            // Prefer its connected session when a terminal reconnects in the background.
-            const selectedSession = terminalPid && selectedTerminal && selectedTerminal === window.activeTerminal && selectedTerminalPid
-                ? nativeSessionForTerminal(selectedTerminal, String(selectedTerminalPid))
-                : undefined;
-            await activateSession(selectedSession && !selectedSession.socket.destroyed ? selectedSession : session);
 
             console.info(`[startSessionWatcher] attach session ${sessionId} (${host || 'unknown'}:${rPid || 'unknown'}), terminal PID: ${terminalPid ?? 'unassociated'}`);
             purgeAddinPickerItems();
@@ -2539,17 +2445,13 @@ async function handleRequest(message: Record<string, unknown>, socket?: IpcSocke
     }
 }
 
-export function cleanupTerminalAssociation(terminalPid: string): void {
-    terminalSessions.delete(terminalPid);
-}
-
 export async function cleanupSession(sessionId: string, closingSocket?: IpcSocket): Promise<void> {
     const session = sessions.get(sessionId);
     if (!session || (closingSocket && session.socket !== closingSocket)) {
         return;
     }
     sessions.delete(sessionId);
-    clearSessionTerminalAssociations(session);
+    terminalRegistry.releaseSession(session);
     if (pipeClient === session.socket) {
         pipeClient = undefined;
     }
