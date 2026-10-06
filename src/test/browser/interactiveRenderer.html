@@ -75,9 +75,16 @@ try {
  listHost.querySelector('.list > div > .load-more').click(); reply(messages.at(-1),{result:{children:[],next_start:null}});
  control(listHost,'Open list viewer').click();
  check(messages.at(-1).action==='list' && messages.at(-1).path.length===0,'Expanded viewer must open the current path');
+ control(listHost,'View $ nested').click();
+ reply(messages.at(-1),{result:{navigation:{title:'List$nested',path:[1],breadcrumbs:[{label:'List',path:[]},{label:'nested',path:[1]}]}}});
+ control(listHost,'Reset list view').click(); const resetRequest=messages.at(-1);
+ check(resetRequest.action==='listNavigate' && resetRequest.path.length===0,'Reset must navigate directly to the initial list');
+ reply(resetRequest,{result:{navigation:listData.navigation}});
+ check(listHost.querySelectorAll('.item').length===2 && !listHost.querySelector('details').open && control(listHost,'Back').disabled,'Reset must restore saved rows, collapse the tree and clear history');
  control(listHost,'Show R printed output').click();
  check(listHost.querySelector('[data-list]').hidden && listHost.querySelector('[data-printed]').textContent===listData.printedText,'List Text must preserve exact R printing');
  render('list-replaced',{...listData,connected:false},listHost);
+ check(control(listHost,'Reset list view').disabled,'Offline reset must not query the session');
  check(!listHost.querySelector('[data-printed]').hidden && control(listHost,'Open list viewer').disabled,'List choices must survive replacement and offline controls must disable');
  control(listHost,'Show list preview').click();
  check(!listHost.querySelector('[data-list]').hidden && listHost.querySelectorAll('.item').length===2,'Saved lists must allow local preview switching');

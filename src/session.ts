@@ -1954,6 +1954,7 @@ export function getListHtml(
     <div class="navigation">
         <button id="back" class="back" title="Back" aria-label="Back" disabled><span class="codicon codicon-arrow-left" aria-hidden="true"></span>Back</button>
         <nav id="breadcrumbs" class="breadcrumbs" aria-label="Object path"></nav>
+        <button id="reset" class="reset" title="Reset to initial view" aria-label="Reset to initial view"><span class="codicon codicon-discard" aria-hidden="true"></span>Reset</button>
     </div>
     <div id="navigation-status" class="navigation-status" role="status"></div>
     <div id="list" class="list"></div>

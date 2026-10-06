@@ -38,10 +38,11 @@ function createViewer(initial: ListViewNavigation = {
 }) {
     const root = new Element('div');
     const back = new Element('button');
+    const reset = new Element('button');
     const breadcrumbs = new Element('nav');
     const status = new Element('div');
     const bodyClasses = new Set<string>();
-    const elements: Record<string, Element> = { list: root, back, breadcrumbs, 'navigation-status': status };
+    const elements: Record<string, Element> = { list: root, back, reset, breadcrumbs, 'navigation-status': status };
     const messages: Request[] = [];
     let receive: (event: unknown) => void = () => undefined;
     vm.runInNewContext(getListViewerScript(7, initial), {
@@ -66,11 +67,65 @@ function createViewer(initial: ListViewNavigation = {
     });
     return {
         get root() { return root.children[0]; },
-        viewport: root, back, breadcrumbs, status, messages, reply, bodyClasses,
+        viewport: root, back, reset, breadcrumbs, status, messages, reply, bodyClasses,
     };
 }
 
 suite('List viewer', () => {
+    test('Reset restores the initial page, collapsed rows and scroll, and discards navigation and pending pages', () => {
+        const viewer = createViewer();
+        const initial = { title: 'x', path: [], breadcrumbs: [{ label: 'x', path: [] }] };
+        viewer.reply(viewer.messages[0], { children: [{ label: '$ a', index: 1, viewable: true, has_children: true }] });
+        const original = viewer.root;
+        const entry = original.children[0].children[0];
+        entry.open = true; entry.fire('toggle');
+        const expansion = viewer.messages[1];
+        viewer.viewport.scrollTop = 120;
+        const button = entry.children[0].children.at(-1); assert.ok(button);
+        button.fire('click', { preventDefault: () => undefined, stopPropagation: () => undefined });
+        viewer.reply(viewer.messages[2], { message: 'listview/navigation', navigation: {
+            title: 'x$a', path: [1], breadcrumbs: [{ label: 'x', path: [] }, { label: 'a', path: [1] }],
+        } });
+        const nestedPage = viewer.messages[3];
+        viewer.reset.fire('click');
+        assert.strictEqual(viewer.messages[4].message, 'listview/navigate');
+        assert.deepStrictEqual(viewer.messages[4].path, []);
+        viewer.reply(viewer.messages[4], { message: 'listview/navigation', navigation: initial });
+        assert.notStrictEqual(viewer.root, original);
+        assert.strictEqual(viewer.viewport.scrollTop, 0);
+        assert.strictEqual(viewer.back.disabled, true);
+        viewer.reply(expansion, { children: [{ label: 'stale' }] });
+        viewer.reply(nestedPage, { children: [{ label: 'stale' }] });
+        viewer.reply(viewer.messages[5], { children: [{ label: '$ a', index: 1, has_children: true }] });
+        assert.strictEqual(viewer.root.children[0].children[0].open, false);
+        assert.strictEqual(viewer.root.children[0].children[0].children[1].childElementCount, 0);
+        viewer.back.fire('click');
+        assert.strictEqual(viewer.messages.length, 6);
+    });
+
+    test('Reset returns to a deep initial path and a failed reset preserves the current page', () => {
+        const initial = { title: 'x$a', path: [1], breadcrumbs: [{ label: 'x', path: [] }, { label: 'a', path: [1] }] };
+        const viewer = createViewer(initial);
+        viewer.reply(viewer.messages[0], { children: [] });
+        viewer.breadcrumbs.children[0].fire('click');
+        viewer.reply(viewer.messages[1], { message: 'listview/navigation', navigation: {
+            title: 'x', path: [], breadcrumbs: [{ label: 'x', path: [] }],
+        } });
+        viewer.reply(viewer.messages[2], { children: [] });
+        const current = viewer.root;
+        viewer.reset.fire('click');
+        assert.deepStrictEqual(viewer.messages[3].path, [1]);
+        viewer.reply(viewer.messages[3], { message: 'listview/navigation', error: 'Unable to reset' });
+        assert.strictEqual(viewer.root, current);
+        assert.strictEqual(viewer.back.disabled, false);
+        assert.strictEqual(viewer.status.textContent, 'Unable to reset');
+        viewer.reset.fire('click');
+        viewer.reply(viewer.messages[4], { message: 'listview/navigation', navigation: initial });
+        assert.deepStrictEqual(viewer.messages[5].path, [1]);
+        assert.strictEqual(viewer.back.disabled, true);
+        assert.strictEqual(viewer.status.textContent, '');
+    });
+
     test('Back restores expanded rows, loaded pages and scroll without fetching them again', () => {
         const viewer = createViewer();
         const { messages, reply, back, viewport } = viewer;

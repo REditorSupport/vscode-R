@@ -25,8 +25,9 @@ export interface ListViewer {
 
 /** Shared tree, paging and navigation for the panel and Interactive cells. */
 export function createListViewer(
-    { root, list, back, breadcrumbs, navigationStatus }: {
-        root: HTMLElement; list: HTMLElement; back: HTMLButtonElement; breadcrumbs: HTMLElement; navigationStatus: HTMLElement;
+    { root, list, back, reset, breadcrumbs, navigationStatus }: {
+        root: HTMLElement; list: HTMLElement; back: HTMLButtonElement; reset: HTMLButtonElement;
+        breadcrumbs: HTMLElement; navigationStatus: HTMLElement;
     },
     initial: ListViewNavigation,
     request: (message: { message: string; path: number[]; index?: number; start?: number }) => number,
@@ -36,7 +37,7 @@ export function createListViewer(
     const pending = new Map<number, (message: ListViewReply) => void>();
     const pages = new Map<string, { element: HTMLElement; scrollTop: number; loader: { loadOnce(): void } }>();
     const history: ListViewNavigation[] = [];
-    let current: ListViewNavigation;
+    let current: ListViewNavigation | undefined;
     let navigating = false;
     let disposed = false;
     function showNavigation(navigation: ListViewNavigation, goingBack = false): void {
@@ -57,6 +58,7 @@ export function createListViewer(
         list.replaceChildren(page.element);
         list.scrollTop = page.scrollTop;
         back.disabled = !live || history.length === 0;
+        reset.disabled = !live;
         breadcrumbs.replaceChildren();
         navigation.breadcrumbs.forEach((crumb, index) => {
             if (index) {
@@ -80,7 +82,7 @@ export function createListViewer(
         page.loader.loadOnce();
     }
 
-    function navigate(message: string, params: { path: number[]; index?: number }, goingBack = false): void {
+    function navigate(message: string, params: { path: number[]; index?: number }, goingBack = false, resetting = false): void {
         if (disposed || !live || navigating) { return; }
         navigating = true;
         navigationStatus.textContent = '';
@@ -90,6 +92,9 @@ export function createListViewer(
             if (response.error) {
                 navigationStatus.textContent = response.error;
             } else if (response.navigation) {
+                if (resetting) {
+                    pending.clear(); pages.clear(); history.length = 0; current = undefined;
+                }
                 showNavigation(response.navigation, goingBack);
             }
         });
@@ -98,6 +103,7 @@ export function createListViewer(
     back.addEventListener('click', () => {
         if (history.length) { navigate('listview/navigate', { path: history[history.length - 1].path }, true); }
     });
+    reset.addEventListener('click', () => navigate('listview/navigate', { path: initial.path }, false, true));
 
     function createPage(container: HTMLElement, path: number[], vector = false, savedPage?: ListViewPage): { loadOnce(): void } {
         const rows = document.createElement('div');
@@ -197,7 +203,7 @@ export function createListViewer(
 
     showNavigation(initial);
     return {
-        navigation: () => current,
+        navigation: () => current!,
         reply(message) {
             const receive = pending.get(message.requestId);
             if (receive) { pending.delete(message.requestId); receive(message); }
@@ -215,7 +221,7 @@ export function getListViewerScript(documentGeneration: number, initial: ListVie
     const documentGeneration = ${documentGeneration};
     let nextRequestId = 0;
     const viewer = (${createListViewer.toString()})({
-        root: document.body, list: document.getElementById('list'), back: document.getElementById('back'),
+        root: document.body, list: document.getElementById('list'), back: document.getElementById('back'), reset: document.getElementById('reset'),
         breadcrumbs: document.getElementById('breadcrumbs'), navigationStatus: document.getElementById('navigation-status'),
     }, ${JSON.stringify(initial).replace(/</g, '\\u003c')}, message => {
         const requestId = ++nextRequestId;
@@ -242,6 +248,7 @@ export const listViewerStyle = `
     }
     .r-list-viewer .back { gap: 4px; padding: 4px 6px; flex-shrink: 0; border-radius: 3px; }
     .r-list-viewer .back:disabled { opacity: 0.4; cursor: default; background: transparent; }
+    .r-list-viewer .reset { gap: 4px; padding: 4px 6px; flex-shrink: 0; border-radius: 3px; }
     .r-list-viewer .codicon { flex-shrink: 0; }
     .r-list-viewer .breadcrumbs {
         display: flex;

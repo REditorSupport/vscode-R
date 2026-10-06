@@ -124,9 +124,11 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                 const navigationStatus = document.createElement('div'); navigationStatus.className = 'navigation-status';
                 navigationStatus.setAttribute('role', 'status');
                 const list = document.createElement('div'); list.className = 'list';
+                const reset = button('Reset list view', 'reset', () => undefined, 'Reset');
+                reset.title = 'Return to the initial list, collapse expanded rows, and clear navigation history';
                 tree.append(navigation, navigationStatus, list); element.append(tree);
                 const initial = data.navigation as ListViewNavigation ?? { title: 'List', path: [], breadcrumbs: [{ label: 'List', path: [] }] };
-                state.list = createListViewer({ root: tree, list, back, breadcrumbs, navigationStatus }, initial, message => {
+                state.list = createListViewer({ root: tree, list, back, reset, breadcrumbs, navigationStatus }, initial, message => {
                     const id = ++requestId;
                     const action = message.message === 'listview/page' ? 'listPage' : message.message === 'listview/navigate' ? 'listNavigate' : 'listItem';
                     send(item, data, action, { path: message.path, index: message.index, start: message.start, requestId: id }); return id;
@@ -149,7 +151,7 @@ export function activate(context: RendererContext): { renderOutputItem(item: Out
                     text = !text; remember(choiceKey, { listView: text ? 'text' : 'list' });
                     send(item, data, 'listView', { mode: text ? 'text' : 'list' }); showView();
                 }, 'Text');
-                toolbar.append(open, toggle); status.textContent = connectionHint(data); showView();
+                toolbar.append(open, toggle, reset); status.textContent = connectionHint(data); showView();
                 state.dispose = () => { state.list?.dispose(); open.onclick = null; toggle.onclick = null; };
             } else if (data.kind === 'plot') {
                 const pages = (Array.isArray(data.pages) && data.pages.length ? data.pages : [data]) as Record<string, unknown>[];
