@@ -125,7 +125,7 @@ already covered by a successful daily run, runs the existing build, lint and
 all-OS tests, and publishes only the verified pre-release VSIX. The GitHub
 `latest` development VSIX continues to update on every verified push.
 
-`scripts/extension-version.js prerelease YYYY-MM-DD` rewrites `package.json`
+`.github/scripts/extension-version.js prerelease YYYY-MM-DD` rewrites `package.json`
 only in the packaging checkout. It uses the next odd minor after an even minor,
 or keeps an explicitly selected odd minor, with a UTC `YYYYMMDD` patch:
 `3.0.1` → `3.1.20261006`; after releasing `3.2.0`, builds use `3.3.YYYYMMDD`.
@@ -138,5 +138,5 @@ Retries retain the original run's UTC date and tolerate an already-published
 version. A retry older than a successful daily run is skipped. No Git tags or
 version-bump commits are created by daily publishing.
 
-Run `node --test scripts/extension-version.test.js` to test version generation
+Run `node --test .github/scripts/extension-version.test.js` to test version generation
 and stable-release validation without installing dependencies.

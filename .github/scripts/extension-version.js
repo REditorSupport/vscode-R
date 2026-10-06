@@ -47,12 +47,12 @@ function rewriteVersion(manifestPath, date) {
 module.exports = { parseVersion, prereleaseVersion, checkStableVersion, rewriteVersion };
 if (require.main === module) {
     const [command, value] = process.argv.slice(2);
-    const manifestPath = path.join(__dirname, '..', 'package.json');
+    const manifestPath = path.join(__dirname, '..', '..', 'package.json');
     if (command === 'prerelease') {
         console.log(rewriteVersion(manifestPath, value));
     } else if (command === 'check-stable') {
         checkStableVersion(JSON.parse(fs.readFileSync(manifestPath, 'utf8')).version, value);
     } else {
-        throw new Error('Usage: node scripts/extension-version.js <prerelease YYYY-MM-DD|check-stable vX.Y.Z>');
+        throw new Error('Usage: node .github/scripts/extension-version.js <prerelease YYYY-MM-DD|check-stable vX.Y.Z>');
     }
 }

@@ -110,12 +110,12 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - name: Test extension versioning
-        run: node --test scripts/extension-version.test.js
+        run: node --test .github/scripts/extension-version.test.js
       - name: Set Marketplace pre-release version
         if: inputs.prerelease-date
         env:
           PRERELEASE_DATE: ${{ inputs.prerelease-date }}
-        run: node scripts/extension-version.js prerelease "$PRERELEASE_DATE"
+        run: node .github/scripts/extension-version.js prerelease "$PRERELEASE_DATE"
       - name: Package Marketplace pre-release
         if: inputs.prerelease-date
         run: pnpm exec vsce package --pre-release --no-dependencies -o $VSIX_FILE

@@ -24,7 +24,7 @@ jobs:
       - name: Check stable version and release tag
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: node scripts/extension-version.js check-stable "$RELEASE_TAG"
+        run: node .github/scripts/extension-version.js check-stable "$RELEASE_TAG"
 
   verify:
     needs: check-version
