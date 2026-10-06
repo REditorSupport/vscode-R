@@ -269,9 +269,9 @@ test('GitHub API adapter pages through more than 1,000 unfiltered runs and pagin
                 }));
             return `${JSON.stringify({ total_count: 1201, workflow_runs: runs })}\n`;
         }
-        return JSON.stringify([{ id: 70, head_sha: 'sha-a', head_branch: 'main' }]);
+        return JSON.stringify({ id: 70, head_sha: 'sha-a', head_branch: 'main' });
     });
-    api.getRun('owner/repo', 70);
+    assert.deepEqual(api.getRun('owner/repo', 70), { id: 70, head_sha: 'sha-a', head_branch: 'main' });
     const runs = api.listRuns('owner/repo');
     api.listJobs('owner/repo', 70);
     assert.equal(runs.length, 1201);
@@ -280,7 +280,8 @@ test('GitHub API adapter pages through more than 1,000 unfiltered runs and pagin
         assert.ok(args.includes('--method'));
         assert.equal(args[args.indexOf('--method') + 1], 'GET');
     }
-    assert.ok(calls[0].includes('--slurp'));
+    assert.ok(!calls[0].includes('--paginate'));
+    assert.ok(!calls[0].includes('--slurp'));
     assert.ok(calls[1].includes('page=1'));
     assert.ok(calls[13].includes('page=13'));
     assert.ok(calls.slice(1).every((args) => args.includes('--jq')));
@@ -295,6 +296,22 @@ test('GitHub API adapter pages through more than 1,000 unfiltered runs and pagin
     assert.ok(calls[14][calls[14].indexOf('--jq') + 1].endsWith('| tojson'));
     assert.ok(calls[14].includes('filter=all'));
     assert.throws(() => completePagesToItems([{ total_count: 2, workflow_runs: [{ id: 1 }] }], 'workflow_runs'), /incomplete/);
+});
+
+test('getRun accepts one object and rejects malformed current-run responses', () => {
+    const validRun = { id: 80, created_at: '2026-10-05T03:23:00Z', head_sha: 'sha-a', head_branch: 'main' };
+    const validApi = createGhApi(() => JSON.stringify(validRun));
+    assert.deepEqual(validApi.getRun('owner/repo', 80), validRun);
+
+    for (const response of ['null', '[]', '[{}]', '{}', '{"head_sha":"sha-a"}']) {
+        const api = createGhApi(() => response);
+        assert.throws(() => api.getRun('owner/repo', 80), /invalid current workflow run/);
+    }
+
+    const apiFailure = createGhApi(() => {
+        throw new Error('GitHub API unavailable');
+    });
+    assert.throws(() => apiFailure.getRun('owner/repo', 80), /GitHub API unavailable/);
 });
 
 test('run pagination fails closed on empty, inconsistent, or duplicate pages', () => {

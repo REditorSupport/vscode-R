@@ -35,17 +35,15 @@ function completePagesToItems(pages, property) {
 }
 
 function createGhApi(execFile = execFileSync) {
-    function call(args, { jq, paginate = true, slurp = false } = {}) {
+    function call(args, { jq, paginate = true } = {}) {
         const ghArgs = ['api', '--method', 'GET'];
         if (paginate) {
             ghArgs.push('--paginate');
         }
         if (jq) {
-            // --slurp and --jq cannot be combined. Serialize each projected page
-            // as one compact JSON line, then parse those lines independently.
+            // Serialize each projected page as one compact JSON line, then parse
+            // those lines independently.
             ghArgs.push('--jq', `(${jq}) | tojson`);
-        } else if (slurp) {
-            ghArgs.push('--slurp');
         }
         const stdout = execFile('gh', [...ghArgs, ...args], {
             encoding: 'utf8',
@@ -62,11 +60,11 @@ function createGhApi(execFile = execFileSync) {
     }
     return {
         getRun(repository, runId) {
-            const pages = call([`repos/${repository}/actions/runs/${runId}`], { slurp: true });
-            if (!Array.isArray(pages) || pages.length !== 1 || !pages[0]?.id) {
+            const run = call([`repos/${repository}/actions/runs/${runId}`], { paginate: false });
+            if (!run || typeof run !== 'object' || Array.isArray(run) || run.id === undefined || run.id === null) {
                 throw new Error('GitHub API returned an invalid current workflow run');
             }
-            return pages[0];
+            return run;
         },
         listRuns(repository) {
             const path = `repos/${repository}/actions/workflows/${WORKFLOW}/runs`;
