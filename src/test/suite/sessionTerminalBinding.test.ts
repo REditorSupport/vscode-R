@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import * as fs from 'fs-extra';
+import fs from 'fs-extra';
 import type { RSessionApi } from '../../api';
 import * as extension from '../../extension';
 import * as rTerminal from '../../rTerminal';
