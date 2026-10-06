@@ -3,6 +3,7 @@ name: marketplace-pre-release
 on:
   schedule:
     - cron: '23 3 * * *'
+  workflow_dispatch:
 
 concurrency:
   group: marketplace-pre-release
