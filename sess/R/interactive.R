@@ -403,7 +403,8 @@ interactive_execute <- function(id, code, source = NULL) {
   }
   if (is.list(value) && !is.object(value)) {
     view_id <- dataview_new_id()
-    root <- listview_state(value, "List", "List")
+    # Nested panels reuse the root's owner; separate cell results must stay independent.
+    root <- listview_state(value, "List", paste0("interactive:", view_id))
     dataview_set_state(view_id, root)
     preview <- get_workspace_children(view_id = view_id)
     .interactive_event("display", c(list(kind = "list", viewId = view_id,

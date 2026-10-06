@@ -212,7 +212,7 @@ export function createListViewer(
     };
 }
 
-/** Script shared by the list webview and its interaction tests. */
+/** Panel wrapper and its interaction tests. Keep panel focus/blur hooks here. */
 export function getListViewerScript(documentGeneration: number, initial: ListViewNavigation = {
     title: '', path: [], breadcrumbs: [{ label: '', path: [] }],
 }): string {

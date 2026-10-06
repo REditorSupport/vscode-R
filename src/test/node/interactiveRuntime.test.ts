@@ -318,6 +318,48 @@ stopifnot(identical(actual, expected))`);
         assert.deepStrictEqual((await client.snapshot()).events.find(event => event.seq === output.seq)?.data, output.data);
     });
 
+    test('nested table viewers from separate list cells stay independent', async () => {
+        const lists: SessionEvent[] = [];
+        for (const value of [11, 21]) {
+            const id = await submit(`list(nested=list(first=data.frame(value=${value}), second=data.frame(value=${value + 1})))`);
+            assert.strictEqual((await finished(id)).state, 'success');
+            const output = events.find(event => event.executionId === id && event.data.kind === 'list');
+            assert.ok(output); lists.push(output);
+        }
+        assert.notStrictEqual(lists[0].data.viewId, lists[1].data.viewId);
+
+        const openTable = async (output: SessionEvent, index: number): Promise<string> => {
+            const start = events.length;
+            assert.strictEqual(await client.request('inspect', { method: 'listview_view', params: {
+                view_id: output.data.viewId, path: [1], index,
+            } }), true);
+            await until(() => events.slice(start).some(event => event.type === 'viewer'));
+            const event = events.slice(start).find(event => event.type === 'viewer'); assert.ok(event);
+            const params = event.data.params as { source: string; title: string; view_id: string };
+            assert.strictEqual(params.source, 'table');
+            assert.strictEqual(params.title, `List$nested$${index === 1 ? 'first' : 'second'}`);
+            return params.view_id;
+        };
+        const tableValue = async (viewId: string): Promise<number> => {
+            const page = await client.request<{ rows: Record<string, number>[] }>('inspect', {
+                method: 'dataview_page', params: { view_id: viewId, startRow: 0, endRow: 1 },
+            });
+            return page.rows[0]['1'];
+        };
+
+        const first = await openTable(lists[0], 1);
+        const second = await openTable(lists[1], 1);
+        assert.notStrictEqual(first, second, 'Each list cell owns its nested table viewer');
+        assert.strictEqual(await tableValue(first), 11);
+        assert.strictEqual(await tableValue(second), 21);
+        assert.strictEqual(await openTable(lists[0], 2), first, 'Tables within one list reuse its viewer');
+        assert.strictEqual(await tableValue(first), 12);
+        assert.strictEqual(await tableValue(second), 21, 'Opening another table in the first cell preserves the second');
+        assert.strictEqual(await openTable(lists[1], 2), second);
+        assert.strictEqual(await tableValue(second), 22);
+        assert.strictEqual(await tableValue(first), 12, 'The first cell remains independently browsable');
+    });
+
     test('huge tables keep bounded snapshots and page the full data without materializing it', async () => {
         const id = await submit(`n <- 832976871L
 huge <- structure(rep(list(seq_len(n)), 23L), names=paste0("x", 1:23),
