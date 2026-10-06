@@ -126,12 +126,15 @@ suite('Workspace Viewer', () => {
         sandbox.stub(vscode.window, 'terminals').value([terminal, otherTerminal]);
         const activeTerminal = sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
         sandbox.stub(util, 'config').returns({
-            get: (key: string) => key === 'source.focus' ? 'none' : undefined,
+            get: (key: string) => key === 'source.focus' ? 'none'
+                : key === 'session.watchGlobalEnvironment' ? true : undefined,
         } as unknown as vscode.WorkspaceConfiguration);
         const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, activate: session.activateSessionById };
         assert.strictEqual(await api.activate(first.sessionId, { terminal }), true);
         session.updateSessionWorkspace(first, data('table'));
         const node = (await envNodes())[0];
+        assert.strictEqual(node.owner, first);
+        assert.strictEqual(node.rootName, 'table');
         assert.strictEqual(await api.activate(second.sessionId, { terminal: otherTerminal }), true);
         activeTerminal.value(otherTerminal);
         await session.switchSessionByTerminal(otherTerminal);
