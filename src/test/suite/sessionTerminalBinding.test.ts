@@ -2,12 +2,14 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+import * as fs from 'fs-extra';
 import type { RSessionApi } from '../../api';
 import * as extension from '../../extension';
 import * as rTerminal from '../../rTerminal';
 import * as session from '../../session';
 import * as util from '../../util';
 import { mockExtensionContext } from '../common/mockvscode';
+import { deferred, SessionConnections } from '../common/sessionConnections';
 
 suite('Session Terminal Binding', () => {
     let sandbox: sinon.SinonSandbox;
@@ -91,16 +93,6 @@ suite('Session Terminal Binding', () => {
                 sinon.assert.notCalled(sendText);
             });
         }
-    }
-
-    for (const change of ['close', 'disconnect', 'rebind'] as const) {
-        test(`readiness rejects an explicit binding after ${change}`, async () => {
-            await api.activate(first.sessionId, { terminal });
-            if (change === 'close') { rTerminal.deleteTerminal(terminal); }
-            else if (change === 'disconnect') { session.unregisterSessionTransport(first); }
-            else { await api.activate(first.sessionId, { terminal: other }); }
-            assert.strictEqual(await session.waitForTerminalReady(terminal, 1), false);
-        });
     }
 
     test('terminal selection and manual activation recognize a binding without awaiting a PID', async () => {
@@ -189,28 +181,26 @@ suite('Session Terminal Binding', () => {
         sinon.assert.calledOnce(sendText);
     });
 
-    test('closing a downstream terminal clears the binding even without an exit status or PID', async () => {
-        await api.activate(first.sessionId, { terminal });
-        rTerminal.deleteTerminal(terminal);
-        assert.strictEqual(await api.activate(first.sessionId, { terminal }), false);
-        await assert.rejects(session.executeSessionCode(first, 'View(iris)'), /no attached terminal/);
-        await api.activate(second.sessionId);
-        await session.switchSessionByTerminal(terminal);
-        assert.strictEqual(session.activeSession, second);
-        sinon.assert.notCalled(sendText);
-    });
-
-    for (const lifecycle of ['cleanup', 'unregister', 'replace'] as const) {
-        test(`${lifecycle} removes bindings instead of transferring them to a replacement`, async () => {
+    // All consumers must agree after each ownership transition.
+    for (const transition of ['close', 'disconnect', 'cleanup', 'replace', 'move'] as const) {
+        test(`${transition} invalidates execution, readiness and terminal selection together`, async () => {
             await api.activate(first.sessionId, { terminal });
-            if (lifecycle === 'cleanup') { await session.cleanupSession(first.sessionId); }
-            else if (lifecycle === 'unregister') { session.unregisterSessionTransport(first); }
-            else { session.replaceSessionTransport(first, second); }
+            if (transition === 'close') { rTerminal.deleteTerminal(terminal); }
+            else if (transition === 'disconnect') { session.unregisterSessionTransport(first); }
+            else if (transition === 'cleanup') { await session.cleanupSession(first.sessionId); }
+            else if (transition === 'replace') { session.replaceSessionTransport(first, second); }
+            else { await api.activate(first.sessionId, { terminal: other }); }
             await api.activate(second.sessionId);
             await session.switchSessionByTerminal(terminal);
             assert.strictEqual(session.activeSession, second);
-            await assert.rejects(session.executeSessionCode(first, 'rm(iris)'), /no longer attached/);
-            await assert.rejects(session.executeSessionCode(second, 'rm(iris)'), /no attached terminal/);
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 1), false);
+            if (transition !== 'move') {
+                await assert.rejects(session.executeSessionCode(first, 'rm(iris)'), /no (attached terminal|longer attached)/);
+            } else {
+                await session.executeSessionCode(first, 'View(iris)');
+                sinon.assert.calledOnce(otherSendText);
+            }
+            if (transition === 'close') { assert.strictEqual(await api.activate(first.sessionId, { terminal }), false); }
             sinon.assert.notCalled(sendText);
         });
     }
@@ -233,4 +223,82 @@ suite('Session Terminal Binding', () => {
         await assert.rejects(session.executeSessionCode(first, 'View(iris)\nrm(iris)'), /no longer owns/);
         sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
     });
+    test('queued input cannot reuse ownership after rebinding away and back', async () => {
+        await api.activate(first.sessionId, { terminal });
+        const sending = session.executeSessionCode(first, 'rm(iris)');
+        const rejected = assert.rejects(sending, /no longer owns/);
+        // Both ownership changes happen before the terminal input queue resumes.
+        const away = api.activate(second.sessionId, { terminal });
+        const back = api.activate(first.sessionId, { terminal });
+        await Promise.all([away, back, rejected]);
+        sinon.assert.notCalled(sendText);
+        await session.executeSessionCode(first, 'View(iris)');
+        sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
+    });
+
+    test('manual focus resolves the active session explicit terminal', async () => {
+        const otherShow = sandbox.stub();
+        terminal = { ...terminal, processId: Promise.resolve(12345) } as vscode.Terminal;
+        other = { ...other, show: otherShow } as vscode.Terminal;
+        terminals.value([terminal, other]);
+        activeTerminal.value(terminal);
+        configuration.returns({ get: (key: string) => key === 'sessionWatcher' } as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(fs, 'pathExists').resolves(false);
+        const create = sandbox.stub(rTerminal, 'createRTerm').resolves(false);
+        await api.activate(first.sessionId, { terminal: other });
+        await session.activateRSession();
+        sinon.assert.calledOnce(otherShow);
+        sinon.assert.notCalled(create);
+        sinon.assert.notCalled(sendText);
+    });
+
+    for (const change of ['activation', 'binding', 'close'] as const) {
+        test(`manual attach is cancelled by ${change} while creating its command`, async () => {
+            await session.getGlobalPipePath();
+            const discovery = path.join(extension.extensionContext.globalStorageUri.fsPath, 'sessions', `${'a'.repeat(32)}.json`);
+            terminal = {
+                ...terminal, processId: Promise.resolve(12345),
+                creationOptions: { env: { SESS_DISCOVERY_FILE: discovery } },
+            } as vscode.Terminal;
+            terminals.value([terminal, other]);
+            activeTerminal.value(terminal);
+            configuration.returns({ get: (key: string) => key === 'sessionWatcher' } as unknown as vscode.WorkspaceConfiguration);
+            const started = deferred<void>();
+            const proceed = deferred<void>();
+            const ensureDir = fs.ensureDir;
+            const ensure = sandbox.stub(fs, 'ensureDir') as unknown as sinon.SinonStub<[string], Promise<void>>;
+            ensure.callsFake(async directory => {
+                started.resolve();
+                await proceed.promise;
+                return ensureDir(directory);
+            });
+            const pending = session.activateRSession();
+            await started.promise;
+            if (change === 'close') { rTerminal.deleteTerminal(terminal); }
+            else { await api.activate(second.sessionId, change === 'binding' ? { terminal } : undefined); }
+            proceed.resolve();
+            await pending;
+            sinon.assert.notCalled(sendText);
+            sinon.assert.notCalled(show);
+            if (change !== 'close') { assert.strictEqual(session.activeSession, second); }
+        });
+    }
+
+    test('a native attach preserves the selected terminal explicit owner', async () => {
+        const connections = new SessionConnections();
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        terminal = { ...terminal, processId: Promise.resolve(12345) } as vscode.Terminal;
+        other = { ...other, processId: Promise.resolve(23456) } as vscode.Terminal;
+        terminals.value([terminal, other]);
+        activeTerminal.value(terminal);
+        await api.activate(first.sessionId, { terminal });
+        try {
+            await connections.attach('native-beside-explicit', 23456);
+            assert.strictEqual(session.activeSession, first);
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 100), true);
+            await session.executeSessionCode(first, 'View(iris)');
+            sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
+        } finally { await connections.dispose(); }
+    });
+
 });
