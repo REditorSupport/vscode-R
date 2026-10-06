@@ -3,6 +3,7 @@ name: marketplace-pre-release
 on:
   schedule:
     - cron: '23 3 * * *'
+  workflow_dispatch:
 
 concurrency:
   group: marketplace-pre-release
@@ -14,32 +15,22 @@ permissions:
 
 jobs:
   prepare:
-    if: github.repository == 'REditorSupport/vscode-R'
+    if: github.repository == 'REditorSupport/vscode-R' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       publish: ${{ steps.previous.outputs.publish }}
       date: ${{ steps.previous.outputs.date }}
     steps:
-      - name: Check for changes since the last successful daily run
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Check publication history
         id: previous
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # A retry retains its original UTC date and therefore its version.
-          RUN_DATE=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq '.created_at[:10]')
-          PREVIOUS=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/marketplace-pre-release.yml/runs" \
-            -f event=schedule -f status=success -f branch=main -f per_page=100 \
-            --jq "[.workflow_runs[] | select(.id != $GITHUB_RUN_ID)] | sort_by(.created_at) | last // empty")
-          if [ -n "$PREVIOUS" ]; then
-            PREVIOUS_SHA=$(jq -r '.head_sha' <<< "$PREVIOUS")
-            PREVIOUS_DATE=$(jq -r '.created_at[:10]' <<< "$PREVIOUS")
-            if [ "$PREVIOUS_SHA" = "$GITHUB_SHA" ] || [[ "$PREVIOUS_DATE" > "$RUN_DATE" ]] || [ "$PREVIOUS_DATE" = "$RUN_DATE" ]; then
-              echo 'No new daily pre-release to publish.'
-              exit 0
-            fi
-          fi
-          echo "date=$RUN_DATE" >> "$GITHUB_OUTPUT"
-          echo 'publish=true' >> "$GITHUB_OUTPUT"
+          node .github/scripts/marketplace-pre-release-history.js
 
   verify:
     needs: prepare
@@ -50,6 +41,7 @@ jobs:
 
   publish:
     needs: [prepare, verify]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -65,11 +57,18 @@ jobs:
         with:
           name: vscode-R.vsix
           path: artifacts/
+      - name: Recheck publication eligibility
+        id: eligibility
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/marketplace-pre-release-history.js
       - name: Publish to Visual Studio Marketplace
+        if: steps.eligibility.outputs.publish == 'true'
         env:
           VSCE_PAT: ${{ secrets.VSCE_TOKEN }}
         run: pnpm exec vsce publish --pre-release --skip-duplicate --packagePath artifacts/vscode-R.vsix
       - name: Publish to Open VSX Registry
+        if: steps.eligibility.outputs.publish == 'true'
         env:
           OVSX_PAT: ${{ secrets.OPEN_VSX_TOKEN }}
         run: pnpm exec ovsx publish --skip-duplicate artifacts/vscode-R.vsix
