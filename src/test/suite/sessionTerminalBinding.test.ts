@@ -69,6 +69,40 @@ suite('Session Terminal Binding', () => {
         sinon.assert.notCalled(sendText);
     });
 
+    for (const pid of ['native', 'missing', 'pending'] as const) {
+        for (const bindBeforeWaiting of [false, true]) {
+            test(`readiness recognizes an explicit binding (PID: ${pid}, already bound: ${String(bindBeforeWaiting)})`, async () => {
+                terminal = {
+                    ...terminal,
+                    processId: pid === 'pending' ? new Promise<number>(() => undefined)
+                        : Promise.resolve(pid === 'native' ? 12345 : undefined),
+                } as vscode.Terminal;
+                terminals.value([terminal, other]);
+                if (bindBeforeWaiting) { await api.activate(first.sessionId, { terminal }); }
+                let ready = false;
+                const waiting = session.waitForTerminalReady(terminal, 100).then(result => { ready = result; return result; });
+                if (!bindBeforeWaiting) {
+                    await Promise.resolve();
+                    await api.activate(second.sessionId, { terminal: other });
+                    assert.strictEqual(ready, false, 'another terminal binding must not release the wait');
+                    await api.activate(first.sessionId, { terminal });
+                }
+                assert.strictEqual(await waiting, true);
+                sinon.assert.notCalled(sendText);
+            });
+        }
+    }
+
+    for (const change of ['close', 'disconnect', 'rebind'] as const) {
+        test(`readiness rejects an explicit binding after ${change}`, async () => {
+            await api.activate(first.sessionId, { terminal });
+            if (change === 'close') { rTerminal.deleteTerminal(terminal); }
+            else if (change === 'disconnect') { session.unregisterSessionTransport(first); }
+            else { await api.activate(first.sessionId, { terminal: other }); }
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 1), false);
+        });
+    }
+
     test('terminal selection and manual activation recognize a binding without awaiting a PID', async () => {
         terminal = { ...terminal, processId: new Promise<number>(() => undefined) } as vscode.Terminal;
         terminals.value([terminal, other]);

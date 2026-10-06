@@ -214,7 +214,7 @@ export function registerSessionTransport(id: string, host: string, directory: st
 }
 const terminalSessions = new Map<string, { session: Session; revision: number }>();
 let nativeTerminalRevision = 0;
-const terminalSessionAttached = new vscode.EventEmitter<string>();
+const terminalSessionAttached = new vscode.EventEmitter<string | vscode.Terminal>();
 
 function nativeSessionForTerminal(terminal: vscode.Terminal, terminalPid: string): Session | undefined {
     const association = terminalSessions.get(terminalPid);
@@ -222,7 +222,14 @@ function nativeSessionForTerminal(terminal: vscode.Terminal, terminalPid: string
         ? association.session : undefined;
 }
 
-/** Wait for this terminal's session handshake, not just process creation. */
+function connectedSessionForTerminal(terminal: vscode.Terminal, terminalPid?: string): Session | undefined {
+    if (!isLiveTerminal(terminal)) { return undefined; }
+    const target = boundTerminalSessions.get(terminal)
+        ?? (terminalPid ? nativeSessionForTerminal(terminal, terminalPid) : undefined);
+    return target && sessions.get(target.sessionId) === target && isConnectedSession(target) ? target : undefined;
+}
+
+/** Wait for this terminal's connected owner, not just process creation. */
 export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000): Promise<boolean> {
     return new Promise(resolve => {
         let terminalPid: string | undefined;
@@ -237,8 +244,8 @@ export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000)
             closed.dispose();
             resolve(ready);
         };
-        const attached = terminalSessionAttached.event(pid => {
-            if (pid === terminalPid && nativeSessionForTerminal(terminal, pid)) {
+        const attached = terminalSessionAttached.event(target => {
+            if ((target === terminal || target === terminalPid) && connectedSessionForTerminal(terminal, terminalPid)) {
                 finish(true);
             }
         });
@@ -249,18 +256,26 @@ export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000)
         });
         // This bounds a failed integration; it never authorizes sending input.
         const timer = setTimeout(() => finish(false), timeout);
+        if (isTerminalClosed(terminal) || terminal.exitStatus) {
+            finish(false);
+            return;
+        }
+        if (connectedSessionForTerminal(terminal)) {
+            finish(true);
+            return;
+        }
         void Promise.resolve(terminal.processId).then(pid => {
             if (settled) {
                 return;
             }
-            if (pid === undefined || isTerminalClosed(terminal) || terminal.exitStatus) {
+            if (isTerminalClosed(terminal) || terminal.exitStatus) {
                 finish(false);
                 return;
             }
-            terminalPid = String(pid);
+            // Pseudoterminals may still receive an explicit binding without a PID.
+            terminalPid = pid === undefined ? undefined : String(pid);
             // Also covers a handshake received before processId resolved.
-            const session = nativeSessionForTerminal(terminal, terminalPid);
-            if (session && !session.socket.destroyed) {
+            if (connectedSessionForTerminal(terminal, terminalPid)) {
                 finish(true);
             }
         }, () => finish(false));
@@ -519,10 +534,7 @@ async function sessionForTerminal(terminal: vscode.Terminal | undefined): Promis
     const bound = boundTerminalSessions.get(terminal);
     const terminalPid = bound ? undefined : await terminal.processId;
     // A close, rebind or disconnect may have happened while processId resolved.
-    const target = boundTerminalSessions.get(terminal)
-        ?? (terminalPid ? nativeSessionForTerminal(terminal, String(terminalPid)) : undefined);
-    return target && sessions.get(target.sessionId) === target && isConnectedSession(target) && isLiveTerminal(terminal)
-        ? target : undefined;
+    return connectedSessionForTerminal(terminal, terminalPid === undefined ? undefined : String(terminalPid));
 }
 
 /**
@@ -2168,6 +2180,7 @@ export async function activateSessionById(sessionId: string, options?: RSessionA
         // Do not await processId: pseudoterminals may never resolve it. A fresh
         // native attach is required before PID ownership can be used again.
         retiredNativeTerminalRevisions.set(terminal, nativeTerminalRevision);
+        terminalSessionAttached.fire(terminal);
     }
     await activateSession(target);
     return true;

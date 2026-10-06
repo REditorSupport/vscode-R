@@ -14,6 +14,7 @@ import * as session from '../../session';
 import * as processTree from '../../processTree';
 import * as extension from '../../extension';
 import * as plotViewer from '../../plotViewer';
+import * as executionTarget from '../../interactive/executionTarget';
 import type { RSessionApi } from '../../api';
 
 const extension_root: string = path.join(__dirname, '..', '..', '..');
@@ -815,6 +816,68 @@ suite('Session Communication', () => {
                 await session.cleanupSession(`readiness-${backgroundPid}`);
                 await session.cleanupSession(`readiness-${rPid}`);
                 await session.cleanupSession(`readiness-${otherRPid}`);
+            }
+        });
+    }
+
+    for (const explicitBinding of [false, true]) {
+        test(`managed terminal accepts its first source command after native attach (explicit binding: ${String(explicitBinding)})`, async () => {
+            sandbox.stub(extension, 'enableSessionWatcher').value(true);
+            sandbox.stub(extension, 'rWorkspace').value(undefined);
+            sandbox.stub(vscode.commands, 'executeCommand').resolves();
+            sandbox.stub(executionTarget, 'tryInteractiveExecution').resolves(false);
+            sandbox.stub(util, 'config').returns({
+                get: (key: string) => ({ sessionWatcher: true, consoleArgs: [], 'source.focus': 'none' })[key],
+            } as unknown as vscode.WorkspaceConfiguration);
+            sandbox.stub(util, 'getRterm').resolves(process.execPath);
+            sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
+            sandbox.stub(session, 'createSessionDiscoveryFile').resolves('/unused-test-discovery');
+            sandbox.stub(session, 'updateTerminalSessionDiscoveryFile').resolves();
+            const waitUntilReady = session.waitForTerminalReady;
+            // Exercise the real readiness logic, with a bounded failure timeout.
+            const readiness = sandbox.stub(session, 'waitForTerminalReady')
+                .callsFake(terminal => waitUntilReady(terminal, 1000));
+            const warning = sandbox.stub(vscode.window, 'showWarningMessage').resolves(undefined);
+            const sendText = sandbox.stub();
+            const terminal = {
+                name: 'R Interactive', processId: Promise.resolve(46260),
+                show: () => undefined, sendText,
+            } as unknown as vscode.Terminal;
+            sandbox.stub(vscode.window, 'terminals').value([terminal]);
+            sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+            sandbox.stub(vscode.window, 'createTerminal').returns(terminal);
+            const endpoint = await session.getGlobalPipePath();
+            const sessionId = `source-readiness-${String(explicitBinding)}`;
+            let client: net.Socket | undefined;
+            try {
+                assert.strictEqual(await rTerminal.createRTerm(), true);
+                const connection = net.createConnection(endpoint);
+                client = connection;
+                await new Promise<void>((resolve, reject) => {
+                    connection.once('connect', resolve);
+                    connection.once('error', reject);
+                });
+                connection.write(`${JSON.stringify({
+                    jsonrpc: '2.0', method: 'attach', params: {
+                        protocol_version: 2, session_id: sessionId, host: os.hostname(),
+                        pid: 46260, version: '4.4.0', tempdir: '/tmp', wd: '/tmp',
+                    },
+                })}\n`);
+                const owner = await waitFor(() => session.activeSession?.sessionId === sessionId ? session.activeSession : undefined);
+                assert.ok(owner);
+                assert.strictEqual(owner.socket._terminalPid, 46260);
+                if (explicitBinding) {
+                    const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, activate: session.activateSessionById };
+                    assert.strictEqual(await api.activate(owner.sessionId, { terminal }), true);
+                }
+                assert.strictEqual(await rTerminal.runTextInTerm('source("example.R")'), true);
+                sinon.assert.calledOnceWithExactly(readiness, terminal);
+                sinon.assert.calledOnceWithExactly(sendText, 'source("example.R")');
+                sinon.assert.notCalled(warning);
+            } finally {
+                client?.destroy();
+                rTerminal.deleteTerminal(terminal);
+                await session.cleanupSession(sessionId);
             }
         });
     }
