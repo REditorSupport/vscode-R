@@ -10,7 +10,7 @@ import * as rTerminal from '../../rTerminal';
 import * as session from '../../session';
 import * as util from '../../util';
 import { mockExtensionContext } from '../common/mockvscode';
-import { SessionConnections, waitForValue as waitFor } from '../common/sessionConnections';
+import { deferred, SessionConnections, waitForValue as waitFor } from '../common/sessionConnections';
 
 suite('Session Terminal Lifecycle', () => {
     let sandbox: sinon.SinonSandbox;
@@ -191,6 +191,47 @@ suite('Session Terminal Lifecycle', () => {
             }
         });
     }
+
+    test('an older pending handshake cannot replace a newer connection with the same session ID', async () => {
+        const entered = deferred<void>();
+        const ancestorsResolved = deferred<number[]>();
+        ancestors.withArgs(46270).callsFake(() => { entered.resolve(); return ancestorsResolved.promise; });
+        const terminal = { processId: Promise.resolve(46271) } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        const old = await connections.startAttach('overlapping-reconnect', 46270);
+        await entered.promise;
+        const newer = await connections.attach('overlapping-reconnect', 46271);
+        const owner = session.activeSession;
+        assert.strictEqual(owner?.socket, newer);
+        ancestorsResolved.resolve([46271]);
+        await waitFor(() => old.destroyed || old._sessionId ? true : undefined);
+        assert.strictEqual(session.activeSession, owner);
+        assert.strictEqual(newer.destroyed, false);
+        await session.cleanupSession('overlapping-reconnect', old);
+        assert.strictEqual(session.activeSession, owner);
+    });
+
+    test('native discovery cannot revive ownership changed while its PID was pending', async () => {
+        const entered = deferred<void>();
+        const pid = deferred<number>();
+        const terminal = { get processId() { entered.resolve(); return pid.promise; } } as unknown as vscode.Terminal;
+        const other = { processId: Promise.resolve(46273) } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal, other]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        const owner = session.registerSessionTransport('binding-during-discovery', 'host', '/project', () => Promise.resolve({}));
+        try {
+            const socket = await connections.startAttach('pending-native-discovery', 46272);
+            await entered.promise;
+            await session.activateSessionById(owner.sessionId, { terminal });
+            await session.activateSessionById(owner.sessionId, { terminal: other });
+            pid.resolve(46272);
+            await waitFor(() => socket._sessionId === 'pending-native-discovery' ? true : undefined);
+            assert.strictEqual(socket._terminalPid, undefined);
+            assert.strictEqual(session.activeSession, owner);
+            assert.strictEqual(await session.waitForTerminalReady(terminal, 1), false);
+        } finally { session.unregisterSessionTransport(owner); }
+    });
 
     test('terminal readiness aborts on close even before processId resolves', async () => {
         const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;

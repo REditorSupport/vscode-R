@@ -26,6 +26,14 @@ export class SessionConnections {
     private readonly ids = new Set<string>();
 
     async attach(id: string, pid: number, host = os.hostname()): Promise<session.Session['socket']> {
+        const socket = await this.startAttach(id, pid, host);
+        await waitForValue(() => socket._sessionId === id ? socket : undefined);
+        assert.strictEqual(socket.destroyed, false);
+        return socket;
+    }
+
+    /** Start a handshake without waiting for asynchronous terminal discovery. */
+    async startAttach(id: string, pid: number, host = os.hostname()): Promise<session.Session['socket']> {
         const endpoint = await session.getGlobalPipePath();
         const previous = new Set(session.activeConnections);
         const client = net.createConnection(endpoint);
@@ -43,8 +51,6 @@ export class SessionConnections {
                 version: '4.4.0', tempdir: '/tmp', wd: '/tmp',
             },
         })}\n`);
-        await waitForValue(() => socket._sessionId === id ? socket : undefined);
-        assert.strictEqual(socket.destroyed, false);
         return socket;
     }
 
