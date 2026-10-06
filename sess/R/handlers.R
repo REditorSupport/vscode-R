@@ -374,8 +374,17 @@ listview_summary <- function(object) {
     } else if (size > 1L) {
       paste0(" [1:", size, "]")
     }
-    paste0(type, shape, " ",
-           listview_format_values(object[1L]), if (size > 1L) " ...")
+    numeric_preview <- is.numeric(object) && !is.object(object)
+    preview_size <- if (numeric_preview) min(size, 5L) else 1L
+    # Subset before formatting so even very large vectors have a bounded preview.
+    values <- object[seq_len(preview_size)]
+    formatted <- if (numeric_preview) {
+      vapply(values, format, "", digits = 3L, trim = TRUE, justify = "none")
+    } else {
+      listview_format_values(values)
+    }
+    paste0(type, shape, " ", paste(formatted, collapse = " "),
+           if (size > preview_size) " ...")
   } else {
     trimws(try_capture_str(object))
   }
