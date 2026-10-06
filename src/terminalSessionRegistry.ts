@@ -4,9 +4,10 @@ export interface TerminalAssociation<Session, Terminal> {
     readonly kind: 'native' | 'explicit';
 }
 
-/** Current ownership only: replacing an association never leaves a fallback owner. */
+/** Each session and terminal has at most one association; replacement leaves no fallback. */
 export class TerminalSessionRegistry<Session, Terminal extends object> {
-    private readonly associations = new Map<Terminal, TerminalAssociation<Session, Terminal>>();
+    private readonly byTerminal = new Map<Terminal, TerminalAssociation<Session, Terminal>>();
+    private readonly bySession = new Map<Session, TerminalAssociation<Session, Terminal>>();
     private readonly revisions = new WeakMap<Terminal, number>();
     private readonly closed = new WeakSet<Terminal>();
     private readonly listeners = new Set<(terminal: Terminal) => void>();
@@ -22,25 +23,20 @@ export class TerminalSessionRegistry<Session, Terminal extends object> {
 
     associationFor(terminal: Terminal | undefined): TerminalAssociation<Session, Terminal> | undefined {
         if (!terminal || !this.isLive(terminal)) { return undefined; }
-        const association = this.associations.get(terminal);
+        const association = this.byTerminal.get(terminal);
         return association && this.isConnected(association.session) ? association : undefined;
     }
 
     ownerOf(terminal: Terminal | undefined): Session | undefined { return this.associationFor(terminal)?.session; }
 
     forSession(session: Session): TerminalAssociation<Session, Terminal> | undefined {
-        for (const kind of ['explicit', 'native'] as const) {
-            for (const association of this.associations.values()) {
-                if (association.session === session && association.kind === kind && this.isCurrent(association)) {
-                    return association;
-                }
-            }
-        }
-        return undefined;
+        const association = this.bySession.get(session);
+        return association && this.isCurrent(association) ? association : undefined;
     }
 
     isCurrent(association: TerminalAssociation<Session, Terminal>): boolean {
-        return this.associationFor(association.terminal) === association;
+        return this.associationFor(association.terminal) === association
+            && this.bySession.get(association.session) === association;
     }
 
     /** A native PID lookup may commit only if ownership did not change while it waited. */
@@ -53,26 +49,21 @@ export class TerminalSessionRegistry<Session, Terminal extends object> {
         if (!this.isLive(terminal) || !this.isConnected(session)) { return false; }
         const current = this.associationFor(terminal);
         if (current?.kind === 'explicit' && current.session === session) { return true; }
-        for (const previous of this.associations.values()) {
-            if (previous.kind === 'explicit' && previous.session === session && previous.terminal !== terminal) {
-                this.remove(previous.terminal);
-            }
-        }
         this.set(terminal, session, 'explicit');
         return true;
     }
 
     attachNative(terminal: Terminal, session: Session): boolean {
         if (!this.isLive(terminal) || !this.isConnected(session)
-            || this.associationFor(terminal)?.kind === 'explicit') { return false; }
+            || this.associationFor(terminal)?.kind === 'explicit'
+            || this.forSession(session)?.kind === 'explicit') { return false; }
         this.set(terminal, session, 'native');
         return true;
     }
 
     releaseSession(session: Session): void {
-        for (const association of this.associations.values()) {
-            if (association.session === session) { this.remove(association.terminal); }
-        }
+        const association = this.bySession.get(session);
+        if (association) { this.remove(association.terminal); }
     }
 
     closeTerminal(terminal: Terminal): void {
@@ -87,17 +78,35 @@ export class TerminalSessionRegistry<Session, Terminal extends object> {
     }
 
     private set(terminal: Terminal, session: Session, kind: 'native' | 'explicit'): void {
-        this.associations.set(terminal, { terminal, session, kind });
-        this.changed(terminal);
+        const previous = this.bySession.get(session);
+        const displaced = this.byTerminal.get(terminal);
+        const changed = new Set<Terminal>();
+        if (previous) {
+            this.byTerminal.delete(previous.terminal);
+            changed.add(previous.terminal);
+        }
+        if (displaced) { this.bySession.delete(displaced.session); }
+        const association = { terminal, session, kind };
+        this.byTerminal.set(terminal, association);
+        this.bySession.set(session, association);
+        changed.add(terminal);
+        this.changed(...changed);
     }
 
     private remove(terminal: Terminal): void {
-        this.associations.delete(terminal);
+        const association = this.byTerminal.get(terminal);
+        this.byTerminal.delete(terminal);
+        if (association) { this.bySession.delete(association.session); }
         this.changed(terminal);
     }
 
-    private changed(terminal: Terminal): void {
-        this.revisions.set(terminal, (this.revisions.get(terminal) ?? 0) + 1);
-        for (const listener of this.listeners) { listener(terminal); }
+    private changed(...terminals: Terminal[]): void {
+        // Publish complete ownership and invalidate all affected lookups before notifying.
+        for (const terminal of terminals) {
+            this.revisions.set(terminal, (this.revisions.get(terminal) ?? 0) + 1);
+        }
+        for (const terminal of terminals) {
+            for (const listener of this.listeners) { listener(terminal); }
+        }
     }
 }

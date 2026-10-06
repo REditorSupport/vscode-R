@@ -23,7 +23,9 @@ export interface RSessionConnectionInfo {
 export interface RSessionActivationOptions {
     /**
      * Explicit execution terminal, including extension-owned pseudoterminals.
-     * Replaces any previous binding for this session or terminal. The binding
+     * Each session and terminal has at most one association. This replaces any
+     * previous association for either endpoint, including native PID routing.
+     * Native attach cannot override a live explicit association. The binding
      * lasts until terminal close, session disconnect, or connection replacement;
      * call activate with the terminal again after reconnecting.
      * Superseded native PID associations require a fresh native attach to resume.
