@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   prepare:
-    if: github.repository == 'REditorSupport/vscode-R'
+    if: github.repository == 'REditorSupport/vscode-R' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       publish: ${{ steps.previous.outputs.publish }}
@@ -51,6 +51,7 @@ jobs:
 
   publish:
     needs: [prepare, verify]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
