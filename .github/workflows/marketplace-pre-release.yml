@@ -69,3 +69,7 @@ jobs:
         env:
           VSCE_PAT: ${{ secrets.VSCE_TOKEN }}
         run: pnpm exec vsce publish --pre-release --skip-duplicate --packagePath artifacts/vscode-R.vsix
+      - name: Publish to Open VSX Registry
+        env:
+          OVSX_PAT: ${{ secrets.OPEN_VSX_TOKEN }}
+        run: pnpm exec ovsx publish --skip-duplicate artifacts/vscode-R.vsix

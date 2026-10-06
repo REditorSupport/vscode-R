@@ -133,9 +133,12 @@ Keep the base version in `package.json`; do not commit generated daily versions.
 For development toward `4.0.0`, maintainers can explicitly set the base version
 to `3.999.0`, then change it to `4.0.0` for the stable release.
 
-The workflow reuses `VSCE_TOKEN` and publishes only to the VS Code Marketplace.
+The workflow reuses `VSCE_TOKEN` and `OPEN_VSX_TOKEN` to publish the same VSIX
+to the VS Code Marketplace and Open VSX Registry. Both publications must succeed
+for the daily run to count as successful.
 Retries retain the original run's UTC date and tolerate an already-published
-version. A retry older than a successful daily run is skipped. No Git tags or
+version in either registry, allowing a partially failed publication to recover.
+A retry older than a successful daily run is skipped. No Git tags or
 version-bump commits are created by daily publishing.
 
 Run `node --test .github/scripts/extension-version.test.js` to test version generation

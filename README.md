@@ -35,7 +35,7 @@ for other changes and upgrade notes.
     code --install-extension REditorSupport.r
     ```
 
-    To receive daily development updates, choose **Switch to Pre-Release Version** on the R extension's page in VS Code. New pre-releases are published to the Marketplace when `main` changes and verification passes. Choose **Switch to Release Version** to return to stable releases. When reporting problems, include the extension version and reproduction steps.
+    To receive daily development updates, choose **Switch to Pre-Release Version** on the R extension's page in VS Code. New pre-releases are published to the VS Code Marketplace and Open VSX Registry when `main` changes and verification passes. Choose **Switch to Release Version** to return to stable releases. When reporting problems, include the extension version and reproduction steps.
 
     Alternatively, you can test the latest development version by installing from GitHub:
 
