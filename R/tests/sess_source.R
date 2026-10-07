@@ -129,7 +129,7 @@ local({
     cli_library <- file.path(project, "library")
     dir.create(cli_library, recursive = TRUE)
     writeLines(".libPaths(c(file.path(getwd(), \"library\"), .libPaths()))", file.path(project, ".Rprofile"))
-    exports <- c("connect", "notify_client", "register_hooks", "request_client")
+    exports <- c("connect", "notify_client", "request_client")
     writeLines(paste0(exports, " <- function(...) NULL"), file.path(pkg, "R", "zzz.R"))
     writeLines(paste0("export(", exports, ")"), file.path(pkg, "NAMESPACE"))
     previous_profile <- Sys.getenv("R_PROFILE_USER", unset = NA_character_)

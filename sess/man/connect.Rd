@@ -7,8 +7,6 @@
 connect(
   endpoint = NULL,
   use_rstudioapi = TRUE,
-  use_httpgd = NULL,
-  use_jgd = NULL,
   plot_backend = c("auto", "jgd", "httpgd", "standard", "native")
 )
 }
@@ -18,25 +16,18 @@ If NULL, uses SESS_ENDPOINT, then SESS_DISCOVERY_FILE.}
 
 \item{use_rstudioapi}{Logical. Enable rstudioapi emulation. Defaults to TRUE.}
 
-\item{use_httpgd}{Deprecated. Logical. Use httpgd for plotting if available.
-NULL means unspecified; legacy calls default to TRUE. Use \code{plot_backend} instead.}
-
-\item{use_jgd}{Deprecated. Logical. Use jgd for plotting if available.
-NULL means unspecified; legacy calls default to FALSE. Use \code{plot_backend} instead.}
-
-\item{plot_backend}{Plot backend: \code{auto}, \code{jgd}, \code{httpgd},
-\code{standard}, or \code{native}. NULL also selects \code{auto}. Deprecated
-flags select the backend only when this argument is omitted.}
+\item{plot_backend}{Plot backend: `auto`, `jgd`, `httpgd`, `standard`, or
+`native`. NULL also selects `auto`.}
 }
 \description{
 Connect to the VS Code IPC server
 }
 \details{
 When SESS_DISCOVERY_FILE describes the connected endpoint, an
-unexpected disconnect waits for a replacement endpoint in that file and
-reconnects with the same runtime options and session identity. The optional
-discovery jgdSocket string updates JGD_SOCKET when the resolved backend
-includes jgd; an empty
-string clears it, and an omitted field leaves it unchanged. Set
-\code{options(sess.quiet = TRUE)} to suppress the successful connection message.
+  unexpected disconnect waits for a replacement endpoint in that file and
+  reconnects with the same runtime options and session identity. The optional
+  discovery jgdSocket string updates JGD_SOCKET when the resolved backend
+  includes jgd; an empty
+  string clears it, and an omitted field leaves it unchanged. Set
+  `options(sess.quiet = TRUE)` to suppress the successful connection message.
 }
