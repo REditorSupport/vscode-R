@@ -359,6 +359,51 @@ suite('R Terminal', () => {
         }
     });
 
+    test('the contributed profile focuses the terminal VS Code creates from it', async () => {
+        const configStub = { get: () => undefined };
+        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        rTerminal.resetProfileTerminalPending();
+
+        const profile = await rTerminal.provideTerminalProfile();
+        assert.strictEqual(profile.options.name, 'R Interactive');
+
+        const show = sinon.spy();
+        const other = { name: 'bash', show } as unknown as vscode.Terminal;
+        assert.strictEqual(rTerminal.focusProfileTerminal(other), false, 'a different terminal is left alone');
+        assert.strictEqual(show.callCount, 0);
+
+        const rTerm = { name: 'R Interactive', show } as unknown as vscode.Terminal;
+        assert.strictEqual(rTerminal.focusProfileTerminal(rTerm), true, 'the profile terminal is focused');
+        assert.strictEqual(show.callCount, 1);
+        assert.deepStrictEqual(show.firstCall.args, [], 'show() without preserveFocus, i.e. take focus');
+
+        assert.strictEqual(rTerminal.focusProfileTerminal(rTerm), false, 'only once per profile request');
+        assert.strictEqual(show.callCount, 1);
+    });
+
+    test('a terminal that opens without a pending profile request is not focused', () => {
+        rTerminal.resetProfileTerminalPending();
+        const show = sinon.spy();
+        const rTerm = { name: 'R Interactive', show } as unknown as vscode.Terminal;
+        assert.strictEqual(rTerminal.focusProfileTerminal(rTerm), false);
+        assert.strictEqual(show.callCount, 0);
+    });
+
+    test('a pending profile request expires', async () => {
+        const configStub = { get: () => undefined };
+        sandbox.stub(util, 'config').returns(configStub as unknown as vscode.WorkspaceConfiguration);
+        sandbox.stub(util, 'getRterm').resolves(process.execPath);
+        rTerminal.resetProfileTerminalPending();
+        await rTerminal.provideTerminalProfile();
+
+        const show = sinon.spy();
+        const rTerm = { name: 'R Interactive', show } as unknown as vscode.Terminal;
+        const later = Date.now() + 11_000;
+        assert.strictEqual(rTerminal.focusProfileTerminal(rTerm, later), false, 'expired request is dropped');
+        assert.strictEqual(show.callCount, 0);
+    });
+
     test('makeTerminalOptions does not set session watcher env if disabled', async () => {
         const configStub = {
             get: (key: string) => {

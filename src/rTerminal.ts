@@ -275,6 +275,53 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
     return termOptions;
 }
 
+// ---------------------------------------------------------------------------
+// The contributed "R Terminal" profile (the terminal panel's "+" menu)
+// ---------------------------------------------------------------------------
+//
+// A terminal created from a contributed profile is created by VS Code, not by
+// createRTerm(), so nothing here ever calls show() on it. VS Code does try to
+// focus it, but its extension host fires off the terminal creation without
+// awaiting it ($createContributedProfileTerminal -> createTerminalFromOptions)
+// and then focuses "the last terminal" — which, when the extension host is
+// remote (Codespaces, SSH, the web client), is still the previous terminal
+// because the new one has not been registered yet. The result: an R terminal
+// that opens without focus, unlike every other profile and unlike
+// "R: Create R Terminal". So the profile remembers that it just handed VS Code
+// a terminal, and the first matching terminal that opens is shown with focus.
+// The pending mark expires so an aborted creation cannot steal focus later.
+
+const PROFILE_TERMINAL_PENDING_MS = 10_000;
+let profileTerminalPendingUntil = 0;
+
+export async function provideTerminalProfile(resource?: vscode.Uri): Promise<vscode.TerminalProfile> {
+    const options = await makeTerminalOptions(resource);
+    profileTerminalPendingUntil = Date.now() + PROFILE_TERMINAL_PENDING_MS;
+    return new vscode.TerminalProfile(options);
+}
+
+/**
+ * Called for every terminal that opens. If it is the one the contributed
+ * profile just produced, focus it (see above). Returns whether it did.
+ */
+export function focusProfileTerminal(terminal: vscode.Terminal, now: number = Date.now()): boolean {
+    if (profileTerminalPendingUntil === 0 || now > profileTerminalPendingUntil) {
+        profileTerminalPendingUntil = 0;
+        return false;
+    }
+    if (terminal.name !== 'R Interactive') {
+        return false;
+    }
+    profileTerminalPendingUntil = 0;
+    terminal.show();
+    return true;
+}
+
+/** Test hook: forget any pending profile terminal. */
+export function resetProfileTerminalPending(): void {
+    profileTerminalPendingUntil = 0;
+}
+
 export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri): Promise<boolean> {
     resource = resource ?? getCurrentWorkspaceFolder()?.uri;
     const termOptions = await makeTerminalOptions(resource);

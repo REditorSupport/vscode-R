@@ -174,6 +174,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
     // keep track of terminals
     context.subscriptions.push(vscode.window.onDidCloseTerminal(rTerminal.deleteTerminal));
     context.subscriptions.push(vscode.window.onDidOpenTerminal(terminal => {
+        rTerminal.focusProfileTerminal(terminal);
         void session.updateTerminalDiscovery(terminal).catch(error => {
             console.warn('[session discovery] Failed to update terminal discovery file', error);
         });
@@ -212,13 +213,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<apiImp
 
     // register terminal-provider
     context.subscriptions.push(vscode.window.registerTerminalProfileProvider('r.terminal-profile',
-        {
-            async provideTerminalProfile() {
-                return {
-                    options: await rTerminal.makeTerminalOptions()
-                };
-            }
-        }
+        { provideTerminalProfile: () => rTerminal.provideTerminalProfile() }
     ));
 
     // initialize plot manager
