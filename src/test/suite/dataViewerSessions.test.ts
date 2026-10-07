@@ -337,24 +337,24 @@ suite('Viewer session ownership', () => {
         assert.notStrictEqual(session.activeSession?.sessionId, b.id);
     });
 
-    test('delayed terminal lookup does not overwrite a newer viewer PID', async () => {
-        let resolvePid: ((pid: number) => void) | undefined;
+    test('terminal activation completion does not overwrite a newer viewer PID', async () => {
+        let finishActivation: (() => void) | undefined;
         const terminalPid = 47203;
         const terminal = { processId: Promise.resolve(terminalPid) } as unknown as vscode.Terminal;
         sandbox.stub(vscode.window, 'terminals').value([terminal]);
         const a = await attach('pending-viewer-a');
         const b = await attach('pending-terminal-b', os.hostname(), terminalPid);
         const aList = await open(a, 'list');
-        Object.defineProperty(terminal, 'processId', {
-            value: new Promise<number>(resolve => { resolvePid = resolve; }),
-        });
+        const activation = new Promise<void>(resolve => { finishActivation = resolve; });
+        const setContext = sandbox.stub(util, 'setContext').resolves();
+        setContext.onFirstCall().returns(activation);
 
         const pending = session.switchSessionByTerminal(terminal);
         aList.activate();
         await send(aList, { message: 'dataview/focus' });
         assert.strictEqual(statusBar.text, 'R 4.6.0: pending-viewer-a');
 
-        resolvePid?.(terminalPid);
+        finishActivation?.();
         await pending;
         assert.strictEqual(session.activeSession?.sessionId, b.id);
         assert.strictEqual(statusBar.text, 'R 4.6.0: pending-viewer-a');
@@ -362,20 +362,25 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(statusBar.text, 'R 4.6.0: 47203');
     });
 
-    test('stale terminal lookup cannot overwrite a newer terminal selection', async () => {
-        let resolvePid: ((pid: number) => void) | undefined;
+    test('stale terminal activation cannot overwrite a newer terminal selection', async () => {
+        let finishActivation: (() => void) | undefined;
         const slowTerminal = {
-            processId: new Promise<number>(resolve => { resolvePid = resolve; }),
+            processId: Promise.resolve(46255),
         } as unknown as vscode.Terminal;
         const unattachedTerminal = {
             processId: Promise.resolve(46254),
         } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([slowTerminal, unattachedTerminal]);
+        await attach('slow-terminal-session', os.hostname(), 46255);
+        const activation = new Promise<void>(resolve => { finishActivation = resolve; });
+        const setContext = sandbox.stub(util, 'setContext').resolves();
+        setContext.onFirstCall().returns(activation);
 
         const staleSwitch = session.switchSessionByTerminal(slowTerminal);
         await session.switchSessionByTerminal(unattachedTerminal);
         assert.strictEqual(statusBar.text, 'R: (not attached)');
 
-        resolvePid?.(46255);
+        finishActivation?.();
         await staleSwitch;
         assert.strictEqual(statusBar.text, 'R: (not attached)');
     });

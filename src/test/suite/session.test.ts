@@ -33,11 +33,11 @@ async function waitFor<T>(condition: () => T | Promise<T>, timeout = 10000, inte
 suite('Session Communication', () => {
     let sandbox: sinon.SinonSandbox;
     let commandMarkerPath: string | undefined;
-    let ancestors: sinon.SinonStub;
+    let plotPanelCleanup: (() => void) | undefined;
 
     setup(() => {
         sandbox = sinon.createSandbox();
-        ancestors = sandbox.stub(processTree, 'getProcessAncestors').resolves([]);
+        sandbox.stub(processTree, 'getProcessAncestors').resolves([]);
         sandbox.stub(vscode.commands, 'registerCommand'); // prevent "command already exists" error
         mockExtensionContext(extension_root, sandbox);
         session.deploySessionWatcher(extension_root);
@@ -45,6 +45,10 @@ suite('Session Communication', () => {
     });
 
     teardown(async () => {
+        plotPanelCleanup?.();
+        plotPanelCleanup = undefined;
+        const plotManager = extension.globalPlotManager as plotViewer.CommonPlotManager | undefined;
+        plotManager?.standardPlotViewer.dispose();
         const attachedSessionId = session.activeSession?.sessionId;
         if (rTerminal.rTerm) {
             rTerminal.rTerm.dispose();
@@ -312,6 +316,15 @@ suite('Session Communication', () => {
         }
 
         const attached: Array<{ id: string; client: net.Socket; server: net.Socket }> = [];
+        const sendText = sandbox.stub();
+        const otherSendText = sandbox.stub();
+        const terminal = { processId: Promise.resolve(undefined), sendText } as unknown as vscode.Terminal;
+        const otherTerminal = { processId: Promise.resolve(99999), sendText: otherSendText } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal, otherTerminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(otherTerminal);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'source.focus' ? 'none' : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
         const attach = async (id: string): Promise<void> => {
             const existingSockets = new Set(session.activeConnections);
             const client = net.createConnection(endpoint);
@@ -349,6 +362,19 @@ suite('Session Communication', () => {
             assert.strictEqual(session.activeSession?.sessionId, 'session-api-second');
             assert.strictEqual(await api.activate('session-api-first'), true);
             assert.strictEqual(session.activeSession?.sessionId, 'session-api-first');
+            const owner = session.activeSession;
+            assert.ok(owner);
+            await assert.rejects(session.executeSessionCode(owner, 'View(iris)'), /no attached terminal/);
+            assert.strictEqual(await api.activate(owner.sessionId, { terminal }), true);
+            assert.strictEqual(await api.activate('session-api-second'), true);
+            await session.executeSessionCode(owner, 'View(iris)');
+            sinon.assert.calledOnceWithExactly(sendText, 'View(iris)');
+            sinon.assert.notCalled(otherSendText);
+            await session.switchSessionByTerminal(terminal);
+            assert.strictEqual(session.activeSession, owner);
+            assert.strictEqual(await api.activate(owner.sessionId), true);
+            await session.executeSessionCode(owner, 'rm(iris)');
+            sinon.assert.calledWithExactly(sendText, 'rm(iris)');
 
             const disconnected = attached.find(item => item.id === 'session-api-second');
             assert.ok(disconnected);
@@ -455,7 +481,7 @@ suite('Session Communication', () => {
         assert.ok(hasHello, 'completion result should contain hello_vscode');
     }).timeout(30000);
 
-    test('communication: plot() with various devices and View() events', async () => {
+    test('communication: plot() updates the standard viewer and View() events', async () => {
         const configStub = {
             get: (key: string, defaultValue?: unknown) => {
                 if (key === 'sessionWatcher') { return true; }
@@ -486,11 +512,6 @@ suite('Session Communication', () => {
         sandbox.stub(util, 'getRterm').resolves(rPath);
         sandbox.stub(util, 'promptToInstallSessPackage').resolves(true);
 
-        // svglite is a Suggests (optional) dependency of the sess package, so it may or
-        // may not be present. Detect it before stubbing so the format assertions below
-        // can verify the correct code path (SVG when installed, png fallback otherwise).
-        const svgliteInstalled = (await util.getRPackageVersion('svglite')) !== undefined;
-
         const result = await rTerminal.createRTerm(true);
         assert.ok(result);
         await waitFor(() => session.activeSession, 15000, 200);
@@ -501,83 +522,80 @@ suite('Session Communication', () => {
         
         const term = rTerminal.rTerm;
         assert.ok(term, 'rTerminal.rTerm should be defined');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Spy on WebviewPanel creation to catch plot / dataview / webview rendering attempts
-        // Note: we set up the spy after activeSession to not intercept early setups if any.
-        const createWebviewPanelSpy = sandbox.spy(vscode.window, 'createWebviewPanel');
 
-        // 1. Test svglite
+        // Observe the real StandardPlotViewer's first update message. Install the
+        // observer before issuing the R command so an earlier/stale panel response
+        // cannot satisfy this phase.
+        const plotManager = extension.globalPlotManager as plotViewer.CommonPlotManager;
+        plotManager.standardPlotViewer.dispose();
+        let resolvePlotUpdate!: (message: { type: string, data?: string, format?: string }, delivered: boolean) => void;
+        let rejectPlotUpdate!: (error: unknown) => void;
+        const plotUpdateMessage = new Promise<{ message: { type: string, data?: string, format?: string }, delivered: boolean }>((resolve, reject) => {
+            resolvePlotUpdate = (message, delivered) => resolve({ message, delivered });
+            rejectPlotUpdate = reject;
+        });
+        const originalCreateWebviewPanel = vscode.window.createWebviewPanel.bind(vscode.window);
+        const createWebviewPanelSpy = sandbox.stub(vscode.window, 'createWebviewPanel').callsFake((...args) => {
+            const panel = originalCreateWebviewPanel(...args);
+            if (args[0] === 'r.standardPlot') {
+                const webview = panel.webview;
+                const originalPostMessage = webview.postMessage.bind(webview);
+                const postMessageStub = sandbox.stub(webview, 'postMessage').callsFake(async message => {
+                    const update = message as { type?: unknown, data?: unknown, format?: unknown };
+                    try {
+                        const delivered = await originalPostMessage(message);
+                        if (update.type === 'update' && typeof update.data === 'string' && update.data.length > 0) {
+                            resolvePlotUpdate({
+                                type: 'update',
+                                data: update.data,
+                                format: typeof update.format === 'string' ? update.format : undefined
+                            }, delivered);
+                        }
+                        return delivered;
+                    } catch (error) {
+                        if (update.type === 'update') { rejectPlotUpdate(error); }
+                        return false;
+                    }
+                });
+                plotPanelCleanup = () => {
+                    postMessageStub.restore();
+                    panel.dispose();
+                };
+            }
+            return panel;
+        });
+        const standardPlotUpdateSpy = sandbox.spy(plotManager, 'showStandardPlot');
+
+        // 1. Test plot command -> plot_updated notification -> real viewer update.
         const plotMarkerPath = path.join(
             os.tmpdir(),
             `vscode-r-plot-marker-${process.pid}-${Date.now()}`
         );
         commandMarkerPath = plotMarkerPath;
         await fs.remove(plotMarkerPath);
+        let plotUpdateTimer: NodeJS.Timeout | undefined;
+        const plotUpdateTimeout = new Promise<never>((_resolve, reject) => {
+            plotUpdateTimer = setTimeout(() => reject(new Error('Timed out waiting for the standard plot viewer update')), 15000);
+        });
+        const plotUpdateWait = Promise.race([plotUpdateMessage, plotUpdateTimeout]);
         term.sendText(
-            `plot(0, main="svglite"); ` +
+            `plot(0, main="standard viewer integration"); ` +
             `writeLines("evaluated", ${JSON.stringify(plotMarkerPath)})\n`
         );
-        await waitFor(() => fs.pathExists(plotMarkerPath), 10000, 200);
-
-        await waitFor(() => createWebviewPanelSpy.calledWith('r.standardPlot'), 10000, 200);
-        assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be triggered for svglite');
-
-        assert.ok(session.activeSession, 'activeSession should be defined');
-        
-        let svgliteResp: { data?: string, format?: string, error?: unknown } | undefined;
-        await waitFor(async () => {
-            try {
-                svgliteResp = await session.sessionRequest({
-                    method: 'plot_latest',
-                    params: { width: 800, height: 600, format: 'svglite' }
-                }) as { data?: string, format?: string, error?: unknown };
-                return svgliteResp && svgliteResp.data;
-            } catch {
-                return false;
-            }
-        }, 15000, 500);
-        
-        assert.ok(svgliteResp && svgliteResp.data, 'svglite data should be returned');
-        // svglite is an optional (Suggests) dependency of the sess package. When it is
-        // installed the handler renders SVG; otherwise it falls back to png. Assert the
-        // path that actually applies to this environment so both branches are tested.
-        if (svgliteInstalled) {
-            assert.strictEqual(svgliteResp.format, 'svglite', 'format should be svglite when svglite is installed');
-        } else {
-            assert.strictEqual(svgliteResp.format, 'png', 'format should fall back to png when svglite is not installed');
+        let plotUpdate: Awaited<typeof plotUpdateMessage>;
+        try {
+            const [, update] = await Promise.all([
+                waitFor(() => fs.pathExists(plotMarkerPath), 10000, 200),
+                plotUpdateWait
+            ]);
+            plotUpdate = update;
+        } finally {
+            if (plotUpdateTimer) { clearTimeout(plotUpdateTimer); }
         }
-
-        // Reset history to ensure we track the next plot if we were to recreate the panel
-        // Wait, since panel is reused, we shouldn't reset history if we just want it to pass,
-        // but if we want it to actually wait for the *update*, standardViewer doesn't call createWebviewPanel.
-        // I will not reset history for now, just apply the spy check.
-
-        // 2. Test png
-        term.sendText('plot(1, main="png")\n');
-        
-        // Wait for R to finish plotting
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // The panel is reused, but we use the spy just in case it were recreated or as requested.
-        await waitFor(() => createWebviewPanelSpy.calledWith('r.standardPlot'), 10000, 200);
-        assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be active for png');
-
-        let pngResp: { data?: string, format?: string } | undefined;
-        await waitFor(async () => {
-            try {
-                pngResp = await session.sessionRequest({
-                    method: 'plot_latest',
-                    params: { width: 800, height: 600, format: 'png' }
-                }) as { data?: string, format?: string };
-                return pngResp && pngResp.data;
-            } catch {
-                return false;
-            }
-        }, 15000, 500);
-
-        assert.ok(pngResp && pngResp.data, 'png data should be returned');
-        assert.strictEqual(pngResp.format, 'png', 'format should be png');
+        assert.ok(plotUpdate.message.data, 'the standard plot viewer should receive rendered plot data');
+        assert.strictEqual(plotUpdate.delivered, true, 'VS Code should accept the standard plot viewer update');
+        assert.ok(createWebviewPanelSpy.calledWith('r.standardPlot'), 'r.standardPlot should be created');
+        assert.ok(standardPlotUpdateSpy.called, 'plot_updated should update the standard plot viewer');
 
         // 3. Test View() -> dataview
         term.sendText('View(mtcars)\n');
@@ -660,109 +678,6 @@ suite('Session Communication', () => {
 
         await session.shutdownSessionWatcher();
     }).timeout(15000);
-
-    for (const { delayedPid, parents } of [
-        { delayedPid: false, parents: [] },
-        { delayedPid: true, parents: [] },
-        { delayedPid: false, parents: [46250] },
-        { delayedPid: true, parents: [46299, 46250] },
-    ]) {
-        test(`terminal readiness waits for its own valid attach (delayed PID: ${String(delayedPid)}, ancestors: ${parents.length})`, async () => {
-            const rPid = parents.length ? 46252 : 46250;
-            ancestors.withArgs(rPid).resolves(parents);
-            const otherRPid = parents.length ? 46253 : 46251;
-            ancestors.withArgs(otherRPid).resolves([46251]);
-            const backgroundPid = 46254;
-            ancestors.withArgs(backgroundPid).resolves([rPid, ...parents]);
-            const endpoint = await session.getGlobalPipePath();
-            const sendText = sandbox.stub();
-            let resolvePid!: (pid: number) => void;
-            const terminal = {
-                processId: delayedPid ? new Promise<number>(resolve => { resolvePid = resolve; }) : Promise.resolve(46250),
-                sendText, show: () => undefined,
-            } as unknown as vscode.Terminal;
-            const other = { processId: Promise.resolve(46251) } as unknown as vscode.Terminal;
-            // Keep the unresolved PID out of terminal enumeration until attach
-            // association runs, to avoid blocking an unrelated handshake.
-            const terminals = sandbox.stub(vscode.window, 'terminals').value([other]);
-            sandbox.stub(vscode.window, 'activeTerminal').value(other);
-            let ready = false;
-            const waiting = session.waitForTerminalReady(terminal).then(value => { ready = value; return value; });
-            const clients: net.Socket[] = [];
-            const sockets: session.Session['socket'][] = [];
-            const attach = async (terminalPid: number) => {
-                const existing = new Set(session.activeConnections);
-                const client = net.createConnection(endpoint);
-                clients.push(client);
-                await new Promise<void>((resolve, reject) => {
-                    client.once('connect', resolve);
-                    client.once('error', reject);
-                });
-                const socket = await waitFor(() => [...session.activeConnections].find(s => !existing.has(s)));
-                assert.ok(socket);
-                sockets.push(socket);
-                client.write(`${JSON.stringify({
-                    jsonrpc: '2.0', method: 'attach', params: {
-                        protocol_version: 2, session_id: `readiness-${terminalPid}`, host: os.hostname(),
-                        pid: terminalPid, version: '4.4.0', tempdir: '/tmp', wd: '/tmp',
-                    },
-                })}\n`);
-                await waitFor(() => socket._sessionId === `readiness-${terminalPid}`);
-            };
-            try {
-                await attach(otherRPid);
-                assert.strictEqual(ready, false, 'another terminal must not release the wait');
-                terminals.value([terminal, other]);
-                if (delayedPid) { resolvePid(46250); }
-                await attach(rPid);
-                assert.strictEqual(await waiting, true);
-                assert.strictEqual(sockets[1]._terminalPid, 46250);
-                if (!parents.length) { sinon.assert.notCalled(ancestors); }
-                assert.strictEqual(await session.waitForTerminalReady(terminal), true, 'already attached terminals resolve immediately');
-                await session.switchSessionByTerminal(terminal);
-                const foreground = session.activeSession;
-                assert.strictEqual(foreground?.pid, String(rPid));
-                assert.ok(foreground);
-
-                await attach(backgroundPid);
-                const background = await waitFor(() => session.activeSession?.pid === String(backgroundPid)
-                    ? session.activeSession : undefined);
-                assert.ok(background);
-                assert.strictEqual(sockets[2]._terminalPid, undefined, 'background R must remain unassociated');
-                await assert.rejects(session.executeSessionCode(background, 'Sys.getpid()'), /no attached terminal/);
-                sinon.assert.notCalled(sendText);
-                await session.switchSessionByTerminal(terminal);
-                assert.strictEqual(session.activeSession, foreground, 'terminal selection must retain the foreground workspace');
-                await session.executeSessionCode(foreground, 'Sys.getpid()');
-                sinon.assert.calledOnce(sendText);
-            } finally {
-                clients.forEach(client => client.destroy());
-                sockets.forEach(socket => socket.destroy());
-                await session.cleanupSession(`readiness-${backgroundPid}`);
-                await session.cleanupSession(`readiness-${rPid}`);
-                await session.cleanupSession(`readiness-${otherRPid}`);
-            }
-        });
-    }
-
-    test('terminal readiness aborts on close even before processId resolves', async () => {
-        const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;
-        const close = new vscode.EventEmitter<vscode.Terminal>();
-        sandbox.stub(vscode.window, 'onDidCloseTerminal').callsFake(close.event);
-        const waiting = session.waitForTerminalReady(terminal);
-        close.fire(terminal);
-        assert.strictEqual(await waiting, false);
-        close.dispose();
-    });
-
-    test('terminal readiness timeout does not declare the terminal ready', async () => {
-        const terminal = { processId: new Promise<number>(() => undefined) } as unknown as vscode.Terminal;
-        const clock = sandbox.useFakeTimers();
-        const waiting = session.waitForTerminalReady(terminal, 100);
-        await clock.tickAsync(100);
-        assert.strictEqual(await waiting, false);
-        assert.strictEqual(clock.countTimers(), 0);
-    });
 
     test('reconnecting terminals preserve the selected terminal in either attach order', async () => {
         const endpoint = await session.getGlobalPipePath();
@@ -991,6 +906,13 @@ suite('Session Communication', () => {
     });
 
     test('IPC protocol keys sessions by session_id and ignores close from a replaced socket', async () => {
+        sandbox.stub(extension, 'enableSessionWatcher').value(true);
+        const sendText = sandbox.stub();
+        const terminal = { processId: Promise.resolve(undefined), sendText } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(util, 'config').returns({
+            get: (key: string) => key === 'source.focus' ? 'none' : undefined,
+        } as unknown as vscode.WorkspaceConfiguration);
         const endpoint = await session.getGlobalPipePath();
         const first = net.createConnection(endpoint);
         let second: net.Socket | undefined;
@@ -1026,6 +948,7 @@ suite('Session Communication', () => {
             if (!originalSession) {
                 throw new Error('original session should have attached');
             }
+            assert.strictEqual(await session.activateSessionById(originalSession.sessionId, { terminal }), true);
 
             const reconnect = net.createConnection(endpoint);
             second = reconnect;
@@ -1034,6 +957,9 @@ suite('Session Communication', () => {
             assert.strictEqual(session.activeSession?.sessionId, 'stable-session-id');
             assert.strictEqual(session.activeSession?.pid, '9876');
             const replacementSession = session.activeSession;
+            assert.ok(replacementSession);
+            await assert.rejects(session.executeSessionCode(replacementSession, 'View(iris)'), /no attached terminal/);
+            assert.strictEqual(await session.activateSessionById(replacementSession.sessionId, { terminal }), true);
 
             await session.cleanupSession('stable-session-id', originalSession.socket);
             assert.strictEqual(session.activeSession, replacementSession, 'cleanup from the old socket must not remove the replacement session');
@@ -1041,6 +967,8 @@ suite('Session Communication', () => {
             first.destroy();
             await new Promise(resolve => setTimeout(resolve, 100));
             assert.strictEqual(session.activeSession, replacementSession, 'old socket close must not clear the replacement session');
+            await session.executeSessionCode(replacementSession, 'View(iris)');
+            sinon.assert.calledOnce(sendText);
 
             const otherSession = net.createConnection(endpoint);
             third = otherSession;

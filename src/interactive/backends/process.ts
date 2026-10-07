@@ -13,7 +13,7 @@ export class RuntimeProcess {
     constructor(readonly adopted: boolean, private emit: (event: BackendEvent) => void) { }
     launch(command: string, args: string[], directory: string, env: NodeJS.ProcessEnv,
         output: (text: string, channel: string) => void): ChildProcess {
-        this.child = spawn(command, args, { cwd: directory, env, stdio: ['pipe', 'pipe', 'pipe'] });
+        this.child = spawn(command, args, { cwd: directory, env, stdio: ['ignore', 'pipe', 'pipe'] });
         this.pid = this.child.pid;
         this.child.on('error', error => { this.emit({ type: 'error', message: error.message }); this.exit(); });
         this.child.on('exit', (code, signal) => this.exit(code, signal));

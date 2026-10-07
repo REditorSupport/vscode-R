@@ -3,4 +3,4 @@
 \alias{interactive_stop}
 \title{Disconnect the persistent Interactive bridge without terminating R}
 \usage{interactive_stop()}
-\description{Restores the original frontend console callbacks and sess runtime hooks.}
+\description{Restores sess runtime hooks without changing the frontend console callbacks.}

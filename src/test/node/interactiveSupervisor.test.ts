@@ -43,7 +43,7 @@ import { AgentConfig } from '../../interactive/protocol';
         const systemd = executable('systemd-run');
         assert.deepStrictEqual(prepareSupervisor('systemd', root, 'linux', root), { kind: 'systemd', executable: systemd });
         assert.throws(() => prepareSupervisor('invalid', root, 'linux', root), /Unknown session supervisor.*r\.interactive\.supervision/);
-        assert.throws(() => prepareSupervisor('auto', root, 'win32', root), /requires Linux or macOS/);
+        assert.throws(() => prepareSupervisor('auto', root, 'win32', root), /require Linux or macOS/);
     });
 
     test('missing explicit supervisors fail before creating storage or launching Node', async () => {

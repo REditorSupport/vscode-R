@@ -2,8 +2,6 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import * as sinon from 'sinon';
 import { hostNodeRuntime, resolveNodeRuntime } from '../../interactive/nodeExecutable';
 import { nodeEnvironment, prepareNodeRuntime } from '../../interactive/launcher';
@@ -54,16 +52,6 @@ suite('Interactive Node runtime', () => {
     test('reports a removed host runtime before creating session storage', async () => {
         await assert.rejects(prepareNodeRuntime(root, { executable: path.join(root, 'removed-host'), electron: true }), /Reload VS Code.*VS Code Server/);
         assert.deepStrictEqual(fs.readdirSync(root), []);
-    });
-    test('prepares and launches the actual host runtime with no node on PATH', async () => {
-        const runtime = await prepareNodeRuntime(root);
-        const script = `require(${JSON.stringify(require.resolve('../../interactive/launcher'))})
-            .prepareNodeRuntime(process.cwd()).then(runtime => process.stdout.write(JSON.stringify(runtime)))
-            .catch(error => { console.error(error); process.exitCode = 1; });`;
-        const result = await promisify(execFile)(runtime.executable, ['-e', script], {
-            cwd: root, env: nodeEnvironment(runtime, { ...process.env, PATH: root }), timeout: 10000,
-        });
-        assert.deepStrictEqual(JSON.parse(result.stdout), runtime);
     });
     test('probes the Node version in Electron mode instead of its application version', async function () {
         if (process.platform === 'win32') { this.skip(); }

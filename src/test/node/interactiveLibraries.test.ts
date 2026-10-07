@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as net from 'net';
 import { randomUUID } from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
@@ -39,6 +40,81 @@ const run = promisify(execFile);
     suiteTeardown(() => fs.rmSync(root, { recursive: true, force: true }));
 
     const startup = '\nstartup_library_paths <- .libPaths()\nstartup_library_env <- Sys.getenv(c("R_LIBS", "R_LIBS_USER", "R_LIBS_SITE"))\n';
+    test('loads private-only bridge dependencies without redirecting user package installs', async () => {
+        const socketRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'r-lib-'));
+        const endpoint = path.join(socketRoot, 's');
+        const sockets = new Set<net.Socket>();
+        let received = '';
+        const server = net.createServer(socket => {
+            sockets.add(socket);
+            socket.on('data', data => { received += data.toString(); });
+            socket.on('close', () => sockets.delete(socket));
+        });
+        const script = path.join(root, 'private-dependencies.R');
+        const config = path.join(root, 'private-dependencies.json');
+        fs.writeFileSync(config, JSON.stringify({ sess: endpoint, jgd: '', token: randomUUID(), useJgd: false }));
+        fs.writeFileSync(script, `
+private <- ${rString(runtime.library)}
+user <- ${rString(userLibrary)}
+database <- installed.packages(lib.loc=unique(c(private,.libPaths())))
+dependencies <- unique(c("ps", unlist(tools::package_dependencies(
+    c("sess","ps"), database, which=c("Depends","Imports","LinkingTo"), recursive=TRUE))))
+for (package in dependencies) {
+    if (!is.na(database[package,"Priority"]) || dir.exists(file.path(private,package))) next
+    stopifnot(file.copy(file.path(database[package,"LibPath"],package),private,recursive=TRUE))
+}
+# A base/recommended-only library prevents globally installed dependencies from
+# hiding the first-time setup failure. This change lives only in this R child.
+system <- ${rString(path.join(root, 'base-library'))}
+dir.create(system)
+base_packages <- installed.packages(lib.loc=.Library)
+base_packages <- rownames(base_packages)[!is.na(base_packages[,"Priority"])]
+stopifnot(all(file.symlink(file.path(.Library,base_packages),file.path(system,base_packages))))
+unlockBinding(".Library",baseenv())
+assign(".Library",system,baseenv())
+lockBinding(".Library",baseenv())
+.libPaths(c(user,system),include.site=FALSE)
+stopifnot(!requireNamespace("jsonlite",quietly=TRUE))
+before <- .libPaths()
+environment <- Sys.getenv(c("R_LIBS","R_LIBS_USER","R_LIBS_SITE"))
+source(${rString(path.join(runtime.resources, 'interactive-worker.R'))},
+       local=new.env(parent=baseenv()))$value(private,${rString(config)},support_libraries=system)
+for (package in c("sess","jsonlite","later","ps","processx","rstudioapi")) {
+    stopifnot(normalizePath(getNamespaceInfo(package,"path"))==normalizePath(file.path(private,package)))
+}
+stopifnot(identical(before,.libPaths()), !private %in% .libPaths(),
+          identical(environment,Sys.getenv(c("R_LIBS","R_LIBS_USER","R_LIBS_SITE"))))
+install.packages(${rString(probe)},repos=NULL,type="source")
+stopifnot(file.exists(file.path(user,"vscrlibprobe","DESCRIPTION")),
+          !file.exists(file.path(private,"vscrlibprobe")),vscrlibprobe::answer()==42,
+          identical(before,.libPaths()))
+sess::interactive_stop()
+cat("Private bridge dependencies loaded; user package installed into the user library.")
+`);
+        try {
+            await new Promise<void>((resolve, reject) => {
+                server.once('error', reject);
+                server.listen(endpoint, resolve);
+            });
+            const stdout = await new Promise<string>((resolve, reject) => {
+                const child = execFile('R', ['--vanilla', '--quiet', '--interactive'], { timeout: 60000 },
+                    (error, stdout, stderr) => error ? reject(new Error(stderr, { cause: error })) : resolve(stdout));
+                child.stdin!.end(`tryCatch(source(${rString(script)}), error=function(e) {
+    message(conditionMessage(e)); quit(save="no",status=1)
+})
+quit(save="no")
+`);
+            });
+            assert.match(stdout, /Private bridge dependencies loaded; user package installed into the user library/);
+            assert.match(received, /"method":"attach"/);
+        } finally {
+            for (const socket of sockets) { socket.destroy(); }
+            await new Promise<void>(resolve => server.close(() => resolve()));
+            fs.rmSync(socketRoot, { recursive: true, force: true });
+            fs.rmSync(path.join(userLibrary, 'vscrlibprobe'), { recursive: true, force: true });
+        }
+    });
+
     async function check(directory: string, renv: boolean): Promise<void> {
         const previous = { R_PROFILE_USER: process.env.R_PROFILE_USER, R_LIBS: process.env.R_LIBS,
             RENV_PATHS_ROOT: process.env.RENV_PATHS_ROOT };
@@ -50,7 +126,7 @@ const run = promisify(execFile);
         const id = randomUUID();
         const agent = new SessionAgent({ id, generation: randomUUID(), label: 'Library test', directory,
             storage: path.join(root, id), rPath: 'R', library: runtime.library, resources: runtime.resources,
-            provider: process.env.VSCR_TEST_PROVIDER === 'arf' ? 'arf' : 'r', arfPath: process.env.ARF_PATH ?? 'arf',
+            provider: 'arf', arfPath: process.env.ARF_PATH ?? 'arf',
             supervision: 'test', plotBackend: 'auto', historyLimit: 10, maxOutputBytes: 1048576, maxJournalBytes: 16777216 });
         let client: AgentClient | undefined;
         const events: SessionEvent[] = [];

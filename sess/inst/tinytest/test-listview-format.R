@@ -1,4 +1,4 @@
-# List rows use the same class formatting and numeric precision as table cells.
+# Individual vector rows retain table precision; numeric summaries are compact.
 local({
   runtime <- sess:::.sess_env
   previous <- runtime$dataviews
@@ -19,7 +19,9 @@ local({
                 "0", "NA", "NaN", "Inf", "-Inf")
   expect_equal(text(page(numbers)), expected)
   expect_equal(text(page(list(nested = numbers), list(1L))), expected)
-  expect_equal(text(page(as.list(numbers))), paste("num", expected))
+  compact <- c("1.23", "1.54e-100", "-6.65e-13", "1.23e+14",
+               "0", "NA", "NaN", "Inf", "-Inf")
+  expect_equal(text(page(as.list(numbers))), paste("num", compact))
   for (index in seq_along(numbers)) {
     expect_true(sess:::listview_supported(numbers[index]))
     expect_true(sess:::listview_is_vector(numbers[index]))
@@ -27,9 +29,29 @@ local({
     expect_false(page(numbers[index])$children[[1L]]$has_children)
     expect_false(page(numbers[index])$children[[1L]]$viewable)
   }
-  expect_true(grepl(expected[[1L]], text(page(list(numbers)))[[1L]], fixed = TRUE))
+  expect_equal(text(page(list(numbers))),
+               "num [1:9] 1.23 1.54e-100 -6.65e-13 1.23e+14 0 ...")
   expect_equal(text(page(list(matrix(rep(numbers[[1L]], 4L), nrow = 2L)))),
-               paste0("num [1:2, 1:2] ", expected[[1L]], " ..."))
+               "num [1:2, 1:2] 1.23 1.23 1.23 1.23")
+  values <- c(-1.33067613368562, -0.0827652250416069, 0.836484327361507,
+              1.23456789, -2.3456789)
+  root <- list(a = 1, b = rep(values, 2L), c = list(x = values, y = list(z = values[1:3])),
+               mtcars = datasets::mtcars)
+  expect_equal(text(page(root))[1:3],
+               c("num 1", "num [1:10] -1.33 -0.0828 0.836 1.23 -2.35 ...", "List of 2"))
+  expect_equal(text(page(root, list(3L)))[[1L]],
+               "num [1:5] -1.33 -0.0828 0.836 1.23 -2.35")
+  expect_equal(text(page(root, list(3L, 2L))), "num [1:3] -1.33 -0.0828 0.836")
+  expect_equal(text(page(list(integer(), numeric(), 1:6))),
+               c("int(0)", "num(0)", "int [1:6] 1 2 3 4 5 ..."))
+  expect_equal(text(page(list(c(0, NA_real_, NaN, Inf, -Inf)))),
+               "num [1:5] 0 NA NaN Inf -Inf")
+  # A summary reads only its prefix, including for compact ALTREP sequences.
+  expect_equal(text(page(list(seq_len(1000000000L)))),
+               "int [1:1000000000] 1 2 3 4 5 ...")
+  options(digits = 22L)
+  expect_equal(text(page(list(values))), "num [1:5] -1.33 -0.0828 0.836 1.23 -2.35")
+  options(digits = 3L)
   expect_identical(numbers, c(
     1.23456789012345, 1.54e-100, -6.65e-13, 1.23456789012345e14, 0, NA_real_, NaN, Inf, -Inf
   ))

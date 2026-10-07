@@ -1,17 +1,30 @@
 import childProcess from 'child_process';
 
+export function getProcessQuerySpec(platform: NodeJS.Platform = process.platform): {
+    executable: string;
+    args: string[];
+    timeout: number;
+} {
+    return platform === 'win32'
+        ? {
+            executable: 'powershell.exe',
+            args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
+                'Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId | ForEach-Object { "{0} {1}" -f $_.ProcessId, $_.ParentProcessId }'],
+            timeout: 15000,
+        }
+        : { executable: 'ps', args: ['-A', '-o', 'pid=', '-o', 'ppid='], timeout: 5000 };
+}
+
 /** Return nearest ancestors first, using one bounded process-table snapshot. */
 export async function getProcessAncestors(pid: number): Promise<number[]> {
     if (!Number.isSafeInteger(pid) || pid <= 0) { return []; }
     try {
-        const executable = process.platform === 'win32' ? 'powershell.exe' : 'ps';
-        const args = process.platform === 'win32'
-            ? ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
-                'Get-CimInstance Win32_Process | ForEach-Object { "{0} {1}" -f $_.ProcessId, $_.ParentProcessId }']
-            : ['-A', '-o', 'pid=', '-o', 'ppid='];
+        const { executable, args, timeout } = getProcessQuerySpec();
         const stdout = await new Promise<string>((resolve, reject) => {
             childProcess.execFile(executable, args, {
-                encoding: 'utf8', timeout: 5000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
+                // Cold PowerShell/CIM startup on Windows can exceed five seconds.
+                encoding: 'utf8', timeout,
+                maxBuffer: 4 * 1024 * 1024, windowsHide: true,
             }, (error, output) => error ? reject(error) : resolve(output));
         });
         const parents = new Map<number, number>();

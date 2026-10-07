@@ -27,7 +27,7 @@
     "R Markdown"
   ],
   "engines": {
-    "vscode": "^1.110.0"
+    "vscode": "^1.94.0"
   },
   "activationEvents": [
     "workspaceContains:**/*.{rproj,Rproj,r,R,rd,Rd,rmd,Rmd}",
@@ -2354,7 +2354,7 @@
           "type": "string",
           "ignoreSync": true,
           "default": "arf",
-          "description": "Optional arf executable for managed headless Interactive sessions, resolved on the R host. Use an executable name on PATH or a path (supports ~ and ${userHome}/${workspaceFolder}). Plain R sessions do not require arf; if unavailable, the provider picker offers configuration instead of launching arf."
+          "description": "arf executable required for managed headless Interactive sessions, resolved on the R host. Use an executable name on PATH or a path (supports ~ and ${userHome}/${workspaceFolder}). Ordinary R terminals do not require arf; if unavailable, the Interactive provider picker offers configuration."
         },
         "r.interactive.storagePath": {
           "tags": ["experimental"],
@@ -2530,11 +2530,14 @@
     "watch": "node esbuild.js --watch",
     "clean": "node -e \"require('node:fs').rmSync('out', { recursive: true, force: true })\"",
     "pretest": "pnpm run compile && pnpm run clean && tsc -p ./",
-    "test": "vscode-test",
+    "test": "pnpm run test:node && pnpm run test:extension",
+    "test:node": "mocha \"out/test/node/**/*.test.js\" --config .mocharc.interactive.cjs",
+    "test:extension": "vscode-test",
     "lint": "oxlint src",
     "typecheck": "tsc --noEmit -p ./",
-    "test:sess-source": "node --test scripts/sess-source.test.js && Rscript --vanilla R/tests/sess_source.R",
-    "test:interactive": "pnpm run compile && tsc && mocha out/test/suite/arfExecutable.test.js out/test/suite/nodeExecutable.test.js out/test/suite/plotSvg.test.js out/test/suite/interactiveCore.test.js out/test/suite/interactiveBackend.test.js out/test/suite/interactiveLibraries.test.js out/test/suite/interactiveRuntime.test.js --ui tdd --timeout 60000",
+    "test:sess-identity": "Rscript --vanilla R/tests/sess_source.R",
+    "test:sess-source": "node --test scripts/sess-source.test.js && pnpm run test:sess-identity",
+    "test:interactive": "pnpm run pretest && pnpm run test:node",
     "test:interactive:examples": "pnpm run compile && tsc && node src/test/examples/run.cjs"
   },
   "devDependencies": {
@@ -2545,7 +2548,7 @@
     "@types/node": "^22.20.5",
     "@types/node-fetch": "^2.6.13",
     "@types/sinon": "^10.0.20",
-    "@types/vscode": "~1.110.0",
+    "@types/vscode": "~1.94.0",
     "@types/winreg": "^1.2.36",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^3.1.0",
@@ -2570,7 +2573,7 @@
     "httpgd": "0.1.6",
     "js-yaml": "^4.3.2",
     "node-fetch": "^2.7.0",
-    "vscode-languageclient": "^9.0.1",
+    "vscode-languageclient": "^10.1.2",
     "winreg": "^1.2.5"
   },
   "extensionDependencies": [

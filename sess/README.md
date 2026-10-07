@@ -31,17 +31,17 @@ socket on macOS/Linux, named pipe on Windows) using
 > finishes before the managed terminal starts. If sess is already loaded,
 > restart R after updating to use the new copy.
 
-The installer first tries the bundled source. If that fails (for example, because
-no C compiler is installed), it checks R-universe for a compatible pre-built
-package and verifies that it loads. On Linux, compiled binaries must match the
-Ubuntu codename, architecture and R version; other distributions can use pure-R
-releases when their dependencies are already available without compilation.
-It does not change your global repository settings.
+The bundled `sess` is a pure R package and needs no compiler to install from
+source. Its dependencies, including `processx`, `later`, and `jsonlite`, contain
+native code; the extension installs missing Imports from the configured CRAN
+repository before installing its bundled copy. The extension does not substitute
+a separately published `sess` package if the bundled installation fails.
 
-Persistent Interactive sessions additionally require the native bridge and its
-compatibility marker. The public sess 3.0.1 build checked on 2026-10-02 predates
-Interactive support: it can serve ordinary terminals, but a new R-universe build
-containing the bridge is needed for compiler-free Interactive installation.
+R Interactive requires arf on the R host. Managed headless arf sessions stream
+console output and retain rich tables, HTML, and plots. Attached arf sessions
+return notebook console output on completion; arbitrary terminal console output
+has no subscription in the current arf IPC. Notebook console input and debugger
+prompts are unavailable. Ordinary R terminals remain available without arf.
 
 `sess` is not yet on CRAN. But you can install the development version from R-universe:
 

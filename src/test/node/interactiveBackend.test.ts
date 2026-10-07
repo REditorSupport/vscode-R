@@ -56,6 +56,8 @@ suite('Interactive backend configuration', () => {
         assert.strictEqual(backendDescriptor(normalized).options.rPath, 'R');
         assert.throws(() => createBackend(config), /Unsupported Interactive backend/);
         assert.throws(() => backendDefinition('toString'), /Unsupported/);
+        assert.throws(() => backendDefinition('sess').preflight({ ...descriptor,
+            options: { ...descriptor.options, frontend: 'r' } }, legacy), /now requires arf/);
     });
 });
 
@@ -212,7 +214,7 @@ suite('Interactive backend configuration', () => {
         });
         const endpoint = path.join(root, 'arf.sock');
         await new Promise<void>(resolve => server.listen(endpoint, resolve));
-        const adapter = new Arf('unused', root, endpoint, true, () => undefined);
+        const adapter = new Arf('unused', root, endpoint, true, () => undefined, 'token', () => undefined);
         try {
             await adapter.start('bootstrap', {});
             const pending = adapter.dispatch({ id: randomUUID(), code: 'side_effect()' });
