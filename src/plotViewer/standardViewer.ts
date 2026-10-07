@@ -1,7 +1,7 @@
 
 import * as vscode from 'vscode';
 import { asViewColumn, config, UriIcon } from '../util';
-import { sessionRequest, globalPipePath } from '../session';
+import * as session from '../session';
 import { PlotViewer } from './types';
 
 interface PlotResponse {
@@ -16,6 +16,9 @@ export class StandardPlotViewer implements PlotViewer {
     private viewHeight: number = 600;
     private plotData: string | undefined;
     private plotFormat: string | undefined;
+    private panelGeneration = 0;
+    private plotRequestPending = false;
+    private plotRequest: Promise<void> | undefined;
 
     public async update(): Promise<void> {
         const viewColumn = asViewColumn(config().get<string>('session.viewers.viewColumn.plot'), vscode.ViewColumn.Two);
@@ -38,11 +41,16 @@ export class StandardPlotViewer implements PlotViewer {
     }
 
     public dispose(): void {
-        this.panel?.dispose();
+        const panel = this.panel;
+        if (panel) {
+            this.panel = undefined;
+            this.panelGeneration++;
+            panel.dispose();
+        }
     }
 
     private createPanel(viewColumn: vscode.ViewColumn) {
-        this.panel = vscode.window.createWebviewPanel(
+        const panel = vscode.window.createWebviewPanel(
             'r.standardPlot',
             'R Plot',
             {
@@ -54,48 +62,97 @@ export class StandardPlotViewer implements PlotViewer {
                 retainContextWhenHidden: true
             }
         );
+        this.panel = panel;
+        const generation = ++this.panelGeneration;
 
-        this.panel.iconPath = new UriIcon('graph');
-        this.panel.webview.html = this.getHtml();
+        panel.iconPath = new UriIcon('graph');
+        panel.webview.html = this.getHtml();
 
-        this.panel.webview.onDidReceiveMessage(async (msg: { type: string, width?: number, height?: number }) => {
-            if (msg.type === 'resize') {
+        panel.webview.onDidReceiveMessage(async (msg: { type: string, width?: number, height?: number }) => {
+            if (this.panel === panel && this.panelGeneration === generation && msg.type === 'resize') {
                 this.viewWidth = msg.width || this.viewWidth;
                 this.viewHeight = msg.height || this.viewHeight;
                 await this.requestPlot();
             }
         });
 
-        this.panel.onDidDispose(() => {
-            this.panel = undefined;
+        panel.onDidDispose(() => {
+            if (this.panel === panel && this.panelGeneration === generation) {
+                this.panel = undefined;
+                this.panelGeneration++;
+            }
         });
     }
 
     private async requestPlot() {
-        if (!globalPipePath || !this.panel) {
+        if (!session.globalPipePath || !this.panel) {
             return;
         }
 
-        const format = config().get<string>('plot.format', 'svglite');
-        const devArgs = config().get<Record<string, unknown>>('plot.devArgs');
-        const response = await sessionRequest({
-            method: 'plot_latest',
-            params: {
-                width: this.viewWidth,
-                height: this.viewHeight,
-                format: format,
-                devArgs: devArgs
-            }
-        }) as PlotResponse | undefined;
+        this.plotRequestPending = true;
+        if (this.plotRequest) {
+            return this.plotRequest;
+        }
 
-        if (response?.data) {
-            this.plotData = response.data;
-            this.plotFormat = response.format || format;
-            void this.panel.webview.postMessage({
-                type: 'update',
-                data: this.plotData,
-                format: this.plotFormat
-            });
+        const request = this.drainPlotRequests();
+        this.plotRequest = request;
+        try {
+            await request;
+        } finally {
+            if (this.plotRequest === request) {
+                this.plotRequest = undefined;
+                // A request can become pending between the drain's final check
+                // and this continuation. Start it without losing that event.
+                if (this.plotRequestPending && this.panel) {
+                    void this.requestPlot();
+                }
+            }
+        }
+    }
+
+    private async drainPlotRequests(): Promise<void> {
+        while (this.plotRequestPending) {
+            this.plotRequestPending = false;
+            const panel = this.panel;
+            const generation = this.panelGeneration;
+            const targetSession = session.activeSession;
+            if (!session.globalPipePath || !panel) {
+                continue;
+            }
+
+            const width = this.viewWidth;
+            const height = this.viewHeight;
+            const format = config().get<string>('plot.format', 'svglite');
+            const devArgs = config().get<Record<string, unknown>>('plot.devArgs');
+            let response: PlotResponse | undefined;
+            try {
+                response = await session.sessionRequest({
+                    method: 'plot_latest',
+                    params: { width, height, format, devArgs }
+                }, targetSession) as PlotResponse | undefined;
+            } catch {
+                // sessionRequest normally converts transport failures to undefined;
+                // keep the viewer resilient if a requester rejects directly.
+            }
+
+            if (!response?.data) {
+                // A timed out request may still be running in R. Do not turn a
+                // failed request into an automatic retry; a later event can retry.
+                this.plotRequestPending = false;
+                break;
+            }
+
+            if (this.panel === panel
+                && this.panelGeneration === generation
+                && session.activeSession === targetSession) {
+                this.plotData = response.data;
+                this.plotFormat = response.format || format;
+                void panel.webview.postMessage({
+                    type: 'update',
+                    data: this.plotData,
+                    format: this.plotFormat
+                });
+            }
         }
     }
 
