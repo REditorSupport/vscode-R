@@ -20,11 +20,28 @@ export interface RSessionConnectionInfo {
     jgdSocket?: string;
 }
 
+export interface RSessionActivationOptions {
+    /**
+     * Explicit execution terminal, including extension-owned pseudoterminals.
+     * Each session and terminal has at most one association. This replaces any
+     * previous association for either endpoint, including native PID routing.
+     * Native attach cannot override a live explicit association. The binding
+     * lasts until terminal close, session disconnect, or connection replacement;
+     * call activate with the terminal again after reconnecting.
+     * Superseded native PID associations require a fresh native attach to resume.
+     */
+    terminal?: vscode.Terminal;
+}
+
 export interface RSessionApi {
     /** Returns connection details, or undefined when the session watcher is disabled. */
     getConnectionInfo(): Promise<RSessionConnectionInfo | undefined>;
-    /** Activates a connected session; returns false for unknown or disconnected sessions. */
-    activate(sessionId: string): Promise<boolean>;
+    /**
+     * Activates a connected session, optionally binding its execution terminal.
+     * Omitting terminal preserves any existing binding. Returns false for unknown
+     * or disconnected sessions, or a terminal that is closed or no longer open.
+     */
+    activate(sessionId: string, options?: RSessionActivationOptions): Promise<boolean>;
 }
 
 export type HelpSubMenu = 'doc' | 'pkgList' | 'refresh' | '?' | '??';
