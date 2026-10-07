@@ -23,6 +23,7 @@ import { showWebView } from './webViewer';
 import { getListViewerScript, listViewerStyle, ListViewNavigation } from './listViewer';
 import { getDataViewerScript, getDataViewerStyle, getDataViewerToolbarHtml } from './dataViewer';
 import { getDataViewerColumnPanelHtml, getDataViewerColumnPanelScript, getDataViewerColumnPanelStyle } from './dataViewerColumnPanel';
+import { formatSessionLabel, getViewerSessionScript } from './viewerSession';
 
 export interface SessionInfo {
     version: string;
@@ -57,6 +58,7 @@ interface IpcSocket extends net.Socket {
 }
 
 export class Session {
+    public processExited = false;
     public label?: string;
     public workspaceUnavailable?: string;
     public execute?: (code: string) => Promise<void>;
@@ -1109,7 +1111,7 @@ export async function showDataView(
                 }
                 existing.title = title;
                 existing.reveal(existing.viewColumn, true);
-                existing.webview.html = await getTableHtml(existing.webview, undefined, title);
+                existing.webview.html = await getTableHtml(existing.webview, undefined, title, sessionId);
                 return;
             }
         }
@@ -1126,11 +1128,12 @@ export async function showDataView(
                 localResourceRoots: [Uri.file(resDir)],
             });
         panel.iconPath = new UriIcon('open-preview');
+        attachViewerSessionBridge(panel, sessionId);
         if (viewId) {
             registerDataViewPanel(panel, panelKey, viewId, sessionId, stateGeneration);
             attachDynamicDataViewBridge(panel, viewId, sessionId);
         }
-        const content = await getTableHtml(panel.webview, file || undefined, title);
+        const content = await getTableHtml(panel.webview, file || undefined, title, sessionId);
         panel.webview.html = content;
     } else if (source === 'list') {
         if (viewId) {
@@ -1142,7 +1145,7 @@ export async function showDataView(
                 existing.title = title;
                 existing.reveal(existing.viewColumn, true);
                 existing.webview.html = getListHtml(
-                    existing.webview, title, navigation
+                    existing.webview, title, navigation, sessionId
                 );
                 return;
             }
@@ -1160,6 +1163,7 @@ export async function showDataView(
                 localResourceRoots: [Uri.file(resDir)],
             });
         panel.iconPath = new UriIcon('preview');
+        attachViewerSessionBridge(panel, sessionId);
         if (viewId) {
             registerDataViewPanel(panel, panelKey, viewId, sessionId, stateGeneration);
             const webview = panel.webview;
@@ -1214,7 +1218,7 @@ export async function showDataView(
             });
         }
         panel.webview.html = getListHtml(
-            panel.webview, title, navigation
+            panel.webview, title, navigation, sessionId
         );
     } else {
         await commands.executeCommand('vscode.open', Uri.file(file), {
@@ -1226,7 +1230,58 @@ export async function showDataView(
     console.info('[showDataView] Done');
 }
 
-export async function getTableHtml(webview: Webview, file: string | undefined, title: string): Promise<string> {
+function getViewerSessionHtml(sessionId: string | null): string {
+    const owner = sessions.get(sessionId ?? '');
+    if (!owner || (!owner.processExited && (!owner.pid || !owner.rVer))) { return ''; }
+    const info = escapeHtml(owner.processExited ? 'R: (not attached)' : formatSessionLabel(owner.rVer, owner.pid));
+    return `<span class="viewer-session" role="img" tabindex="0" aria-label="${info}" aria-describedby="viewer-session-tooltip"><span class="codicon codicon-info" aria-hidden="true"></span><span id="viewer-session-tooltip" class="viewer-session-tooltip" role="tooltip">${info}</span></span>`;
+}
+
+function attachViewerSessionBridge(panel: vscode.WebviewPanel, sessionId: string | null): void {
+    const owner = sessions.get(sessionId ?? '');
+    if (!owner || (!owner.processExited && (!owner.pid || !owner.rVer))) { return; }
+    // Keep the original process identity after detaching, reconnecting or restarting.
+    const sourcePid = owner.pid;
+    const attachedLabel = formatSessionLabel(owner.rVer, sourcePid);
+    let exited = owner.processExited;
+    let lastLabel = exited ? 'R: (not attached)' : attachedLabel;
+    let timer: NodeJS.Timeout | undefined;
+    const refresh = (force = false) => {
+        if (!exited) {
+            exited = owner.processExited;
+            const numericPid = Number(sourcePid);
+            // R and the extension run on the same host in Remote workspaces too.
+            // Never check a foreign host's PID against this machine's processes.
+            if (!exited && isLocalHost(owner.host) && Number.isSafeInteger(numericPid) && numericPid > 0) {
+                try { process.kill(numericPid, 0); }
+                catch (error) {
+                    // Permission failures and unknown errors do not prove process exit.
+                    exited = (error as NodeJS.ErrnoException).code === 'ESRCH';
+                }
+            }
+        }
+        const text = exited ? 'R: (not attached)' : attachedLabel;
+        if (force || text !== lastLabel) {
+            lastLabel = text;
+            void panel.webview.postMessage({ message: 'viewer-session/update', text });
+        }
+        if (exited) { clearInterval(timer); }
+    };
+    const received = panel.webview.onDidReceiveMessage((message: { message?: string }) => {
+        if (message?.message === 'viewer-session/ready') { refresh(true); }
+    });
+    if (!exited) {
+        timer = setInterval(refresh, 1000);
+        timer.unref();
+    }
+    panel.onDidDispose(() => { clearInterval(timer); received?.dispose(); });
+}
+
+export async function getTableHtml(
+    webview: Webview, file: string | undefined, title: string, sessionId: string | null = null,
+): Promise<string> {
+    const sessionHtml = getViewerSessionHtml(sessionId);
+    const codicons = webview.asWebviewUri(Uri.file(path.join(resDir, 'codicon.css'))).toString();
     const pageSize = config().get<number>('session.data.pageSize', 500);
     if (!file) {
         const documentGeneration = ++documentGenerationRevision;
@@ -1238,6 +1293,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(title)}</title>
+    <link rel="stylesheet" href="${codicons}">
     <style media="only screen">
     html, body {
         height: 100%;
@@ -1647,7 +1703,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
             const info = document.createElement('span');
             info.textContent = 'Full data';
             info.title = 'This view retains the full object without a copy. Reference edits may appear here. Reopen from the cell to refresh after edits. Sorting and filtering scan the full data.';
-            document.querySelector('#viewerToolbar').append(info);
+            document.querySelector('#viewerControls').append(info);
         }
         const bigintFields = prepareViewerColumns(columns);
         updateViewerRowCount(filteredRows, totalRows);
@@ -1744,7 +1800,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     </script>
 </head>
 <body>
-    ${getDataViewerToolbarHtml()}
+    ${getDataViewerToolbarHtml(sessionHtml)}
     <div id="gridContainer">
         <div id="myGrid" style="height: 100%;"></div>
         ${getDataViewerColumnPanelHtml()}
@@ -1754,6 +1810,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
             <button id="fetchRetryBtn" type="button">Retry</button>
         </div>
     </div>
+    <script>${getViewerSessionScript()}</script>
 </body>
 </html>
 `;
@@ -1767,6 +1824,7 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(title)}</title>
+    <link rel="stylesheet" href="${codicons}">
     <style media="only screen">
     html, body {
         height: 100%;
@@ -1913,11 +1971,12 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
     </script>
 </head>
 <body onload='onload()'>
-    ${getDataViewerToolbarHtml()}
+    ${getDataViewerToolbarHtml(sessionHtml)}
     <div id="gridContainer">
         <div id="myGrid" style="height: 100%;"></div>
         ${getDataViewerColumnPanelHtml()}
     </div>
+    <script>${getViewerSessionScript()}</script>
 </body>
 </html>
 `;
@@ -1926,7 +1985,8 @@ export async function getTableHtml(webview: Webview, file: string | undefined, t
 export function getListHtml(
     webview: Webview,
     title: string,
-    navigation?: ListViewNavigation
+    navigation?: ListViewNavigation,
+    sessionId: string | null = null,
 ): string {
     const documentGeneration = ++documentGenerationRevision;
     documentGenerations.set(webview, documentGeneration);
@@ -1962,6 +2022,7 @@ export function getListHtml(
         <button id="back" class="back" title="Back" aria-label="Back" disabled><span class="codicon codicon-arrow-left" aria-hidden="true"></span>Back</button>
         <nav id="breadcrumbs" class="breadcrumbs" aria-label="Object path"></nav>
         <button id="reset" class="reset" title="Reset to initial view" aria-label="Reset to initial view"><span class="codicon codicon-discard" aria-hidden="true"></span>Reset</button>
+        ${getViewerSessionHtml(sessionId)}
     </div>
     <div id="navigation-status" class="navigation-status" role="status"></div>
     <div id="list" class="list"></div>
@@ -1969,6 +2030,7 @@ export function getListHtml(
     ${getListViewerScript(documentGeneration, navigation ?? {
         title, path: [], breadcrumbs: [{ label: title, path: [] }],
     })}
+    ${getViewerSessionScript()}
     </script>
 </body>
 </html>
@@ -2016,8 +2078,7 @@ async function refreshActiveSession(session: Session): Promise<void> {
     workspaceData = session.workspaceData;
 
     if (sessionStatusBarItem) {
-        const version = rVer.replace(/^R (?:version )?/, '').replace(/\s+\(.*/, '');
-        sessionStatusBarItem.text = `R ${version}: ${pid}`;
+        sessionStatusBarItem.text = formatSessionLabel(rVer, pid);
         sessionStatusBarItem.tooltip = `${info.version || rVer}\nProcess ID: ${pid}\nCommand: ${info.command}\nStart time: ${info.start_time}\nClick to attach to active terminal.`;
         sessionStatusBarItem.show();
     }
