@@ -240,7 +240,7 @@ suite('Viewer session ownership', () => {
         assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-b');
     });
 
-    test('terminal selection deterministically restores attached and unattached status after viewer blur', async () => {
+    test('terminal selection activates its session while viewer blur only restores the display', async () => {
         const terminalBPid = 46250;
         const terminalDPid = 46252;
         const terminalB = {
@@ -283,7 +283,10 @@ suite('Viewer session ownership', () => {
 
         activeTerminal = terminalD;
         await send(aTable, { message: 'dataview/blur' });
-        await waitFor(() => statusBar.text === 'R 4.6.0: 46252');
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46250');
+        assert.strictEqual(session.activeSession?.sessionId, b.id);
+        await session.switchSessionByTerminal(terminalD);
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46252');
         assert.strictEqual(session.activeSession?.sessionId, d.id);
 
         aList.activate();
@@ -292,11 +295,71 @@ suite('Viewer session ownership', () => {
 
         activeTerminal = unattachedTerminal;
         await send(aList, { message: 'dataview/blur' });
-        await waitFor(() => statusBar.text === 'R: (not attached)');
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46252');
+        await session.switchSessionByTerminal(unattachedTerminal);
+        assert.strictEqual(statusBar.text, 'R: (not attached)');
         assert.strictEqual(session.activeSession?.sessionId, d.id);
 
         await session.updateWorkspace();
         assert.strictEqual(statusBar.text, 'R: (not attached)');
+
+        aList.activate();
+        await send(aList, { message: 'dataview/focus' });
+        assert.strictEqual(statusBar.text, 'R 4.6.0: viewer-session-a');
+        await send(aList, { message: 'dataview/blur' });
+        assert.strictEqual(statusBar.text, 'R: (not attached)');
+
+        assert.strictEqual(await session.activateSessionById(d.id), true);
+        aList.activate();
+        await send(aList, { message: 'dataview/focus' });
+        await send(aList, { message: 'dataview/blur' });
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 46252');
+        assert.strictEqual(session.activeSession?.sessionId, d.id);
+    });
+
+    test('viewer blur does not activate the last selected terminal', async () => {
+        const terminalPid = 47202;
+        const terminal = { processId: Promise.resolve(terminalPid) } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+        const b = await attach('blur-terminal-b', os.hostname(), terminalPid);
+        await session.switchSessionByTerminal(terminal);
+        const a = await attach('blur-viewer-a');
+        assert.strictEqual(await session.activateSessionById(a.id), true);
+        const aList = await open(a, 'list');
+
+        aList.activate();
+        await send(aList, { message: 'dataview/focus' });
+        await send(aList, { message: 'dataview/blur' });
+
+        assert.strictEqual(session.activeSession?.sessionId, a.id);
+        assert.strictEqual(statusBar.text, 'R 4.6.0: blur-viewer-a');
+        assert.notStrictEqual(session.activeSession?.sessionId, b.id);
+    });
+
+    test('delayed terminal lookup does not overwrite a newer viewer PID', async () => {
+        let resolvePid: ((pid: number) => void) | undefined;
+        const terminalPid = 47203;
+        const terminal = { processId: Promise.resolve(terminalPid) } as unknown as vscode.Terminal;
+        sandbox.stub(vscode.window, 'terminals').value([terminal]);
+        const a = await attach('pending-viewer-a');
+        const b = await attach('pending-terminal-b', os.hostname(), terminalPid);
+        const aList = await open(a, 'list');
+        Object.defineProperty(terminal, 'processId', {
+            value: new Promise<number>(resolve => { resolvePid = resolve; }),
+        });
+
+        const pending = session.switchSessionByTerminal(terminal);
+        aList.activate();
+        await send(aList, { message: 'dataview/focus' });
+        assert.strictEqual(statusBar.text, 'R 4.6.0: pending-viewer-a');
+
+        resolvePid?.(terminalPid);
+        await pending;
+        assert.strictEqual(session.activeSession?.sessionId, b.id);
+        assert.strictEqual(statusBar.text, 'R 4.6.0: pending-viewer-a');
+        await send(aList, { message: 'dataview/blur' });
+        assert.strictEqual(statusBar.text, 'R 4.6.0: 47203');
     });
 
     test('stale terminal lookup cannot overwrite a newer terminal selection', async () => {

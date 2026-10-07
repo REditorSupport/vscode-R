@@ -198,6 +198,8 @@ export function registerSessionTransport(id: string, host: string, directory: st
 const terminalSessions = new Map<string, Session>();
 const terminalSessionAttached = new vscode.EventEmitter<string>();
 let terminalSelectionRevision = 0;
+// An unattached terminal has no session to restore after a viewer loses focus.
+let selectedTerminalDetached = false;
 
 /** Wait for this terminal's session handshake, not just process creation. */
 export function waitForTerminalReady(terminal: vscode.Terminal, timeout = 30000): Promise<boolean> {
@@ -320,12 +322,9 @@ function blurDataViewPanel(panel: vscode.WebviewPanel): void {
     focusedDataViewPanel = undefined;
     focusedDataViewSessionId = null;
     
-    if (panel.active && window.activeTerminal) {
-        void switchSessionByTerminal(window.activeTerminal);
-        return;
-    }
-    
-    if (activeSession) {
+    if (selectedTerminalDetached) {
+        resetStatusBar();
+    } else if (activeSession) {
         updateSessionStatusBar(activeSession);
     } else {
         resetStatusBar();
@@ -2138,6 +2137,8 @@ import * as rstudioapi from './rstudioapi';
 
 export async function activateSession(session: Session, updateStatus = true): Promise<void> {
     if (updateStatus) {
+        terminalSelectionRevision++;
+        selectedTerminalDetached = false;
         focusedDataViewPanel = undefined;
         focusedDataViewSessionId = null;
     }
@@ -2228,6 +2229,7 @@ export async function switchSessionByTerminal(terminal: vscode.Terminal | undefi
     const revision = ++terminalSelectionRevision;
     
     if (!terminal) {
+        selectedTerminalDetached = false;
         if (focusedDataViewPanel) {
             return;
         }
@@ -2250,15 +2252,17 @@ export async function switchSessionByTerminal(terminal: vscode.Terminal | undefi
     const target = terminalPid ? terminalSessions.get(String(terminalPid)) : undefined;
     
     if(!target) {
-        resetStatusBar();
+        selectedTerminalDetached = true;
+        if (!focusedDataViewPanel) { resetStatusBar(); }
         return;
     }
+    selectedTerminalDetached = false;
     await activateSession(target, false);
     
     if (revision !== terminalSelectionRevision) {
         return;
     }
-    updateSessionStatusBar(target);
+    if (!focusedDataViewPanel) { updateSessionStatusBar(target); }
 }
 
 function sendToSocket(socket: IpcSocket, data: Record<string, unknown>): void {
