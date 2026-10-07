@@ -19,7 +19,7 @@ sess_verify_package <- function(library, required, expected_revision, interactiv
         "stopifnot(identical(",
         "utils::packageDescription('sess',lib.loc=a[1],fields='Config/vscode-R/source-revision'),",
         "a[3]));",
-        "stopifnot(all(c('connect','notify_client','register_hooks','request_client') %in% getNamespaceExports(ns)));",
+        "stopifnot(all(c('connect','notify_client','request_client') %in% getNamespaceExports(ns)));",
         "if (a[4] == 'TRUE') {",
         "stopifnot(all(c('interactive_stop','display') %in% getNamespaceExports(ns)));",
         "stopifnot(all(vapply(c('interactive_start','interactive_execute'),",

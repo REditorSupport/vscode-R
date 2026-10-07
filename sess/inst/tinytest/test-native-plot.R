@@ -1,18 +1,12 @@
-# Explicit backends preserve the old boolean API and keep native distinct from
-# the standard static viewer.
+# Explicit backends preserve native behavior and keep it distinct from the
+# standard static viewer.
 local({
   resolve <- sess:::.resolve_plot_backend
-  legacy <- sess:::.legacy_plot_backend
   select <- sess:::.select_plot_backend
   choices <- c("auto", "jgd", "httpgd", "standard", "native")
   expect_equal(eval(formals(sess::connect)$plot_backend), choices)
-  expect_equal(eval(formals(sess::register_hooks)$plot_backend), choices)
   expect_equal(resolve(choices), "auto")
   expect_equal(resolve(NULL), "auto")
-  expect_equal(legacy(FALSE, FALSE), "standard")
-  expect_equal(legacy(TRUE, FALSE), "httpgd")
-  expect_equal(legacy(FALSE, TRUE), "jgd")
-  expect_equal(legacy(TRUE, TRUE), "auto")
   for (backend in c("auto", "jgd", "httpgd", "standard", "native")) {
     expect_equal(resolve(backend), backend)
   }
@@ -39,7 +33,7 @@ local({
     options(device = original_device)
   }, add = TRUE)
 
-  sess::register_hooks(use_rstudioapi = FALSE, plot_backend = "native")
+  sess:::runtime_start(use_rstudioapi = FALSE, plot_backend = "native")
   state <- sess:::.runtime_state()
   expect_true(isTRUE(state$active))
   expect_true(identical(getOption("device"), sentinel_device))
@@ -57,97 +51,23 @@ local({
   expect_equal(grDevices::dev.list(), original_devices)
 })
 
-# Legacy arguments still work, but public callers are directed to plot_backend.
+# Removed arguments are rejected before connect changes transport or runtime state.
 local({
-  old_device <- getOption("device")
-  sentinel_device <- function(...) stop("R's device option was used")
-  options(device = sentinel_device)
-  on.exit({
-    sess:::runtime_stop()
-    options(device = old_device)
-  }, add = TRUE)
-
-  warnings <- character()
-  withCallingHandlers(
-    sess::register_hooks(use_rstudioapi = FALSE, use_httpgd = TRUE,
-                         use_jgd = TRUE, plot_backend = "native"),
-    warning = function(w) {
-      warnings <<- c(warnings, conditionMessage(w))
-      invokeRestart("muffleWarning")
-    }
-  )
-  expect_length(warnings, 1L)
-  expect_true(grepl("use_httpgd and use_jgd", warnings[[1L]], fixed = TRUE))
-  expect_true(grepl("plot_backend", warnings[[1L]], fixed = TRUE))
-  expect_true(identical(getOption("device"), sentinel_device))
-})
-
-local({
-  # Exercise both public entry points without starting graphics or connecting
-  # to a server. NULL can also be forwarded by wrappers as an unspecified flag.
-  cases <- list(
-    list(args = list(), backend = "auto", deprecated = character()),
-    list(args = list(use_httpgd = NULL, use_jgd = NULL), backend = "auto",
-         deprecated = character()),
-    list(args = list(use_httpgd = TRUE), backend = "httpgd", deprecated = "use_httpgd"),
-    list(args = list(use_httpgd = FALSE), backend = "standard", deprecated = "use_httpgd"),
-    list(args = list(use_jgd = TRUE), backend = "auto", deprecated = "use_jgd"),
-    list(args = list(use_jgd = FALSE), backend = "httpgd", deprecated = "use_jgd"),
-    list(args = list(use_httpgd = NULL, use_jgd = TRUE), backend = "auto",
-         deprecated = "use_jgd"),
-    list(args = list(use_httpgd = FALSE, use_jgd = NULL), backend = "standard",
-         deprecated = "use_httpgd"),
-    list(args = list(use_httpgd = FALSE, use_jgd = TRUE), backend = "jgd",
-         deprecated = c("use_httpgd", "use_jgd")),
-    list(args = list(use_httpgd = FALSE, use_jgd = FALSE), backend = "standard",
-         deprecated = c("use_httpgd", "use_jgd")),
-    list(args = list(use_httpgd = NA, use_jgd = NA), backend = "httpgd",
-         deprecated = c("use_httpgd", "use_jgd")),
-    list(args = list(use_httpgd = FALSE, plot_backend = "native"), backend = "native",
-         deprecated = "use_httpgd"),
-    list(args = list(use_httpgd = FALSE, plot_backend = NULL), backend = "auto",
-         deprecated = "use_httpgd")
-  )
-  for (entry_point in c("connect", "register_hooks")) {
-    env <- new.env(parent = asNamespace("sess"))
-    entry <- getExportedValue("sess", entry_point)
-    environment(entry) <- env
-    selected <- NULL
-    env$.legacy_plot_backend <- function(...) {
-      selected <<- sess:::.legacy_plot_backend(...)
-      selected
-    }
-    env$.resolve_plot_backend <- function(...) {
-      selected <<- sess:::.resolve_plot_backend(...)
-      selected
-    }
-    env$runtime_start <- function(use_rstudioapi, plot_backend) {
-      selected <<- plot_backend
-    }
-    env$.resolve_endpoint <- function(...) ""
-    for (case in cases) {
-      selected <- NULL
-      warnings <- character()
-      withCallingHandlers(
-        do.call(entry, c(list(use_rstudioapi = FALSE), case$args)),
-        warning = function(w) {
-          msg <- conditionMessage(w)
-          if (entry_point != "connect" ||
-                msg != "[sess] Connection info not available. Cannot connect to VS Code.") {
-            warnings <<- c(warnings, msg)
-          }
-          invokeRestart("muffleWarning")
-        }
-      )
-      expect_equal(selected, case$backend)
-      expect_length(warnings, as.integer(length(case$deprecated) > 0L))
-      if (length(case$deprecated)) {
-        expect_true(grepl(paste(case$deprecated, collapse = " and "),
-                          warnings[[1L]], fixed = TRUE))
-        expect_true(grepl("deprecated; use plot_backend", warnings[[1L]], fixed = TRUE))
-      }
-    }
+  env <- new.env(parent = asNamespace("sess"))
+  entry <- sess::connect
+  environment(entry) <- env
+  disconnected <- FALSE
+  env$.transport_disconnect <- function(...) {
+    disconnected <<- TRUE
+    stop("connect reached transport cleanup")
   }
+  for (arg in c("use_httpgd", "use_jgd")) {
+    failure <- tryCatch(do.call(entry, setNames(list(TRUE), arg)), error = identity)
+    expect_true(inherits(failure, "error"))
+    expect_true(grepl("unused argument", conditionMessage(failure), fixed = TRUE))
+    expect_false(disconnected)
+  }
+  expect_false("register_hooks" %in% getNamespaceExports("sess"))
 })
 
 # The public connection path stores native for discovery reconnects and still

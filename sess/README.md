@@ -65,12 +65,13 @@ sess::connect(
 )
 ```
 
-If `plot_backend` is omitted, `sess::connect()` uses `auto`. The VS Code extension
-passes its configured backend explicitly. Calls that supply the deprecated
-`use_httpgd` or `use_jgd` arguments still use those values when `plot_backend`
-is omitted. These deprecated arguments default to `NULL`, meaning unspecified.
-When either is non-NULL, the unspecified flag uses its legacy default
-(`use_httpgd = TRUE`, `use_jgd = FALSE`). If both are NULL, the backend is `auto`.
+If `plot_backend` is omitted or set to `NULL`, `sess::connect()` uses `auto`.
+The VS Code extension passes its configured backend explicitly.
+
+For code migrating from earlier `sess` APIs, replace `use_httpgd` and
+`use_jgd` with `plot_backend` (for example, `sess::connect(plot_backend = "httpgd")`).
+`register_hooks()` has been removed; `connect()` initializes the runtime
+integration when it connects.
 
 If `endpoint` is omitted, `connect()` resolves it in this order:
 
@@ -116,7 +117,7 @@ finding managed terminal discovery files; `sess` does not use it as identity.
 
 ## What `sess` changes in your R session
 
-Once connected, `sess` registers hooks (via `register_hooks()`) that redirect
+Once connected, `sess` registers runtime integrations that redirect
 R's interactive features to the client:
 
 | R feature | Behavior |
@@ -132,8 +133,6 @@ These changes are undone when the connection closes. `sess` removes its task
 callbacks, closes its graphics devices, and restores any options, bindings, S3
 methods and plot hooks it replaced (unless other code has since changed them).
 A plot held only by a jgd device may not survive a disconnect or window reload.
-Calling `register_hooks()` again replaces the previous installation rather than
-stacking hooks.
 
 ### Graphics devices
 
@@ -152,10 +151,8 @@ For displaying R plots, `sess` chooses a graphics device in this order when
 In VS Code, this is controlled by the `r.plot.backend` setting.
 `plot_backend = "native"` leaves the existing R graphics device option, plot
 hooks, plot task callbacks, and devices untouched. The `standard` backend continues
-to use the static plot viewer. When `plot_backend` is omitted, the existing
-`use_httpgd`/`use_jgd` arguments keep their previous meanings, but are
-deprecated and warn when supplied with non-NULL values, including `FALSE`.
-Use `plot_backend` for new code.
+to use the static plot viewer. When `plot_backend` is omitted or `NULL`, `auto`
+is used.
 
 ### Options and environment variables
 
