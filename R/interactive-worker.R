@@ -12,7 +12,9 @@ function(library, config, support_libraries = character(), managed = TRUE) {
         if ("package:sess" %in% search()) detach("package:sess", unload = FALSE)
         unloadNamespace("sess")
     }
-    support_paths <- unique(c(.libPaths(), support_libraries))
+    # First-time setup may install missing Imports beside the private bridge.
+    # Use them as a final loading fallback without changing .libPaths().
+    support_paths <- unique(c(.libPaths(), support_libraries, library))
     # sess uses qualified calls rather than namespace imports for these packages.
     # processx also calls ps lazily from .onLoad on Linux, before it can finish
     # loading in an isolated renv project.
