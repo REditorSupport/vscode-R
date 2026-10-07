@@ -154,8 +154,11 @@ suite('Standard plot viewer request coordination', () => {
         await secondStarted.promise;
         sinon.assert.notCalled(oldPanel.postMessage);
         sinon.assert.calledTwice(request);
-        assert.deepStrictEqual((request.secondCall.args[0] as { params: { width: number; height: number } }).params,
-            { width: 900, height: 700 });
+        const recreatedRequest = request.secondCall.args[0] as {
+            params: { width: number; height: number };
+        };
+        assert.strictEqual(recreatedRequest.params.width, 900);
+        assert.strictEqual(recreatedRequest.params.height, 700);
         secondRequest.resolve({ data: 'current', format: 'svg' });
         await Promise.all([oldResize, newResize]);
         sinon.assert.calledOnceWithExactly(newPanel.postMessage, {
