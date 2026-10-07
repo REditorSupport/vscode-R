@@ -2,7 +2,8 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import fs from 'fs-extra';
+import fsp from 'node:fs/promises';
+import * as fileSystem from '../../fileSystem';
 import type { RSessionApi } from '../../api';
 import * as extension from '../../extension';
 import * as rTerminal from '../../rTerminal';
@@ -243,7 +244,7 @@ suite('Session Terminal Binding', () => {
         terminals.value([terminal, other]);
         activeTerminal.value(terminal);
         configuration.returns({ get: (key: string) => key === 'sessionWatcher' } as unknown as vscode.WorkspaceConfiguration);
-        sandbox.stub(fs, 'pathExists').resolves(false);
+        sandbox.stub(fileSystem, 'pathExists').resolves(false);
         const create = sandbox.stub(rTerminal, 'createRTerm').resolves(false);
         await api.activate(first.sessionId, { terminal: other });
         await session.activateRSession();
@@ -265,12 +266,12 @@ suite('Session Terminal Binding', () => {
             configuration.returns({ get: (key: string) => key === 'sessionWatcher' } as unknown as vscode.WorkspaceConfiguration);
             const started = deferred<void>();
             const proceed = deferred<void>();
-            const ensureDir = fs.ensureDir;
-            const ensure = sandbox.stub(fs, 'ensureDir') as unknown as sinon.SinonStub<[string], Promise<void>>;
-            ensure.callsFake(async directory => {
+            const mkdir = fsp.mkdir;
+            const mkdirStub = sandbox.stub(fsp, 'mkdir') as unknown as sinon.SinonStub<[string, { recursive: true }], Promise<string | undefined>>;
+            mkdirStub.callsFake(async (directory, options) => {
                 started.resolve();
                 await proceed.promise;
-                return ensureDir(directory);
+                return mkdir(directory, options);
             });
             const pending = session.activateRSession();
             await started.promise;

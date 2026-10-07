@@ -1,5 +1,6 @@
 import * as assert from 'assert';
-import * as fs from 'fs-extra';
+import * as fsp from 'node:fs/promises';
+import { pathExists } from '../../fileSystem';
 import * as path from 'path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
@@ -36,23 +37,23 @@ suite('Sess installation with real R tasks', () => {
         const root = path.dirname(projectA);
         extensionRoot = path.join(root, 'extension with spaces');
         const repositoryRoot = path.join(__dirname, '..', '..', '..');
-        await fs.ensureDir(path.join(extensionRoot, 'R'));
+        await fsp.mkdir(path.join(extensionRoot, 'R'), { recursive: true });
         for (const script of ['install_sess.R', 'sess_source.R', 'sess-package-install.R']) {
-            await fs.copy(path.join(repositoryRoot, 'R', script), path.join(extensionRoot, 'R', script));
+            await fsp.copyFile(path.join(repositoryRoot, 'R', script), path.join(extensionRoot, 'R', script));
         }
         const pkg = path.join(extensionRoot, 'dist', 'resources', 'sess');
-        await fs.ensureDir(path.join(pkg, 'R'));
-        await fs.writeFile(path.join(pkg, 'DESCRIPTION'), description(bundledRevision));
+        await fsp.mkdir(path.join(pkg, 'R'), { recursive: true });
+        await fsp.writeFile(path.join(pkg, 'DESCRIPTION'), description(bundledRevision));
         const exports = ['connect', 'notify_client', 'request_client'];
-        await fs.writeFile(path.join(pkg, 'NAMESPACE'), exports.map(name => `export(${name})`).join('\n'));
-        await fs.writeFile(path.join(pkg, 'R', 'fixture.R'), exports.map(name => `${name} <- function(...) NULL`).join('\n'));
+        await fsp.writeFile(path.join(pkg, 'NAMESPACE'), exports.map(name => `export(${name})`).join('\n'));
+        await fsp.writeFile(path.join(pkg, 'R', 'fixture.R'), exports.map(name => `${name} <- function(...) NULL`).join('\n'));
         for (const project of [projectA, projectB]) {
             const library = path.join(project, 'library');
-            await fs.ensureDir(path.join(library, 'sess'));
+            await fsp.mkdir(path.join(library, 'sess'), { recursive: true });
             // Seed visible old metadata so the globally installed sess cannot
             // make the project appear up to date or hide a failed installation.
-            await fs.writeFile(path.join(library, 'sess', 'DESCRIPTION'), description(oldRevision));
-            await fs.writeFile(path.join(project, '.Rprofile'), '.libPaths(c(file.path(getwd(), "library"), .libPaths()))\n');
+            await fsp.writeFile(path.join(library, 'sess', 'DESCRIPTION'), description(oldRevision));
+            await fsp.writeFile(path.join(project, '.Rprofile'), '.libPaths(c(file.path(getwd(), "library"), .libPaths()))\n');
         }
         mockExtensionContext(extensionRoot, sandbox);
         sandbox.stub(vscode.window, 'showWarningMessage').resolves('Yes' as unknown as vscode.MessageItem);
@@ -61,10 +62,10 @@ suite('Sess installation with real R tasks', () => {
     teardown(async () => {
         sandbox.restore();
         for (const project of [projectA, projectB]) {
-            await fs.remove(path.join(project, 'library'));
-            await fs.remove(path.join(project, '.Rprofile'));
+            await fsp.rm(path.join(project, 'library'), { recursive: true, force: true });
+            await fsp.rm(path.join(project, '.Rprofile'), { recursive: true, force: true });
         }
-        await fs.remove(extensionRoot);
+        await fsp.rm(extensionRoot, { recursive: true, force: true });
     });
 
     for (const asUri of [false, true]) {
@@ -84,8 +85,8 @@ suite('Sess installation with real R tasks', () => {
             assert.strictEqual(await util.getInstalledSessSourceRevision(projectA), oldRevision);
             // R may fold the installed DESCRIPTION field onto a continuation
             // line. The production R query above reads it through read.dcf().
-            assert.strictEqual(await fs.pathExists(path.join(projectB, 'library', 'sess', 'Meta', 'package.rds')), true);
-            assert.strictEqual(await fs.pathExists(path.join(projectA, 'library', 'sess', 'Meta')), false);
+            assert.strictEqual(await pathExists(path.join(projectB, 'library', 'sess', 'Meta', 'package.rds')), true);
+            assert.strictEqual(await pathExists(path.join(projectA, 'library', 'sess', 'Meta')), false);
         }).timeout(120000);
     }
 });

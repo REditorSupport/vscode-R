@@ -1,7 +1,6 @@
 
 import * as cheerio from 'cheerio';
 import { Package} from './packages';
-import fetch from 'node-fetch';
 
 type ParseFunction = (html: string, baseUrl: string) => Package[];
 

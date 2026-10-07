@@ -3,7 +3,8 @@ import * as sinon from 'sinon';
 import * as assert from 'assert';
 import * as path from 'path';
 import * as os from 'os';
-import fs from 'fs-extra';
+import fsp from 'node:fs/promises';
+import { pathExists, readJson } from '../../fileSystem';
 import * as net from 'net';
 import { EventEmitter } from 'events';
 
@@ -61,7 +62,7 @@ suite('Session Communication', () => {
             await session.cleanupSession(attachedSessionId);
         }
         if (commandMarkerPath) {
-            await fs.remove(commandMarkerPath);
+            await fsp.rm(commandMarkerPath, { recursive: true, force: true });
             commandMarkerPath = undefined;
         }
         sandbox.restore();
@@ -212,7 +213,7 @@ suite('Session Communication', () => {
         // Unix fails at chmod; Windows has no permission setup, so inject an
         // error immediately after listening, before initialization is published.
         const fail = process.platform !== 'win32'
-            ? sandbox.stub(fs, 'chmod').rejects(failure)
+            ? sandbox.stub(fsp, 'chmod').rejects(failure)
             : sandbox.stub(net.Server.prototype, 'emit').callsFake(function (this: net.Server, event: string, ...args: unknown[]) {
                 const result = EventEmitter.prototype.emit.call(this, event, ...args);
                 if (event === 'listening') {
@@ -226,7 +227,7 @@ suite('Session Communication', () => {
         assert.strictEqual(server.listening, false);
         assert.strictEqual(session.globalPipePath, undefined);
         if (process.platform !== 'win32') {
-            assert.strictEqual(await fs.pathExists(endpoint), false);
+            assert.strictEqual(await pathExists(endpoint), false);
         }
         const client = net.createConnection(endpoint);
         try {
@@ -256,7 +257,7 @@ suite('Session Communication', () => {
         await shutdown;
         assert.strictEqual(session.globalPipePath, undefined);
         if (process.platform !== 'win32') {
-            assert.strictEqual(await fs.pathExists(endpoint), false);
+            assert.strictEqual(await pathExists(endpoint), false);
         }
         const client = net.createConnection(endpoint);
         try {
@@ -425,7 +426,7 @@ suite('Session Communication', () => {
             `vscode-r-command-marker-${process.pid}-${Date.now()}`
         );
         commandMarkerPath = markerPath;
-        await fs.remove(markerPath);
+        await fsp.rm(markerPath, { recursive: true, force: true });
         term.sendText(
             `my_list <- list(hello_vscode = 12345); ` +
             `writeLines("evaluated", ${JSON.stringify(markerPath)})\n`
@@ -433,7 +434,7 @@ suite('Session Communication', () => {
 
         // This filesystem marker is independent of the IPC path and confirms
         // that R received and evaluated the command before probing the RPC.
-        await waitFor(() => fs.pathExists(markerPath), 10000, 200);
+        await waitFor(() => pathExists(markerPath), 10000, 200);
 
         // Verify the workspace request path after command execution, independently
         // from the pushed workspace refresh notification.
@@ -572,7 +573,7 @@ suite('Session Communication', () => {
             `vscode-r-plot-marker-${process.pid}-${Date.now()}`
         );
         commandMarkerPath = plotMarkerPath;
-        await fs.remove(plotMarkerPath);
+        await fsp.rm(plotMarkerPath, { recursive: true, force: true });
         let plotUpdateTimer: NodeJS.Timeout | undefined;
         const plotUpdateTimeout = new Promise<never>((_resolve, reject) => {
             plotUpdateTimer = setTimeout(() => reject(new Error('Timed out waiting for the standard plot viewer update')), 15000);
@@ -585,7 +586,7 @@ suite('Session Communication', () => {
         let plotUpdate: Awaited<typeof plotUpdateMessage>;
         try {
             const [, update] = await Promise.all([
-                waitFor(() => fs.pathExists(plotMarkerPath), 10000, 200),
+                waitFor(() => pathExists(plotMarkerPath), 10000, 200),
                 plotUpdateWait
             ]);
             plotUpdate = update;
@@ -641,7 +642,7 @@ suite('Session Communication', () => {
         }
 
         const scriptPath = JSON.parse(commandMatch[1]) as string;
-        const scriptContent = await fs.readFile(scriptPath, 'utf8');
+        const scriptContent = await fsp.readFile(scriptPath, 'utf8');
         assert.match(scriptContent, /sess::connect\(endpoint = endpoint/);
         assert.match(scriptContent, /sess_install_required\(sess_src\)/);
         assert.match(scriptContent, /sess_source\.R/);
@@ -649,7 +650,7 @@ suite('Session Communication', () => {
             path.join('dist', 'resources', 'sess')).replace(/\\/g, '/')));
         assert.doesNotMatch(scriptContent, /packageVersion|compareVersion/);
         assert.strictEqual(path.dirname(scriptPath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'tmp', 'attach'));
-        const scriptStat = await fs.stat(scriptPath);
+        const scriptStat = await fsp.stat(scriptPath);
         if (process.platform !== 'win32') {
             assert.strictEqual(scriptStat.mode & 0o777, 0o600, 'attach script should be owner-only');
         }
@@ -658,23 +659,23 @@ suite('Session Communication', () => {
         assert.ok(pipePath, 'global pipe path should be set');
 
         if (pipePath && process.platform !== 'win32') {
-            const pipeStat = await fs.stat(pipePath);
+            const pipeStat = await fsp.stat(pipePath);
             assert.strictEqual(pipeStat.mode & 0o777, 0o600, 'socket file should be owner-only');
         }
 
         const sessionFilePath = await session.createSessionDiscoveryFile(pipePath ?? '');
         assert.strictEqual(path.dirname(sessionFilePath), path.join(extension.extensionContext.globalStorageUri.fsPath, 'sessions'));
         assert.match(path.basename(sessionFilePath), /^[a-f0-9]{32}\.json$/);
-        assert.deepStrictEqual(await fs.readJson(sessionFilePath), {
+        assert.deepStrictEqual(await readJson(sessionFilePath), {
             version: 1, endpoint: pipePath ?? '',
             jgdSocket: plotViewer.jgdEnabled()
                 ? (extension.globalPlotManager as plotViewer.CommonPlotManager).getJgdEnvVars()['JGD_SOCKET'] : '',
         });
-        const sessionFileStat = await fs.stat(sessionFilePath);
+        const sessionFileStat = await fsp.stat(sessionFilePath);
         if (process.platform !== 'win32') {
             assert.strictEqual(sessionFileStat.mode & 0o777, 0o600, 'session handoff file should be owner-only');
         }
-        await fs.remove(sessionFilePath);
+        await fsp.rm(sessionFilePath, { recursive: true, force: true });
 
         await session.shutdownSessionWatcher();
     }).timeout(15000);
@@ -732,7 +733,7 @@ suite('Session Communication', () => {
         const commandMatch = command.match(/^source\((.*)\)$/);
         assert.ok(commandMatch);
         const scriptPath = JSON.parse(commandMatch[1]) as string;
-        const scriptContent = await fs.readFile(scriptPath, 'utf8');
+        const scriptContent = await fsp.readFile(scriptPath, 'utf8');
         assert.match(scriptContent, /sess::connect\(endpoint = endpoint, plot_backend = "native"\)/);
         assert.doesNotMatch(scriptContent, /Sys\.(?:setenv|unsetenv)\(JGD_SOCKET/);
     });
@@ -790,7 +791,7 @@ suite('Session Communication', () => {
         } finally {
             client.destroy();
             await session.cleanupSession('manual-recovery-first');
-            await fs.remove(discoveryFile);
+            await fsp.rm(discoveryFile, { recursive: true, force: true });
         }
     });
 
@@ -800,7 +801,7 @@ suite('Session Communication', () => {
         const terminalPid = 45231; // Deliberately distinct from any R process PID.
         await session.updateSessionDiscoveryFile(discoveryFile, oldEndpoint, terminalPid);
         const newEndpoint = `${oldEndpoint}.reload`;
-        const { jgdSocket } = await fs.readJson(discoveryFile) as { jgdSocket: string };
+        const { jgdSocket } = await readJson(discoveryFile) as { jgdSocket: string };
         const terminal = {
             name: 'R Interactive',
             processId: Promise.resolve(terminalPid),
@@ -810,7 +811,7 @@ suite('Session Communication', () => {
         try {
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [terminal]);
 
-            assert.deepStrictEqual(await fs.readJson(discoveryFile), {
+            assert.deepStrictEqual(await readJson(discoveryFile), {
                 version: 1,
                 endpoint: newEndpoint,
                 terminalPid,
@@ -828,16 +829,16 @@ suite('Session Communication', () => {
                 creationOptions: { name: 'R Interactive' },
             } as unknown as vscode.Terminal;
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [wrapperTerminal]);
-            assert.deepStrictEqual(await fs.readJson(wrapperDiscoveryFile), {
+            assert.deepStrictEqual(await readJson(wrapperDiscoveryFile), {
                 version: 1,
                 endpoint: newEndpoint,
                 terminalPid: wrapperTerminalPid,
                 jgdSocket,
             });
         } finally {
-            await fs.remove(discoveryFile);
+            await fsp.rm(discoveryFile, { recursive: true, force: true });
             if (wrapperDiscoveryFile) {
-                await fs.remove(wrapperDiscoveryFile);
+                await fsp.rm(wrapperDiscoveryFile, { recursive: true, force: true });
             }
         }
     });
@@ -859,16 +860,16 @@ suite('Session Communication', () => {
             await session.updateSessionDiscoveryFile(file, 'old-sess', 45244);
             jgdSocket = 'new-jgd-socket';
             await session.refreshTerminalDiscoveryFiles('new-sess', [terminal]);
-            assert.deepStrictEqual(await fs.readJson(file), {
+            assert.deepStrictEqual(await readJson(file), {
                 version: 1, endpoint: 'new-sess', terminalPid: 45244, jgdSocket,
             });
             backend = 'standard';
             await session.refreshTerminalDiscoveryFiles('next-sess', [terminal]);
-            assert.deepStrictEqual(await fs.readJson(file), {
+            assert.deepStrictEqual(await readJson(file), {
                 version: 1, endpoint: 'next-sess', terminalPid: 45244, jgdSocket: '',
             });
         } finally {
-            await fs.remove(file);
+            await fsp.rm(file, { recursive: true, force: true });
         }
     });
 
@@ -883,8 +884,8 @@ suite('Session Communication', () => {
         try {
             await session.updateSessionDiscoveryFile(olderFile, oldEndpoint, terminalPid);
             await session.updateSessionDiscoveryFile(newerFile, oldEndpoint, terminalPid);
-            await fs.utimes(olderFile, olderTime, olderTime);
-            await fs.utimes(newerFile, newerTime, newerTime);
+            await fsp.utimes(olderFile, olderTime, olderTime);
+            await fsp.utimes(newerFile, newerTime, newerTime);
 
             const terminal = {
                 name: 'R Interactive',
@@ -893,15 +894,15 @@ suite('Session Communication', () => {
             } as unknown as vscode.Terminal;
             await session.refreshTerminalDiscoveryFiles(newEndpoint, [terminal]);
 
-            const olderDiscovery: unknown = await fs.readJson(olderFile);
-            const newerDiscovery: unknown = await fs.readJson(newerFile);
+            const olderDiscovery: unknown = await readJson(olderFile);
+            const newerDiscovery: unknown = await readJson(newerFile);
             assert.ok(typeof olderDiscovery === 'object' && olderDiscovery !== null && 'endpoint' in olderDiscovery);
             assert.ok(typeof newerDiscovery === 'object' && newerDiscovery !== null && 'endpoint' in newerDiscovery);
             assert.strictEqual(olderDiscovery.endpoint, oldEndpoint);
             assert.strictEqual(newerDiscovery.endpoint, newEndpoint);
         } finally {
-            await fs.remove(olderFile);
-            await fs.remove(newerFile);
+            await fsp.rm(olderFile, { recursive: true, force: true });
+            await fsp.rm(newerFile, { recursive: true, force: true });
         }
     });
 

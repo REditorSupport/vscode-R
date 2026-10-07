@@ -1,6 +1,8 @@
 'use strict';
 
-import * as fs from 'fs-extra';
+import * as fs from 'node:fs';
+import * as fsp from 'node:fs/promises';
+import { pathExists, readJson } from './fileSystem';
 import * as path from 'path';
 import * as os from 'os';
 import * as net from 'net';
@@ -479,14 +481,14 @@ export async function removeTerminalDiscoveryFile(terminal: vscode.Terminal): Pr
         }
 
         if (discoveryPath) {
-            await fs.remove(discoveryPath);
+            await fsp.rm(discoveryPath, { recursive: true, force: true });
         }
     });
 }
 
 export async function createSessionDiscoveryFile(endpoint: string): Promise<string> {
     const discoveryDir = getSessionDiscoveryDir();
-    await fs.ensureDir(discoveryDir);
+    await fsp.mkdir(discoveryDir, { recursive: true });
     const filePath = path.join(discoveryDir, `${crypto.randomBytes(16).toString('hex')}.json`);
     await writeSessionDiscoveryFile(filePath, endpoint);
     return filePath;
@@ -499,21 +501,21 @@ async function writeSessionDiscoveryFile(filePath: string, endpoint: string, ter
     const data: SessionDiscoveryFile = { version: 1, endpoint, jgdSocket: getSessionJgdSocket() };
     if (terminalPid !== undefined) {
         data.terminalPid = terminalPid;
-    } else if (await fs.pathExists(filePath)) {
-        const existing = await fs.readJson(filePath) as Partial<SessionDiscoveryFile>;
+    } else if (await pathExists(filePath)) {
+        const existing = await readJson(filePath) as Partial<SessionDiscoveryFile>;
         if (typeof existing.terminalPid === 'number') {
             data.terminalPid = existing.terminalPid;
         }
     }
-    await fs.ensureDir(path.dirname(filePath));
+    await fsp.mkdir(path.dirname(filePath), { recursive: true });
     const temporaryPath = `${filePath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
     try {
-        await fs.writeJson(temporaryPath, data, { mode: 0o600 });
+        await fsp.writeFile(temporaryPath, `${JSON.stringify(data)}\n`, { mode: 0o600 });
         await setOwnerOnlyPermissions(temporaryPath);
-        await fs.rename(temporaryPath, filePath);
+        await fsp.rename(temporaryPath, filePath);
         await setOwnerOnlyPermissions(filePath);
     } catch (error) {
-        await fs.remove(temporaryPath).catch(() => undefined);
+        await fsp.rm(temporaryPath, { recursive: true, force: true }).catch(() => undefined);
         throw error;
     }
 }
@@ -537,11 +539,11 @@ export async function updateTerminalSessionDiscoveryFile(
 
 async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string | undefined> {
     const discoveryDir = getSessionDiscoveryDir();
-    if (!await fs.pathExists(discoveryDir)) {
+    if (!await pathExists(discoveryDir)) {
         return undefined;
     }
     const candidates: Array<{ filePath: string; mtimeMs: number }> = [];
-    for (const file of await fs.readdir(discoveryDir)) {
+    for (const file of await fsp.readdir(discoveryDir)) {
         if (!file.endsWith('.json')) {
             continue;
         }
@@ -550,9 +552,9 @@ async function findDiscoveryFileForTerminal(terminalPid: number): Promise<string
             continue;
         }
         try {
-            const discovery = await fs.readJson(filePath) as Partial<SessionDiscoveryFile>;
+            const discovery = await readJson(filePath) as Partial<SessionDiscoveryFile>;
             if (discovery.version === 1 && discovery.terminalPid === terminalPid && typeof discovery.endpoint === 'string') {
-                const stat = await fs.stat(filePath);
+                const stat = await fsp.stat(filePath);
                 candidates.push({ filePath, mtimeMs: stat.mtimeMs });
             }
         } catch (e) {
@@ -604,7 +606,7 @@ async function setOwnerOnlyPermissions(filePath: string): Promise<void> {
         return;
     }
 
-    await fs.chmod(filePath, 0o600);
+    await fsp.chmod(filePath, 0o600);
 }
 
 function makePipePath(): string {
@@ -857,8 +859,8 @@ export async function getAttachSessionCommand(): Promise<string> {
     const sessPath = extensionContext.asAbsolutePath(path.join('dist', 'resources', 'sess')).replace(/\\/g, '/');
     const installSessScriptPath = extensionContext.asAbsolutePath(path.join('R', 'install_sess.R')).replace(/\\/g, '/');
     const scriptPath = getAttachSessionScriptPath(pipePath);
-    await fs.ensureDir(path.dirname(scriptPath));
-    await fs.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, installSessScriptPath), { encoding: 'utf-8', mode: 0o600 });
+    await fsp.mkdir(path.dirname(scriptPath), { recursive: true });
+    await fsp.writeFile(scriptPath, buildAttachSessionScript(pipePath, sessPath, installSessScriptPath), { encoding: 'utf-8', mode: 0o600 });
     await setOwnerOnlyPermissions(scriptPath);
     attachSessionScriptPath = scriptPath;
 
@@ -867,8 +869,8 @@ export async function getAttachSessionCommand(): Promise<string> {
 
 async function removePathIfExists(pathLike: string): Promise<void> {
     try {
-        if (await fs.pathExists(pathLike)) {
-            await fs.remove(pathLike);
+        if (await pathExists(pathLike)) {
+            await fsp.rm(pathLike, { recursive: true, force: true });
         }
     } catch (e) {
         console.warn(`[session cleanup] Failed to remove ${pathLike}`, e);

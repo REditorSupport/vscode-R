@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as sinon from 'sinon';
 import * as assert from 'assert';
 import * as path from 'path';
-import * as fs from 'fs-extra';
+import * as fsp from 'node:fs/promises';
+import { pathExists, readJson } from '../../fileSystem';
 
 import { mockExtensionContext } from '../common/mockvscode';
 import * as rTerminal from '../../rTerminal';
@@ -15,7 +16,7 @@ const extension_root: string = path.join(__dirname, '..', '..', '..');
 async function waitForDiscoveryRemoval(filePath: string): Promise<void> {
     const deadline = Date.now() + 1000;
     while (Date.now() < deadline) {
-        if (!await fs.pathExists(filePath)) {
+        if (!await pathExists(filePath)) {
             return;
         }
         await new Promise(resolve => setTimeout(resolve, 10));
@@ -218,11 +219,11 @@ suite('R Terminal', () => {
             if (typeof discoveryFile !== 'string') {
                 throw new Error('SESS_DISCOVERY_FILE should be a string path');
             }
-            const discovery: unknown = await fs.readJson(discoveryFile);
+            const discovery: unknown = await readJson(discoveryFile);
             assert.deepStrictEqual(discovery, { version: 1, endpoint: session.globalPipePath, jgdSocket: '' });
         } finally {
             if (typeof discoveryFile === 'string') {
-                await fs.remove(discoveryFile);
+                await fsp.rm(discoveryFile, { recursive: true, force: true });
             }
         }
     });
@@ -244,10 +245,10 @@ suite('R Terminal', () => {
         try {
             rTerminal.deleteTerminal(terminal);
             await waitForDiscoveryRemoval(discoveryFile);
-            assert.strictEqual(await fs.pathExists(unrelatedFile), true);
+            assert.strictEqual(await pathExists(unrelatedFile), true);
         } finally {
-            await fs.remove(discoveryFile);
-            await fs.remove(unrelatedFile);
+            await fsp.rm(discoveryFile, { recursive: true, force: true });
+            await fsp.rm(unrelatedFile, { recursive: true, force: true });
         }
     });
 
@@ -272,11 +273,11 @@ suite('R Terminal', () => {
             rTerminal.deleteTerminal(shutdownTerminal);
             rTerminal.deleteTerminal(unknownTerminal);
             await new Promise(resolve => setTimeout(resolve, 10));
-            assert.strictEqual(await fs.pathExists(shutdownFile), true);
-            assert.strictEqual(await fs.pathExists(unknownFile), true);
+            assert.strictEqual(await pathExists(shutdownFile), true);
+            assert.strictEqual(await pathExists(unknownFile), true);
         } finally {
-            await fs.remove(shutdownFile);
-            await fs.remove(unknownFile);
+            await fsp.rm(shutdownFile, { recursive: true, force: true });
+            await fsp.rm(unknownFile, { recursive: true, force: true });
         }
     });
 
@@ -296,7 +297,7 @@ suite('R Terminal', () => {
             rTerminal.deleteTerminal(terminal);
             await waitForDiscoveryRemoval(discoveryFile);
         } finally {
-            await fs.remove(discoveryFile);
+            await fsp.rm(discoveryFile, { recursive: true, force: true });
         }
     });
 
@@ -339,7 +340,7 @@ suite('R Terminal', () => {
             assert.strictEqual(options.env?.['JGD_SOCKET'], undefined);
         } finally {
             if (typeof discoveryFile === 'string') {
-                await fs.remove(discoveryFile);
+                await fsp.rm(discoveryFile, { recursive: true, force: true });
             }
         }
     });
@@ -635,9 +636,9 @@ suite('R Terminal', () => {
         try {
             assert.strictEqual(await rTerminal.createRTerm(), false);
             assert.strictEqual(createdDiscoveryFiles.length, 1);
-            assert.strictEqual(await fs.pathExists(createdDiscoveryFiles[0]), false);
+            assert.strictEqual(await pathExists(createdDiscoveryFiles[0]), false);
         } finally {
-            await Promise.all(createdDiscoveryFiles.map(filePath => fs.remove(filePath)));
+            await Promise.all(createdDiscoveryFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
         }
     });
 
@@ -660,9 +661,9 @@ suite('R Terminal', () => {
         try {
             await assert.rejects(rTerminal.createRTerm(), /terminal creation failed/);
             assert.strictEqual(createdDiscoveryFiles.length, 1);
-            assert.strictEqual(await fs.pathExists(createdDiscoveryFiles[0]), false);
+            assert.strictEqual(await pathExists(createdDiscoveryFiles[0]), false);
         } finally {
-            await Promise.all(createdDiscoveryFiles.map(filePath => fs.remove(filePath)));
+            await Promise.all(createdDiscoveryFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
         }
     });
 
@@ -684,9 +685,9 @@ suite('R Terminal', () => {
             assert.strictEqual(await rTerminal.createRTerm(), false);
             assert.strictEqual(createTerminal.called, false);
             assert.strictEqual(createdDiscoveryFiles.length, 1);
-            assert.strictEqual(await fs.pathExists(createdDiscoveryFiles[0]), false);
+            assert.strictEqual(await pathExists(createdDiscoveryFiles[0]), false);
         } finally {
-            await Promise.all(createdDiscoveryFiles.map(filePath => fs.remove(filePath)));
+            await Promise.all(createdDiscoveryFiles.map(filePath => fsp.rm(filePath, { recursive: true, force: true })));
         }
     });
 
@@ -764,8 +765,8 @@ suite('R Terminal', () => {
             assert.strictEqual(firstWriteResult.filePath, firstDiscoveryFile);
             assert.strictEqual(firstWriteResult.pid, 45247);
 
-            const firstDiscovery: unknown = await fs.readJson(firstDiscoveryFile);
-            const secondDiscovery: unknown = await fs.readJson(secondDiscoveryFile);
+            const firstDiscovery: unknown = await readJson(firstDiscoveryFile);
+            const secondDiscovery: unknown = await readJson(secondDiscoveryFile);
             assert.strictEqual(typeof firstDiscovery, 'object');
             assert.strictEqual(typeof secondDiscovery, 'object');
             assert.strictEqual((firstDiscovery as { terminalPid?: number }).terminalPid, 45247);
@@ -773,10 +774,10 @@ suite('R Terminal', () => {
         } finally {
             await Promise.allSettled(pendingWrites);
             if (firstDiscoveryFile) {
-                await fs.remove(firstDiscoveryFile);
+                await fsp.rm(firstDiscoveryFile, { recursive: true, force: true });
             }
             if (secondDiscoveryFile) {
-                await fs.remove(secondDiscoveryFile);
+                await fsp.rm(secondDiscoveryFile, { recursive: true, force: true });
             }
         }
     });

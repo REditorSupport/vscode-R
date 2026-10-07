@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as cheerio from 'cheerio';
-import * as hljs from 'highlight.js';
+import hljs from 'highlight.js/lib/core';
+import r from 'highlight.js/lib/languages/r';
 
 import * as api from '../api';
 
@@ -19,6 +20,8 @@ import {HelpProvider, AliasProvider} from './helpProvider';
 import {HelpTreeWrapper} from './treeView';
 import {PackageManager} from './packages';
 import { makePreviewerList, RHelpPreviewerOptions, RLocalHelpPreviewer } from './helpPreviewer';
+
+hljs.registerLanguage('r', r);
 
 export type CodeClickAction = 'Ignore' | 'Copy' | 'Run';
 export interface CodeClickConfig {
@@ -723,7 +726,7 @@ function pimpMyHelp(helpFile: HelpFile): HelpFile {
 
             // apply syntax highlighting to each code section:
             codeSections.each((i, section) => {
-                const styledCode = hljs.default.highlight($(section).text() || '', {
+                const styledCode = hljs.highlight($(section).text() || '', {
                     language: 'r',
                 });
                 $(section).html(styledCode.value);

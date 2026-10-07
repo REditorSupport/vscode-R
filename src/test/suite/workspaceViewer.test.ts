@@ -2,7 +2,7 @@ import vscode = require('vscode');
 import sinon = require('sinon');
 import path = require('path');
 import * as assert from 'assert';
-import * as fs from 'fs-extra';
+import * as fs from 'node:fs';
 
 import { mockExtensionContext } from '../common';
 import * as session from '../../session';

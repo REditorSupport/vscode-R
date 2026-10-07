@@ -1,5 +1,4 @@
 import { Memento, window } from 'vscode';
-import * as nodeFetch from 'node-fetch';
 import * as cp from 'child_process';
 
 import * as rHelp from '.';
@@ -119,7 +118,7 @@ export class HelpProvider {
 
         // forward request to R instance
         const url = `http://localhost:${port}/${requestPath}`;
-        const rep = await nodeFetch.default(url);
+        const rep = await fetch(url);
         if(rep.status !== 200){
             return undefined;
         }

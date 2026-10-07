@@ -2542,11 +2542,9 @@
   },
   "devDependencies": {
     "@types/ejs": "^3.1.5",
-    "@types/fs-extra": "^9.0.13",
     "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^8.2.3",
     "@types/node": "^22.20.5",
-    "@types/node-fetch": "^2.6.13",
     "@types/sinon": "^10.0.20",
     "@types/vscode": "~1.94.0",
     "@types/winreg": "^1.2.36",
@@ -2568,11 +2566,9 @@
     "ag-grid-community": "^36.2.0",
     "cheerio": "1.0.0-rc.12",
     "ejs": "^3.1.10",
-    "fs-extra": "^10.1.0",
     "highlight.js": "^11.11.1",
     "httpgd": "0.1.6",
     "js-yaml": "^4.3.2",
-    "node-fetch": "^2.7.0",
     "vscode-languageclient": "^10.1.2",
     "winreg": "^1.2.5"
   },
