@@ -261,6 +261,70 @@ suite('Session Terminal Lifecycle', () => {
         assert.strictEqual(session.activeSession, owner);
     });
 
+    // Selection belongs to a logical session; execution still belongs to a connection.
+    for (const selection of ['unchanged', 'same terminal', 'same public activation', 'same manual activation',
+        'away and back', 'different terminal', 'different public activation'] as const) {
+        test(`reconnect preserves logical selection during discovery (${selection})`, async () => {
+            const entered = deferred<void>();
+            const proceed = deferred<number[]>();
+            ancestors.withArgs(46301).onFirstCall().resolves([46300]);
+            ancestors.withArgs(46301).onSecondCall().callsFake(() => { entered.resolve(); return proceed.promise; });
+            const sendText = sandbox.stub();
+            const otherSendText = sandbox.stub();
+            const terminal = { processId: Promise.resolve(46300), sendText, show: sandbox.stub() } as unknown as vscode.Terminal;
+            const other = { processId: Promise.resolve(46310), sendText: otherSendText, show: sandbox.stub() } as unknown as vscode.Terminal;
+            sandbox.stub(vscode.window, 'terminals').value([terminal, other]);
+            const activeTerminal = sandbox.stub(vscode.window, 'activeTerminal').value(terminal);
+            sandbox.stub(util, 'config').returns({
+                get: (key: string) => key === 'sessionWatcher' ? true : key === 'source.focus' ? 'none' : undefined,
+            } as unknown as vscode.WorkspaceConfiguration);
+            const api: RSessionApi = { getConnectionInfo: session.getConnectionInfo, activate: session.activateSessionById };
+            const old = await connections.attach('selected-reconnect', 46301);
+            const previous = session.activeSession;
+            assert.ok(previous);
+            const otherSocket = await connections.attach('other-selected-reconnect', 46310);
+            assert.strictEqual(session.activeSession, previous);
+            const replacement = await connections.startAttach(previous.sessionId, 46301);
+            try {
+                await entered.promise;
+                if (selection === 'same terminal') { await session.switchSessionByTerminal(terminal); }
+                else if (selection === 'same public activation') { assert.strictEqual(await api.activate(previous.sessionId), true); }
+                else if (selection === 'same manual activation') { await session.activateRSession(); }
+                else if (selection === 'away and back') {
+                    await api.activate('other-selected-reconnect');
+                    await session.switchSessionByTerminal(terminal);
+                } else if (selection === 'different terminal') {
+                    activeTerminal.value(other);
+                    await session.switchSessionByTerminal(other);
+                } else if (selection === 'different public activation') { await api.activate('other-selected-reconnect'); }
+                const preserveOther = selection === 'different terminal' || selection === 'different public activation';
+                const selected = session.activeSession;
+                assert.ok(selected);
+                assert.strictEqual(selected.socket, preserveOther ? otherSocket : old);
+                proceed.resolve([46300]);
+                await waitFor(() => replacement._sessionId === previous.sessionId ? true : undefined);
+
+                assert.strictEqual(old.destroyed, true);
+                assert.strictEqual(replacement.destroyed, false);
+                assert.strictEqual(await session.waitForTerminalReady(terminal, 100), true);
+                const current = session.activeSession;
+                assert.ok(current);
+                assert.strictEqual(current.socket, preserveOther ? otherSocket : replacement);
+                if (preserveOther) { assert.strictEqual(current, selected); }
+                else { assert.notStrictEqual(current, previous); }
+                assert.strictEqual(session.workspaceData, current.workspaceData, 'Workspace state must follow the selected connection');
+                await session.cleanupSession(previous.sessionId, old);
+                assert.strictEqual(session.activeSession, current, 'late old-socket cleanup must not clear the selection');
+
+                // Refresh selection, but never redirect a node owned by the old connection.
+                await assert.rejects(session.executeSessionCode(previous, 'rm(iris)'), /no longer attached/);
+                await session.executeSessionCode(current, 'View(iris)');
+                sinon.assert.calledOnceWithExactly(preserveOther ? otherSendText : sendText, 'View(iris)');
+                sinon.assert.notCalled(preserveOther ? sendText : otherSendText);
+            } finally { proceed.resolve([46300]); }
+        });
+    }
+
     test('native discovery cannot revive ownership changed while its PID was pending', async () => {
         const entered = deferred<void>();
         const pid = deferred<number>();
