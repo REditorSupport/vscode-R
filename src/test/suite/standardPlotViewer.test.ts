@@ -27,6 +27,7 @@ function flushMicrotasks(): Promise<void> {
 suite('Standard plot viewer request coordination', () => {
     let sandbox: sinon.SinonSandbox;
     let viewer: StandardPlotViewer;
+    let activeSession: sinon.SinonStub;
     let panels: Array<{
         panel: vscode.WebviewPanel;
         resize: (width: number, height: number) => Promise<void>;
@@ -39,6 +40,7 @@ suite('Standard plot viewer request coordination', () => {
         const root = path.resolve(__dirname, '../../..');
         mockExtensionContext(root, sandbox);
         sandbox.stub(session, 'globalPipePath').value('test-pipe');
+        activeSession = sandbox.stub(session, 'activeSession').value(undefined);
         sandbox.stub(util, 'config').returns({
             get: (key: string, defaultValue?: unknown) => key === 'plot.format' ? 'svglite' : defaultValue
         } as unknown as vscode.WorkspaceConfiguration);
@@ -117,13 +119,17 @@ suite('Standard plot viewer request coordination', () => {
         sinon.assert.calledOnce(firstPanel.postMessage.withArgs({ type: 'update', data: 'third', format: 'svg' }));
     });
 
-    test('does not retry a failed request, and a later resize can start a new request', async () => {
+    test('does not retry a rejected same-session request queued during the failure', async () => {
+        const failedRequest = deferred<unknown>();
         const request = sandbox.stub(session, 'sessionRequest');
-        request.onFirstCall().rejects(new Error('transport failed'));
+        request.onFirstCall().returns(failedRequest.promise);
         request.onSecondCall().resolves({ data: 'recovered', format: 'svg' });
         await viewer.update();
 
-        await panels[0].resize(100, 100);
+        const firstResize = panels[0].resize(100, 100);
+        const queuedResize = panels[0].resize(120, 140);
+        failedRequest.reject(new Error('transport failed'));
+        await Promise.all([firstResize, queuedResize]);
         sinon.assert.calledOnce(request);
         await panels[0].resize(200, 300);
         sinon.assert.calledTwice(request);
@@ -169,7 +175,7 @@ suite('Standard plot viewer request coordination', () => {
     test('does not post a response from a session that stopped being active', async () => {
         const firstSession = {} as session.Session;
         const nextSession = {} as session.Session;
-        const activeSession = sandbox.stub(session, 'activeSession').value(firstSession);
+        activeSession.value(firstSession);
         const requestResult = deferred<unknown>();
         sandbox.stub(session, 'sessionRequest').returns(requestResult.promise);
         await viewer.update();
@@ -179,6 +185,137 @@ suite('Standard plot viewer request coordination', () => {
         requestResult.resolve({ data: 'stale session', format: 'svg' });
         await resize;
         sinon.assert.notCalled(panels[0].postMessage);
+    });
+
+    test('keeps a different active session queued when the old session returns no data', async () => {
+        const sessionA = { sessionId: 'A' } as session.Session;
+        const sessionB = { sessionId: 'B' } as session.Session;
+        activeSession.value(sessionA);
+        const firstRequest = deferred<unknown>();
+        const secondRequest = deferred<unknown>();
+        const secondStarted = deferred<void>();
+        const request = sandbox.stub(session, 'sessionRequest').callsFake(() => {
+            if (request.callCount === 1) { return firstRequest.promise; }
+            secondStarted.resolve();
+            return secondRequest.promise;
+        });
+        await viewer.update();
+        const firstResize = panels[0].resize(100, 100);
+        activeSession.value(sessionB);
+        const sessionBUpdate = viewer.update();
+        sinon.assert.calledOnce(request);
+
+        firstRequest.resolve(undefined);
+        await secondStarted.promise;
+        sinon.assert.calledTwice(request);
+        assert.strictEqual(request.secondCall.args[1], sessionB);
+        sinon.assert.notCalled(panels[0].postMessage);
+        secondRequest.resolve({ data: 'B plot', format: 'svg' });
+        await Promise.all([firstResize, sessionBUpdate]);
+        sinon.assert.calledOnceWithExactly(panels[0].postMessage, {
+            type: 'update', data: 'B plot', format: 'svg'
+        });
+    });
+
+    test('keeps a different active session queued when the old session rejects', async () => {
+        const sessionA = { sessionId: 'A' } as session.Session;
+        const sessionB = { sessionId: 'B' } as session.Session;
+        activeSession.value(sessionA);
+        const firstRequest = deferred<unknown>();
+        const secondRequest = deferred<unknown>();
+        const secondStarted = deferred<void>();
+        const request = sandbox.stub(session, 'sessionRequest').callsFake(() => {
+            if (request.callCount === 1) { return firstRequest.promise; }
+            secondStarted.resolve();
+            return secondRequest.promise;
+        });
+        await viewer.update();
+        const firstResize = panels[0].resize(100, 100);
+        activeSession.value(sessionB);
+        const sessionBUpdate = viewer.update();
+
+        firstRequest.reject(new Error('session A failed'));
+        await secondStarted.promise;
+        sinon.assert.calledTwice(request);
+        assert.strictEqual(request.secondCall.args[1], sessionB);
+        sinon.assert.notCalled(panels[0].postMessage);
+        secondRequest.resolve({ data: 'B plot', format: 'svg' });
+        await Promise.all([firstResize, sessionBUpdate]);
+        sinon.assert.calledOnceWithExactly(panels[0].postMessage, {
+            type: 'update', data: 'B plot', format: 'svg'
+        });
+    });
+
+    test('uses only the latest queued connection when sessions change repeatedly', async () => {
+        const sessionA = { sessionId: 'A' } as session.Session;
+        const sessionB = { sessionId: 'B' } as session.Session;
+        const sessionC = { sessionId: 'C' } as session.Session;
+        activeSession.value(sessionA);
+        const firstRequest = deferred<unknown>();
+        const secondRequest = deferred<unknown>();
+        const secondStarted = deferred<void>();
+        const request = sandbox.stub(session, 'sessionRequest').callsFake(() => {
+            if (request.callCount === 1) { return firstRequest.promise; }
+            secondStarted.resolve();
+            return secondRequest.promise;
+        });
+        await viewer.update();
+        const firstResize = panels[0].resize(100, 100);
+        activeSession.value(sessionB);
+        const updateB = viewer.update();
+        activeSession.value(sessionC);
+        const updateC = viewer.update();
+
+        firstRequest.resolve({ data: 'stale A', format: 'svg' });
+        await secondStarted.promise;
+        sinon.assert.calledTwice(request);
+        assert.strictEqual(request.firstCall.args[1], sessionA);
+        assert.strictEqual(request.secondCall.args[1], sessionC);
+        sinon.assert.notCalled(panels[0].postMessage);
+        secondRequest.resolve({ data: 'current C', format: 'svg' });
+        await Promise.all([firstResize, updateB, updateC]);
+        sinon.assert.calledOnceWithExactly(panels[0].postMessage, {
+            type: 'update', data: 'current C', format: 'svg'
+        });
+    });
+
+    test('discards a queued session that became stale without a newer plot event', async () => {
+        const sessionA = { sessionId: 'A' } as session.Session;
+        const sessionB = { sessionId: 'B' } as session.Session;
+        const sessionC = { sessionId: 'C' } as session.Session;
+        activeSession.value(sessionA);
+        const firstRequest = deferred<unknown>();
+        const request = sandbox.stub(session, 'sessionRequest').returns(firstRequest.promise);
+        await viewer.update();
+        const firstResize = panels[0].resize(100, 100);
+        activeSession.value(sessionB);
+        const updateB = viewer.update();
+        activeSession.value(sessionC);
+
+        firstRequest.resolve({ data: 'stale A', format: 'svg' });
+        await Promise.all([firstResize, updateB]);
+        sinon.assert.calledOnce(request);
+        sinon.assert.notCalled(panels[0].postMessage);
+    });
+
+    test('does not retry a failed request for the same session after panel recreation', async () => {
+        const sessionA = { sessionId: 'A' } as session.Session;
+        activeSession.value(sessionA);
+        const firstRequest = deferred<unknown>();
+        const request = sandbox.stub(session, 'sessionRequest').returns(firstRequest.promise);
+        await viewer.update();
+        const oldPanel = panels[0];
+        const firstResize = oldPanel.resize(100, 100);
+        viewer.dispose();
+        await viewer.update();
+        const newPanel = panels[1];
+        const queuedResize = newPanel.resize(900, 700);
+
+        firstRequest.resolve(undefined);
+        await Promise.all([firstResize, queuedResize]);
+        sinon.assert.calledOnce(request);
+        sinon.assert.notCalled(oldPanel.postMessage);
+        sinon.assert.notCalled(newPanel.postMessage);
     });
 
     test('waits for the initial webview resize before requesting the first plot', async () => {
