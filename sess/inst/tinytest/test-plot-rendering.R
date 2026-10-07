@@ -77,7 +77,8 @@ local({
       width = 640, height = 480, format = "svglite"
     ))
     expect_equal(svg_result$format, "svglite")
-    valid_svg_data <- is.character(svg_result$data) && length(svg_result$data) == 1L && !is.na(svg_result$data)
+    valid_svg_data <- is.character(svg_result$data) &&
+      length(svg_result$data) == 1L && !is.na(svg_result$data)
     expect_true(valid_svg_data, info = "SVG renderer should return base64 data")
     if (valid_svg_data) {
       svg_bytes <- tryCatch(
@@ -85,7 +86,10 @@ local({
         error = function(e) raw()
       )
       svg_text <- if (length(svg_bytes)) rawToChar(svg_bytes) else ""
-      expect_true(grepl("<svg", svg_text, fixed = TRUE), info = "SVG output should contain an SVG root")
+      expect_true(
+        grepl("<svg", svg_text, fixed = TRUE),
+        info = "SVG output should contain an SVG root"
+      )
     }
   }
 
