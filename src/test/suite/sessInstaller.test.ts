@@ -11,6 +11,7 @@ suite('Bundled sess installation', () => {
             { timeout: 110000, maxBuffer: 4 * 1024 * 1024 });
         assert.match(result.stdout, /Bundled pure R source installation and Interactive API verification passed/);
         assert.match(result.stdout, /Bundled pure R source installation for an ordinary R terminal passed/);
+        assert.match(result.stdout, /Ordinary and Interactive verification works with only base default packages/);
         assert.match(result.stdout, /Exact source-revision mismatch rejected for ordinary and private verification/);
         assert.match(result.stdout, /Missing Imports use the configured repository and propagate installation errors/);
         assert.match(result.stdout, /Bundled sess installation failure is reported directly/);

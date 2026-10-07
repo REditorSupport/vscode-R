@@ -51,10 +51,24 @@ local({
     installer$sess_install(package, ordinary_target, "https://unused.invalid", interactive = FALSE)
     stopifnot(file.exists(file.path(ordinary_target, "sess", "DESCRIPTION")))
     cat("Bundled pure R source installation for an ordinary R terminal passed.\n")
+    expected_revision <- description[1L, "Config/vscode-R/source-revision"]
+
+    # --vanilla verification inherits R_DEFAULT_PACKAGES. Ordinary projects may
+    # attach utils from .Rprofile while requesting only base by default.
+    previous_default_packages <- Sys.getenv("R_DEFAULT_PACKAGES", unset = NA_character_)
+    Sys.setenv(R_DEFAULT_PACKAGES = "base")
+    tryCatch({
+        installer$sess_verify_package(ordinary_target, description[1L, "Version"], expected_revision, FALSE)
+        installer$sess_verify_package(target, description[1L, "Version"], expected_revision, TRUE)
+    }, finally = {
+        if (is.na(previous_default_packages)) Sys.unsetenv("R_DEFAULT_PACKAGES") else
+            Sys.setenv(R_DEFAULT_PACKAGES = previous_default_packages)
+    })
+    stopifnot(identical(previous_default_packages, Sys.getenv("R_DEFAULT_PACKAGES", unset = NA_character_)))
+    cat("Ordinary and Interactive verification works with only base default packages.\n")
 
     # The shared verifier enforces the exact bundled revision for ordinary and
     # private runtime installation paths.
-    expected_revision <- description[1L, "Config/vscode-R/source-revision"]
     wrong_revision <- paste0("git-tree:", strrep("0", 40))
     if (identical(expected_revision, wrong_revision)) wrong_revision <- paste0("git-tree:", strrep("1", 40))
     fail(installer$sess_verify_package(ordinary_target, description[1L, "Version"], wrong_revision, FALSE),

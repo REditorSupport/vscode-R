@@ -16,14 +16,14 @@ sess_verify_package <- function(library, required, expected_revision, interactiv
         "a <- commandArgs(TRUE); ns <- loadNamespace('sess', lib.loc=a[1]);",
         "stopifnot(normalizePath(getNamespaceInfo(ns,'path')) == normalizePath(file.path(a[1],'sess')));",
         "stopifnot(utils::compareVersion(as.character(utils::packageVersion('sess',lib.loc=a[1])),a[2]) >= 0);",
-        "stopifnot(identical(packageDescription('sess',lib.loc=a[1],fields='Config/vscode-R/source-revision'),a[3]));",
+        "stopifnot(identical(utils::packageDescription('sess',lib.loc=a[1],fields='Config/vscode-R/source-revision'),a[3]));",
         "stopifnot(all(c('connect','notify_client','register_hooks','request_client') %in% getNamespaceExports(ns)));",
         "if (a[4] == 'TRUE') {",
         "stopifnot(all(c('interactive_stop','display') %in% getNamespaceExports(ns)));",
         "stopifnot(all(vapply(c('interactive_start','interactive_execute'),",
         "function(n) exists(n, ns, mode='function', inherits=FALSE), FALSE)));",
-        "stopifnot(packageDescription('sess',lib.loc=a[1],fields='Config/vscode-R/Interactive') == '1');",
-        "stopifnot(packageDescription('sess',lib.loc=a[1],fields='NeedsCompilation') == 'no'); }"
+        "stopifnot(utils::packageDescription('sess',lib.loc=a[1],fields='Config/vscode-R/Interactive') == '1');",
+        "stopifnot(utils::packageDescription('sess',lib.loc=a[1],fields='NeedsCompilation') == 'no'); }"
     )
     status <- system2(file.path(R.home("bin"), "R"),
                       c("--vanilla", "--slave", "-e", shQuote(code), "--args",
