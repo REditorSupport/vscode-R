@@ -54,7 +54,7 @@ export async function installSessRuntime(extensionPath: string, root: string, rP
             child.stdout.on('data', (data: Buffer) => log(data.toString()));
             child.stderr.on('data', (data: Buffer) => log(data.toString()));
             child.on('error', reject);
-            child.on('exit', code => code === 0 ? resolve() : reject(new Error('Could not install the private sess runtime from the bundle or a compatible R-universe package. See R Interactive output for details.')));
+            child.on('exit', code => code === 0 ? resolve() : reject(new Error('Could not install the private sess runtime from the bundled package. See R Interactive output for details.')));
         });
         fs.writeFileSync(path.join(runtime, 'ready'), version.stdout, { mode: 0o600 });
         return { library, resources };

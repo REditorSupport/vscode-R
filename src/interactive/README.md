@@ -58,7 +58,7 @@ currently remains limited to Linux/macOS.
 
 [SessGraphics](backends/sessGraphics.ts) owns JGD negotiation, its font-metrics worker, plot attribution/coalescing, SVG production, and resize transport. It emits display payloads with stable identities. The agent stores assets and journals references. Static graphics remains available without JGD; another backend can supply SVG/PNG directly.
 
-Backend-specific preflight and private package installation live behind the registry and [sessPreparation.ts](backends/sessPreparation.ts). Common agent settings do not require a sess library or R path. The agent bundle cache is separate from the sess runtime cache. Existing flat launch configurations are normalized by `backendDescriptor()`; `withBackend()` derives compatibility fields for older readers. The [sess README](../../sess/README.md) documents its R hooks and wire protocol.
+Backend-specific preflight and private package installation live behind the registry and [sessPreparation.ts](backends/sessPreparation.ts). vscode-R installs the `sess` snapshot bundled with the extension; missing Imports use the configured repository. Common agent settings do not require a sess library or R path. The agent bundle cache is separate from the sess runtime cache. Existing flat launch configurations are normalized by `backendDescriptor()`; `withBackend()` derives compatibility fields for older readers. The [sess README](../../sess/README.md) documents its R hooks and wire protocol.
 
 ## Backend contract and ordering
 

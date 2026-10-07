@@ -91,7 +91,7 @@ stopifnot(inherits(simulate("shadowed"), "error"))
 assert_success <- function(result) {
     if (inherits(result, "error")) stop(conditionMessage(result), call. = FALSE)
 }
-# A private runtime uses the shared compatibility verifier rather than requiring
+# A private runtime uses the shared API/source verifier rather than requiring
 # its source to be visible in the ordinary terminal's library search path.
 assert_success(simulate("shadowed", private = TRUE))
 assert_success(simulate("success"))
