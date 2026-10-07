@@ -2076,8 +2076,9 @@ function activateAttachedSession(
         return Promise.resolve();
     }
     const selected = terminalRegistry.associationFor(selectedTerminal);
-    const native = terminalRegistry.forSession(session)?.kind === 'native';
-    const preferred = native || selected?.kind === 'explicit' ? selected?.session : undefined;
+    const hasNativeTerminal = terminalRegistry.forSession(session)?.kind === 'native';
+    const shouldPreserveSelectedTerminal = hasNativeTerminal || selected?.kind === 'explicit';
+    const preferred = shouldPreserveSelectedTerminal ? selected?.session : undefined;
     return activateSession(preferred ?? session);
 }
 
