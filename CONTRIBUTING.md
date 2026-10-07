@@ -40,16 +40,18 @@ Source DESCRIPTION enables pkgbuild's bootstrap hook; the prepared copy disables
 it to avoid repeating preparation when installed through remotes.
 
 `Config/vscode-R/source-revision` controls installation independently of package
-versions and the runtime `protocol_version` handshake. Missing or different
-installed metadata requires the bundle; installation verifies it is visible
-through `.libPaths()`. Run the source/bootstrap checks with `pnpm run test:sess-source`, or just the
+versions and the runtime `protocol_version` handshake. vscode-R installs only
+the bundled snapshot; missing Imports come from the configured repository.
+Missing or different installed metadata requires the bundle, and installation
+verifies the exact source revision and visibility through `.libPaths()`. Run the
+source/bootstrap checks with `pnpm run test:sess-source`, or just the
 base-R identity checks with `pnpm run test:sess-identity`.
 
 ## Testing R Interactive
 
 The [architecture and backend contract](src/interactive/README.md) live beside the implementation. User setup and behavior belong in the [R Interactive wiki page](https://github.com/REditorSupport/vscode-R/wiki/R-Interactive).
 
-Use Linux or macOS for Interactive runtime tests, with R and an installed arf 0.5.3 executable. Bundled sess is pure R and needs no compiler; its dependencies can use repository binaries. Windows runs the remaining extension checks; persistent Interactive supervision remains limited to Linux/macOS. From the repository root, after installing pnpm dependencies, prepare a test library:
+Use Linux or macOS for Interactive runtime tests, with R and an installed arf 0.5.3 executable. Bundled sess is pure R and needs no compiler when its Imports are already installed; missing Imports are installed from the configured repository. Windows runs the remaining extension checks; persistent Interactive supervision remains limited to Linux/macOS. From the repository root, after installing pnpm dependencies, prepare a test library:
 
 ```sh
 export R_LIBS=/path/to/test-library

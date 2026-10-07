@@ -33,9 +33,9 @@ socket on macOS/Linux, named pipe on Windows) using
 
 The bundled `sess` is a pure R package and needs no compiler to install from
 source. Its dependencies, including `processx`, `later`, and `jsonlite`, contain
-native code; use installed copies or compatible repository binaries where
-available. If bundled installation fails, the installer can try a compatible
-R-universe package without changing global repository settings.
+native code; the extension installs missing Imports from the configured CRAN
+repository before installing its bundled copy. The extension does not substitute
+a separately published `sess` package if the bundled installation fails.
 
 R Interactive requires arf on the R host. Managed headless arf sessions stream
 console output and retain rich tables, HTML, and plots. Attached arf sessions
