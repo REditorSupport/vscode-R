@@ -2062,6 +2062,25 @@ export async function activateSession(session: Session): Promise<void> {
     await refreshed;
 }
 
+/** Reconcile the selected connection before considering automatic attach selection. */
+function activateAttachedSession(
+    session: Session, previous: Session | undefined,
+    selectionRevision: number, selectedTerminal: vscode.Terminal | undefined,
+): Promise<void> {
+    // Replacing the selected connection preserves the user's logical session choice,
+    // even if that same session was reselected while discovery was pending.
+    if (previous && activeSession === previous) { return activateSession(session); }
+
+    // Automatic selection may not override a newer choice of a different session.
+    if (selectionRevision !== sessionSelectionRevision || selectedTerminal !== window.activeTerminal) {
+        return Promise.resolve();
+    }
+    const selected = terminalRegistry.associationFor(selectedTerminal);
+    const native = terminalRegistry.forSession(session)?.kind === 'native';
+    const preferred = native || selected?.kind === 'explicit' ? selected?.session : undefined;
+    return activateSession(preferred ?? session);
+}
+
 async function refreshActiveSession(session: Session): Promise<void> {
     pipeClient = session.socket;
     if (!session.requester) { globalPipePath = session.pipePath; }
@@ -2242,12 +2261,7 @@ async function handleNotification(message: Record<string, unknown>, socket: IpcS
             const terminalPid = native && terminalRegistry.attachNative(native.terminal, session) ? native.pid : undefined;
             if (terminalPid) { socket._terminalPid = Number(terminalPid); }
 
-            // Attaching a process must not undo a newer user/API selection.
-            if (selectionRevision === sessionSelectionRevision && selectedTerminal === window.activeTerminal) {
-                const selected = terminalRegistry.associationFor(selectedTerminal);
-                const preferred = terminalPid || selected?.kind === 'explicit' ? selected?.session : undefined;
-                await activateSession(preferred ?? session);
-            }
+            await activateAttachedSession(session, previous, selectionRevision, selectedTerminal);
 
             console.info(`[startSessionWatcher] attach session ${sessionId} (${host || 'unknown'}:${rPid || 'unknown'}), terminal PID: ${terminalPid ?? 'unassociated'}`);
             purgeAddinPickerItems();
