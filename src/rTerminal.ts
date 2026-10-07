@@ -285,41 +285,50 @@ export async function makeTerminalOptions(resource?: vscode.Uri): Promise<vscode
 // awaiting it ($createContributedProfileTerminal -> createTerminalFromOptions)
 // and then focuses "the last terminal" — which, when the extension host is
 // remote (Codespaces, SSH, the web client), is still the previous terminal
-// because the new one has not been registered yet. The result: an R terminal
-// that opens without focus, unlike every other profile and unlike
-// "R: Create R Terminal". So the profile remembers that it just handed VS Code
-// a terminal, and the first matching terminal that opens is shown with focus.
-// The pending mark expires so an aborted creation cannot steal focus later.
+// because the new one has not been registered yet (microsoft/vscode#340185).
+// The result: an R terminal that opens without focus, unlike every other
+// profile and unlike "R: Create R Terminal".
+//
+// So each profile request is remembered by the very options object handed to
+// VS Code — VS Code freezes that object and exposes it unchanged as
+// `terminal.creationOptions` — and the terminal whose creationOptions IS one
+// of the pending objects is shown with focus when it opens. Identity is the
+// correlation: a terminal from createRTerm() (same name, different object) is
+// never mistaken for it, several in-flight requests are each matched to their
+// own terminal, and a request whose terminal never opens expires.
 
 const PROFILE_TERMINAL_PENDING_MS = 10_000;
-let profileTerminalPendingUntil = 0;
+const pendingProfileTerminals = new Map<vscode.TerminalOptions, number>();
 
-export async function provideTerminalProfile(resource?: vscode.Uri): Promise<vscode.TerminalProfile> {
+export async function provideTerminalProfile(resource?: vscode.Uri, now: number = Date.now()): Promise<vscode.TerminalProfile> {
     const options = await makeTerminalOptions(resource);
-    profileTerminalPendingUntil = Date.now() + PROFILE_TERMINAL_PENDING_MS;
+    pendingProfileTerminals.set(options, now + PROFILE_TERMINAL_PENDING_MS);
     return new vscode.TerminalProfile(options);
 }
 
 /**
- * Called for every terminal that opens. If it is the one the contributed
- * profile just produced, focus it (see above). Returns whether it did.
+ * Called for every terminal that opens. If it is one the contributed profile
+ * produced (its creationOptions is a pending request's options object), focus
+ * it (see above) and forget the request. Returns whether it did.
  */
 export function focusProfileTerminal(terminal: vscode.Terminal, now: number = Date.now()): boolean {
-    if (profileTerminalPendingUntil === 0 || now > profileTerminalPendingUntil) {
-        profileTerminalPendingUntil = 0;
+    for (const [options, deadline] of pendingProfileTerminals) {
+        if (now > deadline) {
+            pendingProfileTerminals.delete(options);
+        }
+    }
+    const options = terminal.creationOptions as vscode.TerminalOptions;
+    if (!pendingProfileTerminals.has(options)) {
         return false;
     }
-    if (terminal.name !== 'R Interactive') {
-        return false;
-    }
-    profileTerminalPendingUntil = 0;
+    pendingProfileTerminals.delete(options);
     terminal.show();
     return true;
 }
 
-/** Test hook: forget any pending profile terminal. */
+/** Test hook: forget any pending profile requests. */
 export function resetProfileTerminalPending(): void {
-    profileTerminalPendingUntil = 0;
+    pendingProfileTerminals.clear();
 }
 
 export async function createRTerm(preserveshow?: boolean, resource?: vscode.Uri): Promise<boolean> {
