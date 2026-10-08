@@ -321,9 +321,11 @@ suite('HTML widget browser rendering', () => {
             const run = async (viewer: vscode.WebviewPanel, action: 'back' | 'forward' | 'remove' | 'info') => {
                 await focusHtmlViewer(viewer);
                 await vscode.commands.executeCommand(`r.htmlViewer.${action}`);
-                // Title changes also reach the workbench asynchronously. Finish
-                // each action before the next one can change focus or Info state.
-                await waitForValue(() => vscode.window.tabGroups.activeTabGroup.activeTab?.label === viewer.title ? true : undefined);
+                // Title changes reach the workbench asynchronously. Navigation
+                // preserves focus, so check the viewer's group even if another
+                // group becomes active before the next action refocuses it.
+                await waitForValue(() => vscode.window.tabGroups.all.find(group =>
+                    group.viewColumn === viewer.viewColumn)?.activeTab?.label === viewer.title ? true : undefined);
             };
             notify('webview', { url: second, title: 'Second' });
             await waitForValue(() => panel.webview.html.includes('Native second') ? true : undefined);
