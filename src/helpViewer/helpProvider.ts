@@ -2,6 +2,7 @@ import { Memento, window } from 'vscode';
 import * as cp from 'child_process';
 
 import * as rHelp from '.';
+import { getLoopbackHttp } from './loopbackHttp';
 import { extensionContext } from '../extension';
 import { catchAsError, config, DisposableProcess, getRLibPaths, spawn, spawnAsync } from '../util';
 
@@ -117,22 +118,22 @@ export class HelpProvider {
         }
 
         // forward request to R instance
-        const url = `http://localhost:${port}/${requestPath}`;
-        const rep = await fetch(url);
+        const url = new URL(`http://127.0.0.1:${port}/${requestPath}`);
+        const rep = await getLoopbackHttp(url);
         if(rep.status !== 200){
             return undefined;
         }
-        const html = await rep.text();
+        const html = rep.text;
 
         // read "corrected" request path, that was forwarded to
-        const requestPath1 = rep.url.replace(/^http:\/\/localhost:[0-9]*\//, '');
+        const requestPath1 = rep.url.slice(`${url.origin}/`.length);
 
         // return help file
         const ret: rHelp.HelpFile = {
             requestPath: requestPath1,
             html: html,
             isRealFile: false,
-            url: url
+            url: url.href
         };
         return ret;
     }
