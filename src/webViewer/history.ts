@@ -4,6 +4,11 @@ import type { ViewerSessionContext, ViewerSessionSource } from '../viewerSession
 export const widgetHistoryKey = 'r.htmlViewer.histories';
 export const widgetHistoryLimit = 50;
 
+/** Session IDs identify a process lifetime; host and PID guard against ID reuse. */
+export function widgetSessionIdentity(source: Readonly<ViewerSessionSource>): string {
+    return JSON.stringify([source.sessionId, source.host.toLowerCase(), source.pid]);
+}
+
 export interface WidgetHistory {
     source: ViewerSessionSource;
     history: Array<{ file: string; title: string }>;
@@ -41,7 +46,7 @@ export class WidgetHistoryStore {
 
     remember(session: ViewerSessionContext): WidgetHistory {
         let record = this.entries.get(session.sessionId);
-        if (record && (record.source.host.toLowerCase() !== session.source.host.toLowerCase() || record.source.pid !== session.source.pid)) {
+        if (record && widgetSessionIdentity(record.source) !== widgetSessionIdentity(session.source)) {
             this.forget(session.sessionId);
             record = undefined;
         }

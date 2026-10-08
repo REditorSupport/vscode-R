@@ -61,6 +61,36 @@ suite('Retained HTML widget history', () => {
         assert.deepStrictEqual(persisted, [record()]);
     });
 
+    test('the same session and process retains history regardless of host casing', async () => {
+        const { store, monitor } = create();
+        const original = source('same-process', 'foreign');
+        const history = store.remember(createViewerSessionContext(original, monitor));
+        history.history.push({ file: '/tmp/a.html', title: 'A' }); history.index = 0;
+        const reconnected = { ...original, host: 'FOREIGN' };
+        assert.strictEqual(store.remember(createViewerSessionContext(reconnected, monitor)), history);
+        await store.save(history);
+        assert.deepStrictEqual(persisted, [history]);
+    });
+
+    for (const change of ['host', 'pid'] as const) {
+        test(`a reused session ID with a different ${change} replaces retained history`, async () => {
+            const { store, monitor } = create();
+            const original = source('reused-id', 'foreign');
+            const history = store.remember(createViewerSessionContext(original, monitor));
+            history.history.push({ file: '/tmp/a.html', title: 'A' }); history.index = 0;
+            await store.save(history);
+            const replacement = { ...original, [change]: change === 'host' ? 'another-host' : '54321' };
+            const fresh = store.remember(createViewerSessionContext(replacement, monitor));
+            assert.notStrictEqual(fresh, history);
+            assert.strictEqual(fresh.history.length, 0);
+            assert.strictEqual(fresh.index, -1);
+            fresh.history.push({ file: '/tmp/b.html', title: 'B' }); fresh.index = 0;
+            await store.save(fresh);
+            await store.save(history);
+            assert.deepStrictEqual(persisted, [fresh]);
+        });
+    }
+
     test('a process exit clears persisted history even without an open Viewer or attached transport', async () => {
         persisted = [record()];
         const { store } = create();

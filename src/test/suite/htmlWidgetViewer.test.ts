@@ -202,6 +202,7 @@ suite('Session-aware HTML widget Viewer', () => {
         session.unregisterSessionTransport(source);
         const reconnected = owner('html-reconnect');
         reconnected.pid = source.pid;
+        reconnected.host = source.host.toUpperCase();
         await show('/tmp/after/index.html', reconnected);
         assert.strictEqual(panels.length, 1);
         const restarted = owner('html-restarted');
@@ -209,6 +210,41 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.strictEqual(panels.length, 2);
         assert.ok(panels[0].webview.html.includes('/tmp/after/index.html'));
     });
+
+    for (const change of ['host', 'pid'] as const) {
+        test(`a reused session ID with a different ${change} gets its own panel and retained history`, async () => {
+            const source = owner(`html-reused-${change}`);
+            await show('/tmp/old.html', source, 'Old');
+            const originalHtml = panels[0].webview.html;
+            session.unregisterSessionTransport(source);
+            const replacement = owner(source.sessionId);
+            replacement.pid = change === 'pid' ? '98765' : source.pid;
+            replacement.host = change === 'host' ? 'replacement-host' : source.host;
+            await show('/tmp/new.html', replacement, 'New');
+            assert.strictEqual(panels.length, 2);
+            assert.strictEqual(panels[0].webview.html, originalHtml);
+            assert.strictEqual(outputTitle(panels[1]), 'New');
+            assert.ok(panels[1].webview.html.includes('1 / 1'));
+            const retained = savedState.get(widgetHistoryKey) as WidgetHistory[];
+            assert.strictEqual(retained.length, 1);
+            assert.strictEqual(retained[0].source.host, replacement.host);
+            assert.strictEqual(retained[0].source.pid, replacement.pid);
+            assert.deepStrictEqual(retained[0].history.map(item => item.title), ['New']);
+
+            // Closing the original panel must not overwrite the replacement's
+            // history or remove it from the panel-reuse map.
+            panels[0].dispose();
+            await show('/tmp/next.html', replacement, 'Next');
+            assert.strictEqual(panels.length, 2);
+            assert.ok(panels[1].webview.html.includes('2 / 2'));
+            panels[1].dispose();
+            await restoreHtmlViewer(replacement.sessionId);
+            assert.strictEqual(panels.length, 3);
+            assert.strictEqual(outputTitle(panels[2]), 'Next');
+            await navigate(panels[2], 'back');
+            assert.strictEqual(outputTitle(panels[2]), 'New');
+        });
+    }
 
     test('disabled viewing opens externally without creating or changing a panel', async () => {
         const source = owner('html-disabled');

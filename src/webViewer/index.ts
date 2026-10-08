@@ -4,7 +4,7 @@ import * as path from 'path';
 import { readFile } from 'fs-extra';
 import { ExtensionContext, Uri, ViewColumn, Webview, WebviewPanel, window, env, commands, workspace } from 'vscode';
 import { ViewerSessionContext, ViewerSessionSource, viewerSessionStyle } from '../viewerSession';
-import { WidgetHistory, WidgetHistoryStore, widgetHistoryLimit } from './history';
+import { WidgetHistory, WidgetHistoryStore, widgetHistoryLimit, widgetSessionIdentity } from './history';
 
 export interface HtmlViewerSessionAccess {
     resolveSession(source: ViewerSessionSource): ViewerSessionContext;
@@ -160,8 +160,8 @@ class HtmlWidgetViewerManager {
     }
 
     private open(viewer: string | boolean, session?: ViewerSessionContext, saved?: WidgetHistory): WidgetViewer {
-        const sessionId = session?.sessionId;
-        const existing = sessionId ? this.viewers.get(sessionId) : undefined;
+        const identity = session ? widgetSessionIdentity(session.source) : undefined;
+        const existing = identity ? this.viewers.get(identity) : undefined;
         if (existing) { return existing; }
         const panel = window.createWebviewPanel('webview', htmlViewerTitle,
             { preserveFocus: true, viewColumn: ViewColumn[String(viewer) as keyof typeof ViewColumn] ?? ViewColumn.Two },
@@ -171,11 +171,11 @@ class HtmlWidgetViewerManager {
             state: saved ?? { history: [], index: -1 },
         };
         // Register before loading HTML so concurrent requests reuse the panel.
-        if (sessionId) { this.viewers.set(sessionId, entry); }
+        if (identity) { this.viewers.set(identity, entry); }
         panel.onDidDispose(() => {
             entry.disposed = true;
             if (!this.disposed) { void this.save(entry); }
-            if (sessionId && this.viewers.get(sessionId) === entry) { this.viewers.delete(sessionId); }
+            if (identity && this.viewers.get(identity) === entry) { this.viewers.delete(identity); }
         });
         panel.onDidChangeViewState(() => { if (!entry.disposed) { void this.save(entry); } });
         const iconPath = this.context.asAbsolutePath('images/icons');
