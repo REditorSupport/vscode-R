@@ -92,8 +92,17 @@ function treeTooltip(item: vscode.TreeItem): string {
     function bundleContext(): vscode.ExtensionContext {
         return (createRequire(__filename)(path.join(process.cwd(), 'dist/extension')) as { extensionContext: vscode.ExtensionContext }).extensionContext;
     }
+    function interactiveManager(context = bundleContext()): InteractiveManager {
+        // The HTML Viewer manager also exposes open(); identify the Interactive
+        // manager by its session tree as well, including after it is recreated.
+        const manager = context.subscriptions.find(item =>
+            typeof (item as InteractiveManager).open === 'function'
+            && typeof (item as InteractiveManager).getChildren === 'function') as InteractiveManager | undefined;
+        assert.ok(manager, 'Interactive manager must be registered');
+        return manager;
+    }
     function recreateManager(context: vscode.ExtensionContext): void {
-        const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const manager = interactiveManager(context);
         assert.ok(manager);
         const Manager = (Object.getPrototypeOf(manager) as { constructor: typeof InteractiveManager }).constructor;
         manager.dispose(); context.subscriptions.splice(context.subscriptions.indexOf(manager), 1);
@@ -371,7 +380,7 @@ function treeTooltip(item: vscode.TreeItem): string {
             assert.deepStrictEqual(selectionEvents, [], 'Presentation refresh must not deselect the execution kernel');
             affinity.resetHistory();
             // Repeated unchanged status updates must not continually rebuild the picker.
-            const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function');
+            const manager = interactiveManager();
             const status = manager as unknown as { updateStatus(): void };
             status.updateStatus(); status.updateStatus();
             await new Promise<void>(resolve => setImmediate(resolve));
@@ -432,7 +441,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         // Load the activated bundle's context/constructor, so execution routing and
         // command registration use the same module instances as the real extension.
         const context = bundleContext();
-        const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const manager = interactiveManager(context) as InteractiveManager;
         assert.ok(manager);
         const Manager = (Object.getPrototypeOf(manager) as { constructor: typeof InteractiveManager }).constructor;
         for (const manifest of manifests) { await vscode.commands.executeCommand('r.interactive.open', manifest); }
@@ -494,7 +503,7 @@ function treeTooltip(item: vscode.TreeItem): string {
         }
     });
     test('refreshes session tree connection and control details after reconnect and Take Control', async () => {
-        const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const manager = interactiveManager() as InteractiveManager;
         const view = (manager as unknown as { views: Map<string, { client: AgentClient }> }).views.get(`${manifests[0].id}:${manifests[0].generation}`);
         assert.ok(view);
         let refreshes = 0;
@@ -517,7 +526,7 @@ function treeTooltip(item: vscode.TreeItem): string {
     });
     test('observer execution consistently reports errors from native input, cells and source commands', async () => {
         await vscode.commands.executeCommand('r.interactive.open', manifests[0]);
-        const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const manager = interactiveManager() as InteractiveManager;
         const view = (manager as unknown as { views: Map<string, { client: AgentClient; controller: vscode.NotebookController; notebook: vscode.NotebookDocument }> }).views.get(`${manifests[0].id}:${manifests[0].generation}`);
         assert.ok(view);
         const other = new AgentClient(manifests[0]);
@@ -1171,7 +1180,7 @@ cat("\n")`;
             const plain = report.cells.at(-1)?.outputs?.flatMap(output => output.items).find(item => item.mime === 'text/plain');
             assert.ok(plain); assert.strictEqual(Buffer.from(plain.data).toString(), table.printedText);
             const context = bundleContext();
-            const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+            const manager = interactiveManager(context) as unknown as {
                 rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
             };
             const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
@@ -1203,7 +1212,7 @@ cat("\n")`;
         const plain = notebook.cellAt(index).outputs.flatMap(output => output.items).find(item => item.mime === 'text/plain'); assert.ok(plain);
         assert.strictEqual(Buffer.from(plain.data).toString(), list.printedText);
         const context = bundleContext();
-        const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+        const manager = interactiveManager(context) as unknown as {
             messages: vscode.NotebookRendererMessaging;
             rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
         };
@@ -1286,7 +1295,7 @@ cat("\n")`;
         try {
             await vscode.commands.executeCommand('r.interactive.export', notebook.uri);
             assert.ok(fs.readFileSync(file, 'utf8').includes('Snapshot: first 1,000 of 832,976,871 rows'));
-            const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+            const manager = interactiveManager() as unknown as {
                 messages: vscode.NotebookRendererMessaging;
                 rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
             };
@@ -1332,7 +1341,7 @@ par(mfrow=c(1,1))`);
             const gallery = displays().find(display => display.kind === 'plot'); assert.ok(gallery);
             const pages = gallery.pages as Record<string, unknown>[];
             const context = bundleContext();
-            const manager = context.subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as unknown as {
+            const manager = interactiveManager(context) as unknown as {
                 rendererMessage(editor: vscode.NotebookEditor, message: Record<string, unknown>): Promise<void>;
             };
             const editor = vscode.window.visibleNotebookEditors.find(editor => editor.notebook === notebook); assert.ok(editor);
@@ -1970,7 +1979,7 @@ par(mfrow=c(1,1))`);
                 assert.strictEqual(bulk[3].status, 'idle');
                 assert.strictEqual((await other.request<{ control: boolean }>('heartbeat')).control, true);
                 assert.match(confirm.lastCall.args[0], /Stopped 1 of 2.*1 could not be stopped/);
-                const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+                const manager = interactiveManager() as InteractiveManager;
                 assert.ok(!manager.getChildren().some(manifest => manifest.id === bulk[1].id), 'Stopped unopened sessions leave no dead tree link');
                 assert.ok(manager.getChildren().some(manifest => manifest.id === bulk[0].id), 'An open stopped transcript stays in the tree');
                 assert.strictEqual(vscode.workspace.notebookDocuments.length, windowCount);
@@ -2003,7 +2012,7 @@ par(mfrow=c(1,1))`);
         });
     });
     test('a stale saved URI cannot reconnect one session into another session window', async () => {
-        const manager = bundleContext().subscriptions.find(item => typeof (item as InteractiveManager).open === 'function') as InteractiveManager;
+        const manager = interactiveManager() as InteractiveManager;
         const saved = (manager as unknown as { savedConnections: Map<string, { id: string; notebookUri?: string }> }).savedConnections;
         const temporary: { agent: SessionAgent; manifest: SessionManifest }[] = [];
         const before = new Set(vscode.window.tabGroups.all.flatMap(group => group.tabs));

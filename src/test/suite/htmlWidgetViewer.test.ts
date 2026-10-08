@@ -123,7 +123,7 @@ suite('Session-aware HTML widget Viewer', () => {
         assert.ok(widgetDocument(panels[0]).includes('<base href="file:///tmp/widget-c/">'));
         assert.ok(widgetDocument(panels[0]).includes('src="lib/widget.js"'));
         assert.ok(panels[1].webview.html.includes('/tmp/widget-b/index.html'));
-        assert.strictEqual(panels[0].webview.options.localResourceRoots?.[0].fsPath, '/tmp/widget-c');
+        assert.strictEqual(panels[0].webview.options.localResourceRoots?.[0].fsPath, vscode.Uri.file('/tmp/widget-c').fsPath);
         assert.deepStrictEqual((panels[0].reveal as sinon.SinonStub).lastCall.args, [vscode.ViewColumn.Two, true]);
         assert.ok(panels[0].webview.html.includes(`R 4.6.1: ${first.pid}`));
         assert.ok(panels[1].webview.html.includes(`R 4.6.1: ${second.pid}`));
@@ -143,7 +143,7 @@ suite('Session-aware HTML widget Viewer', () => {
         await pending;
         assert.strictEqual(panels[0].webview.html, latest);
         assert.strictEqual(outputTitle(panels[0]), 'Latest');
-        assert.strictEqual(panels[0].webview.options.localResourceRoots?.[0].fsPath, '/tmp/latest');
+        assert.strictEqual(panels[0].webview.options.localResourceRoots?.[0].fsPath, vscode.Uri.file('/tmp/latest').fsPath);
     });
 
     test('closing during a load allows a new panel and discards the old result', async () => {
@@ -204,7 +204,7 @@ suite('Session-aware HTML widget Viewer', () => {
         await navigate(panel, 'back');
         assert.strictEqual(outputTitle(panel), 'A');
         assert.ok(widgetDocument(panel).includes('/tmp/a/index.html'));
-        assert.strictEqual(panel.webview.options.localResourceRoots?.[0].fsPath, '/tmp/a');
+        assert.strictEqual(panel.webview.options.localResourceRoots?.[0].fsPath, vscode.Uri.file('/tmp/a').fsPath);
         assert.ok(disabled(panel, 'back') && !disabled(panel, 'forward'));
         const firstHtml = panel.webview.html;
         await navigate(panel, 'back');

@@ -251,10 +251,10 @@ suite('Viewer session ownership', () => {
         const html = panels[0].panel.webview.html;
         notify(source, 'page_viewer', { url: '/tmp/profvis.html' });
         await waitFor(() => external.callCount === 1);
-        assert.strictEqual((external.lastCall.args[0] as vscode.Uri).fsPath, '/tmp/profvis.html');
+        assert.strictEqual((external.lastCall.args[0] as vscode.Uri).fsPath, vscode.Uri.file('/tmp/profvis.html').fsPath);
         notify(source, 'browser', { url: '/tmp/report.htm' });
         await waitFor(() => external.callCount === 2);
-        assert.strictEqual((external.lastCall.args[0] as vscode.Uri).fsPath, '/tmp/report.htm');
+        assert.strictEqual((external.lastCall.args[0] as vscode.Uri).fsPath, vscode.Uri.file('/tmp/report.htm').fsPath);
         assert.strictEqual(panels.length, 1);
         assert.strictEqual(panels[0].panel.webview.html, html);
     });
